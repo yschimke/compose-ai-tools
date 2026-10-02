@@ -95,6 +95,7 @@ public object PreviewDiscoveryCli {
     var projectDirectory: File? = null
     var failOnEmpty = false
     var catalogRenderSupported = true
+    var animatedPreviewApngSupported = false
     var isWear = false
     var retargetWearPreviews = true
     var outPath: File? = null
@@ -115,6 +116,10 @@ public object PreviewDiscoveryCli {
           catalogRenderSupported =
             requireValue(args, i).toBooleanStrictOrNull()
               ?: throw ArgError("--catalog-render-supported must be 'true' or 'false'")
+        "--animated-preview-apng-supported" ->
+          animatedPreviewApngSupported =
+            requireValue(args, i).toBooleanStrictOrNull()
+              ?: throw ArgError("--animated-preview-apng-supported must be 'true' or 'false'")
         "--wear" ->
           isWear =
             requireValue(args, i).toBooleanStrictOrNull()
@@ -154,6 +159,7 @@ public object PreviewDiscoveryCli {
           projectDirectory = projectDir,
           failOnEmpty = failOnEmpty,
           catalogRenderSupported = catalogRenderSupported,
+          animatedPreviewApngSupported = animatedPreviewApngSupported,
           isWear = isWear,
           retargetWearPreviews = retargetWearPreviews,
         ),
@@ -194,6 +200,11 @@ public object PreviewDiscoveryCli {
                           (Android). Pass false for desktop/JVM backends that skip catalog
                           rendering, so the emitted CATALOG captures are marked optional and
                           downstream consumers don't treat the skipped sheet as missing (#2135).
+        --animated-preview-apng-supported <true|false>
+                          Whether this backend encodes @AnimatedPreview(format = Apng) as APNG.
+                          Default false (Android, whose renderer writes GIF): an APNG request is
+                          recorded as GIF and named .gif. Pass true for the desktop renderer so
+                          the capture is recorded as APNG and named .apng.
         --wear <true|false>
                           Whether this is a Wear OS module. Default false. Pass true for a Wear
                           target (the Gradle backend derives this from the merged manifest's

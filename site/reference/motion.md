@@ -126,6 +126,13 @@ GIF *cannot* do rather than things it does worse:
 Ask for `format = MotionFormat.Gif` when reach in old tooling matters
 more.
 
+The output's extension always follows the format the capture is
+written in: `@AnimatedPreview(format = MotionFormat.Apng)` writes
+`<id>.apng` on the desktop (Compose Multiplatform) backend. The Android
+backend does not encode `@AnimatedPreview` as APNG yet, so there an
+APNG request is written as GIF to `<id>.gif` and discovery warns that
+it was downgraded; `@InteractionPreview` honours `format` on both.
+
 ## Payload shape
 
 Image-only artifacts. Output paths under

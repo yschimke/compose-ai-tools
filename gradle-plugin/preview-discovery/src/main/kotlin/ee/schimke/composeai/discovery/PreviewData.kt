@@ -195,15 +195,20 @@ data class ScrollCapture(
 /**
  * Animation capture state sourced from `@AnimatedPreview`. Carried as its own field on [Capture]
  * (orthogonal to [Capture.scroll] / [Capture.advanceTimeMillis]) so the renderer can switch on its
- * presence without overloading the scroll machinery. Output is always a single `.gif` plus an
- * optional `<stem>_curves.png` sidecar when [showCurves] is true.
+ * presence without overloading the scroll machinery. Output is a single motion file whose extension
+ * is [format]'s (`.gif` / `.apng`), plus an optional `<stem>_curves.png` sidecar when [showCurves]
+ * is true.
  */
 @Serializable
 data class AnimationCapture(
   val durationMs: Int,
   val frameIntervalMs: Int,
   val showCurves: Boolean = false,
-  /** Container format from `@AnimatedPreview(format = …)`. Defaults to the historical GIF. */
+  /**
+   * Container format from `@AnimatedPreview(format = …)`, as the backend will actually write it —
+   * the Android backend records GIF for an APNG request until its renderer can encode APNG.
+   * Defaults to the historical GIF.
+   */
   val format: MotionFormat = MotionFormat.GIF,
   /** `@AnimatedPreview(caption = …)` — the Motion-section line. Empty when the author gave none. */
   val caption: String = "",

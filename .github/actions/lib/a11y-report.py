@@ -165,21 +165,37 @@ def module_identity(build_dir: Path) -> str:
     return ":".join(safe) or resolved.name or "module"
 
 
+# The capture fields `previews.json` sets on a motion capture —
+# `@AnimatedPreview`, `@InteractionPreview` and `@FocusedPreview(gif = true)`.
+# Motion is classified by these, not by the file extension: the container is a
+# per-annotation choice (`format = Gif | Apng`), so an extension test only ever
+# covers the formats someone remembered to list.
+MOTION_CAPTURE_FIELDS = ("animation", "interaction", "focusGif")
+
+# Fallback for a manifest that predates those fields: the extensions a motion
+# container is written with.
+MOTION_EXTENSIONS = (".gif", ".apng")
+
+
 def is_dynamic_preview(preview: dict) -> bool:
-    """Returns True for `@ScrollingPreview` / `@AnimatedPreview` variants.
+    """Returns True for scrolling and motion (animated / interaction) variants.
 
     Dynamic captures move during the render — `scroll != null` covers TOP,
-    END, LONG, and GIF scroll modes, and a `.gif` extension catches
-    `@AnimatedPreview`'s frame-strip output. Including them in the a11y
-    report would mean overlaying the legend onto a tall stitched scroll or
-    a single animation frame, neither of which is a useful "what TalkBack
-    sees" picture. The static variant of the same function (when it
-    exists) carries the a11y signal.
+    END, LONG, and GIF scroll modes, and a motion capture (keyed on its
+    `animation` / `interaction` / `focusGif` field, with a `.gif` / `.apng`
+    extension check as the fallback) catches `@AnimatedPreview` and friends in
+    either container format. Including them in the a11y report would mean
+    overlaying the legend onto a tall stitched scroll or a single animation
+    frame, neither of which is a useful "what TalkBack sees" picture. The
+    static variant of the same function (when it exists) carries the a11y
+    signal.
     """
     for capture in preview.get("captures", []):
         if capture.get("scroll") is not None:
             return True
-        if (capture.get("renderOutput") or "").endswith(".gif"):
+        if any(capture.get(field) is not None for field in MOTION_CAPTURE_FIELDS):
+            return True
+        if (capture.get("renderOutput") or "").lower().endswith(MOTION_EXTENSIONS):
             return True
     return False
 

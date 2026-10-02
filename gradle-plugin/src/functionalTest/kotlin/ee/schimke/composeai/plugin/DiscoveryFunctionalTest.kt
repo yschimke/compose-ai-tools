@@ -250,6 +250,88 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `desktop discovery names an APNG @AnimatedPreview apng and a GIF one gif`() {
+    // `@AnimatedPreview(format = Apng)` used to be named `.gif` unconditionally, so the desktop
+    // renderer — which honours the format — wrote APNG bytes into a `.gif`. On desktop the name now
+    // follows the format, and the GIF default keeps the name every consumer already links to.
+    val projectDir = createCmpTestProject()
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "AnimatedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class AnimatedPreview(
+            val durationMs: Int = 0,
+            val frameIntervalMs: Int = 33,
+            val showCurves: Boolean = true,
+            val caption: String = "",
+            val format: MotionFormat = MotionFormat.Gif,
+        )
+
+        enum class MotionFormat { Gif, Apng }
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Motion.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.AnimatedPreview
+        import ee.schimke.composeai.preview.MotionFormat
+
+        @Preview
+        @AnimatedPreview(durationMs = 300)
+        @Composable
+        fun GifMotionPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Gif") }
+        }
+
+        @Preview
+        @AnimatedPreview(durationMs = 300, format = MotionFormat.Apng)
+        @Composable
+        fun ApngMotionPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Apng") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    // Desktop honours the format, so nothing is downgraded and nothing is warned about.
+    assertThat(result.output).doesNotContain("asks for @AnimatedPreview(format = Apng)")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val gif = manifest.previews.single { it.functionName == "GifMotionPreview" }.captures.single()
+    assertThat(gif.animation?.format).isEqualTo(MotionFormat.GIF)
+    assertThat(gif.renderOutput).matches("renders/[^/]*GifMotionPreview[^/]*-[0-9a-f]{8}\\.gif")
+
+    val apng = manifest.previews.single { it.functionName == "ApngMotionPreview" }.captures.single()
+    assertThat(apng.animation?.format).isEqualTo(MotionFormat.APNG)
+    assertThat(apng.renderOutput).matches("renders/[^/]*ApngMotionPreview[^/]*-[0-9a-f]{8}\\.apng")
+  }
+
+  @Test
   fun `composePreviewDiscover expands @OverrideVariant into synthetic seeded previews`() {
     val projectDir = createCmpTestProject()
 

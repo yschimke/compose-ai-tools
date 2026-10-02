@@ -194,6 +194,14 @@ object PreviewDiscovery {
      * can do.
      */
     val tourSpecFiles: List<File> = emptyList(),
+    /**
+     * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. `true` on the
+     * desktop backend, whose renderer encodes the requested container. `false` (the default) on the
+     * Android backend: its renderer always encodes `@AnimatedPreview` as GIF (the renderer-side
+     * `AnimationCapture` carries no format), so discovery records GIF — and names the output `.gif`
+     * — rather than promise APNG bytes it would not get. See [resolveAnimationFormat].
+     */
+    val animatedPreviewApngSupported: Boolean = false,
   )
 
   /** Outcome of a [discover] call. */
@@ -2202,12 +2210,20 @@ object PreviewDiscovery {
     // to every @Preview on the function (including expansions from
     // multi-preview meta-annotations). `@ScrollingPreview.modes` maps TOP/END
     // to normal captures and LONG/GIF to data products — see [buildOutputPlan].
-    // `@AnimatedPreview` is single-shot (one GIF per function) so it doesn't
+    // `@AnimatedPreview` is single-shot (one motion capture per function) so it doesn't
     // fan out, but follows the same "one annotation per function, applies to
     // every preview expansion" policy.
     val wrapperFqn = extractWrapperFqn(method, scanResult)
     val scrollSpecs = extractScrollSpecs(annotations)
-    val animationSpec = extractAnimationSpec(annotations)
+    val animationSpec =
+      extractAnimationSpec(annotations)?.let {
+        resolveAnimationFormat(
+          it,
+          input.animatedPreviewApngSupported,
+          "${classInfo.name}.${method.name}",
+          warnings,
+        )
+      }
     // `@InteractionPreview` is single-shot for the same reason as `@AnimatedPreview` — one
     // recording per function — and applies to every `@Preview` expansion the same way.
     val interactionSpec = extractInteractionSpec(annotations)
@@ -3286,7 +3302,7 @@ object PreviewDiscovery {
   // renderer inflates a View via `TileRenderer` and has no Compose
   // animation clock / scrollable), so both dimensional annotations are
   // no-ops for tiles.
-  private data class PreviewOutputPlan(
+  internal data class PreviewOutputPlan(
     val captures: List<Capture>,
     val dataProducts: List<PreviewDataProduct>,
   )
@@ -3301,7 +3317,7 @@ object PreviewDiscovery {
     else output.substring(0, dot) + suffix + output.substring(dot)
   }
 
-  private fun buildOutputPlan(
+  internal fun buildOutputPlan(
     kind: PreviewKind,
     previewId: String,
     scrolls: List<ScrollCapture>,
@@ -3445,24 +3461,31 @@ object PreviewDiscovery {
     val effectiveLauncherWidget = if (nonComposable) null else launcherWidget
     val effectiveLauncherWidgetResize = if (nonComposable) null else launcherWidgetResize
 
-    // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
+    // @AnimatedPreview and @FocusedPreview(gif = true) each produce one motion output for the
     // function. When one is paired with anything else on the same function — scroll/time
-    // fan-out, or each other, or a `@LauncherWidgetResize` PNG fan-out — they need
+    // fan-out, or each other, or a `@LauncherWidgetResize` PNG fan-out — they take
     // disambiguating suffixes so neither silently overwrites the other. Plain filename only
-    // when a single GIF mode owns the function with no scroll/time/resize siblings.
-    val gifSharesFn =
+    // when a single motion mode owns the function with no scroll/time/resize siblings.
+    //
+    // The decision is made on which capture *kinds* share the function, never on their file
+    // extensions: `@AnimatedPreview(format = Apng)` writes `.apng` while `@FocusedPreview(gif)`
+    // writes `.gif`, and the pair keeps the same `_anim` / `_focus_gif` suffixes either way, so a
+    // format change only ever changes an extension. [separateMotionOutputs] is the backstop for a
+    // motion format whose extension a still also uses.
+    val motionSharesFn =
       effectiveScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveLauncherWidgetResize != null ||
         (effectiveAnimation != null && effectiveFocusGif != null)
 
-    // `@InteractionPreview` writes `renders/<id>.apng` by default, which collides with nothing —
-    // but a consumer that asks for `format = Gif` lands on the same `<id>.gif` an
-    // `@AnimatedPreview`
-    // or `@FocusedPreview(gif = true)` on the same function already owns. Suffix it whenever
-    // anything else on the function could claim that name, on the same "disambiguate rather than
-    // silently overwrite" rule as `gifSharesFn`.
-    val interactionSharesFn = gifSharesFn || effectiveAnimation != null || effectiveFocusGif != null
+    // `@InteractionPreview` and `@AnimatedPreview` can each be written as either GIF or APNG, and
+    // `@FocusedPreview(gif = true)` is a GIF, so whenever another motion kind is on the same
+    // function the two could claim the same `<id>.<ext>`. Suffix the interaction whenever anything
+    // else on the function could claim that name — keyed on the kinds present, not on whether the
+    // extensions happen to differ — on the same "disambiguate rather than silently overwrite" rule
+    // as `motionSharesFn`.
+    val interactionSharesFn =
+      motionSharesFn || effectiveAnimation != null || effectiveFocusGif != null
 
     // One interaction capture per annotated function, dimension-flat — it doesn't cross with the
     // scroll / time / focus fan-out, mirroring `@AnimatedPreview`'s single-output pattern. Built
@@ -3479,7 +3502,7 @@ object PreviewDiscovery {
             // an `@InteractionPreview` that owns the function outright leaves nothing else to find.
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
-            renderOutput = "renders/${previewId}${suffix}.${effectiveInteraction.format.extension}",
+            renderOutput = motionRenderOutput(previewId, suffix, effectiveInteraction.format),
             cost = INTERACTION_COST,
           )
         )
@@ -3492,7 +3515,7 @@ object PreviewDiscovery {
     // focusGif / animation GIFs still fan out independently — the resize annotation isn't meant
     // to combine with those either, but if a consumer stacks them the GIFs come out alongside
     // the resize PNGs with their existing suffixes (computed below using the shared
-    // `gifSharesFn` flag).
+    // `motionSharesFn` flag).
     if (effectiveLauncherWidgetResize != null) {
       val stops =
         launcherWidgetResizeStops(
@@ -3526,7 +3549,7 @@ object PreviewDiscovery {
       val focusGifCaptures: List<Capture> =
         if (effectiveFocusGif == null) emptyList()
         else {
-          val suffix = if (gifSharesFn) "_focus_gif" else ""
+          val suffix = if (motionSharesFn) "_focus_gif" else ""
           listOf(
             Capture(
               focusGif = effectiveFocusGif,
@@ -3535,7 +3558,7 @@ object PreviewDiscovery {
               permissions = effectivePermissions,
               glimmerEnvironment = effectiveGlimmerEnvironment,
               launcherWidget = effectiveLauncherWidget,
-              renderOutput = "renders/${previewId}${suffix}.gif",
+              renderOutput = motionRenderOutput(previewId, suffix, MotionFormat.GIF),
               cost = FOCUS_GIF_COST,
             )
           )
@@ -3543,7 +3566,7 @@ object PreviewDiscovery {
       val animationCaptures: List<Capture> =
         if (effectiveAnimation == null) emptyList()
         else {
-          val suffix = if (gifSharesFn) "_anim" else ""
+          val suffix = if (motionSharesFn) "_anim" else ""
           listOf(
             Capture(
               animation = effectiveAnimation,
@@ -3553,13 +3576,16 @@ object PreviewDiscovery {
               // `@PermissionPreview` on the same function would silently render the denied branch.
               permissions = effectivePermissions,
               glimmerEnvironment = effectiveGlimmerEnvironment,
-              renderOutput = "renders/${previewId}${suffix}.gif",
+              renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
               cost = ANIMATION_COST,
             )
           )
         }
       return PreviewOutputPlan(
-        captures = resizeCaptures + focusGifCaptures + animationCaptures + interactionCaptures,
+        captures =
+          separateMotionOutputs(
+            resizeCaptures + focusGifCaptures + animationCaptures + interactionCaptures
+          ),
         dataProducts = emptyList(),
       )
     }
@@ -3570,7 +3596,7 @@ object PreviewDiscovery {
     val focusGifCaptures: List<Capture> =
       if (effectiveFocusGif == null) emptyList()
       else {
-        val suffix = if (gifSharesFn) "_focus_gif" else ""
+        val suffix = if (motionSharesFn) "_focus_gif" else ""
         listOf(
           Capture(
             focusGif = effectiveFocusGif,
@@ -3579,21 +3605,21 @@ object PreviewDiscovery {
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
             launcherWidget = effectiveLauncherWidget,
-            renderOutput = "renders/${previewId}${suffix}.gif",
+            renderOutput = motionRenderOutput(previewId, suffix, MotionFormat.GIF),
             cost = FOCUS_GIF_COST,
           )
         )
       }
 
     // @AnimatedPreview produces its own dedicated capture, alongside any
-    // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
-    // when other captures share the function (the multi-mode scroll
-    // pattern, or a peer `@FocusedPreview(gif = true)` GIF), and the plain
-    // filename otherwise.
+    // scroll / time fan-out. The capture (`.gif` or `.apng`, per `format`)
+    // gets a distinguishing `_anim` suffix when other captures share the
+    // function (the multi-mode scroll pattern, or a peer
+    // `@FocusedPreview(gif = true)` GIF), and the plain filename otherwise.
     val animationCaptures: List<Capture> =
       if (effectiveAnimation == null) emptyList()
       else {
-        val suffix = if (gifSharesFn) "_anim" else ""
+        val suffix = if (motionSharesFn) "_anim" else ""
         listOf(
           Capture(
             animation = effectiveAnimation,
@@ -3602,7 +3628,7 @@ object PreviewDiscovery {
             // first-non-null scan would come up empty.
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
-            renderOutput = "renders/${previewId}${suffix}.gif",
+            renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
             cost = ANIMATION_COST,
           )
         )
@@ -3667,8 +3693,10 @@ object PreviewDiscovery {
     // would otherwise own the function outright. Discovery used to drop the settle here and warn
     // that it was ignored, which was the circular form of the same bug — the still it was meant to
     // fix had already been suppressed. Both ship now, and the renderers give the still its own
-    // composition so neither product spends the other's timeline (issue #4244). The extensions
-    // differ (`.png` vs `.gif` / `.apng`), so no filename disambiguation is needed.
+    // composition so neither product spends the other's timeline (issue #4244). Today's motion
+    // extensions differ from the still's (`.png` vs `.gif` / `.apng`), so no suffix is needed; the
+    // plan's [separateMotionOutputs] pass suffixes the motion capture by kind should a motion
+    // format ever share the still's extension.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
@@ -3793,7 +3821,10 @@ object PreviewDiscovery {
     }
 
     return PreviewOutputPlan(
-      captures = scrollTimeCaptures + animationCaptures + focusGifCaptures + interactionCaptures,
+      captures =
+        separateMotionOutputs(
+          scrollTimeCaptures + animationCaptures + focusGifCaptures + interactionCaptures
+        ),
       dataProducts = dataProducts,
     )
   }
@@ -3988,6 +4019,97 @@ object PreviewDiscovery {
       "GIF" -> MotionFormat.GIF
       else -> default
     }
+
+  /**
+   * The container an `@AnimatedPreview` capture is actually written in on this backend.
+   *
+   * The output's extension is derived from [AnimationCapture.format] (see [motionRenderOutput]), so
+   * the format recorded in `previews.json` has to be the one the renderer will encode — otherwise
+   * the manifest names a `.apng` the renderer fills with GIF bytes, which is the mirror image of
+   * the bug this guards against (APNG bytes in a `.gif`). The desktop renderer honours the
+   * requested format. The Android renderer does not yet: its `AnimationCapture` has no `format`
+   * field and `handleAnimatedCapture` always encodes GIF, so on that backend an APNG request is
+   * recorded as GIF, keeps its `.gif` name, and says so.
+   *
+   * TODO(APNG plan step D2): drop the Android downgrade once the Robolectric renderer encodes
+   *   `@AnimatedPreview(format = Apng)` as APNG, and flip the Android discover task's
+   *   [Input.animatedPreviewApngSupported] to `true`.
+   */
+  internal fun resolveAnimationFormat(
+    animation: AnimationCapture,
+    apngSupported: Boolean,
+    owner: String,
+    warnings: MutableList<String>,
+  ): AnimationCapture {
+    if (animation.format != MotionFormat.APNG || apngSupported) return animation
+    warnings.add(
+      "composePreview: '$owner' asks for @AnimatedPreview(format = Apng), but this module's " +
+        "render backend (Android) encodes @AnimatedPreview as GIF only — the capture is written " +
+        "as GIF to a `.gif` output. The desktop backend honours the format; Android support is " +
+        "tracked as a renderer change."
+    )
+    return animation.copy(format = MotionFormat.GIF)
+  }
+
+  /** Which motion product a capture is — the key motion naming decisions are made on. */
+  internal enum class MotionKind(
+    /** Suffix that keeps this kind apart from another output on the same function. */
+    val suffix: String
+  ) {
+    ANIMATION("_anim"),
+    INTERACTION("_interaction"),
+    FOCUS_GIF("_focus_gif"),
+  }
+
+  /**
+   * The motion kind [capture] produces, read off its capture fields rather than its file extension:
+   * an extension is a property of the container format, not of the capture, and a format whose
+   * extension is shared with stills (an APNG written as `.png`, as the Lottie animated companion
+   * is) must still classify as motion.
+   */
+  internal fun motionKindOf(capture: Capture): MotionKind? =
+    when {
+      capture.animation != null -> MotionKind.ANIMATION
+      capture.interaction != null -> MotionKind.INTERACTION
+      capture.focusGif != null -> MotionKind.FOCUS_GIF
+      else -> null
+    }
+
+  /**
+   * `renders/<previewId><suffix>.<ext>` for a motion capture, where the extension is the capture
+   * format's own (`.gif` / `.apng`). `@AnimatedPreview` used to hard-code `.gif` here, so a desktop
+   * `format = Apng` request wrote APNG bytes into a `.gif`.
+   */
+  internal fun motionRenderOutput(previewId: String, suffix: String, format: MotionFormat): String =
+    "renders/$previewId$suffix.${format.extension}"
+
+  /**
+   * Guarantees no motion capture in one function's plan shares an output path with another capture
+   * of that plan, deciding by capture *kind* rather than by extension.
+   *
+   * The suffix rules in [buildOutputPlanForEnvironment] keep today's outputs apart, partly because
+   * a still is `.png` and every current motion format has a different extension. That is a property
+   * of the formats, not a rule: a motion format written with a still's extension would land on the
+   * still's `renders/<id>.png`. Rather than let the two silently overwrite each other, a motion
+   * capture whose path (case-folded, as APFS/NTFS compare it) is already claimed takes its kind's
+   * suffix. Outputs that collide with nothing are returned untouched, so this never renames an
+   * existing output.
+   */
+  internal fun separateMotionOutputs(captures: List<Capture>): List<Capture> {
+    val claimed = mutableSetOf<String>()
+    // Stills claim their paths first: they are the baseline artefact, and the motion capture is
+    // the one that moves aside.
+    captures.filter { motionKindOf(it) == null }.forEach { claimed += it.renderOutput.lowercase() }
+    return captures.map { capture ->
+      val kind = motionKindOf(capture) ?: return@map capture
+      var output = capture.renderOutput
+      if (output.lowercase() in claimed) {
+        output = insertRenderTag(output, kind.suffix)
+      }
+      claimed += output.lowercase()
+      if (output == capture.renderOutput) capture else capture.copy(renderOutput = output)
+    }
+  }
 
   /**
    * Filename suffix for a single [FocusCapture]. Traversal mode emits `step<n>_<direction>` so
@@ -4221,7 +4343,7 @@ object PreviewDiscovery {
    * `@LauncherWidgetPreview` is intentionally absent — `@LauncherWidgetResize` is point-to-point
    * (from explicitly given), not slider-style.
    */
-  private data class LauncherWidgetResizeSpec(
+  internal data class LauncherWidgetResizeSpec(
     val from: Pair<Int, Int>,
     val to: Pair<Int, Int>,
     val cellSizeDp: Int?,
