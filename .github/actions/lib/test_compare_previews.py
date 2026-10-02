@@ -3733,5 +3733,204 @@ class MotionMigrationPipelineTest(unittest.TestCase):
         self.assertIn('<img src="https://raw.githubusercontent.com/o/r/head1/renders/m/Spin.apng.png"', fmt)
 
 
+class BookendHashGifTest(unittest.TestCase):
+    """A GIF whose CLI ``sha256`` (first + last frame only) matches the baseline.
+
+    compose-ai-tools#5681: ten `@AnimatedPreview` GIFs had new frame delays and
+    redrawn middle frames under an unchanged bookend hash, and the hash match
+    listed every one as Unchanged before the motion checks ever ran.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.prior = self.tmp / "prior"
+        (self.prior / "m").mkdir(parents=True)
+        self.cur = self.tmp / "cur"
+        self.cur.mkdir()
+        _write_gif(self.prior / "m" / "X.gif", [40] * _FRAMES)
+
+    def _detail(self, current: Path, *, scroll: bool = False, name: str = "X.gif"):
+        # Same sha on both sides: the bookend frames match, by construction.
+        return cp.change_detail(
+            {"sha256": "bookends", "module": "m", "renderBasename": name,
+             "pngPath": str(current), "scrollCapture": scroll},
+            {"sha256": "bookends", "renderBasename": "X.gif"},
+            self.prior,
+        )
+
+    def test_delay_change_under_a_matching_hash_is_a_timing_change(self):
+        cur = _write_gif(self.cur / "X.gif", [40, 40, 80, 40])
+        detail = self._detail(cur)
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail["reasons"], ["timing"])
+        self.assertIn("timing changed: avg 40.0 → 50.0 ms, total 160 → 200 ms",
+                      detail["timing"])
+
+    def test_frame_count_change_under_a_matching_hash_is_a_timing_change(self):
+        from PIL import Image, ImageSequence
+        cur = self.cur / "X.gif"
+        with Image.open(self.prior / "m" / "X.gif") as im:
+            frames = [f.convert("RGB") for f in ImageSequence.Iterator(im)]
+        # One more middle frame (distinct, or Pillow would merge it into its
+        # neighbour); the first and last frames are untouched.
+        extra = frames[1].copy()
+        extra.putpixel((0, 0), (0, 255, 0))
+        frames = frames[:2] + [extra] + frames[2:]
+        frames[0].save(cur, save_all=True, append_images=frames[1:],
+                       duration=[40] * len(frames), loop=0, disposal=1)
+        detail = self._detail(cur)
+        self.assertIn("timing", detail["reasons"])
+        self.assertIn("4 → 5 frames", detail["timing"])
+
+    def test_identical_frames_and_delays_are_unchanged(self):
+        cur = _write_gif(self.cur / "X.gif", [40] * _FRAMES)
+        self.assertEqual(cur.read_bytes(), (self.prior / "m" / "X.gif").read_bytes())
+        self.assertIsNone(self._detail(cur))
+
+    def test_reencoded_same_pixels_and_delays_are_unchanged(self):
+        # Different bytes (a comment extension), same frames and timing.
+        data = (self.prior / "m" / "X.gif").read_bytes()
+        cur = self.cur / "X.gif"
+        cur.write_bytes(data[:-1] + b"\x21\xfe\x03abc\x00" + data[-1:])
+        self.assertNotEqual(cur.read_bytes(), data)
+        self.assertEqual(cp._frame_delays(cur), [40.0] * _FRAMES)
+        self.assertIsNone(self._detail(cur))
+
+    def test_container_change_under_a_matching_hash_is_a_format_change(self):
+        # APNG bytes behind the same `.gif` name — the hash can't see it.
+        cur = _write_apng(self.cur / "X.gif", _W, _H, _full_frames(delay=(40, 1000)))
+        for scroll in (False, True):
+            with self.subTest(scroll=scroll):
+                detail = self._detail(cur, scroll=scroll)
+                self.assertIsNotNone(detail)
+                self.assertIn("format", detail["reasons"])
+                self.assertEqual(detail["format"], ("gif", "apng"))
+
+    def test_middle_frame_change_on_an_animated_gif_is_a_pixel_change(self):
+        cur = _write_gif(self.cur / "X.gif", [40] * _FRAMES, changed_frame=1)
+        self.assertEqual(self._detail(cur)["reasons"], ["pixels"])
+
+    def test_scroll_gif_middle_frames_and_timing_stay_hidden(self):
+        # #209: a scroll walk's frame sequence varies run to run, so its
+        # matching bookend hash is still trusted for everything but the
+        # container — pixels, delays and frame count included.
+        cur = _write_gif(self.cur / "X.gif", [40, 40, 80, 40], changed_frame=2)
+        self.assertIsNone(self._detail(cur, scroll=True))
+        # Rows predating `scrollCapture` fall back to the `_SCROLL_` suffix.
+        (self.prior / "m" / "X_SCROLL_gif.gif").write_bytes(
+            (self.prior / "m" / "X.gif").read_bytes())
+        self.assertIsNone(cp.change_detail(
+            {"sha256": "b", "module": "m", "renderBasename": "X_SCROLL_gif.gif",
+             "pngPath": str(cur)},
+            {"sha256": "b", "renderBasename": "X_SCROLL_gif.gif"},
+            self.prior,
+        ))
+
+    def test_unverifiable_falls_back_to_trusting_the_hash(self):
+        cur = _write_gif(self.cur / "X.gif", [40, 40, 80, 40])
+        # No baseline renders directory, or no prior file on disk.
+        self.assertIsNone(cp.change_detail(
+            {"sha256": "b", "module": "m", "renderBasename": "X.gif", "pngPath": str(cur)},
+            {"sha256": "b", "renderBasename": "X.gif"},
+            None,
+        ))
+        (self.prior / "m" / "X.gif").unlink()
+        self.assertIsNone(self._detail(cur))
+
+    def test_still_png_under_a_matching_hash_is_never_opened(self):
+        self.assertIsNone(cp.change_detail(
+            {"sha256": "s", "module": "m", "renderBasename": "X.png",
+             "pngPath": str(self.cur / "absent.png")},
+            {"sha256": "s", "renderBasename": "X.png"},
+            self.prior,
+        ))
+
+    def test_load_cli_output_marks_scroll_captures(self):
+        cli = self.tmp / "cli.json"
+        cli.write_text(json.dumps({"previews": [_entry(
+            id="S", module="m", captures=[
+                _capture(png="/r/S.gif", sha="a", scroll={"mode": "GIF"}),
+                _capture(png="/r/S_TIME_1ms.gif", sha="b", advanceTimeMillis=1),
+            ])]}))
+        out = cp.load_cli_output(cli)
+        self.assertTrue(out["m/S"]["scrollCapture"])
+        self.assertFalse(out["m/S#1"]["scrollCapture"])
+
+    def _pipeline(self):
+        """A baseline with an animated and a scroll GIF; this run re-times both
+        under unchanged bookend hashes."""
+        (self.prior / "m" / "Scroll.gif").write_bytes(
+            (self.prior / "m" / "X.gif").read_bytes())
+        baselines = self.tmp / "baselines.json"
+        baselines.write_text(json.dumps({
+            "m/X": {"sha256": "bx", "functionName": "FadeInBoxPreview",
+                    "renderBasename": "X.gif", "module": "m"},
+            "m/Scroll": {"sha256": "bs", "functionName": "ListScrollPreview",
+                         "renderBasename": "Scroll.gif", "module": "m"},
+        }))
+        anim = _write_gif(self.cur / "X.gif", [40, 40, 80, 40])
+        scroll = _write_gif(self.cur / "Scroll.gif", [40, 40, 80, 40], changed_frame=2)
+        cli = self.tmp / "cli.json"
+        cli.write_text(json.dumps({"previews": [
+            _entry(id="X", module="m", function="FadeInBoxPreview",
+                   captures=[_capture(png=str(anim), sha="bx")]),
+            _entry(id="Scroll", module="m", function="ListScrollPreview",
+                   captures=[_capture(png=str(scroll), sha="bs",
+                                      scroll={"mode": "GIF"})]),
+        ]}))
+        return cli, baselines
+
+    def test_compare_lists_the_retimed_gif_as_changed(self):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        cli, baselines = self._pipeline()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli), baselines=str(baselines),
+                repo="o/r", base_ref="base0", head_ref="head1",
+                baseline_renders=str(self.prior),
+            ))
+        out = buf.getvalue()
+        changed = out.split("### Changed", 1)[1]
+        self.assertIn("FadeInBoxPreview", changed.split("Unchanged", 1)[0])
+        self.assertIn("timing changed: avg 40.0 → 50.0 ms, total 160 → 200 ms", changed)
+        self.assertNotIn("ListScrollPreview", changed.split("Unchanged", 1)[0])
+
+    def test_copy_changed_publishes_the_retimed_gif_only(self):
+        from types import SimpleNamespace
+        cli, baselines = self._pipeline()
+        out = self.tmp / "pr"
+        cp.cmd_copy_changed(SimpleNamespace(
+            cli_json=str(cli), baselines=str(baselines),
+            output_dir=str(out), baseline_renders=str(self.prior),
+        ))
+        self.assertEqual(sorted(p.name for p in (out / "renders" / "m").iterdir()),
+                         ["X.gif"])
+
+    def test_stage_handoff_stages_matching_hash_gifs(self):
+        # The publish job's `compare` opens them now, so their bytes travel.
+        from types import SimpleNamespace
+        cli, baselines = self._pipeline()
+        out_dir = self.tmp / "_handoff" / "current"
+        cp.cmd_stage_handoff(SimpleNamespace(
+            cli_json=str(cli), baselines=str(baselines), output_dir=str(out_dir),
+            path_prefix="_handoff/current",
+            rewrite_json=str(self.tmp / "_handoff" / "_previews.json"),
+        ))
+        self.assertEqual(sorted(p.name for p in (out_dir / "m").iterdir()),
+                         ["Scroll.gif", "X.gif"])
+
+
 if __name__ == "__main__":
     unittest.main()

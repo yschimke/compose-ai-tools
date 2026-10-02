@@ -591,6 +591,99 @@ def _change_detail(
     }
 
 
+# ---------------------------------------------------------------------------
+# GIFs whose sha256 is not a byte hash
+#
+# The CLI's per-capture `sha256` comes from `previewSha256` in
+# compose-preview-daemon's `preview-data-api`. For a `.gif` it is NOT a hash of
+# the file: it hashes only the FIRST and LAST frames' pixels, so a scripted
+# scroll walk — which reads `liveRemaining` off a `LazyColumn` mid-walk and so
+# materialises a slightly different frame sequence (count, delays, pixels) on
+# every run — stops reading as changed on every PR (compose-ai-tools#209). The
+# bookends are the hold-start dwell and the settled hold-end, both stable.
+#
+# Treating that hash as "the bytes match" hid everything between the bookends
+# for EVERY GIF, not just scroll walks: daemon 3.13.0 (#5681) moved the frame
+# delays of ten `@AnimatedPreview` GIFs (e.g. 2820 → 2950 ms total) and
+# redrew 11–21 of their middle frames, and every one was listed Unchanged,
+# because the format / timing / per-frame checks below were never reached.
+#
+# So a GIF whose bookend hash matches is still opened when its bytes differ:
+#
+#   * a SCROLL capture (`scroll` set on the capture — `@ScrollingPreview`'s
+#     GIF product carries it) is compared on its container only. Its frame
+#     count, delays and middle pixels are exactly what #209 found to vary run
+#     to run, so comparing them would bring that flake straight back.
+#   * any other GIF (`@AnimatedPreview`, `@InteractionPreview(format = GIF)`,
+#     `@FocusedPreview(gif = true)`, …) drives a paused clock with a fixed
+#     frame step and is measured in full — container, frame count and delays,
+#     and every frame against the same per-frame pixelmatch budget that
+#     already applies whenever the bookends differ. That budget is not new
+#     exposure: it has been gating these GIFs' middle frames on every PR that
+#     moved a bookend. And their bytes are stable run to run — on the
+#     `compose-preview/main` baseline branch, where a matching-sha GIF is
+#     re-published as fresh bytes on every push, none of the 19
+#     `samples:android` GIFs changed bytes under an unchanged hash except in
+#     the one push that changed the renderer, across the 115 baseline pushes
+#     since 2026-08-23 (8 of which re-rendered `samples:android`).
+#
+# Byte-identical files short-circuit before any decode, so the common case
+# costs one read of each file. A file missing from disk (no baseline renders
+# directory, a staged artifact without it) falls back to trusting the hash —
+# the behaviour before this existed — rather than reporting an unverifiable
+# change on every GIF.
+# ---------------------------------------------------------------------------
+
+
+def _bookend_hashed(basename: str | None) -> bool:
+    """Whether the CLI's ``sha256`` for this render is the bookend-frame hash."""
+    return _ext_format(basename) == "gif"
+
+
+def _is_scroll_capture(info: dict) -> bool:
+    """Whether a row is a scroll-driven capture (see the block comment above).
+
+    ``scrollCapture`` is set by [load_cli_output] from the capture's ``scroll``
+    field. The `_SCROLL_<mode>` file-name suffix is the fallback for rows that
+    predate it (legacy envelopes with no ``captures[]``).
+    """
+    if info.get("scrollCapture"):
+        return True
+    name = info.get("renderBasename") or info.get("destRelative") or ""
+    return "_SCROLL_" in name
+
+
+def _bookend_match_detail(
+    prior_png: Path,
+    current_png: Path,
+    prior_basename: str | None,
+    current_basename: str | None,
+    *,
+    scroll: bool,
+    size_aware: bool = False,
+) -> dict | None:
+    """[_change_detail] for a GIF whose bookend-frame hash matched the baseline."""
+    try:
+        if prior_png.read_bytes() == current_png.read_bytes():
+            return None
+    except OSError:
+        return None  # can't verify — trust the hash, as before
+    if not scroll:
+        return _change_detail(
+            prior_png, current_png, prior_basename, current_basename, size_aware=size_aware
+        )
+    prior_fmt = _sniff_format(prior_png)
+    current_fmt = _sniff_format(current_png)
+    if prior_fmt is None or current_fmt is None or prior_fmt == current_fmt:
+        return None
+    return {
+        "reasons": ["format"],
+        "format": (prior_fmt, current_fmt),
+        "pixels": None,
+        "timing": None,
+    }
+
+
 def change_detail(
     cur_info: dict,
     bl_info: dict,
@@ -600,9 +693,10 @@ def change_detail(
 ) -> dict | None:
     """Why ``cur_info`` differs from ``bl_info`` — see [_change_detail] — or ``None``.
 
-    Fast path: bytes match → unchanged, unless the file NAME changed container
+    Fast path: hashes match → unchanged, unless the file NAME changed container
     (identical bytes published under a new extension are still a migration
-    that has to be pushed). Otherwise, when a baseline-renders directory is
+    that has to be pushed), or the render is a GIF, whose hash covers only its
+    first and last frames — see [_bookend_match_detail]. Otherwise, when a baseline-renders directory is
     available, the pair is measured by [_change_detail], so
     sha-different-but-perceptually-identical pairs (renderer noise, e.g. issue
     #190) don't trip the diff bot while format and timing changes always do.
@@ -614,16 +708,25 @@ def change_detail(
     prior_ext = _ext_format(bl_base or cur_base)
     cur_ext = _ext_format(cur_base)
     ext_changed = prior_ext != cur_ext
-    if cur_info["sha256"] == bl_info["sha256"]:
-        if not ext_changed:
-            return None
-        return {
-            "reasons": ["format"],
-            "format": (prior_ext, cur_ext),
-            "pixels": False,
-            "timing": None,
-        }
     png_path = cur_info.get("pngPath")
+    if cur_info["sha256"] == bl_info["sha256"]:
+        if ext_changed:
+            return {
+                "reasons": ["format"],
+                "format": (prior_ext, cur_ext),
+                "pixels": False,
+                "timing": None,
+            }
+        if not _bookend_hashed(cur_base) or baseline_renders is None or not bl_base or not png_path:
+            return None
+        return _bookend_match_detail(
+            baseline_renders / cur_info["module"] / bl_base,
+            Path(png_path),
+            bl_base,
+            cur_base,
+            scroll=_is_scroll_capture(cur_info),
+            size_aware=size_aware,
+        )
     if baseline_renders is None or not bl_base or not png_path:
         return {
             "reasons": ["format"] if ext_changed else ["pixels"],
@@ -891,6 +994,10 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
                 "captureIndex": idx,
                 "captureLabel": _capture_label(capture),
                 "renderBasename": _render_basename(png, preview_id),
+                # Scroll-driven capture: its GIF's frame sequence varies run to
+                # run, so a matching bookend hash is trusted (see
+                # `_bookend_match_detail`).
+                "scrollCapture": bool(capture.get("scroll")),
                 # Best-effort capture — a missing PNG is expected, not a
                 # render failure (see _collect_failures).
                 "optional": bool(capture.get("optional")),
@@ -2709,14 +2816,17 @@ def cmd_stage_handoff(args: argparse.Namespace) -> int:
     So: copy the current PNGs the publish half still reads, and rewrite every
     `pngPath` to its workspace-relative staged location.
 
-    Only rows that have a baseline entry with a *different* sha are copied,
-    because those are the only ones whose bytes get read again. `compare`
+    Only rows that have a baseline entry with a *different* sha — or any GIF
+    with a baseline entry, whose sha covers only its bookend frames (see
+    `_bookend_match_detail`) — are copied, because those are the only ones
+    whose bytes get read again. `compare`
     reaches for a current PNG solely through `_is_changed`, and every call site
     guards on the key being present in the baselines, so a **new** preview is
     never opened — its pixels already travel in `_pr_renders`, and staging them
     a second time would double the artifact on the very run (no baseline branch
-    yet) where every preview is new. An **unchanged** row is never opened
-    either, since `_is_changed` fast-paths on a sha match before touching disk.
+    yet) where every preview is new. An **unchanged** non-GIF row is never
+    opened either, since `_is_changed` fast-paths on a sha match before
+    touching disk.
 
     Both still get their path rewritten: one uniform resolution rule beats a
     mix of staged-relative and stale-absolute paths, and the rewritten path
@@ -2748,7 +2858,9 @@ def cmd_stage_handoff(args: argparse.Namespace) -> int:
         basename = _render_basename(png_path, preview_id)
         sha = row.get("sha256") or ""
         bl = baselines.get(key)
-        if sha and bl is not None and bl.get("sha256") != sha:
+        # A GIF's sha256 covers only its bookend frames, so `compare` opens a
+        # matching-hash GIF too (`_bookend_match_detail`) and needs its bytes.
+        if sha and bl is not None and (bl.get("sha256") != sha or _bookend_hashed(basename)):
             src = Path(png_path)
             if src.exists():
                 dest = out_dir / module / basename
