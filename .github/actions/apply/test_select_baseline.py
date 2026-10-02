@@ -166,6 +166,12 @@ class SelectBaselineGitTest(unittest.TestCase):
         cls._git("push", "-q", str(cls.remote), "main", "feature", "prmerge",
                  "compose-preview/main", cwd=work)
 
+        # A consumer that sets `artifact-repository` publishes its baselines to
+        # a second repository; the calling repository never carries the branch.
+        cls.artifacts = cls.root / "artifacts.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(cls.artifacts)], check=True)
+        cls._git("push", "-q", str(cls.artifacts), "compose-preview/main", cwd=work)
+
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.root, ignore_errors=True)
@@ -197,7 +203,7 @@ class SelectBaselineGitTest(unittest.TestCase):
             self.assertEqual(self._out("rev-parse", "--is-shallow-repository", cwd=dest), "true")
         return dest
 
-    def _select(self, cwd, *, base_sha="") -> tuple[str | None, dict | None, str]:
+    def _select(self, cwd, *, base_sha="", extra=()) -> tuple[str | None, dict | None, str]:
         out_sha = cwd / "_baseline_commit"
         out_skew = cwd / "_baseline_skew.json"
         proc = subprocess.run(
@@ -205,7 +211,7 @@ class SelectBaselineGitTest(unittest.TestCase):
              "--branch", "compose-preview/main",
              "--base-branch", "main",
              "--base-sha", base_sha,
-             "--out-sha", str(out_sha), "--out-skew", str(out_skew)],
+             "--out-sha", str(out_sha), "--out-skew", str(out_skew), *extra],
             cwd=str(cwd), env=self.env, capture_output=True, text=True,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -271,6 +277,34 @@ class SelectBaselineGitTest(unittest.TestCase):
         self._git("push", "-q", "-f", str(self.remote),
                   f"{self.baselines['m4']}:refs/heads/compose-preview/main",
                   cwd=self.root / "work")
+
+    def test_baselines_in_a_separate_artifact_repository(self):
+        # The base branch is still the calling repository's (`origin`), while
+        # the baseline branch is only in the artifact repository. Reading both
+        # from `origin` finds no baseline, which the caller turned into a
+        # comment reporting every preview as new.
+        clone = self._clone("artifacts", "feature", depth=1)
+        subprocess.run(["git", "push", "-q", str(self.remote),
+                        ":refs/heads/compose-preview/main"],
+                       cwd=str(self.root / "work"), check=True, env=self.env,
+                       capture_output=True)
+        self.addCleanup(self._reset_baseline_branch)
+        self._git("remote", "add", "compose-preview-artifacts",
+                  f"file://{self.artifacts}", cwd=clone)
+
+        sha, _, stderr = self._select(clone, base_sha=self.main_shas[2])
+        self.assertIsNone(sha)
+        self.assertIn("could not fetch", stderr)
+
+        sha, skew, _ = self._select(
+            clone, base_sha=self.main_shas[2],
+            extra=("--baseline-remote", "compose-preview-artifacts"))
+        self.assertEqual(sha, self.baselines["m2"])
+        self.assertEqual(skew["drift"], 1)
+        archived = subprocess.run(
+            ["git", "archive", sha, "renders"],
+            cwd=str(clone), check=True, capture_output=True, env=self.env)
+        self.assertIn(b"renders/m2.png", archived.stdout)
 
     def test_unknown_base_writes_nothing_and_succeeds(self):
         # Caller falls back to the branch tip. Never a hard failure: a preview

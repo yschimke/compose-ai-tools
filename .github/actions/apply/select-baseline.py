@@ -155,10 +155,14 @@ def main() -> int:
     ap.add_argument("--branch", required=True, help="baseline branch, e.g. compose-preview/main")
     ap.add_argument("--base-branch", default="", help="the PR's base branch name (GITHUB_BASE_REF)")
     ap.add_argument("--base-sha", default="", help="the PR's base commit (pull_request.base.sha)")
-    ap.add_argument("--remote", default="origin")
+    ap.add_argument("--remote", default="origin", help="remote holding the PR's base branch")
+    ap.add_argument("--baseline-remote", default="",
+                    help="remote holding the baseline branch (default: --remote). Differs when "
+                         "the action publishes to a separate artifact-repository")
     ap.add_argument("--out-sha", default="", help="file to write the chosen baseline commit to")
     ap.add_argument("--out-skew", default="", help="file to write the skew JSON to")
     args = ap.parse_args()
+    baseline_remote = args.baseline_remote or args.remote
 
     def bail(reason: str) -> int:
         # Never fail the job: the caller's fallback (the branch tip) is exactly
@@ -186,12 +190,12 @@ def main() -> int:
     if target is None:
         return bail("could not resolve the PR's base commit")
 
-    if not _fetch(args.remote, args.branch, blobless=False):
+    if not _fetch(baseline_remote, args.branch, blobless=False):
         return bail(f"could not fetch {args.branch} history")
 
-    rc, log = _git("log", "--format=%H %s", f"refs/remotes/{args.remote}/{args.branch}")
+    rc, log = _git("log", "--format=%H %s", f"refs/remotes/{baseline_remote}/{args.branch}")
     if rc != 0 or not log:
-        return bail(f"could not read {args.remote}/{args.branch} history")
+        return bail(f"could not read {baseline_remote}/{args.branch} history")
 
     entries: list[tuple[str, str]] = []
     for line in log.splitlines():

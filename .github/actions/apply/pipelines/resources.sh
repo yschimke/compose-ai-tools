@@ -10,6 +10,8 @@
 #   RENDER_TIMEOUT        — render timeout in seconds
 #   ACTION_PATH           — path to apply action
 #   REPO                  — github.repository
+#   BASELINE_REMOTE       — git remote holding the baseline branches (comment
+#                           mode); default origin, set when artifact-repository differs
 #   GITHUB_TOKEN_INLINE   — token used for git fetch/push
 #   RESOURCE_BRANCH       — resource baselines branch
 #   RESOURCE_HEAD_BRANCH  — per-PR resource branch (comment mode)
@@ -62,6 +64,7 @@ sys.exit(0 if not entries else 1)
 fi
 
 set -e
+: "${BASELINE_REMOTE:=origin}"
 
 if [ "$MODE" = "baseline" ]; then
   mkdir -p _prior_resource_baselines
@@ -96,11 +99,11 @@ else
   # front so the `git show` redirect below doesn't fail when compose is
   # skipped (e.g. `only: resources`).
   mkdir -p _baselines
-  if git ls-remote --exit-code origin "$RESOURCE_BRANCH" >/dev/null 2>&1; then
-    git fetch origin "$RESOURCE_BRANCH"
-    git show "origin/${RESOURCE_BRANCH}:resource-baselines.json" \
+  if git ls-remote --exit-code "$BASELINE_REMOTE" "$RESOURCE_BRANCH" >/dev/null 2>&1; then
+    git fetch "$BASELINE_REMOTE" "$RESOURCE_BRANCH"
+    git show "${BASELINE_REMOTE}/${RESOURCE_BRANCH}:resource-baselines.json" \
       > _baselines/resource-baselines.json 2>/dev/null || true
-    git archive "origin/${RESOURCE_BRANCH}" renders 2>/dev/null \
+    git archive "${BASELINE_REMOTE}/${RESOURCE_BRANCH}" renders 2>/dev/null \
       | tar -x -C _resource_baselines/ 2>/dev/null || true
   fi
 

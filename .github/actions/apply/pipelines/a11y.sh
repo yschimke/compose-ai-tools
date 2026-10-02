@@ -23,12 +23,15 @@
 #   MODE                  — baseline | comment
 #   ACTION_PATH           — path to apply action
 #   REPO                  — github.repository
+#   BASELINE_REMOTE       — git remote holding the baseline branches (comment
+#                           mode); default origin, set when artifact-repository differs
 #   A11Y_MODULES          — comma-separated allowlist (empty = all)
 #   A11Y_SKIP_MODULES     — comma-separated denylist (applied post-build)
 #   A11Y_BASELINE_BRANCH  — long-lived a11y baseline branch
 #   A11Y_PR_BRANCH        — per-PR a11y branch (comment mode)
 #   PR_NUMBER             — PR number (comment mode)
 set -e
+: "${BASELINE_REMOTE:=origin}"
 
 if [ "${SKIP_SCOPED_A11Y:-false}" = true ]; then
   echo "a11y pipeline: affected modules do not include the configured a11y modules; skipping."
@@ -152,9 +155,9 @@ if [ "$MODE" = "baseline" ]; then
   echo "1" > _a11y_renders/_skip_if_unchanged
 else
   # comment mode — compare vs baseline, stay silent when unchanged.
-  if git ls-remote --exit-code origin "$A11Y_BASELINE_BRANCH" >/dev/null 2>&1; then
-    git fetch origin "$A11Y_BASELINE_BRANCH"
-    git show "origin/${A11Y_BASELINE_BRANCH}:findings.json" \
+  if git ls-remote --exit-code "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH" >/dev/null 2>&1; then
+    git fetch "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH"
+    git show "${BASELINE_REMOTE}/${A11Y_BASELINE_BRANCH}:findings.json" \
       > _a11y_baseline_findings.json 2>/dev/null \
       || echo '{"entries":[]}' > _a11y_baseline_findings.json
   else

@@ -21,12 +21,15 @@
 #   MODE                    — baseline | comment
 #   ACTION_PATH             — path to apply action
 #   REPO                    — github.repository
+#   BASELINE_REMOTE         — git remote holding the baseline branches (comment
+#                             mode); default origin, set when artifact-repository differs
 #   NOTIFY_MODULES          — comma-separated allowlist (empty = all)
 #   NOTIFY_SKIP_MODULES     — comma-separated denylist (post-build)
 #   NOTIFY_BASELINE_BRANCH  — long-lived notification baseline branch
 #   NOTIFY_PR_BRANCH        — per-PR notification branch (comment mode)
 #   PR_NUMBER               — PR number (comment mode)
 set -e
+: "${BASELINE_REMOTE:=origin}"
 
 if [ "${SKIP_SCOPED_NOTIFICATIONS:-false}" = true ]; then
   echo "notifications pipeline: affected modules do not include the configured notification modules; skipping."
@@ -150,9 +153,9 @@ if [ "$MODE" = "baseline" ]; then
   echo "$NOTIFY_BASELINE_BRANCH" > _notification_renders/_push_branch
   echo "1" > _notification_renders/_skip_if_unchanged
 else
-  if git ls-remote --exit-code origin "$NOTIFY_BASELINE_BRANCH" >/dev/null 2>&1; then
-    git fetch origin "$NOTIFY_BASELINE_BRANCH"
-    git show "origin/${NOTIFY_BASELINE_BRANCH}:findings.json" \
+  if git ls-remote --exit-code "$BASELINE_REMOTE" "$NOTIFY_BASELINE_BRANCH" >/dev/null 2>&1; then
+    git fetch "$BASELINE_REMOTE" "$NOTIFY_BASELINE_BRANCH"
+    git show "${BASELINE_REMOTE}/${NOTIFY_BASELINE_BRANCH}:findings.json" \
       > _notification_baseline_findings.json 2>/dev/null \
       || echo '{"entries":[]}' > _notification_baseline_findings.json
   else

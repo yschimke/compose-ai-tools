@@ -11,6 +11,8 @@
 #   RENDER_TIMEOUT       — render timeout in seconds
 #   ACTION_PATH          — path to apply action (sources lib helpers via ../lib)
 #   REPO                 — github.repository
+#   BASELINE_REMOTE      — git remote holding the baseline branches (comment
+#                          mode); default origin, set when artifact-repository differs
 #   GITHUB_TOKEN_INLINE  — token used for git fetch/push
 #   BASELINE_BRANCH      — composable baselines branch
 #   RESOURCE_BRANCH      — resource baselines branch (only used in baseline mode)
@@ -144,6 +146,7 @@ sys.exit(0 if not entries else 1)
 fi
 
 set -e
+: "${BASELINE_REMOTE:=origin}"
 
 # Optional A/B comparison config. When present (default
 # `.github/preview-abtest.json`, overridable via the action's `ab-config`
@@ -202,8 +205,8 @@ else
   # comment mode
   mkdir -p _baselines
   rm -f _baseline_commit _baseline_skew.json
-  if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
-    git fetch origin "$BASELINE_BRANCH"
+  if git ls-remote --exit-code "$BASELINE_REMOTE" "$BASELINE_BRANCH" >/dev/null 2>&1; then
+    git fetch "$BASELINE_REMOTE" "$BASELINE_BRANCH"
 
     # Which baseline commit this diff is *entitled* to compare against. The
     # branch tip is not it: a baseline lands minutes after the merge that
@@ -218,10 +221,11 @@ else
       --branch "$BASELINE_BRANCH" \
       --base-branch "${GITHUB_BASE_REF:-}" \
       --base-sha "${PR_BASE_SHA:-}" \
+      --baseline-remote "$BASELINE_REMOTE" \
       --out-sha _baseline_commit \
       --out-skew _baseline_skew.json || true
 
-    BASELINE_REF="origin/${BASELINE_BRANCH}"
+    BASELINE_REF="${BASELINE_REMOTE}/${BASELINE_BRANCH}"
     if [ -s _baseline_commit ]; then
       BASELINE_REF=$(cat _baseline_commit)
     fi
