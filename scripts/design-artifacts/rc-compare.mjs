@@ -112,9 +112,10 @@ const EMBEDDED = arg("embedded");
 // `androidx.compose.remote:remote-player-compose`. Kept separate from `--embedded`, which is this
 // repo's vendored and locally patched Android player.
 const ANDROIDX_EMBEDDED = arg("androidx-embedded");
-// The cmp-jvm (desktop Skiko embedded player) lane. It reuses the same staged inputs as the
-// embedded lane (`--stage-embedded` writes `<id>.rc` + `manifest.json` that both harnesses read), so
-// there is no separate stage flag — only a separate output dir to read PNGs back from.
+// The cmp-jvm lane: the CMP player (`rc-player-compose`) on the desktop JVM over Skiko. It reuses
+// the same staged inputs as the embedded lane (`--stage-embedded` writes `<id>.rc` +
+// `manifest.json` that both harnesses read), so there is no separate stage flag — only a separate
+// output dir to read PNGs back from.
 const EMBEDDED_JVM = arg("embedded-jvm");
 // The browser Wasm CMP player added by :rc-player-wasm. Unlike the JS player above, this is a
 // complete Compose/Skiko application, so the driver serves its distribution over localhost and
@@ -307,7 +308,7 @@ if (EMBEDDED_JVM) {
  * `baked` is already flattened onto the neutral background by the caller, so the embedded render is
  * flattened the same way before diffing — otherwise a transparent-background render would score as
  * a false match the same way the baked stickers would. The neutral stays *out* of the published
- * PNG: these bytes are also what a served catalog hands back for `?rcPlayer=cmp-android`, so the
+ * PNG: these bytes are also what a served catalog hands back for `?rcPlayer=androidx-embedded`, so the
  * file written here is the harness's own capture, alpha intact.
  *
  * `referenceBlank` suppresses the percentage (the images are still written, so the blank reference
@@ -418,11 +419,11 @@ function androidxEmbeddedFor(id, baked, bakedUnflattened, width, height, referen
 }
 
 /**
- * The cmp-jvm (desktop Skiko embedded player) counterpart of {@link embeddedFor}: diff its render
- * against the baked PNG and emit the row's `embeddedJvm*` fields. Same shape and same
- * `{}`-when-not-requested gate, so the cmp-jvm column only appears when the lane ran. The player is
- * the *same* embedded interpreter as the Android lane, run off Android over Skiko — so this is a
- * second view of embedded parity, not a fourth renderer.
+ * The cmp-jvm (CMP player, `rc-player-compose`, on the desktop JVM) counterpart of
+ * {@link embeddedFor}: diff its render against the baked PNG and emit the row's `embeddedJvm*`
+ * fields. Same shape and same `{}`-when-not-requested gate, so the cmp-jvm column only appears when
+ * the lane ran. The `embeddedJvm*` field names predate yschimke/rc-players 2.0.0, when this column
+ * drew a desktop cut of the AndroidX embedded player; they key published summaries and stay.
  */
 function embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBlank) {
   if (!EMBEDDED_JVM) return {};

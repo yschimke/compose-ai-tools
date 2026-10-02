@@ -21,7 +21,27 @@ function sidecarDeclarations(bundle, previewId, suffix) {
 }
 
 /**
- * The `rcPlayer` wire id recorded by the capture itself, or null when it recorded none.
+ * Capture-player spellings older daemons recorded, mapped to the implementation names new daemons
+ * write. Before the players were named by implementation, `cmp-android` named the AndroidX
+ * embedded player and `java` the AndroidX View player. This mapping is for a recorded capture
+ * player only — as a `?rcPlayer=` request, `cmp-android` is the CMP player on Android.
+ */
+const LEGACY_CAPTURE_PLAYER = {
+  "cmp-android": "androidx-embedded",
+  embedded: "androidx-embedded",
+  java: "androidx-view",
+  view: "androidx-view",
+};
+
+/** The canonical id of a recorded capture player: `androidx-embedded` / `androidx-view` / as-is. */
+export function canonicalCapturePlayer(player) {
+  const key = player.trim().toLowerCase();
+  return LEGACY_CAPTURE_PLAYER[key] ?? key;
+}
+
+/**
+ * The player id recorded by the capture itself, canonicalised ({@link canonicalCapturePlayer}), or
+ * null when it recorded none.
  *
  * Read off the same `previews/<id>.remotecompose.json` sidecar `sidecarDeclarations` parses, and
  * deliberately NOT derived from the preview's `@PreviewWrapper`. `RemoteOverridablePreview` selects
@@ -29,8 +49,8 @@ function sidecarDeclarations(bundle, previewId, suffix) {
  * property of the capturing app's classpath at render time — a consumer shipping the connector
  * without the optional embedded-player runtime draws through the view player with nothing in its
  * annotations saying so. An exporter reading a finished bundle cannot see that, so inferring here
- * would record `cmp-android` over view-player pixels and have the server answer
- * `?rcPlayer=cmp-android` with them under a confident 200 (compose-preview-server#233).
+ * would record `androidx-embedded` over view-player pixels and have the server answer
+ * `?rcPlayer=androidx-embedded` with them under a confident 200 (compose-preview-server#233).
  *
  * Null keeps the server's honest "unknown", which costs a redundant query parameter rather than the
  * wrong pixels. A capture from before the connector recorded this reads back null.
@@ -40,7 +60,9 @@ function sidecarCapturePlayer(bundle, previewId) {
   if (!bytes) return null;
   try {
     const player = JSON.parse(decoder.decode(bytes))?.capturePlayer;
-    return typeof player === "string" && player !== "" ? player : null;
+    return typeof player === "string" && player.trim() !== ""
+      ? canonicalCapturePlayer(player)
+      : null;
   } catch {
     return null;
   }

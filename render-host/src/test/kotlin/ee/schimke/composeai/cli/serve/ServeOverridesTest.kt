@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -759,39 +760,30 @@ class ServeOverridesTest {
   }
 
   @Test
-  fun `rcPlayer maps a server-side backend id onto the remote-compose player kind`() {
-    // Both the backend wire id (`java` / `cmp-android`) and the daemon-native player-kind spelling
-    // (`view` / `embedded`) resolve to the same RemoteComposePlayerKind.
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
-      ok(mapOf("rcPlayer" to "java")).remoteCompose?.player,
-    )
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
-      ok(mapOf("rcPlayer" to "view")).remoteCompose?.player,
-    )
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
-      ok(mapOf("rcPlayer" to "cmp-android")).remoteCompose?.player,
-    )
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
-      ok(mapOf("rcPlayer" to "embedded")).remoteCompose?.player,
-    )
+  fun `rcPlayer maps the AndroidX players onto the remote-compose player kind`() {
+    // Canonical implementation names, and the legacy spellings published links still carry.
+    for (raw in listOf("androidx-view", "java", "view", "Androidx-View")) {
+      val rc = ok(mapOf("rcPlayer" to raw)).remoteCompose
+      assertEquals(RemoteComposePlayerKind.VIEW, rc?.player, "player for '$raw'")
+      // A built-in never also rides playerId: the enum is what every daemon understands.
+      assertNull(rc?.playerId, "playerId for '$raw'")
+    }
+    for (raw in listOf("androidx-embedded", "embedded", "Androidx-Embedded")) {
+      val rc = ok(mapOf("rcPlayer" to raw)).remoteCompose
+      assertEquals(RemoteComposePlayerKind.EMBEDDED, rc?.player, "player for '$raw'")
+      assertNull(rc?.playerId, "playerId for '$raw'")
+    }
   }
 
   @Test
-  fun `the canonical implementation names select the built-in players too`() {
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
-      ok(mapOf("rcPlayer" to "androidx-view")).remoteCompose?.player,
-    )
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
-      ok(mapOf("rcPlayer" to "Androidx-Embedded")).remoteCompose?.player,
-    )
-    // A built-in never also rides playerId: the enum is what every daemon understands.
-    assertNull(ok(mapOf("rcPlayer" to "androidx-view")).remoteCompose?.playerId)
+  fun `cmp-android is the CMP player on Android and rides playerId, not the embedded player`() {
+    // `cmp-android` used to select the AndroidX embedded player. It now names rc-player-compose on
+    // Android, which the daemon reaches by id only — so it must not come back as EMBEDDED.
+    for (raw in listOf("cmp-android", " CMP-Android ")) {
+      val rc = ok(mapOf("rcPlayer" to raw)).remoteCompose
+      assertEquals("cmp-android", rc?.playerId, "playerId for '$raw'")
+      assertNull(rc?.player, "player for '$raw'")
+    }
   }
 
   @Test
@@ -800,7 +792,13 @@ class ServeOverridesTest {
     // enumerate, so it is forwarded rather than rejected; the daemon refuses an unknown one by
     // name.
     for ((raw, id) in
-      listOf("rcplayer-cmp-android" to "rcplayer-cmp-android", " My.Player_2 " to "my.player_2")) {
+      listOf(
+        "rcplayer-cmp-android" to "rcplayer-cmp-android",
+        " My.Player_2 " to "my.player_2",
+        // Retired / stale names are no longer special: they reach the daemon, which refuses them.
+        "cmp" to "cmp",
+        "androidx-embedded-jvm" to "androidx-embedded-jvm",
+      )) {
       val rc = ok(mapOf("rcPlayer" to raw)).remoteCompose
       assertEquals(id, rc?.playerId, "playerId for '$raw'")
       assertNull(rc?.player, "player for '$raw'")
@@ -809,16 +807,16 @@ class ServeOverridesTest {
 
   @Test
   fun `a lane the daemon never draws, or a value not shaped like an id, is rejected`() {
-    // `js` / `cmp-wasm` replay the doc in the browser and `cmp-jvm` renders in its own subprocess,
-    // so none rides the daemon override — under their wire ids or their implementation names.
+    // `camaelon-js` / `cmp-wasm` replay the doc in the browser and `cmp-jvm` renders in its own
+    // subprocess, so none rides the daemon override — under their canonical or legacy ids.
     for (bad in
       listOf(
+        "camaelon-js",
         "js",
         "cmp-wasm",
-        "cmp-jvm",
         "rcplayer-wasm",
-        "camaelon-js",
-        "androidx-embedded-jvm",
+        "cmp-jvm",
+        "rcplayer-jvm",
         "not an id",
         "../etc",
         "-leading-dash",
@@ -834,24 +832,25 @@ class ServeOverridesTest {
     // No rcPlayer, no other rc facet ⇒ no remoteCompose payload at all (byte-identical wire shape).
     assertNull(ok(emptyMap()).remoteCompose)
     // rcPlayer folds into the same override as the profile/named-value facets.
-    val both = ok(mapOf("rcPlayer" to "cmp-android", "rcProfile" to "androidx"))
-    assertEquals(
-      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
-      both.remoteCompose?.player,
-    )
+    val both = ok(mapOf("rcPlayer" to "androidx-embedded", "rcProfile" to "androidx"))
+    assertEquals(RemoteComposePlayerKind.EMBEDDED, both.remoteCompose?.player)
     assertEquals(RemoteComposeProfile.ANDROIDX, both.remoteCompose?.profile)
   }
 
   @Test
   fun `cache key differs when the rc render backend changes`() {
-    assertNotEquals(
-      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "java"))),
-      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "cmp-android"))),
-    )
-    assertNotEquals(
-      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "java"))),
-      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
-    )
+    fun key(player: String?) =
+      ServeOverrides.cacheKey(
+        "preview.A",
+        ok(if (player == null) emptyMap() else mapOf("rcPlayer" to player)),
+      )
+    assertNotEquals(key("androidx-view"), key("androidx-embedded"))
+    // The embedded player and the CMP player on Android must never share pixels.
+    assertNotEquals(key("androidx-embedded"), key("cmp-android"))
+    assertNotEquals(key("androidx-view"), key(null))
+    // A legacy spelling is the same request as its canonical id.
+    assertEquals(key("java"), key("androidx-view"))
+    assertEquals(key("embedded"), key("androidx-embedded"))
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "player-a"))),
       ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "player-b"))),

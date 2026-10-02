@@ -13,40 +13,48 @@ import org.junit.Test
 class WearWidgetPreviewPlayerTest {
 
   @Test
-  fun `nothing selected draws with the CMP player`() {
-    assertThat(WearWidgetPreviewPlayer.DEFAULT).isEqualTo(WearWidgetPreviewPlayer.CMP)
-    assertThat(WearWidgetPreviewPlayer.resolve(null)).isEqualTo(WearWidgetPreviewPlayer.CMP)
-    assertThat(WearWidgetPreviewPlayer.resolve("")).isEqualTo(WearWidgetPreviewPlayer.CMP)
-    assertThat(WearWidgetPreviewPlayer.resolve("   ")).isEqualTo(WearWidgetPreviewPlayer.CMP)
+  fun `nothing selected draws with the AndroidX embedded player`() {
+    val embedded = WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED
+    assertThat(WearWidgetPreviewPlayer.DEFAULT).isEqualTo(embedded)
+    assertThat(WearWidgetPreviewPlayer.resolve(null)).isEqualTo(embedded)
+    assertThat(WearWidgetPreviewPlayer.resolve("")).isEqualTo(embedded)
+    assertThat(WearWidgetPreviewPlayer.resolve("   ")).isEqualTo(embedded)
   }
 
   @Test
-  fun `each lane answers to its own wire id`() {
-    assertThat(WearWidgetPreviewPlayer.fromWire("cmp")).isEqualTo(WearWidgetPreviewPlayer.CMP)
-    assertThat(WearWidgetPreviewPlayer.fromWire("view")).isEqualTo(WearWidgetPreviewPlayer.VIEW)
-    // Canonical implementation names, kept in lockstep with `RemoteComposePlayerSelection`.
-    assertThat(WearWidgetPreviewPlayer.fromWire("androidx-embedded"))
-      .isEqualTo(WearWidgetPreviewPlayer.CMP)
-    assertThat(WearWidgetPreviewPlayer.fromWire("androidx-view"))
-      .isEqualTo(WearWidgetPreviewPlayer.VIEW)
+  fun `each lane answers to its canonical implementation name`() {
+    assertThat(WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED.wire).isEqualTo("androidx-embedded")
+    assertThat(WearWidgetPreviewPlayer.ANDROIDX_VIEW.wire).isEqualTo("androidx-view")
+    for (lane in WearWidgetPreviewPlayer.entries) {
+      assertThat(WearWidgetPreviewPlayer.fromWire(lane.wire)).isEqualTo(lane)
+    }
   }
 
   @Test
-  fun `the pipeline's other spellings of the same two players are accepted`() {
-    // `?rcPlayer=cmp-android` / `RemoteComposePlayerKind.EMBEDDED` and `?rcPlayer=java` /
-    // `RemoteComposePlayerKind.VIEW` name these players elsewhere; a value copied from either
-    // should select what it looks like it selects.
-    for (cmp in
-      listOf("androidx-embedded", "cmp-android", "embedded", "CMP-ANDROID", " Embedded ")) {
-      assertThat(WearWidgetPreviewPlayer.fromWire(cmp)).isEqualTo(WearWidgetPreviewPlayer.CMP)
+  fun `the legacy spellings the daemon still accepts select the same players`() {
+    // Kept in lockstep with `RemoteComposePlayerSelection.fromWire`.
+    for (raw in listOf("embedded", "EMBEDDED", " Androidx-Embedded ")) {
+      assertThat(WearWidgetPreviewPlayer.fromWire(raw))
+        .isEqualTo(WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED)
     }
-    for (view in listOf("java", "JAVA", " view ")) {
-      assertThat(WearWidgetPreviewPlayer.fromWire(view)).isEqualTo(WearWidgetPreviewPlayer.VIEW)
+    for (raw in listOf("java", "JAVA", " view ", "ANDROIDX-VIEW")) {
+      assertThat(WearWidgetPreviewPlayer.fromWire(raw))
+        .isEqualTo(WearWidgetPreviewPlayer.ANDROIDX_VIEW)
     }
+  }
+
+  @Test
+  fun `cmp-android is the CMP player and selects no capture lane`() {
+    // `cmp-android` names rc-player-compose on Android, a replay-only daemon backend; it used to
+    // name the embedded player, and must not silently keep doing so here. The bare `cmp` is
+    // retired.
+    assertThat(WearWidgetPreviewPlayer.fromWire("cmp-android")).isNull()
+    assertThat(WearWidgetPreviewPlayer.fromWire("cmp")).isNull()
   }
 
   @Test
   fun `an unrecognised value names no lane and falls back to the default`() {
+    assertThat(WearWidgetPreviewPlayer.fromWire("camaelon-js")).isNull()
     assertThat(WearWidgetPreviewPlayer.fromWire("js")).isNull()
     assertThat(WearWidgetPreviewPlayer.fromWire("cmp-jvm")).isNull()
     assertThat(WearWidgetPreviewPlayer.resolve("cmp-wasm"))
@@ -57,9 +65,9 @@ class WearWidgetPreviewPlayerTest {
   fun `the property is the shared one the Gradle plugin forwards`() {
     // Deliberately the same literal `RemoteComposePlayerSelection.PROPERTY` carries in
     // `:data-remotecompose-connector`, which this module cannot depend on: one
-    // `-PcomposePreview.rcPlayer=view` has to move widget previews and ordinary Remote Compose
-    // previews together, so the two spellings are pinned on both sides rather than trusted to stay
-    // in step.
+    // `-PcomposePreview.rcPlayer=androidx-view` has to move widget previews and ordinary Remote
+    // Compose previews together, so the two spellings are pinned on both sides rather than trusted
+    // to stay in step.
     assertThat(WearWidgetPreviewPlayer.PROPERTY).isEqualTo("composeai.render.rcPlayer")
   }
 }

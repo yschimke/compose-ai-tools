@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   applyCatalogPreviewDeclarations,
+  canonicalCapturePlayer,
   declarationsByPreviewId,
 } from "./catalog-preview-declarations.mjs";
 
@@ -207,13 +208,32 @@ test("passes through the capture player the render recorded", () => {
   const bundle = {
     previews: [{ id: "Card", params: {} }, { id: "Pinned", params: {} }],
     entries: {
+      "previews/Card.remotecompose.json": sidecar("androidx-embedded"),
+      "previews/Pinned.remotecompose.json": sidecar("androidx-view"),
+    },
+  };
+  const out = declarationsByPreviewId(bundle);
+  assert.deepEqual(out.get("Card"), { previewParams: { capturePlayer: "androidx-embedded" } });
+  assert.deepEqual(out.get("Pinned"), { previewParams: { capturePlayer: "androidx-view" } });
+});
+
+test("reads a legacy capture player as the AndroidX player it named", () => {
+  // Older daemons recorded `cmp-android` for the AndroidX embedded player and `java` for the View
+  // player. `cmp-android` now names the CMP player on Android, so it must not be published as-is.
+  const sidecar = (player) =>
+    new TextEncoder().encode(JSON.stringify({ declarations: [], capturePlayer: player }));
+  const bundle = {
+    previews: [{ id: "Card", params: {} }, { id: "Pinned", params: {} }],
+    entries: {
       "previews/Card.remotecompose.json": sidecar("cmp-android"),
       "previews/Pinned.remotecompose.json": sidecar("java"),
     },
   };
   const out = declarationsByPreviewId(bundle);
-  assert.deepEqual(out.get("Card"), { previewParams: { capturePlayer: "cmp-android" } });
-  assert.deepEqual(out.get("Pinned"), { previewParams: { capturePlayer: "java" } });
+  assert.deepEqual(out.get("Card"), { previewParams: { capturePlayer: "androidx-embedded" } });
+  assert.deepEqual(out.get("Pinned"), { previewParams: { capturePlayer: "androidx-view" } });
+  assert.equal(canonicalCapturePlayer("embedded"), "androidx-embedded");
+  assert.equal(canonicalCapturePlayer("view"), "androidx-view");
 });
 
 test("records no capture player when the sidecar recorded none", () => {

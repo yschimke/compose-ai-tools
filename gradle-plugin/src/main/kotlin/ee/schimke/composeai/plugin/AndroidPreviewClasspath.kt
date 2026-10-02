@@ -401,7 +401,7 @@ internal object AndroidPreviewClasspath {
     hostTheme: String = "",
     fixedTime: String = "",
     linkBufferComposer: String = "false",
-    rcPlayer: String = "cmp",
+    rcPlayer: String = "androidx-embedded",
     rcDensity: String = "fixed",
   ): Map<String, String> =
     linkedMapOf(
@@ -485,11 +485,13 @@ internal object AndroidPreviewClasspath {
       // composition — so it has to arrive as a launch property, not as something the Gradle JVM
       // reads. `"false"` by default: an opt-in stays opt-in.
       "composeai.render.linkBufferComposer" to linkBufferComposer,
-      // Which player replays a Remote Compose preview's captured document — `cmp` (default, the
-      // embedded Compose player) or `view` (the `AndroidView`-hosted `RemoteComposePlayer`). Read
-      // inside the render JVM by `RemoteComposePlayerSelection`, so like its neighbours it has to
-      // be forwarded here or `-PcomposePreview.rcPlayer=view` set on the Gradle invocation never
-      // reaches the JVM that composes.
+      // Which player replays a Remote Compose preview's captured document — `androidx-embedded`
+      // (default, the vendored AndroidX embedded player) or `androidx-view` (the
+      // `AndroidView`-hosted `RemoteComposePlayer`). Read inside the render JVM by
+      // `RemoteComposePlayerSelection`, so like its neighbours it has to be forwarded here or
+      // `-PcomposePreview.rcPlayer=androidx-view` set on the Gradle invocation never reaches the
+      // JVM
+      // that composes.
       "composeai.render.rcPlayer" to rcPlayer,
       // Whether a Remote Compose capture folds density and font scale into the document as
       // constants (`fixed`, the default) or records them as references to the player's
@@ -712,8 +714,10 @@ internal fun composeAiFixedTime(
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.render.rcPlayer` — which
- * player replays a **Remote Compose** preview's captured document. `"cmp"` (the default, the
- * vendored embedded Compose player) or `"view"` (the `AndroidView`-hosted `RemoteComposePlayer`).
+ * player replays a **Remote Compose** preview's captured document. `"androidx-embedded"` (the
+ * default, the vendored AndroidX embedded player) or `"androidx-view"` (the `AndroidView`-hosted
+ * `RemoteComposePlayer`); the daemon also accepts the legacy `embedded`, `java` and `view`.
+ * `cmp-android` is not a capture player — it names the CMP player on Android, which only replays.
  *
  * Build-wide, not per surface: one value moves every Remote Compose preview the render draws — a
  * `RemotePreview` sticker through `RemoteOverridablePreviewWrapper`, a bundle replayed from its
@@ -728,23 +732,23 @@ internal fun composeAiFixedTime(
  * ride) both still win.
  *
  * Sourced from `-Dcomposeai.render.rcPlayer` first (the flag the runtime itself reads), then
- * `-PcomposePreview.rcPlayer`, else `"cmp"`.
+ * `-PcomposePreview.rcPlayer`, else `"androidx-embedded"`.
  *
  * Android-only, and deliberately not forwarded to the Desktop lane: the connector and both players
  * are Android artifacts rendered under Robolectric, so there is no Desktop preview for the setting
  * to be true of (`serve`'s `cmp-jvm` lane is a separate subprocess renderer, not this property).
  *
- * The default is `"cmp"` rather than the historical `"view"` because the View lane makes every
- * Remote Compose preview report the same unlabelled-`RemoteComposePlayer` accessibility error
- * (issue #5259) — see `RemoteComposePlayerSelection` for what each lane costs. Unlike the opt-ins
- * around it this one therefore defaults to *on*: `view` is the escape hatch, for a preview whose
- * fidelity depends on the framework `Canvas`.
+ * The default is `"androidx-embedded"` rather than the historical `"view"` because the View lane
+ * makes every Remote Compose preview report the same unlabelled-`RemoteComposePlayer` accessibility
+ * error (issue #5259) — see `RemoteComposePlayerSelection` for what each lane costs. Unlike the
+ * opt-ins around it this one therefore defaults to *on*: `androidx-view` is the escape hatch, for a
+ * preview whose fidelity depends on the framework `Canvas`.
  */
 internal fun composeAiRcPlayer(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
     .systemProperty("composeai.render.rcPlayer")
     .orElse(project.providers.gradleProperty("composePreview.rcPlayer"))
-    .orElse("cmp")
+    .orElse("androidx-embedded")
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.render.rcDensity` — whether

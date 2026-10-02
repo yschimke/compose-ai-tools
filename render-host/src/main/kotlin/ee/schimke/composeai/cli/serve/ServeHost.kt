@@ -560,9 +560,9 @@ public interface ServeHost : AutoCloseable {
    *
    * Folded into [enabledRcPlayersFor] so the picker offers exactly what the host can produce.
    * Without it the capability list and the render lane disagreed: a static bundle carrying staged
-   * rasters would answer a hand-typed `?rcPlayer=cmp-android` perfectly well while showing that
-   * option greyed, and Catalog mode would open on JS because its preferred embedded default was not
-   * in the enabled set.
+   * rasters would answer a hand-typed `?rcPlayer=androidx-embedded` perfectly well while showing
+   * that option greyed, and Catalog mode would open on JS because its preferred embedded default
+   * was not in the enabled set.
    *
    * Reads the manifest, not the images: this runs per preview while building a page, and whether a
    * lane was staged is a field on the row.
@@ -621,10 +621,10 @@ public interface ServeHost : AutoCloseable {
    * an unavailable lane remains visible without pretending it works.
    *
    * Empty for a non–Remote Compose preview (the viewer then shows no backend selector at all).
-   * Defaults to the client-side [RcPlayerBackend.JS] lane whenever [hasRemoteComposeDoc] is true —
-   * the in-browser player needs only the `.rc` bytes, so any host that carries the document
-   * supports it. A daemon-backed Android host ([ServeRenderHost]) adds the server-side
-   * [RcPlayerBackend.JAVA] / [RcPlayerBackend.CMP_ANDROID] lanes (they ride
+   * Defaults to the client-side [RcPlayerBackend.CAMAELON_JS] lane whenever [hasRemoteComposeDoc]
+   * is true — the in-browser player needs only the `.rc` bytes, so any host that carries the
+   * document supports it. A daemon-backed Android host ([ServeRenderHost]) adds the server-side
+   * [RcPlayerBackend.ANDROIDX_VIEW] / [RcPlayerBackend.ANDROIDX_EMBEDDED] lanes (they ride
    * `remoteCompose.player`).
    */
   /**
@@ -632,12 +632,17 @@ public interface ServeHost : AutoCloseable {
    *
    * Every `enabledRcPlayersFor` must union this in, including the two that override the default: a
    * bare URL serves those pixels, so the picker has to offer that lane even when the parity run
-   * staged no column for it — and it never does for [RcPlayerBackend.JAVA], whose `rcCompareLane`
-   * is null. A host that has just established which player drew its snapshot, and then greys out
-   * that exact chip while the snapshot sits on the stage, is disagreeing with itself.
+   * staged no column for it — and it never does for [RcPlayerBackend.ANDROIDX_VIEW], whose
+   * `rcCompareLane` is null. A host that has just established which player drew its snapshot, and
+   * then greys out that exact chip while the snapshot sits on the stage, is disagreeing with
+   * itself.
    *
    * Factored here rather than spelled out at each site, because three copies of one fact drifting
    * apart is the bug this whole seam exists to stop.
+   *
+   * A host turning a recorded `capturePlayer` string into [bakedRcPlayer] must go through
+   * [RcPlayerBackend.fromCapturePlayer], not [RcPlayerBackend.fromWire]: older captures recorded
+   * `cmp-android` for the AndroidX embedded player, which is a different player as a request.
    */
   public fun bakedRcPlayerBackend(previewId: String): RcPlayerBackend? =
     bakedRcPlayer(previewId)?.let { kind ->
@@ -647,8 +652,8 @@ public interface ServeHost : AutoCloseable {
   public fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
     if (hasRemoteComposeDoc(previewId)) {
       buildList {
-        add(RcPlayerBackend.JS)
-        // The desktop embedded player renders the same `.rc` server-side via an isolated
+        add(RcPlayerBackend.CAMAELON_JS)
+        // The CMP player on the desktop JVM renders the same `.rc` server-side via an isolated
         // subprocess; enable it wherever the sidecar player is installed and a render spec exists.
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
         // …and every player the parity run already drew. Those need no renderer at all, so a host
@@ -670,9 +675,9 @@ public interface ServeHost : AutoCloseable {
   /**
    * Whether this host's live render lane honours the Remote Compose **player** override
    * (`remoteCompose.player`) — i.e. a daemon carrying the Android Remote Compose runtime, the only
-   * backend where selecting the server-side VIEW ([RcPlayerBackend.JAVA]) vs EMBEDDED
-   * ([RcPlayerBackend.CMP_ANDROID]) player actually changes pixels. The desktop backend has no
-   * Remote Compose runtime and silently ignores it; a static bundle has no daemon at all. Gates
+   * backend where selecting the server-side VIEW ([RcPlayerBackend.ANDROIDX_VIEW]) vs EMBEDDED
+   * ([RcPlayerBackend.ANDROIDX_EMBEDDED]) player actually changes pixels. The desktop backend has
+   * no Remote Compose runtime and silently ignores it; a static bundle has no daemon at all. Gates
    * whether [enabledRcPlayersFor] offers the server-side lanes, so the viewer never shows a backend
    * chip that would re-render to the same image. Defaults false.
    */

@@ -2864,8 +2864,9 @@ internal object AndroidPreviewSupport {
         // `LinkBufferComposer` inside the Robolectric sandbox, so like the two above it has to be
         // forwarded onto the forked render JVM rather than resolved on the Gradle one.
         val linkBufferComposer = composeAiLinkBufferComposer(project, extension)
-        // Which player replays a Remote Compose preview's captured document (`cmp` by default,
-        // `view` for the `AndroidView`-hosted player). Read by `RemoteComposePlayerSelection`
+        // Which player replays a Remote Compose preview's captured document (`androidx-embedded`
+        // by default, `androidx-view` for the `AndroidView`-hosted player). Read by
+        // `RemoteComposePlayerSelection`
         // inside the Robolectric sandbox, so it is forwarded onto the forked render JVM rather
         // than resolved on the Gradle one.
         val rcPlayer = composeAiRcPlayer(project)

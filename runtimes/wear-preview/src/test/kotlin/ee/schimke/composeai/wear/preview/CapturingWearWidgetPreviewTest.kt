@@ -63,20 +63,20 @@ class CapturingWearWidgetPreviewTest {
 
   @Test
   fun `the View lane renders through upstream WearWidgetPreview at the safe fallback version`() {
-    render(WearWidgetPreviewPlayer.VIEW, useSafeFallbackRendererVersion = true)
+    render(WearWidgetPreviewPlayer.ANDROIDX_VIEW, useSafeFallbackRendererVersion = true)
   }
 
   @Test
   fun `the View lane renders through upstream WearWidgetPreview at the max renderer version`() {
-    render(WearWidgetPreviewPlayer.VIEW, useSafeFallbackRendererVersion = false)
+    render(WearWidgetPreviewPlayer.ANDROIDX_VIEW, useSafeFallbackRendererVersion = false)
   }
 
   @Test
-  fun `the CMP lane renders and offers the captured document as the rc sidecar`() {
+  fun `the embedded lane renders and offers the captured document as the rc sidecar`() {
     val previewId = "capturing-wear-widget-preview-test"
     IrSidecarChannel.setCurrentPreviewId(previewId)
 
-    render(WearWidgetPreviewPlayer.CMP, useSafeFallbackRendererVersion = true)
+    render(WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED, useSafeFallbackRendererVersion = true)
 
     val capture = IrSidecarChannel.consume(previewId)
     assertThat(capture).isNotNull()

@@ -393,7 +393,7 @@ test("the cmp-jvm and embedded lanes coexist, each its own column and summary", 
   const html = renderRcCompareHtml(withEmbeddedJvm(withEmbedded(model)));
   assert.match(html, /AndroidX Embedded · vendored Android/);
   assert.match(html, /rc-player JVM/);
-  assert.match(html, /\(Camaelon JS \+ embedded \+ rc-player JVM players\)/);
+  assert.match(html, /\(Camaelon JS \+ AndroidX Embedded \+ rc-player JVM players\)/);
   // The lede names all three players and the worst-scoring sort, not just JS + embedded.
   assert.match(html, /<strong>Camaelon JS<\/strong>/);
   assert.match(html, /<strong>AndroidX Embedded · vendored Android<\/strong>/);
@@ -424,7 +424,7 @@ test("all rc-compare lanes can coexist without hiding the cmp-wasm result", () =
   const html = renderRcCompareHtml(
     withCmpWasm(withEmbeddedJvm(withAndroidxEmbedded(withEmbedded(model)))),
   );
-  assert.match(html, /\(Camaelon JS \+ embedded \+ androidx.dev embedded \+ rc-player JVM \+ rc-player Wasm players\)/);
+  assert.match(html, /\(Camaelon JS \+ AndroidX Embedded \+ AndroidX Embedded · androidx\.dev \+ rc-player JVM \+ rc-player Wasm players\)/);
   assert.equal((html.match(/<th>rc-player Wasm<\/th>/g) || []).length, 1);
   assert.match(html, /data-cmp-wasm-pct=/);
 });

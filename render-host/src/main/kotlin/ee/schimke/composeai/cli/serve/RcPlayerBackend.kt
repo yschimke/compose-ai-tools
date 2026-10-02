@@ -6,169 +6,189 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  * A Remote Compose render backend the `compose-preview serve` viewer can offer as a per-preview
  * option — the live counterpart of the columns the offline `rc-compare` pipeline diffs.
  *
- * The four are genuinely different renderers of the *same* captured `ir/<id>.rc` document, not
- * skins over one engine, so a preview can look different under each:
+ * These are genuinely different renderers of the *same* captured `ir/<id>.rc` document, not skins
+ * over one engine, so a preview can look different under each. Every [wire] id names the
+ * **implementation** that draws, and `cmp-` means the CMP player (`rc-player-compose`) and nothing
+ * else — the same table the rc-players README documents:
  *
- * * [JS] — the vendored TypeScript player (`RC.RcdPlayer`, `third_party/remote-compose-player`),
- *   run **client-side** in the viewer's `<canvas>`. Needs only the `.rc` bytes (served over `GET
- *   /render/<id>.rc`); no daemon, no server render. This is the long-standing in-browser lane.
- * * [CMP_WASM] — this repository's non-JVM Compose Multiplatform player, compiled to Wasm and
- *   painting through Skiko in a browser iframe. It consumes the same captured bytes as [JS], but
- *   its codecs and behavior are implemented against AndroidX remote-core rather than the vendored
- *   TypeScript player.
- * * [JAVA] — the AOSP `remote-player-view` `RemoteComposePlayer` (an Android `View` painting into a
- *   framework `Canvas`), driven **server-side** by the daemon via [RemoteComposePlayerKind.VIEW].
- *   Was the default snapshot player for a Remote Compose preview on an Android backend; that is now
- *   [CMP_ANDROID], and this lane is what a preview pins itself to (or a `?rcPlayer=java` asks for)
- *   when the framework `Canvas` is the point.
- * * [CMP_ANDROID] — the vendored AndroidX embedded `RcPlayer` (`:third-party-rc-embedded-player`),
- *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
- *   server-side via [RemoteComposePlayerKind.EMBEDDED]. The default: it is what a capture bakes
- *   through, what an unqualified replay uses, and what the viewer opens on.
- * * [CMP_JVM] — the CMP player (`rc-player-compose`, the same codebase as [CMP_WASM]) over
- *   Skiko/Desktop, rendered **server-side** by [RcJvmServerRenderer]: it spawns the
- *   `:rc-render-jvm` module's `RcJvmRenderMain` as a one-shot subprocess (or its pooled worker) off
- *   the CLI install's `lib-rcjvm`
- *     + `lib-daemon-desktop` sidecars (Compose Desktop + Skiko kept out of the CLI's own
- *       classpath). Unlike [JAVA] / [CMP_ANDROID] it does **not** ride the daemon
- *       `remoteCompose.player` override — [playerKind] stays null and [ServeHttpServer] renders it
- *       directly from the captured `.rc` — so a host enables it (via [ServeHost.supportsCmpJvm])
- *       whenever it carries the document, can size a render for it, and the sidecar is installed.
- *       Where the sidecar is absent (a headless host, or a build that didn't stage it) the chip
- *       stays disabled, exactly as before this lane existed.
+ * * [ANDROIDX_VIEW] — the AndroidX `remote-player-view` `RemoteComposePlayer` (an Android `View`
+ *   painting into a framework `Canvas`), drawn **server-side** by the daemon via
+ *   [RemoteComposePlayerKind.VIEW]. What a preview pins itself to when the framework `Canvas` is
+ *   the point.
+ * * [ANDROIDX_EMBEDDED] — the vendored AndroidX embedded `RcPlayer`
+ *   (`:third-party-rc-embedded-player`), which interprets the operation tree into Compose
+ *   layout/draw nodes, drawn server-side via [RemoteComposePlayerKind.EMBEDDED]. The default: what
+ *   a capture bakes through and what an unqualified replay uses.
+ * * [CMP_ANDROID] — the CMP player on Android, drawn server-side by the daemon's replay-only
+ *   `cmp-android` backend. It rides `RemoteComposeOverride.playerId` ([daemonPlayerId]), not the
+ *   `player` enum, which names the two AndroidX players only.
+ * * [CMP_JVM] — the CMP player over Skiko/Desktop, rendered server-side by [RcJvmServerRenderer] in
+ *   an isolated `:rc-render-jvm` subprocess off the CLI install's `lib-rcjvm` +
+ *   `lib-daemon-desktop` sidecars. It does not ride the daemon, so a host enables it (via
+ *   [ServeHost.supportsCmpJvm]) whenever it carries the document, can size a render, and the
+ *   sidecar is installed.
+ * * [CMP_WASM] — the CMP player compiled to Wasm, painting through Skiko in a browser iframe.
+ * * [CAMAELON_JS] — the vendored TypeScript player (`RC.RcdPlayer`, from
+ *   `camaelon/remotecompose-experiments`), run **client-side** in the viewer's `<canvas>` from the
+ *   `.rc` bytes alone.
  *
  * The viewer always renders every entry as a chip and enables the subset a host reports through
- * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the stable id used both
- * in the `rcPlayer=` render query param and the `/api/previews` capability list.
+ * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the id used both in the
+ * `rcPlayer=` render query param and the `/api/previews` capability list; [fromWire] still reads
+ * the spellings these lanes had before they were named by implementation.
  */
 public enum class RcPlayerBackend(
-  /** Stable wire id — the `rcPlayer=` query value and the `/api/previews` capability spelling. */
-  public val wire: String,
   /**
-   * Short human label for the selector chip — and the **only** place these lanes are named
-   * accurately, because [wire] cannot be.
-   *
-   * The wire ids grew a `cmp-` prefix that spans two unrelated implementations, so reading one and
-   * inferring what drew the pixels is a trap:
-   * * `cmp-android` is the vendored **AndroidX embedded** player (`third-party-rc-embedded-player`,
-   *   upstream's `player-compose-embedded`). It is not "the CMP player on Android".
-   * * `cmp-jvm` and `cmp-wasm` **are** the CMP player — `rc-player-compose`, a different codebase
-   *   with its own runtime — on the desktop JVM and in the browser. (`cmp-jvm` used to be a desktop
-   *   cut of the AndroidX embedded player, until yschimke/rc-players 2.0.0 stopped publishing it;
-   *   the id kept its name and now the name is true.)
-   * * `js` is the vendored TypeScript player from `camaelon/remotecompose-experiments`, which the
-   *   name says nothing about.
-   * * `java` is the `AndroidView`-hosted `RemoteComposePlayer` from `remote-player-view`.
-   *
-   * [wire] stays frozen regardless: it is in published `?rcPlayer=` links, `capturePlayer`
-   * sidecars, `data-rc-baked-player` attributes and `rc-compare` columns, so correcting it would
-   * break a bookmark to make a point. The label is what a human reads, so the label is what gets to
-   * be right.
+   * Canonical wire id — the `rcPlayer=` query value and the `/api/previews` capability spelling.
    */
+  public val wire: String,
+  /** Short human label for the selector chip: the implementation that draws. */
   public val label: String,
   /**
-   * The daemon player kind a **server-side** backend renders through, or null for the lanes that
-   * don't ride the daemon `remoteCompose.player` override: the client-side [JS] lane and the
-   * [CMP_JVM] lane (which renders in its own isolated subprocess, see [RcJvmServerRenderer]).
-   * Drives [ServeOverrides]'s mapping of the `rcPlayer=` param onto
-   * [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
+   * The daemon player kind a backend renders through via `remoteCompose.player`, or null for every
+   * lane that does not: the client-side lanes, [CMP_JVM] (its own subprocess, see
+   * [RcJvmServerRenderer]) and [CMP_ANDROID] (which rides [daemonPlayerId] instead).
    */
   public val playerKind: RemoteComposePlayerKind?,
   /**
-   * True when the browser plays the `.rc` document itself (the [JS] lane); false for a PNG lane.
+   * The id a backend asks the daemon for through `remoteCompose.playerId`, or null when it does not
+   * ride that field. Only [CMP_ANDROID]: the daemon's `player` enum names the two AndroidX players
+   * and nothing else, so its third built-in player is reached by id.
    */
+  public val daemonPlayerId: String?,
+  /** True when the browser plays the `.rc` document itself; false for a PNG lane. */
   public val clientSide: Boolean,
   /**
    * This backend's column id in the catalog's published `rc-compare` staging
-   * ([RcCompareManifest.lanes]), or null when the offline pipeline has no column for it.
+   * ([RcCompareManifest.lanes]), or null when the offline pipeline has no column for it. Lets a
+   * bare `?rcPlayer=<wire>` browse be answered from published bytes instead of a render.
    *
-   * The offline parity run already draws every `ir/<id>.rc` document with every player, so this is
-   * what lets a bare `?rcPlayer=<wire>` browse be answered from published bytes instead of a daemon
-   * render.
+   * These column ids are deliberately **not** the wire ids and were not renamed with them: they key
+   * staged assets in already-published catalogs (`rc-compare-summary.json`, the `rc-*` render
+   * directories). Note `embedded` is the vendored [ANDROIDX_EMBEDDED] column, while the column
+   * named `androidx-embedded` is the androidx.dev build of the same player, which no backend maps
+   * to.
    *
-   * [JAVA] maps to **nothing**. It used to own the `baked` column, because the catalog's baked PNG
-   * was a view-backed capture and therefore the reference the other lanes were scored against. It
-   * isn't any more: `RemoteOverridablePreview` defaults to [RemoteComposePlayerKind.EMBEDDED], so
-   * `baked` is an embedded capture and serving it for `?rcPlayer=java` would hand back the wrong
-   * player's pixels under a confident `200`. The java lane therefore routes to the daemon, which
-   * can still draw it on request.
+   * [ANDROIDX_VIEW] maps to nothing: the catalog's `baked` column is an embedded capture (that is
+   * `RemoteOverridablePreview`'s default), so serving it for `?rcPlayer=androidx-view` would hand
+   * back the wrong player's pixels under a confident `200`; the daemon draws that lane on request.
+   * [CMP_ANDROID] has no offline column yet.
    */
   public val rcCompareLane: String?,
 ) {
-  // The labels name the IMPLEMENTATION that draws; the wire ids are frozen history. See the note on
-  // [label] for why the two disagree and why the wire ids cannot be corrected.
-  JS("js", "Camaelon JS", playerKind = null, clientSide = true, rcCompareLane = "js"),
+  CAMAELON_JS(
+    "camaelon-js",
+    "Camaelon JS",
+    playerKind = null,
+    daemonPlayerId = null,
+    clientSide = true,
+    rcCompareLane = "js",
+  ),
   CMP_WASM(
     "cmp-wasm",
     "rc-player Wasm",
     playerKind = null,
+    daemonPlayerId = null,
     clientSide = true,
     rcCompareLane = "cmp-wasm",
   ),
-  JAVA(
-    "java",
+  ANDROIDX_VIEW(
+    "androidx-view",
     "AndroidX View",
     playerKind = RemoteComposePlayerKind.VIEW,
+    daemonPlayerId = null,
     clientSide = false,
     rcCompareLane = null,
   ),
-  CMP_ANDROID(
-    "cmp-android",
+  ANDROIDX_EMBEDDED(
+    "androidx-embedded",
     "AndroidX Embedded",
     playerKind = RemoteComposePlayerKind.EMBEDDED,
+    daemonPlayerId = null,
     clientSide = false,
     rcCompareLane = "embedded",
+  ),
+  CMP_ANDROID(
+    "cmp-android",
+    "rc-player Android",
+    playerKind = null,
+    daemonPlayerId = "cmp-android",
+    clientSide = false,
+    rcCompareLane = null,
   ),
   CMP_JVM(
     "cmp-jvm",
     "rc-player JVM",
     playerKind = null,
+    daemonPlayerId = null,
     clientSide = false,
     rcCompareLane = "cmp-jvm",
   );
+
+  /** True when the daemon draws this lane, through either [playerKind] or [daemonPlayerId]. */
+  public val ridesDaemon: Boolean
+    get() = playerKind != null || daemonPlayerId != null
 
   public companion object {
     /** The fixed universe the viewer renders as chips, in display order. */
     public val UNIVERSE: List<RcPlayerBackend> = entries.toList()
 
-    /** The backend for [wire], or null when it names none. Case-insensitive. */
-    public fun fromWire(wire: String?): RcPlayerBackend? =
-      wire?.lowercase()?.let { v -> entries.firstOrNull { it.wire == v } }
+    /**
+     * Spellings these lanes had before they were named by implementation, still accepted on input
+     * because they are in published `?rcPlayer=` links. `cmp-android` is not here: it is a
+     * canonical id with a new meaning (the CMP player on Android), and the bare `cmp` is retired.
+     */
+    private val LEGACY_WIRE: Map<String, RcPlayerBackend> =
+      mapOf(
+        "java" to ANDROIDX_VIEW,
+        "view" to ANDROIDX_VIEW,
+        "embedded" to ANDROIDX_EMBEDDED,
+        "rcplayer-jvm" to CMP_JVM,
+        "rcplayer-wasm" to CMP_WASM,
+        "js" to CAMAELON_JS,
+      )
 
     /**
-     * The server-side backend a `rcPlayer=` render param selects **through the daemon**, or null
-     * otherwise. Accepts the backend [wire] ids (`java`, `cmp-android`) and the daemon-native
-     * player-kind spellings (`view`, `embedded`) as aliases, so a link can be written either way.
-     * `js` (client-side) and `cmp-jvm` yield null: `js` replays in-browser, and `cmp-jvm` renders
-     * in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm` directly), so
-     * neither rides the daemon override this maps.
+     * The backend [wire] names — a canonical id or a legacy spelling — or null when it names none.
+     * Case- and whitespace-insensitive.
      */
-    public fun serverSideFromParam(raw: String): RcPlayerBackend? =
-      when (raw.trim().lowercase()) {
-        "java",
-        "view",
-        "androidx-view" -> JAVA
-        "cmp-android",
-        "embedded",
-        "androidx-embedded" -> CMP_ANDROID
-        else -> null
+    public fun fromWire(wire: String?): RcPlayerBackend? {
+      val v = wire?.trim()?.lowercase() ?: return null
+      return entries.firstOrNull { it.wire == v } ?: LEGACY_WIRE[v]
+    }
+
+    /**
+     * The backend a **capture player** names — a `capturePlayer` sidecar / `.remotecompose.json`
+     * field, or a `data-rc-baked-player` attribute — or null when it names none.
+     *
+     * Differs from [fromWire] in exactly the place that matters: daemons before the players were
+     * named by implementation wrote `cmp-android` for the AndroidX embedded player and `java` for
+     * the AndroidX View player, so here `cmp-android` reads as [ANDROIDX_EMBEDDED]. A capture is
+     * always drawn by one of the two AndroidX players, so nothing else is accepted. Never use this
+     * for a `?rcPlayer=` request, where `cmp-android` means [CMP_ANDROID].
+     */
+    public fun fromCapturePlayer(raw: String?): RcPlayerBackend? =
+      when (val v = raw?.trim()?.lowercase()) {
+        "cmp-android" -> ANDROIDX_EMBEDDED
+        else -> fromWire(v)?.takeIf { it.playerKind != null }
       }
 
     /**
-     * True when [raw] names one of the lanes that never ride the daemon's player override — the
-     * in-browser [JS] / [CMP_WASM] players and the [CMP_JVM] subprocess — by its wire id or by the
-     * implementation name the daemon's player selection documents for it. Such a value is neither a
-     * built-in daemon player nor a registered one, so `rcPlayer=` must not forward it as a
-     * `playerId`: the daemon would only refuse it, after a render round trip.
+     * The backend a `rcPlayer=` render param selects **through the daemon**, or null otherwise:
+     * [ANDROIDX_VIEW], [ANDROIDX_EMBEDDED] or [CMP_ANDROID], by canonical id or legacy spelling.
+     * The client-side lanes and [CMP_JVM] (its own subprocess lane) yield null.
      */
-    public fun isNonDaemonLane(raw: String): Boolean {
-      val name = raw.trim().lowercase()
-      val lane = fromWire(name)
-      return (lane != null && lane.playerKind == null) || name in NON_DAEMON_LANE_NAMES
-    }
+    public fun serverSideFromParam(raw: String): RcPlayerBackend? =
+      fromWire(raw)?.takeIf { it.ridesDaemon }
 
-    private val NON_DAEMON_LANE_NAMES =
-      setOf("rcplayer-wasm", "camaelon-js", "rcplayer-jvm", "androidx-embedded-jvm")
+    /**
+     * True when [raw] names one of the lanes that never ride the daemon — the in-browser
+     * [CAMAELON_JS] / [CMP_WASM] players and the [CMP_JVM] subprocess — by canonical id or legacy
+     * spelling. Such a value is neither a built-in daemon player nor a registered one, so
+     * `rcPlayer=` must not forward it as a `playerId`: the daemon would only refuse it, after a
+     * render round trip.
+     */
+    public fun isNonDaemonLane(raw: String): Boolean = fromWire(raw)?.ridesDaemon == false
 
     /**
      * Whether [raw] is spelled like a player id a daemon could have registered: lower-case letters,

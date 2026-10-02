@@ -767,8 +767,9 @@ can't hand one visitor's Catalog-mode HTML to a Dev-mode visitor.
 **What Catalog mode drops is the operational surface, not the Remote Compose facet.** The live
 stream, the full-page scroll capture, the accessibility overlay and the design annotations all go.
 **The catalog report stays** — see [Reporting what you can actually see](#reporting-what-you-can-actually-see).
-**Every player stays** — the browser pair (`js`, `cmp-wasm`) and the server-side ones (`java`,
-`cmp-android`, `cmp-jvm`) alike — and the page opens on the embedded player exactly as Dev does.
+**Every player stays** — the browser pair (`camaelon-js`, `cmp-wasm`) and the server-side ones
+(`androidx-view`, `androidx-embedded`, `cmp-android`, `cmp-jvm`) alike — and the page opens on the
+AndroidX embedded player exactly as Dev does. See [Remote Compose player ids](#remote-compose-player-ids).
 
 That is a deliberate line, and it is not the cheap one. Which player drew a document is the
 *subject* of a Remote Compose catalog rather than an operational detail, so the reader of one is
@@ -781,7 +782,7 @@ selected on top of the player, still reaches the daemon.
 
 **The facet comes off in pieces rather than all at once**, because with no canvas, no chips and no
 switcher, no control on the page owns the `rcPlayer` parameter — `url-state.js` then clears it from
-the address bar and a shared `?rcPlayer=js` link quietly becomes an ordinary baked snapshot. One
+the address bar and a shared `?rcPlayer=camaelon-js` link quietly becomes an ordinary baked snapshot. One
 consequence worth knowing: a Remote Compose preview in Catalog mode opens on the browser player
 rather than the baked PNG, the same shape Dev mode has.
 
@@ -2177,6 +2178,30 @@ keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), an
 `ir/` documents at all shows no Remote Compose lane.
 
 ![Every Remote Compose player side by side](design/evidence/serve-rc-player-wall/serve-rc-players-default.png)
+
+### Remote Compose player ids
+
+Every `?rcPlayer=` id names the **implementation** that draws, and `cmp-` means the CMP player
+(`rc-player-compose`) and nothing else. The legacy spellings are still accepted on input, because
+they are in published links.
+
+| id | implementation | drawn by | legacy spellings accepted |
+| --- | --- | --- | --- |
+| `androidx-view` | AndroidX `remote-player-view` `RemoteComposePlayer` | daemon, `remoteCompose.player = VIEW` | `java`, `view` |
+| `androidx-embedded` | vendored AndroidX embedded player (`third-party-rc-embedded-player`) | daemon, `remoteCompose.player = EMBEDDED` | `embedded` |
+| `cmp-android` | CMP player on Android | daemon, `remoteCompose.playerId = "cmp-android"` | — |
+| `cmp-jvm` | CMP player on the desktop JVM (`:rc-render-jvm` subprocess) | serve | `rcplayer-jvm` |
+| `cmp-wasm` | CMP player, Wasm | browser | `rcplayer-wasm` |
+| `camaelon-js` | vendored TypeScript player | browser | `js` |
+
+`cmp-android` used to name the AndroidX embedded player. It now names the CMP player on Android
+(compose-preview-daemon's replay-only `cmp-android` backend), and the bare `cmp` is retired. A
+**recorded** capture player (`capturePlayer` in a `.remotecompose.json` sidecar or a published
+catalog's `previewParams`) is the exception: older daemons wrote `cmp-android` for the embedded
+player and `java` for the View player, so a reader of that field maps them to `androidx-embedded` /
+`androidx-view` (`RcPlayerBackend.fromCapturePlayer`). That mapping never applies to a request.
+The `rc-compare` column ids (`js`, `embedded`, `androidx-embedded` for the androidx.dev build,
+`cmp-jvm`, `cmp-wasm`) are unchanged: they key assets in already-published catalogs.
 
 ## Design pages (`/<system>/pages`)
 
@@ -4181,8 +4206,8 @@ for):
 
 Opening a Remote Compose preview means drawing its document with *some* player, and the viewer opens
 on one by default — so "which player drew this" is the single commonest thing a `/render` request on
-such a catalog says. It used to be answered by the daemon every time: `?rcPlayer=cmp-android`
-measured about **0.75s** warm on the public box, and on a cold one it fell back to baked pixels and
+such a catalog says. It used to be answered by the daemon every time: `?rcPlayer=androidx-embedded`
+(then spelled `cmp-android`) measured about **0.75s** warm on the public box, and on a cold one it fell back to baked pixels and
 then refused.
 
 Nothing had to be rendered for it, because the offline `rc-compare` parity pipeline already draws
@@ -4195,9 +4220,10 @@ Two things make it safe to state that narrowly:
 - **The baked PNG is not a substitute.** It is *a* player's capture — whichever one the preview
   baked through, today the embedded `RcPlayer` — not whichever player the request names. Serving it
   for a lane it did not draw would be the #3449 failure again: the wrong player's pixels under a
-  confident `200`. That is also why `?rcPlayer=java` no longer resolves to published bytes at all
-  ([`RcPlayerBackend.JAVA.rcCompareLane`](../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/RcPlayerBackend.kt)
-  is null): the column it used to claim is an embedded capture now, so the java lane goes to the
+  confident `200`. That is also why `?rcPlayer=androidx-view` no longer resolves to published bytes
+  at all
+  ([`RcPlayerBackend.ANDROIDX_VIEW.rcCompareLane`](../render-host/src/main/kotlin/ee/schimke/composeai/cli/serve/RcPlayerBackend.kt)
+  is null): the column it used to claim is an embedded capture now, so the View lane goes to the
   daemon, which can still draw it.
 - **Bare means bare.** Strip the player from the request and whatever remains must be something the
   baked snapshot would itself satisfy. A font scale, a device, a knob or a theme asks for pixels the
