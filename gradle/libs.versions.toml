@@ -382,7 +382,10 @@ composeai-contracts = "3.15.0"
 # which compose-preview-server's edit-loop test requires (compose-preview-server#1181); it is
 # compiled against contracts 3.14.0, the release that added the field, so `composeai-contracts`
 # above moves with it.
-composeai-preview-daemon = "3.11.0"
+# 3.12.0 drives desktop scenes on the EDT (compose-preview-daemon#198), fixing the intermittent
+# `LayoutNode N not found in RectList` crash Compose Multiplatform 1.12.0 renders hit when the EDT's
+# delayed RectList defragment raced the render thread.
+composeai-preview-daemon = "3.12.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
