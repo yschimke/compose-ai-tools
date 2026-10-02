@@ -393,6 +393,45 @@ export function discoverComponentIds(sources) {
   return [...ids].sort();
 }
 
+/**
+ * The `@Preview` functions an annotated module publishes as a VARIANT — every function carrying
+ * `@CatalogVariant(of = "…")` in [sources] — mapped to the componentId it is a variant of.
+ *
+ * Used to catch a `display.hero` naming one. Such a function is a perfectly real `@Preview`, so it
+ * resolves against [discoverPreviews]' names, but it publishes under its PARENT's slug
+ * (`card__ideal__default__content-action` for a variant of `Card`) and the preview server resolves a
+ * hero against componentIds and preview ids only — so the hero silently falls through to the
+ * server's own pick (glimmer-catalog led with a lone Button this way).
+ *
+ * Matched on a string-blanked copy so a paren inside a string argument can't end the annotation run
+ * early, then `of` is read back from the same span of the comment-stripped source. Like
+ * [discoverComponentIds], it reads a literal `of` (named, or the leading positional argument) and
+ * skips a computed one.
+ *
+ * @param {string[]} sources  Kotlin file contents.
+ * @returns {Map<string, string>} function name → parent componentId.
+ */
+export function discoverVariantFunctions(sources) {
+  const variants = new Map();
+  const funRe = new RegExp(`${LEADING_ANNOTATIONS}${MODIFIERS}fun\\s+(\\w+)`, "g");
+  const entryRe = new RegExp(String.raw`@(?:[\w]+\.)*CatalogVariant\s*\(((?:[^()]|\([^()]*\))*)\)`, "g");
+  for (const source of sources) {
+    const stripped = stripComments(source);
+    const blanked = blankStringContents(stripped);
+    for (const m of blanked.matchAll(funRe)) {
+      for (const e of m[1].matchAll(entryRe)) {
+        const start = m.index + e.index + e[0].indexOf("(") + 1;
+        const args = stripped.slice(start, start + e[1].length);
+        const named = args.match(/(?:^|,)\s*of\s*=\s*"([^"]+)"/);
+        const positional = args.match(/^\s*"([^"]+)"/);
+        const of = named?.[1] ?? positional?.[1];
+        if (of) variants.set(m[2], of);
+      }
+    }
+  }
+  return variants;
+}
+
 /** Every static, motion, and variant preview a spec references, each with a human-readable
  *  JSON-ish path for diagnostics. */
 export function specPreviewRefs(spec) {
@@ -499,6 +538,9 @@ export function closest(name, candidates) {
  * @param {string[]|Set<string>} [opts.knownPreviews]
  * @param {string[]|Set<string>} [opts.knownComponentIds]  componentIds declared by
  *   `@CatalogComponent` annotations in the module (see [discoverComponentIds]).
+ * @param {Map<string, string>} [opts.variantFunctions]  `@CatalogVariant` preview functions → the
+ *   componentId each is a variant of (see [discoverVariantFunctions]). A `display.hero` naming one is
+ *   an error: the server never resolves a variant's function name.
  * @param {string[]|Set<string>} [opts.pngLessPreviews]  Discovered preview functions
  *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
@@ -798,12 +840,26 @@ export function validateSpec(spec, opts = {}) {
  * Resolve `display.hero` against everything that could name a preview: the spec's own
  * [specComponentIds], the module's annotated componentIds, and the `@Preview` function names. The
  * server ([ServeBundleHost.declaredHeroPreviewId]) accepts any of the three, so validation has to
- * accept all three too — the point is only to catch a hero that matches *nothing*, which the server
- * would silently ignore.
+ * accept all three too — the point is to catch a hero the server would silently ignore: one that
+ * matches *nothing*, or one naming a `@CatalogVariant` preview function, which is a real `@Preview`
+ * but publishes under its parent's id ([variantParent]).
  */
 function heroErrors(spec, opts, specComponentIds) {
   const hero = spec?.display?.hero;
   if (typeof hero !== "string" || hero.length === 0) return [];
+  // A variant's preview function IS a known `@Preview`, so it would pass the membership check below —
+  // but it publishes under its parent's slug, which the server never matches it against. Flag it
+  // unless the same string is also a componentId (which the server does resolve).
+  const componentIds = new Set([...specComponentIds, ...(opts.knownComponentIds ?? [])]);
+  const variantOf = variantParent(hero, spec, opts);
+  if (variantOf !== undefined && !componentIds.has(hero)) {
+    return [
+      `display.hero "${hero}" names a @CatalogVariant preview function of "${variantOf}" — a variant ` +
+        `publishes under its parent's id, and the preview server resolves a hero against componentIds ` +
+        `and preview ids, never variant function names, so it would silently fall back to its own ` +
+        `pick. Name a componentId instead (e.g. "${variantOf}").`,
+    ];
+  }
   // Without a module scan the candidate set is only half the picture (a hero may legitimately name a
   // `@Preview` function this spec never lists), so a structural-only run stays lenient — the same
   // bargain the `preview` checks make.
@@ -824,6 +880,23 @@ function heroErrors(spec, opts, specComponentIds) {
   return [
     `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,
   ];
+}
+
+/**
+ * The componentId [hero] is a variant of, when it names a variant's `@Preview` function — from the
+ * spec's own `variants[].preview` entries, or the module's `@CatalogVariant` annotations
+ * ([discoverVariantFunctions], passed as `opts.variantFunctions`). Undefined otherwise.
+ */
+function variantParent(hero, spec, opts) {
+  for (const group of Array.isArray(spec?.groups) ? spec.groups : []) {
+    for (const comp of Array.isArray(group?.components) ? group.components : []) {
+      const variants = Array.isArray(comp?.variants) ? comp.variants : [];
+      if (variants.some((v) => v?.preview === hero)) return comp.componentId ?? "?";
+    }
+  }
+  const scanned = opts.variantFunctions;
+  if (scanned instanceof Map) return scanned.get(hero);
+  return undefined;
 }
 
 /**

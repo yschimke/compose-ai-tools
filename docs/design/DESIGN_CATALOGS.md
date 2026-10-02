@@ -75,6 +75,14 @@ nothing is silent
 componentIds, the module's `@CatalogComponent` ids, and its `@Preview` names —
 and the `validate-samples` test runs that over every catalog in this repo.
 
+Don't name a `@CatalogVariant` preview function (or a spec `variants[].preview`).
+It is a real `@Preview`, but it publishes under its parent's id
+(`card__ideal__default__content-action` for a variant of `Card`), and the server
+resolves a hero against componentIds and preview ids, never variant function
+names — glimmer-catalog's `CardActionSticker` hero fell through to a lone Button
+this way. `validateSpec` rejects it and names the parent componentId; to feature
+a variant, give it its own `@CatalogComponent`.
+
 ## Delivery branches
 
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
