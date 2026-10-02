@@ -290,6 +290,349 @@ def _over_budget_flat(prior, current, limit: int) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# Motion captures: container format, frame timing, display copies
+#
+# A motion capture has three properties a pixel compare cannot see, and the
+# diff bot reported every one of them as "unchanged":
+#
+#   * its CONTAINER. A GIF and an APNG of the same capture compare as
+#     perceptually identical — the GIF's palette is the only difference, and it
+#     is below every budget above — so a `.gif` → `.apng` flip read as no
+#     change on the PR, and on the baseline branch the stabiliser then replayed
+#     the prior GIF's bytes under the new `.apng` name. The format never
+#     actually migrated; the file merely changed its extension.
+#   * its TIMING. Delays live in the GIF Graphic Control Extension
+#     (centiseconds) or the APNG `fcTL` (`delay_num / delay_den` seconds), and
+#     nothing read them, so a 33 → 16 ms change was invisible.
+#   * how GitHub SERVES it. `raw.githubusercontent.com` picks a content type
+#     from the extension alone: `.png` is `image/png`, `.gif` is `image/gif`,
+#     and `.apng` is `application/octet-stream` with `nosniff`. The comment
+#     embeds renders straight from that host (GitHub does not camo-proxy its own
+#     user-content origin), and a cross-origin `<img>` whose response is
+#     `nosniff` and not an image type is blocked by the browser (Fetch's opaque
+#     response blocking) — so an `.apng` cell would be a broken image.
+#
+# So: a container change is always a change, never stabilised and always
+# published as the NEW bytes; a timing change is a change; and every `.apng`
+# published to a render branch gets a byte-identical `<name>.apng.png` beside
+# it that the comment embeds. The `.apng` stays the canonical name — it is what
+# `baselines.json`, history, bundles and the a11y report address, and none of
+# them ever sees the display copy, which only exists on the delivery branches
+# this script writes.
+# ---------------------------------------------------------------------------
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+# The suffix appended to an `.apng` render to get a name GitHub serves as
+# `image/png`. Appended rather than substituted so the display copy can never
+# collide with a real `<id>.png` still of the same preview (`@SettledPreview`
+# writes exactly that), and so the canonical name is recoverable by stripping.
+DISPLAY_COPY_SUFFIX = ".png"
+
+# Per-frame and total slack for a timing comparison. APNG delays are rational
+# (1/60 s is 16.67 ms) and two encoders can spell the same delay with different
+# numerators, so exact equality would report renderer noise; a millisecond is
+# below anything a viewer can perceive and above every rounding artefact.
+_TIMING_TOLERANCE_MS = 1.0
+
+_FORMAT_LABELS = {"gif": "GIF", "apng": "APNG", "png": "PNG", "webp": "WebP"}
+
+
+def _ext_format(basename: str | None) -> str:
+    """The container a render's file NAME claims: lowercase extension, no dot."""
+    if not basename:
+        return ""
+    suffix = Path(basename).suffix.lower()
+    return suffix[1:] if suffix else ""
+
+
+def _png_chunks(data: bytes):
+    """Yield ``(type, payload)`` for each chunk of a PNG byte string.
+
+    Stops quietly at the first truncated chunk — the callers only ever want
+    metadata, and a damaged file is reported through the pixel path instead.
+    """
+    pos = len(_PNG_SIGNATURE)
+    end = len(data)
+    while pos + 8 <= end:
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        ctype = data[pos + 4:pos + 8]
+        payload = data[pos + 8:pos + 8 + length]
+        if len(payload) < length:
+            return
+        yield ctype, payload
+        if ctype == b"IEND":
+            return
+        pos += 12 + length
+
+
+def _sniff_format(path: Path) -> str | None:
+    """The container a render's BYTES are: ``gif`` / ``apng`` / ``png``.
+
+    ``None`` when the file is missing or is none of those. An APNG is a PNG
+    with an ``acTL`` chunk before its first ``IDAT`` (the spec's own test), so
+    a still PNG that happens to carry other ancillary chunks stays ``png``.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if data.startswith(_PNG_SIGNATURE):
+        for ctype, _payload in _png_chunks(data):
+            if ctype == b"acTL":
+                return "apng"
+            if ctype == b"IDAT":
+                break
+        return "png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def _gif_delays(data: bytes) -> list[float] | None:
+    """Per-frame delays (ms) of a GIF, read from its Graphic Control Extensions.
+
+    A GCE applies to the next image descriptor only; a frame with none has a
+    zero delay. Returned raw — browsers clamp tiny delays at display time, but
+    that is a property of the viewer, not of the file this compares.
+    """
+    if len(data) < 13:
+        return None
+    pos = 13
+    if data[10] & 0x80:  # global colour table
+        pos += 3 * (2 ** ((data[10] & 0x07) + 1))
+    delays: list[float] = []
+    pending = 0
+    end = len(data)
+
+    def skip_sub_blocks(p: int) -> int:
+        while p < end:
+            size = data[p]
+            p += 1
+            if size == 0:
+                return p
+            p += size
+        return p
+
+    while pos < end:
+        marker = data[pos]
+        if marker == 0x3B:  # trailer
+            break
+        if marker == 0x21 and pos + 1 < end:  # extension
+            label = data[pos + 1]
+            if label == 0xF9 and pos + 7 < end:
+                pending = int.from_bytes(data[pos + 4:pos + 6], "little") * 10
+            pos = skip_sub_blocks(pos + 2)
+            continue
+        if marker == 0x2C and pos + 10 <= end:  # image descriptor
+            packed = data[pos + 9]
+            pos += 10
+            if packed & 0x80:  # local colour table
+                pos += 3 * (2 ** ((packed & 0x07) + 1))
+            pos += 1  # LZW minimum code size
+            pos = skip_sub_blocks(pos)
+            delays.append(float(pending))
+            pending = 0
+            continue
+        return delays or None  # malformed: give up with what was read
+    return delays
+
+
+def _apng_delays(data: bytes) -> list[float]:
+    """Per-frame delays (ms) of an APNG, one per ``fcTL``.
+
+    A zero denominator means 1/100 s units, per the APNG spec.
+    """
+    delays: list[float] = []
+    for ctype, payload in _png_chunks(data):
+        if ctype == b"fcTL" and len(payload) >= 26:
+            num = int.from_bytes(payload[20:22], "big")
+            den = int.from_bytes(payload[22:24], "big") or 100
+            delays.append(num * 1000.0 / den)
+    return delays
+
+
+def _frame_delays(path: Path) -> list[float] | None:
+    """Per-frame delays (ms) of a motion render; ``[]`` for a still, ``None``
+    when the file can't be read or isn't a format this understands."""
+    fmt = _sniff_format(path)
+    if fmt is None:
+        return None
+    if fmt == "png" or fmt == "webp":
+        return []
+    data = path.read_bytes()
+    return _gif_delays(data) if fmt == "gif" else _apng_delays(data)
+
+
+def _timing_summary(delays: list[float]) -> str:
+    total = sum(delays)
+    avg = total / len(delays) if delays else 0.0
+    return f"{len(delays)} frame(s), avg {avg:.1f} ms, total {total:.0f} ms"
+
+
+def _timing_change(prior: list[float] | None, current: list[float] | None) -> str | None:
+    """A human summary of how two delay lists differ, or ``None`` if they match.
+
+    Compares frame count, every frame's delay and the total, each within
+    [_TIMING_TOLERANCE_MS]. The total is checked separately because a
+    sub-tolerance per-frame drift accumulates: 0.33 ms on each of 120 frames is
+    a 40 ms longer animation.
+    """
+    if prior is None or current is None:
+        return None
+    if not prior and not current:
+        return None
+    total_moved = abs(sum(prior) - sum(current)) > _TIMING_TOLERANCE_MS
+    frame_moved = len(prior) != len(current) or any(
+        abs(a - b) > _TIMING_TOLERANCE_MS for a, b in zip(prior, current)
+    )
+    if not (total_moved or frame_moved):
+        return None
+
+    def avg(d: list[float]) -> float:
+        return sum(d) / len(d) if d else 0.0
+
+    parts = []
+    if len(prior) != len(current):
+        parts.append(f"{len(prior)} → {len(current)} frames")
+    parts.append(f"avg {avg(prior):.1f} → {avg(current):.1f} ms")
+    parts.append(f"total {sum(prior):.0f} → {sum(current):.0f} ms")
+    return "timing changed: " + ", ".join(parts)
+
+
+def _format_label(fmt: str) -> str:
+    return _FORMAT_LABELS.get(fmt, fmt.upper() or "?")
+
+
+def _display_basename(basename: str) -> str:
+    """The name the comment embeds for ``basename``: itself, or the
+    ``image/png``-served display copy for an ``.apng``."""
+    if _ext_format(basename) == "apng":
+        return basename + DISPLAY_COPY_SUFFIX
+    return basename
+
+
+def _is_display_copy(basename: str) -> bool:
+    return basename.lower().endswith(".apng" + DISPLAY_COPY_SUFFIX)
+
+
+def _write_display_copy(dest: Path) -> None:
+    """Publish the ``image/png``-served twin of an ``.apng`` written at ``dest``.
+
+    Byte-identical: browsers decode APNG from an ``image/png`` response, and a
+    viewer that doesn't still shows the default image, which is frame 0.
+    """
+    if _ext_format(dest.name) != "apng" or not dest.exists():
+        return
+    shutil.copy2(dest, dest.with_name(_display_basename(dest.name)))
+
+
+def _change_detail(
+    prior_png: Path | None,
+    current_png: Path | None,
+    prior_basename: str | None,
+    current_basename: str | None,
+    *,
+    size_aware: bool = False,
+) -> dict | None:
+    """Why ``current`` differs from ``prior``, or ``None`` if it doesn't.
+
+    Returns ``{"reasons": [...], "format": (old, new) | None, "pixels": bool |
+    None, "timing": str | None}`` where ``reasons`` is drawn from ``format`` /
+    ``timing`` / ``pixels``. The caller has already ruled out byte equality.
+
+    A **format** change is decided first and is final: two containers are two
+    files, whatever their pixels, so it is never noise. Pixels and timing are
+    still measured for it — a mass `.gif` → `.apng` migration reads very
+    differently when every row says "pixels identical" — but they can only add
+    detail, never take the change away.
+    """
+    prior_ext = _ext_format(prior_basename or current_basename)
+    current_ext = _ext_format(current_basename)
+    prior_fmt = (_sniff_format(prior_png) if prior_png else None) or prior_ext
+    current_fmt = (_sniff_format(current_png) if current_png else None) or current_ext
+    format_changed = prior_ext != current_ext or prior_fmt != current_fmt
+
+    both_on_disk = (
+        prior_png is not None and current_png is not None
+        and prior_png.exists() and current_png.exists()
+    )
+    timing = (
+        _timing_change(_frame_delays(prior_png), _frame_delays(current_png))
+        if both_on_disk
+        else None
+    )
+    pixels = (
+        _perceptually_changed(prior_png, current_png, size_aware=size_aware)
+        if both_on_disk
+        else None
+    )
+
+    reasons = []
+    if format_changed:
+        reasons.append("format")
+    if timing:
+        reasons.append("timing")
+    if pixels or (pixels is None and not format_changed):
+        # Unverifiable (no prior on disk) is a change, exactly as before.
+        reasons.append("pixels")
+    if not reasons:
+        return None
+    return {
+        "reasons": reasons,
+        "format": (prior_fmt, current_fmt) if format_changed else None,
+        "pixels": pixels,
+        "timing": timing,
+    }
+
+
+def change_detail(
+    cur_info: dict,
+    bl_info: dict,
+    baseline_renders: Path | None,
+    *,
+    size_aware: bool = False,
+) -> dict | None:
+    """Why ``cur_info`` differs from ``bl_info`` — see [_change_detail] — or ``None``.
+
+    Fast path: bytes match → unchanged, unless the file NAME changed container
+    (identical bytes published under a new extension are still a migration
+    that has to be pushed). Otherwise, when a baseline-renders directory is
+    available, the pair is measured by [_change_detail], so
+    sha-different-but-perceptually-identical pairs (renderer noise, e.g. issue
+    #190) don't trip the diff bot while format and timing changes always do.
+    With no baseline renders to compare against, this falls back to strict
+    sha-only behaviour.
+    """
+    bl_base = bl_info.get("renderBasename")
+    cur_base = cur_info.get("renderBasename") or cur_info.get("destRelative") or bl_base
+    prior_ext = _ext_format(bl_base or cur_base)
+    cur_ext = _ext_format(cur_base)
+    ext_changed = prior_ext != cur_ext
+    if cur_info["sha256"] == bl_info["sha256"]:
+        if not ext_changed:
+            return None
+        return {
+            "reasons": ["format"],
+            "format": (prior_ext, cur_ext),
+            "pixels": False,
+            "timing": None,
+        }
+    png_path = cur_info.get("pngPath")
+    if baseline_renders is None or not bl_base or not png_path:
+        return {
+            "reasons": ["format"] if ext_changed else ["pixels"],
+            "format": (prior_ext, cur_ext) if ext_changed else None,
+            "pixels": None,
+            "timing": None,
+        }
+    prior = baseline_renders / cur_info["module"] / bl_base
+    return _change_detail(prior, Path(png_path), bl_base, cur_base, size_aware=size_aware)
+
+
 def _is_changed(
     cur_info: dict,
     bl_info: dict,
@@ -299,22 +642,9 @@ def _is_changed(
 ) -> bool:
     """Decide whether ``cur_info`` represents a real change vs ``bl_info``.
 
-    Fast path: bytes match → unchanged. Otherwise, when a baseline-renders
-    directory is available, defer to ``_perceptually_changed`` so
-    sha-different-but-perceptually-identical pairs (renderer noise, e.g.
-    issue #190) don't trip the diff bot. With no baseline renders to
-    compare against, we fall back to the strict sha-only behaviour.
+    The boolean view of [change_detail].
     """
-    if cur_info["sha256"] == bl_info["sha256"]:
-        return False
-    if baseline_renders is None:
-        return True
-    basename = bl_info.get("renderBasename")
-    png_path = cur_info.get("pngPath")
-    if not basename or not png_path:
-        return True
-    prior = baseline_renders / cur_info["module"] / basename
-    return _perceptually_changed(prior, Path(png_path), size_aware=size_aware)
+    return change_detail(cur_info, bl_info, baseline_renders, size_aware=size_aware) is not None
 
 
 def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
