@@ -1194,6 +1194,15 @@ def _entry_label(info: dict) -> str:
     return " · ".join(parts) or info["previewId"]
 
 
+def _qualifier_label(info: dict) -> str:
+    """[_entry_label] without its fallback: the variant / capture qualifiers
+    only, ``""`` when there are none. For places that already name the
+    function, where repeating the bare preview id would be noise."""
+    variant = _variant_label(info["previewId"])
+    capture = info.get("captureLabel") or ""
+    return " · ".join(p for p in (variant, capture) if p)
+
+
 def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
     # ``ref`` is either a commit SHA (preferred: durable) or a branch name
     # (first-run fallback when no baseline/PR commit exists yet).
@@ -1602,9 +1611,10 @@ def _emit_format_changes(
             before = f'<img src="{b_src}" width="120" />'
             after = f'<img src="{a_src}" width="120" />'
         timing = (d["timing"] or "—").replace("timing changed: ", "")
-        label = _entry_label(cur)
+        qualifier = _qualifier_label(cur)
+        name = f"`{cur['functionName']}`" + (f" · {qualifier}" if qualifier else "")
         lines.append(
-            f"| `{cur['functionName']}` · {label} ({module}) "
+            f"| {name} ({module}) "
             f"| {_format_label(old)} → {_format_label(new)} | {pixels} | {timing} "
             f"| {before} | {after} |"
         )
@@ -1980,7 +1990,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
             if timing_notes:
                 lines.append("")
                 for ecur, note in timing_notes:
-                    lines.append(f"- {_entry_label(ecur)}: {note}")
+                    qualifier = _qualifier_label(ecur)
+                    lines.append(f"- {qualifier}: {note}" if qualifier else f"- {note}")
             lines.append("")
 
     if format_changed:
