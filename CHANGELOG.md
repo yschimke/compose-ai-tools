@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.32.2](https://github.com/yschimke/compose-ai-tools/compare/v2.32.1...v2.32.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** compose-preview-daemon 3.13.0 ([#5681](https://github.com/yschimke/compose-ai-tools/issues/5681)) ([0b572fe](https://github.com/yschimke/compose-ai-tools/commit/0b572fe25ef1c9b363e66ac828ecc453fd2f27fd))
+* **gradle-plugin:** name @AnimatedPreview APNG captures .apng ([#5679](https://github.com/yschimke/compose-ai-tools/issues/5679)) ([ee1c6d2](https://github.com/yschimke/compose-ai-tools/commit/ee1c6d296b6ba55b60580b652a06fb653fecbb9f))
+* **preview-diff:** compare motion timing even when the frame hash matches ([#5682](https://github.com/yschimke/compose-ai-tools/issues/5682)) ([9f71b70](https://github.com/yschimke/compose-ai-tools/commit/9f71b70318809201deca5dc29ef53acc3faa8e10))
+* **preview-diff:** treat motion format and timing changes as changes ([#5680](https://github.com/yschimke/compose-ai-tools/issues/5680)) ([69e5855](https://github.com/yschimke/compose-ai-tools/commit/69e5855db48f1dcee4ddddc76ec58ddbf1a8a6ce))
+* **serve:** label the CMP player lanes by implementation (CMP JVM / Wasm / Android) ([#5677](https://github.com/yschimke/compose-ai-tools/issues/5677)) ([918e32d](https://github.com/yschimke/compose-ai-tools/commit/918e32d38d77791dd9ff6afd5c17f2739228dff0))
+
 ## [2.32.1](https://github.com/yschimke/compose-ai-tools/compare/v2.32.0...v2.32.1) (2026-10-02)
 
 
