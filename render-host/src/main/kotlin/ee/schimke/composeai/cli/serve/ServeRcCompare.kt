@@ -214,7 +214,7 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "cmp-jvm",
-        label = "rc-player JVM",
+        label = "CMP JVM",
         short = "jvm",
         // Directory names are frozen: they key assets already staged in published catalogs, and
         // the column was `rc-embedded-jvm` when it drew the AndroidX embedded player's desktop cut.
@@ -227,7 +227,7 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "cmp-wasm",
-        label = "rc-player Wasm",
+        label = "CMP Wasm",
         short = "wasm",
         renderDir = "rc-cmp-wasm",
         diffDir = "rc-cmp-wasm-diff",
