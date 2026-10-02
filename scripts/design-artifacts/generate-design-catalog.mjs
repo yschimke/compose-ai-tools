@@ -1267,12 +1267,26 @@ if (renderFailures.length > 0) {
 // unnoticed for months.
 const heroId = spec.display?.hero;
 if (typeof heroId === "string" && heroId.length > 0) {
-  const heroCandidates = new Set([
-    ...(spec.groups ?? []).flatMap((group) =>
-      (group.components ?? []).flatMap((c) => [c.componentId, c.preview]),
-    ),
-  ]);
-  if (!heroCandidates.has(heroId)) {
+  const heroComponents = (spec.groups ?? []).flatMap((group) => group.components ?? []);
+  const heroCandidates = new Set(heroComponents.flatMap((c) => [c.componentId, c.preview]));
+  // A variant's own preview function publishes under its parent's id, so the serve host can only
+  // reach it through the daemon preview id the live-preview bridge stamps on each image — which
+  // happens only when this publish carries a live path (see `bridgeLivePreviewIds` below).
+  const heroVariantOf = heroCandidates.has(heroId)
+    ? undefined
+    : heroComponents.find((c) => (c.variants ?? []).some((v) => v?.preview === heroId))
+        ?.componentId;
+  const heroLivePath = Boolean(values["publish-live-bundle"] || values["source-module"]);
+  if (heroVariantOf !== undefined) {
+    if (!heroLivePath) {
+      console.warn(
+        `[${spec.system}] display.hero "${heroId}" names a @CatalogVariant preview function of ` +
+          `"${heroVariantOf}", but this publish has no live path, so its images carry no daemon ` +
+          `preview id to resolve it through and the serve host will pick its own hero. Name a ` +
+          `componentId (e.g. "${heroVariantOf}"), or publish with --publish-live-bundle.`,
+      );
+    }
+  } else if (!heroCandidates.has(heroId)) {
     console.warn(
       `[${spec.system}] display.hero "${heroId}" matches no componentId or @Preview function in ` +
         `the merged inventory, so the serve host will pick its own hero. A per-breakpoint ` +
