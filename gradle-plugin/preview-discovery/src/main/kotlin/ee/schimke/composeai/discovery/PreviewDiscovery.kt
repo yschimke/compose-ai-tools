@@ -195,11 +195,13 @@ object PreviewDiscovery {
      */
     val tourSpecFiles: List<File> = emptyList(),
     /**
-     * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. `true` on the
-     * desktop backend, whose renderer encodes the requested container. `false` (the default) on the
-     * Android backend: its renderer always encodes `@AnimatedPreview` as GIF (the renderer-side
-     * `AnimationCapture` carries no format), so discovery records GIF — and names the output `.gif`
-     * — rather than promise APNG bytes it would not get. See [resolveAnimationFormat].
+     * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. The Gradle
+     * plugin passes `true` for both backends: the desktop renderer always encoded the requested
+     * container, and the Android renderer does from compose-preview-daemon 3.13.0 (#208). `false`
+     * (the default, kept for non-Gradle callers that bring their own renderer) marks a backend that
+     * encodes `@AnimatedPreview` as GIF whatever it is asked — an Android renderer older than
+     * 3.13.0 — so discovery records GIF, and names the output `.gif`, rather than promise APNG
+     * bytes it would not get. See [resolveAnimationFormat].
      */
     val animatedPreviewApngSupported: Boolean = false,
   )
@@ -4026,14 +4028,13 @@ object PreviewDiscovery {
    * The output's extension is derived from [AnimationCapture.format] (see [motionRenderOutput]), so
    * the format recorded in `previews.json` has to be the one the renderer will encode — otherwise
    * the manifest names a `.apng` the renderer fills with GIF bytes, which is the mirror image of
-   * the bug this guards against (APNG bytes in a `.gif`). The desktop renderer honours the
-   * requested format. The Android renderer does not yet: its `AnimationCapture` has no `format`
-   * field and `handleAnimatedCapture` always encodes GIF, so on that backend an APNG request is
-   * recorded as GIF, keeps its `.gif` name, and says so.
-   *
-   * TODO(APNG plan step D2): drop the Android downgrade once the Robolectric renderer encodes
-   *   `@AnimatedPreview(format = Apng)` as APNG, and flip the Android discover task's
-   *   [Input.animatedPreviewApngSupported] to `true`.
+   * the bug this guards against (APNG bytes in a `.gif`). Both renderers the Gradle plugin wires
+   * honour the requested format — desktop always has, Android from compose-preview-daemon 3.13.0
+   * (#208, where the renderer started reading `format` from the manifest) — so the plugin passes
+   * `apngSupported = true` on both and this is a no-op there. The downgrade only runs for a caller
+   * that declares its backend GIF-only (`PreviewDiscoveryCli --animated-preview-apng-supported
+   * false`, the CLI default): an Android renderer older than 3.13.0 always encodes GIF, so an APNG
+   * request is recorded as GIF, keeps its `.gif` name, and says so.
    */
   internal fun resolveAnimationFormat(
     animation: AnimationCapture,
@@ -4044,9 +4045,9 @@ object PreviewDiscovery {
     if (animation.format != MotionFormat.APNG || apngSupported) return animation
     warnings.add(
       "composePreview: '$owner' asks for @AnimatedPreview(format = Apng), but this module's " +
-        "render backend (Android) encodes @AnimatedPreview as GIF only — the capture is written " +
-        "as GIF to a `.gif` output. The desktop backend honours the format; Android support is " +
-        "tracked as a renderer change."
+        "render backend is declared GIF-only (--animated-preview-apng-supported false) — the " +
+        "capture is written as GIF to a `.gif` output. The desktop renderer and the Android " +
+        "renderer from compose-preview-daemon 3.13.0 honour the format."
     )
     return animation.copy(format = MotionFormat.GIF)
   }

@@ -266,10 +266,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
-   * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. The desktop
-   * backend does and passes `true`; the Android backend's renderer always encodes GIF, so it keeps
-   * the `false` default and discovery records (and names) those captures as GIF instead of
-   * promising a `.apng` it would fill with GIF bytes.
+   * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. Both backends
+   * set `true` ([ComposePreviewTasks.registerDiscoverTask]): the desktop renderer always has, and
+   * the Android renderer does from compose-preview-daemon 3.13.0. `false` would make discovery
+   * record (and name) those captures as GIF instead of promising a `.apng` filled with GIF bytes.
    */
   @get:Input abstract val animatedPreviewApngSupported: Property<Boolean>
 

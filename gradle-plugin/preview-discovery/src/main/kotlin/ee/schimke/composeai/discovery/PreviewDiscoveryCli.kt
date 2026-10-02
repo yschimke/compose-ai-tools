@@ -202,9 +202,11 @@ public object PreviewDiscoveryCli {
                           downstream consumers don't treat the skipped sheet as missing (#2135).
         --animated-preview-apng-supported <true|false>
                           Whether this backend encodes @AnimatedPreview(format = Apng) as APNG.
-                          Default false (Android, whose renderer writes GIF): an APNG request is
-                          recorded as GIF and named .gif. Pass true for the desktop renderer so
-                          the capture is recorded as APNG and named .apng.
+                          Default false (an Android renderer older than compose-preview-daemon
+                          3.13.0, which writes GIF): an APNG request is recorded as GIF and named
+                          .gif. Pass true for the desktop renderer and for renderer-android
+                          3.13.0+ (the Gradle plugin does for both) so the capture is recorded as
+                          APNG and named .apng.
         --wear <true|false>
                           Whether this is a Wear OS module. Default false. Pass true for a Wear
                           target (the Gradle backend derives this from the merged manifest's

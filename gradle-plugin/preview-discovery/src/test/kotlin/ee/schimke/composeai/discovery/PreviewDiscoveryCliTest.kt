@@ -99,7 +99,7 @@ class PreviewDiscoveryCliTest {
   }
 
   @Test
-  fun `--animated-preview-apng-supported defaults to false (Android renderer writes GIF)`() {
+  fun `--animated-preview-apng-supported defaults to false (pre-3_13 Android renderer writes GIF)`() {
     assertThat(PreviewDiscoveryCli.parse(baseArgs).input.animatedPreviewApngSupported).isFalse()
   }
 

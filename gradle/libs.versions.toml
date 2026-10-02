@@ -385,7 +385,15 @@ composeai-contracts = "3.15.0"
 # 3.12.0 drives desktop scenes on the EDT (compose-preview-daemon#198), fixing the intermittent
 # `LayoutNode N not found in RectList` crash Compose Multiplatform 1.12.0 renders hit when the EDT's
 # delayed RectList defragment raced the render thread.
-composeai-preview-daemon = "3.12.0"
+# 3.13.0 fixes motion timing and lets Android write APNG. Desktop (compose-preview-daemon#203) and
+# Android (#206) animated / interaction captures now advance by the exact frame interval — a 33 ms
+# interval used to play ~1.45x fast because frames snapped to whole 16 ms ticks. Both GIF encoders
+# distribute frame delays so they sum exactly (33 ms -> 3/3/4 cs, #204); the APNG encoder writes
+# changed regions with per-frame delays (#207: bytes change, pixels and frame counts do not); and
+# the Android renderer honours `@AnimatedPreview(format = Apng)` (#208), which is what lets the
+# Android discover task stop downgrading that request to GIF. Built against contracts 3.15.0 (its
+# `daemon-protocol`; the rest at 3.14.0), so `composeai-contracts` above already covers it.
+composeai-preview-daemon = "3.13.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
