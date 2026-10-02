@@ -661,6 +661,29 @@ The reference PNGs are pushed to `compose-preview/pr` alongside the PR renders
 (`figma/<module>/<previewId>.png`), so they are commit-pinned like every other
 image in the comment.
 
+## Motion captures (GIF / APNG)
+
+An animated capture is compared on three things, not just its pixels:
+
+- **Container.** A `.gif` → `.apng` change (or any change of sniffed format) is
+  always reported, under its own **Format changed** section with one row per
+  capture saying whether the pixels and timing also moved. It is never absorbed
+  as renderer noise, and the baseline branch always stores the new bytes under
+  the new name.
+- **Timing.** Per-frame delays (GIF Graphic Control Extension, APNG `fcTL`) are
+  compared within 1 ms per frame and in total, so a re-timed animation with
+  identical frames is reported as changed, with the timing spelled out.
+- **Pixels.** Every frame, composited onto the full canvas (an APNG whose later
+  frames only cover the region that changed compares equal to its full-frame
+  twin).
+
+`raw.githubusercontent.com` serves `.apng` as `application/octet-stream` with
+`nosniff`, which a browser will not draw in an `<img>`. So every `.apng` the
+action publishes to a render branch gets a byte-identical `<name>.apng.png` beside
+it, served as `image/png`, and the comment embeds that copy while its links keep
+pointing at the canonical `.apng`. The display copy has no `baselines.json` entry,
+so render history and every other consumer ignore it.
+
 ## Downloadable-font cache
 
 Previews that use `Font(GoogleFont(...))` resolve their faces through a
