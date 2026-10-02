@@ -99,6 +99,27 @@ class PreviewDiscoveryCliTest {
   }
 
   @Test
+  fun `--animated-preview-apng-supported defaults to false (Android renderer writes GIF)`() {
+    assertThat(PreviewDiscoveryCli.parse(baseArgs).input.animatedPreviewApngSupported).isFalse()
+  }
+
+  @Test
+  fun `--animated-preview-apng-supported true marks a backend that honours the format`() {
+    val parsed =
+      PreviewDiscoveryCli.parse(baseArgs + arrayOf("--animated-preview-apng-supported", "true"))
+    assertThat(parsed.input.animatedPreviewApngSupported).isTrue()
+  }
+
+  @Test
+  fun `--animated-preview-apng-supported rejects a non-boolean value`() {
+    val error =
+      assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
+        PreviewDiscoveryCli.parse(baseArgs + arrayOf("--animated-preview-apng-supported", "apng"))
+      }
+    assertThat(error.message).contains("must be 'true' or 'false'")
+  }
+
+  @Test
   fun `--wear defaults to false (non-Wear backend)`() {
     assertThat(PreviewDiscoveryCli.parse(baseArgs).input.isWear).isFalse()
   }

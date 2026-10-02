@@ -155,6 +155,43 @@ class SelectVariantsTest(unittest.TestCase):
         rows = ar.select_variants(manifest, {})
         self.assertEqual(rows, [])
 
+    def test_filters_out_apng_animations(self):
+        # `@AnimatedPreview(format = Apng)` / `@InteractionPreview` write
+        # `.apng`; an extension check that only knew `.gif` let them through.
+        apng_preview = _preview(id="x.Anim_1", function="Anim", device="id:phone")
+        apng_preview["captures"] = [{"renderOutput": "renders/Anim.apng"}]
+        manifest = {"module": "app", "previews": [apng_preview]}
+        self.assertEqual(ar.select_variants(manifest, {}), [])
+
+    def test_filters_out_motion_captures_by_kind_not_extension(self):
+        # A motion capture is recognised by its capture field, so a container
+        # written with a still's extension (an APNG named `.png`) still counts.
+        for field in ("animation", "interaction", "focusGif"):
+            with self.subTest(field=field):
+                preview = _preview(id="x.Anim_1", function="Anim", device="id:phone")
+                preview["captures"] = [
+                    {"renderOutput": "renders/Anim.png", field: {"format": "APNG"}},
+                ]
+                manifest = {"module": "app", "previews": [preview]}
+                self.assertEqual(ar.select_variants(manifest, {}), [])
+
+    def test_null_motion_fields_do_not_mark_a_still_dynamic(self):
+        # `previews.json` is written with `encodeDefaults`, so a still carries
+        # explicit `null`s for every motion field — those are not motion.
+        still = _preview(id="x.Button_1", function="Button", device="id:phone")
+        still["captures"] = [
+            {
+                "renderOutput": "renders/Button.png",
+                "animation": None,
+                "interaction": None,
+                "focusGif": None,
+                "scroll": None,
+            },
+        ]
+        manifest = {"module": "app", "previews": [still]}
+        rows = ar.select_variants(manifest, {})
+        self.assertEqual([r["functionName"] for r in rows], ["Button"])
+
     def test_filters_out_color_scheme_specimen_helper(self):
         specimen = _preview(
             id="x.ColorSchemeSpecimenPreview",

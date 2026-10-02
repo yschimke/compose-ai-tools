@@ -266,6 +266,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
+   * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. The desktop
+   * backend does and passes `true`; the Android backend's renderer always encodes GIF, so it keeps
+   * the `false` default and discovery records (and names) those captures as GIF instead of
+   * promising a `.apng` it would fill with GIF bytes.
+   */
+  @get:Input abstract val animatedPreviewApngSupported: Property<Boolean>
+
+  /**
    * Whether a Wear module's device-less previews are retargeted onto the Wear canvas (227dp @
    * 2.0x). `true` (default) keeps the historical behaviour; `false` opts out so device-less
    * previews stay wrap-content and the renderer crops each PNG to its intrinsic layout bounds —
@@ -356,6 +364,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         projectClassJars = scopedClassJars,
         activeClassDirs = activeClassDirs.files.toList(),
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
+        animatedPreviewApngSupported = animatedPreviewApngSupported.getOrElse(false),
         isWear = isWear,
         retargetWearPreviews = retargetWearPreviews.getOrElse(true),
         mergedManifest = mergedManifest.orNull?.asFile?.takeIf { it.exists() },
