@@ -700,11 +700,12 @@ export function renderRcCompareHtml(model, opts = {}) {
           .map((lane) => `<strong>${esc(lane.label)}</strong>`)
           .join(", ")}. A player earns a column only where the run recorded a verdict for it, so ` +
         `these are absent rather than empty — the publishing workflow opts each lane in per catalog.</p>`;
-  // "Camaelon JS", "Camaelon JS + embedded", … — the players this page actually shows.
+  // "Camaelon JS", "Camaelon JS + AndroidX Embedded", … — the players this page actually shows,
+  // named by implementation like the column labels.
   const laneNames = [
     "Camaelon JS",
-    withEmbedded && "embedded",
-    withAndroidxEmbedded && "androidx.dev embedded",
+    withEmbedded && "AndroidX Embedded",
+    withAndroidxEmbedded && "AndroidX Embedded · androidx.dev",
     withEmbeddedJvm && "rc-player JVM",
     withCmpWasm && "rc-player Wasm",
   ].filter(Boolean);

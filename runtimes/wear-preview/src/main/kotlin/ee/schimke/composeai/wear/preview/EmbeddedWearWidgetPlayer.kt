@@ -21,8 +21,8 @@ internal val wearWidgetPreviewPlayer: WearWidgetPreviewPlayer by lazy {
  * once per JVM.
  *
  * `:wear-preview-runtime` takes the embedded player as `compileOnly` — a consumer that doesn't ship
- * it still loads this helper — so the CMP lane has to ask before it calls. A consumer without the
- * player (or with one whose entry point has drifted) draws through upstream `WearWidgetPreview`
+ * it still loads this helper — so the embedded lane has to ask before it calls. A consumer without
+ * the player (or with one whose entry point has drifted) draws through upstream `WearWidgetPreview`
  * instead of dying with `NoClassDefFoundError` / `NoSuchMethodError`. Same gate, and the same
  * reasoning, as `isEmbeddedPlayerAvailable` in `:data-remotecompose-connector`.
  */

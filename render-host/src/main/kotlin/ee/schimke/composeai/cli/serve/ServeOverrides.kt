@@ -106,11 +106,12 @@ public object ServeOverrides {
       // `knob.` knobs.
       "rcProfile",
       // Remote Compose render backend (the viewer's per-preview backend selector). Selects which
-      // *server-side* player draws the replayed `ir/<id>.rc` document: `java`/`view` →
-      // `RemoteComposePlayerKind.VIEW`, `cmp-android`/`embedded` → `EMBEDDED`. The client-side `js`
-      // canvas lane and the not-yet-renderable `cmp-jvm` lane never ride this param (js replays the
-      // doc in-browser; cmp-jvm has no draw path), so those values are rejected. Daemon-only +
-      // Android-only — a desktop/static session has no Remote Compose runtime and ignores it.
+      // *server-side* player draws the replayed `ir/<id>.rc` document: `androidx-view` (legacy
+      // `java`/`view`) → `RemoteComposePlayerKind.VIEW`, `androidx-embedded` (legacy `embedded`) →
+      // `EMBEDDED`, `cmp-android` → `playerId = "cmp-android"`, and any other id-shaped value →
+      // `playerId`. The client-side `camaelon-js` / `cmp-wasm` lanes and the `cmp-jvm` subprocess
+      // lane never ride this param, so those values are rejected. Daemon-only + Android-only — a
+      // desktop/static session has no Remote Compose runtime and ignores it.
       "rcPlayer",
     )
 
@@ -694,27 +695,31 @@ public object ServeOverrides {
         }
     }
 
-    // Remote Compose render backend (`rcPlayer=<backend>`). A built-in daemon player — by its
-    // backend wire id, the daemon-native kind, or its canonical implementation name
-    // (`java`/`view`/`androidx-view` → VIEW, `cmp-android`/`embedded`/`androidx-embedded` →
-    // EMBEDDED) — rides the override's `player` enum exactly as before. Any other id-shaped value
-    // rides `playerId`: a player registered with the daemon's connector answers to a name this
-    // server cannot enumerate, so the daemon resolves it and refuses one nothing answers to by
-    // name. What stays a hard Invalid is a lane that never rides the daemon override at all (the
-    // in-browser `js` / `cmp-wasm` players, the `cmp-jvm` subprocess) and anything not shaped like
-    // an id.
+    // Remote Compose render backend (`rcPlayer=<backend>`). A daemon-drawn backend, by canonical
+    // id or legacy spelling ([RcPlayerBackend.serverSideFromParam]), rides the override exactly as
+    // that backend says: the two AndroidX players through the `player` enum
+    // (`androidx-view`/`java`/`view` → VIEW, `androidx-embedded`/`embedded` → EMBEDDED), the CMP
+    // player on Android through `playerId = "cmp-android"`. Any other id-shaped value rides
+    // `playerId`: a player registered with the daemon's connector answers to a name this server
+    // cannot enumerate, so the daemon resolves it and refuses one nothing answers to by name. What
+    // stays a hard Invalid is a lane that never rides the daemon at all (the in-browser
+    // `camaelon-js` / `cmp-wasm` players, the `cmp-jvm` subprocess) and anything not shaped like an
+    // id.
     var rcPlayer: ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind? = null
     var rcPlayerId: String? = null
     params["rcPlayer"]
       ?.takeIf { it.isNotBlank() }
       ?.let { raw ->
-        val builtIn = RcPlayerBackend.serverSideFromParam(raw)?.playerKind
+        val daemonBackend = RcPlayerBackend.serverSideFromParam(raw)
         when {
-          builtIn != null -> rcPlayer = builtIn
+          daemonBackend != null -> {
+            rcPlayer = daemonBackend.playerKind
+            rcPlayerId = daemonBackend.daemonPlayerId
+          }
           RcPlayerBackend.isNonDaemonLane(raw) ->
             return OverrideParse.Invalid(
-              "rcPlayer '$raw' is not drawn by a server-side render; use java/view, " +
-                "cmp-android/embedded, or the id of a player registered with the daemon"
+              "rcPlayer '$raw' is not drawn by a server-side render; use androidx-view, " +
+                "androidx-embedded, cmp-android, or the id of a player registered with the daemon"
             )
           RcPlayerBackend.isPlayerIdShaped(raw) -> rcPlayerId = raw.trim().lowercase()
           else ->
@@ -822,8 +827,9 @@ public object ServeOverrides {
       // re-render. Named values sorted for order-independence; the value/profile toStrings are
       // stable. acceptedHostActions is never set from the serve query path, so it is omitted.
       append("|rcProfile=").append(o.remoteCompose?.profile)
-      // The render backend participates so switching the RC player (java ⇄ cmp-android) re-renders
-      // rather than serving the prior backend's cached pixels under a shared key.
+      // The render backend participates so switching the RC player (androidx-embedded ⇄
+      // cmp-android, which differ only in `player` vs `playerId`) re-renders rather than serving
+      // the prior backend's cached pixels under a shared key.
       append("|rcPlayer=").append(o.remoteCompose?.player)
       append("|rcPlayerId=").append(o.remoteCompose?.playerId)
       append("|rc=")

@@ -42,13 +42,14 @@ import kotlinx.coroutines.runBlocking
  *
  * ## Which player draws
  *
- * The captured bytes are played by the Compose Multiplatform player ([WearWidgetPreviewPlayer.CMP])
- * — a widget composes into real Compose nodes rather than into one opaque `View`, which is what
- * stopped every widget preview reporting the same unlabelled `RemoteComposePlayer` accessibility
- * error (issue #5259). Select the View-backed lane with `-PcomposePreview.rcPlayer=view` (or
- * `-Dcomposeai.render.rcPlayer=view` on the render JVM); see [WearWidgetPreviewPlayer]. Either way
- * the pixels are drawn from the *same* captured document, sized exactly as upstream sizes it — the
- * widget's footprint plus its container padding.
+ * The captured bytes are played by the AndroidX embedded player
+ * ([WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED]) — a widget composes into real Compose nodes rather
+ * than into one opaque `View`, which is what stopped every widget preview reporting the same
+ * unlabelled `RemoteComposePlayer` accessibility error (issue #5259). Select the View-backed lane
+ * with `-PcomposePreview.rcPlayer=androidx-view` (or `-Dcomposeai.render.rcPlayer=androidx-view` on
+ * the render JVM); see [WearWidgetPreviewPlayer]. Either way the pixels are drawn from the *same*
+ * captured document, sized exactly as upstream sizes it — the widget's footprint plus its container
+ * padding.
  *
  * Where the embedded player is not on the render classpath, or the capture itself failed, this
  * falls back to the upstream [WearWidgetPreview] rather than failing the render — the same
@@ -95,8 +96,8 @@ fun CapturingWearWidgetPreview(
 /**
  * [CapturingWearWidgetPreview] with the replay lane stated rather than read from the process-wide
  * [wearWidgetPreviewPlayer], so a test can drive both lanes in one JVM — in particular
- * [WearWidgetPreviewPlayer.VIEW], the one lane that calls upstream `WearWidgetPreview` and so the
- * one a Glance Wear binary signature change breaks (issue #5420).
+ * [WearWidgetPreviewPlayer.ANDROIDX_VIEW], the one lane that calls upstream `WearWidgetPreview` and
+ * so the one a Glance Wear binary signature change breaks (issue #5420).
  */
 @Composable
 internal fun CapturingWearWidgetPreviewOnLane(
@@ -140,11 +141,14 @@ internal fun CapturingWearWidgetPreviewOnLane(
       }
     }
 
-  // The captured bytes are the widget, so the CMP lane replays them directly. Both fallbacks route
+  // The captured bytes are the widget, so the embedded lane replays them directly. Both fallbacks
+  // route
   // to upstream, which recaptures the document itself: nothing here can be drawn from a capture
   // that failed, and the embedded player has to actually be on the classpath to be called.
   if (
-    captured != null && player == WearWidgetPreviewPlayer.CMP && embeddedWearWidgetPlayerAvailable
+    captured != null &&
+      player == WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED &&
+      embeddedWearWidgetPlayerAvailable
   ) {
     CmpWearWidgetPlayer(bytes = captured, params = params)
   } else {

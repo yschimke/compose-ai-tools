@@ -302,9 +302,10 @@ class AndroidPreviewClasspathTest {
         )
       )
       .containsEntry("composeai.render.rcPlayer", "view")
-    // Unlike the opt-ins above it, this one defaults to ON: the CMP player is what stopped every
-    // Remote Compose preview reporting an unlabelled `RemoteComposePlayer` (issue #5259), so
-    // nothing asked for still means `cmp`.
+    // Unlike the opt-ins above it, this one defaults to ON: the AndroidX embedded player is what
+    // stopped every Remote Compose preview reporting an unlabelled `RemoteComposePlayer` (issue
+    // #5259), so nothing asked for means `androidx-embedded` — never the retired `cmp`, which the
+    // daemon no longer accepts.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -313,7 +314,7 @@ class AndroidPreviewClasspathTest {
           fontsOffline = "false",
         )
       )
-      .containsEntry("composeai.render.rcPlayer", "cmp")
+      .containsEntry("composeai.render.rcPlayer", "androidx-embedded")
   }
 
   private fun writeAndroidJar(file: File) {

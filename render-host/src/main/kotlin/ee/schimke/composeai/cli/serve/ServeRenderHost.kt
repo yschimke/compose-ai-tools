@@ -843,19 +843,20 @@ internal constructor(
   // The Remote Compose `player` override (VIEW ⇄ EMBEDDED server-side player) is meaningful only on
   // the Android backend, which is the only one carrying the Remote Compose runtime — the desktop
   // backend has no runtime and ignores it. Read the daemon's declared backend so the viewer offers
-  // the server-side java / cmp-android backend chips only where they actually re-render.
+  // the server-side androidx-view / androidx-embedded backend chips only where they actually
+  // re-render.
   override val remoteComposePlayerSelectable: Boolean by lazy {
     session.initializeResult.capabilities.backend ==
       ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
   }
 
   /**
-   * A daemon-backed host offers the server-side [RcPlayerBackend.JAVA] /
-   * [RcPlayerBackend.CMP_ANDROID] lanes for a Remote Compose preview when its backend honours the
-   * player override ([remoteComposePlayerSelectable]); the client-side [RcPlayerBackend.JS] lane
-   * rides on top whenever the host can also hand back the `.rc` document. RC-ness is taken from the
-   * preview's declared Remote Compose knobs (populated for a Remote Compose preview) or a carried
-   * `.rc` doc.
+   * A daemon-backed host offers the server-side [RcPlayerBackend.ANDROIDX_VIEW] /
+   * [RcPlayerBackend.ANDROIDX_EMBEDDED] lanes for a Remote Compose preview when its backend honours
+   * the player override ([remoteComposePlayerSelectable]); the client-side
+   * [RcPlayerBackend.CAMAELON_JS] lane rides on top whenever the host can also hand back the `.rc`
+   * document. RC-ness is taken from the preview's declared Remote Compose knobs (populated for a
+   * Remote Compose preview) or a carried `.rc` doc.
    */
   override fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> {
     val isRemoteCompose =
@@ -863,10 +864,13 @@ internal constructor(
         previews.firstOrNull { it.id == previewId }?.remoteComposeKnobs?.isNotEmpty() == true
     if (!isRemoteCompose) return emptyList()
     return buildList {
-      if (hasRemoteComposeDoc(previewId)) add(RcPlayerBackend.JS)
+      if (hasRemoteComposeDoc(previewId)) add(RcPlayerBackend.CAMAELON_JS)
       if (remoteComposePlayerSelectable) {
-        add(RcPlayerBackend.JAVA)
-        add(RcPlayerBackend.CMP_ANDROID)
+        add(RcPlayerBackend.ANDROIDX_VIEW)
+        add(RcPlayerBackend.ANDROIDX_EMBEDDED)
+        // Not [RcPlayerBackend.CMP_ANDROID] yet: the daemon advertises no list of the players it
+        // can resolve by id, and one predating its `cmp-android` backend refuses the render. A
+        // hand-typed `?rcPlayer=cmp-android` still reaches the daemon as `playerId`.
       }
       // Inert today — a daemon-only host carries no baked artifact to name a player for — but
       // stated so this override cannot drift from the other two if it ever gains one.

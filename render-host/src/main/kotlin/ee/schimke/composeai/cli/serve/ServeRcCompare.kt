@@ -146,6 +146,13 @@ public object ServeRcCompare {
   /** The published summary, branch-relative — the source this whole view is derived from. */
   public const val SUMMARY_FILE: String = "rc-compare-summary.json"
 
+  /**
+   * The published columns. Their [RcLaneSource.id]s are column ids, not [RcPlayerBackend.wire] ids,
+   * and were deliberately left alone when the players were renamed by implementation: they key
+   * assets staged in already-published catalogs. `embedded` is the vendored AndroidX embedded
+   * player ([RcPlayerBackend.ANDROIDX_EMBEDDED]); `androidx-embedded` here is the androidx.dev
+   * build of that same player, a column no backend maps to; `js` is [RcPlayerBackend.CAMAELON_JS].
+   */
   public val LANES: List<RcLaneSource> =
     listOf(
       RcLaneSource(
