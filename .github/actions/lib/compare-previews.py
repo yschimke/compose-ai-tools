@@ -290,6 +290,351 @@ def _over_budget_flat(prior, current, limit: int) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# Motion captures: container format, frame timing, display copies
+#
+# A motion capture has three properties a pixel compare cannot see, and the
+# diff bot reported every one of them as "unchanged":
+#
+#   * its CONTAINER. A GIF and an APNG of the same capture compare as
+#     perceptually identical — the GIF's palette is the only difference, and it
+#     is below every budget above — so a `.gif` → `.apng` flip read as no
+#     change on the PR, and on the baseline branch the stabiliser then replayed
+#     the prior GIF's bytes under the new `.apng` name. The format never
+#     actually migrated; the file merely changed its extension.
+#   * its TIMING. Delays live in the GIF Graphic Control Extension
+#     (centiseconds) or the APNG `fcTL` (`delay_num / delay_den` seconds), and
+#     nothing read them, so a 33 → 16 ms change was invisible.
+#   * how GitHub SERVES it. `raw.githubusercontent.com` picks a content type
+#     from the extension alone: `.png` is `image/png`, `.gif` is `image/gif`,
+#     and `.apng` is `application/octet-stream` with `nosniff`. The comment
+#     embeds renders straight from that host (the rendered comment HTML keeps
+#     the raw URL; GitHub does not camo-proxy its own user-content origin), so
+#     the browser fetches it cross-origin, and a `nosniff` response that is not
+#     an image type is one Fetch's opaque-response blocking may refuse. Whether a
+#     given browser draws it anyway is not something to depend on — `image/png`
+#     is unambiguous.
+#
+# So: a container change is always a change, never stabilised and always
+# published as the NEW bytes; a timing change is a change; and every `.apng`
+# published to a render branch gets a byte-identical `<name>.apng.png` beside
+# it that the comment embeds. The `.apng` stays the canonical name — it is what
+# `baselines.json`, history, bundles and the a11y report address, and none of
+# them ever sees the display copy, which only exists on the delivery branches
+# this script writes.
+# ---------------------------------------------------------------------------
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+# The suffix appended to an `.apng` render to get a name GitHub serves as
+# `image/png`. Appended rather than substituted so the display copy can never
+# collide with a real `<id>.png` still of the same preview (`@SettledPreview`
+# writes exactly that), and so the canonical name is recoverable by stripping.
+DISPLAY_COPY_SUFFIX = ".png"
+
+# Per-frame and total slack for a timing comparison. APNG delays are rational
+# (1/60 s is 16.67 ms) and two encoders can spell the same delay with different
+# numerators, so exact equality would report renderer noise; a millisecond is
+# below anything a viewer can perceive and above every rounding artefact.
+_TIMING_TOLERANCE_MS = 1.0
+
+_FORMAT_LABELS = {"gif": "GIF", "apng": "APNG", "png": "PNG", "webp": "WebP"}
+
+
+def _ext_format(basename: str | None) -> str:
+    """The container a render's file NAME claims: lowercase extension, no dot."""
+    if not basename:
+        return ""
+    suffix = Path(basename).suffix.lower()
+    return suffix[1:] if suffix else ""
+
+
+def _png_chunks(data: bytes):
+    """Yield ``(type, payload)`` for each chunk of a PNG byte string.
+
+    Stops quietly at the first truncated chunk — the callers only ever want
+    metadata, and a damaged file is reported through the pixel path instead.
+    """
+    pos = len(_PNG_SIGNATURE)
+    end = len(data)
+    while pos + 8 <= end:
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        ctype = data[pos + 4:pos + 8]
+        payload = data[pos + 8:pos + 8 + length]
+        if len(payload) < length:
+            return
+        yield ctype, payload
+        if ctype == b"IEND":
+            return
+        pos += 12 + length
+
+
+def _sniff_format(path: Path) -> str | None:
+    """The container a render's BYTES are: ``gif`` / ``apng`` / ``png``.
+
+    ``None`` when the file is missing or is none of those. An APNG is a PNG
+    with an ``acTL`` chunk before its first ``IDAT`` (the spec's own test), so
+    a still PNG that happens to carry other ancillary chunks stays ``png``.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if data.startswith(_PNG_SIGNATURE):
+        for ctype, _payload in _png_chunks(data):
+            if ctype == b"acTL":
+                return "apng"
+            if ctype == b"IDAT":
+                break
+        return "png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def _gif_delays(data: bytes) -> list[float] | None:
+    """Per-frame delays (ms) of a GIF, read from its Graphic Control Extensions.
+
+    A GCE applies to the next image descriptor only; a frame with none has a
+    zero delay. Returned raw — browsers clamp tiny delays at display time, but
+    that is a property of the viewer, not of the file this compares.
+    """
+    if len(data) < 13:
+        return None
+    pos = 13
+    if data[10] & 0x80:  # global colour table
+        pos += 3 * (2 ** ((data[10] & 0x07) + 1))
+    delays: list[float] = []
+    pending = 0
+    end = len(data)
+
+    def skip_sub_blocks(p: int) -> int:
+        while p < end:
+            size = data[p]
+            p += 1
+            if size == 0:
+                return p
+            p += size
+        return p
+
+    while pos < end:
+        marker = data[pos]
+        if marker == 0x3B:  # trailer
+            break
+        if marker == 0x21 and pos + 1 < end:  # extension
+            label = data[pos + 1]
+            if label == 0xF9 and pos + 7 < end:
+                pending = int.from_bytes(data[pos + 4:pos + 6], "little") * 10
+            pos = skip_sub_blocks(pos + 2)
+            continue
+        if marker == 0x2C and pos + 10 <= end:  # image descriptor
+            packed = data[pos + 9]
+            pos += 10
+            if packed & 0x80:  # local colour table
+                pos += 3 * (2 ** ((packed & 0x07) + 1))
+            pos += 1  # LZW minimum code size
+            pos = skip_sub_blocks(pos)
+            delays.append(float(pending))
+            pending = 0
+            continue
+        return delays or None  # malformed: give up with what was read
+    return delays
+
+
+def _apng_delays(data: bytes) -> list[float]:
+    """Per-frame delays (ms) of an APNG, one per ``fcTL``.
+
+    A zero denominator means 1/100 s units, per the APNG spec.
+    """
+    delays: list[float] = []
+    for ctype, payload in _png_chunks(data):
+        if ctype == b"fcTL" and len(payload) >= 26:
+            num = int.from_bytes(payload[20:22], "big")
+            den = int.from_bytes(payload[22:24], "big") or 100
+            delays.append(num * 1000.0 / den)
+    return delays
+
+
+def _frame_delays(path: Path) -> list[float] | None:
+    """Per-frame delays (ms) of a motion render; ``[]`` for a still, ``None``
+    when the file can't be read or isn't a format this understands."""
+    fmt = _sniff_format(path)
+    if fmt is None:
+        return None
+    if fmt == "png" or fmt == "webp":
+        return []
+    data = path.read_bytes()
+    return _gif_delays(data) if fmt == "gif" else _apng_delays(data)
+
+
+def _timing_summary(delays: list[float]) -> str:
+    total = sum(delays)
+    avg = total / len(delays) if delays else 0.0
+    return f"{len(delays)} frame(s), avg {avg:.1f} ms, total {total:.0f} ms"
+
+
+def _timing_change(prior: list[float] | None, current: list[float] | None) -> str | None:
+    """A human summary of how two delay lists differ, or ``None`` if they match.
+
+    Compares frame count, every frame's delay and the total, each within
+    [_TIMING_TOLERANCE_MS]. The total is checked separately because a
+    sub-tolerance per-frame drift accumulates: 0.33 ms on each of 120 frames is
+    a 40 ms longer animation.
+    """
+    if prior is None or current is None:
+        return None
+    if not prior and not current:
+        return None
+    total_moved = abs(sum(prior) - sum(current)) > _TIMING_TOLERANCE_MS
+    frame_moved = len(prior) != len(current) or any(
+        abs(a - b) > _TIMING_TOLERANCE_MS for a, b in zip(prior, current)
+    )
+    if not (total_moved or frame_moved):
+        return None
+
+    def avg(d: list[float]) -> float:
+        return sum(d) / len(d) if d else 0.0
+
+    parts = []
+    if len(prior) != len(current):
+        parts.append(f"{len(prior)} → {len(current)} frames")
+    parts.append(f"avg {avg(prior):.1f} → {avg(current):.1f} ms")
+    parts.append(f"total {sum(prior):.0f} → {sum(current):.0f} ms")
+    return "timing changed: " + ", ".join(parts)
+
+
+def _format_label(fmt: str) -> str:
+    return _FORMAT_LABELS.get(fmt, fmt.upper() or "?")
+
+
+def _display_basename(basename: str) -> str:
+    """The name the comment embeds for ``basename``: itself, or the
+    ``image/png``-served display copy for an ``.apng``."""
+    if _ext_format(basename) == "apng":
+        return basename + DISPLAY_COPY_SUFFIX
+    return basename
+
+
+def _is_display_copy(basename: str) -> bool:
+    return basename.lower().endswith(".apng" + DISPLAY_COPY_SUFFIX)
+
+
+def _write_display_copy(dest: Path) -> None:
+    """Publish the ``image/png``-served twin of an ``.apng`` written at ``dest``.
+
+    Byte-identical: browsers decode APNG from an ``image/png`` response, and a
+    viewer that doesn't still shows the default image, which is frame 0.
+    """
+    if _ext_format(dest.name) != "apng" or not dest.exists():
+        return
+    shutil.copy2(dest, dest.with_name(_display_basename(dest.name)))
+
+
+def _change_detail(
+    prior_png: Path | None,
+    current_png: Path | None,
+    prior_basename: str | None,
+    current_basename: str | None,
+    *,
+    size_aware: bool = False,
+) -> dict | None:
+    """Why ``current`` differs from ``prior``, or ``None`` if it doesn't.
+
+    Returns ``{"reasons": [...], "format": (old, new) | None, "pixels": bool |
+    None, "timing": str | None}`` where ``reasons`` is drawn from ``format`` /
+    ``timing`` / ``pixels``. The caller has already ruled out byte equality.
+
+    A **format** change is decided first and is final: two containers are two
+    files, whatever their pixels, so it is never noise. Pixels and timing are
+    still measured for it — a mass `.gif` → `.apng` migration reads very
+    differently when every row says "pixels identical" — but they can only add
+    detail, never take the change away.
+    """
+    prior_ext = _ext_format(prior_basename or current_basename)
+    current_ext = _ext_format(current_basename)
+    prior_fmt = (_sniff_format(prior_png) if prior_png else None) or prior_ext
+    current_fmt = (_sniff_format(current_png) if current_png else None) or current_ext
+    format_changed = prior_ext != current_ext or prior_fmt != current_fmt
+
+    both_on_disk = (
+        prior_png is not None and current_png is not None
+        and prior_png.exists() and current_png.exists()
+    )
+    timing = (
+        _timing_change(_frame_delays(prior_png), _frame_delays(current_png))
+        if both_on_disk
+        else None
+    )
+    pixels = (
+        _perceptually_changed(prior_png, current_png, size_aware=size_aware)
+        if both_on_disk
+        else None
+    )
+
+    reasons = []
+    if format_changed:
+        reasons.append("format")
+    if timing:
+        reasons.append("timing")
+    if pixels or (pixels is None and not format_changed):
+        # Unverifiable (no prior on disk) is a change, exactly as before.
+        reasons.append("pixels")
+    if not reasons:
+        return None
+    return {
+        "reasons": reasons,
+        "format": (prior_fmt, current_fmt) if format_changed else None,
+        "pixels": pixels,
+        "timing": timing,
+    }
+
+
+def change_detail(
+    cur_info: dict,
+    bl_info: dict,
+    baseline_renders: Path | None,
+    *,
+    size_aware: bool = False,
+) -> dict | None:
+    """Why ``cur_info`` differs from ``bl_info`` — see [_change_detail] — or ``None``.
+
+    Fast path: bytes match → unchanged, unless the file NAME changed container
+    (identical bytes published under a new extension are still a migration
+    that has to be pushed). Otherwise, when a baseline-renders directory is
+    available, the pair is measured by [_change_detail], so
+    sha-different-but-perceptually-identical pairs (renderer noise, e.g. issue
+    #190) don't trip the diff bot while format and timing changes always do.
+    With no baseline renders to compare against, this falls back to strict
+    sha-only behaviour.
+    """
+    bl_base = bl_info.get("renderBasename")
+    cur_base = cur_info.get("renderBasename") or cur_info.get("destRelative") or bl_base
+    prior_ext = _ext_format(bl_base or cur_base)
+    cur_ext = _ext_format(cur_base)
+    ext_changed = prior_ext != cur_ext
+    if cur_info["sha256"] == bl_info["sha256"]:
+        if not ext_changed:
+            return None
+        return {
+            "reasons": ["format"],
+            "format": (prior_ext, cur_ext),
+            "pixels": False,
+            "timing": None,
+        }
+    png_path = cur_info.get("pngPath")
+    if baseline_renders is None or not bl_base or not png_path:
+        return {
+            "reasons": ["format"] if ext_changed else ["pixels"],
+            "format": (prior_ext, cur_ext) if ext_changed else None,
+            "pixels": None,
+            "timing": None,
+        }
+    prior = baseline_renders / cur_info["module"] / bl_base
+    return _change_detail(prior, Path(png_path), bl_base, cur_base, size_aware=size_aware)
+
+
 def _is_changed(
     cur_info: dict,
     bl_info: dict,
@@ -299,22 +644,9 @@ def _is_changed(
 ) -> bool:
     """Decide whether ``cur_info`` represents a real change vs ``bl_info``.
 
-    Fast path: bytes match → unchanged. Otherwise, when a baseline-renders
-    directory is available, defer to ``_perceptually_changed`` so
-    sha-different-but-perceptually-identical pairs (renderer noise, e.g.
-    issue #190) don't trip the diff bot. With no baseline renders to
-    compare against, we fall back to the strict sha-only behaviour.
+    The boolean view of [change_detail].
     """
-    if cur_info["sha256"] == bl_info["sha256"]:
-        return False
-    if baseline_renders is None:
-        return True
-    basename = bl_info.get("renderBasename")
-    png_path = cur_info.get("pngPath")
-    if not basename or not png_path:
-        return True
-    prior = baseline_renders / cur_info["module"] / basename
-    return _perceptually_changed(prior, Path(png_path), size_aware=size_aware)
+    return change_detail(cur_info, bl_info, baseline_renders, size_aware=size_aware) is not None
 
 
 def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
@@ -654,7 +986,15 @@ def cmd_generate(args: argparse.Namespace) -> int:
             cur_png = Path(info["pngPath"])
             if not prior_png.exists() or not cur_png.exists():
                 continue
-            if not _perceptually_changed(prior_png, cur_png):
+            # The full classifier, not just the pixel compare: a GIF and an
+            # APNG of the same capture are perceptually identical, and
+            # replaying the prior bytes here is exactly how a `.gif` → `.apng`
+            # migration used to publish the OLD GIF under the new `.apng` name.
+            # A format or timing change is never noise, so it is never
+            # stabilised — the new bytes ship under the new name.
+            if _change_detail(
+                prior_png, cur_png, prior_basename, info["renderBasename"]
+            ) is None:
                 stabilized[key] = {"sha256": prior["sha256"], "png": prior_png}
 
     # --- baselines.json ---
@@ -707,6 +1047,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
+        # `renders/` was just rebuilt from scratch, so display copies are
+        # regenerated with it and can never outlive their `.apng`.
+        _write_display_copy(dest)
     # Carry forward the prior PNG for previews whose render failed but had a
     # prior baseline — keeps the README inline image resolving even though
     # this run didn't produce a fresh capture.
@@ -720,6 +1063,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             dest = renders_out / module / basename
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
+            _write_display_copy(dest)
 
     # --- README.md (browsable gallery) ---
     lines = [
@@ -795,7 +1139,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             lines.append("|" + "---|" * len(tokens))
             cells = []
             for _token, _key, info in g["rows"]:
-                img_path = f"renders/{info['module']}/{info['renderBasename']}"
+                img_path = f"renders/{info['module']}/{_display_basename(info['renderBasename'])}"
                 raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
                 cells.append(f'<img src="{raw_url}" width="200" />')
             lines.append("| " + " | ".join(cells) + " |")
@@ -808,7 +1152,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             for _key, info in standard:
                 label_suffix = f" · {info['captureLabel']}" if info["captureLabel"] else ""
                 fn = f"{info['functionName']}{label_suffix}"
-                img_path = f"renders/{info['module']}/{info['renderBasename']}"
+                img_path = f"renders/{info['module']}/{_display_basename(info['renderBasename'])}"
                 raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
                 lines.append(
                     f"| `{fn}` | <img src=\"{raw_url}\" width=\"150\" /> |"
@@ -850,6 +1194,15 @@ def _entry_label(info: dict) -> str:
     return " · ".join(parts) or info["previewId"]
 
 
+def _qualifier_label(info: dict) -> str:
+    """[_entry_label] without its fallback: the variant / capture qualifiers
+    only, ``""`` when there are none. For places that already name the
+    function, where repeating the bare preview id would be noise."""
+    variant = _variant_label(info["previewId"])
+    capture = info.get("captureLabel") or ""
+    return " · ".join(p for p in (variant, capture) if p)
+
+
 def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
     # ``ref`` is either a commit SHA (preferred: durable) or a branch name
     # (first-run fallback when no baseline/PR commit exists yet).
@@ -857,6 +1210,36 @@ def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
         f"https://raw.githubusercontent.com/{repo}/{ref}"
         f"/renders/{module}/{basename}"
     )
+
+
+def _head_img_url(repo: str, ref: str, module: str, basename: str) -> str:
+    """``<img src>`` for a render `copy-changed` staged on the PR branch.
+
+    `copy-changed` writes the display copy beside every `.apng` it stages, so
+    the head side can always embed it. Links keep [_render_url]'s canonical
+    name.
+    """
+    return _render_url(repo, ref, module, _display_basename(basename))
+
+
+def _base_img_url(
+    repo: str, ref: str, module: str, basename: str, baseline_renders: Path | None
+) -> str:
+    """``<img src>`` for a render on the baseline branch.
+
+    The display copy is only there once a baseline has been generated by a
+    version of this script that writes it, so it is used only when the
+    extracted baseline tree proves it exists; otherwise the canonical name,
+    which is what the comment always embedded.
+    """
+    display = _display_basename(basename)
+    if (
+        display != basename
+        and baseline_renders is not None
+        and (baseline_renders / module / display).exists()
+    ):
+        return _render_url(repo, ref, module, display)
+    return _render_url(repo, ref, module, basename)
 
 
 # ---------------------------------------------------------------------------
@@ -1108,6 +1491,7 @@ def _emit_ab_comparisons(
     repo: str,
     base_ref: str,
     head_ref: str,
+    baseline_renders: Path | None = None,
 ) -> None:
     """Append the side-by-side A/B section to ``lines`` (in place).
 
@@ -1135,7 +1519,7 @@ def _emit_ab_comparisons(
                     before_cells.append("_new_")
                     continue
                 basename = bl.get("renderBasename") or info["renderBasename"]
-                url = _render_url(repo, base_ref, g["module"], basename)
+                url = _base_img_url(repo, base_ref, g["module"], basename, baseline_renders)
                 before_cells.append(f'<img src="{url}" width="200" />')
             lines.append("| Before | " + " | ".join(before_cells) + " |")
         after_cells = []
@@ -1143,14 +1527,14 @@ def _emit_ab_comparisons(
             if changed or bl is None:
                 # Changed / new variants are staged to the head renders branch
                 # by `copy-changed`, so the PR ref has their PNG.
-                url = _render_url(repo, head_ref, g["module"], info["renderBasename"])
+                url = _head_img_url(repo, head_ref, g["module"], info["renderBasename"])
             else:
                 # Unchanged companion: `copy-changed` only stages new/changed
                 # PNGs, so this render was never pushed to the head ref. Its
                 # "After" pixels are byte-identical to the baseline, so point at
                 # the baseline ref to avoid a broken-image cell.
                 basename = bl.get("renderBasename") or info["renderBasename"]
-                url = _render_url(repo, base_ref, g["module"], basename)
+                url = _base_img_url(repo, base_ref, g["module"], basename, baseline_renders)
             after_cells.append(f'<img src="{url}" width="200" />')
         lines.append("| After | " + " | ".join(after_cells) + " |")
         lines.append("")
@@ -1160,6 +1544,84 @@ def _emit_ab_comparisons(
         if diffed:
             lines.append("Changed: " + ", ".join(f"`{t}`" for t in diffed) + ".")
             lines.append("")
+
+
+# Above this many rows the "Format changed" table is collapsed: a default flip
+# moves every motion capture in the repo, and the summary line above the table
+# already says what a reviewer needs to know about the bulk of them.
+_FORMAT_TABLE_COLLAPSE_ROWS = 10
+
+
+def _emit_format_changes(
+    lines: list[str],
+    rows: list[tuple[str, dict, dict, dict]],
+    repo: str,
+    base_ref: str,
+    head_ref: str,
+    baseline_renders: Path | None,
+) -> None:
+    """Append the "Format changed" section to ``lines`` (in place).
+
+    One table row per capture whose container changed. A row whose pixels are
+    identical links its two files rather than embedding them — the pictures
+    are the same picture, which is the point — and a row whose pixels also
+    changed embeds both, so a real regression riding along with a migration is
+    still seen. Links always go to the canonical file.
+    """
+    fns = {(cur["module"], cur["functionName"]) for _k, cur, _b, _d in rows}
+    lines.append(
+        f"### Format changed ({len(rows)} variant(s) across {len(fns)} function(s))"
+    )
+    lines.append("")
+    transitions: dict[str, int] = {}
+    for _k, _c, _b, d in rows:
+        old, new = d["format"]
+        label = f"{_format_label(old)} → {_format_label(new)}"
+        transitions[label] = transitions.get(label, 0) + 1
+    identical = sum(1 for _k, _c, _b, d in rows if d["pixels"] is False)
+    retimed = sum(1 for _k, _c, _b, d in rows if d["timing"])
+    summary = ", ".join(f"{t}: {n}" for t, n in sorted(transitions.items()))
+    lines.append(
+        f"{summary}. Pixels identical in {identical} of {len(rows)}; "
+        f"timing differs in {retimed}. The new files replace the old ones on the "
+        f"baseline branch when this merges."
+    )
+    lines.append("")
+    collapse = len(rows) > _FORMAT_TABLE_COLLAPSE_ROWS
+    if collapse:
+        lines.append(f"<details><summary>All {len(rows)} format changes</summary>")
+        lines.append("")
+    lines.append("| Preview | Format | Pixels | Timing | Before | After |")
+    lines.append("|---------|--------|--------|--------|--------|-------|")
+    for _key, cur, bl, d in sorted(
+        rows, key=lambda r: (r[1]["module"], r[1]["functionName"], r[0])
+    ):
+        module = cur["module"]
+        old, new = d["format"]
+        bl_base = bl.get("renderBasename") or cur["renderBasename"]
+        cur_base = cur["renderBasename"]
+        if d["pixels"] is False:
+            pixels = "identical"
+            before = f"[{_format_label(old)}]({_render_url(repo, base_ref, module, bl_base)})"
+            after = f"[{_format_label(new)}]({_render_url(repo, head_ref, module, cur_base)})"
+        else:
+            pixels = "**changed**" if d["pixels"] else "not compared"
+            b_src = _base_img_url(repo, base_ref, module, bl_base, baseline_renders)
+            a_src = _head_img_url(repo, head_ref, module, cur_base)
+            before = f'<img src="{b_src}" width="120" />'
+            after = f'<img src="{a_src}" width="120" />'
+        timing = (d["timing"] or "—").replace("timing changed: ", "")
+        qualifier = _qualifier_label(cur)
+        name = f"`{cur['functionName']}`" + (f" · {qualifier}" if qualifier else "")
+        lines.append(
+            f"| {name} ({module}) "
+            f"| {_format_label(old)} → {_format_label(new)} | {pixels} | {timing} "
+            f"| {before} | {after} |"
+        )
+    lines.append("")
+    if collapse:
+        lines.append("</details>")
+        lines.append("")
 
 
 def _parse_scope_modules(args: argparse.Namespace) -> set[str] | None:
@@ -1370,6 +1832,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
+    # A container change (`.gif` → `.apng`, …) gets its own section: a format
+    # flip moves every motion capture at once, and forty before/after tables
+    # of identical pixels would bury the one real regression among them.
+    format_changed: list[tuple[str, dict, dict, dict]] = []
+    details: dict[str, dict] = {}
     removed: list[tuple[str, dict]] = []
     unchanged: list[tuple[str, dict]] = []
 
@@ -1380,10 +1847,15 @@ def cmd_compare(args: argparse.Namespace) -> int:
             continue
         if key not in baselines:
             new.append((key, info))
-        elif _is_changed(info, baselines[key], baseline_renders):
-            changed.append((key, info, baselines[key]))
-        else:
+            continue
+        detail = change_detail(info, baselines[key], baseline_renders)
+        if detail is None:
             unchanged.append((key, info))
+        elif "format" in detail["reasons"]:
+            format_changed.append((key, info, baselines[key], detail))
+        else:
+            details[key] = detail
+            changed.append((key, info, baselines[key]))
 
     in_scope_baseline = 0
     for key, bl_info in sorted(baselines.items()):
@@ -1418,7 +1890,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.extend(["- [ ] Re-run preview diff", ""])
 
     if not new and not changed and not removed and not failures and not ab_groups \
-            and not partial_render:
+            and not format_changed and not partial_render:
         lines.append("No visual changes detected.")
         lines.append("")
         if unchanged:
@@ -1443,7 +1915,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
 
     if ab_groups:
-        _emit_ab_comparisons(lines, ab_groups, repo, base_ref, head_ref)
+        _emit_ab_comparisons(lines, ab_groups, repo, base_ref, head_ref, baseline_renders)
 
     if failures:
         lines.append(
@@ -1467,8 +1939,15 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups.items()):
             hero_key, hero_cur, hero_bl = entries[0]
-            before = _render_url(repo, base_ref, module, hero_cur["renderBasename"])
-            after = _render_url(repo, head_ref, module, hero_cur["renderBasename"])
+            # Before is the BASELINE's file: same name today, but a rename
+            # (or a container change) would otherwise point at a file the
+            # baseline branch never had.
+            before = _base_img_url(
+                repo, base_ref, module,
+                hero_bl.get("renderBasename") or hero_cur["renderBasename"],
+                baseline_renders,
+            )
+            after = _head_img_url(repo, head_ref, module, hero_cur["renderBasename"])
 
             lines.append(f"**`{fn}`** ({module})")
             lines.append("")
@@ -1501,7 +1980,24 @@ def cmd_compare(args: argparse.Namespace) -> int:
                     variant_links.append(f"[{label}]({link})")
                 lines.append("")
                 lines.append(f"Other variants: {', '.join(variant_links)}")
+            # Timing is invisible in a still thumbnail, and a timing-only
+            # change has nothing else to show — so say it in words.
+            timing_notes = [
+                (ecur, details[ekey]["timing"])
+                for ekey, ecur, _ebl in entries
+                if details.get(ekey, {}).get("timing")
+            ]
+            if timing_notes:
+                lines.append("")
+                for ecur, note in timing_notes:
+                    qualifier = _qualifier_label(ecur)
+                    lines.append(f"- {qualifier}: {note}" if qualifier else f"- {note}")
             lines.append("")
+
+    if format_changed:
+        _emit_format_changes(
+            lines, format_changed, repo, base_ref, head_ref, baseline_renders
+        )
 
     if new:
         # Group new previews similarly.
@@ -1515,7 +2011,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
         for (module, fn), entries in sorted(groups_new.items()):
             hero_key, hero_info = entries[0]
-            after = _render_url(repo, head_ref, module, hero_info["renderBasename"])
+            after = _head_img_url(repo, head_ref, module, hero_info["renderBasename"])
 
             figma = _figma_cell(repo, head_ref, figma_refs.get(hero_info["previewId"]))
             if figma:
@@ -1648,6 +2144,8 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
             dest = out_dir / "renders" / info["module"] / info["renderBasename"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(png, dest)
+            # The comment embeds the `image/png`-served twin of an `.apng`.
+            _write_display_copy(dest)
             copied += 1
             # Deduped on (module, previewId): a preview's captures fan out into
             # several rows, and they all picture the same design node.
