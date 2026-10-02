@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   discoverComponentIds,
+  discoverVariantFunctions,
   discoverPreviews,
   hasCatalogAnnotations,
   validateSpec,
@@ -46,6 +47,7 @@ for (const rel of SAMPLE_SPECS) {
       // cover-sheet-only spec (compose-m3, wear-m3) exists nowhere but the annotation — resolves
       // here rather than silently falling back to the server's own pick.
       knownComponentIds: discoverComponentIds(sources),
+      variantFunctions: discoverVariantFunctions(sources),
       annotatedInventory: hasCatalogAnnotations(sources),
     });
     assert.deepEqual(errors, [], `${rel} has spec errors:\n${errors.join("\n")}`);

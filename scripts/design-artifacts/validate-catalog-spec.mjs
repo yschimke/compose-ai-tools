@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 
 import {
   discoverComponentIds,
+  discoverVariantFunctions,
   discoverPreviews,
   hasCatalogAnnotations,
   validateSpec,
@@ -78,6 +79,7 @@ const srcDirs = values["module-dir"] ? [values["module-dir"], ...(values.src ?? 
 
 let knownPreviews = null;
 let knownComponentIds = null;
+let variantFunctions = null;
 let pngLessPreviews = [];
 let annotatedInventory = undefined;
 let scannedDirs = [];
@@ -95,6 +97,8 @@ if (!values["no-scan"]) {
     // Scanning the module but passing only `knownPreviews` would enable hero validation against
     // half the candidate set and reject every annotation-declared hero.
     knownComponentIds = discoverComponentIds(sources);
+    // A hero naming a `@CatalogVariant` function is a real @Preview the server still can't resolve.
+    variantFunctions = discoverVariantFunctions(sources);
     // Only meaningful when a module was scanned; leaves `annotatedInventory` undefined (lenient) on
     // the structural-only path so a no-groups spec isn't wrongly rejected without source access.
     annotatedInventory = hasCatalogAnnotations(sources);
@@ -111,6 +115,7 @@ const liveBundle = values["live-bundle"] ? true : values["no-live-bundle"] ? fal
 const { errors, warnings } = validateSpec(spec, {
   ...(knownPreviews ? { knownPreviews, pngLessPreviews } : {}),
   ...(knownComponentIds ? { knownComponentIds } : {}),
+  ...(variantFunctions ? { variantFunctions } : {}),
   ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
   ...(liveBundle !== undefined ? { liveBundle } : {}),
 });

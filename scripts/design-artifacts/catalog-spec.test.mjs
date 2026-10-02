@@ -6,6 +6,7 @@ import {
   blankStringContents,
   discoverPreviews,
   discoverComponentIds,
+  discoverVariantFunctions,
   specPreviewRefs,
   referenceKitFileKeys,
   editDistance,
@@ -210,6 +211,71 @@ test("validateSpec resolves display.hero against annotated componentIds", () => 
   );
   assert.ok(errors.some((e) => e.includes('display.hero "Template/AppScafold"')));
   assert.ok(errors.some((e) => e.includes('did you mean "Template/AppScaffold"')));
+});
+
+test("discoverVariantFunctions maps @CatalogVariant functions to their parent", () => {
+  const source = `
+    // @CatalogVariant(of = "Commented") @Preview fun CommentedOut() {}
+    @CatalogVariant(
+      of = "Card",
+      props = ["content=action"],
+      caption = "Uses (parens) in a string.",
+    )
+    @BuilderComponent(component = "ActionCard")
+    @Preview
+    @Composable
+    fun CardActionSticker() {}
+
+    @CatalogVariant("Button", state = "pressed") @Preview @Composable private fun PressedButton() {}
+
+    @CatalogComponent(id = "Card") @Preview @Composable fun CardSticker() {}
+  `;
+  assert.deepEqual(
+    [...discoverVariantFunctions([source])].sort(),
+    [
+      ["CardActionSticker", "Card"],
+      ["PressedButton", "Button"],
+    ],
+  );
+});
+
+test("validateSpec flags a display.hero naming a @CatalogVariant function", () => {
+  // glimmer-catalog's old hero: a real @Preview, so it passed the membership check, but it publishes
+  // as `card__ideal__default__content-action` and the server never resolved it.
+  const opts = {
+    knownPreviews: ["CardActionSticker", "CardSticker"],
+    knownComponentIds: ["Card"],
+    variantFunctions: new Map([["CardActionSticker", "Card"]]),
+    annotatedInventory: true,
+  };
+  const spec = { system: "glimmer-catalog", title: "T", display: { hero: "CardActionSticker" } };
+  const { errors } = validateSpec(spec, opts);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /display\.hero "CardActionSticker" names a @CatalogVariant preview function of "Card"/);
+  // The parent's componentId is fine.
+  assert.deepEqual(validateSpec({ ...spec, display: { hero: "Card" } }, opts).errors, []);
+});
+
+test("validateSpec flags a display.hero naming a spec variant's preview", () => {
+  const spec = {
+    system: "s",
+    title: "t",
+    display: { hero: "PressedButton" },
+    groups: [
+      {
+        name: "Buttons",
+        components: [
+          {
+            componentId: "Button",
+            preview: "ButtonSticker",
+            variants: [{ state: "pressed", preview: "PressedButton" }],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, { knownPreviews: ["ButtonSticker", "PressedButton"] });
+  assert.ok(errors.some((e) => e.includes('names a @CatalogVariant preview function of "Button"')));
 });
 
 test("validateSpec stays lenient on display.hero with no module scan", () => {
