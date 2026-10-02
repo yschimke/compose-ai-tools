@@ -75,13 +75,16 @@ nothing is silent
 componentIds, the module's `@CatalogComponent` ids, and its `@Preview` names —
 and the `validate-samples` test runs that over every catalog in this repo.
 
-Don't name a `@CatalogVariant` preview function (or a spec `variants[].preview`).
-It is a real `@Preview`, but it publishes under its parent's id
-(`card__ideal__default__content-action` for a variant of `Card`), and the server
-resolves a hero against componentIds and preview ids, never variant function
-names — glimmer-catalog's `CardActionSticker` hero fell through to a lone Button
-this way. `validateSpec` rejects it and names the parent componentId; to feature
-a variant, give it its own `@CatalogComponent`.
+A `@CatalogVariant` preview function (or a spec `variants[].preview`) works as a
+hero only when the catalog publishes a live path (`--publish-live-bundle`, or a
+buildable source). A variant publishes under its parent's id
+(`card__ideal__default__content-action` for a variant of `Card`), so the server
+finds it only through the daemon preview id the live path stamps on each image.
+Without one it falls through to the server's own pick — glimmer-catalog's
+`CardActionSticker` hero led with a lone Button this way. `validateSpec` rejects
+such a hero with `liveBundle: false`, warns when the live path is unknown (the
+plain `validate-catalog-spec` run), and accepts it with `liveBundle: true`
+(`--live-bundle`); the export repeats the check where the publish flags are known.
 
 ## Delivery branches
 

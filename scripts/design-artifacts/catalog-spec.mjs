@@ -539,8 +539,9 @@ export function closest(name, candidates) {
  * @param {string[]|Set<string>} [opts.knownComponentIds]  componentIds declared by
  *   `@CatalogComponent` annotations in the module (see [discoverComponentIds]).
  * @param {Map<string, string>} [opts.variantFunctions]  `@CatalogVariant` preview functions → the
- *   componentId each is a variant of (see [discoverVariantFunctions]). A `display.hero` naming one is
- *   an error: the server never resolves a variant's function name.
+ *   componentId each is a variant of (see [discoverVariantFunctions]). A `display.hero` naming one
+ *   resolves only on a publish with a live path: an error with `liveBundle: false`, a warning when
+ *   `liveBundle` is omitted, and fine with `liveBundle: true`.
  * @param {string[]|Set<string>} [opts.pngLessPreviews]  Discovered preview functions
  *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
@@ -627,6 +628,7 @@ export function validateSpec(spec, opts = {}) {
     // A cover-sheet-only spec still declares its hero here, and its componentIds live wholly in the
     // module's annotations — so resolve against those alone.
     errors.push(...heroErrors(spec, opts, new Set()));
+    warnings.push(...heroWarnings(spec, opts, new Set()));
     return { errors, warnings };
   }
   if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
@@ -832,6 +834,7 @@ export function validateSpec(spec, opts = {}) {
   }
 
   errors.push(...heroErrors(spec, opts, new Set(componentIds.keys())));
+  warnings.push(...heroWarnings(spec, opts, new Set(componentIds.keys())));
 
   return { errors, warnings };
 }
@@ -841,23 +844,20 @@ export function validateSpec(spec, opts = {}) {
  * [specComponentIds], the module's annotated componentIds, and the `@Preview` function names. The
  * server ([ServeBundleHost.declaredHeroPreviewId]) accepts any of the three, so validation has to
  * accept all three too — the point is to catch a hero the server would silently ignore: one that
- * matches *nothing*, or one naming a `@CatalogVariant` preview function, which is a real `@Preview`
- * but publishes under its parent's id ([variantParent]).
+ * matches *nothing*, or one naming a `@CatalogVariant` preview function on a publish with no live
+ * path ([variantHeroUnresolvable]).
  */
 function heroErrors(spec, opts, specComponentIds) {
   const hero = spec?.display?.hero;
   if (typeof hero !== "string" || hero.length === 0) return [];
-  // A variant's preview function IS a known `@Preview`, so it would pass the membership check below —
-  // but it publishes under its parent's slug, which the server never matches it against. Flag it
-  // unless the same string is also a componentId (which the server does resolve).
-  const componentIds = new Set([...specComponentIds, ...(opts.knownComponentIds ?? [])]);
-  const variantOf = variantParent(hero, spec, opts);
-  if (variantOf !== undefined && !componentIds.has(hero)) {
+  const variantOf = variantHeroUnresolvable(hero, spec, opts, specComponentIds);
+  if (variantOf !== undefined && opts.liveBundle === false) {
     return [
-      `display.hero "${hero}" names a @CatalogVariant preview function of "${variantOf}" — a variant ` +
-        `publishes under its parent's id, and the preview server resolves a hero against componentIds ` +
-        `and preview ids, never variant function names, so it would silently fall back to its own ` +
-        `pick. Name a componentId instead (e.g. "${variantOf}").`,
+      `display.hero "${hero}" names a @CatalogVariant preview function of "${variantOf}", and this ` +
+        `publish has no live path — a variant publishes under its parent's id, and the preview ` +
+        `server finds a function-name hero only through the daemon preview ids a live path stamps ` +
+        `on each image, so it would silently fall back to its own pick. Name a componentId instead ` +
+        `(e.g. "${variantOf}"), or publish with --publish-live-bundle.`,
     ];
   }
   // Without a module scan the candidate set is only half the picture (a hero may legitimately name a
@@ -880,6 +880,38 @@ function heroErrors(spec, opts, specComponentIds) {
   return [
     `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,
   ];
+}
+
+/**
+ * The warning half of [heroErrors]: a variant-function hero on a publish whose live path is unknown
+ * (`opts.liveBundle` omitted — the plain CLI run, which can't know how the publish is invoked). It
+ * resolves only if the publish carries a live path, so say so rather than reject it outright.
+ */
+function heroWarnings(spec, opts, specComponentIds) {
+  const hero = spec?.display?.hero;
+  if (typeof hero !== "string" || hero.length === 0 || opts.liveBundle !== undefined) return [];
+  const variantOf = variantHeroUnresolvable(hero, spec, opts, specComponentIds);
+  if (variantOf === undefined) return [];
+  return [
+    `display.hero "${hero}" names a @CatalogVariant preview function of "${variantOf}" — the ` +
+      `preview server resolves it only when the catalog publishes a live path ` +
+      `(--publish-live-bundle or a buildable source), through the daemon preview id stamped on each ` +
+      `image. Without one, name a componentId (e.g. "${variantOf}").`,
+  ];
+}
+
+/**
+ * The parent componentId when [hero] names a `@CatalogVariant` preview function rather than a
+ * componentId — the one hero shape whose resolution depends on the publish. A variant publishes
+ * under its parent's slug (`card__ideal__default__content-action` for a variant of `Card`), so the
+ * server can only find it through the daemon preview id a live path stamps on each image
+ * (`ServeCatalogStore.heroForFunction`). Undefined for any other hero, including a string that is
+ * also a componentId, which the server resolves directly.
+ */
+function variantHeroUnresolvable(hero, spec, opts, specComponentIds) {
+  const componentIds = new Set([...specComponentIds, ...(opts.knownComponentIds ?? [])]);
+  if (componentIds.has(hero)) return undefined;
+  return variantParent(hero, spec, opts);
 }
 
 /**

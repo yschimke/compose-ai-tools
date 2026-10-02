@@ -239,9 +239,10 @@ test("discoverVariantFunctions maps @CatalogVariant functions to their parent", 
   );
 });
 
-test("validateSpec flags a display.hero naming a @CatalogVariant function", () => {
-  // glimmer-catalog's old hero: a real @Preview, so it passed the membership check, but it publishes
-  // as `card__ideal__default__content-action` and the server never resolved it.
+test("a @CatalogVariant-function hero depends on the publish's live path", () => {
+  // glimmer-catalog's old hero: a real @Preview that publishes as
+  // `card__ideal__default__content-action`. The server finds it only through the daemon preview id
+  // a live path stamps on each image.
   const opts = {
     knownPreviews: ["CardActionSticker", "CardSticker"],
     knownComponentIds: ["Card"],
@@ -249,14 +250,39 @@ test("validateSpec flags a display.hero naming a @CatalogVariant function", () =
     annotatedInventory: true,
   };
   const spec = { system: "glimmer-catalog", title: "T", display: { hero: "CardActionSticker" } };
-  const { errors } = validateSpec(spec, opts);
-  assert.equal(errors.length, 1);
-  assert.match(errors[0], /display\.hero "CardActionSticker" names a @CatalogVariant preview function of "Card"/);
-  // The parent's componentId is fine.
-  assert.deepEqual(validateSpec({ ...spec, display: { hero: "Card" } }, opts).errors, []);
+
+  // No live path: the server can never resolve it.
+  const none = validateSpec(spec, { ...opts, liveBundle: false });
+  assert.equal(none.errors.length, 1);
+  assert.match(
+    none.errors[0],
+    /display\.hero "CardActionSticker" names a @CatalogVariant preview function of "Card", and this publish has no live path/,
+  );
+
+  // A live path: it resolves.
+  const live = validateSpec(spec, { ...opts, liveBundle: true });
+  assert.deepEqual(live.errors, []);
+  assert.ok(!live.warnings.some((w) => w.includes("display.hero")));
+
+  // Unknown (the plain CLI run): it may resolve, so warn rather than reject.
+  const unknown = validateSpec(spec, opts);
+  assert.deepEqual(unknown.errors, []);
+  assert.ok(
+    unknown.warnings.some((w) =>
+      w.includes('names a @CatalogVariant preview function of "Card" — the preview server resolves it only'),
+    ),
+  );
+
+  // The parent's componentId is fine everywhere.
+  const card = { ...spec, display: { hero: "Card" } };
+  for (const liveBundle of [false, true, undefined]) {
+    const r = validateSpec(card, { ...opts, liveBundle });
+    assert.deepEqual(r.errors, []);
+    assert.ok(!r.warnings.some((w) => w.includes("display.hero")));
+  }
 });
 
-test("validateSpec flags a display.hero naming a spec variant's preview", () => {
+test("a spec variant's preview as hero follows the same live-path rule", () => {
   const spec = {
     system: "s",
     title: "t",
@@ -274,8 +300,13 @@ test("validateSpec flags a display.hero naming a spec variant's preview", () => 
       },
     ],
   };
-  const { errors } = validateSpec(spec, { knownPreviews: ["ButtonSticker", "PressedButton"] });
-  assert.ok(errors.some((e) => e.includes('names a @CatalogVariant preview function of "Button"')));
+  const opts = { knownPreviews: ["ButtonSticker", "PressedButton"] };
+  assert.ok(
+    validateSpec(spec, { ...opts, liveBundle: false }).errors.some((e) =>
+      e.includes('names a @CatalogVariant preview function of "Button"'),
+    ),
+  );
+  assert.deepEqual(validateSpec(spec, { ...opts, liveBundle: true }).errors, []);
 });
 
 test("validateSpec stays lenient on display.hero with no module scan", () => {
