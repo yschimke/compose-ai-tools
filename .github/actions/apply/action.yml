@@ -895,6 +895,22 @@ runs:
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
 
+        # Where comment mode reads the baseline branches from. They are pushed
+        # to `artifact-repository`, which is `origin` only when that input is
+        # unset; reading them from `origin` otherwise finds no baseline at all,
+        # and every PR comment reports the whole catalog as new. A named remote
+        # rather than a bare URL, because the pipelines and select-baseline.py
+        # read the fetched branch back as `<remote>/<branch>`. Removed at the
+        # end of the step, so the token in its URL never outlives the fetches.
+        export BASELINE_REMOTE=origin
+        if [ "$REPO" != "$GITHUB_REPOSITORY" ]; then
+          BASELINE_REMOTE=compose-preview-artifacts
+          git remote remove "$BASELINE_REMOTE" >/dev/null 2>&1
+          git remote add "$BASELINE_REMOTE" \
+            "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+          trap 'git remote remove compose-preview-artifacts >/dev/null 2>&1' EXIT
+        fi
+
         # Seed rc files so the trailing "surface failures" step always
         # has something to read even if a pipeline never started.
         for p in compose resources a11y notifications; do
