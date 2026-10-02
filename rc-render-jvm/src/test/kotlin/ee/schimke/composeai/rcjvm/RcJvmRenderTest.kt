@@ -29,6 +29,20 @@ class RcJvmRenderTest {
   }
 
   @Test
+  fun aDensityRelativeDocumentDrawsAtTheRenderDensity() {
+    // The remote-m3 page indicator sizes its dots and rail from the player's `DENSITY` system
+    // variable. rc-players before 2.0.4 resolved it against 1.0 on the frame a one-shot render
+    // captures, so this lane drew the rail at half the width the AndroidX embedded player draws
+    // it at (42px against 84px at density 2.0), and at that same half width at every density.
+    val atTwo =
+      inkWidth(renderRemoteDocumentToPng(resource("pageindicator.rc"), 384, 384, density = 2f))
+    val atOne =
+      inkWidth(renderRemoteDocumentToPng(resource("pageindicator.rc"), 384, 384, density = 1f))
+    assertThat(atTwo).isIn(com.google.common.collect.Range.closed(82, 86))
+    assertThat(atTwo).isIn(com.google.common.collect.Range.closed(2 * atOne - 2, 2 * atOne + 2))
+  }
+
+  @Test
   fun bothColorThemesRender() {
     // `textbutton.rc` has no `ColorTheme` branch, so the two frames may legitimately be equal; what
     // this pins is that the axis reaches the player without failing either render.
@@ -74,6 +88,22 @@ class RcJvmRenderTest {
         "tint",
         RcNamedValue.Color(-16776961),
       )
+  }
+
+  /** Width in pixels of the drawn (non-transparent) content. */
+  private fun inkWidth(png: ByteArray): Int {
+    val image = ImageIO.read(ByteArrayInputStream(png))
+    var minX = image.width
+    var maxX = -1
+    for (y in 0 until image.height) {
+      for (x in 0 until image.width) {
+        if ((image.getRGB(x, y) ushr 24) > 13) {
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+        }
+      }
+    }
+    return if (maxX < minX) 0 else maxX - minX + 1
   }
 
   /** Fraction of pixels that differ from an opaque-white background by a visible amount. */
