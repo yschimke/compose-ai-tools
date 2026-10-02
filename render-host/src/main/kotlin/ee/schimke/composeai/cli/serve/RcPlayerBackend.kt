@@ -86,7 +86,7 @@ public enum class RcPlayerBackend(
   ),
   CMP_WASM(
     "cmp-wasm",
-    "rc-player Wasm",
+    "CMP Wasm",
     playerKind = null,
     daemonPlayerId = null,
     clientSide = true,
@@ -110,7 +110,7 @@ public enum class RcPlayerBackend(
   ),
   CMP_ANDROID(
     "cmp-android",
-    "rc-player Android",
+    "CMP Android",
     playerKind = null,
     daemonPlayerId = "cmp-android",
     clientSide = false,
@@ -118,7 +118,7 @@ public enum class RcPlayerBackend(
   ),
   CMP_JVM(
     "cmp-jvm",
-    "rc-player JVM",
+    "CMP JVM",
     playerKind = null,
     daemonPlayerId = null,
     clientSide = false,

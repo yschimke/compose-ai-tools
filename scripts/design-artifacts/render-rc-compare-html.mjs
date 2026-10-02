@@ -11,8 +11,8 @@
  * the toolbar and every other column grows a pixel diff beneath its render plus a
  * mismatch chip in the row's meta cell. Picking the baked lane reuses the diffs the
  * driver already computed at build time (exact `pixelmatch` numbers, no work in
- * the browser); picking any *player* as the reference — e.g. "how far is rc-player Wasm
- * from rc-player JVM?", a question the build-time lane-vs-baked diffs cannot answer —
+ * the browser); picking any *player* as the reference — e.g. "how far is CMP Wasm
+ * from CMP JVM?", a question the build-time lane-vs-baked diffs cannot answer —
  * diffs client-side on a `<canvas>` with pixelmatch's YIQ metric at the same
  * threshold.
  *
@@ -174,7 +174,7 @@ const LANES = [
   },
   {
     id: "cmp-jvm",
-    label: "rc-player JVM",
+    label: "CMP JVM",
     short: "jvm",
     present: hasEmbeddedJvmLane,
     src: (r) => r.embeddedJvm,
@@ -186,7 +186,7 @@ const LANES = [
   },
   {
     id: "cmp-wasm",
-    label: "rc-player Wasm",
+    label: "CMP Wasm",
     short: "wasm",
     present: hasCmpWasmLane,
     src: (r) => r.cmpWasm,
@@ -706,8 +706,8 @@ export function renderRcCompareHtml(model, opts = {}) {
     "Camaelon JS",
     withEmbedded && "AndroidX Embedded",
     withAndroidxEmbedded && "AndroidX Embedded · androidx.dev",
-    withEmbeddedJvm && "rc-player JVM",
-    withCmpWasm && "rc-player Wasm",
+    withEmbeddedJvm && "CMP JVM",
+    withCmpWasm && "CMP Wasm",
   ].filter(Boolean);
   const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
   const embMeanTxt =
@@ -744,12 +744,12 @@ export function renderRcCompareHtml(model, opts = {}) {
         blankTxt
       : "") +
     (withEmbeddedJvm
-      ? `<br><strong>rc-player JVM:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
+      ? `<br><strong>CMP JVM:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
         (stats.embeddedJvmUnsupported ? ` · ${stats.embeddedJvmUnsupported} not rendered` : "") +
         blankTxt
       : "") +
     (withCmpWasm
-      ? `<br><strong>rc-player Wasm:</strong> ${stats.cmpWasmScored} scored · mean mismatch <strong>${wasmMeanTxt}</strong>` +
+      ? `<br><strong>CMP Wasm:</strong> ${stats.cmpWasmScored} scored · mean mismatch <strong>${wasmMeanTxt}</strong>` +
         (stats.cmpWasmUnsupported ? ` · ${stats.cmpWasmUnsupported} not rendered` : "") +
         blankTxt
       : "");
@@ -866,9 +866,9 @@ ${[
   withAndroidxEmbedded &&
     `<strong>AndroidX Embedded · androidx.dev</strong> is the independently compiled player published by the pinned AndroidX snapshot`,
   withEmbeddedJvm &&
-    `<strong>rc-player JVM</strong> is <code>rc-player-compose</code> on Compose Desktop / Skiko, rasterizing offscreen — the same player as the Wasm lane, on the JVM (wire id <code>cmp-jvm</code>)`,
+    `<strong>CMP JVM</strong> is <code>rc-player-compose</code> on Compose Desktop / Skiko, rasterizing offscreen — the same player as the Wasm lane, on the JVM (wire id <code>cmp-jvm</code>)`,
   withCmpWasm &&
-    `<strong>rc-player Wasm</strong> is <code>rc-player-compose</code> running through Skiko in browser Wasm (wire id <code>cmp-wasm</code>)`,
+    `<strong>CMP Wasm</strong> is <code>rc-player-compose</code> running through Skiko in browser Wasm (wire id <code>cmp-wasm</code>)`,
 ]
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}
