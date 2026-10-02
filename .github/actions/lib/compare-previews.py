@@ -308,10 +308,12 @@ def _over_budget_flat(prior, current, limit: int) -> bool:
 #   * how GitHub SERVES it. `raw.githubusercontent.com` picks a content type
 #     from the extension alone: `.png` is `image/png`, `.gif` is `image/gif`,
 #     and `.apng` is `application/octet-stream` with `nosniff`. The comment
-#     embeds renders straight from that host (GitHub does not camo-proxy its own
-#     user-content origin), and a cross-origin `<img>` whose response is
-#     `nosniff` and not an image type is blocked by the browser (Fetch's opaque
-#     response blocking) — so an `.apng` cell would be a broken image.
+#     embeds renders straight from that host (the rendered comment HTML keeps
+#     the raw URL; GitHub does not camo-proxy its own user-content origin), so
+#     the browser fetches it cross-origin, and a `nosniff` response that is not
+#     an image type is one Fetch's opaque-response blocking may refuse. Whether a
+#     given browser draws it anyway is not something to depend on — `image/png`
+#     is unambiguous.
 #
 # So: a container change is always a change, never stabilised and always
 # published as the NEW bytes; a timing change is a change; and every `.apng`

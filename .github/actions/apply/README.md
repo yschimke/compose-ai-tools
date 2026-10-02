@@ -678,7 +678,8 @@ An animated capture is compared on three things, not just its pixels:
   twin).
 
 `raw.githubusercontent.com` serves `.apng` as `application/octet-stream` with
-`nosniff`, which a browser will not draw in an `<img>`. So every `.apng` the
+`nosniff` — not an image type, which a browser's cross-origin response blocking
+is entitled to refuse in an `<img>`. So every `.apng` the
 action publishes to a render branch gets a byte-identical `<name>.apng.png` beside
 it, served as `image/png`, and the comment embeds that copy while its links keep
 pointing at the canonical `.apng`. The display copy has no `baselines.json` entry,
