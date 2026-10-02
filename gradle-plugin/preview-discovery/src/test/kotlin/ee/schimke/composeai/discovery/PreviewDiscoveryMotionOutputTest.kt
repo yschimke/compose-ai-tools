@@ -176,9 +176,11 @@ class PreviewDiscoveryMotionOutputTest {
   }
 
   @Test
-  fun `an APNG request on the Android backend is recorded as GIF and says so`() {
-    // The Android renderer encodes `@AnimatedPreview` as GIF whatever the annotation asks, so
-    // naming the output `.apng` would put GIF bytes behind an APNG name.
+  fun `an APNG request on a GIF-only backend is recorded as GIF and says so`() {
+    // An Android renderer older than compose-preview-daemon 3.13.0 encodes `@AnimatedPreview` as
+    // GIF whatever the annotation asks, so naming the output `.apng` would put GIF bytes behind an
+    // APNG name. The Gradle plugin no longer declares any backend GIF-only; a non-Gradle caller
+    // can.
     val warnings = mutableListOf<String>()
     val resolved =
       PreviewDiscovery.resolveAnimationFormat(

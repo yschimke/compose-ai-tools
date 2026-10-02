@@ -519,9 +519,6 @@ internal object ComposePreviewTasks {
         // Desktop can't render `@ColorCatalog` sheets yet (#2135) — mark their captures optional so
         // the render skip is consistent across the gate and VS Code consumers.
         catalogRenderSupported = false,
-        // The desktop renderer honours `@AnimatedPreview(format = …)`, so discovery names an APNG
-        // request `.apng` rather than downgrading it to the Android lane's GIF.
-        animatedPreviewApngSupported = true,
       ) {
         onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
@@ -1817,9 +1814,13 @@ internal object ComposePreviewTasks {
     // discovered CATALOG captures are emitted `optional` so the render gate and every consumer that
     // reads `Capture.optional` (VS Code) treat the skipped sheet as expected. Android keeps `true`.
     catalogRenderSupported: Boolean = true,
-    // `true` on the desktop backend, whose renderer encodes `@AnimatedPreview(format = Apng)` as
-    // APNG. Android keeps `false`: its renderer writes GIF regardless (APNG plan step D2).
-    animatedPreviewApngSupported: Boolean = false,
+    // Whether this backend's renderer encodes `@AnimatedPreview(format = Apng)` as APNG. `true` on
+    // both backends the plugin wires: the desktop renderer always has, and the Android renderer
+    // does from compose-preview-daemon 3.13.0 (#208). The plugin resolves both renderers at exactly
+    // its baked `PreviewDaemonVersion` (Gradle conflict resolution can only raise that), so no
+    // Gradle consumer renders against an older one. `false` remains for a backend that writes GIF
+    // whatever was asked — discovery then records GIF and names the output `.gif`.
+    animatedPreviewApngSupported: Boolean = true,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)

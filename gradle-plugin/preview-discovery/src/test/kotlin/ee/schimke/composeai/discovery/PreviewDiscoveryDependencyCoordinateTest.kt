@@ -68,9 +68,11 @@ class PreviewDiscoveryDependencyCoordinateTest {
   @Test
   fun `an AAR whose module name carries no token is dropped without its coordinate`() {
     // The control, and the bug as shipped: nothing in
-    // `…/transformed/remote-material3-1.0.0/jars/classes.jar` says "compose", so the path-only
-    // filter drops it and every class it carries goes unseen.
-    val jar = aarShapedJar("remote-material3-1.0.0")
+    // `…/transformed/remote-creation-core-1.0.0/jars/classes.jar` says "compose", so the path-only
+    // filter drops it and every class it carries goes unseen. (`remote-material3`, the module this
+    // was measured on, has since been rescued by its own `remote-material` path token, so it no
+    // longer isolates the coordinate.)
+    val jar = aarShapedJar("remote-creation-core-1.0.0")
     writeAnnotationJar(jar)
 
     assertThat(discoverWith(jar, emptyMap()).joinToString("\n")).contains(droppedMessage)
@@ -78,13 +80,13 @@ class PreviewDiscoveryDependencyCoordinateTest {
 
   @Test
   fun `the same AAR is kept once its coordinate names the group`() {
-    val jar = aarShapedJar("remote-material3-1.0.0")
+    val jar = aarShapedJar("remote-creation-core-1.0.0")
     writeAnnotationJar(jar)
 
     val warnings =
       discoverWith(
         jar,
-        mapOf(jar.absolutePath to "androidx.wear.compose.remote:remote-material3:1.0.0"),
+        mapOf(jar.absolutePath to "androidx.compose.remote:remote-creation-core:1.0.0"),
       )
 
     assertThat(warnings.joinToString("\n")).doesNotContain(droppedMessage)
