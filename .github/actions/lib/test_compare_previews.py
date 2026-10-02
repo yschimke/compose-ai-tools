@@ -3287,5 +3287,451 @@ class RenderBasenameTest(unittest.TestCase):
         self.assertEqual(cp._render_basename("", "pkg.Kt.Preview"), "pkg.Kt.Preview.png")
 
 
+# ---------------------------------------------------------------------------
+# Motion captures: container format, frame timing, APNG display copies
+# ---------------------------------------------------------------------------
+
+def _png_chunk(ctype: bytes, data: bytes) -> bytes:
+    import struct
+    import zlib
+    return (
+        struct.pack(">I", len(data)) + ctype + data
+        + struct.pack(">I", zlib.crc32(ctype + data) & 0xFFFFFFFF)
+    )
+
+
+def _write_apng(path: Path, width: int, height: int, frames: list[dict]) -> Path:
+    """Write an RGBA APNG by hand, one dict per frame.
+
+    Each frame is ``{w, h, x, y, px, delay=(num, den), dispose, blend}`` where
+    ``px(x, y) -> (r, g, b, a)`` is in the FRAME's own coordinates. Written
+    directly rather than through Pillow because Pillow only ever writes
+    full-canvas frames, and the shape under test is the delta-cropped one the
+    daemon's encoder emits (compose-preview-daemon#207): frames after the first
+    cover only the region that changed, placed by the `fcTL` x/y offset.
+    """
+    import struct
+    import zlib
+
+    out = [
+        b"\x89PNG\r\n\x1a\n",
+        _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)),
+        _png_chunk(b"acTL", struct.pack(">II", len(frames), 0)),
+    ]
+    seq = 0
+    for i, f in enumerate(frames):
+        num, den = f.get("delay", (1, 30))
+        out.append(_png_chunk(b"fcTL", struct.pack(
+            ">IIIIIHHBB", seq, f["w"], f["h"], f.get("x", 0), f.get("y", 0),
+            num, den, f.get("dispose", 0), f.get("blend", 0),
+        )))
+        seq += 1
+        rows = b"".join(
+            b"\0" + b"".join(bytes(f["px"](x, y)) for x in range(f["w"]))
+            for y in range(f["h"])
+        )
+        data = zlib.compress(rows)
+        if i == 0:
+            out.append(_png_chunk(b"IDAT", data))
+        else:
+            out.append(_png_chunk(b"fdAT", struct.pack(">I", seq) + data))
+            seq += 1
+    out.append(_png_chunk(b"IEND", b""))
+    path.write_bytes(b"".join(out))
+    return path
+
+
+_RED = (255, 0, 0, 255)
+_BLUE = (0, 0, 255, 255)
+_CLEAR = (0, 0, 0, 0)
+_W = _H = 16
+_FRAMES = 4
+
+
+def _marker_px(i: int, *, colour=_BLUE):
+    """Full-canvas frame ``i``: red, with a 4x4 marker in column-block ``i``."""
+    return lambda x, y: colour if (x // 4 == i and y < 4) else _RED
+
+
+def _full_frames(delay=(1, 30), *, changed_frame: int | None = None) -> list[dict]:
+    return [
+        dict(
+            w=_W, h=_H, delay=delay,
+            px=_marker_px(i, colour=(0, 255, 0, 255) if i == changed_frame else _BLUE),
+        )
+        for i in range(_FRAMES)
+    ]
+
+
+def _cropped_frames(delay=(1, 30), *, blend_over: bool = False,
+                    changed_frame: int | None = None) -> list[dict]:
+    """The same animation as [_full_frames], delta-encoded.
+
+    Frame ``i > 0`` is an 8x4 rectangle at x = 4(i-1): it repaints the previous
+    marker red and draws the new one. With ``blend_over`` the rectangle is
+    alpha-blended onto the canvas and leaves untouched pixels transparent — the
+    form a delta encoder uses for opaque content.
+    """
+    frames = [dict(w=_W, h=_H, delay=delay, px=_marker_px(0))]
+    for i in range(1, _FRAMES):
+        ox = 4 * (i - 1)
+        marker = (0, 255, 0, 255) if i == changed_frame else _BLUE
+
+        def px(x, y, i=i, ox=ox, marker=marker):
+            block = (x + ox) // 4
+            if block == i:
+                return marker
+            if block == i - 1:
+                return _RED
+            return _CLEAR if blend_over else _RED
+
+        frames.append(dict(w=8, h=4, x=ox, y=0, delay=delay, px=px,
+                           blend=1 if blend_over else 0))
+    return frames
+
+
+def _write_gif(path: Path, durations_ms, *, changed_frame: int | None = None) -> Path:
+    """The [_full_frames] animation as a GIF. Two exact colours, so the palette
+    is lossless and the pixels match the APNG's exactly."""
+    from PIL import Image
+
+    imgs = []
+    for i in range(_FRAMES):
+        im = Image.new("RGB", (_W, _H), _RED[:3])
+        colour = (0, 255, 0) if i == changed_frame else _BLUE[:3]
+        for y in range(4):
+            for x in range(4 * i, 4 * i + 4):
+                im.putpixel((x, y), colour)
+        imgs.append(im)
+    imgs[0].save(path, save_all=True, append_images=imgs[1:],
+                 duration=list(durations_ms), loop=0, disposal=1)
+    return path
+
+
+class MotionMetadataTest(unittest.TestCase):
+    """Container sniffing and delay parsing — pure stdlib, never skipped."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_sniffs_apng_png_and_gif_from_bytes(self):
+        apng = _write_apng(self.tmp / "a.apng", _W, _H, _full_frames())
+        self.assertEqual(cp._sniff_format(apng), "apng")
+        # The same bytes behind any name are still an APNG.
+        misnamed = self.tmp / "a.gif"
+        misnamed.write_bytes(apng.read_bytes())
+        self.assertEqual(cp._sniff_format(misnamed), "apng")
+        still = self.tmp / "s.png"
+        still.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + _png_chunk(b"IHDR", bytes(13)) + _png_chunk(b"IDAT", b"")
+            + _png_chunk(b"IEND", b"")
+        )
+        self.assertEqual(cp._sniff_format(still), "png")
+        gif = self.tmp / "g.gif"
+        gif.write_bytes(b"GIF89a" + bytes(20))
+        self.assertEqual(cp._sniff_format(gif), "gif")
+        self.assertIsNone(cp._sniff_format(self.tmp / "missing.apng"))
+
+    def test_apng_delays_come_from_fctl(self):
+        frames = _cropped_frames(delay=(1, 60))
+        frames[2]["delay"] = (50, 1000)
+        frames[3]["delay"] = (7, 0)  # zero denominator means 1/100 s
+        apng = _write_apng(self.tmp / "a.apng", _W, _H, frames)
+        delays = cp._frame_delays(apng)
+        self.assertEqual(len(delays), 4)
+        self.assertAlmostEqual(delays[0], 1000 / 60)
+        self.assertAlmostEqual(delays[2], 50.0)
+        self.assertAlmostEqual(delays[3], 70.0)
+
+    def test_timing_change_tolerates_rational_rounding_but_not_drift(self):
+        same = [1000 / 60] * 10
+        self.assertIsNone(cp._timing_change(same, [16.67] * 10))
+        # 0.33 ms per frame is under the per-frame bar but adds up.
+        drift = cp._timing_change([1000 / 60] * 120, [17.0] * 120)
+        self.assertIsNotNone(drift)
+        self.assertIn("total 2000 → 2040 ms", drift)
+        self.assertIn("2 → 3 frames", cp._timing_change([10, 10], [10, 10, 10]))
+        # A still against a still has no timing at all.
+        self.assertIsNone(cp._timing_change([], []))
+
+    def test_display_basename_only_touches_apng(self):
+        self.assertEqual(cp._display_basename("X.apng"), "X.apng.png")
+        self.assertEqual(cp._display_basename("X.APNG"), "X.APNG.png")
+        self.assertEqual(cp._display_basename("X.gif"), "X.gif")
+        self.assertEqual(cp._display_basename("X.png"), "X.png")
+        self.assertTrue(cp._is_display_copy("X.apng.png"))
+        self.assertFalse(cp._is_display_copy("X.png"))
+
+    def test_same_bytes_under_a_new_extension_is_a_format_change(self):
+        # No files needed: identical bytes whose NAME changed container still
+        # have to be published under the new name.
+        detail = cp.change_detail(
+            {"sha256": "s", "module": "m", "renderBasename": "X.apng", "pngPath": ""},
+            {"sha256": "s", "renderBasename": "X.gif"},
+            None,
+        )
+        self.assertEqual(detail["reasons"], ["format"])
+        self.assertEqual(detail["format"], ("gif", "apng"))
+        self.assertIsNone(cp.change_detail(
+            {"sha256": "s", "module": "m", "renderBasename": "X.apng", "pngPath": ""},
+            {"sha256": "s", "renderBasename": "X.apng"},
+            None,
+        ))
+
+
+class MotionFormatAndTimingTest(unittest.TestCase):
+    """What the diff bot reports for a pair of motion captures.
+
+    The five cases the APNG migration needs to be readable: a container change
+    with identical pixels, a delta-cropped APNG against its full-frame twin, a
+    timing-only change, a real pixel change in one frame, and identical files.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _detail(self, prior: Path, current: Path):
+        return cp._change_detail(prior, current, prior.name, current.name)
+
+    def test_same_pixels_gif_vs_apng_is_a_format_change(self):
+        gif = _write_gif(self.tmp / "X.gif", [40] * _FRAMES)
+        apng = _write_apng(self.tmp / "X.apng", _W, _H, _full_frames(delay=(40, 1000)))
+        # The pixel compare alone calls them identical — which is the bug.
+        self.assertFalse(cp._perceptually_changed(gif, apng))
+        detail = self._detail(gif, apng)
+        self.assertIsNotNone(detail)
+        self.assertIn("format", detail["reasons"])
+        self.assertEqual(detail["format"], ("gif", "apng"))
+        self.assertIs(detail["pixels"], False)
+        self.assertIsNone(detail["timing"])
+
+    def test_apng_bytes_misnamed_gif_still_count_as_a_format_change(self):
+        # The T1 desktop bug wrote APNG bytes into `<id>.gif`; fixing it keeps
+        # the name and changes the container.
+        gif = _write_gif(self.tmp / "p.gif", [40] * _FRAMES)
+        misnamed = self.tmp / "X.gif"
+        _write_apng(misnamed, _W, _H, _full_frames(delay=(40, 1000)))
+        detail = cp._change_detail(gif, misnamed, "X.gif", "X.gif")
+        self.assertEqual(detail["format"], ("gif", "apng"))
+
+    def test_cropped_region_apng_matches_its_full_frame_twin(self):
+        full = _write_apng(self.tmp / "full.apng", _W, _H, _full_frames())
+        for blend_over in (False, True):
+            with self.subTest(blend_over=blend_over):
+                cropped = _write_apng(
+                    self.tmp / f"crop{int(blend_over)}.apng", _W, _H,
+                    _cropped_frames(blend_over=blend_over),
+                )
+                self.assertNotEqual(full.read_bytes(), cropped.read_bytes())
+                self.assertIsNone(self._detail(full, cropped))
+
+    def test_delay_only_change_is_a_timing_change(self):
+        a = _write_apng(self.tmp / "a.apng", _W, _H, _cropped_frames(delay=(1, 30)))
+        b = _write_apng(self.tmp / "b.apng", _W, _H, _cropped_frames(delay=(1, 32)))
+        detail = self._detail(a, b)
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail["reasons"], ["timing"])
+        self.assertIn("avg 33.3 → 31.2 ms", detail["timing"])
+
+    def test_gif_delay_only_change_is_a_timing_change(self):
+        a = _write_gif(self.tmp / "a.gif", [40] * _FRAMES)
+        b = _write_gif(self.tmp / "b.gif", [40, 40, 80, 40])
+        detail = self._detail(a, b)
+        self.assertEqual(detail["reasons"], ["timing"])
+        self.assertEqual(cp._frame_delays(b), [40.0, 40.0, 80.0, 40.0])
+
+    def test_pixel_change_in_one_frame_is_a_pixel_change(self):
+        for writer in (_full_frames, _cropped_frames):
+            with self.subTest(writer=writer.__name__):
+                a = _write_apng(self.tmp / "a.apng", _W, _H, writer())
+                b = _write_apng(self.tmp / "b.apng", _W, _H, writer(changed_frame=2))
+                detail = self._detail(a, b)
+                self.assertEqual(detail["reasons"], ["pixels"])
+        a = _write_gif(self.tmp / "a.gif", [40] * _FRAMES)
+        b = _write_gif(self.tmp / "b.gif", [40] * _FRAMES, changed_frame=3)
+        self.assertEqual(self._detail(a, b)["reasons"], ["pixels"])
+
+    def test_identical_is_unchanged(self):
+        a = _write_apng(self.tmp / "a.apng", _W, _H, _cropped_frames())
+        b = self.tmp / "b.apng"
+        b.write_bytes(a.read_bytes())
+        self.assertIsNone(self._detail(a, b))
+        g1 = _write_gif(self.tmp / "a.gif", [40] * _FRAMES)
+        g2 = _write_gif(self.tmp / "b.gif", [40] * _FRAMES)
+        self.assertIsNone(self._detail(g1, g2))
+
+
+class MotionMigrationPipelineTest(unittest.TestCase):
+    """generate / copy-changed / compare for a `.gif` → `.apng` migration."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        # The baseline branch: Spin as a GIF, Tick as an APNG.
+        self.prior = self.tmp / "prior"
+        (self.prior / "renders" / "m").mkdir(parents=True)
+        gif = _write_gif(self.prior / "renders" / "m" / "Spin.gif", [40] * _FRAMES)
+        tick = _write_apng(self.prior / "renders" / "m" / "Tick.apng", _W, _H,
+                           _full_frames(delay=(1, 30)))
+        self.prior_baselines = {
+            "m/Spin": {"sha256": cp.sha256(gif), "functionName": "SpinPreview",
+                       "renderBasename": "Spin.gif", "module": "m"},
+            "m/Tick": {"sha256": cp.sha256(tick), "functionName": "TickPreview",
+                       "renderBasename": "Tick.apng", "module": "m"},
+        }
+        (self.prior / "baselines.json").write_text(json.dumps(self.prior_baselines))
+        # This run: Spin migrated to APNG with identical pixels; Tick re-timed.
+        self.cur = self.tmp / "cur"
+        self.cur.mkdir()
+        spin = _write_apng(self.cur / "Spin.apng", _W, _H, _cropped_frames(delay=(40, 1000)))
+        tick2 = _write_apng(self.cur / "Tick.apng", _W, _H, _cropped_frames(delay=(1, 60)))
+        self.cli = self.tmp / "cli.json"
+        self.cli.write_text(json.dumps({"previews": [
+            _entry(id="Spin", module="m", function="SpinPreview",
+                   png=str(spin), sha=cp.sha256(spin)),
+            _entry(id="Tick", module="m", function="TickPreview",
+                   png=str(tick2), sha=cp.sha256(tick2)),
+        ]}))
+        self.spin = spin
+        self.tick = tick2
+
+    def test_generate_publishes_the_new_bytes_under_the_new_name(self):
+        from types import SimpleNamespace
+        out = self.tmp / "out"
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli), output_dir=str(out), repo="o/r",
+            branch="compose-preview/main",
+            prior_baselines=str(self.prior / "baselines.json"),
+            prior_renders=str(self.prior / "renders"),
+        ))
+        self.assertEqual(rc, 0)
+        renders = out / "renders" / "m"
+        # The stabiliser used to replay the prior GIF bytes here.
+        self.assertEqual((renders / "Spin.apng").read_bytes(), self.spin.read_bytes())
+        self.assertFalse((renders / "Spin.gif").exists())
+        self.assertEqual((renders / "Tick.apng").read_bytes(), self.tick.read_bytes())
+        baselines = json.loads((out / "baselines.json").read_text())
+        self.assertEqual(baselines["m/Spin"]["sha256"], cp.sha256(self.spin))
+        self.assertEqual(baselines["m/Spin"]["renderBasename"], "Spin.apng")
+        self.assertEqual(baselines["m/Tick"]["sha256"], cp.sha256(self.tick))
+        # Display copies beside every `.apng`, byte-identical, and never a
+        # baselines.json entry of their own (history / bundles key off that).
+        for name in ("Spin", "Tick"):
+            self.assertEqual(
+                (renders / f"{name}.apng.png").read_bytes(),
+                (renders / f"{name}.apng").read_bytes(),
+            )
+        self.assertFalse(any(
+            cp._is_display_copy(v["renderBasename"]) for v in baselines.values()
+        ))
+        readme = (out / "README.md").read_text()
+        self.assertIn("renders/m/Spin.apng.png", readme)
+
+    def test_generate_still_stabilises_a_same_format_reencode(self):
+        # A delta-cropped re-encode of the same APNG, same timing: noise.
+        from types import SimpleNamespace
+        same = _write_apng(self.cur / "Tick.apng", _W, _H, _cropped_frames(delay=(1, 30)))
+        self.cli.write_text(json.dumps({"previews": [
+            _entry(id="Tick", module="m", function="TickPreview",
+                   png=str(same), sha=cp.sha256(same)),
+        ]}))
+        out = self.tmp / "out"
+        cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli), output_dir=str(out), repo="o/r",
+            branch="compose-preview/main",
+            prior_baselines=str(self.prior / "baselines.json"),
+            prior_renders=str(self.prior / "renders"),
+        ))
+        self.assertEqual(
+            (out / "renders" / "m" / "Tick.apng").read_bytes(),
+            (self.prior / "renders" / "m" / "Tick.apng").read_bytes(),
+        )
+        self.assertTrue((out / "renders" / "m" / "Tick.apng.png").exists())
+
+    def test_copy_changed_stages_new_bytes_and_display_copy(self):
+        from types import SimpleNamespace
+        out = self.tmp / "pr"
+        cp.cmd_copy_changed(SimpleNamespace(
+            cli_json=str(self.cli), baselines=str(self.prior / "baselines.json"),
+            output_dir=str(out), baseline_renders=str(self.prior / "renders"),
+        ))
+        renders = out / "renders" / "m"
+        self.assertEqual(
+            sorted(p.name for p in renders.iterdir()),
+            ["Spin.apng", "Spin.apng.png", "Tick.apng", "Tick.apng.png"],
+        )
+
+    def _compare(self, baseline_renders: Path) -> str:
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(self.cli), baselines=str(self.prior / "baselines.json"),
+                repo="o/r", base_ref="base0", head_ref="head1",
+                baseline_renders=str(baseline_renders),
+            ))
+        return buf.getvalue()
+
+    def test_compare_groups_format_changes_and_reports_timing(self):
+        out = self._compare(self.prior / "renders")
+        self.assertNotIn("No visual changes", out)
+        fmt = out.split("### Format changed", 1)[1]
+        self.assertIn("(1 variant(s) across 1 function(s))", fmt)
+        self.assertIn("GIF → APNG: 1. Pixels identical in 1 of 1", fmt)
+        # Identical pixels: links to the canonical files, no images.
+        self.assertIn("[GIF](https://raw.githubusercontent.com/o/r/base0/renders/m/Spin.gif)", fmt)
+        self.assertIn("[APNG](https://raw.githubusercontent.com/o/r/head1/renders/m/Spin.apng)", fmt)
+        # The timing-only change is a regular change with its timing spelled out.
+        changed = out.split("### Changed", 1)[1].split("### Format changed", 1)[0]
+        self.assertIn("TickPreview", changed)
+        self.assertNotIn("SpinPreview", changed)
+        self.assertIn("timing changed: avg 33.3 → 16.7 ms", changed)
+        # After embeds the `image/png`-served display copy; Before falls back
+        # to the canonical name while the baseline branch has no display copy.
+        self.assertIn('src="https://raw.githubusercontent.com/o/r/head1/renders/m/Tick.apng.png"', changed)
+        self.assertIn('src="https://raw.githubusercontent.com/o/r/base0/renders/m/Tick.apng"', changed)
+
+    def test_compare_embeds_baseline_display_copy_once_published(self):
+        renders = self.prior / "renders" / "m"
+        shutil.copy2(renders / "Tick.apng", renders / "Tick.apng.png")
+        out = self._compare(self.prior / "renders")
+        self.assertIn('src="https://raw.githubusercontent.com/o/r/base0/renders/m/Tick.apng.png"', out)
+
+    def test_format_change_with_pixel_change_embeds_both(self):
+        changed = _write_apng(self.cur / "Spin.apng", _W, _H,
+                              _cropped_frames(delay=(40, 1000), changed_frame=1))
+        self.cli.write_text(json.dumps({"previews": [
+            _entry(id="Spin", module="m", function="SpinPreview",
+                   png=str(changed), sha=cp.sha256(changed)),
+            _entry(id="Tick", module="m", function="TickPreview",
+                   png=str(self.tick), sha=cp.sha256(self.tick)),
+        ]}))
+        fmt = self._compare(self.prior / "renders").split("### Format changed", 1)[1]
+        self.assertIn("**changed**", fmt)
+        self.assertIn('<img src="https://raw.githubusercontent.com/o/r/base0/renders/m/Spin.gif"', fmt)
+        self.assertIn('<img src="https://raw.githubusercontent.com/o/r/head1/renders/m/Spin.apng.png"', fmt)
+
+
 if __name__ == "__main__":
     unittest.main()
