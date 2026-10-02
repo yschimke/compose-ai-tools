@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.32.0](https://github.com/yschimke/compose-ai-tools/compare/v2.31.0...v2.32.0) (2026-10-02)
+
+
+### Features
+
+* **cli:** honour ~/.compose-preview/settings.json and add show --link ([#5664](https://github.com/yschimke/compose-ai-tools/issues/5664)) ([0cb2de6](https://github.com/yschimke/compose-ai-tools/commit/0cb2de622900028c9a679122986d63b8ccbdf88b))
+
+
+### Bug Fixes
+
+* **apply:** read comment-mode baselines from artifact-repository ([#5667](https://github.com/yschimke/compose-ai-tools/issues/5667)) ([3d1eb61](https://github.com/yschimke/compose-ai-tools/commit/3d1eb61a6b0f4771a5cd14039ceecb2d0cc0eb7e))
+* **deps:** update rc-players to 2.0.4 so cmp-jvm draws density-relative documents at the render density ([#5666](https://github.com/yschimke/compose-ai-tools/issues/5666)) ([8f3319e](https://github.com/yschimke/compose-ai-tools/commit/8f3319e32c94d71050e2288446cb4db16344b37c))
+* **design-artifacts:** reject a display.hero naming a @CatalogVariant function ([#5668](https://github.com/yschimke/compose-ai-tools/issues/5668)) ([95f8bd6](https://github.com/yschimke/compose-ai-tools/commit/95f8bd68d0842d8eb087f07ac7d4e296397e7624))
+* **serve:** name Remote Compose players by implementation; cmp-android is the CMP player ([#5669](https://github.com/yschimke/compose-ai-tools/issues/5669)) ([8718dd4](https://github.com/yschimke/compose-ai-tools/commit/8718dd4fde36e2a4b6948b08d041ee90c825248f))
+
 ## [2.31.0](https://github.com/yschimke/compose-ai-tools/compare/v2.30.0...v2.31.0) (2026-10-01)
 
 
