@@ -126,6 +126,9 @@ jobs:
     permissions:
       contents: write        # update the release branch
       pull-requests: write   # open/update the release PR
+    outputs:
+      pr: ${{ steps.rp.outputs.pr }}
+      in_flight: ${{ steps.preflight.outputs.in_flight }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -325,9 +328,40 @@ jobs:
     permissions:
       contents: write        # update the release branch
       pull-requests: write   # close/open the next release PR
+    outputs:
+      pr: ${{ steps.rp.outputs.pr }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-release: true
+
+  # Which Maven coordinates merging the release PR would publish, as one comment on that PR. The
+  # publish plan only runs inside the release, so the answer was visible only after the
+  # irreversible upload. Same script, same Maven Central baseline, run against the release PR's
+  # head; see `.github/scripts/release-pr-publish-plan.sh` (shared with compose-preview-daemon and
+  # rc-players). It follows whichever job wrote the release PR in this run: `update-release-pr` on
+  # an ordinary push (skipped while a release is in flight, since that PR is about to be
+  # rewritten), `reconcile-release-pr` after a release. Informational: it never fails.
+  release-pr-publish-plan:
+    needs: [update-release-pr, reconcile-release-pr]
+    if: >-
+      ${{ !cancelled()
+      && ((needs.update-release-pr.result == 'success' && needs.update-release-pr.outputs.in_flight != 'true')
+      || needs.reconcile-release-pr.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # create/edit the comment on the release PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Comment the publish plan on the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RP_PR: ${{ needs.update-release-pr.outputs.pr || needs.reconcile-release-pr.outputs.pr }}
+        run: ./.github/scripts/release-pr-publish-plan.sh
