@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.32.1](https://github.com/yschimke/compose-ai-tools/compare/v2.32.0...v2.32.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** compose-preview-daemon 3.12.0 ([#5670](https://github.com/yschimke/compose-ai-tools/issues/5670)) ([099e7c7](https://github.com/yschimke/compose-ai-tools/commit/099e7c7c8a0ab0ff5f26d59eacee532fa01b85b5))
+* **design-artifacts:** accept a variant-function hero when the publish has a live path ([#5675](https://github.com/yschimke/compose-ai-tools/issues/5675)) ([32a463e](https://github.com/yschimke/compose-ai-tools/commit/32a463eddb286e8abb37f942fd6f63a4a6241aa1))
+* **render-host:** update the ABI dump for the renamed Remote Compose player ids ([#5671](https://github.com/yschimke/compose-ai-tools/issues/5671)) ([9fe722f](https://github.com/yschimke/compose-ai-tools/commit/9fe722f8d5bc575eb249206d29d6acf023d92b39))
+
 ## [2.32.0](https://github.com/yschimke/compose-ai-tools/compare/v2.31.0...v2.32.0) (2026-10-02)
 
 
