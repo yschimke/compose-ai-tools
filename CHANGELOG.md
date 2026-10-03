@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.32.3](https://github.com/yschimke/compose-ai-tools/compare/v2.32.2...v2.32.3) (2026-10-03)
+
+
+### Bug Fixes
+
+* **gradle-plugin:** resolve injected daemon modules through the daemon BOM ([#5684](https://github.com/yschimke/compose-ai-tools/issues/5684)) ([4bbe145](https://github.com/yschimke/compose-ai-tools/commit/4bbe145330fcf0442e09ab9e0dbbc6577f842ef6))
+
 ## [2.32.2](https://github.com/yschimke/compose-ai-tools/compare/v2.32.1...v2.32.2) (2026-10-02)
 
 
