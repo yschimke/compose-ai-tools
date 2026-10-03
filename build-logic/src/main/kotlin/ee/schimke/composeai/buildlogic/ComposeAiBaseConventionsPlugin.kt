@@ -141,7 +141,8 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     // allowed by default"), and would have nothing to do with one anyway: a platform has no compile
     // classpath, so there is no resolution for the BOM to constrain. Skipped rather than worked
     // around with `allowDependencies()`, which would let a real dependency slip into the BOM
-    // unnoticed.
+    // unnoticed. `:bom` does import both BOMs, but by hand, as `platform(...)` entries on its own
+    // `api`, behind a guard that rejects anything that is not a platform.
     //
     // This relies on `:bom` applying `composeai.maven-publishing-platform` BEFORE
     // `composeai.base-conventions`, which its `plugins {}` block does and says why. The check

@@ -72,7 +72,50 @@ val manifestText = providers.provider {
     ?.readText() ?: "{}"
 }
 
+// ## The layers below
+//
+// This BOM also imports the two lower-layer BOMs, at the versions this build compiles against: the
+// daemon line (layer 1a) and the wire contracts (layer 0). Every module here already imports both
+// in its own POM (`ComposeAiBaseConventionsPlugin.applyPlatformBom`), so a Gradle consumer that
+// depends on a module gets them anyway; a Maven consumer importing only this BOM in
+// `<dependencyManagement>` did not, and could mix this release's tools with whatever daemon and
+// contracts versions its other dependencies happened to name. Importing them here gives one
+// coordinate that aligns all three layers. For Gradle consumers both are ordinary platform
+// imports, so they are floors that a newer lower-layer BOM still raises (highest wins). Maven does
+// not resolve that way: among imported BOMs the first declaration of a coordinate wins, so a Maven
+// consumer that wants a newer daemon or contracts BOM than this one imports must list that BOM
+// *before* compose-ai-tools-bom in `<dependencyManagement>`.
+//
+// They are republished with this BOM, which goes out on every release that publishes anything
+// (`printPublishTasks`). A daemon bump always does: `gradle-plugin` bakes the daemon version in, so
+// `maven-publish-plan.sh` publishes its four coordinates. A contracts bump on its own publishes
+// nothing -- sibling coordinates are floors there -- so the published BOM keeps importing the
+// contracts version the published modules were built against until the next release that moves
+// one of them, which is also what their own POMs import.
+//
+// `allowDependencies()` is what lets a `java-platform` carry another platform. It would equally
+// let a real dependency into the BOM, which is why `applyPlatformBom` refuses to put the BOMs on a
+// platform automatically; here the only `api` entries are these two `platform(...)` imports, and
+// the guard below fails configuration if anything else is ever added.
+javaPlatform { allowDependencies() }
+
+configurations.named("api") {
+  dependencies.configureEach {
+    val category =
+      (this as? ModuleDependency)?.attributes?.getAttribute(Category.CATEGORY_ATTRIBUTE)?.name
+    if (category != Category.REGULAR_PLATFORM && category != Category.ENFORCED_PLATFORM) {
+      throw GradleException(
+        "compose-ai-tools-bom may only import other platforms; '$group:$name:$version' is a " +
+          "regular dependency and would be published as one. Put a version in `constraints {}`."
+      )
+    }
+  }
+}
+
 dependencies {
+  api(platform(libs.composeai.daemon.bom))
+  api(platform(libs.composeai.contracts.bom))
+
   constraints {
     (publishedProjectPaths.map { it.removePrefix(":").replace(':', '-') } +
         includedBuildArtifactIds)

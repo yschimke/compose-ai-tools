@@ -57,7 +57,10 @@ object PublishedVersions {
    *  * **absent** (`null`) -- the release did not compute a plan, so publish everything. This is the
    *    old behaviour and the `workflow_dispatch` recovery path.
    *  * **present but empty** (`""`) -- the plan ran and found nothing to publish, which happens for
-   *    a releasable change confined to `.github/` or the docs. Publish nothing (bar the BOM).
+   *    a releasable change confined to `.github/` or the docs. Publish nothing, the BOM included:
+   *    `printPublishTasks` in `root-tasks.gradle.kts` schedules `:bom` only for a non-empty set,
+   *    because with no module moving every constraint stays at its already-published version and
+   *    a new BOM would be byte-identical to the last one.
    *
    * Treating an empty property as "publish everything" would upload all 26 coordinates on exactly
    * the releases that need none of them, while `record-published.py` recorded none of them --
