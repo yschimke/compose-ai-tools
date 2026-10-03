@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.33.1](https://github.com/yschimke/compose-ai-tools/compare/v2.33.0...v2.33.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** rc-players 2.1.2 ([#5695](https://github.com/yschimke/compose-ai-tools/issues/5695)) ([15b8080](https://github.com/yschimke/compose-ai-tools/commit/15b8080eb5435ca6ceaba93230bc28a0bd41b9c6))
+
 ## [2.33.0](https://github.com/yschimke/compose-ai-tools/compare/v2.32.4...v2.33.0) (2026-10-03)
 
 
