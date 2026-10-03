@@ -35,6 +35,7 @@ jobs:
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Configure optional analytics
         env:
+          UMAMI_ENABLED: ${{ vars.UMAMI_ENABLED }}
           UMAMI_URL: ${{ vars.UMAMI_URL }}
           UMAMI_WEBSITE_ID: ${{ vars.UMAMI_WEBSITE_ID }}
         run: |
@@ -43,13 +44,14 @@ jobs:
           from urllib.parse import urlsplit
           endpoint = os.environ.get("UMAMI_URL", "").rstrip("/")
           website = os.environ.get("UMAMI_WEBSITE_ID", "")
-          config = {}
-          if endpoint and website:
+          enabled = os.environ.get("UMAMI_ENABLED") in ("1", "true")
+          config = {"umami_enabled": False}
+          if enabled and endpoint and website:
               parsed = urlsplit(endpoint)
               assert parsed.scheme == "https" and parsed.hostname and not parsed.username
               assert not parsed.query and not parsed.fragment
               assert re.fullmatch(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", website)
-              config = {"umami_url": endpoint, "umami_website_id": website}
+              config = {"umami_enabled": True, "umami_url": endpoint, "umami_website_id": website}
           with open("_analytics.yml", "w") as output:
               json.dump(config, output)
           PYCONFIG

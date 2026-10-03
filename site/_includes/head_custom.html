@@ -1,4 +1,4 @@
-{% if jekyll.environment == "production" and site.umami_url and site.umami_website_id %}
+{% if jekyll.environment == "production" and site.umami_enabled == true and site.umami_url and site.umami_website_id %}
 <script defer src="{{ '/assets/analytics.js' | relative_url }}"
         data-umami-url="{{ site.umami_url | escape }}"
         data-website-id="{{ site.umami_website_id | escape }}"
