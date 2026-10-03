@@ -80,8 +80,11 @@ val manifestText = providers.provider {
 // depends on a module gets them anyway; a Maven consumer importing only this BOM in
 // `<dependencyManagement>` did not, and could mix this release's tools with whatever daemon and
 // contracts versions its other dependencies happened to name. Importing them here gives one
-// coordinate that aligns all three layers. Both are ordinary imports, so they are floors that a
-// consumer naming a newer lower-layer BOM still raises.
+// coordinate that aligns all three layers. For Gradle consumers both are ordinary platform
+// imports, so they are floors that a newer lower-layer BOM still raises (highest wins). Maven does
+// not resolve that way: among imported BOMs the first declaration of a coordinate wins, so a Maven
+// consumer that wants a newer daemon or contracts BOM than this one imports must list that BOM
+// *before* compose-ai-tools-bom in `<dependencyManagement>`.
 //
 // They are republished with this BOM, which goes out on every release that publishes anything
 // (`printPublishTasks`). A daemon bump always does: `gradle-plugin` bakes the daemon version in, so
