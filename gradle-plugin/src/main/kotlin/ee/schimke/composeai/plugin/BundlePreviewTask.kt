@@ -1856,11 +1856,21 @@ abstract class BundlePreviewTask : DefaultTask() {
      * as coordinates. The RC preview's bytecode references the creation/tooling APIs, not the
      * player; `RemoteDocument` (remote-player-core) + `RemoteDocumentPlayer`
      * (remote-player-compose) pull the rest of the player runtime transitively.
+     *
+     * The rc-players entries do the same for the players the connector selects by id
+     * (`androidx-embedded`, `cmp-android`). The connector reaches their backends with
+     * `Class.forName`, which the walk cannot see, so a consumer that puts `rc-player-compose` on
+     * its runtime classpath used to have it pruned from the bundle, and a serve host never offered
+     * `cmp-android` for it. Like the AndroidX pair, each one seeds nothing when its jar is absent.
      */
     val REMOTECOMPOSE_REPLAY_ENTRY_FQNS =
       setOf(
         "androidx.compose.remote.player.core.RemoteDocument",
         "androidx.compose.remote.player.compose.RemoteDocumentPlayerKt",
+        // rc-players: `third-party-rc-embedded-player` (androidx-embedded).
+        "ee.schimke.composeai.rcembedded.player.RcPlayerKt",
+        // rc-players: `rc-player-compose` (cmp-android).
+        "ee.schimke.composeai.rcplayer.compose.RcComposePlayerKt",
       )
 
     /**
