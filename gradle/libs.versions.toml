@@ -394,7 +394,14 @@ composeai-contracts = "3.15.0"
 # the Android renderer honours `@AnimatedPreview(format = Apng)` (#208), which is what lets the
 # Android discover task stop downgrading that request to GIF. Built against contracts 3.15.0 (its
 # `daemon-protocol`; the rest at 3.14.0), so `composeai-contracts` above already covers it.
-composeai-preview-daemon = "3.13.0"
+# 3.13.1 gives the `cmp-android` Remote Compose player the pinned Robolectric clock the AndroidX
+# backends already honour (compose-preview-daemon#209): a `ROBOLECTRIC_UPTIME` document now starts
+# at the epoch and advances only with Robolectric's uptime instead of the host's wall clock, so
+# `CONTINUOUS_SEC`-driven content (e.g. an indeterminate progress sweep) draws at a deterministic
+# phase. A reduced release: only `daemon-android` and `data-remotecompose-connector` publish at
+# 3.13.1; the BOM keeps the rest (renderer-android, renderer-desktop, daemon-desktop,
+# data-layoutinspector-connector included) at 3.13.0. Contracts are unchanged.
+composeai-preview-daemon = "3.13.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
