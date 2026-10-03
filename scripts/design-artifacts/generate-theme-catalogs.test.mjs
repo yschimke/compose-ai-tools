@@ -42,10 +42,17 @@ test("the annotations dependency is appended once and is idempotent", () => {
   );
   assert.equal(ensureAnnotationsDependency(root, "1.2.3"), "added");
   const first = readFileSync(join(root, "build.gradle.kts"), "utf8");
+  // Versionless, through the daemon BOM at the release version: preview-annotations publishes
+  // only when it changes, so it need not exist at the daemon release version itself.
   assert.match(
     first,
-    /implementation\("ee\.schimke\.composeai:preview-annotations:1\.2\.3"\)/,
+    /implementation\(platform\("ee\.schimke\.composeai:compose-preview-daemon-bom:1\.2\.3"\)\)/,
   );
+  assert.match(
+    first,
+    /implementation\("ee\.schimke\.composeai:preview-annotations"\)/,
+  );
+  assert.doesNotMatch(first, /preview-annotations:/);
   assert.equal(ensureAnnotationsDependency(root, "1.2.3"), "present");
   assert.equal(
     readFileSync(join(root, "build.gradle.kts"), "utf8"),
@@ -61,9 +68,14 @@ test("a Groovy build file gets Groovy syntax", () => {
     "apply plugin: 'com.android.library'\n",
   );
   assert.equal(ensureAnnotationsDependency(root, "9.9.9"), "added");
+  const groovy = readFileSync(join(root, "build.gradle"), "utf8");
   assert.match(
-    readFileSync(join(root, "build.gradle"), "utf8"),
-    /implementation 'ee\.schimke\.composeai:preview-annotations:9\.9\.9'/,
+    groovy,
+    /implementation platform\('ee\.schimke\.composeai:compose-preview-daemon-bom:9\.9\.9'\)/,
+  );
+  assert.match(
+    groovy,
+    /implementation 'ee\.schimke\.composeai:preview-annotations'\n/,
   );
 });
 

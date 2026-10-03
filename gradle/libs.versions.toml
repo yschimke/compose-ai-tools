@@ -363,7 +363,8 @@ composeai-contracts = "3.15.0"
 # repository's #5336; the boundary is that repository's docs/design/DAEMON_SPLIT.md). Layer 1a,
 # between the contracts and this repository: it never depends back on anything here. A point pin,
 # for the same reason as the contracts above. The Gradle plugin bakes this value in as
-# `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
+# `PreviewDaemonVersion` and imports `compose-preview-daemon-bom` at it onto the configurations it
+# feeds `renderer-*` / `daemon-*` to (versionless) for external consumers, and
 # the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
 #
 # This value is not private to this build. Since #5480 every published POM here imports

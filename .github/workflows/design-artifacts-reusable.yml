@@ -1929,6 +1929,9 @@ jobs:
           # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
           # A released CLI embeds the exact daemon pin it was built against. The source-build path
           # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          # It is the daemon RELEASE, so the generator imports compose-preview-daemon-bom at it and
+          # declares preview-annotations versionless: that module publishes only when it changes,
+          # so it need not exist at the release version itself.
           if [ "$CLI_SOURCE" = "released" ]; then
             cli_bin="$(command -v compose-preview)"
             cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
@@ -3040,6 +3043,9 @@ jobs:
           # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
           # A released CLI embeds the exact daemon pin it was built against. The source-build path
           # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          # It is the daemon RELEASE, so the generator imports compose-preview-daemon-bom at it and
+          # declares preview-annotations versionless: that module publishes only when it changes,
+          # so it need not exist at the release version itself.
           if [ "$CLI_SOURCE" = "released" ]; then
             cli_bin="$(command -v compose-preview)"
             cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
