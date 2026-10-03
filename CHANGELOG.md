@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.32.4](https://github.com/yschimke/compose-ai-tools/compare/v2.32.3...v2.32.4) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** compose-preview-daemon 3.13.1 ([#5687](https://github.com/yschimke/compose-ai-tools/issues/5687)) ([023e52b](https://github.com/yschimke/compose-ai-tools/commit/023e52bf899ba045a8ca627e2b47a33d469f1fca))
+
 ## [2.32.3](https://github.com/yschimke/compose-ai-tools/compare/v2.32.2...v2.32.3) (2026-10-03)
 
 
