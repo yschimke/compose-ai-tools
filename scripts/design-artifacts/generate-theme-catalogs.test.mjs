@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   ensureAnnotationsDependency,
+  configurationFor,
   ensureThemePinDependency,
   main,
   sourceSetFor,
@@ -276,4 +277,52 @@ test("ensureThemePinDependency writes Groovy syntax for a Groovy build file", ()
     /\n  implementation 'ee\.schimke\.composeai:theme-pin-runtime:2\.40\.0'\n/,
   );
   assert.equal(ensureThemePinDependency(root, "2.40.0"), "present");
+});
+
+test("the desktop lane never generates into androidMain, which its JVM target does not compile", () => {
+  const root = scratch();
+  mkdirSync(join(root, "src/androidMain/kotlin"), { recursive: true });
+  mkdirSync(join(root, "src/commonMain/kotlin"), { recursive: true });
+  assert.equal(sourceSetFor(root, undefined, "desktop"), join(root, "src/commonMain/kotlin"));
+  mkdirSync(join(root, "src/desktopMain/kotlin"), { recursive: true });
+  assert.equal(sourceSetFor(root, undefined, "desktop"), join(root, "src/desktopMain/kotlin"));
+  assert.equal(sourceSetFor(root), join(root, "src/androidMain/kotlin"), "android lane unchanged");
+});
+
+test("a dependency lands in the configuration that compiles the generated source set", () => {
+  assert.equal(configurationFor("/m/src/main/kotlin"), "implementation");
+  assert.equal(configurationFor("/m/src/main/java"), "implementation");
+  assert.equal(configurationFor("/m/src/commonMain/kotlin"), "commonMainImplementation");
+  assert.equal(configurationFor("/m/src/desktopMain/kotlin"), "desktopMainImplementation");
+  assert.equal(configurationFor("/m/src/androidMain/kotlin"), "androidMainImplementation");
+});
+
+test("end to end on the desktop lane: a KMP module gets commonMain providers and commonMain dependencies", () => {
+  const root = scratch();
+  mkdirSync(join(root, "src/androidMain/kotlin"), { recursive: true });
+  mkdirSync(join(root, "src/commonMain/kotlin"), { recursive: true });
+  writeFileSync(join(root, "build.gradle.kts"), 'plugins { kotlin("multiplatform") }\n');
+  const spec = join(root, "catalog.spec.json");
+  writeFileSync(
+    spec,
+    JSON.stringify({
+      system: "heron",
+      themes: [{ kind: "wrapper", name: "Agami", wrapper: "AppTheme(Theme.Herons.Agami) { content() }" }],
+    }),
+  );
+  assert.equal(
+    main([
+      "--spec", spec, "--module-dir", root, "--annotations-version", "1.2.3",
+      "--theme-pin-version", "2.40.0", "--lane", "desktop",
+    ]),
+    0,
+  );
+  assert.ok(
+    existsSync(join(root, "src/commonMain/kotlin/ee/schimke/composeai/imported/themes/ImportedThemeCatalogs.kt")),
+  );
+  assert.ok(!existsSync(join(root, "src/androidMain/kotlin/ee")));
+  const build = readFileSync(join(root, "build.gradle.kts"), "utf8");
+  assert.match(build, /commonMainImplementation\("ee\.schimke\.composeai:theme-pin-runtime:2\.40\.0"\)/);
+  assert.match(build, /commonMainImplementation\("ee\.schimke\.composeai:preview-annotations"\)/);
+  assert.doesNotMatch(build, /\n  implementation\(/);
 });

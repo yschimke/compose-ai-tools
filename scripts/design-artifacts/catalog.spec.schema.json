@@ -33,6 +33,13 @@
       "description": "Informational: the theme modes the sticker sheet covers (e.g. [\"light\", \"dark\"]).",
       "items": { "type": "string" }
     },
+    "themeModules": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Gradle project paths the `themes` providers are generated into, for an import that renders every module (no `module`). Each listed module gets the same providers, so every rendered module offers the same Theme control. List only modules whose classpath sees the theme composable — a provider compiles in the module it is written into. Omit it when the spec names a single `module`; that module is used.",
+      "items": { "type": "string", "pattern": "^:[A-Za-z0-9_.-]+(:[A-Za-z0-9_.-]+)*$" }
+    },
     "themes": {
       "type": "array",
       "description": "Themes an IMPORTED project has but cannot declare for itself. A first-party catalog annotates its own `PreviewWrapperProvider` classes with @ThemeCatalog / @WearThemeCatalog beside the code and omits this entirely; a project imported without its maintainers' involvement has no dependency on those annotations, so its palettes are described HERE and the providers are generated into the throwaway checkout before discovery runs (scripts/design-artifacts/generate-theme-catalogs.mjs). Each entry expands to one or more providers, which is what puts chips in the served catalog's Theme control, makes `?theme=theme:<providerFqn>` re-render under them, and publishes a `themes/<fqn>.dtcg.json` token set each. Same bargain as `groups`: the inventory is our description of somebody else's code, and it stays in our repository.",

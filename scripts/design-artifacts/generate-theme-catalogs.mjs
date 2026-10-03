@@ -57,11 +57,42 @@ function parseArgs(argv) {
   return args;
 }
 
-/** The source-set directory to generate into: the override, else the first that exists. */
-export function sourceSetFor(moduleDir, override) {
+/**
+ * Source sets for a module rendered on the desktop lane, most-specific first.
+ *
+ * The desktop lane compiles a KMP module's JVM target, which never sees `androidMain` — a provider
+ * written there is simply absent from the render. Compose Multiplatform ships
+ * `PreviewWrapperProvider` for desktop, so the JVM target's own source set, else `commonMain`, is
+ * where a desktop render finds it.
+ */
+const DESKTOP_SOURCE_SETS = Object.freeze([
+  "src/desktopMain/kotlin",
+  "src/jvmMain/kotlin",
+  "src/commonMain/kotlin",
+  "src/main/kotlin",
+  "src/main/java",
+]);
+
+/**
+ * The source-set directory to generate into: the override, else the first that exists for the
+ * render [lane] (`android`, the default, or `desktop`).
+ */
+export function sourceSetFor(moduleDir, override, lane = "android") {
   if (override) return join(moduleDir, override);
-  const found = SOURCE_SETS.find((set) => existsSync(join(moduleDir, set)));
-  return found ? join(moduleDir, found) : join(moduleDir, SOURCE_SETS[1]);
+  const sets = lane === "desktop" ? DESKTOP_SOURCE_SETS : SOURCE_SETS;
+  const found = sets.find((set) => existsSync(join(moduleDir, set)));
+  return found ? join(moduleDir, found) : join(moduleDir, "src/main/kotlin");
+}
+
+/**
+ * The dependency configuration that compiles [sourceSetDir]: `implementation` for a plain module's
+ * `src/main`, `<sourceSet>Implementation` for a KMP source set — a KMP module has no top-level
+ * `implementation`, and a dependency the generated source needs must reach the source set it is in.
+ */
+export function configurationFor(sourceSetDir) {
+  const parts = sourceSetDir.split(/[\\/]/);
+  const set = parts[parts.lastIndexOf("src") + 1];
+  return !set || set === "main" ? "implementation" : `${set}Implementation`;
 }
 
 /**
@@ -167,8 +198,10 @@ export function main(argv = process.argv.slice(2)) {
     return 1;
   }
 
+  const sourceSet = sourceSetFor(moduleDir, args["source-set"], args.lane);
+  const configuration = configurationFor(sourceSet);
   const outFile = join(
-    sourceSetFor(moduleDir, args["source-set"]),
+    sourceSet,
     ...GENERATED_PACKAGE.split("."),
     "ImportedThemeCatalogs.kt",
   );
@@ -178,14 +211,14 @@ export function main(argv = process.argv.slice(2)) {
   const pinVersion = args["theme-pin-version"];
   const pin = typeof pinVersion === "string" && pinVersion.length > 0;
   writeFileSync(outFile, renderKotlin(themes, { pin }));
-  if (pin && ensureThemePinDependency(moduleDir, pinVersion) === "no-build-file") {
+  if (pin && ensureThemePinDependency(moduleDir, pinVersion, { configuration }) === "no-build-file") {
     console.error(
       `::error::no build.gradle[.kts] in ${moduleDir}; cannot add theme-pin-runtime`,
     );
     return 1;
   }
 
-  const dependency = ensureAnnotationsDependency(moduleDir, version);
+  const dependency = ensureAnnotationsDependency(moduleDir, version, { configuration });
   if (dependency === "no-build-file") {
     console.error(
       `::error::no build.gradle[.kts] in ${moduleDir}; cannot add preview-annotations`,

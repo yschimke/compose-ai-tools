@@ -581,6 +581,7 @@ export function validateSpec(spec, opts = {}) {
   // Like `modePriority`, a cover-sheet-level block: checked before `groups` so an annotation-only
   // catalog — which is exactly the repository-wide shape this exemption exists for — is checked too.
   errors.push(...completenessErrors(spec));
+  errors.push(...themeModulesErrors(spec));
   if (opts.liveBundle === false && specDefersAnything(spec)) {
     errors.push(
       "this spec defers coverage (`priority: \"deferred\"` / `modePriority`) but the publish has no " +
@@ -1064,6 +1065,39 @@ function completenessErrors(spec) {
       );
     }
   });
+  return errors;
+}
+
+/**
+ * Structural checks for `themeModules`: the Gradle paths `themes` providers are generated into.
+ *
+ * Only meaningful beside `themes`. A spec naming a single `module` generates there; an import that
+ * renders every module (no `module`) must name its theme modules, because only a module whose
+ * classpath sees the theme composable compiles a provider for it, and that is a fact about the
+ * upstream's dependency graph a reviewer can check against its build but nothing here can infer.
+ */
+export function themeModulesErrors(spec) {
+  const modules = spec?.themeModules;
+  if (modules === undefined) return [];
+  if (!Array.isArray(modules) || modules.length === 0) {
+    return ["`themeModules` must be a non-empty array of Gradle project paths (e.g. [\":app\"])"];
+  }
+  const errors = [];
+  const seen = new Set();
+  modules.forEach((path, i) => {
+    if (typeof path !== "string" || !/^:[A-Za-z0-9_.-]+(:[A-Za-z0-9_.-]+)*$/.test(path)) {
+      errors.push(
+        `themeModules[${i}] must be a Gradle project path with a leading colon (got ${JSON.stringify(path)})`,
+      );
+    } else if (seen.has(path)) {
+      errors.push(`themeModules[${i}] repeats ${path}`);
+    } else {
+      seen.add(path);
+    }
+  });
+  if (!Array.isArray(spec.themes) || spec.themes.length === 0) {
+    errors.push("`themeModules` names where `themes` providers are generated, but the spec declares no `themes`");
+  }
   return errors;
 }
 

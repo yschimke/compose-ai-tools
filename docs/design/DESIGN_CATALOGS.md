@@ -388,6 +388,26 @@ Two decisions worth stating, because both look like omissions:
   palettes do. Baking nine palettes × every component is the cost that design was built to avoid, and
   an import — re-rendered nightly for a project we do not control — is the last place to pay it.
 
+**Where providers are generated.** A spec that renders one `module` generates there. An import that
+renders every module, like tunjid/heron, lists `themeModules` instead:
+
+```json
+"themeModules": [":feature:home", ":feature:profile", ":ui:sheets"]
+```
+
+Every listed module gets the same providers, so each rendered module offers the same Theme control,
+and a theme's id (its provider FQN) is the same in all of them. List only modules whose classpath
+sees the theme composable: a provider compiles in the module it is written into. Which modules those
+are is a fact about the upstream's dependency graph. A reviewer can check it against the build, but
+nothing build-free can infer it, so the import states it.
+
+The source set follows the render lane. The Android lane prefers `androidMain`, as before. The
+desktop lane uses `desktopMain`, else `jvmMain`, else `commonMain`, because its JVM target never
+compiles `androidMain` (Compose Multiplatform ships `PreviewWrapperProvider` for desktop). The
+generated dependencies go into the configuration that compiles that source set: `implementation`
+for a plain `src/main`, and `<sourceSet>Implementation` for a KMP one, since a KMP module has no
+top-level `implementation`.
+
 First-party catalogs annotate their providers beside the code and omit `themes` entirely. The step
 runs for them too and is a no-op, so the seam is not import-only by construction; it is import-only
 by who needs it.
