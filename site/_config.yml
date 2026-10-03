@@ -36,6 +36,7 @@ defaults:
       layout: default
 
 exclude:
+  - _analytics.yml
   - Gemfile
   - Gemfile.lock
   - vendor
