@@ -1949,7 +1949,34 @@ jobs:
             echo "::error::could not resolve preview-annotations' daemon-line version"
             exit 1
           }
-          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
+          # Theme pinning (docs/design/DESIGN_CATALOGS.md, "Themes an app installs itself"): with
+          # `composePreview.themePinning=true` the plugin the CLI injects redirects the module's own
+          # Material 3 `MaterialTheme` calls, and the generated providers pin their palette with
+          # `PinMaterialTheme`, so a selected theme recolours previews that install their own. On
+          # only once that plugin version publishes theme-pin-runtime: on a CLI that predates it,
+          # the providers keep wrapping content directly and the import renders exactly as before.
+          pin_args=()
+          plugin_version=""
+          cli_bin="$(command -v compose-preview || true)"
+          if [ -n "$cli_bin" ]; then
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            for archive in "$cli_home"/lib/*.jar; do
+              plugin_version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^mavenLineVersion=//p' | head -1 || true)"
+              [ -z "$plugin_version" ] || break
+            done
+          fi
+          pom="https://repo1.maven.org/maven2/ee/schimke/composeai/theme-pin-runtime/${plugin_version}/theme-pin-runtime-${plugin_version}.pom"
+          if [ -n "$plugin_version" ] && curl -fsSIo /dev/null "$pom"; then
+            pin_args=(--theme-pin-version "$plugin_version")
+            printf '\ncomposePreview.themePinning=true\n' >> "${root}gradle.properties"
+            echo "theme pinning on (compose-preview plugin $plugin_version)"
+          else
+            echo "::notice title=Theme pinning off::compose-preview plugin ${plugin_version:-(unknown)}" \
+                 "publishes no theme-pin-runtime; the theme providers wrap content without pinning."
+          fi
+          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
+            "${pin_args[@]}"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
         working-directory: compose-ai-tools
@@ -3063,7 +3090,34 @@ jobs:
             echo "::error::could not resolve preview-annotations' daemon-line version"
             exit 1
           }
-          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
+          # Theme pinning (docs/design/DESIGN_CATALOGS.md, "Themes an app installs itself"): with
+          # `composePreview.themePinning=true` the plugin the CLI injects redirects the module's own
+          # Material 3 `MaterialTheme` calls, and the generated providers pin their palette with
+          # `PinMaterialTheme`, so a selected theme recolours previews that install their own. On
+          # only once that plugin version publishes theme-pin-runtime: on a CLI that predates it,
+          # the providers keep wrapping content directly and the import renders exactly as before.
+          pin_args=()
+          plugin_version=""
+          cli_bin="$(command -v compose-preview || true)"
+          if [ -n "$cli_bin" ]; then
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            for archive in "$cli_home"/lib/*.jar; do
+              plugin_version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^mavenLineVersion=//p' | head -1 || true)"
+              [ -z "$plugin_version" ] || break
+            done
+          fi
+          pom="https://repo1.maven.org/maven2/ee/schimke/composeai/theme-pin-runtime/${plugin_version}/theme-pin-runtime-${plugin_version}.pom"
+          if [ -n "$plugin_version" ] && curl -fsSIo /dev/null "$pom"; then
+            pin_args=(--theme-pin-version "$plugin_version")
+            printf '\ncomposePreview.themePinning=true\n' >> "${root}gradle.properties"
+            echo "theme pinning on (compose-preview plugin $plugin_version)"
+          else
+            echo "::notice title=Theme pinning off::compose-preview plugin ${plugin_version:-(unknown)}" \
+                 "publishes no theme-pin-runtime; the theme providers wrap content without pinning."
+          fi
+          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
+            "${pin_args[@]}"
       # ---- The embedded player lanes' harness, when a caller asked for them ---------------------
       #
       # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and the CMP player's

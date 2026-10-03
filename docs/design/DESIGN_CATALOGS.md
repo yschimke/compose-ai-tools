@@ -419,6 +419,16 @@ checkout. A first-party build that does not set it compiles exactly as before.
   and attaches the compiler plugin to exactly those compilations. A compilation that would get one
   without the other gets neither, so a redirected call never meets a missing method.
 
+The import pipeline turns it on by itself. When a spec declares `themes`, the "Generate declared
+theme providers" step reads the plugin version the installed CLI injects (`mavenLineVersion`). If
+that version publishes `theme-pin-runtime` on Maven Central, the step writes
+`composePreview.themePinning=true` into the checkout's `gradle.properties` and passes
+`--theme-pin-version` to
+[`generate-theme-catalogs.mjs`](../../scripts/design-artifacts/generate-theme-catalogs.mjs). The
+generator then wraps each Material 3 provider's `content()` in `PinMaterialTheme` and adds the
+runtime to the module's compile classpath. On a CLI that predates it, both are skipped with a notice,
+and the import renders exactly as before.
+
 A generated provider then calls the app's own theme with the selected palette and pins it:
 `AppTheme(theme = Agami) { PinMaterialTheme { content() } }`. The app's theme reaches `MaterialTheme`
 through the redirect too, so the pinned scheme is the selected palette, and every `AppTheme` the

@@ -112,6 +112,37 @@ export function ensureAnnotationsDependency(
   return "added";
 }
 
+/**
+ * Append `theme-pin-runtime` at [version] — the compose-preview plugin version the render injects —
+ * so the generated providers' `PinMaterialTheme` compiles. Same append-once shape as
+ * [ensureAnnotationsDependency]. The plugin itself adds the runtime to the render's runtime
+ * classpath; this is the compile half the generated source needs.
+ *
+ * @returns {"added"|"present"|"no-build-file"}
+ */
+export function ensureThemePinDependency(
+  moduleDir,
+  version,
+  { configuration = "implementation" } = {},
+) {
+  const buildFile = BUILD_FILES.map((f) => join(moduleDir, f)).find((f) =>
+    existsSync(f),
+  );
+  if (!buildFile) return "no-build-file";
+  const text = readFileSync(buildFile, "utf8");
+  const coordinate = "ee.schimke.composeai:theme-pin-runtime";
+  if (text.includes(coordinate)) return "present";
+  const line = buildFile.endsWith(".kts")
+    ? `  ${configuration}("${coordinate}:${version}")`
+    : `  ${configuration} '${coordinate}:${version}'`;
+  writeFileSync(
+    buildFile,
+    `${text}\n\n// compose-preview import: PinMaterialTheme for the generated theme providers under\n` +
+      `// ${GENERATED_PACKAGE}. Added to a throwaway checkout only.\ndependencies {\n${line}\n}\n`,
+  );
+  return "added";
+}
+
 export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const specPath = args.spec ?? "catalog.spec.json";
@@ -142,7 +173,17 @@ export function main(argv = process.argv.slice(2)) {
     "ImportedThemeCatalogs.kt",
   );
   mkdirSync(dirname(outFile), { recursive: true });
-  writeFileSync(outFile, renderKotlin(themes));
+  // `--theme-pin-version` turns pinning on: the workflow passes it only once that plugin version
+  // publishes theme-pin-runtime, so a provider never references a class that cannot resolve.
+  const pinVersion = args["theme-pin-version"];
+  const pin = typeof pinVersion === "string" && pinVersion.length > 0;
+  writeFileSync(outFile, renderKotlin(themes, { pin }));
+  if (pin && ensureThemePinDependency(moduleDir, pinVersion) === "no-build-file") {
+    console.error(
+      `::error::no build.gradle[.kts] in ${moduleDir}; cannot add theme-pin-runtime`,
+    );
+    return 1;
+  }
 
   const dependency = ensureAnnotationsDependency(moduleDir, version);
   if (dependency === "no-build-file") {
@@ -160,6 +201,11 @@ export function main(argv = process.argv.slice(2)) {
   }
   console.log(
     `preview-annotations (compose-preview-daemon-bom:${version}) ${dependency === "added" ? "added to" : "already in"} ${moduleDir}`,
+  );
+  console.log(
+    pin
+      ? `theme pinning on: providers wrap content in PinMaterialTheme (theme-pin-runtime:${pinVersion})`
+      : "theme pinning off: providers wrap content directly",
   );
   return 0;
 }

@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   ensureAnnotationsDependency,
+  ensureThemePinDependency,
   main,
   sourceSetFor,
 } from "./generate-theme-catalogs.mjs";
@@ -220,4 +221,59 @@ test("themes with no annotations version fail rather than writing code that cann
     }),
   );
   assert.equal(main(["--spec", spec, "--module-dir", root]), 1);
+});
+
+test("end to end with --theme-pin-version: providers pin and the runtime is added once", () => {
+  const root = scratch();
+  mkdirSync(join(root, "src/main/kotlin"), { recursive: true });
+  writeFileSync(join(root, "build.gradle.kts"), 'plugins { id("com.android.library") }\n');
+  const spec = join(root, "catalog.spec.json");
+  writeFileSync(
+    spec,
+    JSON.stringify({
+      system: "heron",
+      themes: [
+        {
+          kind: "arguments",
+          composable: "com.example.ui.theme.AppTheme",
+          variants: [{ name: "Agami", args: { theme: "Theme.Agami" } }],
+          imports: ["com.example.ui.theme.Theme"],
+        },
+      ],
+    }),
+  );
+  const args = [
+    "--spec",
+    spec,
+    "--module-dir",
+    root,
+    "--annotations-version",
+    "1.2.3",
+    "--theme-pin-version",
+    "2.40.0",
+  ];
+  assert.equal(main(args), 0);
+  assert.equal(main(args), 0, "a retried import is idempotent");
+  const kotlin = readFileSync(
+    join(root, "src/main/kotlin/ee/schimke/composeai/imported/themes/ImportedThemeCatalogs.kt"),
+    "utf8",
+  );
+  assert.match(kotlin, /\{ PinMaterialTheme \{ content\(\) \} \}/);
+  assert.match(kotlin, /import ee\.schimke\.composeai\.preview\.themepin\.PinMaterialTheme/);
+  const build = readFileSync(join(root, "build.gradle.kts"), "utf8");
+  assert.equal(
+    build.split('implementation("ee.schimke.composeai:theme-pin-runtime:2.40.0")').length - 1,
+    1,
+  );
+});
+
+test("ensureThemePinDependency writes Groovy syntax for a Groovy build file", () => {
+  const root = scratch();
+  writeFileSync(join(root, "build.gradle"), "plugins { id 'com.android.library' }\n");
+  assert.equal(ensureThemePinDependency(root, "2.40.0"), "added");
+  assert.match(
+    readFileSync(join(root, "build.gradle"), "utf8"),
+    /\n  implementation 'ee\.schimke\.composeai:theme-pin-runtime:2\.40\.0'\n/,
+  );
+  assert.equal(ensureThemePinDependency(root, "2.40.0"), "present");
 });
