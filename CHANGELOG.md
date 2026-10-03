@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.33.0](https://github.com/yschimke/compose-ai-tools/compare/v2.32.4...v2.33.0) (2026-10-03)
+
+
+### Features
+
+* opt-in theme pinning so a selected theme recolours previews that theme themselves ([#5690](https://github.com/yschimke/compose-ai-tools/issues/5690)) ([366a090](https://github.com/yschimke/compose-ai-tools/commit/366a09002d6760ac5b8cf2f648f0a6132fad123a))
+* themeModules generates theme providers into every listed module ([#5693](https://github.com/yschimke/compose-ai-tools/issues/5693)) ([958cec8](https://github.com/yschimke/compose-ai-tools/commit/958cec8c7f3cf80b264070cfe9fdd24a411ed09e))
+
+
+### Bug Fixes
+
+* **bundle:** keep the rc-players players in Remote Compose bundles ([#5691](https://github.com/yschimke/compose-ai-tools/issues/5691)) ([bbc5b4b](https://github.com/yschimke/compose-ai-tools/commit/bbc5b4bb914f69fc040958c3da3728d8fa273024))
+* **deps:** update compose-preview-daemon to 3.13.2 ([#5694](https://github.com/yschimke/compose-ai-tools/issues/5694)) ([0160fd2](https://github.com/yschimke/compose-ai-tools/commit/0160fd25b1fa3d772ce4250796567c16e80e36ba))
+
 ## [2.32.4](https://github.com/yschimke/compose-ai-tools/compare/v2.32.3...v2.32.4) (2026-10-03)
 
 

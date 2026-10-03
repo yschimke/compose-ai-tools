@@ -477,9 +477,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.32.4.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.33.0.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-2.32.4/bin/compose-preview list
+./compose-preview-2.33.0/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
