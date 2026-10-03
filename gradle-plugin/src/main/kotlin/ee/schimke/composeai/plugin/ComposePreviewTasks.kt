@@ -49,8 +49,9 @@ internal object ComposePreviewTasks {
    * Creates (or reuses) a resolvable configuration named [configName] populated with the
    * `:renderer-desktop` JVM renderer — the in-tree project when this build contains it (so live
    * renderer edits land without a publish), else the published
-   * `ee.schimke.composeai:renderer-desktop:<plugin-version>` JAR. Used both by the desktop render
-   * task and by the Android `composePreviewRenderLottie` task, which renders `kind=LOTTIE` assets
+   * `ee.schimke.composeai:renderer-desktop` JAR, versionless through `compose-preview-daemon-bom`
+   * at [PreviewDaemonVersion] (see [PreviewDaemonModules]). Used both by the desktop render task
+   * and by the Android `composePreviewRenderLottie` task, which renders `kind=LOTTIE` assets
    * through the JVM Compottie path (the asset is portable IR — no Android/Robolectric player). The
    * default add is skipped when the consumer already populated [configName] themselves, so an
    * explicit `dependencies { "<configName>"(files(...)) }` override still wins.
@@ -81,13 +82,13 @@ internal object ComposePreviewTasks {
           )
           project.dependencies.add(
             configName,
-            "ee.schimke.composeai:renderer-desktop:${PreviewDaemonVersion.value}",
+            PreviewDaemonModules.dependency(project, configName, "renderer-desktop"),
           )
         }
       } else {
         project.dependencies.add(
           configName,
-          "ee.schimke.composeai:renderer-desktop:${PreviewDaemonVersion.value}",
+          PreviewDaemonModules.dependency(project, configName, "renderer-desktop"),
         )
       }
     }
@@ -941,7 +942,7 @@ internal object ComposePreviewTasks {
       // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
       project.dependencies.add(
         daemonRendererConfig.name,
-        "ee.schimke.composeai:daemon-desktop:${PreviewDaemonVersion.value}",
+        PreviewDaemonModules.dependency(project, daemonRendererConfig.name, "daemon-desktop"),
       )
     }
 
@@ -1816,8 +1817,9 @@ internal object ComposePreviewTasks {
     catalogRenderSupported: Boolean = true,
     // Whether this backend's renderer encodes `@AnimatedPreview(format = Apng)` as APNG. `true` on
     // both backends the plugin wires: the desktop renderer always has, and the Android renderer
-    // does from compose-preview-daemon 3.13.0 (#208). The plugin resolves both renderers at exactly
-    // its baked `PreviewDaemonVersion` (Gradle conflict resolution can only raise that), so no
+    // does from compose-preview-daemon 3.13.0 (#208). The plugin resolves both renderers through
+    // the daemon BOM at its baked `PreviewDaemonVersion` (Gradle conflict resolution can only raise
+    // that), so no
     // Gradle consumer renders against an older one. `false` remains for a backend that writes GIF
     // whatever was asked — discovery then records GIF and names the output `.gif`.
     animatedPreviewApngSupported: Boolean = true,

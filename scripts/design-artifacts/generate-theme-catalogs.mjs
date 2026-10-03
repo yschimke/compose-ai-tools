@@ -11,6 +11,11 @@
  *     --spec catalog.spec.json --module-dir modules/services/compose \
  *     --annotations-version 1.2.3
  *
+ * `--annotations-version` is the compose-preview-daemon RELEASE (the `composeai-preview-daemon`
+ * catalog pin), not preview-annotations' own version — see [ensureAnnotationsDependency]. The flag
+ * keeps its name because the reusable workflow passes it to whichever driver release
+ * `.github/design-artifacts-driver-pin.txt` checks out, older ones included.
+ *
  * Exits 0 having done nothing when the spec declares no themes, so the pipeline can call it
  * unconditionally rather than gating on a field it would have to parse twice.
  */
@@ -62,6 +67,12 @@ export function sourceSetFor(moduleDir, override) {
 /**
  * Append the `preview-annotations` dependency to a module's build file.
  *
+ * Versionless, through `compose-preview-daemon-bom` at [daemonVersion] — the daemon release. The
+ * daemon publishes only the modules a release changes, so preview-annotations is not guaranteed to
+ * exist at the release version (the 3.9.1 line mapped it to 3.8.4); pinning it there 404s on the
+ * first release that skips it. The BOM is the record of which version belongs to the release. The
+ * same shape `integration.yml` appends for its XR overlay.
+ *
  * Appended rather than merged into an existing `dependencies { }` block for the same reason the
  * pipeline appends its plugin configuration: parsing somebody else's Gradle script to splice into
  * it is a losing game, and Gradle is perfectly happy with a second `dependencies { }`. Idempotent —
@@ -72,7 +83,7 @@ export function sourceSetFor(moduleDir, override) {
  */
 export function ensureAnnotationsDependency(
   moduleDir,
-  version,
+  daemonVersion,
   { configuration = "implementation" } = {},
 ) {
   const buildFile = BUILD_FILES.map((f) => join(moduleDir, f)).find((f) =>
@@ -88,10 +99,11 @@ export function ensureAnnotationsDependency(
   )
     return "present";
   const kts = buildFile.endsWith(".kts");
-  const coordinate = `ee.schimke.composeai:preview-annotations:${version}`;
+  const bom = `ee.schimke.composeai:compose-preview-daemon-bom:${daemonVersion}`;
+  const coordinate = "ee.schimke.composeai:preview-annotations";
   const line = kts
-    ? `  ${configuration}("${coordinate}")`
-    : `  ${configuration} '${coordinate}'`;
+    ? `  ${configuration}(platform("${bom}"))\n  ${configuration}("${coordinate}")`
+    : `  ${configuration} platform('${bom}')\n  ${configuration} '${coordinate}'`;
   writeFileSync(
     buildFile,
     `${text}\n\n// compose-preview import: catalog annotations for the generated theme providers under\n` +
@@ -147,7 +159,7 @@ export function main(argv = process.argv.slice(2)) {
     );
   }
   console.log(
-    `preview-annotations:${version} ${dependency === "added" ? "added to" : "already in"} ${moduleDir}`,
+    `preview-annotations (compose-preview-daemon-bom:${version}) ${dependency === "added" ? "added to" : "already in"} ${moduleDir}`,
   );
   return 0;
 }

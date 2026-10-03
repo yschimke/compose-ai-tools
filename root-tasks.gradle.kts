@@ -77,7 +77,8 @@ tasks.register("ktfmtFormatAll") {
 // The renderers and their transitive modules used to be published to mavenLocal here so the
 // synthetic consumer projects could resolve `ee.schimke.composeai:renderer-<backend>:<v>` at the
 // plugin's own version. They publish from compose-preview-daemon since #5336 and the plugin
-// resolves them at `PreviewDaemonVersion` from Maven Central, so only the plugin itself still has
+// resolves them through `compose-preview-daemon-bom` at `PreviewDaemonVersion` from Maven Central,
+// so only the plugin itself still has
 // to reach mavenLocal.
 tasks.register("functionalTestWithAndroid") {
   group = "verification"

@@ -2165,7 +2165,7 @@ internal object AndroidPreviewSupport {
       addRenderGraphDependency(
         project,
         rendererConfig.name,
-        "ee.schimke.composeai:renderer-android:${PreviewDaemonVersion.value}",
+        PreviewDaemonModules.dependency(project, rendererConfig.name, "renderer-android"),
       )
     }
 
@@ -2217,7 +2217,11 @@ internal object AndroidPreviewSupport {
         addRenderGraphDependency(
           project,
           rendererConfig.name,
-          "ee.schimke.composeai:data-layoutinspector-connector:${PreviewDaemonVersion.value}",
+          PreviewDaemonModules.dependency(
+            project,
+            rendererConfig.name,
+            "data-layoutinspector-connector",
+          ),
         )
       }
       addRenderGraphDependency(
@@ -2304,11 +2308,13 @@ internal object AndroidPreviewSupport {
       // External-consumer mode: pull `daemon-android` from Maven Central — published as part of
       // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
       // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
-      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
+      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`. Versionless through the
+      // daemon BOM like the renderer above — see [PreviewDaemonModules]; the config inherits the
+      // render config's platform via `extendsFrom`, and gets its own so it never depends on that.
       addRenderGraphDependency(
         project,
         daemonRendererConfig.name,
-        "ee.schimke.composeai:daemon-android:${PreviewDaemonVersion.value}",
+        PreviewDaemonModules.dependency(project, daemonRendererConfig.name, "daemon-android"),
       )
     }
 
