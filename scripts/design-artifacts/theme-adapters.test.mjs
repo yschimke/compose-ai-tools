@@ -5,6 +5,7 @@ import {
   GENERATED_PACKAGE,
   THEME_KINDS,
   classNameFor,
+  pinBody,
   renderKotlin,
   resolveThemes,
   titleCase,
@@ -346,4 +347,47 @@ test("an entry's imports reach every theme it expands to", () => {
       ),
     );
   }
+});
+
+test("pinBody wraps the last content() call, leaving the theme call around it intact", () => {
+  assert.equal(
+    pinBody("AppTheme(theme = Theme.Agami) { content() }"),
+    "AppTheme(theme = Theme.Agami) { PinMaterialTheme { content() } }",
+  );
+  assert.equal(
+    pinBody("Outer { Inner { content() } }"),
+    "Outer { Inner { PinMaterialTheme { content() } } }",
+  );
+  assert.equal(pinBody("NoContent()"), "NoContent()");
+});
+
+test("with pin, Material 3 providers pin their palette and import PinMaterialTheme", () => {
+  const themes = ok({
+    themes: [
+      { kind: "wrapper", name: "Agami", wrapper: "AppTheme(Theme.Agami) { content() }" },
+      {
+        kind: "wrapper",
+        wear: true,
+        name: "Watch",
+        wrapper: "MaterialTheme { content() }",
+        imports: ["androidx.wear.compose.material3.MaterialTheme"],
+      },
+    ],
+  });
+  const kotlin = renderKotlin(themes, { pin: true });
+  assert.match(kotlin, /\nimport ee\.schimke\.composeai\.preview\.themepin\.PinMaterialTheme\n/);
+  assert.match(kotlin, /AppTheme\(Theme\.Agami\) \{ PinMaterialTheme \{ content\(\) \} \}/);
+  // Wear is not Material 3: its body is left exactly as written.
+  assert.match(kotlin, /    MaterialTheme \{ content\(\) \}\n/);
+  const importLines = kotlin.split("\n").filter((l) => l.startsWith("import "));
+  assert.deepEqual(importLines, [...importLines].sort(), "imports stay sorted");
+});
+
+test("without pin, providers are rendered exactly as before", () => {
+  const themes = ok({
+    themes: [{ kind: "wrapper", name: "Agami", wrapper: "AppTheme(Theme.Agami) { content() }" }],
+  });
+  const kotlin = renderKotlin(themes);
+  assert.doesNotMatch(kotlin, /PinMaterialTheme/);
+  assert.match(kotlin, /    AppTheme\(Theme\.Agami\) \{ content\(\) \}\n/);
 });

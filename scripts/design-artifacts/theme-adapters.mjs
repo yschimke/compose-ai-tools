@@ -61,6 +61,8 @@ const BASE_IMPORTS = Object.freeze([
 ]);
 
 const THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog";
+const PIN_MATERIAL_THEME_FQN =
+  "ee.schimke.composeai.preview.themepin.PinMaterialTheme";
 const WEAR_THEME_CATALOG_FQN =
   "ee.schimke.composeai.preview.WearThemeCatalog";
 
@@ -359,6 +361,17 @@ export function titleCase(raw) {
   );
 }
 
+/**
+ * Wraps the last `content()` of a provider body in `PinMaterialTheme { }`: the call that hands the
+ * preview its content is the innermost point of the provider's own theme, so the scheme in effect
+ * there is the one the provider selected.
+ */
+export function pinBody(body) {
+  const at = body.lastIndexOf("content()");
+  if (at < 0) return body;
+  return `${body.slice(0, at)}PinMaterialTheme { content() }${body.slice(at + "content()".length)}`;
+}
+
 function simpleName(fqn) {
   return fqn.slice(fqn.lastIndexOf(".") + 1);
 }
@@ -382,8 +395,17 @@ function requireFqn(value, where, errors) {
  * Imports are hoisted and sorted rather than written fully-qualified inline: a `Theme.ThemeType`
  * nested in a class cannot be spelled fully-qualified in an expression position without the
  * enclosing class resolving first, which is exactly the case Pocket Casts hits.
+ *
+ * With `pin`, each Material 3 theme's `content()` is wrapped in `PinMaterialTheme { }` (from
+ * `theme-pin-runtime`), so the palette the provider selects is pinned over every theme the preview
+ * installs further in — see "Themes an app installs itself" in docs/design/DESIGN_CATALOGS.md. Wear
+ * themes are left alone: pinning reads and redirects Material 3 only.
  */
-export function renderKotlin(themes, { packageName = GENERATED_PACKAGE } = {}) {
+export function renderKotlin(
+  themes,
+  { packageName = GENERATED_PACKAGE, pin = false } = {},
+) {
+  const pinned = (theme) => pin && !theme.wear;
   const annotationImports = themes.map((theme) =>
     theme.wear ? WEAR_THEME_CATALOG_FQN : THEME_CATALOG_FQN,
   );
@@ -391,6 +413,7 @@ export function renderKotlin(themes, { packageName = GENERATED_PACKAGE } = {}) {
     ...new Set([
       ...BASE_IMPORTS,
       ...annotationImports,
+      ...(themes.some(pinned) ? [PIN_MATERIAL_THEME_FQN] : []),
       ...themes.flatMap((t) => t.imports),
     ]),
   ].sort();
@@ -416,7 +439,7 @@ export function renderKotlin(themes, { packageName = GENERATED_PACKAGE } = {}) {
       `class ${t.className} : PreviewWrapperProvider {`,
       "  @Composable",
       "  override fun Wrap(content: @Composable () -> Unit) {",
-      `    ${t.body}`,
+      `    ${pinned(t) ? pinBody(t.body) : t.body}`,
       "  }",
       "}",
     ].join("\n");

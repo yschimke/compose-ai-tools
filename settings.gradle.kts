@@ -225,6 +225,14 @@ include(":appwidget-preview-runtime")
 
 project(":appwidget-preview-runtime").projectDir = file("runtimes/appwidget")
 
+include(":theme-pin-compiler-plugin")
+
+project(":theme-pin-compiler-plugin").projectDir = file("compiler/theme-pin")
+
+include(":theme-pin-runtime")
+
+project(":theme-pin-runtime").projectDir = file("runtimes/theme-pin")
+
 include(":typography-preview-runtime")
 
 project(":typography-preview-runtime").projectDir = file("runtimes/typography")
