@@ -245,8 +245,14 @@ val generatePluginVersionResource =
     // consumers (`PreviewDaemonVersion`). Those modules left this build in #5336 and publish on
     // their own line, so the plugin's version no longer names one they exist at.
     val previewDaemon = libs.versions.composeai.preview.daemon.get()
+    // The Kotlin the theme-pin compiler plugin is compiled against (`:theme-pin-compiler-plugin`
+    // builds with this catalog's `kotlin`). `ThemePinning` attaches it only to a consumer on the
+    // same Kotlin line: a compiler plugin links against compiler internals, so a different line
+    // can fail to load it and take the whole compilation down.
+    val themePinKotlin = libs.versions.kotlin.get()
     inputs.property("version", pluginVersion)
     inputs.property("previewDaemon", previewDaemon)
+    inputs.property("themePinKotlin", themePinKotlin)
     inputs.property("xrCompose", xrCompose)
     inputs.property("xrRuntimeTesting", xrRuntimeTesting)
     inputs.property("xrScenecoreTesting", xrScenecoreTesting)
@@ -258,7 +264,9 @@ val generatePluginVersionResource =
       val base =
         outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
       base.parentFile.mkdirs()
-      base.writeText("version=$pluginVersion\npreviewDaemon=$previewDaemon\n")
+      base.writeText(
+        "version=$pluginVersion\npreviewDaemon=$previewDaemon\nthemePinKotlin=$themePinKotlin\n"
+      )
       val xr =
         outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
       xr.writeText(

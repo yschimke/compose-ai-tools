@@ -392,6 +392,49 @@ First-party catalogs annotate their providers beside the code and omit `themes` 
 runs for them too and is a no-op, so the seam is not import-only by construction; it is import-only
 by who needs it.
 
+### Themes an app installs itself (theme pinning)
+
+A theme provider wraps a preview from the **outside**, but an app's previews usually install the
+app's own theme further in. tunjid/heron's routes go `RoutePreview → AppScaffold → AppTheme(theme =
+Theme.fromOrdinal(prefs))`, and the innermost `MaterialTheme` wins, so every chip of a Theme control
+renders the same pixels. `PreviewThemeShadowing` warns about exactly this. Before pinning, nothing
+could fix it from outside the upstream's source.
+
+Theme pinning reverses that precedence. It is **opt-in**: the Gradle plugin enables it for a build
+that sets `composePreview.themePinning=true`, which the import pipeline sets in its throwaway
+checkout. A first-party build that does not set it compiles exactly as before.
+
+- **`theme-pin-runtime`** declares `PreviewMaterialTheme`, a drop-in for each Material 3
+  `MaterialTheme` overload with the same parameters and defaults, so it compiles to the identical
+  JVM descriptor. It prefers a scheme pinned in `LocalPinnedColorScheme`. `PinMaterialTheme { }`
+  pins the scheme in effect around its content.
+- **`theme-pin-compiler-plugin`** changes the owner of each
+  `INVOKESTATIC androidx/compose/material3/MaterialThemeKt.MaterialTheme` the module's own
+  compilation emits to `PreviewMaterialThemeKt`. Everything else in the instruction stays as it was.
+  It works at class generation rather than in IR because the Compose compiler rewrites every
+  composable call's signature during its own IR lowering, and the order IR extensions run in is not
+  fixed. Library code is never touched; only calls the module compiles are.
+- **The Gradle plugin** adds the runtime to the runtime-only bucket of each JVM / Android render
+  compilation (`runtimeOnly`, or a KMP `jvm` / `desktop` / `android` target's `<target>MainRuntimeOnly`),
+  and attaches the compiler plugin to exactly those compilations. A compilation that would get one
+  without the other gets neither, so a redirected call never meets a missing method.
+
+A generated provider then calls the app's own theme with the selected palette and pins it:
+`AppTheme(theme = Agami) { PinMaterialTheme { content() } }`. The app's theme reaches `MaterialTheme`
+through the redirect too, so the pinned scheme is the selected palette, and every `AppTheme` the
+preview installs further in renders with it. Only the colour scheme is pinned; typography and shapes
+stay whatever each nested theme sets.
+
+**The Kotlin gate.** A compiler plugin links against compiler internals, which change between Kotlin
+lines. The compiler plugin is built with this repository's `kotlin` from the version catalog, which is
+baked into the Gradle plugin as `themePinKotlin`. It is attached only to a consumer on the same
+`major.minor` line. Any other line logs a warning and renders without pinning rather than risk a
+compiler crash. Supporting a new Kotlin line means building and testing the compiler plugin against
+it.
+
+With pinning on and no theme selected, `PreviewMaterialTheme` passes through unchanged. All 74 of
+`:samples:cmp`'s renders are byte-identical with the property on and off.
+
 ### Delivery-branch history
 
 Each publish **appends a commit on top of the branch tip** rather than

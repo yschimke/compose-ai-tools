@@ -31,6 +31,8 @@ constructor(
   override fun apply(project: Project) {
     GradleVersionCheck.problem(GradleVersion.current())?.let { throw GradleException(it) }
     warnIfIsolatedProjectsEnabled(project)
+    // Opt-in only (`composePreview.themePinning=true`); a no-op for every first-party build.
+    ThemePinning.apply(project)
 
     // Create-or-find: the config-only plugin (`ee.schimke.composeai.preview.config`) may already
     // have registered the `composePreview` extension and its convention chain. Reuse it so the two
