@@ -13,6 +13,7 @@ import {
   closest,
   validateSpec,
   buildSkeletonSpec,
+  themeModulesErrors,
 } from "./catalog-spec.mjs";
 
 test("stripComments removes line and block comments, keeps strings", () => {
@@ -1406,4 +1407,14 @@ test("referenceKitFileKeys drops an entry that is neither a key nor a Figma desi
     referenceKitFileKeys({ referenceKits: ["", "not a url", 42, null] }),
     [],
   );
+});
+
+test("themeModules is a non-empty list of distinct Gradle paths beside themes", () => {
+  const themes = [{ kind: "wrapper", name: "A", wrapper: "T { content() }" }];
+  assert.deepEqual(themeModulesErrors({ themes }), []);
+  assert.deepEqual(themeModulesErrors({ themes, themeModules: [":feature:home", ":ui:sheets"] }), []);
+  assert.equal(themeModulesErrors({ themes, themeModules: [] }).length, 1);
+  assert.match(themeModulesErrors({ themes, themeModules: ["feature:home"] })[0], /leading colon/);
+  assert.match(themeModulesErrors({ themes, themeModules: [":a", ":a"] })[0], /repeats :a/);
+  assert.match(themeModulesErrors({ themeModules: [":a"] })[0], /declares no `themes`/);
 });

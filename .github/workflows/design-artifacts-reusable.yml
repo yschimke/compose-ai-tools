@@ -1881,6 +1881,7 @@ jobs:
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           CLI_SOURCE: ${{ inputs.cli-source }}
+          DESKTOP_RENDER: ${{ inputs.desktop-render }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -1907,25 +1908,40 @@ jobs:
                  "to a release carrying it."
             exit 0
           fi
-          if [ -z "${MODULE:-}" ]; then
-            echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
-                 "compile into — they have to see the theme composables, which repository-wide" \
-                 "discovery cannot pick a home for."
+          # Where the providers are generated: the spec's `themeModules` for an import that renders
+          # every module, else the one `module` it renders. Every listed module gets the same
+          # providers, so each rendered module offers the same Theme control; a provider compiles
+          # only where the theme composable is on the classpath, which is why the list is the
+          # import's to state and the reviewer's to check against the upstream build.
+          theme_modules="$(node -e '
+            const spec = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const listed = Array.isArray(spec.themeModules) ? spec.themeModules : [];
+            for (const m of listed) console.log(m);
+          ' "$SPEC")"
+          if [ -z "$theme_modules" ]; then theme_modules="${MODULE:-}"; fi
+          if [ -z "$theme_modules" ]; then
+            echo "::error::a spec declaring 'themes' must name where the providers compile: its" \
+                 "'module', or 'themeModules' for an import that renders every module — they have" \
+                 "to see the theme composables, which repository-wide discovery cannot pick a home for."
             exit 1
           fi
+          lane="android"
+          if [ "${DESKTOP_RENDER:-false}" = "true" ]; then lane="desktop"; fi
+          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
           # Same module-path resolution as the runtime-projects step: the derived path first, then
           # whatever settings.gradle remaps `projectDir` to, because `project(":app").projectDir =
           # file(...)` puts a module where its Gradle path does not say.
-          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
-          derived="$(printf '%s' "${MODULE#:}" | tr ':' '/')"
-          remapped="$(
-            cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
-              sed -n "s|.*project(['\"]${MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
-              head -1
-          )" || true
-          if [ -n "$remapped" ]; then derived="$remapped"; fi
-          module_dir="${root}${derived}"
-          [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
+          module_dir_for() {
+            local module="$1" derived remapped
+            derived="$(printf '%s' "${module#:}" | tr ':' '/')"
+            remapped="$(
+              cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
+                sed -n "s|.*project(['\"]${module}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+                head -1
+            )" || true
+            if [ -n "$remapped" ]; then derived="$remapped"; fi
+            printf '%s' "${root}${derived}"
+          }
           # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
           # A released CLI embeds the exact daemon pin it was built against. The source-build path
           # has not built that CLI yet, so read the same pin from the driver's version catalog.
@@ -1975,8 +1991,15 @@ jobs:
             echo "::notice title=Theme pinning off::compose-preview plugin ${plugin_version:-(unknown)}" \
                  "publishes no theme-pin-runtime; the theme providers wrap content without pinning."
           fi
-          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
-            "${pin_args[@]}"
+          while IFS= read -r module; do
+            [ -n "$module" ] || continue
+            module_dir="$(module_dir_for "$module")"
+            [ -d "$module_dir" ] || { echo "::error::module directory not found for $module: $module_dir"; exit 1; }
+            echo "::group::theme providers → $module ($lane lane)"
+            node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
+              --lane "$lane" "${pin_args[@]}"
+            echo "::endgroup::"
+          done <<< "$theme_modules"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
         working-directory: compose-ai-tools
@@ -3022,6 +3045,7 @@ jobs:
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           CLI_SOURCE: ${{ inputs.cli-source }}
+          DESKTOP_RENDER: ${{ inputs.desktop-render }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -3048,25 +3072,40 @@ jobs:
                  "to a release carrying it."
             exit 0
           fi
-          if [ -z "${MODULE:-}" ]; then
-            echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
-                 "compile into — they have to see the theme composables, which repository-wide" \
-                 "discovery cannot pick a home for."
+          # Where the providers are generated: the spec's `themeModules` for an import that renders
+          # every module, else the one `module` it renders. Every listed module gets the same
+          # providers, so each rendered module offers the same Theme control; a provider compiles
+          # only where the theme composable is on the classpath, which is why the list is the
+          # import's to state and the reviewer's to check against the upstream build.
+          theme_modules="$(node -e '
+            const spec = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const listed = Array.isArray(spec.themeModules) ? spec.themeModules : [];
+            for (const m of listed) console.log(m);
+          ' "$SPEC")"
+          if [ -z "$theme_modules" ]; then theme_modules="${MODULE:-}"; fi
+          if [ -z "$theme_modules" ]; then
+            echo "::error::a spec declaring 'themes' must name where the providers compile: its" \
+                 "'module', or 'themeModules' for an import that renders every module — they have" \
+                 "to see the theme composables, which repository-wide discovery cannot pick a home for."
             exit 1
           fi
+          lane="android"
+          if [ "${DESKTOP_RENDER:-false}" = "true" ]; then lane="desktop"; fi
+          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
           # Same module-path resolution as the runtime-projects step: the derived path first, then
           # whatever settings.gradle remaps `projectDir` to, because `project(":app").projectDir =
           # file(...)` puts a module where its Gradle path does not say.
-          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
-          derived="$(printf '%s' "${MODULE#:}" | tr ':' '/')"
-          remapped="$(
-            cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
-              sed -n "s|.*project(['\"]${MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
-              head -1
-          )" || true
-          if [ -n "$remapped" ]; then derived="$remapped"; fi
-          module_dir="${root}${derived}"
-          [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
+          module_dir_for() {
+            local module="$1" derived remapped
+            derived="$(printf '%s' "${module#:}" | tr ':' '/')"
+            remapped="$(
+              cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
+                sed -n "s|.*project(['\"]${module}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+                head -1
+            )" || true
+            if [ -n "$remapped" ]; then derived="$remapped"; fi
+            printf '%s' "${root}${derived}"
+          }
           # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
           # A released CLI embeds the exact daemon pin it was built against. The source-build path
           # has not built that CLI yet, so read the same pin from the driver's version catalog.
@@ -3116,8 +3155,15 @@ jobs:
             echo "::notice title=Theme pinning off::compose-preview plugin ${plugin_version:-(unknown)}" \
                  "publishes no theme-pin-runtime; the theme providers wrap content without pinning."
           fi
-          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
-            "${pin_args[@]}"
+          while IFS= read -r module; do
+            [ -n "$module" ] || continue
+            module_dir="$(module_dir_for "$module")"
+            [ -d "$module_dir" ] || { echo "::error::module directory not found for $module: $module_dir"; exit 1; }
+            echo "::group::theme providers → $module ($lane lane)"
+            node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version" \
+              --lane "$lane" "${pin_args[@]}"
+            echo "::endgroup::"
+          done <<< "$theme_modules"
       # ---- The embedded player lanes' harness, when a caller asked for them ---------------------
       #
       # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and the CMP player's
