@@ -54,16 +54,16 @@ your agent can fetch URLs but not run commands, point it straight at the
 On **Antigravity, Claude Code or Codex**, you can also install the skills and
 the MCP wiring as plugins. The skills come from
 [`yschimke/skills`](https://github.com/yschimke/skills). The wiring comes from
-[`yschimke/compose-ag-plugin`](https://github.com/yschimke/compose-ag-plugin):
+[`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins):
 - `compose-preview` connects to the local `compose-preview mcp serve`;
 - `compose-catalogs` connects to the hosted catalog and UI Builder.
 
 ```sh
 # Antigravity (does not load ~/.agents/skills, so use the plugin route).
-# To be verified: yschimke/compose-ag-plugin#6.
+# To be verified: yschimke/compose-agent-plugins#6.
 git clone https://github.com/yschimke/skills
 agy plugin install ./skills
-# Clone yschimke/compose-ag-plugin, then install either local plugin directory.
+# Clone yschimke/compose-agent-plugins, then install either local plugin directory.
 agy plugin install ./plugins/compose-catalogs
 agy plugin install ./plugins/compose-preview
 agy plugin enable compose-preview
@@ -71,13 +71,13 @@ agy plugin enable compose-preview
 # Claude Code
 /plugin marketplace add yschimke/skills
 /plugin install yschimke-skills@yschimke-skills
-/plugin marketplace add yschimke/compose-ag-plugin
-/plugin install compose-catalogs@compose-ag-plugin
-/plugin install compose-preview@compose-ag-plugin
+/plugin marketplace add yschimke/compose-agent-plugins
+/plugin install compose-catalogs@compose-agent-plugins
+/plugin install compose-preview@compose-agent-plugins
 
 # Codex
 codex plugin marketplace add yschimke/skills
-codex plugin marketplace add yschimke/compose-ag-plugin
+codex plugin marketplace add yschimke/compose-agent-plugins
 # Then enable yschimke-skills, compose-catalogs, and compose-preview from /plugins.
 ```
 

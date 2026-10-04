@@ -282,13 +282,13 @@ class AgentMcpConfigTest {
     assertEquals(
       """
       |  antigravity:
-      |      git clone https://github.com/yschimke/compose-ag-plugin.git && cd compose-ag-plugin
+      |      git clone https://github.com/yschimke/compose-agent-plugins.git && cd compose-agent-plugins
       |      agy plugin install ./plugins/compose-preview && agy plugin enable compose-preview
       |  claude (in Claude Code):
-      |      /plugin marketplace add yschimke/compose-ag-plugin
-      |      /plugin install compose-preview@compose-ag-plugin
+      |      /plugin marketplace add yschimke/compose-agent-plugins
+      |      /plugin install compose-preview@compose-agent-plugins
       |  codex (in a shell, then in Codex):
-      |      codex plugin marketplace add yschimke/compose-ag-plugin
+      |      codex plugin marketplace add yschimke/compose-agent-plugins
       |      /plugins
       |        (enable compose-preview in the plugin manager)
       |"""

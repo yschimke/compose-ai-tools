@@ -121,12 +121,12 @@ the CLI does not rewrite it because that would discard comments; it prints the
 v2 snippet and the exact file to merge manually. Restart OpenCode and run
 `opencode mcp list` to verify the connection. OpenCode skill installation is
 covered in the
-[cross-harness guide](https://github.com/yschimke/compose-ag-plugin/blob/main/docs/opencode.md).
+[cross-harness guide](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/opencode.md).
 
 ### Register the local server with Antigravity
 
 Prefer the `compose-preview` plugin from
-[`yschimke/compose-ag-plugin`](https://github.com/yschimke/compose-ag-plugin): it
+[`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins): it
 registers the server and also carries the skill and hooks. When it is installed
 (`~/.gemini/config/plugins/compose-preview`), `mcp install` writes no global
 entry, because that would duplicate the plugin's server.
