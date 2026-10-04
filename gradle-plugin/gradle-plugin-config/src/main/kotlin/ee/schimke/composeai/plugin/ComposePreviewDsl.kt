@@ -44,7 +44,7 @@ object ComposePreviewDsl {
     extension.kmpAndroidRobolectric.convention(
       project.providers
         .gradleProperty("composePreview.kmpAndroidRobolectric")
-        .map { it.toBooleanStrict() }
+        .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(false)
     )
     extension.enforcePreviewToolingDependency.convention(
