@@ -44,6 +44,42 @@ test("exclusionPatterns splits and trims a comma list the way --exclude-preview-
   assert.deepEqual(exclusionPatterns("activity__*,apptour__*"), ["activity__*", "apptour__*"]);
 });
 
+test("exclusionPatterns reads a JSON array whole, as the workflow's exclusion step does", () => {
+  // What compose-preview-imports passes as `exclude-preview-ids`. Split on commas this became
+  // `["*.heron.AppKt.App"` and `"*.heron.MainActivityKt.AppAndroidPreview"]`, and both were
+  // reported as matching nothing.
+  assert.deepEqual(
+    exclusionPatterns([`["*.heron.AppKt.App","*.heron.MainActivityKt.AppAndroidPreview"]`]),
+    ["*.heron.AppKt.App", "*.heron.MainActivityKt.AppAndroidPreview"],
+  );
+  // An entry is one pattern, commas and spaces included.
+  assert.deepEqual(exclusionPatterns(` ["a, b", " c "]`), ["a, b", "c"]);
+  // Mixed with the comma form across values, the way the CLI flag repeats.
+  assert.deepEqual(exclusionPatterns(["[\"x\"]", "y,z"]), ["x", "y", "z"]);
+  // Not an array of strings: the comma split, as before, rather than nothing.
+  assert.deepEqual(exclusionPatterns("[not json, x"), ["[not json", "x"]);
+  assert.deepEqual(exclusionPatterns("[1]"), ["[1]"]);
+});
+
+test("a JSON-array exclusion that matches is not reported as unmatched", () => {
+  const previews = [
+    { id: "com.tunjid.heron.AppKt.App", functionName: "App" },
+    { id: "com.tunjid.heron.home.HomePreviewKt.HomePreview", functionName: "HomePreview" },
+  ];
+  const { findings, patterns } = preflightSpec({ groups: [] }, previews, {
+    excludePatterns: [`["*.heron.AppKt.App","*.heron.Missing"]`],
+  });
+  assert.deepEqual(patterns, [
+    { pattern: "*.heron.AppKt.App", matches: 1 },
+    { pattern: "*.heron.Missing", matches: 0 },
+  ]);
+  // Only the genuinely dead pattern is reported.
+  assert.deepEqual(
+    findings.filter((f) => f.kind === "unmatched-exclusion").map((f) => f.pattern),
+    ["*.heron.Missing"],
+  );
+});
+
 test("functionOf prefers functionName and falls back to the id", () => {
   assert.equal(functionOf({ id: "com.a.HomeKt.Home_Dark", functionName: "Home" }), "Home");
   assert.equal(functionOf({ id: "Home" }), "Home");

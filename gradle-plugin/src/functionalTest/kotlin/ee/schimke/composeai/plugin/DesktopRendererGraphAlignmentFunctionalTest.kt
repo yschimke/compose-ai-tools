@@ -100,6 +100,18 @@ class DesktopRendererGraphAlignmentFunctionalTest {
                 rendererCfg.incoming.artifactView { }.files.forEach { println("RENDERER_JAR ${'$'}{it.name}") }
             }
         }
+
+        // The classpath the render JVM is actually launched with — tool jars AND whatever the
+        // render task adds of the consumer's own classpath — so a test can see a second copy of a
+        // module that the tool config alone never shows.
+        tasks.register("dumpRenderTaskClasspath") {
+            val renderCp = tasks.named("composePreviewRender").map {
+                it.property("renderClasspath") as FileCollection
+            }
+            doLast {
+                renderCp.get().forEach { println("RENDER_CP ${'$'}{it.name}") }
+            }
+        }
         """
           .trimIndent()
       )
@@ -234,5 +246,42 @@ class DesktopRendererGraphAlignmentFunctionalTest {
       assertThat(skikoAwtVersions.single()).isEqualTo(skikoRuntimeVersions.single())
     }
     (skikoAwtVersions + skikoRuntimeVersions).forEach { assertThat(it).isNotEqualTo("0.9.37.4") }
+  }
+
+  /**
+   * The render JVM's classpath, not just the tool config, carries one copy of each shared module.
+   *
+   * The fold above makes `composePreviewRenderer` resolve coherently, but the render task used to
+   * add the consumer's runtime classpath ALSO, resolved on its own and FIRST. With the renderer
+   * newer than the consumer that put the consumer's older `kotlinx-coroutines-core` ahead of the
+   * newer one the renderer's `kotlinx-coroutines-test` was built against, and every motion capture
+   * (`runComposeUiTest` → `runTest` → `runBlockingK`) died with `NoSuchMethodError` — every
+   * animated, interaction and scroll preview of `samples:cmp` once daemon 3.13.2 brought
+   * kotlinx-coroutines 1.11.0 against the sample's 1.9.0.
+   */
+  @Test
+  fun `the render classpath carries the folded graph once, not the consumer's copy as well`() {
+    val projectDir =
+      createTestProject(rendererSeed = "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("dumpRenderTaskClasspath", "-q", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    val coreJars =
+      result.output
+        .lineSequence()
+        .filter { it.startsWith("RENDER_CP ") }
+        .map { it.removePrefix("RENDER_CP ").trim() }
+        .filter { it.startsWith("kotlinx-coroutines-core-jvm-") }
+        .toList()
+
+    // Not vacuous: Compose drags coroutines onto every desktop classpath.
+    assertThat(coreJars).isNotEmpty()
+    // One core, and it is the version the renderer's coroutines-test was built against.
+    assertThat(coreJars).containsExactly("kotlinx-coroutines-core-jvm-1.11.0.jar")
   }
 }

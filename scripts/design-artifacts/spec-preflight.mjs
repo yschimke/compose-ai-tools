@@ -95,13 +95,37 @@ function globToRegExp(glob) {
   return new RegExp(`^${body}$`);
 }
 
-/** Split a comma-separated exclusion list the way the CLI's `--exclude-preview-id` does. */
+/**
+ * The patterns in an exclusion list, read the way the render reads them.
+ *
+ * A value is either a JSON array of patterns — what the `exclude-preview-ids` input carries since
+ * it stopped being comma-joined, and what compose-preview-imports passes — or the comma-separated
+ * form the CLI's `--exclude-preview-id` takes. The workflow's "Collect the import's preview-id
+ * exclusions" step tells them apart the same way (a leading `[`), and this must agree with it:
+ * splitting the array on commas tested `["*.a.App"` and `"*.b.Preview"]` — brackets and quotes
+ * included — and reported both as matching nothing while the render excluded them correctly.
+ * A JSON entry is taken whole, so an id with a comma in it survives; a value that starts with `[`
+ * but is not an array of strings falls back to the comma split rather than being dropped.
+ */
 export function exclusionPatterns(raw) {
   return (Array.isArray(raw) ? raw : [raw])
     .filter((value) => typeof value === "string")
-    .flatMap((value) => value.split(","))
+    .flatMap((value) => jsonPatterns(value) ?? value.split(","))
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
+}
+
+/** [value]'s entries when it is a JSON array of strings, else null. */
+function jsonPatterns(value) {
+  if (!value.trimStart().startsWith("[")) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every((entry) => typeof entry === "string")
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

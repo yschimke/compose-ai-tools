@@ -589,11 +589,19 @@ internal object ComposePreviewTasks {
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
         // fonts, images) at render time. Depend on the resource-processing task that stages them.
         renderClasspath.from(sourceResourceDirs)
-        // Lazily-resolved, config-cache-safe consumer-classpath view (issue #1796) pinned to
-        // `artifactType=jar` so a KMP-Android `androidRuntimeClasspath` doesn't trip the
-        // 12-variant ambiguity (issue #1852). See [pinnedConsumerClasspath].
-        pinnedConsumerClasspath(project, resolveDependencyConfigName())?.let {
-          renderClasspath.from(it)
+        // The consumer's runtime classpath is added on its own ONLY when the renderer config was
+        // not folded into it. When it was ([alignDesktopToolWithConsumerGraph]), `rendererConfig`
+        // already carries every consumer jar at the version the shared graph resolved, and adding
+        // the consumer's separately-resolved view as well puts a SECOND copy of each shared module
+        // first on the classpath, at the consumer's own (lower) version. That is how
+        // `samples:cmp` (kotlinx-coroutines-core 1.9.0) rendered every motion capture against
+        // 1.9.0 core while `kotlinx-coroutines-test` 1.11.0 from the renderer called
+        // `BuildersKt.runBlockingK` — a `NoSuchMethodError` inside `runComposeUiTest`. The pure
+        // KMP-Android fallback is never aligned, so it keeps the lazily-resolved view (issue
+        // #1796) pinned to `artifactType=jar` (issue #1852). See [pinnedConsumerClasspath].
+        val consumerConfigName = resolveDependencyConfigName()
+        if (!isAlignedWithConsumerGraph(project, consumerConfigName)) {
+          pinnedConsumerClasspath(project, consumerConfigName)?.let { renderClasspath.from(it) }
         }
         renderClasspath.from(rendererConfig.incoming.artifactView {}.files)
         group = "compose preview"
@@ -1216,12 +1224,23 @@ internal object ComposePreviewTasks {
       RenderGraphExclusions.applyTo(project, toolConfig, extension.renderGraph.excludes.get())
       val depName = dependencyConfigName()
       // androidJvm classpath: the desktop renderer has no matching variant — leave it alone.
-      if (depName == "androidRuntimeClasspath") return@afterEvaluate
-      val depConfig = project.configurations.findByName(depName) ?: return@afterEvaluate
+      if (!isAlignedWithConsumerGraph(project, depName)) return@afterEvaluate
+      val depConfig = project.configurations.getByName(depName)
       copyAttributes(toolConfig.attributes, depConfig.attributes)
       toolConfig.extendsFrom(depConfig)
     }
   }
+
+  /**
+   * Whether [alignDesktopToolWithConsumerGraph] folds a tool configuration into the consumer
+   * configuration [consumerConfigName]: every desktop classpath except the pure-Android KMP
+   * fallback, provided the configuration exists. One answer for both the wiring and the render
+   * classpath, so a tool config that already carries the consumer's jars is never joined by a
+   * second, separately-resolved copy of them.
+   */
+  internal fun isAlignedWithConsumerGraph(project: Project, consumerConfigName: String): Boolean =
+    consumerConfigName != "androidRuntimeClasspath" &&
+      project.configurations.findByName(consumerConfigName) != null
 
   /**
    * Copies attributes from [source] onto [target] for variant selection, EXCEPT the consumer's
