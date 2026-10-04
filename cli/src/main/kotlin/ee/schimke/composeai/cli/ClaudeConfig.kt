@@ -12,9 +12,9 @@ import kotlinx.serialization.json.JsonObject
  * `$CLAUDE_CONFIG_DIR` when that is set. `claude mcp add` honours the variable, so reading a fixed
  * `~/.claude.json` would inspect one file while `claude` writes another.
  *
- * When the compose-ag-plugin `compose-preview` plugin is installed it registers the server itself
- * (`plugin:compose-preview:compose-preview-mcp`), and a user-scope entry is a second copy of the
- * same tools (yschimke/compose-ai-tools#5648, yschimke/compose-ag-plugin#87).
+ * When the compose-agent-plugins `compose-preview` plugin is installed it registers the server
+ * itself (`plugin:compose-preview:compose-preview-mcp`), and a user-scope entry is a second copy of
+ * the same tools (yschimke/compose-ai-tools#5648, yschimke/compose-agent-plugins#87).
  */
 internal class ClaudeConfig(
   private val home: File,

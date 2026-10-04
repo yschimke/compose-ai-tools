@@ -85,7 +85,7 @@ internal object AgentMcpConfig {
       else -> null
     }
 
-  /** Install commands copied from compose-ag-plugin's README, kept together for easy updates. */
+  /** Install commands copied from compose-agent-plugins' README, kept together for easy updates. */
   fun pluginInstallHints(detectedHosts: Set<String>, enabled: Boolean): List<PluginInstallHint> {
     if (!enabled) return emptyList()
     return PLUGIN_INSTALL_HINTS.filter { it.host in detectedHosts }
@@ -230,15 +230,15 @@ internal object AgentMcpConfig {
     listOf(
       PluginInstallHint(
         "antigravity",
-        "git clone https://github.com/yschimke/compose-ag-plugin.git && cd compose-ag-plugin",
+        "git clone https://github.com/yschimke/compose-agent-plugins.git && cd compose-agent-plugins",
       ),
       PluginInstallHint(
         "antigravity",
         "agy plugin install ./plugins/compose-preview && agy plugin enable compose-preview",
       ),
-      PluginInstallHint("claude", "/plugin marketplace add yschimke/compose-ag-plugin"),
-      PluginInstallHint("claude", "/plugin install compose-preview@compose-ag-plugin"),
-      PluginInstallHint("codex", "codex plugin marketplace add yschimke/compose-ag-plugin"),
+      PluginInstallHint("claude", "/plugin marketplace add yschimke/compose-agent-plugins"),
+      PluginInstallHint("claude", "/plugin install compose-preview@compose-agent-plugins"),
+      PluginInstallHint("codex", "codex plugin marketplace add yschimke/compose-agent-plugins"),
       PluginInstallHint("codex", "/plugins", "enable compose-preview in the plugin manager"),
     )
 }

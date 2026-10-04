@@ -947,7 +947,8 @@ internal class McpCommand(
     /**
      * Names this CLI's launcher to the MCP server it starts, so the server can run `compose-preview
      * init-script --path` itself on a machine where `mcp install` never ran, instead of failing the
-     * first render with "run `compose-preview mcp install` once" (yschimke/compose-ag-plugin#87).
+     * first render with "run `compose-preview mcp install` once"
+     * (yschimke/compose-agent-plugins#87).
      */
     const val CLI_ENV = "COMPOSE_PREVIEW_CLI"
 
