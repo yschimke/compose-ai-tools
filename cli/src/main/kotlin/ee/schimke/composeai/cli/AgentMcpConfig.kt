@@ -85,9 +85,7 @@ internal object AgentMcpConfig {
       else -> null
     }
 
-  /**
-   * Install commands copied from compose-agent-plugins' README, kept together for easy updates.
-   */
+  /** Install commands copied from compose-agent-plugins' README, kept together for easy updates. */
   fun pluginInstallHints(detectedHosts: Set<String>, enabled: Boolean): List<PluginInstallHint> {
     if (!enabled) return emptyList()
     return PLUGIN_INSTALL_HINTS.filter { it.host in detectedHosts }
