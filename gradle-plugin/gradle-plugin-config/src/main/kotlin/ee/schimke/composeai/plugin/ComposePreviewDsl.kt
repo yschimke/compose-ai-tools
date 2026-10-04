@@ -41,6 +41,12 @@ object ComposePreviewDsl {
     extension.variant.convention(
       project.providers.gradleProperty("composePreview.variant").orElse("debug")
     )
+    extension.kmpAndroidRobolectric.convention(
+      project.providers
+        .gradleProperty("composePreview.kmpAndroidRobolectric")
+        .map { it.toBooleanStrict() }
+        .orElse(false)
+    )
     extension.enforcePreviewToolingDependency.convention(
       project.providers
         .gradleProperty("composePreview.enforcePreviewToolingDependency")

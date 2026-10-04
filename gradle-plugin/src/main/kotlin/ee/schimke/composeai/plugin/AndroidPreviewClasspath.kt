@@ -7,10 +7,12 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.testing.Test
 
 /**
  * Pure-data builders for the renderer test JVM's classpath, JVM args, and system properties.
@@ -164,14 +166,37 @@ internal object AndroidPreviewClasspath {
     }
 
   /**
+   * Keep AGP's generated files even when an upstream eagerly realizes every Test task. AGP
+   * registers its unit-test task after onVariants; looking it up inside an eagerly realized render
+   * task therefore returns null. Populate a shared collection after evaluation instead, while still
+   * in configuration time so no Project lookup leaks into the configuration cache.
+   */
+  fun lateAgpClasspathExtras(
+    project: Project,
+    unitTestTaskName: String,
+    testConfig: Configuration?,
+    legacyClasspathUnion: Boolean,
+  ): ConfigurableFileCollection {
+    val extras = project.files()
+    project.afterEvaluate {
+      val agpTest = project.tasks.findByName(unitTestTaskName) as? Test
+      if (agpTest != null) {
+        extras.from(
+          buildAgpClasspathExtras(project, agpTest.classpath, testConfig, legacyClasspathUnion)
+        )
+      }
+    }
+    return extras
+  }
+
+  /**
    * AGP's `test<Variant>UnitTest` classpath with the module artifacts removed — i.e. only the
    * entries that exist *nowhere else*, which is the reason that classpath is appended at all.
    *
    * The render tasks append `agpTestTask.classpath` to pick up files AGP contributes outside the
-   * resolved artifact views: chiefly the unit-test merged `R.jar` (added to
-   * `<variant>UnitTestRuntimeClasspath` as a raw file dep with no `artifactType` attribute, so the
-   * attribute-filtered `artifactView` in [buildTestClasspath] drops it — issue #136), plus
-   * generated class dirs. Those must stay.
+   * renderer configuration: chiefly the unit-test merged `R.jar`, contributed as a raw file
+   * dependency rather than a module artifact, plus generated class dirs. Those must stay even when
+   * the test configuration's artifact views also return them.
    *
    * What must NOT stay is the rest of it: AGP's classpath also carries every module artifact from
    * the consumer's unit-test graph, resolved independently of the renderer graph. Appending those
@@ -180,7 +205,10 @@ internal object AndroidPreviewClasspath {
    *
    * Subtraction is by *file identity* against `testConfig`'s own artifact views, which is exactly
    * right for this: when the two graphs disagree on a version they resolve to different files, so
-   * the consumer-graph copy is the one that gets dropped and the renderer-graph copy survives.
+   * the consumer-graph copy is the one that gets dropped and the renderer-graph copy survives. The
+   * views must filter by component identity as well as artifact type: Gradle also returns raw file
+   * dependencies from a `jar` view. Subtracting those drops AGP's generated R.jar, even though it
+   * is precisely the extra this method must preserve when AGP exposes it there.
    * `FileCollection.minus` keeps the whole thing lazy and configuration-cache friendly.
    *
    * Returns [agpTestClasspath] untouched when there's no `testConfig` to subtract (nothing was
@@ -195,9 +223,17 @@ internal object AndroidPreviewClasspath {
     if (testConfig == null || legacyClasspathUnion) return agpTestClasspath
     val moduleArtifacts =
       project.files(
-        testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files,
         testConfig.incoming
-          .artifactView { attributes.attribute(artifactType, "android-classes") }
+          .artifactView {
+            attributes.attribute(artifactType, "jar")
+            componentFilter { it is ModuleComponentIdentifier || it is ProjectComponentIdentifier }
+          }
+          .files,
+        testConfig.incoming
+          .artifactView {
+            attributes.attribute(artifactType, "android-classes")
+            componentFilter { it is ModuleComponentIdentifier || it is ProjectComponentIdentifier }
+          }
           .files,
       )
     return agpTestClasspath.minus(moduleArtifacts)

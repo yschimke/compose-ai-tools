@@ -374,6 +374,9 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * AGP generates no `test_config.properties`, so library resources resolve to 0 — the same
    * degradation a classic module gets when it turns that flag off.
    *
+   * Imports can opt in without editing the upstream build with
+   * `-PcomposePreview.kmpAndroidRobolectric=true`. An explicit DSL value takes precedence.
+   *
    * No effect on any other module type: `com.android.application` and `com.android.library` already
    * render through Robolectric, and a non-Android module has no lane to switch.
    */

@@ -22,6 +22,7 @@ class ComposePreviewConfigPluginTest {
     assertThat(extension).isNotNull()
     // Default variant convention is wired by the shared helper, not just by the runtime plugin.
     assertThat(extension!!.variant.get()).isEqualTo("debug")
+    assertThat(extension.kmpAndroidRobolectric.get()).isFalse()
   }
 
   @Test
