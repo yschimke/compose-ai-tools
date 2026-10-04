@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.34.0](https://github.com/yschimke/compose-ai-tools/compare/v2.33.0...v2.34.0) (2026-10-04)
+
+
+### Features
+
+* add optional Umami analytics to GitHub Pages ([#5697](https://github.com/yschimke/compose-ai-tools/issues/5697)) ([e3587a8](https://github.com/yschimke/compose-ai-tools/commit/e3587a8282bf216f3a46c3a3418a3f539f190e5b))
+
+
+### Bug Fixes
+
+* **deps:** rc-players 2.1.2 ([#5695](https://github.com/yschimke/compose-ai-tools/issues/5695)) ([15b8080](https://github.com/yschimke/compose-ai-tools/commit/15b8080eb5435ca6ceaba93230bc28a0bd41b9c6))
+* one kotlinx-coroutines on the desktop render classpath, and JSON-array exclusions in the spec preflight ([#5699](https://github.com/yschimke/compose-ai-tools/issues/5699)) ([d554319](https://github.com/yschimke/compose-ai-tools/commit/d554319c4616c8cbea8979533da146b29cae24e2))
+
 ## [2.33.0](https://github.com/yschimke/compose-ai-tools/compare/v2.32.4...v2.33.0) (2026-10-03)
 
 
