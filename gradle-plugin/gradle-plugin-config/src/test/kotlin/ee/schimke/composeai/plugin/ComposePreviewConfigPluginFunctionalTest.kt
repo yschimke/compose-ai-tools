@@ -83,6 +83,30 @@ class ComposePreviewConfigPluginFunctionalTest {
   }
 
   @Test
+  fun `Gradle property selects Android rendering while the DSL can override it`() {
+    val projectDir = createConfigOnlyProject()
+    File(projectDir, "build.gradle.kts")
+      .appendText(
+        """
+
+        check(composePreview.kmpAndroidRobolectric.get())
+        composePreview.kmpAndroidRobolectric.set(false)
+        check(!composePreview.kmpAndroidRobolectric.get())
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewApplied", "-PcomposePreview.kmpAndroidRobolectric=true")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewApplied")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+  }
+
+  @Test
   fun `config-only plugin writes the applied marker on a runtime-free build`() {
     val projectDir = createConfigOnlyProject()
 

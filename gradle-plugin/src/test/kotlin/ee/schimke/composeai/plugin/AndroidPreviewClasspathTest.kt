@@ -22,6 +22,57 @@ class AndroidPreviewClasspathTest {
   @get:Rule val tmp = TemporaryFolder()
 
   @Test
+  fun `eager render task still receives the later registered AGP resource jar`() {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.newFolder("eager-test")).build()
+    project.tasks.withType(org.gradle.api.tasks.testing.Test::class.java).all {}
+    val extras =
+      AndroidPreviewClasspath.lateAgpClasspathExtras(
+        project,
+        "testDebugUnitTest",
+        null,
+        false,
+      )
+    val render =
+      project.tasks.register(
+        "composePreviewRender",
+        org.gradle.api.tasks.testing.Test::class.java,
+      ) {
+        classpath = extras
+      }
+    val mergedR = tmp.newFile("late-R.jar")
+    project.tasks.register("testDebugUnitTest", org.gradle.api.tasks.testing.Test::class.java) {
+      classpath = project.files(mergedR)
+    }
+
+    (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+    assertThat(render.get().classpath.files).containsExactly(mergedR)
+  }
+
+  @Test
+  fun `AGP generated R jar survives when exposed as a raw configuration dependency`() {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.newFolder("raw-r-jar")).build()
+    val mergedR = tmp.newFile("R.jar")
+    writeJar(mergedR, mapOf("androidx/lifecycle/runtime/R\$id.class" to ByteArray(8)))
+    val testConfig = project.configurations.create("debugUnitTestRuntimeClasspath")
+    project.dependencies.add(testConfig.name, project.files(mergedR))
+    val repository = tmp.newFolder("modules")
+    val moduleJar = File(repository, "library-1.0.jar")
+    writeJar(moduleJar, mapOf("example/Library.class" to ByteArray(8)))
+    project.repositories.flatDir { dirs(repository) }
+    project.dependencies.add(testConfig.name, "example:library:1.0")
+
+    val extras =
+      AndroidPreviewClasspath.buildAgpClasspathExtras(
+        project,
+        project.files(mergedR, moduleJar),
+        testConfig,
+      )
+
+    assertThat(extras.files).containsExactly(mergedR)
+  }
+
+  @Test
   fun `fallback reads sdk dir from local properties and returns highest platform android jar`() {
     val sdkRoot = tmp.newFolder("sdk")
     writeAndroidJar(File(sdkRoot, "platforms/android-30/android.jar"))

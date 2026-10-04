@@ -2505,11 +2505,9 @@ internal object AndroidPreviewSupport {
     // test code gets the versions it was compiled against.
     //
     // Construction is delegated to [AndroidPreviewClasspath.buildTestClasspath] so
-    // the upcoming preview daemon (see docs/daemon/DESIGN.md) can build the same
-    // classpath without re-implementing the inline DSL. The trailing AGP test
-    // classes / classpath additions are still composed in the Test lambda below
-    // (they need `findByName(unitTestTaskName)` which only resolves
-    // late).
+    // preview daemon can build the same classpath without re-implementing the inline DSL.
+    // AGP-only generated files also have a shared late-bound collection below: an upstream
+    // `tasks.withType<Test> { ... }` can eagerly realize our Test before AGP registers its own.
     val bootClasspathFallback = AndroidPreviewClasspath.buildBootClasspathFallback(project)
     // Escape hatch back to the pre-#2731 behaviour, where the consumer's separately-resolved
     // unit-test graph was concatenated on top of the renderer graph. That concatenation is what
@@ -2566,6 +2564,13 @@ internal object AndroidPreviewSupport {
         configurations =
           listOfNotNull(daemonRendererConfig, testConfig, screenshotTestRuntimeConfig),
       )
+    val lateAgpClasspathExtras =
+      AndroidPreviewClasspath.lateAgpClasspathExtras(
+        project,
+        unitTestTaskName,
+        testConfig,
+        legacyClasspathUnion,
+      )
     val resolvedClasspath =
       AndroidPreviewClasspath.buildTestClasspath(
         project = project,
@@ -2579,7 +2584,7 @@ internal object AndroidPreviewSupport {
         unitTestConfigDir = unitTestConfigDir,
         robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
         legacyClasspathUnion = legacyClasspathUnion,
-      )
+      ) + lateAgpClasspathExtras
 
     val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirectory = previewOutputDir.map { it.dir("renders") }
@@ -3765,6 +3770,7 @@ internal object AndroidPreviewSupport {
           legacyClasspathUnion = legacyClasspathUnion,
         )
       )
+      this.classpath.from(lateAgpClasspathExtras)
       this.classpath.from(agpTestTask?.testClassesDirs ?: project.files())
       this.classpath.from(
         AndroidPreviewClasspath.buildAgpClasspathExtras(
