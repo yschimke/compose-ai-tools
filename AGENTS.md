@@ -78,6 +78,10 @@ git log --format='%h %an <%ae> | %cn <%ce>' <base>..<head>
 .github/scripts/agent-attribution-scan.sh --range '<base>..<head>'
 ```
 
+`<head>` must be the pull request's head commit as GitHub reports it: a commit made in a review
+checkout, for example by reapplying the diff, carries the reviewer's identity, and that is how
+every false report so far arose.
+
 `Yuri Schimke <yuri@schimke.ee>` is this repository's human identity, and
 `github-actions[bot]` / `renovate[bot]` are exempt bot accounts (see above) — none
 of the three is ever a finding. Report only what the scanner exits 1 on, quote its
@@ -164,6 +168,14 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   [`.github/renovate.json`](.github/renovate.json)), which GitHub applies only
   once every required check of the `Protect Main` ruleset is green. Do not
   report that setting as a violation of this bullet.
+
+## Review guidelines
+
+- **Do not report commit author, committer or `Co-authored-by:` findings.** Your review sandbox
+  applies the pull request as a new commit under your own identity (`Codex <codex@openai.com>`),
+  so any identity you read from a local `git log` is yours, not the author's. Every such finding
+  on these repositories has named a commit that exists only in the sandbox. Attribution is a
+  human and CI concern; leave it out of reviews entirely.
 
 ## Running Gradle
 
