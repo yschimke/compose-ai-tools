@@ -6,30 +6,15 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+// Server-side thumbnail content-crop for the `serve` catalog pages. A Wear sticker draws a small
+// component on a 454×454 canvas, so the card clips the PNG to the component box read from the
+// catalog's content-cropped figma-svg (root `viewBox` + `translate`). Same maths as the static
+// gallery's client crop (`scripts/design-artifacts/render-index-html.mjs`), computed once at page
+// build. Tight phone / desktop renders are left alone.
+
 /**
- * Server-side thumbnail content-crop for the `serve` catalog pages. A render PNG can be much larger
- * than the component it shows — a Wear sticker is drawn on a fixed 227 dp watch canvas (454×454 px)
- * with the component centred and small, so a raw `<img>` displays a speck floating in empty canvas.
- * The catalog also carries a **content-cropped** figma-svg per component (`figma/<slug>.svg`),
- * whose root `viewBox` is the component's content box and whose root `<g
- * transform="translate(tx,ty)">` places that box within the centred render. Reading those, we clip
- * the PNG to the component box so the card shows the component, not the canvas.
- *
- * This is the server-side port of the client crop the static gallery ships
- * (`scripts/design-artifacts/render-index-html.mjs` — `parseBox` + `frame`): identical maths, but
- * computed once at page build from local files (no per-card `fetch`, no layout flash). Phone /
- * desktop catalogs render tight to the component, so the box already ≈ the render and
- * [computeThumbCrop] returns `null` (no-op) for them — only the framed-in-a-canvas stickers get
- * cropped.
- */
-/**
- * The clip window's size, in the crop's output pixels.
- *
- * A type of its own rather than a shared width/height pair, because the window and the render are
- * the one transposable remainder: grouping the six loose `Int`s into three pairs made `w`/`h` and
- * size/offset mix-ups impossible, but left `window` and `render` the SAME type — so a positional
- * `ContentCrop(render, window, …)` still compiled, in the exact shape this contract is meant to
- * rule out. Distinct types make that a compile error too.
+ * The clip window's size, in output pixels. Window, render and offset are distinct types so a
+ * transposed argument in [ContentCrop] is a compile error rather than a silently wrong crop.
  */
 public data class WindowSize(val w: Int, val h: Int)
 
@@ -37,24 +22,11 @@ public data class WindowSize(val w: Int, val h: Int)
 public data class RenderSize(val w: Int, val h: Int)
 
 /**
- * Where the render sits under the clip window, in the crop's output pixels.
- *
- * Normally NEGATIVE on both axes: the window's origin is the component's top-left, so the render
- * has to be shifted up and left to bring that corner to it.
+ * Where the render sits under the clip window, in output pixels; normally negative on both axes.
  */
 public data class CropOffset(val left: Int, val top: Int)
 
-/**
- * A clip window over a render, and the render's position under it.
- *
- * Typed rather than flat, and that is the point: this carried six bare `Int`s in a row — window
- * width and height, render width and height, and the two offsets — so any permutation of them
- * compiled. It is a published contract that an extracted preview server will build catalog pages
- * from, and a transposed pair there is a silently wrong crop rather than a build failure.
- * [WindowSize], [RenderSize] and [CropOffset] make every transposition between the three a type
- * error; the two dimensions left inside each of them are in the conventional order and mean the
- * same kind of thing.
- */
+/** A clip window over a render, and the render's position under it. */
 public data class ContentCrop(
   /** Clip-window size — the component box scaled to fit [CAP]. */
   val window: WindowSize,
@@ -63,26 +35,15 @@ public data class ContentCrop(
   /** The shift that brings the component's top-left to the window origin. */
   val offset: CropOffset,
   /**
-   * Whether what falls outside the window is hidden.
-   *
-   * True for a content crop, whose job is to throw the surrounding canvas away — a Wear sticker's
-   * watch face is not the component. False for a capture-gutter crop, where the pixels outside the
-   * box are the component's own shadow or focus ring: the window is there to make the box line up
-   * with its gutter-less neighbours, and hiding the overflow would crop the shadow the gutter was
-   * added to keep (m3-catalog#102, then #179). It spills into the grid's gap, which is where a
-   * shadow belongs.
+   * Whether what falls outside the window is hidden: true for a content crop, false for a gutter
+   * crop, whose overflow is the component's own shadow or focus ring (m3-catalog#102, #179).
    */
   val clip: Boolean = true,
-  /**
-   * The window width in NATIVE render pixels — its 1x ceiling, before [CAP] is applied. Zero when
-   * unknown (a hand-assembled crop), which makes the page fall back to a fixed-px window.
-   */
+  /** The window width in native render pixels, before [CAP]; zero when unknown. */
   val nativeWindowW: Int = 0,
   /**
-   * The native length of the axis [CAP] bounds — the largest edge for a content crop, the height
-   * for a gutter crop. With [nativeWindowW] this is enough to re-derive the window's width for ANY
-   * cap, which is what lets the stylesheet shrink it at a narrow viewport (`width = nativeWindowW *
-   * min(1, cap / nativeCapAxis)`). Zero when unknown.
+   * The native length of the axis [CAP] bounds, so the stylesheet can re-derive the width for any
+   * cap (`nativeWindowW * min(1, cap / nativeCapAxis)`). Zero when unknown.
    */
   val nativeCapAxis: Int = 0,
 )
@@ -94,16 +55,9 @@ private val TRANSLATE_RE = Regex("""translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)""")
 private val VIEWBOX_RE = Regex("""viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"""")
 
 /**
- * The component's content box in the render's native pixel space, read from a figma-svg: crop
- * origin ([x],[y]) and size ([w]×[h]), in native render pixels.
- *
- * Not SVG-specific despite where it is first read: [pngAlphaBounds] returns one for a PNG's drawn
- * extent, and [union] combines the two. It was called `SvgContentBox` while it lived beside the one
- * producer that parses an SVG, which read as a claim about the format rather than about the
- * rectangle. The figma-svg is content-cropped — its root `viewBox` is the box size and its root `<g
- * transform="translate(tx,ty)">` places it, so the component's top-left in the render is `(-tx,
- * -ty)`. This is the *unscaled* box (native render pixels); [computeThumbCrop] adds the display
- * scaling on top, while a full-resolution consumer (the CLI's `bundle split`) uses it as-is.
+ * A content box in native render pixels: origin ([x],[y]) and size ([w]×[h]). Produced from a
+ * figma-svg ([svgContentBox]) or a PNG's drawn extent ([pngAlphaBounds]); [computeThumbCrop] adds
+ * display scaling, while `bundle split` uses it as-is.
  */
 public data class ContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
 
@@ -123,12 +77,7 @@ public fun svgContentBox(svgText: String): ContentBox? {
   return ContentBox(x = -tx, y = -ty, w = w.roundToInt(), h = h.roundToInt())
 }
 
-/**
- * True when [box] is close enough to a [renderW]×[renderH] render that cropping to it is pointless
- * (a tight phone/desktop capture, or a full-screen Wear component whose box already fills the
- * canvas) — the shared "within 10% on both axes" no-op guard. Consumers that read a pre-cropped PNG
- * then find their box ≈ the image and no-op via this same test.
- */
+/** True when [box] is within 10% of the render on both axes, so cropping to it is pointless. */
 public fun contentBoxFillsRender(box: ContentBox, renderW: Int, renderH: Int): Boolean =
   box.w >= renderW * 0.9 && box.h >= renderH * 0.9
 
@@ -149,12 +98,9 @@ public fun ContentBox.clampTo(renderW: Int, renderH: Int): ContentBox {
 }
 
 /**
- * The tight bounding box of a PNG's **non-transparent** pixels (alpha ≥ [threshold]) in render
- * pixels, or `null` when the image can't be decoded or is fully transparent. This is the render's
- * *actual* drawn extent — including decorations the layout-derived figma box misses, like a focus
- * ring or disabled outline drawn **outside** the component's bounds. Unioning it into the crop box
- * (see [computeThumbCrop]) guarantees the crop never clips real pixels, self-correcting per variant
- * without needing a per-variant figma-svg.
+ * The bounding box of a PNG's pixels with alpha ≥ [threshold], or `null` when undecodable or fully
+ * transparent. Unioned into the crop box so decorations drawn outside the layout bounds (a focus
+ * ring) are never clipped.
  */
 public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): ContentBox? {
   val img = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
@@ -179,30 +125,9 @@ public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): ContentBox?
 }
 
 /**
- * Compute the crop that frames the component box (read from [svgText]) within a [renderW]×[renderH]
- * render, or `null` when no crop is warranted: the svg has no parseable `viewBox`, the render
- * dimensions are unknown (`<= 0`), or the component box already nearly fills the render (a tight
- * phone/desktop capture — within 10% on both axes). [cap] bounds the displayed size.
- *
- * [contentBounds] (the render's actual non-transparent extent, from [pngAlphaBounds]) is
- * **unioned** into the figma box when supplied, so the crop never clips pixels the layout-derived
- * box misses — a focus ring / disabled outline drawn outside the component's bounds. It only ever
- * *grows* the box (clamped to the render), so a full-screen component whose box already fills the
- * canvas still trips the no-op guard and stays uncropped.
- */
-/**
- * The crop that trims a declared `@CaptureGutter` off a [renderW]×[renderH] render, or `null` when
- * there is nothing to trim (no gutter, unknown render dimensions, or a gutter that would leave
- * nothing behind).
- *
- * Unlike [computeThumbCrop] this needs no vector and applies no "already close-cropped" guard: the
- * gutter is not inferred from the pixels, it is a fact the renderer recorded when it grew the
- * canvas for it. The remaining box is the component at exactly the size a gutter-less sibling
- * publishes, which is the whole point — a sheet fitting canvases to a column drew the guttered one
- * ~7% smaller until it could subtract this (m3-catalog#179).
- *
- * The edges are PHYSICAL — whoever published the record resolved the annotation's leading/trailing
- * against the direction the render was composed in, so there is no direction left to guess at here.
+ * The crop that trims a declared `@CaptureGutter` (physical edges, as recorded by the renderer) off
+ * a render, or `null` when there is nothing to trim. Leaves the component at the size a gutter-less
+ * sibling publishes (m3-catalog#179).
  */
 public fun computeGutterCrop(
   gutterLeft: Int,
@@ -221,16 +146,10 @@ public fun computeGutterCrop(
   if (left == 0 && top == 0 && right == 0 && bottom == 0) return null
   val boxW = renderW - left - right
   val boxH = renderH - top - bottom
-  // A gutter wider than the render it was published against is a record that disagrees with its
-  // own image; show the image whole rather than cropping to a guess.
+  // A gutter that disagrees with its own image: show the image whole.
   if (boxW <= 0 || boxH <= 0) return null
-  // Capped on HEIGHT alone, unlike [computeThumbCrop]'s largest edge. The card beside this one is a
-  // plain `<img>` bounded by the stylesheet's `max-height`, which scales an image on its height and
-  // lets width follow; matching that rule is what keeps the two the same size in every column
-  // width, and it is the whole point of this window. Capping the largest edge instead would shrink
-  // a wide-but-short component (a 249x126 button) that no plain sibling shrinks — the same
-  // mismatch this removes, one layer down. A window box carries `aspect-ratio`, so the cap cannot
-  // live in CSS: constraining its height there squashes the box rather than scaling it.
+  // Capped on height, not the largest edge, to match how the stylesheet's `max-height` scales a
+  // plain sibling `<img>`. Can't live in CSS: the window carries `aspect-ratio`.
   val scale = min(1.0, cap / boxH.toDouble())
   return ContentCrop(
     window =
@@ -243,6 +162,12 @@ public fun computeGutterCrop(
   )
 }
 
+/**
+ * The crop that frames the figma-svg component box within a [renderW]×[renderH] render, or `null`
+ * when the svg has no `viewBox`, the dimensions are unknown, or the box already nearly fills the
+ * render. [contentBounds] ([pngAlphaBounds]) is unioned in, so the crop only ever grows. [cap]
+ * bounds the displayed size.
+ */
 public fun computeThumbCrop(
   svgText: String,
   renderW: Int,

@@ -55,6 +55,8 @@ on:
       - 'samples/design-catalog-*/**'
       - 'samples/cmp-wasm-catalog/**'
       - 'scripts/design-artifacts/**'
+      - '.github/design-artifacts-driver/**'
+      - '.github/scripts/install-export-driver.sh'
       - '.github/workflows/design-artifacts.yml'
       - '.github/workflows/design-artifacts-reusable.yml'
   # Also invoked automatically after a published release (post-release-design-artifacts.yml
@@ -217,19 +219,16 @@ jobs:
           scripts/install-linux-font-fallbacks.sh \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
 
-      # The export engine lives in the (private) design-parity repo, but its
-      # building blocks are published to npm. The driver
-      # (scripts/design-artifacts/) pins @design-parity/candidate +
-      # @design-parity/catalog-export, so we install them from npm rather than
-      # cloning design-parity: the workflow's GITHUB_TOKEN is scoped to this repo
-      # only and can't read the private design-parity repo, and a public-npm
-      # install needs no cross-repo secret.
+      # The export driver and the design-parity packages it uses are published to npm, so this
+      # job installs them from there: no checkout of design-parity, no cross-repo secret.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - name: Install export engine (pinned npm packages)
-        working-directory: scripts/design-artifacts
-        run: npm ci --no-audit --no-fund --loglevel=warn
+      # The export driver: `@design-parity/export-driver` and its whole dependency tree, from the
+      # reviewed lock in .github/design-artifacts-driver/ — the same lock external callers of the
+      # reusable workflow install. Its source is design-parity's packages/export-driver.
+      - name: Install the export driver (@design-parity/export-driver)
+        run: .github/scripts/install-export-driver.sh "$RUNNER_TEMP/export-driver" >/dev/null
 
       # Fast, build-free pre-flight: resolve every spec `preview` against the
       # @Preview functions the module actually declares BEFORE the ~90-minute
@@ -241,7 +240,7 @@ jobs:
         id: validate-spec
         run: |
           set -euo pipefail
-          node scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ matrix.spec }}" \
+          node "$DRIVER_DIR/validate-catalog-spec.mjs" --spec "${{ matrix.spec }}" \
             --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
             --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
           # Render priority (issue #2950): the `--preview` patterns that render just the
@@ -266,7 +265,7 @@ jobs:
           set -euo pipefail
           compose-preview list --json --module "${{ matrix.module }}" \
             > "$GITHUB_WORKSPACE/discovered-previews.json"
-          node scripts/design-artifacts/deferred-preview-ids.mjs \
+          node "$DRIVER_DIR/deferred-preview-ids.mjs" \
             --spec "${{ matrix.spec }}" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --out "$GITHUB_WORKSPACE/mode-filter.txt" \
@@ -395,7 +394,7 @@ jobs:
           SOURCE_MODULE: ${{ matrix.module }}
         run: |
           set -euo pipefail
-          node scripts/design-artifacts/generate-design-catalog.mjs \
+          node "$DRIVER_DIR/generate-design-catalog.mjs" \
             --spec "$SPEC" \
             --renders "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" \
             --out "$GITHUB_WORKSPACE/out" \
@@ -519,7 +518,7 @@ jobs:
           # byte-identical, and the lane is still not stale. Never fails the job —
           # see the script.
           GH_TOKEN="$SOURCE_TOKEN" \
-            "$GITHUB_WORKSPACE/scripts/design-artifacts/mark-published-source.sh" \
+            "$DRIVER_DIR/mark-published-source.sh" \
             --system "$SYSTEM" \
             --repo "$GITHUB_REPOSITORY" \
             --sha "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"

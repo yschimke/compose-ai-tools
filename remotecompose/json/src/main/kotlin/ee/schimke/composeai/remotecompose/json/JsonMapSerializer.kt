@@ -12,30 +12,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Collects one Remote Compose operation into a [JsonObject], by being the [MapSerializer] AndroidX
- * already hands every operation.
+ * Collects one Remote Compose operation into a [JsonObject] by being the [MapSerializer] AndroidX
+ * hands every operation. One instance per object (nested values get their own); reuse would merge
+ * fields.
  *
- * One instance serializes exactly one object; nested [RcSerializable] values get their own. That
- * mirrors how upstream uses the interface and is why there is no reset — reuse would silently merge
- * two operations' fields.
- *
- * ## Non-finite floats are the whole problem
- *
- * JSON has no `NaN`, and Remote Compose leans on NaN harder than any other format worth naming: an
- * id does not travel as a number, it travels as a *NaN payload* (`Utils.asNan(id)` sets the
- * `0xFF800000` bits and packs the id into the mantissa). `"width": [NaN, NaN]` in a naive dump is
- * not a missing value — it is two encoded references, and printing them as `NaN` destroys exactly
- * the information a reader opened the dump for.
- *
- * So every non-finite float is emitted as a **string**, and one that decodes to an id is emitted as
- * `"@<id>"` — the same `@name` sigil the authoring dialect uses for a reference, so the two
- * dialects at least agree on what a reference looks like. `Infinity` / `-Infinity` / a bare `NaN`
- * (a real one, carrying no payload) keep their names. Finite floats stay numbers.
- *
- * This is lossy in one direction and deliberately so: `"@42"` does not say whether 42 is a colour,
- * a text or a float variable. The `NamedVariable` operations in the same dump do, and pairing them
- * is the reader's job — encoding the type here would mean inventing a type system upstream does not
- * have at this layer.
+ * JSON has no NaN, and Remote Compose encodes ids as NaN payloads (`Utils.asNan(id)`), so
+ * non-finite floats are emitted as strings: an id as `"@<id>"` (the authoring dialect's reference
+ * sigil), and `Infinity` / `-Infinity` / a payload-free `NaN` by name. The id's type is left to the
+ * dump's `NamedVariable` operations.
  */
 internal class JsonMapSerializer : MapSerializer {
 
@@ -45,23 +29,14 @@ internal class JsonMapSerializer : MapSerializer {
 
   override fun addType(type: String): MapSerializer = put("type", JsonPrimitive(type))
 
-  // The three array overloads take non-null arrays: `MapSerializer` marks them `@NonNull` through
-  // JSpecify, and Kotlin honours that, so a nullable parameter here overrides nothing at all rather
-  // than merely being lenient.
+  // Non-null array parameters: `MapSerializer` marks them `@NonNull`, so a nullable one wouldn't
+  // override.
   override fun addFloatExpressionSrc(key: String, value: FloatArray): MapSerializer =
     put(key, floats(value))
 
   /**
-   * An integer expression, with its **mask**.
-   *
-   * The mask is not decoration: it says which entries of the array are literals and which are
-   * variable references, so two documents with byte-identical arrays and different masks mean
-   * different things. Dropping it made them project to identical JSON — which is a direct hit on
-   * the one job this projection has, since a diff that cannot separate them reports no change where
-   * there is one.
-   *
-   * Emitted as a sibling `<key>Mask` rather than folded into the array, because the array is the
-   * expression and a reader walking it should not have to skip an element that is not part of it.
+   * An integer expression plus its mask (which entries are literals vs. variable references) as a
+   * sibling `<key>Mask`; without it, different expressions with identical arrays diff as equal.
    */
   override fun addIntExpressionSrc(key: String, value: IntArray, mask: Int): MapSerializer {
     put(key, JsonArray(value.map { JsonPrimitive(it) }))
@@ -71,18 +46,13 @@ internal class JsonMapSerializer : MapSerializer {
   override fun addPath(key: String, value: FloatArray): MapSerializer = put(key, floats(value))
 
   /**
-   * The operation's role — `COMPONENT`, `MODIFIER`, `DRAW_OPERATION`, … — under [TAGS].
-   *
-   * Kept because it is the only machine-readable answer to "what kind of thing is this", and a
-   * consumer filtering a dump down to the layout tree (drop everything that is not a component)
-   * would otherwise have to keep a hardcoded list of operation type names in step with upstream.
+   * The operation's role (`COMPONENT`, `MODIFIER`, …) under [TAGS], so a consumer can filter a dump
+   * without a hardcoded list of operation names.
    */
   override fun addTags(vararg tags: SerializeTags): MapSerializer =
     put(TAGS, JsonArray(tags.map { JsonPrimitive(it.name) }))
 
-  // `null` and empty are DIFFERENT and both are kept, matching every other nullable overload here.
-  // `orEmpty()` collapsed them, so an operation whose optional list went from absent to present-
-  // and-empty produced no diff at all — which is a direct hit on the one job this projection has.
+  // Null and empty stay distinct, so absent → empty still diffs.
   override fun <T : Any?> add(key: String, value: List<T>?): MapSerializer =
     put(key, value?.let { list -> JsonArray(list.map { convert(it) }) } ?: JsonNull)
 
@@ -129,20 +99,13 @@ internal class JsonMapSerializer : MapSerializer {
   private fun primitive(value: Boolean?) = value?.let { JsonPrimitive(it) } ?: JsonNull
 
   companion object {
-    /**
-     * Key carrying [SerializeTags]. Prefixed so it cannot collide with an operation field — an
-     * operation that one day names a field `tags` would otherwise overwrite its own role.
-     */
+    /** Key carrying [SerializeTags]; prefixed so no operation field can collide with it. */
     const val TAGS: String = "\$tags"
 
     /**
-     * Key under which an operation that does **not** implement
-     * [androidx.compose.remote.core.serialize.Serializable] records what it is.
-     *
-     * Such an operation is dumped as `{"$UNSERIALIZED": "<class>", "text": "<deepToString>"}`,
-     * which is a visible hole rather than an invisible one. This matters more than it looks: the
-     * failure mode of a dumper is not throwing, it is producing something plausible, and an
-     * operation silently rendered as its `toString()` reads like a value.
+     * Marks an operation that doesn't implement
+     * [androidx.compose.remote.core.serialize.Serializable]: `{"$UNSERIALIZED": "<class>", "text":
+     * "<deepToString>"}`, a visible hole rather than a plausible-looking value.
      */
     const val UNSERIALIZED: String = "\$unserialized"
 
@@ -154,11 +117,8 @@ internal class JsonMapSerializer : MapSerializer {
       when (value) {
         null -> JsonNull
         is RcSerializable -> JsonMapSerializer().also { value.serialize(it) }.result()
-        // An operation upstream has not taught to serialize. `Header` is the one that always lands
-        // here — it predates the hook — and `RemoteComposeJson.dumpToJsonObject` decodes it
-        // properly into the dump's `header`, so seeing it in `operations` too is expected. Anything
-        // *else* appearing here is a genuine gap, and the point of the marker is that it reads as
-        // one instead of as a value.
+        // `Header` always lands here (it predates the hook) and is decoded separately into the
+        // dump's `header`; any other operation here is a genuine upstream gap.
         is Operation ->
           JsonObject(
             mapOf(
@@ -175,17 +135,12 @@ internal class JsonMapSerializer : MapSerializer {
         else -> JsonPrimitive(value.toString())
       }
 
-    /**
-     * A float as JSON: finite ones as numbers, non-finite ones as the strings described on
-     * [JsonMapSerializer].
-     */
+    /** A float as JSON: finite as a number, non-finite as described on [JsonMapSerializer]. */
     fun float(value: Float): JsonElement =
       when {
         value.isFinite() -> JsonPrimitive(value)
         value.isInfinite() -> JsonPrimitive(if (value > 0) "Infinity" else "-Infinity")
-        // A NaN in a Remote Compose document is an id far more often than it is an absent value.
-        // `Utils.idFromNan` reads the mantissa back out; a zero payload means it really is just a
-        // NaN, which `fillMaxWidth` uses as its "no explicit fraction" marker.
+        // A zero payload is a real NaN (e.g. `fillMaxWidth`'s "no fraction" marker).
         else ->
           Utils.idFromNan(value).let {
             if (it == 0) JsonPrimitive("NaN") else JsonPrimitive("@$it")

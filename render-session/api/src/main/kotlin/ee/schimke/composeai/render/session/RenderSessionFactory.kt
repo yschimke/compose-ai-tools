@@ -39,10 +39,8 @@ public interface RenderSessionFactory {
  */
 public data class RenderSessionConfig(
   /**
-   * Path to the daemon launch descriptor written by the gradle plugin's `composePreviewDaemonStart`
-   * task. Lives at `<projectDir>/build/compose-previews/daemon-launch.json`. Required even for the
-   * embedded backend — it's the source of truth for classpath and JVM args (the embedded backend
-   * wires its own classloader from the same data).
+   * The `build/compose-previews/daemon-launch.json` written by `composePreviewDaemonStart`: the
+   * source of truth for classpath and JVM args, for every backend.
    */
   val descriptorPath: File,
   /**
@@ -57,15 +55,13 @@ public data class RenderSessionConfig(
    */
   val workspaceName: String = workspaceRoot.name.ifBlank { "workspace" },
   /**
-   * Override the daemon's `enabled = false` descriptor flag so tooling can spin one up even when
-   * the consumer's `composePreview { daemon { enabled = false } }`. The flag was originally a VS
-   * Code launcher gate — for explicit CLI / library opens it shouldn't apply.
+   * Ignore the descriptor's `enabled = false`, a VS Code launcher gate that shouldn't apply to
+   * explicit CLI / library opens.
    */
   val forceEnabled: Boolean = true,
   /**
-   * Per-session launch property overrides merged over the descriptor. This is primarily used by
-   * callers that intentionally open more than one daemon from the same descriptor: each process can
-   * be given its own render/data output root without copying or mutating the source descriptor.
+   * System properties merged over the descriptor, e.g. a separate output root per daemon when
+   * several are opened from one descriptor.
    */
   val systemPropertyOverrides: Map<String, String> = emptyMap(),
   /**
@@ -76,16 +72,11 @@ public data class RenderSessionConfig(
   /** Upper bound on the initialize handshake. */
   val initializeTimeout: Duration = 60.seconds,
   /**
-   * Optional per-render deadline advertised to the daemon during initialization. When absent, the
-   * daemon keeps its own default. Batch clients should set this to the same budget they expose to
-   * users so an internal `host.submit(...)` timeout cannot expire before the caller's wait does.
+   * Per-render deadline advertised to the daemon; batch clients should match their own budget so
+   * the daemon's internal timeout can't fire first. Null keeps the daemon default.
    */
   val maxRenderTime: Duration? = null,
-  /**
-   * Optional total budget for shutting down a subprocess-backed session. When absent, the backend
-   * keeps its normal graceful-shutdown policy. Short-lived batch clients may set this so a render
-   * that outlives their own inactivity timeout cannot add the backend's full shutdown grace.
-   */
+  /** Total shutdown budget for a subprocess session; null keeps the graceful default. */
   val shutdownTimeout: Duration? = null,
 ) {
   public companion object {

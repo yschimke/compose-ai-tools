@@ -189,7 +189,7 @@ wrong.
 > Answered against the measured population — six sites, only #40 glyph-sized — rather than against
 > #40 alone, which is how §4 previously accumulated three wrong pipelines. Each answer is exercised
 > by fixtures in
-> [`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/), and
+> [`fixtures/known-differences/`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences/test/conformance/fixtures/known-differences/), and
 > the resampler has a group of its own so a kernel divergence fails *as* a kernel divergence.
 >
 > **What is still open is the score, and only the score.** These settle the gates, which is the half

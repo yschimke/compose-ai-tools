@@ -10,28 +10,14 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlinx.serialization.Serializable
 
 /**
- * Server-wide admission for **background, best-effort catalog work** — today the catalog
- * theme-cache optimizer ([ServeCatalogLiveHost]'s idle pass), which pre-renders every catalog
- * preview under every declared theme so a later theme selection is instant.
+ * Server-wide admission for background, best-effort catalog work: today the theme-cache optimizer
+ * ([ServeCatalogLiveHost]'s idle pass). It must yield to:
+ * - catalog loading ([catalogsLoading]): the request idle clock reads a fresh server as idle, and
+ *   an optimizer competing with later catalogs' daemon starts can degrade them to baked PNGs;
+ * - each other: [withRenderPermit] caps background renders and [withOptimizerSlot] caps passes,
+ *   server-wide.
  *
- * That work is worth doing and worth *never* doing at the expense of something a visitor is waiting
- * for. Two things it must yield to, both learned from the deployed server:
- *
- * - **Catalog loading.** A public box brings its catalogs up one at a time, and each load fetches a
- *   branch, resolves a live bundle's classpath and starts a render daemon. The optimizer reads the
- *   registry's idle clock, which counts only *request* traffic — so on a freshly-rolled server with
- *   no visitors yet, catalog #1's optimizer sees a perfectly idle server and starts hundreds of
- *   renders while catalogs #2…#18 are still loading. Each loaded catalog adds another optimizer, so
- *   the contention compounds: the later a catalog sits in the list, the longer its daemon waits for
- *   a render slot, and a slow enough daemon start is recorded as `livebundle-unavailable` and
- *   degrades the catalog to baked PNGs for the life of the process. [catalogsLoading] makes the
- *   whole startup pass read as *busy* so the optimizer stays parked until the catalogs are up.
- * - **Each other.** Once loading finishes, every catalog's optimizer becomes runnable at the same
- *   instant. [withRenderPermit] caps the background lane at [maxConcurrentRenders] renders
- *   server-wide, so the optimizers take turns instead of holding every live seat.
- *
- * Both knobs are process-wide: one instance is built per `serve` run and shared by every catalog
- * host it opens.
+ * One instance per `serve` run, shared by every catalog host.
  */
 public class ServeBackgroundWork(
   /**
@@ -41,26 +27,13 @@ public class ServeBackgroundWork(
   maxConcurrentRenders: Int = CONSERVATIVE_MAX_CONCURRENT_RENDERS,
   private val clock: () -> Long = System::currentTimeMillis,
   /**
-   * How many catalogs may be **inside an optimizer pass** at once, server-wide.
+   * How many catalogs may be inside an optimizer pass at once. A pass without a render permit still
+   * holds a turn, a warm daemon and a seat; uncapped, every catalog entered at once and most of
+   * their time went to waiting and re-warming.
    *
-   * [withRenderPermit] bounds the renders; nothing bounded the *passes*, and those are not the same
-   * thing. A pass that holds no render permit is still holding a turn, a warm daemon and a live
-   * seat, and is still queueing — so on the deployed box every loaded catalog entered its pass
-   * within half a second of the gate opening (measured: 11 catalogs inside 464 ms) and then 15 of
-   * them contended for 8 render permits. The result was 64% of all optimizer time spent waiting on
-   * that permit and 43.5% of what remained spent *re-warming* daemons that got yielded before they
-   * rendered anything: 10,120 entries with 8 cached after half an hour, an ETA of 21 days.
-   *
-   * Capping the passes fixes what capping the renders cannot: the rest are parked cheaply instead
-   * of parked expensively.
-   *
-   * **This must not be set below [maxConcurrentRenders].** A pass takes one permit for the whole of
-   * its batch — `withRenderPermit { renderOptimizerBatch(...) }` — so it holds exactly one however
-   * wide the batch is, and every permit past the lane count is unreachable. An earlier note here
-   * claimed the opposite, that two passes saturate an eight-permit lane "because each pass batches
-   * up to five wide"; the batch runs *inside* the one permit, so they saturate two. `ServeCommand`
-   * consequently passes the render lane for both, which also means an admitted pass never waits at
-   * the permit — the waiting this cap exists to prevent.
+   * Must not be below [maxConcurrentRenders]: a pass holds exactly one permit for its whole batch,
+   * so permits beyond the pass count are unreachable. `ServeCommand` passes the render lane for
+   * both.
    */
   maxConcurrentOptimizers: Int = DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
   private val hostCoordinator: OptimizerHostCoordinator = OptimizerHostCoordinator.NONE,
@@ -80,17 +53,11 @@ public class ServeBackgroundWork(
   private val optimizerQueue = ArrayList<OptimizerWaiter>()
   private var optimizerArrivals = 0L
   /**
-   * When each system's last pass *ended*, and the whole of admission's memory.
-   *
-   * End, not start: a pass that held a lane for an hour finished recently, and keying on its start
-   * would let it outrank catalogs that have been waiting that entire hour. A system absent from
-   * this map has never run and sorts ahead of every system that has.
+   * When each system's last pass ended (not started, or a long pass would outrank catalogs that
+   * waited through it). Absent means never run, which sorts first.
    */
   private val optimizerLastRanAt = ConcurrentHashMap<String, Long>()
-  // A refresh opens the replacement host before the registry closes the previous one, so two
-  // generations of one system can legitimately hold lanes together. A set collapses those two
-  // admissions and the first release removes the replacement from status as well; counts preserve
-  // both the total and the de-duplicated system labels.
+  // Counted, not a set: during a refresh two generations of one system can hold lanes together.
   private val optimizerRunning = ConcurrentHashMap<String, AtomicInteger>()
   private val optimizerWaiting = AtomicInteger()
   private val optimizerAdmissions = AtomicLong()
@@ -103,16 +70,9 @@ public class ServeBackgroundWork(
   private val optimizerHostRefusals = AtomicLong()
 
   /**
-   * The clocks [idleClock] handed out, retained so [optimizerAdmissionSnapshot] can publish the
-   * value the optimizer's quiet gate actually reads.
-   *
-   * Every counter on `/status.json` described what the optimizer was doing *after* it got a turn,
-   * and none described the input that decides whether it ever gets one. A box where the gate never
-   * opens therefore reports the same all-zero row as a box with nothing left to do — which is how a
-   * server ran for hours with `turnsGranted 0` on all 23 catalogs and no page saying why.
-   * [publishedRequestIdleClock] is kept alongside the composed one so the null can be attributed: a
-   * held session lease and a catalog load are both "busy" to the gate and have nothing else in
-   * common.
+   * The clocks [idleClock] handed out, kept so `/status.json` can publish the gate's input and say
+   * why it reads busy (session lease vs catalog load). Without it, a gate that never opens looks
+   * the same as nothing left to do.
    */
   @Volatile private var publishedIdleClock: (() -> Long?)? = null
   @Volatile private var publishedRequestIdleClock: (() -> Long?)? = null
@@ -126,9 +86,8 @@ public class ServeBackgroundWork(
     get() = initialLoadPending.get() || loadsInFlight.get() > 0
 
   /**
-   * Declare that a startup catalog pass is coming, before it starts. Called when the loader is
-   * built — not when it runs — so the window between "server up" and "first catalog load" is busy
-   * too, rather than a gap the optimizer can start in.
+   * Declare that a startup catalog pass is coming. Called when the loader is built, so the gap
+   * before the first load also reads as busy.
    */
   public fun expectInitialCatalogLoad() {
     initialLoadPending.set(true)
@@ -158,8 +117,7 @@ public class ServeBackgroundWork(
    */
   public fun idleClock(idleMillis: () -> Long?): () -> Long? =
     composeIdleClock(idleMillis).also {
-      // Every catalog host asks for one and they all wrap the same registry, so last-wins is the
-      // same clock each time. Retained purely so status can read it; nothing here drives behaviour.
+      // Every host wraps the same registry clock, so last-wins is fine; status only.
       publishedRequestIdleClock = idleMillis
       publishedIdleClock = it
     }
@@ -182,18 +140,9 @@ public class ServeBackgroundWork(
   }
 
   /**
-   * Run one background render under the server-wide permit. Returns null — and leaves the thread
-   * interrupted — when the wait was interrupted (shutdown), which the caller treats as "stop".
-   */
-  /**
-   * Hold one of the [maxConcurrentOptimizers] pass slots for [system] while [block] runs, or return
-   * null when none came free within [waitMillis] (or the optimizer is paused, or the thread was
-   * interrupted).
-   *
-   * Refusal is the *point*, not a failure: a catalog that cannot get a slot parks and tries again
-   * on the next pass instead of joining a queue with a warm daemon in hand. The wait is bounded so
-   * a parked catalog re-checks the idle gate rather than sleeping through the quiet window it was
-   * waiting for.
+   * Hold an optimizer pass slot for [system] while [block] runs, or return null when none came free
+   * within [waitMillis] (or optimizers are paused, or the thread was interrupted). Refusal is the
+   * point: the catalog parks and retries rather than queueing with a warm daemon in hand.
    */
   public fun <T : Any> withOptimizerSlot(system: String, waitMillis: Long, block: () -> T): T? {
     if (!acquireOptimizerLane(system, waitMillis)) {
@@ -238,25 +187,10 @@ public class ServeBackgroundWork(
   }
 
   /**
-   * Take a lane for [system], preferring whoever has gone longest without one.
-   *
-   * **This was a fair `Semaphore` and fairness there did not reach far enough.** A semaphore orders
-   * the callers *currently blocked on it*, and an optimizer pass is only blocked for
-   * `OPTIMIZER_ADMISSION_WAIT_MILLIS` (20s) before it gives up and parks until the next presence
-   * heartbeat. So the ordering only ever covered whoever happened to be at the door inside the same
-   * 20s window, and a catalog refused on one attempt arrived at the next one with no advantage over
-   * a catalog that had just run. Nothing accumulated, so nothing prevented the same few systems
-   * winning every draw.
-   *
-   * Measured on the deployed box 45 minutes after v1.14.0: `admissions 5, refusals 20`, with three
-   * catalogs having taken both lanes and the other nineteen reporting `turnsGranted 0` — including
-   * `m3-catalog`, the largest queue on the box at 10,120 targets and therefore the one that most
-   * needed the time.
-   *
-   * [optimizerLastRanAt] is the memory the semaphore lacked. A never-run system outranks every
-   * system that has run, and among equals it is first-come — so **every catalog gets a lane before
-   * any catalog gets a second**, which is a stronger guarantee than a size heuristic and needs no
-   * knowledge of how much work each one has left.
+   * Take a lane for [system], preferring whoever has gone longest without one. A fair semaphore
+   * only orders callers blocked at the same moment, and passes give up after a bounded wait, so the
+   * same few catalogs kept winning. [optimizerLastRanAt] makes every catalog get a lane before any
+   * gets a second.
    */
   private fun acquireOptimizerLane(system: String, waitMillis: Long): Boolean {
     val waitedFrom = clock()
@@ -272,9 +206,7 @@ public class ServeBackgroundWork(
     try {
       var remainingNanos = TimeUnit.MILLISECONDS.toNanos(waitMillis.coerceAtLeast(0))
       while (true) {
-        // Re-checked every wakeup rather than only on entry: a pause can land while this catalog is
-        // queueing, and admitting it then would let one pass slip past an operator who just asked
-        // for quiet.
+        // Re-checked on every wakeup so a pause lands on queued catalogs too.
         if (optimizersPaused()) return false
         if (optimizerLanesInUse < optimizerLanes && optimizerQueue.min() === waiter) {
           optimizerLanesInUse++
@@ -292,9 +224,7 @@ public class ServeBackgroundWork(
     } finally {
       optimizerQueue.remove(waiter)
       optimizerWaiting.decrementAndGet()
-      // Whether this waiter was admitted or gave up, the queue's head may have moved — and the
-      // remaining waiters are parked in `awaitNanos` with no other reason to look again. Without
-      // this, a free lane can sit unclaimed until someone's timeout happens to fire.
+      // The head may have moved; wake the others or a free lane can sit unclaimed.
       laneFreed.signalAll()
       admissionLock.unlock()
       optimizerAdmissionWaitMillis.addAndGet((clock() - waitedFrom).coerceAtLeast(0))
@@ -302,28 +232,11 @@ public class ServeBackgroundWork(
   }
 
   /**
-   * How many parked catalogs it is worth making resident again — the lanes nothing is holding,
-   * **plus one challenger**.
-   *
-   * [ServeSessionRegistry.resumeIdleOptimizers] reads this because resuming costs a cold Android
-   * daemon (34-68s) and roughly a gigabyte for as long as it stays up, so it must not resume a
-   * catalog that would merely stand at the door. But bounding it at the *free* lanes alone starves
-   * every catalog that is not already resident: a pass returns its lane on a slice boundary and
-   * re-queues immediately (see `ServeCatalogLiveHost.startThemeOptimization`), so on a box with
-   * more unfinished catalogs than lanes every later sweep reads zero free lanes and the parked ones
-   * wait for an incumbent to *finish* — hours, for a 10,440-target catalog.
-   *
-   * [PLUS_ONE_CHALLENGER] is what makes the rotation reach them. Admission's fairness
-   * ([acquireOptimizerLane]) orders catalogs **at the door** by who has gone longest without a
-   * lane, so a parked catalog wins its turn the moment it is standing there — but it has to be
-   * standing there. Keeping exactly one challenger queued hands it the next lane release ahead of
-   * the incumbent that just ran; the displaced incumbent then goes idle and is suspended in its
-   * turn. One extra resident buys a rotation whose period is the idle window rather than a
-   * catalog's whole backlog.
-   *
-   * Advisory, and deliberately tolerant of races: an admission landing in the same instant makes
-   * this read one too high and the resumed pass simply queues, which is what a challenger does
-   * anyway.
+   * How many parked catalogs are worth making resident again: free lanes plus
+   * [PLUS_ONE_CHALLENGER]. Resuming costs a cold daemon and ~1 GB, so only catalogs that will get a
+   * lane are resumed; the one challenger queues at the door and, by [acquireOptimizerLane]'s
+   * fairness, takes the next released lane, so parked catalogs rotate in instead of waiting for an
+   * incumbent's whole backlog. Advisory; races just make a resumed pass queue.
    */
   public fun optimizerResumeSlots(): Int =
     if (optimizersPaused()) 0
@@ -370,23 +283,15 @@ public class ServeBackgroundWork(
   }
 
   /**
-   * Stop admitting optimizer passes for [millis], and ask the ones already running to stop at their
-   * next check ([optimizersPaused]).
-   *
-   * The operational hole this fills: the optimizer is the largest consumer of a busy box and there
-   * was no way to stand it down. Restarting the server did it, at the cost of every warm daemon and
-   * every catalog's load — so the lever people actually had was the one they least wanted to pull
-   * while the box was already struggling. [reason] is recorded for `/status.json` so a quiet server
-   * explains itself rather than looking broken.
-   *
-   * Returns the epoch instant the pause lifts.
+   * Stop admitting optimizer passes for [millis] and ask running ones to stop at their next check,
+   * without restarting the server. [reason] is shown on `/status.json`. Returns when the pause
+   * lifts (epoch millis).
    */
   public fun pauseOptimizers(millis: Long, reason: String): Long {
     val until = clock() + millis.coerceAtLeast(0)
     optimizerPausedUntil.set(until)
     optimizerPauseReason["reason"] = reason.take(MAX_PAUSE_REASON_CHARS)
-    // Wake the queue so a pause is felt at the door now, rather than when each waiter's admission
-    // timeout happens to expire.
+    // Wake the queue so waiters see the pause now.
     admissionLock.lock()
     try {
       laneFreed.signalAll()
@@ -420,8 +325,7 @@ public class ServeBackgroundWork(
         unlock()
       }
     }
-    // Read the composed clock ONCE; the attribution below re-reads the request side only when it
-    // has already answered "busy", so the two can never contradict each other in the same row.
+    // Read once; the request clock is only consulted when this one says busy, so they agree.
     val serverIdle = publishedIdleClock?.invoke()
     val idleBlockedBy =
       when {
@@ -456,6 +360,10 @@ public class ServeBackgroundWork(
     )
   }
 
+  /**
+   * Run one background render under the server-wide permit. Returns null, leaving the thread
+   * interrupted, when the wait was interrupted (shutdown).
+   */
   public fun <T : Any> withRenderPermit(block: () -> T): T? {
     try {
       renderPermits.acquire()
@@ -472,38 +380,19 @@ public class ServeBackgroundWork(
 
   public companion object {
     /**
-     * Whole-server quiet the idle theme-optimizer gate requires before a cold pass may start.
-     *
-     * Read through a function rather than held in a `val` so the system property is still honoured
-     * when it is set after this class loads. It lives here rather than on `ServeCatalogLiveHost`,
-     * which is the class that gates on it, because this class is the one that publishes it on
-     * `/status.json` and this module cannot see that one — the gate keeps an alias so both sides
-     * still read the single number.
-     *
-     * Public rather than `internal`: `ServeCatalogLiveHost` is in `:server` now, and `internal` is
-     * module-scoped.
+     * Whole-server quiet the optimizer's idle gate requires before a cold pass. A function so a
+     * late-set system property is honoured; lives here because this class publishes it.
      */
     public fun themeOptimizationIdleMillisDefault(): Long =
       System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L
 
-    /**
-     * The historical lane: one background render server-wide. Still the right answer when nothing
-     * else bounds daemon count — see [renderLaneFor].
-     */
+    /** One background render server-wide; right when nothing else bounds daemon count. */
     public const val CONSERVATIVE_MAX_CONCURRENT_RENDERS: Int = 1
 
-    /**
-     * Catalogs allowed inside an optimizer pass at once. Two, not one: a single lane would leave
-     * the 8-permit render lane idle whenever the one admitted catalog is warming a daemon, and
-     * warming is where a pass spends most of its time. Two overlaps one catalog's warm with
-     * another's renders without recreating the free-for-all.
-     */
+    /** Two passes, so one catalog's daemon warm-up overlaps another's renders. */
     public const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
 
-    /**
-     * The one queued challenger [optimizerResumeSlots] keeps beyond the lanes themselves, so a
-     * parked catalog can actually win a turn instead of waiting for an incumbent to finish.
-     */
+    /** The queued challenger [optimizerResumeSlots] keeps beyond the lanes. */
     public const val PLUS_ONE_CHALLENGER: Int = 1
 
     public const val HOST_COORDINATION_RETRY_MILLIS: Long = 100L
@@ -521,38 +410,18 @@ public class ServeBackgroundWork(
     public const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
 
     /**
-     * How many background renders this server admits at once, given its live-seat budget.
-     *
-     * **The lane was 1, and one permit shared by every catalog was the prefetcher's dominant
-     * bottleneck.** Measured on the deployed server (0.19.41, 15 catalogs, no visitors) once the
-     * gate/permit split made it visible: **74.3%** of the optimizer's active time spent waiting for
-     * this permit, against 10.1% at the idle gate and **6.3%** actually rendering. Every batch
-     * collapsed to a single daemon as a result.
-     *
-     * The 1 was chosen so "a foreground render is never queued behind more than one background
-     * one". That is cheaper to relax than it sounds: a background batch holds the permit only for
-     * its renders — the expensive part, a cold daemon warm of 34-68s, is awaited *outside* it — and
-     * a warm background render is sub-second.
-     *
-     * **But widening it is only safe because something else bounds daemon count.** Each admitted
-     * catalog submits up to five parallel renders and each one the pool can't serve opens another
-     * daemon, so a lane of 3 is a licence for up to fifteen concurrent daemons. On the deployed box
-     * the seat budget refuses that long before memory does; with [LiveSeatLimiter.unbounded] seats
-     * — the CLI default, `--live-seats 0`, for a local dev box — **nothing does**, and the same
-     * widening that helps a public server would spawn fifteen JVMs on a laptop. So an unbounded
-     * budget keeps [CONSERVATIVE_MAX_CONCURRENT_RENDERS]; only a bounded one derives a wider lane,
-     * from the daemons it could actually afford to run concurrently.
-     *
-     * `-Dcomposeai.serve.backgroundRenders=<n>` overrides both, for a deployment that knows better
-     * than either rule.
+     * Background renders admitted at once, given the live-seat budget. A single permit was the
+     * optimizer's dominant bottleneck (74% of its time waiting), and a warm background render holds
+     * it only briefly. Widening is only safe when seats bound daemon count, since each admitted
+     * catalog can open several daemons, so an unbounded budget (local `--live-seats 0`) keeps
+     * [CONSERVATIVE_MAX_CONCURRENT_RENDERS]. `-Dcomposeai.serve.backgroundRenders=<n>` overrides.
      */
     public fun renderLaneFor(seats: LiveSeatLimiter?): Int {
       System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.let {
         return it.coerceAtLeast(1)
       }
       if (seats == null || seats.unbounded) return CONSERVATIVE_MAX_CONCURRENT_RENDERS
-      // What the budget can hold beyond the stream reserve, at the heaviest backend's weight —
-      // the same arithmetic the pool does when it decides whether it can afford a replica.
+      // Heaviest-backend daemons the budget holds beyond the stream reserve.
       val affordable =
         (seats.totalPermits - LiveSeatLimiter.STREAM_RESERVE) /
           ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
@@ -565,15 +434,9 @@ public class ServeBackgroundWork(
 }
 
 /**
- * Cross-catalog optimizer admission on `/status.json` (`themeOptimizer`).
- *
- * The number that matters when the box feels slow is [running] against [lanes], and [waiting]
- * beside it: passes parked at the door are cheap, passes inside the door are not. [refusals]
- * climbing while [admissions] holds steady is the cap doing its job.
- *
- * [waitingSystems] is who is at the door **in the order they will be let in**, which is the read
- * that was missing when the cap starved the box's largest catalog: `refusals 20` said work was
- * being turned away and nothing said the same system was being turned away every time.
+ * Cross-catalog optimizer admission on `/status.json` (`themeOptimizer`). Read [running] against
+ * [lanes] with [waiting] beside it; [waitingSystems] is the admission order, so a catalog refused
+ * every time is visible.
  */
 @Serializable
 public data class ThemeOptimizerAdmissionSnapshot(
@@ -587,15 +450,9 @@ public data class ThemeOptimizerAdmissionSnapshot(
   val hostRefusals: Long = 0,
   val admissionWaitMillis: Long,
   /**
-   * Catalogs whose host was released while they still had optimization left, and catalogs made
-   * resident again to take a lane — the residency the pass costs when it is *not* running.
-   *
-   * The pair is the read that was missing while every unfinished catalog stayed resident for the
-   * life of the process: `running`/`waiting` describe passes, and a parked pass looks free there
-   * while its daemon holds ~1.2 GB. A [hostSuspensions] that stays 0 on a box with more unfinished
-   * catalogs than [lanes] means the residency rule is not firing, whatever the memory reading says.
-   * [hostResumes] climbing far faster than [admissions] is the opposite fault: catalogs paying a
-   * cold start to queue rather than to render.
+   * Hosts released with optimization left, and parked hosts made resident again. Suspensions stuck
+   * at 0 with more unfinished catalogs than [lanes] means the residency rule isn't firing; resumes
+   * far outpacing [admissions] means catalogs pay cold starts just to queue.
    */
   val hostSuspensions: Long = 0,
   val hostResumes: Long = 0,
@@ -604,25 +461,14 @@ public data class ThemeOptimizerAdmissionSnapshot(
   val pauseReason: String? = null,
   val pressure: OptimizerPressureSnapshot? = null,
   /**
-   * The whole-server idle clock the optimizer's quiet gate reads, or null when it reads *busy*.
-   *
-   * This is the gate's input, and until it was published nothing on the page distinguished "the box
-   * is never quiet enough to start" from "there is nothing left to do": both showed a pass that had
-   * rendered nothing. Compare against [idleThresholdMillis] — a number consistently below it, or a
-   * persistent null, means no catalog will ever be granted a turn, whatever [lanes], [admissions]
-   * and [paused] say.
+   * The idle clock the optimizer's gate reads, or null when busy. Persistently below
+   * [idleThresholdMillis] (or null) means no catalog will ever get a turn.
    */
   val serverIdleMillis: Long? = null,
   /**
-   * Why [serverIdleMillis] is null, when it is: [IDLE_BLOCKED_BY_SESSION_LEASE] (a session holds an
-   * open lease *and is actively using it* — `daemons.busyLeasedSessions` names it, against
-   * `daemons.leasedSessions` for every holder) or [IDLE_BLOCKED_BY_CATALOG_LOAD] (catalogs are
-   * still being fetched). Null when the clock is running, or before any catalog host has asked for
-   * one.
-   *
-   * The two have opposite fixes and are indistinguishable from the outside: a lease that outlives
-   * its request is a bug that stands the optimizer down permanently, while a catalog load is the
-   * gate working as designed.
+   * Why [serverIdleMillis] is null: [IDLE_BLOCKED_BY_SESSION_LEASE] (an actively used lease; one
+   * that outlives its request stands the optimizer down for good) or [IDLE_BLOCKED_BY_CATALOG_LOAD]
+   * (working as designed).
    */
   val idleBlockedBy: String? = null,
   /** Quiet [serverIdleMillis] must reach before a cold pass may start. */

@@ -1107,6 +1107,11 @@ jobs:
         run: .github/scripts/refresh-driver-pin.sh --check
       - name: Run driver-pin refresh tests
         run: ./.github/scripts/test-refresh-driver-pin.sh
+      # The lock in .github/design-artifacts-driver/ decides the export driver every privileged
+      # design-artifacts job runs; this gates that it stays an exact version and that the
+      # scripts-only fetch refuses a tarball the lock did not name.
+      - name: Run export-driver install tests
+        run: ./.github/scripts/test-install-export-driver.sh
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
   # built Remote Compose player bundle (`third_party/remote-compose-player/dist/bundle.js`) in headless
@@ -1172,9 +1177,7 @@ jobs:
           for rel in \
             "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt" \
             "server/build.gradle.kts" \
-            "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js" \
-            "serve-web/src/scorer/tuning.ts" \
-            "scripts/design-artifacts/parity-issues.mjs"; do
+            "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js"; do
             mkdir -p ".compose-preview-server/$(dirname "$rel")"
             curl -fsSL --retry 3 -o ".compose-preview-server/$rel" "$base/$rel"
           done

@@ -99,14 +99,17 @@ with_revision_preview_index() {
   parent="$2"
   [ "$REVISION_PREVIEW_INDEX" = "1" ] || { echo "$candidate"; return; }
 
+  # The export driver's directory: the published package the workflow fetched (`DRIVER_DIR`), or
+  # this checkout's own copy for a caller that has not set one.
+  driver="${DRIVER_DIR:-$HELPER_DIR/../../../../scripts/design-artifacts}"
   scratch=$(mktemp -d)
   git show "${candidate}:catalog.json" > "$scratch/catalog.json"
   if [ -n "$parent" ] && git show "${parent}:preview-index.json" > "$scratch/prior.json" 2>/dev/null; then
-    node "$HELPER_DIR/../../../../scripts/design-artifacts/revision-preview-index.mjs" \
+    node "$driver/revision-preview-index.mjs" \
       --catalog "$scratch/catalog.json" --prior "$scratch/prior.json" --parent "$parent" \
       --out "$scratch/preview-index.json"
   else
-    node "$HELPER_DIR/../../../../scripts/design-artifacts/revision-preview-index.mjs" \
+    node "$driver/revision-preview-index.mjs" \
       --catalog "$scratch/catalog.json" --parent "$parent" \
       --out "$scratch/preview-index.json"
   fi

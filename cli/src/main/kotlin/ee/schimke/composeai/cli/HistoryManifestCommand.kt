@@ -227,9 +227,9 @@ private fun gitShow(repoDir: File, ref: String, path: String): String? = runCatc
   val p =
     ProcessBuilder("git", "show", "$ref:$path")
       .directory(repoDir)
-      .redirectErrorStream(false)
+      .redirectError(ProcessBuilder.Redirect.DISCARD)
       .start()
-  val out = p.inputStream.bufferedReader().readText()
+  val out = p.inputStream.bufferedReader().use { it.readText() }
   if (p.waitFor() == 0 && out.isNotBlank()) out else null
 }
   .getOrNull()
@@ -237,15 +237,23 @@ private fun gitShow(repoDir: File, ref: String, path: String): String? = runCatc
 /** Newest commit on [ref] that touched the renders tree, ignoring history-only commits. */
 private fun renderTip(repoDir: File, ref: String, pathspec: String = "renders"): String? =
   runCatching {
-    val p = ProcessBuilder("git", "rev-list", "-1", ref, "--", pathspec).directory(repoDir).start()
-    val out = p.inputStream.bufferedReader().readText().trim()
+    val p =
+      ProcessBuilder("git", "rev-list", "-1", ref, "--", pathspec)
+        .directory(repoDir)
+        .redirectError(ProcessBuilder.Redirect.DISCARD)
+        .start()
+    val out = p.inputStream.bufferedReader().use { it.readText() }.trim()
     if (p.waitFor() == 0 && out.isNotEmpty()) out else null
   }
   .getOrNull()
 
 private fun resolveSha(repoDir: File, ref: String): String? = runCatching {
-  val p = ProcessBuilder("git", "rev-parse", ref).directory(repoDir).start()
-  val out = p.inputStream.bufferedReader().readText().trim()
+  val p =
+    ProcessBuilder("git", "rev-parse", ref)
+      .directory(repoDir)
+      .redirectError(ProcessBuilder.Redirect.DISCARD)
+      .start()
+  val out = p.inputStream.bufferedReader().use { it.readText() }.trim()
   if (p.waitFor() == 0 && out.isNotEmpty()) out else null
 }
   .getOrNull()

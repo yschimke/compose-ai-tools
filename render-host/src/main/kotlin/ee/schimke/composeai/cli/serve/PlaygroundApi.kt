@@ -3,21 +3,10 @@ package ee.schimke.composeai.cli.serve
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/**
- * Wire types for the **playground** REST surface — the Stage-1 "compile a snippet, get a result +
- * an expiring preview token" contract described in
- * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md).
- *
- * The request/response shapes are deliberately a **superset** of the `kotlin-compiler-server`
- * `/api/{version}/compiler/run` contract that a stock `kotlin-playground` frontend speaks, so an
- * unmodified editor can POST to us: it sends `{ args, files, confType }` and reads `{ text,
- * exception, errors }`. The two fields it does **not** know about — [PlaygroundRunResponse.image]
- * and [PlaygroundRunResponse.previewToken] — are additive; a stock frontend ignores them and ours
- * surfaces them as the still frame + the "Open live preview →" handoff.
- *
- * These are pure data types with no server behaviour; the route handler and the compile/render
- * plumbing live elsewhere.
- */
+// Wire types for the playground REST surface
+// ([docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md)). A superset of
+// `kotlin-compiler-server`'s `/api/{version}/compiler/run` contract, so a stock `kotlin-playground`
+// frontend works unmodified and ignores the additive fields.
 
 /** Which renderer + permalink target a snippet compiles for. See PLAYGROUND.md §3. */
 @Serializable
@@ -31,11 +20,8 @@ public enum class PlaygroundMode {
 
   public companion object {
     /**
-     * Resolve the request's `confType` to a mode. Accepts our own ids (the [SerialName]s above) and
-     * tolerates the stock `kotlin-playground` target ids so an unmodified frontend still lands on a
-     * sensible mode: `canvas`/`js`/`wasm`/`compose-wasm` (its in-browser Compose targets) map to
-     * [CMP], everything else defaults to [CMP] as well — the one mode a from-source box can always
-     * serve. An empty/absent `confType` is [CMP].
+     * Resolve the request's `confType`. Unknown values, including the stock playground's in-browser
+     * targets, map to [CMP]: the one mode a from-source box can always serve.
      */
     public fun fromConfType(confType: String?): PlaygroundMode =
       when (confType?.trim()?.lowercase()) {
@@ -50,23 +36,15 @@ public enum class PlaygroundMode {
 }
 
 /**
- * One editor file in a run request. `publicId` is carried through but unused server-side.
- *
- * A request may carry **several**: every file is staged into the snippet's source dir and passed to
- * one compile, so files see each other's declarations (they are one module, not N compiles). Names
- * are sanitised and de-duplicated by [PlaygroundCompileService]; only the text matters to the
- * compiler, since Kotlin does not require a file name to match its declarations.
+ * One editor file in a run request. All files compile together as one module; names are sanitised
+ * by [PlaygroundCompileService]. `publicId` is carried through but unused server-side.
  */
 @Serializable
 public data class PlaygroundFile(val name: String, val text: String, val publicId: String = "")
 
 /**
- * A Stage-1 run request. Mirrors the `kotlin-compiler-server` body so a stock frontend fits; [args]
- * is accepted and ignored (a preview has no argv), and the mode comes from [confType] via
- * [PlaygroundMode.fromConfType].
- *
- * [catalog] is ours, and additive: a stock frontend omits it and lands on the host's pinned
- * `--playground-bundle` default exactly as before.
+ * A Stage-1 run request, mirroring the `kotlin-compiler-server` body. [args] is ignored; the mode
+ * comes from [confType] via [PlaygroundMode.fromConfType].
  */
 @Serializable
 public data class PlaygroundRunRequest(
@@ -74,11 +52,8 @@ public data class PlaygroundRunRequest(
   val files: List<PlaygroundFile> = emptyList(),
   val confType: String = "",
   /**
-   * Which served catalog to compile against (`compose-m3`), chosen per request by the editor's
-   * catalog selector. Empty ⇒ the host's pinned default for [confType]'s mode. An unknown or
-   * unloaded id is a clean "not available" response, never a fallback to the default — silently
-   * compiling against a *different* design system than the one asked for would report success for
-   * the wrong thing.
+   * Which served catalog to compile against; empty means the host's pinned default. An unknown id
+   * is refused rather than silently compiled against a different design system.
    */
   val catalog: String = "",
   /**
@@ -113,12 +88,8 @@ public data class PlaygroundEditLeaseReleaseRequest(
 )
 
 /**
- * One entry in the editor's catalog selector (`GET /api/{version}/compiler/catalogs`).
- *
- * [modes] is what makes this worth a round trip rather than a static page: a catalog's bundle
- * backend decides its renderer, so selecting `compose-m3` (desktop) and selecting an Android
- * catalog offer different mode sets. The client repopulates its mode control from the selected
- * entry instead of offering modes the host would then refuse.
+ * One entry in the editor's catalog selector (`GET /api/{version}/compiler/catalogs`). [modes]
+ * depends on the catalog's backend, so the client only offers modes the host will accept.
  */
 @Serializable
 public data class PlaygroundCatalogInfo(
@@ -129,9 +100,7 @@ public data class PlaygroundCatalogInfo(
   /** `desktop` | `android`, or empty for the pinned default (which spans whatever was pinned). */
   val backend: String = "",
   val modes: List<PlaygroundMode> = emptyList(),
-  /**
-   * True once this catalog's classpath is resolved — the first run against it pays for the unpack.
-   */
+  /** True once this catalog's classpath is resolved; the first run against it pays the unpack. */
   val resolved: Boolean = false,
   /** Served catalog system, distinct from a module-qualified [id]. */
   val system: String = id,
@@ -176,12 +145,8 @@ public data class PlaygroundDiagnostic(
 public data class PlaygroundInterval(val start: PlaygroundPosition, val end: PlaygroundPosition)
 
 /**
- * One diagnostic in the **stock `kotlin-compiler-server`** `errors`-map shape — the wire form a
- * stock `kotlin-playground` frontend reads to draw inline squiggles. Distinct from
- * [PlaygroundDiagnostic] (our flat internal shape): the stock frontend iterates the `errors` map
- * per file and reads `error.interval.start`, so the position must be **nested** under `interval`,
- * and `severity` is the upstream uppercase spelling (`ERROR`/`WARNING`). [PlaygroundErrorsWire]
- * projects our diagnostics into this shape.
+ * One diagnostic in the stock `kotlin-compiler-server` `errors`-map shape, which needs the position
+ * nested under `interval` and an uppercase `severity`. Projected by [PlaygroundErrorsWire].
  */
 @Serializable
 public data class PlaygroundStockError(
@@ -192,28 +157,13 @@ public data class PlaygroundStockError(
 )
 
 /**
- * The Stage-1 result.
+ * The Stage-1 result. A clean compile carries warnings in [diagnostics], the first frame in [image]
+ * (a `data:` URI) and the live handoff in [previewToken] / [previewUrl]; Remote Compose mode
+ * returns a [documentUrl] permalink instead of a token. A compile error mints no token, and
+ * [exception] is only for server-side failures.
  *
- * On a clean compile: [diagnostics] carries any warnings, [image] is the first-frame render as a
- * `data:image/png;base64,…` URI, and [previewToken] / [previewUrl] are the handoff to the live
- * Stage-2 session. On a compile error: [diagnostics] carries the errors and **no** token is minted
- * ([previewToken] stays null). [exception] is reserved for a server-side failure that isn't a user
- * compile error (e.g. the render subprocess died).
- *
- * [documentUrl] is the [PlaygroundMode.REMOTE_COMPOSE] terminal instead of a token: the snippet's
- * captured `.rc` document is published as an expiring `/d/<id>` permalink the browser plays
- * client-side (PLAYGROUND.md §3). A run yields **either** a [previewToken] (the live CMP/Android
- * modes) **or** a [documentUrl] (RC) — never both — and [previewToken] stays null on the RC path.
- *
- * [previewId] is the `@Preview` this run actually rendered and tokenized, and [previews] is every
- * `@Preview` the snippet declared — a multi-file snippet can hold several, and only one drives the
- * first frame and the Stage-2 session. Both are additive fields a stock frontend ignores; ours uses
- * them to say *which* preview it drew when a snippet declares more than one.
- *
- * [errors] is the **same** diagnostics projected into the stock `kotlin-compiler-server` wire shape
- * (a map keyed by file name → [PlaygroundStockError]s with nested `interval` positions), so an
- * unmodified `kotlin-playground` frontend can render inline squiggles. Our own frontend reads the
- * richer [diagnostics] instead; both are populated, so neither client is second-class.
+ * [previewId] is the `@Preview` that was rendered, out of every one in [previews]. [errors] holds
+ * the same diagnostics in the stock wire shape, for unmodified frontends.
  */
 @Serializable
 public data class PlaygroundRunResponse(
@@ -236,12 +186,8 @@ public data class PlaygroundRunResponse(
 )
 
 /**
- * `GET /usage/{previewId}`: the plain-Compose usage code behind one catalog card — what the
- * viewer's **Source** panel shows, and the same derivation the playground handoff seeds from.
- *
- * Served as its own lazily-fetched resource rather than baked into the viewer page. Producing it
- * costs a GitHub read on a cold cache ([PlaygroundSeedResolver]), and most visitors to a preview
- * never open the panel — so a page load must not pay for it.
+ * `GET /usage/{previewId}`: the plain-Compose usage code behind one catalog card (the viewer's
+ * Source panel). Fetched lazily because it can cost a GitHub read ([PlaygroundSeedResolver]).
  */
 @Serializable
 public data class UsageSnippetResponse(
@@ -262,24 +208,13 @@ public data class UsageSnippetResponse(
   /** Where "open in playground" goes, so the panel and the provenance row cannot disagree. */
   val playgroundHref: String? = null,
   /**
-   * The KDoc pages for the platform APIs [text] uses, derived from its own imports by [ApiDocLinks]
-   * — composables first, in the order the code names them, so the component this card is about
-   * leads the list.
-   *
-   * Rides the snippet rather than the viewer page for the same reason the snippet does: it is
-   * derived FROM the snippet, so there is nothing to serve until that read has happened, and a
-   * visitor who never opens Source pays for neither.
+   * Reference pages for the platform APIs [text] imports ([ApiDocLinks]), composables first in the
+   * order the code names them.
    */
   val apiDocs: List<ApiDocLink> = emptyList(),
 )
 
-/**
- * One entry of [UsageSnippetResponse.apiDocs]: a symbol the usage code uses, and its reference
- * page.
- *
- * The wire shape of [ApiDocLinks.Link], kept as its own serializable type so the internal resolver
- * stays free to carry things the viewer has no use for.
- */
+/** One entry of [UsageSnippetResponse.apiDocs]: the wire shape of [ApiDocLinks.Link]. */
 @Serializable
 public data class ApiDocLink(
   /** The name as the snippet writes it — an `as` alias where the code renamed one. */

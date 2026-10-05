@@ -7,7 +7,6 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import kotlin.io.path.exists
 import org.jetbrains.kotlin.buildtools.api.CompilationResult
-import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains
 import org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader
@@ -21,38 +20,19 @@ import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 
 /**
- * Stage-2 spike harness: drives the Kotlin Build Tools API (BTA) to compile a single `.kt` file
- * in-process, loading the Compose compiler plugin into the same isolated classloader BTA uses for
- * its implementation JAR.
+ * Stage-2 spike harness: compiles `.kt` sources in-process through the Kotlin Build Tools API
+ * (BTA), with the Compose compiler plugin loaded into BTA's isolated classloader, to test whether
+ * the daemon can produce Compose-transformed classes without Gradle.
  *
- * The goal is **decisive**: can we get a usable `.class` for an `@Composable` source file without
- * going through Gradle, and does that `.class` show evidence of the Compose plugin's transformation
- * (Composer parameter injection)? If yes, the stage-2 path
- * (`composePreview.daemon.compileInProcess`) becomes plausible and we design the JSON-RPC surface +
- * IC caching layer on top. If no, the spike fails forward with a concrete diagnostic we can attach
- * to a KEEP-421 / JetBrains issue.
- *
- * **Not production code.** No incremental compilation, no source-set wiring, no KSP, no Android
- * variants. Single-translation-unit compile against a caller-supplied classpath, output to a
- * caller-supplied directory.
+ * Not production code: no source-set wiring, KSP or Android variants.
  */
 class BtaCompiler(
-  /**
-   * JARs that form the BTA implementation classloader. Must contain `kotlin-build-tools-impl`.
-   * (Compose compiler plugin lives on the per-compile [CompilerPlugin] classpath instead — see
-   * [compile].)
-   */
+  /** JARs for the BTA implementation classloader; must contain `kotlin-build-tools-impl`. */
   private val implClasspath: List<Path>
 ) {
 
   private val toolchains: KotlinToolchains by lazy {
-    // BTA's prescribed parent: an API-only classloader that exposes the
-    // `org.jetbrains.kotlin.buildtools.api.*` types and delegates to the host's
-    // ClassLoader for them, while shielding the impl from every other JAR on
-    // our process classpath. `SharedApiClassesClassLoader()` is a top-level
-    // function declared in the API jar (`@JvmName("newInstance")` is what
-    // makes it visible to Java callers as a static method) — call it like a
-    // constructor from Kotlin.
+    // BTA's prescribed parent: exposes only the API types, shielding the impl from our classpath.
     val loader =
       URLClassLoader(
         implClasspath.map { it.toUri().toURL() }.toTypedArray(),
@@ -62,13 +42,8 @@ class BtaCompiler(
   }
 
   /**
-   * Compile [sources] against [compileClasspath], emit `.class` files into [outputDir]. Returns the
-   * list of files written. Throws on compile failure.
-   *
-   * [compilerPlugins] feeds BTA's `CommonCompilerArguments.COMPILER_PLUGINS` slot — each entry
-   * combines a plugin id (e.g. `androidx.compose.compiler.plugins.kotlin`) with the JAR(s) that
-   * supply its `CompilerPluginRegistrar` service file. BTA loads those JARs into the same isolated
-   * classloader as the impl, so the plugin's registrar resolves alongside the compiler frontend.
+   * Compile [sources] against [compileClasspath] into [outputDir], returning the class files there.
+   * Throws on failure. [compilerPlugins] are loaded into the impl's isolated classloader.
    */
   fun compile(
     sources: List<Path>,
@@ -93,29 +68,10 @@ class BtaCompiler(
   }
 
   /**
-   * Incremental variant of [compile]. Reuses an on-disk cache under [workingDir] across calls so
-   * downstream sessions skip re-analysing classpath entries that haven't moved.
-   *
-   * The mechanics, drawn from KGP's own `BuildToolsApiCompilationWork`:
-   * 1. Snapshot each compile-classpath entry via [JvmClasspathSnapshottingOperation] and persist it
-   *    under `workingDir/cp-snapshots/<sha1(jarPath)>.bin`. We cache by absolute path; this is a
-   *    coarse signal, but for the spike's purposes (a single fixture compile classpath that never
-   *    changes between calls) it's enough — production stage-2 needs a content-hash fallback when a
-   *    JAR is rebuilt in place.
-   * 2. Build a [JvmSnapshotBasedIncrementalCompilationConfiguration] pointing at:
-   *     - `workingDir/ic` — BTA's own IC working dir (it'll create whatever it needs inside)
-   *     - the persisted snapshot files
-   *     - `workingDir/shrunk-classpath-snapshot.bin` — output target where BTA writes the shrunk
-   *       snapshot after the compile
-   * 3. Attach the config via `JvmCompilationOperation.INCREMENTAL_COMPILATION`.
-   * 4. Execute.
-   *
-   * [sourcesChanges] defaults to [SourcesChanges.ToBeCalculated] — BTA inspects file timestamps vs.
-   * its cache. Callers that already know the dirty set (e.g. a daemon-side file watcher) can pass
-   * [SourcesChanges.Known] for tighter incrementality.
-   *
-   * NOT production-ready. Open follow-ups: content-hash classpath cache keys, source-set wiring,
-   * KSP/KAPT, Android variants.
+   * Incremental variant of [compile], following KGP's `BuildToolsApiCompilationWork`: classpath
+   * snapshots are cached under `workingDir/cp-snapshots/` keyed by jar path (production would need
+   * content hashes for jars rebuilt in place), and BTA's IC state lives in `workingDir/ic`.
+   * [sourcesChanges] may name the dirty set when the caller already knows it.
    */
   fun compileIncremental(
     sources: List<Path>,
@@ -133,7 +89,6 @@ class BtaCompiler(
 
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
-      // 1. Classpath snapshots. Cheap when cached, sub-second per entry cold.
       val snapshotFiles = compileClasspath.map { jar ->
         val cached = cpSnapshotsDir.resolve("${sha1(jar.toString())}.bin")
         if (!cached.exists()) {
@@ -144,7 +99,6 @@ class BtaCompiler(
         cached
       }
 
-      // 2 + 3. Build the IC config and attach it to the compile op.
       val builder = jvm.jvmCompilationOperationBuilder(sources, outputDir)
       val icConfig =
         builder
@@ -162,7 +116,6 @@ class BtaCompiler(
         moduleName,
       )
 
-      // 4. Execute.
       executeOrThrow(session, builder.build())
     }
     return collectClassFiles(outputDir)
@@ -202,19 +155,12 @@ class BtaCompiler(
   }
 
   private companion object {
-    /**
-     * Mirrors KGP's default for non-multiplatform JVM modules — Gradle would pass the project path
-     * with dashes (e.g. `daemon-bta-host`). Spike tests override via the [moduleName] parameter
-     * when comparing byte-for-byte against a Gradle-produced reference.
-     */
+    /** Overridden by tests that compare byte-for-byte against a Gradle-produced reference. */
     const val DEFAULT_MODULE_NAME = "bta-spike"
   }
 }
 
-/**
- * Pipes BTA's diagnostic stream to System.err so a `COMPILER_INTERNAL_ERROR` / warnings / lifecycle
- * messages are visible in the test report.
- */
+/** Pipes BTA's diagnostics to stderr so they show in the test report. */
 private object StderrLogger : KotlinLogger {
   override val isDebugEnabled: Boolean = true
 

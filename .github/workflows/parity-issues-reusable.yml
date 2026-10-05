@@ -74,7 +74,16 @@ jobs:
           while IFS= read -r repo; do
             args+=(--repo "$repo")
           done < <(jq -er '.[]' <<<"$REPOSITORIES")
-          node compose-ai-tools/scripts/design-artifacts/emit-parity-issues.mjs \
+          # The driver runs from `@design-parity/export-driver`, at the version the checked-out lock
+          # names. A `driver-ref` from before the lock still carries its own copy of the script, so
+          # fall back to that rather than failing an older caller.
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            driver=$("$installer" --scripts-only "$RUNNER_TEMP/export-driver")
+          else
+            driver=compose-ai-tools/scripts/design-artifacts
+          fi
+          node "$driver/emit-parity-issues.mjs" \
             --out out "${args[@]}"
 
       - name: Publish the one-path delta

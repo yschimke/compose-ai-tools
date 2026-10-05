@@ -66,6 +66,7 @@
       ".github/actions/**",
       ".github/ci/**",
       ".github/design-artifacts-driver-pin.txt",
+      ".github/design-artifacts-driver/**",
       ".github/scripts/**",
       ".github/workflows/**",
       "scripts/design-artifacts/**",
@@ -80,6 +81,7 @@
     "design_artifacts": [
       "design-map/**",
       "scripts/design-artifacts/**",
+      ".github/design-artifacts-driver/**",
       ".github/actions/lib/**"
     ]
   }

@@ -34,7 +34,8 @@
       "matchDepNames": [
         "@design-parity/adapter-figma",
         "@design-parity/candidate",
-        "@design-parity/catalog-export"
+        "@design-parity/catalog-export",
+        "@design-parity/export-driver"
       ],
       "groupName": "design-parity export toolchain"
     },

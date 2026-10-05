@@ -8,15 +8,11 @@ import ee.schimke.composeai.previewdata.previewSha256
 import java.io.File
 
 /**
- * Library entry point for the `composePreviewRenderAll` pipeline. Wraps a [GradleConnection] with a
- * higher-level `discoverModules()` + `render()` API so external consumers (contrib scripting,
- * third-party tooling) don't have to learn the Tooling-API shape to drive a preview render.
+ * Library entry point for the `composePreviewRenderAll` pipeline: `discoverModules()` + `render()`
+ * over a [GradleConnection], so external consumers needn't learn the Tooling API. The CLI layers
+ * its own concerns (change detection, `--force`, init-script injection) on top.
  *
- * The CLI builds its own command surface on top of this — see `Command.renderModules` /
- * `buildResults` — so behaviour stays consistent across the CLI and contrib consumers.
- *
- * Lifecycle: `open()` (constructor) opens a Tooling-API connection rooted at [projectRoot] and
- * holds it for the lifetime of the driver. Always close — the connection holds a daemon handle.
+ * Holds a Tooling API connection rooted at [projectRoot] until closed.
  *
  * ```kotlin
  * GradlePreviewDriver(projectRoot).use { driver ->
@@ -26,12 +22,8 @@ import java.io.File
  * }
  * ```
  *
- * Scope: the driver runs the gradle task, reads each module's `previews.json`, expands
- * `@PreviewParameter` fan-outs against the on-disk PNG files, hashes them with [previewSha256], and
- * returns base [PreviewResult]s with `changed = null`. CLI-only concerns (`.cli-state.json` change
- * detection, image-size override for hosting agents, extension-renderer annotation, `--force`
- * stderr notices, autoinject init-script synthesis) stay in `:cli` as layers on top of the driver's
- * output.
+ * [render] runs the task, reads each module's `previews.json`, expands `@PreviewParameter` fan-outs
+ * and hashes PNGs with [previewSha256], returning results with `changed = null`.
  */
 class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions = DriverOptions()) :
   AutoCloseable {
@@ -61,12 +53,9 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
     get() = connection.lastDiscoveryFailures
 
   /**
-   * Find every subproject that applies the `ee.schimke.composeai.preview` plugin. Detection is via
-   * the plugin's `ComposePreviewModel` Tooling-API model (see [DiscoverPreviewModulesAction])
-   * rather than a task-graph scan, so it avoids realizing unrelated modules' tasks during discovery
-   * (issue #1620). This requires the plugin to register that model — present since 0.11.13. The
-   * CLI's default auto-inject path always supplies a current plugin, so this only matters for
-   * projects that manually pin an older plugin version *and* disable auto-inject.
+   * Every subproject that applies the plugin, found through its `ComposePreviewModel` (see
+   * [DiscoverPreviewModulesAction]) so unrelated tasks aren't realized (issue #1620). Needs plugin
+   * 0.11.13+, which auto-inject always supplies.
    */
   fun discoverModules(): List<PreviewModule> = connection.findPreviewModules(options.timeoutSeconds)
 
@@ -78,12 +67,8 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
     connection.findPreviewModule(gradlePath, options.timeoutSeconds)
 
   /**
-   * Drive a render against [request].modules. Returns a [RenderOutcome] carrying the build's
-   * pass/fail, every read manifest, the base [PreviewResult] list, and any test failures captured
-   * live by the Tooling API.
-   *
-   * An empty `modules` list short-circuits the gradle invocation — returns `buildOk = true` and
-   * empty lists. Same shape as the existing CLI behaviour.
+   * Render [request].modules. An empty module list skips Gradle and returns `buildOk = true` with
+   * empty results.
    */
   fun render(request: RenderRequest): RenderOutcome {
     val modules = request.modules
@@ -132,11 +117,7 @@ data class DriverOptions(
   val verbose: Boolean = false,
   /** Emit per-task heartbeat lines on stderr every 15s, plus OSC progress for TTYs. */
   val progress: Boolean = false,
-  /**
-   * Gradle build timeout. Shares [GradleConnection.DEFAULT_TIMEOUT_SECONDS] with the CLI — `render`
-   * always passes this value explicitly, so a literal here would silently override the connection's
-   * own default and leave the published driver on a budget a cold render does not fit in.
-   */
+  /** Gradle build timeout; defaults to the connection's own so the two never drift. */
   val timeoutSeconds: Long = GradleConnection.DEFAULT_TIMEOUT_SECONDS,
   /**
    * Extra Tooling-API arguments prepended to every build / model query — primarily for
@@ -154,10 +135,9 @@ data class RenderRequest(
   /** Modules to render. Typically the result of [GradlePreviewDriver.discoverModules]. */
   val modules: List<PreviewModule>,
   /**
-   * Data extensions to enable for this run. Forwarded as a single
-   * `-PcomposePreview.activeExtensions=<comma-list>` argument. The gradle plugin currently ignores
-   * this property — daemon-driven flows are where opt-in extensions actually run — but the property
-   * is the stable contract carrier.
+   * Data extensions to enable, forwarded as `-PcomposePreview.activeExtensions=<comma-list>`. The
+   * plugin currently ignores it (opt-in extensions run in the daemon), but it is the stable
+   * carrier.
    */
   val extensions: Set<String> = emptySet(),
   /**
@@ -166,11 +146,7 @@ data class RenderRequest(
    * renders, etc.).
    */
   val taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:composePreviewRenderAll" },
-  /**
-   * Pass `--rerun-tasks` to Gradle so every input task re-executes regardless of UP-TO-DATE. The
-   * CLI's `--force=<reason>` flag flips this; contrib consumers can flip it for the same "I think
-   * the build is stale" escape hatch.
-   */
+  /** Pass `--rerun-tasks` (the CLI's `--force=<reason>`). */
   val rerunTasks: Boolean = false,
   /** Additional Tooling-API arguments appended to the per-call build. */
   val additionalArgs: List<String> = emptyList(),
