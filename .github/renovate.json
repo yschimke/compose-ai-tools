@@ -34,7 +34,8 @@
       "matchDepNames": [
         "@design-parity/adapter-figma",
         "@design-parity/candidate",
-        "@design-parity/catalog-export"
+        "@design-parity/catalog-export",
+        "@design-parity/export-driver"
       ],
       "groupName": "design-parity export toolchain"
     },
@@ -200,6 +201,19 @@
       "depNameTemplate": "yschimke/compose-ai-tools",
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "The `@design-parity/export-driver` version the design-artifacts workflows run (`export-driver=` in the driver pin file). It is an exact version, never a range, because a privileged job executes it; Renovate moves it like any other npm pin, under the same release-age gate.",
+      "managerFilePatterns": [
+        "/^\\.github/design-artifacts-driver-pin\\.txt$/"
+      ],
+      "matchStrings": [
+        "export-driver=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "@design-parity/export-driver",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
     },
     {
       "customType": "regex",

@@ -74,7 +74,20 @@ jobs:
           while IFS= read -r repo; do
             args+=(--repo "$repo")
           done < <(jq -er '.[]' <<<"$REPOSITORIES")
-          node compose-ai-tools/scripts/design-artifacts/emit-parity-issues.mjs \
+          # The driver runs from the published `@design-parity/export-driver` package at the version
+          # the checked-out pin file names. A `driver-ref` older than that line still carries its own
+          # copy of the script, so fall back to it rather than failing an older caller.
+          pin=compose-ai-tools/.github/design-artifacts-driver-pin.txt
+          version=$(sed -nE 's/^export-driver=([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' "$pin" 2>/dev/null | head -n1 || true)
+          if [ -n "$version" ]; then
+            driver="$RUNNER_TEMP/export-driver"
+            mkdir -p "$driver"
+            tarball=$(npm pack "@design-parity/export-driver@${version}" --pack-destination "$RUNNER_TEMP" | tail -n1)
+            tar -xzf "$RUNNER_TEMP/$tarball" -C "$driver" --strip-components=1
+          else
+            driver=compose-ai-tools/scripts/design-artifacts
+          fi
+          node "$driver/emit-parity-issues.mjs" \
             --out out "${args[@]}"
 
       - name: Publish the one-path delta

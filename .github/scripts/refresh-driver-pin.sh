@@ -132,7 +132,11 @@ case "${mode}" in
       published='published'
     fi
 
-    echo "driver pin OK: ${current_sha} (${current_tag}, ${published})"
+    current_driver="$(read_key export-driver)"
+    validate "${current_driver}" '^[0-9]+\.[0-9]+\.[0-9]+$' \
+      "pinned export-driver is not an exact X.Y.Z version: '${current_driver}'"
+
+    echo "driver pin OK: ${current_sha} (${current_tag}, ${published}); @design-parity/export-driver@${current_driver}"
     ;;
 
   write)
