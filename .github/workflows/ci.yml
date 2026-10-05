@@ -1107,6 +1107,11 @@ jobs:
         run: .github/scripts/refresh-driver-pin.sh --check
       - name: Run driver-pin refresh tests
         run: ./.github/scripts/test-refresh-driver-pin.sh
+      # The lock in .github/design-artifacts-driver/ decides the export driver every privileged
+      # design-artifacts job runs; this gates that it stays an exact version and that the
+      # scripts-only fetch refuses a tarball the lock did not name.
+      - name: Run export-driver install tests
+        run: ./.github/scripts/test-install-export-driver.sh
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
   # built Remote Compose player bundle (`third_party/remote-compose-player/dist/bundle.js`) in headless

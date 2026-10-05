@@ -63,11 +63,3 @@
 # already record when the pin moved.
 sha=35c41828f64f997b997179bcca114fd941b211e7
 tag=v2.34.1
-
-# The export driver's scripts run from the published `@design-parity/export-driver`
-# package (design-parity's packages/export-driver, which is now their source) at
-# this exact version. The commit above still supplies everything else the
-# reusable workflow reads from this repository. An exact X.Y.Z only: a range or a
-# dist-tag would let the registry choose the code a privileged job runs, and the
-# workflow refuses anything else. Renovate bumps it.
-export-driver=1.5.0

@@ -55,6 +55,8 @@ on:
       - 'samples/design-catalog-*/**'
       - 'samples/cmp-wasm-catalog/**'
       - 'scripts/design-artifacts/**'
+      - '.github/design-artifacts-driver/**'
+      - '.github/scripts/install-export-driver.sh'
       - '.github/workflows/design-artifacts.yml'
       - '.github/workflows/design-artifacts-reusable.yml'
   # Also invoked automatically after a published release (post-release-design-artifacts.yml
@@ -222,23 +224,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      # The export driver, from the published `@design-parity/export-driver` package at the
-      # version `.github/design-artifacts-driver-pin.txt` names — the same version external callers
-      # of the reusable workflow run. Its source is design-parity's packages/export-driver.
-      - name: Fetch the export driver (@design-parity/export-driver)
-        run: |
-          set -euo pipefail
-          version=$(sed -nE 's/^export-driver=([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' .github/design-artifacts-driver-pin.txt | head -n1)
-          [ -n "$version" ] || { echo "::error::no export-driver=X.Y.Z line in .github/design-artifacts-driver-pin.txt"; exit 1; }
-          dest="$RUNNER_TEMP/export-driver"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          tarball=$(npm pack "@design-parity/export-driver@${version}" --pack-destination "$RUNNER_TEMP" | tail -n1)
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$dest" --strip-components=1
-          echo "DRIVER_DIR=$dest" >> "$GITHUB_ENV"
-      - name: Install the export driver's npm dependencies
-        working-directory: ${{ env.DRIVER_DIR }}
-        run: npm install --omit=dev --no-package-lock --no-audit --no-fund --loglevel=warn
+      # The export driver: `@design-parity/export-driver` and its whole dependency tree, from the
+      # reviewed lock in .github/design-artifacts-driver/ — the same lock external callers of the
+      # reusable workflow install. Its source is design-parity's packages/export-driver.
+      - name: Install the export driver (@design-parity/export-driver)
+        run: .github/scripts/install-export-driver.sh "$RUNNER_TEMP/export-driver" >/dev/null
 
       # Fast, build-free pre-flight: resolve every spec `preview` against the
       # @Preview functions the module actually declares BEFORE the ~90-minute

@@ -204,19 +204,6 @@
     },
     {
       "customType": "regex",
-      "description": "The `@design-parity/export-driver` version the design-artifacts workflows run (`export-driver=` in the driver pin file). It is an exact version, never a range, because a privileged job executes it; Renovate moves it like any other npm pin, under the same release-age gate.",
-      "managerFilePatterns": [
-        "/^\\.github/design-artifacts-driver-pin\\.txt$/"
-      ],
-      "matchStrings": [
-        "export-driver=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "depNameTemplate": "@design-parity/export-driver",
-      "datasourceTemplate": "npm",
-      "versioningTemplate": "npm"
-    },
-    {
-      "customType": "regex",
       "description": "The rc-players tag `design-artifacts-reusable.yml` checks out for the two embedded player lanes. It is a literal rather than a value the workflow computes, because a computed `ref:` on `actions/checkout` is a checkout of untrusted code in a privileged context — critical, and the code lands somewhere `./gradlew` runs moments later (#5006 review). That leaves a second place holding the player version, so this keeps it in step with `rcplayers` in `gradle/libs.versions.toml`. The pin's comment names the same Maven package the version catalog resolves (`ee.schimke.composeai:rc-players-bom`), and the `v` of the tag sits outside `currentValue`, so both resolve the same version under the same release-age gate and the `rc-players` group puts them in one PR. Not a substitute for the workflow's own drift check.",
       "managerFilePatterns": [
         "/^\\.github/workflows/design-artifacts-reusable\\.yml$/"

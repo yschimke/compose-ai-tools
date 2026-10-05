@@ -845,13 +845,13 @@ env:
   SOURCE_REPOSITORY: ${{ github.repository }}
   SOURCE_REF_NAME: ${{ github.ref_name }}
 
-  # The export driver's scripts run from the published `@design-parity/export-driver` package,
-  # at the exact version the pin file's `export-driver=` line names; design-parity's
-  # packages/export-driver is their source, and this repository's `scripts/design-artifacts/` is
-  # no longer what runs. The commit pin below still decides which revision of compose-ai-tools
-  # supplies everything else (actions, version catalog, player staging). It used to name the
-  # driver too, and the reasoning that follows was written for that; for the driver itself it
-  # now holds for the package version instead, including for compose-ai-tools' own runs.
+  # The export driver's scripts run from the published `@design-parity/export-driver` package;
+  # design-parity's packages/export-driver is their source. Which version, and every package under
+  # it, is fixed by the reviewed lock in `.github/design-artifacts-driver/` at the compose-ai-tools
+  # revision resolved below, installed by `.github/scripts/install-export-driver.sh`. So the
+  # reasoning that follows, written when that revision held the driver's source, holds unchanged:
+  # the revision now names the driver through its lock. A revision from before the lock existed
+  # still carries its own copy in `scripts/design-artifacts/`, and runs that.
   #
   # Which revision of compose-ai-tools this privileged
   # workflow executes is resolved per-run by the "Resolve the export-driver
@@ -937,7 +937,6 @@ jobs:
       contents: read
     outputs:
       ref: ${{ steps.driver.outputs.ref }}
-      export-driver: ${{ steps.driver.outputs.export-driver }}
       upstream-sha: ${{ steps.upstream.outputs.sha }}
     steps:
       # IMPORT MODE is a refusal, not a warning. Rendering a caller-named third-party repository and
@@ -1145,26 +1144,6 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
           echo "Export driver: \`${ref}\`" >> "$GITHUB_STEP_SUMMARY"
 
-          # The driver's scripts themselves run from the published `@design-parity/export-driver`
-          # package now, at the exact version the same pin file names on its `export-driver=` line.
-          # The checkout above still supplies everything else this pipeline reads from
-          # compose-ai-tools (its actions, version catalog, player staging). The version is read from
-          # the same revision the commit was: the run's own commit for compose-ai-tools itself, `main`
-          # for an external caller. A published npm version is immutable, so pinning an exact version
-          # keeps the property the commit pin exists for. Fail closed on anything but X.Y.Z: a range
-          # or a tag here would let the registry choose the code this privileged job runs.
-          if [ "${CALLER}" = "${DRIVER_PIN_REPO}" ]; then pin_at="${CALLER_SHA}"; else pin_at="${PIN_REF}"; fi
-          version=$(curl -fsSL \
-                      -H "Authorization: Bearer ${GH_TOKEN}" \
-                      -H "Accept: application/vnd.github.raw" \
-                      "${GITHUB_API_URL}/repos/${DRIVER_PIN_REPO}/contents/${DRIVER_PIN_PATH}?ref=${pin_at}" \
-                    | sed -nE 's/^export-driver=([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | head -n1)
-          printf '%s' "${version}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
-            echo "::error::could not resolve an exact @design-parity/export-driver version from ${DRIVER_PIN_PATH} at ${pin_at} (got '${version}')"
-            exit 1
-          }
-          echo "export-driver=${version}" >> "$GITHUB_OUTPUT"
-          echo "Export driver package: \`@design-parity/export-driver@${version}\`" >> "$GITHUB_STEP_SUMMARY"
 
   # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
   # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
@@ -1892,26 +1871,21 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts, from the published package at the version the driver job
-      # resolved. `npm pack` checks the tarball against the registry's integrity hash; nothing is
-      # installed, so this is the same set of plain files the checkout used to provide. Steps that
-      # need the driver's npm dependencies install them into this directory themselves.
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
-        env:
-          EXPORT_DRIVER_VERSION: ${{ needs.driver.outputs.export-driver }}
         run: |
           set -euo pipefail
-          printf '%s' "$EXPORT_DRIVER_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
-            echo "::error::no exact export-driver version from the driver job (got '$EXPORT_DRIVER_VERSION')"
-            exit 1
-          }
-          dest="$RUNNER_TEMP/export-driver"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          tarball=$(npm pack "@design-parity/export-driver@${EXPORT_DRIVER_VERSION}" \
-                      --pack-destination "$RUNNER_TEMP" | tail -n1)
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$dest" --strip-components=1
-          echo "DRIVER_DIR=$dest" >> "$GITHUB_ENV"
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
 
       # ---- Themes an imported project cannot declare for itself ---------------------------------
       #
@@ -3077,26 +3051,21 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts, from the published package at the version the driver job
-      # resolved. `npm pack` checks the tarball against the registry's integrity hash; nothing is
-      # installed, so this is the same set of plain files the checkout used to provide. Steps that
-      # need the driver's npm dependencies install them into this directory themselves.
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
-        env:
-          EXPORT_DRIVER_VERSION: ${{ needs.driver.outputs.export-driver }}
         run: |
           set -euo pipefail
-          printf '%s' "$EXPORT_DRIVER_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
-            echo "::error::no exact export-driver version from the driver job (got '$EXPORT_DRIVER_VERSION')"
-            exit 1
-          }
-          dest="$RUNNER_TEMP/export-driver"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          tarball=$(npm pack "@design-parity/export-driver@${EXPORT_DRIVER_VERSION}" \
-                      --pack-destination "$RUNNER_TEMP" | tail -n1)
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$dest" --strip-components=1
-          echo "DRIVER_DIR=$dest" >> "$GITHUB_ENV"
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
 
       # ---- Themes an imported project cannot declare for itself ---------------------------------
       #
@@ -3383,9 +3352,17 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      # The whole locked tree (`npm ci` against `.github/design-artifacts-driver/package-lock.json`),
+      # replacing the scripts-only fetch above with the same driver bytes plus its dependencies.
       - name: Install the export driver's npm dependencies
-        working-directory: ${{ env.DRIVER_DIR }}
-        run: npm install --omit=dev --no-package-lock --no-audit --no-fund --loglevel=warn
+        run: |
+          set -euo pipefail
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            (cd "$DRIVER_DIR" && npm ci --no-audit --no-fund --loglevel=warn)
+          fi
 
       - name: Validate module selector
         run: |
@@ -4697,8 +4674,8 @@ jobs:
           # the design-map containing `.html`: a Figma-only catalog needs the browser too.
           # Idempotent: a no-op when the Remote Compose lane below already installed it in this job.
           install_log="$RUNNER_TEMP/playwright-install-references.log"
-          if ! (cd "$DRIVER_DIR" &&
-                npx playwright install --with-deps chromium) >"$install_log" 2>&1; then
+          if ! "$DRIVER_ROOT/node_modules/.bin/playwright" install --with-deps chromium \
+                >"$install_log" 2>&1; then
             echo "::warning title=Chromium install failed::HTML design references will be skipped and references will publish without a match score."
             tail -n 40 "$install_log" >&2
           fi
@@ -4914,7 +4891,7 @@ jobs:
           fi
           install_log="$RUNNER_TEMP/playwright-install.log"
           echo "Installing Chromium and system dependencies…"
-          if ! npx playwright install --with-deps chromium >"$install_log" 2>&1; then
+          if ! "$DRIVER_ROOT/node_modules/.bin/playwright" install --with-deps chromium >"$install_log" 2>&1; then
             echo "::error title=Chromium install failed::Playwright could not install Chromium. The final 80 log lines follow." >&2
             tail -n 80 "$install_log" >&2
             exit 1
@@ -5407,26 +5384,21 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts, from the published package at the version the driver job
-      # resolved. `npm pack` checks the tarball against the registry's integrity hash; nothing is
-      # installed, so this is the same set of plain files the checkout used to provide. Steps that
-      # need the driver's npm dependencies install them into this directory themselves.
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
-        env:
-          EXPORT_DRIVER_VERSION: ${{ needs.driver.outputs.export-driver }}
         run: |
           set -euo pipefail
-          printf '%s' "$EXPORT_DRIVER_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
-            echo "::error::no exact export-driver version from the driver job (got '$EXPORT_DRIVER_VERSION')"
-            exit 1
-          }
-          dest="$RUNNER_TEMP/export-driver"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          tarball=$(npm pack "@design-parity/export-driver@${EXPORT_DRIVER_VERSION}" \
-                      --pack-destination "$RUNNER_TEMP" | tail -n1)
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$dest" --strip-components=1
-          echo "DRIVER_DIR=$dest" >> "$GITHUB_ENV"
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
 
       - name: Download the rendered catalog
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
