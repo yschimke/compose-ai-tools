@@ -43,11 +43,8 @@ import kotlin.system.exitProcess
  * one-shot path, which does. Closing the worker's stdin ends it cleanly.
  */
 public fun rcJvmRenderWorkerMain() {
-  // Claim the real stdout for protocol frames BEFORE anything else can print to it. Skiko, AWT, the
-  // font loader and any transitive library are all free to write to `System.out`; a single stray
-  // line would be read as a frame header and desynchronise the stream for good. Everything that
-  // goes on writing to `System.out` lands on stderr instead, where the pool drains it into the
-  // failure tail.
+  // Claim the real stdout for frames before anything prints: one stray line from Skiko, AWT or a
+  // library would desynchronise the stream. Later `System.out` writes go to stderr.
   val frames = DataOutputStream(BufferedOutputStream(FileOutputStream(FileDescriptor.out)))
   System.setOut(PrintStream(FileOutputStream(FileDescriptor.err), true))
 
@@ -93,14 +90,11 @@ public fun rcJvmRenderWorkerMain() {
           }
         Response(STATUS_OK, artifact)
       } catch (e: Exception) {
-        // A document this player cannot draw is an ordinary per-request failure: report it and stay
-        // alive, exactly as the one-shot path reports a non-zero exit without implying the renderer
-        // itself is broken.
+        // An undrawable document is a per-request failure; the worker stays alive.
         Response(STATUS_FAILED, "${e::class.java.simpleName}: ${e.message}".toByteArray())
       } catch (t: Throwable) {
-        // An Error (OOM, a native link failure, a StackOverflow) says the *process* is no longer
-        // trustworthy. Answer the caller so it gets a reason rather than a timeout, then exit so
-        // the pool discards this worker instead of reusing a damaged JVM.
+        // An Error means the JVM is no longer trustworthy: answer, then exit so the pool replaces
+        // us.
         fatal = t
         Response(STATUS_FAILED, "${t::class.java.simpleName}: ${t.message}".toByteArray())
       }
@@ -126,11 +120,7 @@ public fun main() {
 
 private class Response(val status: Int, val payload: ByteArray)
 
-/**
- * Read a length-prefixed payload, rejecting a length that could only come from a desynchronised
- * stream — without this a corrupt length allocates an arbitrary array and the worker dies on OOM
- * instead of on the protocol error that actually happened.
- */
+/** Read a length-prefixed payload, exiting on a length only a desynchronised stream could send. */
 private fun DataInputStream.readPayload(): ByteArray {
   val len = readInt()
   if (len < 0 || len > MAX_PAYLOAD_BYTES) {
@@ -146,10 +136,8 @@ internal const val MAGIC_REQUEST = 0x52435131
 internal const val MAGIC_RESPONSE = 0x52435231
 
 /**
- * 2 adds the per-request `theme` field. The version is what makes a stale `lib-rcjvm/` sidecar fall
- * back to the one-shot path rather than mis-reading a frame it does not know the shape of, so it
- * has to move whenever the frame does. Unchanged from the AndroidX-player worker this replaces: the
- * frame is the same, so an old pool and this worker (or the reverse) still agree.
+ * Bump whenever the frame changes, so a stale `lib-rcjvm/` sidecar falls back to the one-shot path
+ * instead of misreading frames. 2 added the per-request `theme`.
  */
 internal const val PROTOCOL_VERSION = 2
 internal const val STATUS_OK = 0

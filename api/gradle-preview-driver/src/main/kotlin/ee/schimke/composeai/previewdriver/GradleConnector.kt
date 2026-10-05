@@ -46,57 +46,33 @@ class GradleConnection(
   private val verbose: Boolean,
   private val progress: Boolean = false,
   /**
-   * Arguments prepended to every Tooling-API invocation this connection makes — `withArguments` on
-   * `BuildLauncher`, `ModelBuilder`, and `BuildActionExecuter`. Today the CLI seeds this with
-   * `--init-script <path>` so the compose-preview plugin is auto-applied to projects that haven't
-   * manually wired it in their `build.gradle.kts`. See [autoInjectInitScriptArgs] for the source.
+   * Arguments prepended to every Tooling-API invocation, e.g. the CLI's `--init-script <path>` that
+   * auto-applies the plugin ([autoInjectInitScriptArgs]).
    */
   private val extraArguments: List<String> = emptyList(),
 ) : AutoCloseable {
   /**
-   * Optional second opinion on a build failure: given everything this connection saw of it
-   * (Gradle's captured stderr plus the exception chain), returns one message to print after the
-   * failure report, or null when it recognises nothing.
+   * Optional advice on a build failure: given Gradle's captured stderr plus the exception chain,
+   * returns one message to print after the report, or null. The CLI uses it to explain the plugin
+   * marker publication race (issue #5034).
    *
-   * The driver deliberately knows nothing about *why* a particular string is worth explaining — the
-   * CLI supplies the knowledge, because that is where it lives. Today the CLI uses it to name the
-   * publication race behind an unresolvable plugin marker (issue #5034), which otherwise arrives as
-   * a configuration failure in the consumer's own project and is diagnosed as one.
-   *
-   * A settable property rather than a constructor parameter **on purpose**: this module is a
-   * published library, and adding a defaulted parameter would change the primary constructor's JVM
-   * descriptor and its synthetic defaults constructor — every consumer compiled against the
-   * previous release would get a `NoSuchMethodError` on `GradleConnection(…)`, whether or not they
-   * ever wanted failure advice. Adding a property only adds methods.
+   * A property rather than a constructor parameter so the published constructor's JVM signature
+   * stays binary-compatible.
    */
   var failureAdvice: ((String) -> String?)? = null
 
   companion object {
     /**
-     * Wall-clock budget a Gradle invocation gets before it is cancelled.
-     *
-     * Was 300s, which a real cold render did not fit in: a single-preview render on a cold daemon
-     * measured 309s, and two of two runs at the old default timed out at ~320s while the same
-     * render with a longer budget finished. A timeout that the documented default cannot survive
-     * teaches callers to distrust the tool rather than to pass `--timeout`.
-     *
-     * Those five minutes were never the *render*: the CLI drove `composePreviewRenderAll` at full
-     * width and filtered the rows client-side, so asking for one preview rendered all 64 in the
-     * module — 317s where 3s would do (issue #3730). The CLI now forwards the request as
-     * `-PcomposePreview.idFilter` (see `PreviewRenderScope`), so this budget is back to being what
-     * it was meant to be: headroom for a genuinely cold daemon, not cover for a 100× overshoot.
+     * Wall-clock budget before a Gradle invocation is cancelled: headroom for a genuinely cold
+     * daemon (a cold single-preview render measured 309s against the old 300s budget).
      */
     const val DEFAULT_TIMEOUT_SECONDS: Long = 600
   }
 
   private val connector =
     GradleConnector.newConnector().forProjectDirectory(projectDir).apply {
-      // `forProjectDirectory` takes the distribution from *that* directory's
-      // gradle/wrapper/gradle-wrapper.properties, and silently falls back to the Tooling API's own
-      // default when there is none. A nested build that borrows its parent repository's wrapper
-      // (issue #5031) has none of its own, so without this it would be driven by a Gradle the
-      // repository never chose. Inherit the nearest ancestor's wrapper distribution instead, which
-      // is exactly what `../gradlew` would have used.
+      // `forProjectDirectory` only reads that directory's own wrapper; a nested build borrowing its
+      // parent's (issue #5031) should use the distribution `../gradlew` would.
       inheritedWrapperDistribution(projectDir)?.let { useDistribution(it) }
     }
   private val connection = connector.connect()
@@ -108,11 +84,8 @@ class GradleConnection(
   private var discoveryFailures: List<ProjectDiscoveryFailure> = emptyList()
 
   /**
-   * Per-project configuration failures recorded during the most recent [findPreviewModules] call —
-   * projects whose `ComposePreviewModel` couldn't be built and were therefore skipped. Lets callers
-   * explain an empty discovery ("3 modules failed to configure: …") instead of the bare "No preview
-   * modules discovered" that hid the real cause (issue #3). Empty when discovery succeeded for
-   * every project or hasn't run yet.
+   * Projects whose `ComposePreviewModel` failed to build during the last [findPreviewModules], so
+   * an empty discovery can be explained (issue #3).
    */
   val lastDiscoveryFailures: List<ProjectDiscoveryFailure>
     get() = discoveryFailures
@@ -122,11 +95,7 @@ class GradleConnection(
   private val capturedTaskOutcomes =
     Collections.synchronizedMap(linkedMapOf<String, GradleTaskOutcome>())
 
-  /**
-   * Test failures captured during the most recent [runTasks] call. Populated live from the Tooling
-   * API's progress events — no need to walk JUnit XML reports after the build. Empty until the
-   * first failing test finishes; cleared at the start of each [runTasks].
-   */
+  /** Test failures captured live from progress events during the last [runTasks]. */
   fun lastTestFailures(): List<CapturedTestFailure> =
     synchronized(capturedTestFailures) { capturedTestFailures.toList() }
 
@@ -144,9 +113,7 @@ class GradleConnection(
     capturedTestFailures.clear()
     capturedTaskOutcomes.clear()
 
-    // Ctrl+C otherwise kills the CLI without going through the cancellation
-    // token — leaving the Gradle daemon still executing and any forked Test
-    // worker (Robolectric, etc.) orphaned. Hook ensures clean cancellation.
+    // Cancel on Ctrl+C so the Gradle daemon and forked test workers aren't left running.
     val shutdownHook = Thread {
       System.err.println("\nInterrupted — cancelling Gradle build...")
       tokenSource.cancel()
@@ -161,8 +128,7 @@ class GradleConnection(
         schedule(
           object : java.util.TimerTask() {
             override fun run() {
-              // Names the flag: this reads as a hung build otherwise, and the fix — "ask for more
-              // time" — is not something a caller can guess from "cancelling...".
+              // Name the remedy; "cancelling" alone reads as a hung build.
               System.err.println(
                 "Build timed out after ${timeoutSeconds}s, cancelling. " +
                   "If the build was still making progress, rerun with a longer budget: " +
@@ -175,11 +141,8 @@ class GradleConnection(
           timeoutSeconds * 1000,
         )
 
-        // Heartbeat so the user can see what is still running (Robolectric
-        // can take minutes on a cold start with no output). Opt-in via
-        // --progress / --verbose so default CLI output stays quiet. CI gets
-        // a slower cadence: one useful heartbeat per minute without flooding
-        // a long design-catalog render with hundreds of near-identical lines.
+        // Opt-in heartbeat naming running tasks (cold Robolectric starts are silent for minutes);
+        // slower on CI to avoid flooding long logs.
         if (progress) {
           val heartbeatMs = if (System.getenv("CI") == "true") 60_000L else 15_000L
           schedule(
@@ -202,7 +165,6 @@ class GradleConnection(
     var taskCount = 0
     var tasksFinished = 0
 
-    // Capture stderr for error reporting when not in verbose mode
     val errorCapture = ByteArrayOutputStream()
 
     return try {
@@ -221,11 +183,7 @@ class GradleConnection(
         launcher.setStandardError(errorCapture)
       }
 
-      // TEST events are always on so we can capture failing-test details
-      // for `printBuildFailure`. Discriminate by descriptor type in the
-      // listener so test events don't pollute the task-progress counters
-      // or the heartbeat's "running:" list (a single render run can fire
-      // hundreds of test events).
+      // TEST events capture failing-test details; they are kept out of the task counters.
       val listenerTypes = setOf(OperationType.TASK, OperationType.TEST)
 
       launcher.addProgressListener(
@@ -313,15 +271,7 @@ class GradleConnection(
     e: org.gradle.tooling.BuildException,
     errorCapture: ByteArrayOutputStream,
   ) {
-    // Extract the root cause message
-    var cause: Throwable? = e
-    val messages = mutableListOf<String>()
-    while (cause != null) {
-      cause.message?.let { msg -> if (msg.isNotBlank() && msg !in messages) messages.add(msg) }
-      cause = cause.cause
-    }
-
-    // Show the captured stderr (Gradle's error output)
+    val messages = e.causeMessages()
     val captured = errorCapture.toString().trim()
     if (captured.isNotEmpty()) {
       val actionable = actionableFailureLines(captured)
@@ -334,7 +284,7 @@ class GradleConnection(
       }
     }
 
-    // If no captured output was useful, show exception chain
+    // Fall back to the exception chain when Gradle's own report isn't there.
     if (captured.isEmpty() || !captured.contains("What went wrong")) {
       System.err.println("Build failed: ${messages.firstOrNull() ?: "unknown error"}")
       if (messages.size > 1) {
@@ -385,12 +335,8 @@ class GradleConnection(
   }
 
   /**
-   * Fetch a Tooling API model registered by the applied plugin. Returns `null` if the model isn't
-   * registered (plugin not applied, or version predates the model) or if the Gradle connection
-   * fails — callers fold both into "skip project-scope checks" rather than erroring.
-   *
-   * The plugin-side model FQN and the [modelClass] passed here must match; see
-   * `ComposePreviewModel.kt` on both sides for the contract.
+   * Run [action] with a timeout. Returns `null` on any Tooling API failure, recorded in
+   * [lastModelAccessFailure]; callers fold that into "skip".
    */
   fun <R> runBuildAction(action: org.gradle.tooling.BuildAction<R>, timeoutSeconds: Long = 60): R? {
     val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
@@ -436,9 +382,8 @@ class GradleConnection(
   }
 
   /**
-   * Fetch Gradle's `BuildEnvironment` model — exposes the daemon's Gradle version and its
-   * `javaHome`. Doctor uses both to triage bug reports where the forked test worker's JVM differs
-   * from the daemon's (#142). Returns `null` on any tooling-API failure; callers fold into "skip".
+   * Gradle's `BuildEnvironment` model (Gradle version and daemon `javaHome`), used by doctor to
+   * spot a test-worker JVM that differs from the daemon's (#142). Null on any failure.
    */
   fun buildEnvironment(): org.gradle.tooling.model.build.BuildEnvironment? {
     return try {
@@ -455,45 +400,19 @@ class GradleConnection(
   }
 
   /**
-   * Find all subprojects that apply the compose-ai-tools plugin (detected by the presence of a
-   * `composePreviewDiscover` task).
+   * Every project that applies the plugin, with its Gradle path and its configured `projectDir`
+   * (which can be anywhere, so it is read from the Tooling API rather than derived from the path).
    *
-   * Each entry carries both the Gradle path (used to build task specs like
-   * `:foo:bar:composePreviewRenderAll`) and the resolved filesystem `projectDir`. Nested
-   * subprojects (`:foo:bar`) have directory layouts like `foo/bar/`, so substituting `:` for `/`
-   * doesn't always work — and even for standard layouts a user can point `project.projectDir`
-   * anywhere. Reading it from the Tooling API's `BasicGradleProject.projectDirectory` is the only
-   * reliable way to resolve manifests / PNGs on disk without replicating Gradle's own
-   * project-layout logic.
-   *
-   * Implemented via [DiscoverPreviewModulesAction] rather than the `GradleProject` model: fetching
-   * `GradleProject` realizes every task in every module, which runs unrelated modules'
-   * configuration-time side effects (e.g. a `nativeCompile` task provisioning a Java toolchain)
-   * during mere discovery (issue #1620). The build action queries the lightweight `GradleBuild` +
-   * per-project `ComposePreviewModel` instead, which never realizes the full task graph.
-   *
-   * On a tooling-API failure the action returns `null`; we fold that into an empty list and leave
-   * [lastModelAccessFailure] populated so callers can tell "no preview modules" from "couldn't talk
-   * to Gradle." A generous timeout matches the old un-timed model query — discovery configures each
-   * project, which can be slow on a cold daemon.
-   *
-   * Per-project configuration failures (a module the plugin applied to but that threw while its
-   * model was built) are recorded in [lastDiscoveryFailures] rather than silently dropped, so an
-   * empty result can be explained (issue #3).
+   * Uses [DiscoverPreviewModulesAction] rather than the `GradleProject` model, which realizes every
+   * task and runs unrelated configuration side effects (issue #1620). A Tooling API failure yields
+   * an empty list with [lastModelAccessFailure] set; per-project failures land in
+   * [lastDiscoveryFailures].
    */
-  // @JvmOverloads because this is a published artifact: a Kotlin default parameter compiles to a
-  // single method taking the parameter plus a synthetic bridge, so the no-arg entry point an
-  // already-compiled consumer links against simply vanishes — NoSuchMethodError on upgrade, from a
-  // change that reads as purely additive in source. The generated overloads keep the old signatures
-  // and spare Java callers a mandatory argument.
+  // Published artifact: @JvmOverloads keeps the no-arg signature existing consumers link against.
   @JvmOverloads
   fun findPreviewModules(timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS): List<PreviewModule> {
-    // The *caller's* budget, not a constant of its own. Configuring every project on a cold daemon
-    // is exactly where this overruns — the friction log's "doctor reports the project unusable when
-    // it is usable" was this firing, cancelling the model query for a project whose `list` and
-    // `render` then both worked — but a hardcoded number is the wrong fix in both directions:
-    // `--timeout 60` could not bound a hung discovery, and `--timeout 1800` could not rescue a
-    // legitimately slow one.
+    // The caller's budget: cold-daemon configuration is slow, and a fixed number is wrong in both
+    // directions.
     val result = runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = timeoutSeconds)
     discoveryFailures = result?.failures ?: emptyList()
     return result?.modules ?: emptyList()
@@ -505,10 +424,7 @@ class GradleConnection(
     runBuildAction(DiscoverGradleProjectsAction(), timeoutSeconds = timeoutSeconds) ?: emptyList()
 
   /**
-   * Resolve a single module by its Gradle path (colon-separated, with or without the leading `:`).
-   * Returns `null` when no project with that path applies the plugin — callers fall back to a
-   * user-visible error rather than silently building an empty task list against a dir that doesn't
-   * exist.
+   * The plugin-applying module at [gradlePath] (leading `:` optional), or null when there is none.
    */
   @JvmOverloads
   fun findPreviewModule(
@@ -535,12 +451,9 @@ class GradleConnection(
 }
 
 /**
- * The `distributionUrl` of the nearest **ancestor** wrapper of [projectDir], or null when
- * [projectDir] has a wrapper of its own (the Tooling API reads that one itself), when no ancestor
- * has one, or when the URL is unusable (missing, relative, unparseable).
- *
- * Only the ancestor case is interesting: a build root with its own wrapper is already handled by
- * `forProjectDirectory`, and overriding it here would change which Gradle drives it.
+ * The `distributionUrl` of the nearest ancestor wrapper of [projectDir], or null when [projectDir]
+ * has its own wrapper (the Tooling API reads that itself), no ancestor has one, or the URL is
+ * unusable.
  */
 internal fun inheritedWrapperDistribution(
   projectDir: File,
@@ -557,12 +470,8 @@ internal fun inheritedWrapperDistribution(
         val resolved = url?.let { wrapperDistributionUri(it, props) } ?: return@runCatching null
         val pinned = loaded.getProperty("distributionSha256Sum")?.trim()?.takeIf { it.isNotEmpty() }
         if (pinned != null && !distributionAlreadyInstalled(resolved, gradleUserHome)) {
-          // The Tooling API's `useDistribution(URI)` carries a URL and nothing else — there is
-          // no way to hand it the `distributionSha256Sum` the wrapper would have verified. So
-          // when the distribution is not already in the wrapper's cache, inheriting the URL
-          // would mean downloading and executing it with the repository's integrity pin
-          // dropped. Refuse instead: the Tooling API falls back to its own distribution, which
-          // is at least not a checksum this build asked for and did not get.
+          // `useDistribution(URI)` can't carry `distributionSha256Sum`, so an uncached pinned
+          // distribution would be downloaded unverified. Refuse instead.
           warn(
             "compose-preview: not inheriting the Gradle distribution from ${props.path} — it " +
               "pins distributionSha256Sum, the Tooling API cannot be given a checksum, and " +
@@ -581,11 +490,7 @@ internal fun inheritedWrapperDistribution(
   return null
 }
 
-/**
- * A wrapper `distributionUrl` as a URI, resolving a **relative** value against the directory
- * holding [props] the way the Gradle wrapper itself does (a locally vendored distribution is
- * normally written that way). Null when the value cannot be parsed.
- */
+/** A wrapper `distributionUrl` as a URI, resolving a relative value against [props]' directory. */
 private fun wrapperDistributionUri(url: String, props: File): URI? = runCatching {
   val uri = URI(url)
   if (uri.isAbsolute) uri else props.parentFile.toURI().resolve(url)
@@ -593,13 +498,9 @@ private fun wrapperDistributionUri(url: String, props: File): URI? = runCatching
   .getOrNull()
 
 /**
- * True when [distribution] is already unpacked in the wrapper's own cache, which means the wrapper
- * downloaded it and — where a `distributionSha256Sum` was pinned — verified it. Reusing that copy
- * involves no download, so no unverified bytes reach this build.
- *
- * Matched by the cache's directory layout (`wrapper/dists/<name>/<hash>/…` with the `.ok` marker
- * Gradle writes after a successful unpack), not by recomputing Gradle's internal URL hash — the
- * layout is stable and public, the hash function is neither.
+ * True when [distribution] is already unpacked (and so verified) in the wrapper cache, matched by
+ * the public `wrapper/dists/<name>/<hash>/` layout and its `.ok` marker rather than Gradle's
+ * internal URL hash.
  */
 private fun distributionAlreadyInstalled(distribution: URI, gradleUserHome: File?): Boolean {
   val home = gradleUserHome ?: return false
@@ -613,12 +514,7 @@ internal fun defaultGradleUserHome(): File? =
   System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() }?.let(::File)
     ?: System.getProperty("user.home")?.takeIf { it.isNotBlank() }?.let { File(it, ".gradle") }
 
-/**
- * A distribution URL safe to print: userinfo and query string removed.
- *
- * A private distribution can carry credentials in either — `https://user:token@host/…` or a signed
- * `?X-Amz-Signature=…` — and a warning goes to stderr, which in CI means the build log.
- */
+/** A distribution URL safe to print in CI logs: userinfo and query string removed. */
 internal fun redactedDistribution(uri: URI): String = runCatching {
   URI(uri.scheme, null, uri.host, uri.port, uri.path, null, null).toString() +
     if (uri.rawQuery != null) "?…" else ""
@@ -647,26 +543,12 @@ private fun Throwable.causeMessages(): List<String> {
 }
 
 /**
- * The lines worth showing from Gradle's captured stderr when a build fails, without `--verbose`.
+ * The lines worth showing from Gradle's captured stderr when a build fails without `--verbose`.
  *
- * Everything between `* What went wrong:` and the next `* <section>:` header is kept **verbatim**,
- * whatever it looks like. The per-line patterns only recognise Gradle's decorated cause lines (`>
- * …`) and compiler diagnostics, so a reason written as plain prose — `Execution failed for task
- * ':a:b'.`, or a task's own multi-line `GradleException` text — used to match nothing and be
- * dropped, printing `* What went wrong:` followed immediately by `* Try:` and no reason at all.
- * That empty block is worse than noise: `printBuildFailure`'s `captured.contains("What went
- * wrong")` check then suppresses the exception-chain fallback too, so the run reports a failure
- * with no cause anywhere in its output and the only way to learn what broke is to re-run the whole
- * render with `--verbose` — which, in CI, means nobody can.
- *
- * Blank lines inside the block are dropped so the section stays tight (Gradle puts one before the
- * next header).
- *
- * The block ends at the next entry of [GRADLE_FAILURE_SECTIONS], not at the next line that merely
- * starts with `* `: a task's `GradleException` message is free to contain its own unindented `* `
- * bullets, and treating one of those as a section header would drop the rest of the reason —
- * exactly the truncation this function exists to prevent (Codex review on #3003). Such a bullet is
- * still printed, it just doesn't close the block.
+ * The whole `* What went wrong:` block is kept verbatim (minus blank lines): plain-prose reasons
+ * match none of the per-line patterns, and an empty block also suppresses the exception-chain
+ * fallback in `printBuildFailure`. The block ends only at a real [GRADLE_FAILURE_SECTIONS] header,
+ * since an exception message may contain its own `* ` bullets.
  */
 internal fun actionableFailureLines(captured: String): List<String> {
   var inWhatWentWrong = false
@@ -685,9 +567,7 @@ internal fun actionableFailureLines(captured: String): List<String> {
 }
 
 /**
- * The section headers Gradle's console failure report emits, each at column zero. Used to decide
- * where a `* What went wrong:` block ends — see [actionableFailureLines]. `* Get more help at …` is
- * the one that doesn't end in a colon, so these are matched as prefixes rather than by shape.
+ * Gradle's failure-report section headers, matched as prefixes (`* Get more help at` has no colon).
  */
 private val GRADLE_FAILURE_SECTIONS =
   listOf("* Where:", "* What went wrong:", "* Try:", "* Exception is:", "* Get more help at")

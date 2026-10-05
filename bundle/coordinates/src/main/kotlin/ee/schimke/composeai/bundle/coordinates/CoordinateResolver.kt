@@ -20,39 +20,17 @@ import okio.buffer
 import okio.openZip
 
 /**
- * Resolves a bundle's detached `maven` coordinates (#1632, Tier 3) into local jar files so a player
- * can put them on the classpath. This is the consumer side of schema v4's content-addressing: a
- * coordinate names *what* dependency the bundle needs, and the resolver finds the bytes from
- * whatever the machine already has — or, failing that, downloads them.
+ * Resolves a bundle's detached `maven` coordinates (#1632) into local jar files for a player's
+ * classpath.
  *
- * # Sources, in order
+ * Searches local repositories first (`~/.m2/repository`, the Gradle `modules-2` cache, and
+ * [downloadCacheDir]), then, when [networkEnabled], [remoteRepositories]. Downloads are cached in
+ * Maven layout under a per-sha256 bucket so two builds of one `-SNAPSHOT` never overwrite each
+ * other.
  *
- * 1. **Local repositories** — a Maven local repo (`~/.m2/repository`, standard
- *    `group/as/path/artifact/version/...` layout) and the Gradle module cache
- *    (`~/.gradle/caches/modules-2/files-2.1`, jar fanned under per-sha1 dirs). A colleague who has
- *    built any project using the same deps already has them here, so the common "someone sent me a
- *    bundle" path stays offline.
- * 2. **Remote repositories** (when [networkEnabled]) — Maven Central + Google Maven by default,
- *    overridable via [remoteRepositories]. Hit only when the local repos can't satisfy the
- *    coordinate (nothing found, or a v4 hash that no local copy matched). A downloaded jar is
- *    cached under [downloadCacheDir] in Maven layout, fanned one level deeper under the sha256 the
- *    fetch was made for, so a second resolve — or a later local-only run — finds it without the
- *    network and two builds of one `-SNAPSHOT` coordinate never overwrite each other.
- *
- * # Verification — warn, never fail
- *
- * When a coordinate carries a v4 `sha256`, a resolved jar's bytes are hashed and compared. A
- * **mismatch is a loud warning, not an error**: a different artifact for the same coordinate is
- * usually almost compatible (point-release skew, a repackaged-but-equivalent jar), and a
- * slightly-off preview beats no preview. The resolver still returns the jar. A missing hash
- * (older/non-Gradle bundles) resolves silently as unverifiable. Mirrors the contract pinned on
- * [BundleReader.ClasspathEntry.Maven] / `PreviewBundleFormat`.
- *
- * The resolver never throws on a missing artifact or a failed download — it returns null and warns,
- * so the caller proceeds with a partial classpath (the bundled renderer's Compose stack covers the
- * common surface). A throttled or failing repository (429, 5xx, a dropped connection) is retried
- * with backoff first, and the warning names what the network last answered, so a rate limit is not
- * reported in the same words as a coordinate that does not exist.
+ * A v4 `sha256` mismatch is a loud warning, not an error: an almost-compatible jar beats no
+ * preview. Nothing here throws on a miss; it warns and returns null. Transient failures (429, 5xx,
+ * dropped connections) are retried with backoff, and the warning names what the network answered.
  */
 public class CoordinateResolver(
   private val repositoryRoots: List<File> = defaultRepositoryRoots(),
@@ -63,10 +41,7 @@ public class CoordinateResolver(
   private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
-  /**
-   * How a retry waits. Replaced in tests so a backoff is asserted rather than slept through;
-   * internal so the public surface stays the constructor it was.
-   */
+  /** How a retry waits; replaced in tests. */
   internal var sleeper: (Long) -> Unit = { Thread.sleep(it) }
 
   /** Outcome of resolving one coordinate. [file] is null when nothing was found or downloaded. */
@@ -79,11 +54,7 @@ public class CoordinateResolver(
     val downloaded: Boolean = false,
   )
 
-  /**
-   * Resolve [coords] to jars, warning (never throwing) on misses and hash mismatches. Returns one
-   * [Resolution] per input coordinate in order; callers typically take `mapNotNull { it.file }` for
-   * the classpath and surface the misses to the user.
-   */
+  /** Resolve [coords] to jars, one [Resolution] per input in order, warning on misses. */
   public fun resolveAll(coords: List<BundleReader.ClasspathEntry.Maven>): List<Resolution> =
     coords.map {
       resolve(it)
@@ -105,10 +76,7 @@ public class CoordinateResolver(
       return Resolution(coord, file = candidates.first(), verified = false, mismatch = false)
     }
 
-    // Local repos couldn't satisfy it (nothing found, or a hash that no local copy matched). Try
-    // the
-    // network before settling — the whole point of carrying a coordinate is that the bytes can be
-    // re-fetched from any source.
+    // Nothing local matched: try the network before settling.
     val fetchFailures = mutableListOf<FetchFailure>()
     if (networkEnabled) {
       val fetched = download(coord, fetchFailures)
@@ -122,8 +90,7 @@ public class CoordinateResolver(
             downloaded = true,
           )
         }
-        // Downloaded bytes don't match either — warn but keep them (almost-compatible beats
-        // nothing).
+        // Mismatched download: warn but keep it.
         warn(
           "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — downloaded copy " +
             "(${sha256Hex(fetched)}) does not match the bundle's $expected. Rendering with it anyway."
@@ -160,20 +127,15 @@ public class CoordinateResolver(
   }
 
   /**
-   * All candidate jars for [coord] across [repositoryRoots], in search order (Maven layout before
-   * Gradle layout, roots in declared order). May hold more than one when the same GAV is present in
-   * several caches or Gradle hash dirs — [resolve] uses the hash to pick among them.
+   * All candidate jars for [coord] across [repositoryRoots] and [downloadCacheDir], in search
+   * order. May hold several; [resolve] picks by hash.
    */
   private fun locate(coord: BundleReader.ClasspathEntry.Maven): List<File> {
     val found = mutableListOf<File>()
-    // Search the user's local repos AND our own download cache — a jar fetched during an earlier
-    // online run lives in [downloadCacheDir] (Maven layout) and must resolve offline too, since the
-    // network gate only governs *new* fetches, not reading what we already have.
+    // The download cache is searched too, so earlier downloads resolve offline.
     for (root in repositoryRoots + downloadCacheDir) {
       if (fileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
-      // Try each candidate filename: the coordinate's recorded type first, then `.aar` (an Android
-      // dep may be recorded as `jar` by an older bundle, or its `.jar` simply isn't published —
-      // AndroidX libs ship `.aar`). [materialize] turns any `.aar` hit into its `classes.jar`.
+      // Recorded type first, then `.aar` (see [candidateFileNames]).
       for (fileName in candidateFileNames(coord)) {
         // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.<ext>
         val mavenVersionDir =
@@ -181,15 +143,9 @@ public class CoordinateResolver(
         val mavenPath = File(mavenVersionDir, fileName)
         if (fileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
           found += mavenPath
-        // [download] buckets a hashed coordinate one level deeper, under the sha256 it was fetched
-        // for, so two builds of the same `-SNAPSHOT` coordinate coexist instead of overwriting each
-        // other. Scan that level too — the same one-directory-deep sweep the Gradle layout below
-        // gets, and for the same reason: the bytes are fanned under a per-hash dir. Flat entries
-        // from an older cache (and from `~/.m2`, which is never bucketed) still match above.
+        // [download]'s per-sha256 buckets, one level deeper.
         found += subdirectoryHits(mavenVersionDir, fileName)
-        // Gradle modules-2 layout fans the artifact under per-hash dirs; collect every match under
-        // <root>/<group>/<artifact>/<version>/<hash>/<fileName>. One directory level only, so a
-        // huge cache root doesn't turn this into a full filesystem scan.
+        // Gradle modules-2: <root>/<group>/<artifact>/<version>/<sha1>/<fileName>.
         found +=
           subdirectoryHits(
             File(root, "${coord.group}/${coord.artifact}/${coord.version}"),
@@ -197,16 +153,11 @@ public class CoordinateResolver(
           )
       }
     }
-    // Materialize before returning so the hash check (and the caller's classpath) sees real jars:
-    // an `.aar` isn't loadable, and the bundle's `sha256` is of the extracted `classes.jar`.
+    // The bundle's sha256 for an `.aar` is of its extracted `classes.jar`.
     return found.mapNotNull { materialize(it) }
   }
 
-  /**
-   * Every `<versionDir>/<*>/<fileName>` — one directory level only, so a huge cache root never
-   * turns this into a filesystem walk. Both fanned layouts this resolver reads are exactly one
-   * level deep: Gradle's `modules-2` per-sha1 dirs, and [download]'s own per-sha256 buckets.
-   */
+  /** Every `<versionDir>/<*>/<fileName>`, one directory level only (never a filesystem walk). */
   private fun subdirectoryHits(versionDir: File, fileName: String): List<File> {
     if (fileSystem.metadataOrNull(versionDir.path.toPath())?.isDirectory != true) return emptyList()
     return fileSystem
@@ -222,35 +173,20 @@ public class CoordinateResolver(
   }
 
   /**
-   * Download [coord]'s artifact from the first [remoteRepositories] base URL that serves it, into
-   * [downloadCacheDir] (Maven layout), and return the cached file. Returns null — never throws — on
-   * a total miss or any transport error, so resolution degrades to a warning.
-   *
-   * A previously-cached download is *not* short-circuited here: [locate] already searches
-   * [downloadCacheDir], so reaching this method means either nothing was cached, or the cached
-   * bytes didn't match the bundle's hash and we want fresh bytes. Those land in this coordinate's
-   * own per-hash bucket, so they replace only an earlier fetch made for the same expected content —
-   * never another catalog's copy of the same `-SNAPSHOT` path.
+   * Download [coord]'s artifact from the first [remoteRepositories] entry that serves it into
+   * [downloadCacheDir] and return the cached file, or null on any failure. Only reached when no
+   * cached copy matched.
    */
   private fun download(
     coord: BundleReader.ClasspathEntry.Maven,
     failures: MutableList<FetchFailure>,
   ): File? {
     val versionDir = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}"
-    // A coordinate carrying a hash is cached one level deeper, in a bucket named for the sha256 it
-    // was fetched to satisfy. `<artifact>-1.0.0-SNAPSHOT.<ext>` is the same literal path for every
-    // build of a snapshot, so a flat cache makes two catalogs on two androidx.dev builds overwrite
-    // each other's bytes on every materialization — a torn file when they run concurrently, and an
-    // endless re-download when they don't. The bucket is the EXPECTED hash, not the file's own (for
-    // an `.aar` the recorded sha256 is of the extracted `classes.jar`); it is a per-content
-    // partition of the cache, not a claim about what is in it. Unhashed coordinates (pre-v4
-    // bundles) keep the flat path, which is also where older caches already hold their downloads —
-    // [locate] reads both.
+    // Bucketed by the expected sha256 (a per-content partition, not a claim about the file): every
+    // build of a snapshot has the same literal file name. Unhashed coordinates stay flat.
     val cacheRel = coord.sha256?.let { "$versionDir/$it" } ?: versionDir
-    // Try the recorded type, then `.aar` — same fallback as [locate], for the same reasons.
     for (fileName in candidateFileNames(coord)) {
-      // The cache always keys on the LITERAL `<artifact>-<version>.<ext>` name, even when the
-      // remote served a timestamped snapshot file, so [locate] finds the download next time.
+      // Cached under the literal name even when a timestamped snapshot was served.
       val dest = File(downloadCacheDir, "$cacheRel/$fileName")
       for (base in remoteRepositories) {
         val remoteName = remoteFileName(base, coord, versionDir, fileName)
@@ -263,22 +199,9 @@ public class CoordinateResolver(
   }
 
   /**
-   * The file name [base] actually serves for [coord] — [fileName] itself for a release, and for a
-   * **unique snapshot** the timestamped name its `maven-metadata.xml` names.
-   *
-   * A Maven snapshot repository does not serve `<artifact>-1.0.0-SNAPSHOT.aar`: it stores each
-   * publication under `<artifact>-1.0.0-<yyyyMMdd.HHmmss>-<n>.<ext>` and points at the current one
-   * from the version directory's `maven-metadata.xml`. Constructing the literal name — which is
-   * what this resolver did before — therefore 404s against every real snapshot repo, so a bundle
-   * carrying a `-SNAPSHOT` coordinate could never be rehydrated from the network at all. That is
-   * what stranded `remote-m3`, whose whole Remote Compose runtime resolves from an androidx.dev
-   * snapshot build (issues #4259 / #4265): the live daemon came up with no
-   * `androidx.compose.remote:remote-player-view` on its classpath and every render died with
-   * `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer`.
-   *
-   * Falls back to [fileName] on anything unexpected (no metadata, unparseable metadata, transport
-   * error, or a repo publishing non-unique snapshots under the literal name) — the caller then just
-   * tries that URL, which is exactly the old behaviour.
+   * The file name [base] serves for [coord]: [fileName] for a release, the timestamped unique
+   * snapshot name from `maven-metadata.xml` for a `-SNAPSHOT` (the literal name 404s; #4259
+   * / #4265). Falls back to [fileName] on anything unexpected.
    */
   private fun remoteFileName(
     base: String,
@@ -308,30 +231,17 @@ public class CoordinateResolver(
     }
 
   /**
-   * An `.aar` isn't classpath-loadable, so extract its `classes.jar` to a stable cache path and
-   * return that; a `.jar` (or anything else) passes through unchanged. Returns null for a
-   * resource-only `.aar` with no `classes.jar` (nothing to contribute) or on any extraction error —
-   * the resolver then treats it as a miss and warns, never throws.
+   * Extract an `.aar`'s `classes.jar` to the cache and return it; other files pass through. Null
+   * for a resource-only `.aar` or an extraction error.
    */
   private fun materialize(file: File): File? {
     if (!file.name.endsWith(".aar", ignoreCase = true)) return file
-    // Key the extraction dir on the AAR's CONTENT, never on its path. A path is not unique to a
-    // set of bytes: `<artifact>-1.0.0-SNAPSHOT.aar` is the literal name [download] caches every
-    // build of a snapshot under, so two catalogs built against two androidx.dev snapshot builds
-    // write the same path. Keyed on the path, the first extraction wins forever — [download]
-    // overwrites the AAR with the right bytes, `dest` already exists, and the STALE `classes.jar`
-    // is handed back. That is how meshcore-mobile's render lane died: its
-    // `remote-player-core:1.0.0-SNAPSHOT` resolved to another catalog's build while its
-    // `remote-core` (a `.jar`, so never extracted) came back fresh, putting two Remote Compose
-    // builds on one classpath and killing every IR replay with `NoSuchFieldError: class
-    // androidx.compose.remote.core.RemoteClock does not have member field ... SYSTEM`
-    // (compose-preview-server#187). Content keying makes a stale extraction unreachable, and two
-    // paths holding the same bytes still share one extraction.
+    // Keyed on content, never path: snapshot AARs share a literal path, and a path-keyed
+    // extraction served one catalog another's stale `classes.jar` (compose-preview-server#187).
     val dest = File(downloadCacheDir, "extracted/${sha256Hex(file)}/classes.jar")
     val destPath = dest.path.toPath()
     if ((fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) return dest
     return try {
-      // Read the `.aar` (a zip) as an Okio FileSystem — no java.util.zip.ZipFile boundary.
       val aar = fileSystem.openZip(file.path.toPath())
       val entry = "classes.jar".toPath()
       if (!aar.exists(entry)) return null
@@ -345,10 +255,7 @@ public class CoordinateResolver(
     }
   }
 
-  /**
-   * Why one URL gave no bytes: the status or exception, how many attempts it had, and whether the
-   * cause was the kind that passes (a rate limit, a 5xx, a dropped connection).
-   */
+  /** Why one URL gave no bytes, how many attempts it had, and whether the cause was transient. */
   internal data class FetchFailure(
     val url: String,
     val reason: String,
@@ -359,13 +266,8 @@ public class CoordinateResolver(
   )
 
   /**
-   * GET [url] → [dest] (parent dirs created): null on a 2xx with a non-empty body, else why not.
-   *
-   * A transient failure is retried with backoff, up to [MAX_ATTEMPTS] in all. Maven Central answers
-   * a burst of requests with 429, and a cold classpath of a few dozen jars is such a burst: taken
-   * as final, one throttled jar made a whole catalog's render lane unavailable, and the warning
-   * said only "could not resolve" — the same words as a coordinate that does not exist. A 404 is
-   * not retried; it is an answer.
+   * GET [url] → [dest]: null on a non-empty 2xx, else why not. Transient failures are retried up to
+   * [MAX_ATTEMPTS] (Maven Central throttles a cold classpath's burst with 429); a 404 is final.
    */
   private fun fetchTo(url: String, dest: File): FetchFailure? {
     var attempt = 0
@@ -416,8 +318,7 @@ public class CoordinateResolver(
       }
     } catch (e: Exception) {
       fileSystem.delete(destPath, mustExist = false)
-      // Transport errors — a reset, a timeout, a proxy that dropped the tunnel — are the transient
-      // kind by nature.
+      // Transport errors (reset, timeout, dropped tunnel) are transient.
       FetchFailure(url, "${e.javaClass.simpleName}: ${e.message ?: "no message"}", transient = true)
     }
   }
@@ -434,13 +335,6 @@ public class CoordinateResolver(
     public val DEFAULT_REMOTE_REPOSITORIES: List<String> =
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
-    /**
-     * Candidate `<artifact>-<version>.<ext>` filenames to look for, in order: the coordinate's
-     * recorded type (`jar` desktop / `aar` Android) first, then `.aar` as a fallback. The fallback
-     * covers Android deps that an older bundle recorded as `jar`, or whose `.jar` isn't published
-     * (AndroidX libs ship `.aar`). De-duplicated, so a `jar`/`aar` coordinate yields one or two
-     * names.
-     */
     /** Attempts per URL, the first included. */
     internal const val MAX_ATTEMPTS: Int = 3
 
@@ -456,11 +350,8 @@ public class CoordinateResolver(
       header.trim().toLongOrNull()?.takeIf { it >= 0 }?.times(1_000L)
 
     /**
-     * The clause the "could not resolve" warning ends with: what the network actually said.
-     *
-     * One failure worth naming — the first that is not a 404, since a throttled or failing mirror
-     * is the one an operator can act on while a 404 from a repository that never carried the
-     * artifact is expected — or, when every repository answered 404, that none of them has it.
+     * The "could not resolve" warning's tail: the first non-404 failure (the actionable one), or
+     * that every repository answered 404.
      */
     internal fun describeFetchFailures(failures: List<FetchFailure>): String {
       if (failures.isEmpty()) return ""
@@ -474,6 +365,10 @@ public class CoordinateResolver(
     private fun host(url: String): String =
       url.substringAfter("://").substringBefore('/').ifEmpty { url }
 
+    /**
+     * `<artifact>-<version>.<ext>` names to try: the recorded type, then `.aar` (older bundles
+     * recorded Android deps as `jar`, and AndroidX ships `.aar`).
+     */
     private fun candidateFileNames(coord: BundleReader.ClasspathEntry.Maven): List<String> =
       listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
         "${coord.artifact}-${coord.version}.$it"
@@ -484,13 +379,8 @@ public class CoordinateResolver(
 
     /**
      * The unique-snapshot version (`1.0.0-20260818.194125-1`) a version-level `maven-metadata.xml`
-     * publishes for [extension], or null when the document names none.
-     *
-     * Read with a scan rather than an XML parser to keep `:cli` free of one: each
-     * `<snapshotVersion>` block is matched whole, blocks carrying a `<classifier>` are skipped (the
-     * `sources` / `javadoc` siblings publish the same extension), and the first remaining block
-     * whose `<extension>` matches wins — a version-level metadata document carries one classifier-
-     * free entry per extension, the current publication.
+     * publishes for [extension], or null. A regex scan (no XML parser dependency) that skips
+     * classifier blocks.
      */
     public fun snapshotVersion(metadataXml: String, extension: String): String? =
       SNAPSHOT_VERSION_BLOCK.findAll(metadataXml)
@@ -511,9 +401,9 @@ public class CoordinateResolver(
         ?.trim()
 
     /**
-     * Default local repositories searched when a caller doesn't pass its own. Honours the standard
-     * `maven.repo.local` override and `GRADLE_USER_HOME`; falls back to the conventional `~/.m2`
-     * and `~/.gradle` locations. Non-existent roots are simply skipped at lookup time.
+     * Default local repositories: `maven.repo.local`, `~/.m2/repository`, the Gradle `modules-2`
+     * cache (honouring `GRADLE_USER_HOME`) and the legacy download cache. Missing roots are
+     * skipped.
      */
     public fun defaultRepositoryRoots(): List<File> {
       val home = System.getProperty("user.home")?.let(::File)
@@ -527,11 +417,7 @@ public class CoordinateResolver(
       return roots
     }
 
-    /**
-     * Network resolution is on unless `composeai.bundle.offline=true` (sysprop) or
-     * `COMPOSE_PREVIEW_OFFLINE=1` (env) — an escape hatch for sandboxes / air-gapped machines that
-     * want strictly-local resolution.
-     */
+    /** On unless `composeai.bundle.offline=true` or `COMPOSE_PREVIEW_OFFLINE=1`. */
     public fun defaultNetworkEnabled(): Boolean {
       if (System.getProperty("composeai.bundle.offline").toBoolean()) return false
       if (System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1") return false
@@ -546,11 +432,7 @@ public class CoordinateResolver(
       return composeAiCacheDir("bundle-deps")
     }
 
-    /**
-     * Pre-XDG download-cache location (`~/.cache/compose-preview/bundle-deps`). Added to
-     * [defaultRepositoryRoots] as a read-only fallback so artifacts a previous version downloaded
-     * still resolve offline after the cache moved to [composeAiCacheDir]; nothing writes here.
-     */
+    /** Pre-XDG download cache, kept as a read-only search root so old downloads resolve offline. */
     private fun legacyDownloadCacheDir(): File? =
       System.getProperty("user.home")?.let { File(it, ".cache/compose-preview/bundle-deps") }
   }

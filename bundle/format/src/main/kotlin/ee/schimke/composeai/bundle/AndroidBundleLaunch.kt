@@ -11,60 +11,30 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Pure-logic assembly of the inputs a standalone Android (Robolectric) preview render needs when
- * replaying a packed `backend="android"` bundle outside Gradle — the Android counterpart of the
- * desktop spawn in [BundleRenderer]. This is the **Phase 1 foundation**: the deterministic,
- * unit-testable pieces (JVM `--add-opens` args Robolectric needs on JDK 17+, the Robolectric system
- * properties, the synthesized package-level `robolectric.properties`, the SDK-level clamp, and
- * `android.jar` discovery from the local SDK).
+ * The inputs a standalone Android (Robolectric) render needs to replay a packed `backend="android"`
+ * bundle outside Gradle, the counterpart of the desktop spawn in [BundleRenderer]: JVM args, system
+ * properties, the synthesized `robolectric.properties`, the SDK clamp, and `android.jar` discovery.
  *
- * What is intentionally NOT here yet (Phase 2, validated in the SDK-gated Android CI chain because
- * none of it is runnable without an Android SDK + Robolectric runtime):
- * - packaging `:renderer-android` / `:daemon:android` into the CLI distribution (today only the
- *   desktop sidecars ship — see `cli/build.gradle.kts`), and
- * - recording the consumer's `compileSdk` in the bundle manifest (we default + allow an override
- *   until then).
+ * The Robolectric config bodies, packages and SDK range belong to the daemon's renderer and come
+ * from `ee.schimke.composeai.daemon.client.RobolectricConfig` / `AndroidSdk`, so a rename there
+ * can't silently desync this. The Gradle plugin's
+ * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] still keeps its own copy, since it is a
+ * separate build with no daemon dependency.
  *
- * Bundle-side packing of Android-merged resources now exists for the **daemon** path (schema v6,
- * [ee.schimke.composeai.plugin.BundleAndroidResources]): a protolayout-IR bundle carries the merged
- * resource APK + manifest + generated R classes, and [BundleDaemonCommand] rebuilds the Robolectric
- * `test_config.properties` from them so the tile renderer resolves its theme on a detached daemon.
- *
- * ### Where these facts come from
- *
- * The `robolectric.properties` bodies, the packages they are written to and the SDK-level range are
- * **not** facts about this repository: they are how the daemon's renderer expects Robolectric
- * configured, and the packages are its packages — rename one there and nothing here fails to
- * compile, the config simply stops being found and the renders change. They now come from
- * `ee.schimke.composeai.daemon.client.RobolectricConfig` / `AndroidSdk`, published by
- * compose-preview-daemon and pinned there by golden descriptors (its `docs/design/EMBEDDING.md`).
- *
- * The JVM args and the `robolectric.*` / font system properties below are the same facts and belong
- * there too, but the daemon exposes them only through `DaemonBackend.Android`, which requires an
- * `android.jar` this class does not have and does not need. Moving them waits on a jar-free seam on
- * that side; until then they stay here, and this class's own tests pin them.
- *
- * The Gradle plugin's [ee.schimke.composeai.plugin.AndroidPreviewClasspath] still holds its own
- * copy of all of it. That is the other half of the same problem: the plugin is a separate composite
- * build with no daemon dependency, and adding one would put the daemon client, its core and their
- * transitives on every consumer's buildscript classpath.
+ * Not yet done: bundles don't record the consumer's `compileSdk`, and the one-shot lane packs no
+ * merged manifest (only the daemon lane uses [AndroidBundleResources]).
  */
 public class AndroidBundleLaunch(
   sdkLevel: Int = DEFAULT_SDK,
   /**
-   * When false (default) the synthesized `robolectric.properties` pins `application=
-   * android.app.Application` so the consumer's own `Application.onCreate()` is skipped — preview
-   * rendering must not run app bootstrap (Firebase, splash screens, etc.). Set true only when the
-   * consumer's Application is preview-safe.
+   * When false, the synthesized config pins `application=android.app.Application` so the consumer's
+   * `Application.onCreate()` never runs during preview rendering.
    */
   private val useConsumerApplication: Boolean = false,
   private val fileSystem: FileSystem = SystemFileSystem,
   /**
-   * Absolute path of the shared, machine-local GoogleFont download cache the renderer's
-   * `ShadowFontsContractCompat` reads via the `composeai.fonts.cacheDir` system property. Defaults
-   * to `$XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`) — the SAME directory the
-   * Gradle plugin's `composeAiFontsCacheDir` computes, so a `bundle`/serve render reuses the faces
-   * the pack-time render already downloaded. Injected for tests.
+   * The GoogleFont download cache `ShadowFontsContractCompat` reads (`composeai.fonts.cacheDir`).
+   * Defaults to the same directory the Gradle plugin uses, so pack-time downloads are reused.
    */
   private val fontsCacheDir: String = composeAiCacheDir("fonts").absolutePath,
 ) {
@@ -72,32 +42,14 @@ public class AndroidBundleLaunch(
   /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
   public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
-  /**
-   * JVM args the spawned Robolectric process needs on JDK 17+ — the daemon's, verbatim.
-   *
-   * Without the `--add-opens` set, Robolectric's reflective access into `java.base` internals fails
-   * with `IllegalAccessException` on SDK 36 sandboxes (#1328). Which opens are needed is a property
-   * of the renderer, not of this repository, so the list lives with the renderer.
-   */
+  /** The daemon's JVM args for Robolectric on JDK 17+ (the `--add-opens` set, #1328). */
   public fun jvmArgs(): List<String> = RobolectricLaunch.jvmArgs()
 
   /**
-   * Robolectric render flags — plus the shared GoogleFont download cache dir — shared by the
-   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]) and the serve
-   * host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
-   * backend `extraSystemProperties`).
-   *
-   * The set is the daemon's. That includes the four properties a `-D` on *this* process cannot
-   * deliver to a spawned one and so have to be named explicitly — `composeai.fonts.failOnFallback`,
-   * `composeai.fonts.offline`, `composeai.svg.embedFonts`, `composeai.svg.background`. Three of
-   * them were missing from this copy, which is how `-Dcomposeai.fonts.offline=true` reached the
-   * Gradle render task and the desktop serve daemon but no Android lane at all, and an air-gapped
-   * Android render still tried to fetch Google Fonts (#5371). Taking the set from the renderer that
-   * reads it is what stops that recurring.
-   *
-   * The one thing added here is [fontsCacheDir], which wins over the daemon's own resolution: a
-   * caller that names a cache directory means it. Unset, the two compute the same path, so a
-   * `bundle`/serve render reuses the faces a pack-time render already downloaded.
+   * Robolectric render flags, shared by [BundleRenderer], [BundleDaemonCommand] and
+   * [ee.schimke.composeai.cli.serve.ServeBundleDaemon]. Taken from the daemon so properties like
+   * `composeai.fonts.offline` reach every Android lane (#5371). [fontsCacheDir] overrides the
+   * daemon's own resolution.
    */
   public fun robolectricSystemProperties(): Map<String, String> =
     RobolectricLaunch.systemProperties() + ("composeai.fonts.cacheDir" to fontsCacheDir)
@@ -123,30 +75,12 @@ public class AndroidBundleLaunch(
   public fun robolectricPropertiesBody(): String = robolectricConfig().composableLaneBody()
 
   /**
-   * The app-tour lane's `robolectric.properties` body — [robolectricPropertiesBody] without the
-   * stub `application=` line.
+   * The app-tour lane's `robolectric.properties` body: [robolectricPropertiesBody] without the stub
+   * `application=` line, since an Activity is the app (Hilt / Koin activities fail on the stub).
    *
-   * `kind=ACTIVITY` / `kind=APP_TOUR` previews render from `AppTourRobolectricRenderTest`, in the
-   * sibling package `ee.schimke.composeai.apptour`, because Robolectric resolves the Application
-   * per test CLASS. An Activity *is* the app: launched against the stub, every Hilt / Koin /
-   * `AppComponentFactory` activity fails on contact. Not pinning one here hands the choice to
-   * whatever manifest Robolectric resolves, and the sibling package means nothing merges in from
-   * the renderer package's file to put the stub back.
-   *
-   * **What that resolves to on this path, today: the platform default.** The one-shot bundle render
-   * ([BundleRenderer]'s `renderAndroid`) packs no merged manifest — it never extracts
-   * `android/AndroidManifest.xml` nor calls [AndroidBundleResources.writeTestConfig], which are
-   * wired for the **daemon** lane only (see this class's header on what is still Phase 2). So a
-   * bundle whose app declares `android:name` does not get that Application here; Robolectric falls
-   * back to its own default manifest, where `<application>` names none. Packing the manifest for
-   * this lane — and keeping the Application class in `BundlePreviewTask`'s minimized `app.jar`,
-   * which is seeded from preview class names — is the follow-up that would close it.
-   *
-   * The line is still absent rather than pinned, because pinning the stub would make that gap
-   * permanent: once the manifest is packed, this lane starts honouring it with no further change.
-   *
-   * Unlike the Gradle path there is no `appTourUseConsumerApplication` to consult — a bundle
-   * carries no extension — so this always tracks that flag's default.
+   * On this one-shot path no merged manifest is packed yet, so Robolectric falls back to its
+   * default Application. The line stays absent rather than pinned so packing the manifest later
+   * fixes this lane with no further change.
    */
   public fun appTourRobolectricPropertiesBody(): String = robolectricConfig().appTourLaneBody()
 
@@ -154,12 +88,9 @@ public class AndroidBundleLaunch(
     RobolectricConfig(sdkLevel = sdkLevel, useConsumerApplication = useConsumerApplication)
 
   /**
-   * Materialise [robolectricPropertiesBody] at the classpath path Robolectric looks it up by —
-   * `<root>/ee/schimke/composeai/renderer/robolectric.properties` (the renderer test's package) —
-   * and [appTourRobolectricPropertiesBody] beside it under `…/apptour`, since
-   * `AndroidRendererMainKt` runs both lanes and each resolves its own package's file. Returns
-   * [root], which the caller prepends to the subprocess classpath so this config wins over any copy
-   * baked into the shipped renderer jar. Creates parent dirs as needed.
+   * Write both lanes' `robolectric.properties` under [root] in their packages, and return [root]
+   * for the caller to prepend to the subprocess classpath so it wins over any copy in the renderer
+   * jar.
    */
   public fun writeRobolectricConfig(root: File): File {
     val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
@@ -180,18 +111,15 @@ public class AndroidBundleLaunch(
     /** Ceiling of the bundled Robolectric's supported range (API 36). */
     public const val MAX_SDK: Int = AndroidSdk.MAX_SDK
     /**
-     * SDK level used when the bundle doesn't pin one. Bundles don't yet record the consumer's
-     * `compileSdk` (Phase 2), so default to a recent, widely-available level; override with
-     * `-Dcomposeai.bundle.androidSdk=<n>`.
+     * SDK level used when the bundle doesn't pin one (bundles don't record `compileSdk` yet);
+     * override with `-Dcomposeai.bundle.androidSdk=<n>`.
      */
     public const val DEFAULT_SDK: Int = AndroidSdk.DEFAULT_SDK
 
     private val RENDERER_PKG_PATH = RobolectricConfig.RENDERER_PACKAGE.replace('.', '/')
 
     /**
-     * The app-tour render lane's package. A SIBLING of [RENDERER_PKG_PATH], never a child:
-     * Robolectric merges a parent package's `robolectric.properties` into a child's, so nesting it
-     * would inherit the stub `application=` line the composable lane pins.
+     * A sibling of [RENDERER_PKG_PATH], never a child, so it doesn't inherit the stub Application.
      */
     private val APP_TOUR_PKG_PATH = RobolectricConfig.APP_TOUR_PACKAGE.replace('.', '/')
 
@@ -201,11 +129,9 @@ public class AndroidBundleLaunch(
     ): Int = prop?.trim()?.toIntOrNull() ?: DEFAULT_SDK
 
     /**
-     * Resolve `android.jar` from the local Android SDK, mirroring
-     * `AndroidPreviewClasspath.resolveBootClasspathFallback`: `sdk.dir` in [localPropertiesFile]
-     * first, then the `ANDROID_HOME` / `ANDROID_SDK_ROOT` env vars, then the highest-versioned
-     * `platforms/android-N/android.jar` under the resolved root. Returns null when no SDK is
-     * reachable — the caller turns that into an actionable diagnostic rather than a crash.
+     * The highest-versioned `platforms/android-N/android.jar` under the SDK named by `sdk.dir` in
+     * [localPropertiesFile], else `ANDROID_HOME` / `ANDROID_SDK_ROOT`; null when unreachable.
+     * Mirrors `AndroidPreviewClasspath.resolveBootClasspathFallback`.
      */
     public fun resolveAndroidJar(
       localPropertiesFile: File?,

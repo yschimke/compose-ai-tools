@@ -33,16 +33,9 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     open(config = config, factory = SubprocessDaemonClientFactory())
 
   /**
-   * Open a session, injecting a custom [DaemonClientFactory] and, optionally, the [FileSystem] the
-   * launch descriptor is read through. Test scaffolding pairs an in-memory factory with a fake
-   * daemon; production callers stick with the defaults.
-   *
-   * A defaulted PARAMETER rather than a property on this object. The `public var` this replaced was
-   * a process-wide mutable global any consumer could swap, and it deserved to go — but a private
-   * `val` left no seam at all, and `:common-io`'s rule for a stateless `object` that touches files
-   * is a defaulted `fileSystem` parameter (see `docs/AGENT_GUIDE.md` → Important constraints).
-   * Per-call injection has none of a global's problems: production behaviour is unchanged, and a
-   * test can hand in a `FakeFileSystem` without affecting any other caller.
+   * Open a session with a custom [DaemonClientFactory] and, optionally, the [FileSystem] the launch
+   * descriptor is read through (per-call injection rather than a mutable global, per `:common-io`'s
+   * convention).
    */
   public fun open(
     config: RenderSessionConfig,
@@ -51,10 +44,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   ): RenderSession {
     val descriptorFile = config.descriptorPath
     val descriptorPath = descriptorFile.path.toPath()
-    // Through the injected filesystem, not `File.isFile`: an existence check that always reads the
-    // real disk would reject every path a `FakeFileSystem` holds, making the parameter above a seam
-    // in name only. `isRegularFile` keeps `isFile`'s exact meaning — a directory is still not a
-    // descriptor.
+    // Through the injected filesystem so a `FakeFileSystem` path is honoured.
     if (fileSystem.metadataOrNull(descriptorPath)?.isRegularFile != true) {
       throw RenderSessionException(
         "Daemon launch descriptor not found at ${descriptorFile.path}. " +
@@ -103,19 +93,10 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   }
 
   /**
-   * Open a session against a self-contained preview bundle — no Gradle project on disk.
-   *
-   * Where [open] reads a `daemon-launch.json` the gradle plugin wrote into a module's `build/`
-   * directory, this overload synthesizes the [DaemonLaunchDescriptor] in-process from the inputs a
-   * bundle already carries: the desktop daemon main class, a [daemonClasspath] assembled from the
-   * shipped sidecar jars (`lib-daemon-desktop/jars` + `lib-renderer/jars`), and the bundle's
-   * extracted user classes ([classesDir]) + discovery manifest ([previewsJson]). The daemon reads
-   * those two via the same `composeai.daemon.userClassDirs` / `composeai.daemon.previewsJsonPath`
-   * system properties the `compose-preview bundle daemon` CLI command uses, so the spawn +
-   * initialize + notification wiring is identical to [open] from there on.
-   *
-   * Keeping descriptor construction here (rather than in a downstream CLI consumer) means the
-   * schema version and field names stay owned by the module that owns [DaemonLaunchDescriptor].
+   * Open a session against a self-contained preview bundle, with no Gradle project on disk. The
+   * [DaemonLaunchDescriptor] is synthesized here (so its schema stays owned by this module) from
+   * the shipped sidecar jars and the bundle's extracted classes and `previews.json`, passed via the
+   * same system properties `compose-preview bundle daemon` uses.
    *
    * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath.
    * @param classesDir directory holding the bundle's extracted `classes/app.jar` contents; also the
@@ -171,15 +152,9 @@ public object SubprocessRenderSessions : RenderSessionFactory {
             mapOf(
               "composeai.daemon.userClassDirs" to userClasspath.joinToString(File.pathSeparator),
               "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
-              // Set the render-output dir so DaemonMain.dataRoot is non-null and the file-based
-              // data
-              // products (compose/figma-svg + -long, semantics, wireframe, …) register — otherwise
-              // a
-              // data/fetch(compose/figma-svg) on a bundle daemon fails "-32020 kind not
-              // advertised".
-              // `<root>/data` (where the registry + the RenderEngine producer both resolve) then
-              // sits
-              // inside this session's tree. Mirrors ServeBundleDaemon.materialize.
+              // Gives DaemonMain a dataRoot so file-based data products (figma-svg, semantics, …)
+              // register; otherwise data/fetch fails "-32020 kind not advertised". Mirrors
+              // ServeBundleDaemon.materialize.
               "composeai.render.outputDir" to File(canonicalRoot, "renders").absolutePath,
             ) + extraSystemProperties,
           workingDirectory = canonicalRoot.absolutePath,
@@ -203,35 +178,11 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   }
 
   /**
-   * Refuse a descriptor whose [DaemonLaunchDescriptor.schemaVersion] is not the one this module
-   * speaks, before anything acts on its fields.
-   *
-   * The descriptor's own contract says consumers gate on the version and force a fresh descriptor
-   * on mismatch (`DaemonClasspathDescriptor` KDoc, "Schema versioning"), and `compose-preview
-   * doctor` has always reported a mismatch as an error — but the spawn path read the version and
-   * never looked at it. That is a silent-wrong-answer shape rather than a cosmetic gap: the JVM
-   * reader keeps `ignoreUnknownKeys = true` and gives its reader-only fields Kotlin defaults, so a
-   * descriptor from a NEWER writer parses cleanly and the session launches against defaults for
-   * everything the new version added. Post-split this module is a published contract an extracted
-   * preview server links against (#3824), so "the reader is older than the writer" is an ordinary
-   * cross-repo version pairing rather than a same-commit mistake. Filed as #5105, deferred
-   * from #4571.
-   *
-   * Both directions refuse — exact match, the same gate the other two consumers of this descriptor
-   * already apply. VS Code's `daemonProcess.ts` requires the version to equal its own and otherwise
-   * discards the descriptor and forces a re-run, `compose-preview doctor` reports any mismatch as
-   * an error, and `docs/NON_GRADLE_INTEGRATION.md` already told hand-written producers that "the
-   * subprocess factory rejects anything else with a clear error". It is the right shape here too:
-   * the version is a single integer bumped only when the shape changes in a way that could break
-   * older readers, so there is no major/minor split to be lenient about, and unlike a packed bundle
-   * (`docs/VERSIONING.md` § 3's "keep readers tolerant of the older value", which is about
-   * artifacts that outlive their writer) a `daemon-launch.json` is a build output the producer
-   * regenerates on demand. The two messages differ in the remedy, which is the part a caller can
-   * act on: an OLDER descriptor is stale and regenerating it fixes it, while a NEWER one needs the
-   * consumer upgraded (regenerating would rewrite the same unreadable version).
-   *
-   * [openBundleDaemon] needs no such gate: it stamps [DAEMON_DESCRIPTOR_SCHEMA_VERSION] into a
-   * descriptor it constructs in-process, so writer and reader are the same build by construction.
+   * Refuse a descriptor whose schema version is not exactly this module's (#5105). The reader
+   * ignores unknown keys, so a newer descriptor would otherwise launch silently against defaults.
+   * Same exact-match gate as VS Code's `daemonProcess.ts` and `doctor`; the message names the
+   * remedy, regenerate (older) or upgrade the consumer (newer). [openBundleDaemon] builds its own
+   * descriptor and needs no gate.
    */
   private fun checkSchemaVersion(descriptor: DaemonLaunchDescriptor, path: String) {
     val found = descriptor.schemaVersion
@@ -317,23 +268,12 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   private const val DESKTOP_DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
 
   /**
-   * Descriptor schema version the daemon launch path speaks; mirrors the gradle plugin's writer.
-   *
-   * This module cannot import the writer's constant — `:gradle-plugin:daemon-launch-builder` lives
-   * in a separate composite build — so the value is duplicated here. `checkDaemonLaunchSchema`
-   * fails if the two ever disagree, which matters more than usual: this is one of the published
-   * contract modules an extracted preview server links against (#3824), so after the split a stale
-   * copy here is cross-repo version skew that no compiler sees.
-   *
-   * Also the version [open] gates an on-disk descriptor against — see [checkSchemaVersion].
+   * Descriptor schema version; duplicated from the plugin's writer (a separate composite build).
+   * `checkDaemonLaunchSchema` fails if the two disagree.
    */
   private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
 
-  /**
-   * Resolve a module's daemon launch descriptor under [projectDir] / [modulePath] using the
-   * conventional `<projectDir>/<modulePath-derived>/build/compose-previews/daemon-launch.json`
-   * layout. Convenience wrapper for callers that don't already have the descriptor path.
-   */
+  /** The conventional `<module dir>/build/compose-previews/daemon-launch.json` for [modulePath]. */
   public fun descriptorFile(projectDir: File, modulePath: String): File {
     val moduleDir =
       if (modulePath.isBlank() || modulePath == ":") projectDir
