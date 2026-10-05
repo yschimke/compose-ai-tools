@@ -251,38 +251,23 @@ agent at the skill" and "run the installer" converge on the same place. See
 
 ### Per-harness plugins
 
-Antigravity, Claude Code and Codex can install the skills and the MCP wiring as
-plugins. The skills come from [`yschimke/skills`](https://github.com/yschimke/skills),
-and the wiring from [`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins):
-- `compose-preview` connects to the local `compose-preview mcp serve`;
-- `compose-catalogs` connects to the hosted catalog and UI Builder.
+For agent setup, follow the [Compose Agent Plugins quick start](https://github.com/yschimke/compose-agent-plugins#quick-start).
+The repository is now `yschimke/compose-agent-plugins`; existing installs using the old
+marketplace name should follow its [migration steps](https://github.com/yschimke/compose-agent-plugins#moving-from-compose-ag-plugin).
 
-```sh
-# Antigravity (does not load ~/.agents/skills, so use the plugin route).
-# To be verified: yschimke/compose-agent-plugins#6.
-git clone https://github.com/yschimke/skills
-agy plugin install ./skills
-# Clone yschimke/compose-agent-plugins, then install either local plugin directory.
-agy plugin install ./plugins/compose-catalogs
-agy plugin install ./plugins/compose-preview
-agy plugin enable compose-preview
+- `compose-skills` supplies the canonical workflows from [`yschimke/skills`](https://github.com/yschimke/skills).
+- `compose-preview` supplies local MCP wiring and hooks. Local rendering needs the CLI on `PATH`,
+  Java 17 or newer, and `compose-preview mcp install` run once from each Compose project's root.
+- `compose-catalogs` connects to hosted catalogs and the UI Builder without a local toolchain.
 
-# Claude Code
-/plugin marketplace add yschimke/skills
-/plugin install yschimke-skills@yschimke-skills
-/plugin marketplace add yschimke/compose-agent-plugins
-/plugin install compose-catalogs@compose-agent-plugins
-/plugin install compose-preview@compose-agent-plugins
+The quick start has the commands for
+[Antigravity](https://github.com/yschimke/compose-agent-plugins#antigravity),
+[Claude Code](https://github.com/yschimke/compose-agent-plugins#claude-code),
+[Codex](https://github.com/yschimke/compose-agent-plugins#codex) and
+[OpenCode](https://github.com/yschimke/compose-agent-plugins#opencode).
+Use one copy of each skill bundle and MCP registration; the single marketplace also installs
+`compose-skills`, so a separate skills marketplace is unnecessary.
 
-# Codex
-codex plugin marketplace add yschimke/skills
-codex plugin marketplace add yschimke/compose-agent-plugins
-# Then enable yschimke-skills, compose-catalogs, and compose-preview from /plugins.
-```
-
-The plugins register the same MCP server that `compose-preview mcp install`
-does, so choose one route or the other. For OpenCode, see
-[compose-agent-plugins' OpenCode guide](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/opencode.md).
 When Antigravity, Claude Code, or Codex is detected, `mcp install` prints the
 matching wiring-plugin commands as a reminder; pass `--no-plugin-hint` for
 config-only automation.
