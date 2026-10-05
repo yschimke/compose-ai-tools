@@ -59,13 +59,10 @@ dependencies {
 // TypeScript bundle above, one layer up the stack.
 //
 // `:rc-player-wasm:wasmPlayerDist` used to produce this directory in-tree. The player is published
-// by yschimke/rc-players now, so the browser guards run against the *released* bundle rather than
-// one built from source here. That is the right subject for this repo: what ships in the CLI's
-// `rc-player-wasm/` sidecar is exactly these bytes, and a guard that rebuilt the player from source
-// would be testing something no consumer ever sees.
-//
-// `scripts/design-artifacts/rc-cmp-wasm-*.test.mjs` finds it through `RC_CMP_WASM_DIST`; see
-// `.github/workflows/ci.yml`.
+// by yschimke/rc-players now, so what is staged here is the *released* bundle: exactly the bytes
+// the CLI's `rc-player-wasm/` sidecar ships. `design-artifacts-reusable.yml`'s CMP/Wasm comparison
+// lane passes it to the export driver's `rc-compare --cmp-wasm`. (The driver's browser guards that
+// used to read it here run in design-parity's CI now, against the same published bundle.)
 val vendoredRcPlayerWasm =
   configurations.create("vendoredRcPlayerWasm") {
     isCanBeResolved = true

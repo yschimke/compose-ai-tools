@@ -9,8 +9,8 @@ import kotlin.math.roundToInt
 // Server-side thumbnail content-crop for the `serve` catalog pages. A Wear sticker draws a small
 // component on a 454×454 canvas, so the card clips the PNG to the component box read from the
 // catalog's content-cropped figma-svg (root `viewBox` + `translate`). Same maths as the static
-// gallery's client crop (`scripts/design-artifacts/render-index-html.mjs`), computed once at page
-// build. Tight phone / desktop renders are left alone.
+// gallery's client crop (the export driver's `render-index-html.mjs`), computed once at page build.
+// Tight phone / desktop renders are left alone.
 
 /**
  * The clip window's size, in output pixels. Window, render and offset are distinct types so a

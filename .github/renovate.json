@@ -191,7 +191,7 @@
     },
     {
       "customType": "regex",
-      "description": "The design-artifacts export-driver pin. External callers of `design-artifacts-reusable.yml` execute the revision of `scripts/design-artifacts/` named here, so until it moves they run the driver from the previous release — including fixes this repo has already merged (#4107). `sha` and `tag` are ONE dependency to Renovate: `currentDigest` and `currentValue` on a single match, resolved against this repository's own GitHub tags, so the pair cannot drift apart the way two independent entries could. This replaces `refresh-driver-pin.yml`, which opened the bump PR with `GITHUB_TOKEN` — whose pushes do not start workflow runs, so those PRs arrived with no checks reporting. Renovate is a GitHub App and its pushes do trigger them.",
+      "description": "The design-artifacts export-driver pin. External callers of `design-artifacts-reusable.yml` execute the revision of this repository named here, and its `.github/design-artifacts-driver/` lock names the export driver they run, so until it moves they run the driver from the previous release — including fixes this repo has already merged (#4107). `sha` and `tag` are ONE dependency to Renovate: `currentDigest` and `currentValue` on a single match, resolved against this repository's own GitHub tags, so the pair cannot drift apart the way two independent entries could. This replaces `refresh-driver-pin.yml`, which opened the bump PR with `GITHUB_TOKEN` — whose pushes do not start workflow runs, so those PRs arrived with no checks reporting. Renovate is a GitHub App and its pushes do trigger them.",
       "managerFilePatterns": [
         "/^\\.github/design-artifacts-driver-pin\\.txt$/"
       ],

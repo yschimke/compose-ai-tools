@@ -71,7 +71,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plugin_tests: ${{ steps.scope.outputs.plugin_tests }}
-      rc_player_tests: ${{ steps.scope.outputs.rc_player_tests }}
       module_unit_tests: ${{ steps.scope.outputs.module_unit_tests }}
       functional_tests: ${{ steps.scope.outputs.functional_tests }}
       build_samples: ${{ steps.scope.outputs.build_samples }}
@@ -279,67 +278,11 @@ jobs:
             **/build/test-results/**
           retention-days: 7
 
-  # The CMP/Wasm player's first-frame timing and readiness contract — browser-scheduling properties,
-  # so they cannot be asserted anywhere the player is not actually loaded in Chromium. Separate from the driver's
-  # `node --test` job because it needs a built `wasmPlayerDist` that job has no Gradle to produce —
-  # left there the test would self-skip forever, which is exactly the "nothing ran them" hole the
-  # driver job comment describes. Ubuntu, not the macOS player job: frame pacing is per-platform, and
-  # ubuntu is where the design-artifacts render lane measures the budgets this guards.
-  rc-cmp-wasm-frame-pacing:
-    name: CMP/Wasm Frame Pacing
-    needs: changes
-    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      # The PUBLISHED bundle, not one built from source: the player lives in yschimke/rc-players
-      # now, and what this repo ships in the CLI's `rc-player-wasm/` sidecar is exactly these bytes.
-      #
-      # A hard failure, with no tolerated case. There was one while `rc-player-wasm-dist` had never
-      # published: the step proved the artifact was merely absent before letting the guards below
-      # skip, and re-armed itself the moment staging first succeeded. rc-players 1.55.0 carries the
-      # artifact, so the escape hatch has nothing left to tolerate — and a staging failure now means
-      # an outage or a regression, which must redden the job rather than disarm the assertions.
-      # The TypeScript bundle too: `rc-cmp-wasm-compare-concurrency.test.mjs` runs the whole parity
-      # driver, whose first lane is that player.
-      - name: Stage the published Wasm player distribution
-        run: ./gradlew stageVendoredRcPlayerWasm stageVendoredRcPlayerJs
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - name: Install driver dependencies
-        working-directory: scripts/design-artifacts
-        run: npm ci
-      - name: Install Chromium
-        working-directory: scripts/design-artifacts
-        run: npx playwright install --with-deps chromium
-      # `RC_CMP_WASM_REQUIRE` turns the test's self-skips into failures. Without it a missing
-      # distribution, a missing playwright, or a browser that will not launch all leave this job
-      # green having asserted nothing — which is the hole this job exists to close. Unconditional
-      # now: staging above is a hard failure, so by the time this step runs the distribution is
-      # always present and a skip can only mean the environment is broken.
-      - name: Run the browser-level player guards
-        working-directory: scripts/design-artifacts
-        env:
-          RC_CMP_WASM_REQUIRE: "1"
-          RC_CMP_WASM_DIST: ${{ github.workspace }}/build/vendored-rc-player-wasm
-          RC_PLAYER_JS_BUNDLE_REQUIRE: "1"
-        run: node --test rc-cmp-wasm-*.test.mjs
-
   # The CMP/Wasm parity job that used to sit here compared a base-revision player build against
-  # this PR's, to answer "does this player change make any real document render worse?". The player
-  # moved to yschimke/rc-players, so on this repo the two revisions are always identical bytes and
-  # the question cannot be asked here any more. It belongs on the repo that can change the answer.
-  #
-  # What this repo still guards is the consumer side: `rc-cmp-wasm-frame-pacing` above runs the
-  # browser-level player guards against the PUBLISHED bundle, which is what the CLI actually ships.
+  # this PR's; the player moved to yschimke/rc-players, which asks that question now. The
+  # browser-level guards that ran the PUBLISHED players here (`rc-cmp-wasm-frame-pacing`) moved with
+  # the export driver they belong to: design-parity's `export-driver-browser` job runs them against
+  # the same Maven Central bundles.
 
   functional-tests:
     name: Plugin Functional Tests
@@ -1113,13 +1056,12 @@ jobs:
       - name: Run export-driver install tests
         run: ./.github/scripts/test-install-export-driver.sh
 
-  # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
-  # built Remote Compose player bundle (`third_party/remote-compose-player/dist/bundle.js`) in headless
-  # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
-  # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
-  # the only signal — the document parses and warns about nothing — and the weekly render is the
-  # only place anyone was looking. They self-skip when playwright or a browser is unavailable, so
-  # the browser install is what makes them actually assert.
+  # The export driver's source and its own `node --test` suite live in design-parity's
+  # packages/export-driver, whose CI also runs its browser guards and compose-preview-server mirrors.
+  # What stays here is what only this checkout can check: that the driver agrees with this
+  # repository's workflow, Kotlin, sample catalogs and fonts, and that the two schemas served from
+  # here are the driver's — `scripts/design-artifacts/driver-contract.test.mjs`, run against the
+  # driver installed from the same lock the design-artifacts workflows use.
   design-artifacts-driver-tests:
     name: Design Artifacts Driver Tests
     needs: changes
@@ -1129,113 +1071,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Four mirrors this suite checks now live in the preview server's repository (#4732): the
-      # scorer's `tuning.ts`, `ServeRcFonts.FACES` and its staging wiring, and the viewer's
-      # `format-compare.js`. Each test SKIPS without a checkout, and a silent skip is the failure
-      # mode this repository already refuses elsewhere (see the daemon-launch schema step in
-      # Actions Script Tests, which errors on the word "skipped"), so CI supplies one — the same
-      # arrangement the contracts and VS Code readers get.
-      #
-      # The NEWEST RELEASE, resolved from the releases API, not the server's head and not a pin.
-      #
-      # It was pinned to `composeai-preview-serve` while that named a jar on this build's classpath:
-      # the mirror then compared against the artifact actually being compiled against. There is no
-      # such jar now — compose-preview-server publishes no Maven artifacts — and an installed CLI
-      # tracks the newest release, so the newest release is what these mirrors owe a comparison to.
-      # Against head instead, a change merged there but not yet released would fail this PR for a
-      # drift that has not reached anybody.
-      #
-      # FETCHED, not checked out, and only the four files the mirrors read. `actions/checkout` of
-      # another repository at a ref that comes from `gradle/libs.versions.toml` is a ref a fork's
-      # pull request can edit, in a job that then populates the npm and Playwright caches — which
-      # CodeQL rates high as "cache poisoning via execution of untrusted code", correctly: the
-      # first shape of this step earned three of those alerts. Downloading four text files that
-      # are only ever `readFileSync`-d removes the premise rather than suppressing the finding.
-      # Nothing from that repository is executed here, and the worst a rewritten catalog line can
-      # do is point the mirrors at a different published tag, which fails loudly.
-      - name: Fetch the preview-server mirror sources
-        env:
-          # Authenticated so the releases API answers from a shared runner IP rather than
-          # rate-limiting. Read-only; the token needs nothing else.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # `|| true` so a rate-limited API reaches the error below rather than exiting the step
-          # bare under `set -euo pipefail`. This one is a hard failure either way; the difference is
-          # whether the log says why.
-          tag=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-            https://api.github.com/repos/yschimke/compose-preview-server/releases/latest \
-            | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)
-          if [ -z "$tag" ]; then
-            echo "::error::could not read the newest compose-preview-server release tag"
-            exit 1
-          fi
-          echo "mirroring against compose-preview-server $tag"
-          base="https://raw.githubusercontent.com/yschimke/compose-preview-server/$tag"
-          # Each path is the other half of a mirror asserted in scripts/design-artifacts. Adding a
-          # mirror means adding its file here, or the test self-skips and the guard below fires.
-          for rel in \
-            "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt" \
-            "server/build.gradle.kts" \
-            "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js"; do
-            mkdir -p ".compose-preview-server/$(dirname "$rel")"
-            curl -fsSL --retry 3 -o ".compose-preview-server/$rel" "$base/$rel"
-          done
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      # First, and before the two-minute install below: `design-map/` is a
-      # PUBLISHED package (@yschimke/compose-design-map) with no dependencies at
-      # all, so its suite is a second of runtime and a regression there ships to
-      # a downstream repo's committed design-map.json rather than staying here.
+      # `design-map/` is a PUBLISHED package (@yschimke/compose-design-map) with no dependencies at
+      # all, so its suite is a second of runtime and a regression there ships to a downstream
+      # repo's committed design-map.json rather than staying here.
       - name: Run design-map package tests
         working-directory: design-map
         run: npm test
-      - name: Install driver dependencies
-        working-directory: scripts/design-artifacts
-        run: npm ci
-      - name: Install Chromium
-        working-directory: scripts/design-artifacts
-        run: npx playwright install --with-deps chromium
-
-      # The vendored TypeScript player's bundle. It used to be a committed file in this checkout;
-      # it is resolved from yschimke/rc-players now, so it has to be staged before the browser
-      # tests that load it can assert anything.
-      #
-      # A hard failure, with no tolerated case, for the same reason as the Wasm bundle above: the
-      # artifact ships from rc-players 1.55.0 onwards, so the only remaining way staging can fail is
-      # one that should redden the job. `RC_PLAYER_JS_BUNDLE_REQUIRE=1` is unconditional now — the
-      # bundle is always there, so the driver's self-skips must always be failures.
-      #
-      # This is the one Gradle invocation in an otherwise Node-only job, which is why the JDK is set
-      # up here rather than at the top: it is needed for this step alone, and a reader looking at
-      # the job should see the two together.
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v5.0.0
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Stage the vendored player bundle
-        run: ./gradlew stageVendoredRcPlayerJs
-      - name: Require the player bundle
-        run: echo "RC_PLAYER_JS_BUNDLE_REQUIRE=1" >> "$GITHUB_ENV"
-
-      - name: Run driver tests
-        working-directory: scripts/design-artifacts
-        env:
-          COMPOSE_PREVIEW_SERVER_ROOT: ${{ github.workspace }}/.compose-preview-server
-        run: |
-          set -euo pipefail
-          out=$(npm test 2>&1) || { echo "$out"; exit 1; }
-          echo "$out"
-          # The cross-repo mirrors above self-skip when the checkout is missing, and a skip reports
-          # the same green as a pass. The checkout is supplied, so a skip here means it did not
-          # resolve — which must be loud, not silently green. Matched on the mirrors' own skip
-          # reason rather than on a skip COUNT: this suite has ~29 legitimate skips from other
-          # causes (browser-gated cases), so a count check would either never fire or always fire.
-          if grep -q "no compose-preview-server checkout" <<<"$out"; then
-            echo "::error::cross-repo mirror tests SKIPPED — COMPOSE_PREVIEW_SERVER_ROOT did not resolve"
-            exit 1
-          fi
+      - name: Install the export driver
+        run: .github/scripts/install-export-driver.sh "$RUNNER_TEMP/export-driver" >/dev/null
+      - name: Run the driver contract tests
+        run: node --test scripts/design-artifacts/driver-contract.test.mjs
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a

@@ -41,7 +41,7 @@ along with the prose on each that named the lane inline.
 
 ```
 ./gradlew :cli:test --tests '*ServeWeb*' --tests '*RcCompare*'
-node --test scripts/design-artifacts/render-rc-compare-html.test.mjs   # 26 pass
+node --test @design-parity/export-driver/render-rc-compare-html.test.mjs   # 26 pass
 cd cli/serve-web && npm run verify                                     # 301 passing
 ```
 

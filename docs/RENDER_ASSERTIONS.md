@@ -147,10 +147,10 @@ widen it rather than to keep writing code.
 ## Running them
 
 ```
-node scripts/design-artifacts/check-render-assertions.mjs \
+npx -p @design-parity/export-driver design-artifacts check-render-assertions \
   --assertions render-assertions.json --bundle build/previews.zip
 
-node scripts/design-artifacts/check-render-assertions.mjs \
+npx -p @design-parity/export-driver design-artifacts check-render-assertions \
   --assertions render-assertions.mjs --previews-dir build/previews
 ```
 

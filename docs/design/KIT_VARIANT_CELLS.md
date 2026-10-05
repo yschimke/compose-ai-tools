@@ -314,7 +314,7 @@ Each step is a PR against an existing surface; each is useful on its own.
 
 | # | Change | Where |
 | --- | --- | --- |
-| 1 | Exclude the icon page and `Base / …` sets from the page denominator (§1.1) | `scripts/design-artifacts/design-pages.mjs` |
+| 1 | Exclude the icon page and `Base / …` sets from the page denominator (§1.1) | `@design-parity/export-driver/design-pages.mjs` |
 | 2 | `cell` flag on `PageNode`, fifth legend swatch, third filter position (§4) | `api/preview-data-api`, `design-pages.mjs`, `ServeWeb` |
 | 3 | `kitProps` on `@OverrideVariant`; `kitAxis` / `kitValues` on `@PreviewAxis` (§2a, §2b) | `api/preview-annotations`, discovery, sidecar emit |
 | 4 | Sidecar carries them; resolver matches a full assignment (§2c) | `@yschimke/compose-design-map`, `@design-parity/kit-index` |

@@ -58,7 +58,7 @@ If a milestone comment never appears, the release itself is unaffected — check
 
 ## The export-driver pin refreshes itself
 
-[`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) is a **privileged workflow other repos call**, and it executes this repo's export driver (`scripts/design-artifacts/`). A caller must not be able to steer it at one of our `refs/pull/*` revisions, which can carry fork code, so for external callers the driver revision is an immutable commit — recorded in [`.github/design-artifacts-driver-pin.txt`](../.github/design-artifacts-driver-pin.txt).
+[`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) is a **privileged workflow other repos call**, and it executes the export driver (`@design-parity/export-driver`, at the version this repo's [`.github/design-artifacts-driver/`](../.github/design-artifacts-driver/) lock names). A caller must not be able to steer it at one of our `refs/pull/*` revisions, which can carry fork code, so for external callers the driver revision is an immutable commit — recorded in [`.github/design-artifacts-driver-pin.txt`](../.github/design-artifacts-driver-pin.txt).
 
 Two things decide how that revision resolves, and [#4107](https://github.com/yschimke/compose-ai-tools/issues/4107) is the friction that settled both.
 

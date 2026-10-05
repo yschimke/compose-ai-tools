@@ -37,7 +37,7 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
 
 The committed [`fonts.json`](fonts.json) is the **dev-time default**; the design-catalog export
 regenerates it from the per-preview `fonts/used` records (`previews/<id>.fonts.json` in the packed
-bundle → `scripts/design-artifacts/render-fonts-manifest.mjs`), so the published manifest tracks
+bundle → `@design-parity/export-driver/render-fonts-manifest.mjs`), so the published manifest tracks
 what the catalog's previews actually resolve. The regeneration also **preserves this file's
 `role: "default"` and `role: "named"` families** (whose files are still vendored): they are the
 catalog's declared **theme-override** typefaces (a Roboto Flex default, a Lobster Two named face),

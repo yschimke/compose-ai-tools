@@ -19,9 +19,9 @@ import okio.Path.Companion.toPath
  * They are the same projection with different producers, because a published catalog has no daemon.
  * [ServeSemanticsTags] projects the index live from a render this host just performed; that path
  * requires a semantics tree, which only a daemon produces. A catalog's renders happened in CI, at
- * catalog-generation time — so its index is computed *there* (`scripts/design-artifacts/
- * tag-index.mjs`, the JS twin) and published as `tags/index.json` beside the stickers. This class
- * is the reader for that file.
+ * catalog-generation time — so its index is computed *there* (the export driver's `tag-index.mjs`,
+ * the JS twin) and published as `tags/index.json` beside the stickers. This class is the reader for
+ * that file.
  *
  * The consequence worth stating: without this, the whole element-gate half of the parity workflow
  * was unreachable on exactly the surfaces the epic is about, since every published design catalog

@@ -115,7 +115,7 @@ walks the preview's bytecode for a project-local `@Composable` call and reads th
 target's parameters out of its `@kotlin.Metadata`
 ([`PreviewData.kt`](../../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt),
 `PreviewTarget` / `TargetParameter`), and
-[`apply-component-parameters.mjs`](../../scripts/design-artifacts/apply-component-parameters.mjs)
+[`apply-component-parameters.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/apply-component-parameters.mjs)
 already stamps that signature onto the published catalog for Figma Code Connect.
 It stops at name/type/`hasDefault` — no KDoc, no default *expressions*, no enum
 constants, no call-site argument bindings, one target maximum.
@@ -231,7 +231,7 @@ carried in the bundle (`components.json` + per-component sidecars, the same
 convention `previews/<id>.overrides.json` already uses). The design-artifacts
 pipeline copies it out of the primary bundle onto the delivery branch root and
 declares it on `catalog.json` as `componentsFile`
-(`scripts/design-artifacts/catalog-component-record.mjs`), so a consumer that
+(`@design-parity/export-driver/catalog-component-record.mjs`), so a consumer that
 wants only the record — compose-preview-server's UI builder, offering a served
 catalog's composables as a component pack — fetches one file rather than the
 live bundle it also travels in.

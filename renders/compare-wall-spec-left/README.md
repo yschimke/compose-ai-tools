@@ -46,7 +46,7 @@ with `svg` as its default format and never opens on the design lane.
 
 ```
 cd cli/serve-web && npm run typecheck && npm test && npm run build   # 1020 passing
-node --test scripts/design-artifacts/render-compare-html.test.mjs
+node --test @design-parity/export-driver/render-compare-html.test.mjs
 ./gradlew :cli:test --tests '*ServeWebTest*'
 ./gradlew :data-layoutinspector-connector:test --tests '*FigmaFidelityTest*'
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'

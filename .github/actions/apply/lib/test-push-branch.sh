@@ -70,7 +70,24 @@ publish "$index" DELTA_ON_TIP_PATHS
 assert_tip render-v3 issues-newer
 
 # A catalog publish carries the prior index forward and promotes its `current` inventory under the
-# actual parent SHA. The staging directory intentionally has no preview-index.json: the helper owns
+# actual parent SHA. The index is rolled by the export driver's revision-preview-index.mjs, which
+# the workflows install from the lock; install the same one (scripts only) unless the caller did.
+if [ -z "${DRIVER_DIR:-}" ]; then
+  DRIVER_DIR=$("$(dirname "$HELPER")/../../../scripts/install-export-driver.sh" --scripts-only "$ROOT/export-driver")
+fi
+export DRIVER_DIR
+indexed_without_driver="$ROOT/indexed-without-driver"
+mkdir -p "$indexed_without_driver"
+printf '%s\n' '{"components":[]}' > "$indexed_without_driver/catalog.json"
+if (
+  cd "$indexed_without_driver"
+  env -u DRIVER_DIR TARGET_BRANCH=design-artifacts/no-driver REPO=local/test GITHUB_TOKEN_INLINE=test \
+    MSG=no-driver REMOTE_URL="$REMOTE" REVISION_PREVIEW_INDEX=1 "$HELPER"
+) 2>/dev/null; then
+  echo "publishing with REVISION_PREVIEW_INDEX=1 and no DRIVER_DIR should fail" >&2
+  exit 1
+fi
+# The staging directory intentionally has no preview-index.json: the helper owns
 # that generated branch metadata.
 indexed="$ROOT/indexed"
 mkdir -p "$indexed"

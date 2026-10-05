@@ -1,9 +1,9 @@
 # reference-backdrop — publishing a design reference on the ground its sticker stands on
 
 Evidence for `--reference-backdrop` in
-[`emit-design-references.mjs`](../../../../scripts/design-artifacts/emit-design-references.mjs),
+[`emit-design-references.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/emit-design-references.mjs),
 and the shape recognition in
-[`reference-backdrop.mjs`](../../../../scripts/design-artifacts/reference-backdrop.mjs) that decides
+[`reference-backdrop.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/reference-backdrop.mjs) that decides
 where it applies.
 
 ## The problem

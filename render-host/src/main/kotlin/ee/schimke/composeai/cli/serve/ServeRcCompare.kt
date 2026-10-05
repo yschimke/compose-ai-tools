@@ -11,7 +11,7 @@ import okio.Path.Companion.toOkioPath
 /**
  * The **published** Remote Compose player comparison, served from a catalog's delivery branch.
  *
- * The offline `rc-compare` pipeline (`scripts/design-artifacts/rc-compare.mjs`) already renders
+ * The offline `rc-compare` pipeline (`@design-parity/export-driver/rc-compare.mjs`) already renders
  * every `ir/<id>.rc` document through every player it can reach — the vendored TypeScript
  * `RC.RcdPlayer`, AndroidX's Compose-embedded `RcPlayer`, the Compose Desktop / Skiko player, the
  * CMP/Wasm player — pixel-diffs each against the baked render, and publishes the lot beside the

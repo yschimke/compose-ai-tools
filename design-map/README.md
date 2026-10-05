@@ -35,7 +35,7 @@ opposite sides of a repo boundary is how a manifest reader goes quietly stale �
 belongs on the annotation rather than in a JSON map for the same reason: a map keyed on preview
 names drifts the moment a preview is renamed, and fails silently when it does.
 
-The consuming half already lived here too — [`design-references.mjs`](https://github.com/yschimke/compose-ai-tools/blob/main/scripts/design-artifacts/design-references.mjs)
+The consuming half already lived here too — [`design-references.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/design-references.mjs)
 reads a `design-map.json` to build a published catalog's `references/index.json`. Until now nothing
 in the ecosystem wrote one except a hand-maintained script in a downstream catalog repo.
 

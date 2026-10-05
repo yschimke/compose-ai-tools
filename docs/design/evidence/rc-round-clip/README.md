@@ -40,7 +40,7 @@ exactly what it scored before.
 ## Regenerating
 
 ```sh
-node scripts/design-artifacts/rc-compare.mjs \
+npx -p @design-parity/export-driver design-artifacts rc-compare \
   --bundle bundle.png \
   --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/rc-out --system remote-m3
@@ -50,5 +50,5 @@ The guard that keeps this closed does not need a bundle or a catalog render — 
 2 KB capture of the same document through the built player bundle:
 
 ```sh
-node --test scripts/design-artifacts/rc-round-clip.test.mjs
+node --test @design-parity/export-driver/rc-round-clip.test.mjs
 ```

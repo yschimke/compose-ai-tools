@@ -1,5 +1,7 @@
-# Which commit of compose-ai-tools' export driver (scripts/design-artifacts/)
-# external callers of design-artifacts-reusable.yml execute.
+# Which commit of compose-ai-tools external callers of
+# design-artifacts-reusable.yml execute. That commit supplies the workflow's
+# actions and version catalog, and names the export driver
+# (@design-parity/export-driver) through the lock in .github/design-artifacts-driver/.
 #
 # WHY THIS IS A DATA FILE AND NOT A LINE IN THE WORKFLOW
 # -----------------------------------------------------

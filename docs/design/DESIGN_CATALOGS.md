@@ -90,7 +90,7 @@ plain `validate-catalog-spec` run), and accepts it with `liveBundle: true`
 
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
 runs **on every merge to `main` that touches a catalog** (`samples/design-catalog-*`,
-`samples/cmp-wasm-catalog`) or the export driver (`scripts/design-artifacts/`),
+`samples/cmp-wasm-catalog`) or the export driver's lock (`.github/design-artifacts-driver/`),
 plus every Monday, after a release
 ([`post-release-design-artifacts`](../../.github/workflows/post-release-design-artifacts.yml)
 picks the finished release run up via `workflow_run`, so the renders run alongside
@@ -128,7 +128,7 @@ Two changes close it:
   drops that lane.
 - **A self-healing baseline.** Every successful publish records the rendered commit
   as the ref `refs/design-artifacts/source/<system>`
-  ([`mark-published-source.sh`](../../scripts/design-artifacts/mark-published-source.sh)),
+  ([`mark-published-source.sh`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/mark-published-source.sh)),
   and the next run's scope resolves it
   ([`published-source.sh`](../../scripts/design-artifacts/published-source.sh))
   and diffs from there. A dropped run is picked up by the *next* push whatever that
@@ -291,7 +291,7 @@ Nothing new is rendered for these. Each theme's specimen sheet already resolved 
 `MaterialTheme` — colours **and** typeface, since a theme is free to swap the type scale — and the
 renderer writes them into the bundle as a theme-tagged `previews/<id>.catalog.json` sidecar
 (issue #2179). The export driver reads them back per theme
-([`catalog-themes.mjs`](../../scripts/design-artifacts/catalog-themes.mjs) over design-parity's
+([`catalog-themes.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/catalog-themes.mjs) over design-parity's
 `themeTokenSetsFromBundle`) and publishes one file each.
 
 Two details are load-bearing:
@@ -312,7 +312,7 @@ Two details are load-bearing:
   can answer for it.
 
 A folded section does **not** bring its themes with it. `themes/` is catalog-level despite being
-nested, so [`merge-catalog-section.mjs`](../../scripts/design-artifacts/merge-catalog-section.mjs)
+nested, so [`merge-catalog-section.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/merge-catalog-section.mjs)
 skips it the way it skips the top-level `tokens.dtcg.json`: the host's `catalog.json` describes the
 host's themes, and a borrowed system's theme is one the host cannot render.
 
@@ -335,7 +335,7 @@ them on request.
 
 A spec's `themes[]` closes it, the same way `groups` closes the missing `@CatalogComponent`
 annotations: the inventory is written down in the import, and
-[`generate-theme-catalogs.mjs`](../../scripts/design-artifacts/generate-theme-catalogs.mjs) writes
+[`generate-theme-catalogs.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/generate-theme-catalogs.mjs) writes
 the providers into the **throwaway checkout** before anything compiles — beside the module's own
 sources, so an `internal` theme composable (Twine's `AppTheme`) is reachable. Discovery then scans an
 ordinary module that declares its themes, and nothing downstream learns that an import exists: the
@@ -344,7 +344,7 @@ chips, `?theme=theme:<providerFqn>`, and one `themes/<fqn>.dtcg.json` per theme 
 An entry is a **shape**, not a snippet, because across fifteen imports the upstreams reach for the
 same four — and a shape carries what a snippet throws away: which themes are one family, which are
 light and which dark, and what a reviewer is agreeing to in the import's pull request. The shapes are
-in [`theme-adapters.mjs`](../../scripts/design-artifacts/theme-adapters.mjs), which is pure and
+in [`theme-adapters.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/theme-adapters.mjs), which is pure and
 unit-tested without an `npm ci`:
 
 | `kind` | The upstream shape | Seen in |
@@ -444,7 +444,7 @@ theme providers" step reads the plugin version the installed CLI injects (`maven
 that version publishes `theme-pin-runtime` on Maven Central, the step writes
 `composePreview.themePinning=true` into the checkout's `gradle.properties` and passes
 `--theme-pin-version` to
-[`generate-theme-catalogs.mjs`](../../scripts/design-artifacts/generate-theme-catalogs.mjs). The
+[`generate-theme-catalogs.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/generate-theme-catalogs.mjs). The
 generator then wraps each Material 3 provider's `content()` in `PinMaterialTheme` and adds the
 runtime to the module's compile classpath. On a CLI that predates it, both are skipped with a notice,
 and the import renders exactly as before.
@@ -1077,7 +1077,7 @@ and its publish lane left. Two consequences are worth keeping in view:
 Two implementation columns tell a reader that two components differ. They cannot say
 *which one is wrong* — that needs the thing both are reproducing. So when either delivery
 branch publishes a `references/index.json` (`compose-preview-references/v1`, see
-[`design-references.mjs`](../../scripts/design-artifacts/design-references.mjs)), the
+[`design-references.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/design-references.mjs)), the
 compare page grows a leading **design** column: the kit artwork itself, joined onto
 `componentId` through `source.attributes.componentId`, baked to a raw URL the same way
 the sibling renders are.
@@ -1107,7 +1107,7 @@ this-system-first regardless, so a chain in the header would contradict the tabl
 `catalog.spec.json` is hand-authored, and each component's `preview` must equal
 an **exact `@Preview` function name** in the module — a mistyped or renamed name
 renders nothing and only surfaces as a late "missing" entry at the end of the
-(long) render. Two build-free helpers in `scripts/design-artifacts/` close that
+(long) render. Two build-free helpers in the export driver (`@design-parity/export-driver`) close that
 gap by scanning the module's Kotlin source directly (no Gradle build, no render):
 
 - **Scaffold a starting spec** from the `@Preview` functions a module declares —
@@ -1115,7 +1115,7 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   regroup:
 
   ```sh
-  node scripts/design-artifacts/init-catalog-spec.mjs \
+  npx -p @design-parity/export-driver design-artifacts init-catalog-spec \
     --module :app --system meshcore-mobile --title "MeshCore Mobile" \
     --out catalog.spec.json
   ```
@@ -1127,7 +1127,7 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   errors, so it runs as a pre-flight in `design-artifacts.yml` before the render:
 
   ```sh
-  node scripts/design-artifacts/validate-catalog-spec.mjs --spec catalog.spec.json
+  npx -p @design-parity/export-driver design-artifacts validate-catalog-spec --spec catalog.spec.json
   ```
 
   The module is taken from the spec's `module` field; override with `--module-dir`
@@ -1156,7 +1156,7 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   --json`, or a copy kept from the last good run) and reports, without rendering:
 
   ```sh
-  node scripts/design-artifacts/spec-preflight.mjs \
+  npx -p @design-parity/export-driver design-artifacts spec-preflight \
     --spec catalog.spec.json --previews previews.json \
     --exclude-preview-id 'activity__*,Home_ja'
   ```
@@ -1511,7 +1511,7 @@ sidecar — which the completeness gate fails.
 **Partitioning.** Each shard derives its own partition from its own `compose-preview list --json`,
 so there is no serial discover-then-fan-out prefix (that prefix would cost the same full compile
 each shard pays anyway). It is deterministic — sort the discovered ids, then round-robin — and
-[`shard-preview-ids.mjs`](../../scripts/design-artifacts/shard-preview-ids.mjs) owns the three
+[`shard-preview-ids.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/shard-preview-ids.mjs) owns the three
 decisions:
 
 - **by preview id, never by function name** — one function expands to a 30-cell matrix while its
@@ -1533,7 +1533,7 @@ pairwise disjoint, and a complete cover. A disagreement would otherwise surface 
 completeness-gate failure naming a component, with nothing pointing at the shards.
 
 **Then the merged bundle is checked back against those plans**
-([`verify-shard-renders.mjs`](../../scripts/design-artifacts/verify-shard-renders.mjs)), because the
+([`verify-shard-renders.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/verify-shard-renders.mjs)), because the
 plan and the outcome are different questions and only the first one used to be asked. A plan check
 confirms the shards *intended* a disjoint cover; it passes whether or not a single preview came
 back. m3-catalog run 31217598543 lived precisely in that gap — it partitioned 1095 previews
@@ -1668,7 +1668,7 @@ Each `deferred[]` record is **addressable**, which is what makes the on-demand p
 real rather than declarative:
 
 - `path` — the `images/…` path the sticker *would* have been written to, derived by
-  [`catalog-image-path.mjs`](../../scripts/design-artifacts/catalog-image-path.mjs).
+  [`catalog-image-path.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/catalog-image-path.mjs).
   The serve routes are `previewIdFor(image.path)`, so recording the path (rather than
   having the server re-derive the exporter's naming) keeps one id namespace and means
   flipping an entry between `required` and `deferred` never moves its URL. The export
@@ -1708,7 +1708,7 @@ What each form actually saves:
   --exclude-preview-id`, which forwards the patterns to the render *and* skips the same
   ids in the CLI-driven daemon semantics pass. Ids only exist after discovery, so both
   design-artifacts workflows run `compose-preview list --json` first and derive them with
-  [`deferred-preview-ids.mjs`](../../scripts/design-artifacts/deferred-preview-ids.mjs);
+  [`deferred-preview-ids.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/deferred-preview-ids.mjs);
   that extra Gradle invocation is gated on the spec actually deferring a mode, and its
   compile is shared with the render that follows. Measured against a nine-theme catalog
   this is the bigger lever: deferring every palette beyond the primary drops ~59% of
@@ -1728,7 +1728,7 @@ What each form actually saves:
   `ORG_GRADLE_PROJECT_composePreview.filter`. A function is only droppable when
   **nothing required points at it** — two entries can name the same `@Preview`. One
   reader — `entryPriority` in
-  [`catalog-priority.mjs`](../../scripts/design-artifacts/catalog-priority.mjs) — drives
+  [`catalog-priority.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/catalog-priority.mjs) — drives
   every consumer (the join, the variant split, the render filter), so the render set and
   the published set can't disagree about which entries are baked.
 
@@ -1951,6 +1951,6 @@ offers no theme chips at all, since there would be nothing for them to redraw.
    (Wear).
 2. Add it to `catalog.spec.json` under its group with a caption and, if known,
    the seed-kit frame reference.
-3. Validate the spec (`node scripts/design-artifacts/validate-catalog-spec.mjs
+3. Validate the spec (`npx -p @design-parity/export-driver design-artifacts validate-catalog-spec
    --spec <spec>`) to confirm the `preview` name resolves before rendering.
 4. The next render + export picks it up automatically — no harness change.

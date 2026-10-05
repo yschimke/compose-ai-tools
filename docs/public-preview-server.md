@@ -1846,7 +1846,7 @@ against real artifacts before it ships.
 For a **published catalog**, the manifest is generated — you don't hand-write it. The
 `Publish design references` step of
 [`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) runs
-[`emit-design-references.mjs`](../scripts/design-artifacts/emit-design-references.mjs) over the
+[`emit-design-references.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/emit-design-references.mjs) over the
 calling repo's [`design-map.json`](https://github.com/yschimke/design-parity) — design-parity's
 correspondence file, which most adopters already keep — and writes `references/` into the bundle
 just before it is published to `design-artifacts/<system>`.
@@ -1945,7 +1945,7 @@ The colour is **declared** and the shape is **recognised**. Only the catalog kno
 asked for, and a colour read off the sticker would be read off the very image the reference is about
 to be compared with — so the caller names it (`reference-backdrop: '#000000'` for a dark-first Wear
 sheet). The shape comes from the sticker's alpha channel, and
-[`reference-backdrop.mjs`](../scripts/design-artifacts/reference-backdrop.mjs) recognises exactly
+[`reference-backdrop.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/reference-backdrop.mjs) recognises exactly
 the two shapes `showBackground` produces — the whole frame, and the disc inscribed in a square frame
 — rather than accepting whatever it finds. Anything else, including the Wear scroll capsule's
 vertical stadium, is skipped and counted.
@@ -2499,14 +2499,14 @@ is the reference implementation — which asks Figma for the page's node tree an
 with `svg_include_node_id=true`, and commits the result under `design/pages/`. That runs on the
 *design file's* cadence, manually, and is the only step that talks to Figma at all.
 
-The publish job then runs [`emit-design-pages.mjs`](../scripts/design-artifacts/emit-design-pages.mjs),
+The publish job then runs [`emit-design-pages.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/emit-design-pages.mjs),
 which re-keys each node onto the catalog's **serve** preview ids and writes `pages/index.json` plus
 one SVG per page onto `design-artifacts/<system>`. It needs no credential, so a fork, a token-less
 run and an offline republish all produce the same pages. The server stages those like any other
 catalog asset and re-paths each export to a server-owned location.
 
 That re-keying is the load-bearing step, and it is the same id problem
-[`design-references.mjs`](../scripts/design-artifacts/design-references.mjs) exists to solve: a node
+[`design-references.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/design-references.mjs) exists to solve: a node
 carries the *repo's* discovery preview id, and a published catalog keys everything on the route-safe
 serve id. Handing the manifest over unchanged would give the server ids that render nothing.
 
@@ -2662,7 +2662,7 @@ link at all rather than an attacker-chosen href.
 
 The `Publish design-parity activity` step of
 [`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) runs
-[`emit-parity-activity.mjs`](../scripts/design-artifacts/emit-parity-activity.mjs), immediately
+[`emit-parity-activity.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/emit-parity-activity.mjs), immediately
 after the references step so the catalog is final. It reads:
 
 - **code** — `git log --name-only` over the window, joined to previews through `design-map.json`'s
@@ -2693,9 +2693,9 @@ which is the normal state for a fork or a PR run. A repo with no history, no des
 writes nothing at all, so the step runs unconditionally for every catalog. `--strict` gates on any
 skipped lane.
 
-The pure half lives in [`parity-activity.mjs`](../scripts/design-artifacts/parity-activity.mjs) and
+The pure half lives in [`parity-activity.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/parity-activity.mjs) and
 unit-tests without an `npm ci`; its output is committed as
-[`fixtures/parity-activity.json`](../scripts/design-artifacts/fixtures/parity-activity.json) and
+[`fixtures/parity-activity.json`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/fixtures/parity-activity.json) and
 loaded by the Kotlin reader's own test, so the two languages can't drift apart silently.
 
 ### `?format=json`

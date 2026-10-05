@@ -48,7 +48,7 @@ machinery.
 | Parity verdict | [`ServeParityFindings.kt`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityFindings.kt) | `compose-preview-parity-findings/v1` — a run's a11y / i18n / token / layout findings for one (preview, reference) pair, each with a severity, a structured `detail`, and optional `anchors` in the panels' own pixel space. Server-rendered into the comparison page; the anchors light on hover |
 | Scoring | [`format-compare.js`](../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js) | `scorePlanes` — a **bidirectional, edge-gated, distance-penalised** comparison over content-box-normalised gray planes (see the six clauses below) — plus a magenta delta map, **entirely in the visitor's browser** |
 | Parity dashboard | [`ServeParityDashboard.kt`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityDashboard.kt), route `/{system}/parity(.json)` | Coverage (live), drift correlation, merged activity feed, mapping gaps |
-| Published snapshot precedent | [`ServeParityActivity.kt`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityActivity.kt) + [`parity-activity.mjs`](../../scripts/design-artifacts/parity-activity.mjs) | The exact pattern the issue index should copy — see §3 |
+| Published snapshot precedent | [`ServeParityActivity.kt`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityActivity.kt) + [`parity-activity.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/parity-activity.mjs) | The exact pattern the issue index should copy — see §3 |
 | Catalog refresh | [`ServeCatalogRefresher.kt`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeCatalogRefresher.kt) | Polls each `design-artifacts/<system>` branch head and re-fetches on **any** new commit |
 
 Four findings from reading this that shape everything downstream:
@@ -274,7 +274,7 @@ simply not there.
   nobody had touched.
 
 **The fixture is the enforcement, not this list.**
-[`scripts/design-artifacts/fixtures/parity-locators.json`](../../scripts/design-artifacts/fixtures/parity-locators.json)
+[`@design-parity/export-driver/fixtures/parity-locators.json`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/fixtures/parity-locators.json)
 carries each shape once and is read by *both* engines: `ServeIssueReportTest` asserts the writer
 emits those exact bytes, and `parity-issues.test.mjs` asserts the producer parses them back. Cases
 with no `writer` key are shapes no writer emits and the producer must keep refusing. Without one
@@ -296,9 +296,9 @@ already has a trust boundary with tests:
   third-party data carrying titles other people wrote.
 - **Staging** `ServeCatalogStore.writeParityIssues`, beside `writeParityActivity`, validating before
   it writes. A file nobody stages is invisible to the host however faithfully it was published.
-- **Producer** a pure half `scripts/design-artifacts/parity-issues.mjs` (no I/O, no network, unit
+- **Producer** a pure half `@design-parity/export-driver/parity-issues.mjs` (no I/O, no network, unit
   tests without `npm ci`) driven by an I/O half `emit-parity-issues.mjs`, with the output committed
-  as `scripts/design-artifacts/fixtures/parity-issues.json` and loaded by the Kotlin reader's own
+  as `@design-parity/export-driver/fixtures/parity-issues.json` and loaded by the Kotlin reader's own
   test — so the two languages cannot drift apart silently. This is exactly how `parity-activity.mjs`
   is arranged and it has already paid for itself.
 - **Failure posture** fail-soft. A missing file, a wrong schema token, a malformed record: drop that
@@ -2050,7 +2050,7 @@ settled it the other way, and this text now follows it.
 **The transform belongs to the comparison**, using the render→canonical row of the table above,
 because *a plane is a property of a comparison and the index is a property of a render*. The canonical
 plane is resolved per comparison, from a reference raster and an acceptance record; neither producer
-can see one. `ServeSemanticsTags` sees a single daemon render and `scripts/design-artifacts/tag-index.mjs`
+can see one. `ServeSemanticsTags` sees a single daemon render and `@design-parity/export-driver/tag-index.mjs`
 a single packed bundle, so both emit `boundsInRoot` and declare `space: "render-pixels"` on the wire,
 and `ServeTagIndexStore` refuses an entry claiming anything else. Making the index comparison-scoped
 instead would make the published `tags/index.json` depend on the acceptances, and it would have to be

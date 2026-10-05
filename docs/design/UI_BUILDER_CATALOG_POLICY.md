@@ -51,7 +51,7 @@ and a component that has a call site belongs in the record.
 `ui-builder.json` is written by the **discovery task**, into `build/compose-previews/` beside
 `components.json`, from the same scan. The design-artifacts pipeline then copies it to the delivery
 branch root and stamps `uiBuilderFile` on `catalog.json` — the job
-[`catalog-component-record.mjs`](../../scripts/design-artifacts/catalog-component-record.mjs)
+[`catalog-component-record.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/catalog-component-record.mjs)
 already does for the record.
 
 The obvious alternative was a `generate-ui-builder-catalog.mjs` in the design-artifacts workflow.
@@ -107,7 +107,7 @@ which carries the field-by-field documentation, and a build-free pre-flight besi
 `validate-catalog-spec.mjs`:
 
 ```
-node scripts/design-artifacts/validate-ui-builder-policy.mjs --policy ui-builder.policy.json
+npx -p @design-parity/export-driver design-artifacts validate-ui-builder-policy --policy ui-builder.policy.json
 ```
 
 Not a JSON Schema validator — the schema is the contract and the thing an editor autocompletes

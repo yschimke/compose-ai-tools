@@ -166,7 +166,7 @@ Distribution that already exists, in rough order of leverage:
   is a better first move than competing with them* — it makes Compose a first-class citizen in
   toolchains teams already pay for, and puts this in front of their users.
 - **Figma.** `figma-svg` export and Code Connect emission exist in
-  [`scripts/design-artifacts/`](../scripts/design-artifacts). A Figma plugin reading `/api/previews`
+  the export driver ([`@design-parity/export-driver`](https://github.com/yschimke/design-parity/tree/main/packages/export-driver)). A Figma plugin reading `/api/previews`
   (the `degradations` array is already there for exactly this consumer) closes the design↔code loop
   — the highest-value integration on this list and the one competitors don't have.
 - **MCP server** ([`mcp/`](../mcp)) — the agent integration, already published.
