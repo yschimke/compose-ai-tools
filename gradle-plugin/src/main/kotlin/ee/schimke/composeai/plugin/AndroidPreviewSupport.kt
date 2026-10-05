@@ -2564,6 +2564,9 @@ internal object AndroidPreviewSupport {
         configurations =
           listOfNotNull(daemonRendererConfig, testConfig, screenshotTestRuntimeConfig),
       )
+    // AGP's unit-test task, bound late for the same reason: its test classes, JVM args and
+    // toolchain launcher must reach the render / daemon tasks even when configured first.
+    val lateAgpTestTask = LateAgpTestTask(project, unitTestTaskName)
     val lateAgpClasspathExtras =
       AndroidPreviewClasspath.lateAgpClasspathExtras(
         project,
@@ -2758,14 +2761,13 @@ internal object AndroidPreviewSupport {
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
         }
-        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
             rendererClassDirs +
               project.files(compileShardsTask.map { it.destinationDirectory }) +
-              (agpTestTask?.testClassesDirs ?: project.files())
+              lateAgpTestTask.testClassesDirs
           } else {
-            rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+            rendererClassDirs + lateAgpTestTask.testClassesDirs
           }
         // Append AGP's own `test${Cap}UnitTest` classpath at the END so we
         // pick up files that only exist there: specifically, the unit-test
@@ -2788,7 +2790,7 @@ internal object AndroidPreviewSupport {
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
-            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            agpTestClasspath = lateAgpTestTask.classpath,
             testConfig = testConfig,
             legacyClasspathUnion = legacyClasspathUnion,
           )
@@ -2796,10 +2798,10 @@ internal object AndroidPreviewSupport {
           (if (compileShardsTask != null) {
             resolvedClasspath +
               project.files(compileShardsTask.map { it.destinationDirectory }) +
-              (agpTestTask?.testClassesDirs ?: project.files()) +
+              lateAgpTestTask.testClassesDirs +
               agpTestClasspath
           } else {
-            resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
+            resolvedClasspath + lateAgpTestTask.testClassesDirs + agpTestClasspath
           }) + poolingContainerRFiles
         if (shardsEnabled) {
           include("**/RobolectricRenderTest_Shard*.class")
@@ -2821,11 +2823,9 @@ internal object AndroidPreviewSupport {
         // non-UTF-8 sandbox locale otherwise fails the render outright on em-dashed preview names.
         configureRenderTaskReporting(this)
 
-        // Copy JVM args from AGP's test task. Deferred to the configuration
-        // lambda (rather than called at registration time) so AGP has had
-        // a chance to register `test${capVariant}UnitTest` by the time this
-        // runs — onVariants fires before unit-test tasks are wired.
-        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
+        // Copy JVM args from AGP's test task. AGP registers `test${capVariant}UnitTest` after
+        // onVariants, and an upstream `tasks.withType<Test>().all {}` can run this lambda before
+        // that, so [LateAgpTestTask] applies them (and the launcher below) once the task exists.
         // Static JVM open flags live in [AndroidPreviewClasspath.buildJvmArgs] so the
         // preview daemon can reuse the same set when launching its own JVM.
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
@@ -2841,7 +2841,7 @@ internal object AndroidPreviewSupport {
         // android.app.Application` during JUnit discovery on some JVM/classloader
         // combinations (#142); raising it matters for newer bytecode, else every
         // preview fails with `UnsupportedClassVersionError` (meshcore-mobile#271).
-        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
+        lateAgpTestTask.inheritJvmSettings(this, ::renderJavaLauncher)
 
         // GoogleFont interceptor cache lives in the shared, machine-local
         // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`).
@@ -3040,12 +3040,16 @@ internal object AndroidPreviewSupport {
     // `samples/sdk-matrix/build.gradle.kts`). See
     // [GenerateRobolectricPropertiesTask.buildJavaMajor].
     generateRobolectricPropertiesTask.configure {
-      val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
-      val launcher = renderJavaLauncher(agpTestTask) ?: agpTestTask?.javaLauncher
-      if (launcher != null) {
-        buildJavaMajor.set(launcher.map { it.metadata.languageVersion.asInt() })
-      } else {
-        buildJavaMajor.set(gradleDaemonMajor)
+      fun setFrom(launcher: Provider<JavaLauncher>?) {
+        if (launcher != null) {
+          buildJavaMajor.set(launcher.map { it.metadata.languageVersion.asInt() })
+        } else {
+          buildJavaMajor.set(gradleDaemonMajor)
+        }
+      }
+      // Late-bound like the render task's own launcher, so the two cannot disagree.
+      if (!lateAgpTestTask.whenAvailable { setFrom(renderJavaLauncher(it)) }) {
+        setFrom(renderJavaLauncher(null))
       }
     }
 
@@ -3068,20 +3072,19 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRenderAndroidResources", Test::class.java) {
         group = "compose preview"
         description = "Render Android XML resource previews via Robolectric"
-        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
-        testClassesDirs = rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+        testClassesDirs = rendererClassDirs + lateAgpTestTask.testClassesDirs
         // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
         // from the single renderer graph. Same rationale as composePreviewRender above.
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
-            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            agpTestClasspath = lateAgpTestTask.classpath,
             testConfig = testConfig,
             legacyClasspathUnion = legacyClasspathUnion,
           )
         classpath =
           resolvedClasspath +
-            (agpTestTask?.testClassesDirs ?: project.files()) +
+            lateAgpTestTask.testClassesDirs +
             agpTestClasspath +
             poolingContainerRFiles
         include("**/ResourcePreviewRenderTest.class")
@@ -3097,9 +3100,8 @@ internal object AndroidPreviewSupport {
         // Same locale exposure as the main render task — resource names reach the report path too.
         configureRenderTaskReporting(this)
 
-        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
-        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
+        lateAgpTestTask.inheritJvmSettings(this, ::renderJavaLauncher)
 
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
@@ -3174,21 +3176,20 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Render XR subspace previews to scene.json via Robolectric"
         validateComposeFloorTask?.let { dependsOn(it) }
-        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
-        testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+        testClassesDirs = xrRendererClassDirs + lateAgpTestTask.testClassesDirs
         // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
         // from the single renderer graph. Same rationale as composePreviewRender above.
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
-            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            agpTestClasspath = lateAgpTestTask.classpath,
             testConfig = testConfig,
             legacyClasspathUnion = legacyClasspathUnion,
           )
         classpath =
           (resolvedClasspath +
               xrRendererClasspathEntries +
-              (agpTestTask?.testClassesDirs ?: project.files()) +
+              lateAgpTestTask.testClassesDirs +
               agpTestClasspath +
               // Last here too, and inside the filter below — which only drops scenecore's spatial
               // backends, so the generated directory passes through untouched.
@@ -3220,9 +3221,8 @@ internal object AndroidPreviewSupport {
         // Same locale exposure as the main render task — preview names reach the report path too.
         configureRenderTaskReporting(this)
 
-        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
-        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
+        lateAgpTestTask.inheritJvmSettings(this, ::renderJavaLauncher)
 
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
@@ -3571,9 +3571,7 @@ internal object AndroidPreviewSupport {
         // without the `AmbiguousArtifactsFailure` a raw configuration read hits). Supplied lazily
         // and
         // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
-        androidUnitTestRuntimeClasspath = {
-          (project.tasks.findByName(unitTestTaskName) as? Test)?.classpath
-        },
+        androidUnitTestRuntimeClasspath = { lateAgpTestTask.classpath },
       )
 
     // Resolve `kind=SVG` / `kind=LOTTIE` asset IR off the Android source resource roots. AGP
@@ -3674,13 +3672,9 @@ internal object AndroidPreviewSupport {
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
       validateDaemonComposeFloorTask?.let { dependsOn(it) }
-      // Resolved once when the task is realised — the register {…} block runs lazily at
-      // task-graph-resolution time, by which point AGP has registered the unit-test task.
-      // Pulling the reference here (rather than wrapping `findByName` in a Provider that
-      // re-runs at execution time) keeps the @Input Provider chains below from capturing
-      // `project`, which is what the configuration cache rejects.
-      val agpTestTask =
-        project.tasks.findByName(unitTestTaskName) as? org.gradle.api.tasks.testing.Test
+      // AGP's unit-test task via [lateAgpTestTask]: an upstream `tasks.withType<Test>().all {}`
+      // can realise this task before AGP registers its own, so its classpath and launcher are bound
+      // once it exists, still at configuration time (no `project` captured in a Provider chain).
 
       this.modulePath.set(project.path)
       this.variant.set(variantName)
@@ -3699,7 +3693,7 @@ internal object AndroidPreviewSupport {
       // default for AGP variants — the variant-specific kotlinc compile uses
       // `project.name` (no variant suffix), confirmed against `samples-android`'s
       // kotlin.Metadata.d2[] entries.
-      val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+      val agpTestClasspath = lateAgpTestTask.classpath
       ComposePreviewTasks.wireBtaInputs(
         project = project,
         task = this,
@@ -3733,8 +3727,13 @@ internal object AndroidPreviewSupport {
       // left null the extension falls back to *its own* bundled JDK (commonly 17), which then can't
       // load Java-21 classes (meshcore-mobile#271). Both branches are config-cache-safe Providers
       // from the toolchains service, so mapping to an absolute path introduces no new captures.
-      renderJavaLauncher(agpTestTask)?.let { launcher ->
-        this.javaLauncher.set(launcher.map { it.executablePath.asFile.absolutePath })
+      fun setLauncher(launcher: Provider<JavaLauncher>?) {
+        launcher?.let { l ->
+          this.javaLauncher.set(l.map { it.executablePath.asFile.absolutePath })
+        }
+      }
+      if (!lateAgpTestTask.whenAvailable { setLauncher(renderJavaLauncher(it)) }) {
+        setLauncher(renderJavaLauncher(null))
       }
       // Daemon module's classes FIRST so [mainClass] resolves before
       // anything in the consumer's transitive graph shadows it. Both
@@ -3771,11 +3770,11 @@ internal object AndroidPreviewSupport {
         )
       )
       this.classpath.from(lateAgpClasspathExtras)
-      this.classpath.from(agpTestTask?.testClassesDirs ?: project.files())
+      this.classpath.from(lateAgpTestTask.testClassesDirs)
       this.classpath.from(
         AndroidPreviewClasspath.buildAgpClasspathExtras(
           project = project,
-          agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+          agpTestClasspath = lateAgpTestTask.classpath,
           testConfig = testConfig,
           legacyClasspathUnion = legacyClasspathUnion,
         )
