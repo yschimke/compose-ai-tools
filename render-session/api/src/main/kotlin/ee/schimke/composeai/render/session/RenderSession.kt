@@ -38,18 +38,10 @@ import kotlinx.serialization.json.JsonObject
  *
  * ## `Duration` and the mangled JVM names
  *
- * Every method here that takes a `timeout: Duration` compiles to a mangled JVM name —
- * `renderNow-9VgGkz4`, `historyDiff-Wn2Vu4Y` — because `kotlin.time.Duration` is a value class. Two
- * consequences worth knowing before changing a signature:
- *
- * - The methods are **not callable from Java**: `-` is not legal in a Java identifier. That is
- *   accepted, not overlooked. This is a Kotlin-first library with no Java consumer, and the
- *   alternative — `timeoutMillis: Long` across seventeen call sites — would make the API worse for
- *   every real caller to serve a hypothetical one.
- * - The suffix is a hash of the value-class parameters, so **swapping one value class for another
- *   renames the method**. A binary-incompatible change of that kind shows up in the ABI dump as a
- *   removed method plus an added one rather than as a changed signature; read it as the break it
- *   is, not as a rename.
+ * `kotlin.time.Duration` is a value class, so every method taking a `timeout` compiles to a mangled
+ * name (`renderNow-9VgGkz4`): not callable from Java, which is accepted for this Kotlin-first API.
+ * Swapping one value class for another renames the method, which the ABI dump shows as a removal
+ * plus an addition; treat it as the break it is.
  *
  * ## Lifecycle
  *

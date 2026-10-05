@@ -12,33 +12,14 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /*
- * Why this file exists (issue #3796).
- *
- * `MissingRenderReport`'s diagnostic took five review rounds, and every finding was the same bug in
- * a new costume: a sentence that outran its evidence. "rendered and then threw — the build wiring is
- * fine" without checking the renderer ran; "did not run" about a task that isn't the one that
- * renders Lottie; a sidecar quoted from a path this run's renderer could never have written; "N
- * previews in this module" of a count spanning two modules. Three of the five were introduced by the
- * previous round's patch, which is the tell that the shape was wrong rather than the details.
- *
- * The shape that caused it: facts and prose were interleaved. The formatter reached for whatever
- * fields were in scope and wrote a sentence, and nothing checked the sentence against what had
- * actually been observed. Backend knowledge — which task owns which preview, where the renderer can
- * write a sidecar — was spread across a predicate, a lookup and two comment blocks, so each round
- * re-derived it and one of them got it subtly wrong.
- *
- * So: this file holds *what is known* about a missing preview and nothing about how to say it.
- * [diagnose] is the single place that knows the backends. [PreviewDiagnosis] carries provenance —
- * [Evidence.Observed] or [Evidence.Unobserved] — rather than bare values, so a caller cannot read a
- * fact without also seeing how it was learned. `MissingRenderMessage.kt` turns diagnoses into
- * sentences, each function taking the specific evidence its sentence asserts.
+ * What is known about a preview that produced no PNG, and nothing about how to say it (issue #3796).
+ * [diagnose] is the single place that knows the backends; facts carry [Evidence] provenance so a
+ * sentence in `MissingRenderMessage.kt` cannot assert something this run never observed.
  */
 
 /**
- * A fact, together with whether this invocation actually learned it.
- *
- * The point is that [Unobserved] is not a value with a default — it is a distinct case a caller has
- * to handle, so "we didn't look" can never be silently rendered as "it isn't so".
+ * A fact, together with whether this invocation learned it. [Unobserved] is a distinct case, so "we
+ * didn't look" can never render as "it isn't so".
  */
 sealed interface Evidence<out T> {
   /** [value] was learned from [source] during this invocation. */
@@ -52,14 +33,9 @@ sealed interface Evidence<out T> {
 fun <T> Evidence<T>.valueOrNull(): T? = (this as? Evidence.Observed<T>)?.value
 
 /**
- * Which *sort* of Gradle task a renderer is, which is what decides the remedy a message may offer.
- *
- * The distinction is not cosmetic. The historical guidance ("`composePreviewRender` reported
- * NO-SOURCE — the renderer test class wasn't on testClassesDirs") describes a `Test` task's failure
- * mode. `composePreviewRenderLottie` / `composePreviewRenderSvg` are `RenderPreviewsTask`s: no
- * `testClassesDirs`, no `@SkipWhenEmpty` input (so NO-SOURCE is not a state they can report at
- * all), no `composePreviewRender-reports` artifact. Attaching the remedy to this enum is what makes
- * a wrong-task remedy unwriteable rather than reviewable.
+ * Which sort of renderer task owns a preview, which decides the remedy a message may offer: the
+ * kind-specific tasks are `RenderPreviewsTask`s with no `testClassesDirs` and can't report
+ * NO-SOURCE.
  */
 enum class RendererTaskKind {
   /** `composePreviewRender` — the module's main renderer, and the only NO-SOURCE-capable one. */
@@ -68,13 +44,7 @@ enum class RendererTaskKind {
   KIND_SPECIFIC,
 }
 
-/**
- * The renderer task that owns a preview's outputs.
- *
- * [path] is qualified (`:app:composePreviewRenderLottie`) because task *names* repeat across
- * modules: every Android module registers its own, with independently different outcomes, so a bare
- * name can neither group entries nor be printed as something to go and inspect.
- */
+/** The renderer task that owns a preview's outputs; [path] is qualified since names repeat. */
 data class RendererTask(
   val name: String,
   /** `:module:name`, or empty when the module isn't known. */
@@ -93,14 +63,9 @@ data class RendererTask(
 }
 
 /**
- * How this run learned that an output exists, which bounds what may be said about its sidecar.
- *
- * The distinction is load-bearing for `@PreviewParameter` fan-outs. A declared output is one the
- * manifest names, so the renderer targeted it this invocation. A scanned one was found by globbing
- * the renders directory, and the row it belongs to may not exist any more: a provider value that is
- * renamed or removed leaves its `.error.json` behind, because both renderers'
- * `deleteStaleFanoutFiles` match the template's `png` / `gif` extension and never the sidecar
- * companion.
+ * How this run learned an output exists. A scanned `@PreviewParameter` row may no longer exist: a
+ * removed provider value leaves its `.error.json` behind (`deleteStaleFanoutFiles` only matches
+ * `png` / `gif`).
  */
 enum class OutputDiscovery {
   /** Named by the manifest — the owning renderer targeted it this run. */
@@ -129,12 +94,8 @@ data class SidecarFinding(
 )
 
 /**
- * Everything known about one preview that produced no PNG — and, for each fact, how it was learned.
- *
- * [owner] is identity, derivable from the manifest, so it is a plain value. [ownerRun] is
- * behaviour, knowable only from the build, so it carries provenance. That split is the whole
- * design: a sentence about what a task *did* has to reach through [ownerRun] and therefore cannot
- * be written when nothing was observed.
+ * Everything known about one preview that produced no PNG. [owner] is identity from the manifest;
+ * [ownerRun] is behaviour observed from the build and so carries provenance.
  */
 data class PreviewDiagnosis(
   val id: String,
@@ -151,22 +112,15 @@ data class PreviewDiagnosis(
   val sidecars: List<SidecarFinding> = emptyList(),
 ) {
   /**
-   * `true` when the owning renderer ran (or was up-to-date, i.e. its outputs are current), `false`
-   * when it was skipped, `null` when this run observed nothing about it.
-   *
-   * Gradle reports NO-SOURCE as a skip, and NO-SOURCE is exactly the wiring bug the historical
-   * guidance was written for — a run where the file on disk cannot have come from this render.
+   * `true` when the owning renderer ran or was up to date, `false` when skipped (including
+   * NO-SOURCE), `null` when unobserved.
    */
   val ownerRan: Boolean?
     get() = ownerRun.valueOrNull()?.let { it != GradleTaskDisposition.SKIPPED }
 
   /**
-   * How confidently this run can date [finding].
-   *
-   * Two independent things have to hold before a sidecar is this invocation's work: the owning
-   * renderer has to have run, **and** it has to have targeted that output. A scanned fan-out row
-   * fails the second even when the first holds — nothing deletes a fan-out `.error.json` when its
-   * provider value goes away, so the file may describe a row this run never attempted.
+   * How confidently this run can date [finding]: only a declared output of a renderer that ran is
+   * this run's.
    */
   fun dating(finding: SidecarFinding): SidecarDating =
     when {
@@ -196,34 +150,20 @@ data class PreviewDiagnosis(
     get() = sidecars.isEmpty() || staleSidecars
 }
 
-/**
- * The renderer task every backend registers — Robolectric on Android, the JVM renderer elsewhere.
- */
+/** The renderer task every backend registers. */
 internal const val MAIN_RENDER_TASK: String = "composePreviewRender"
 
 /**
- * Preview kinds the **Android** backend renders from their own task rather than from
- * [MAIN_RENDER_TASK], because Robolectric can inflate neither (`RobolectricRenderTest` skips both):
- * a Lottie asset needs Compottie and an SVG needs Skia, so `AndroidPreviewSupport` registers
- * `composePreviewRenderLottie` / `composePreviewRenderSvg` on the desktop renderer's classpath,
- * each writing into its own disjoint `lottie-renders/` / `svg-renders/` dir, and folds both into
- * `composePreviewRenderAll`.
- *
- * They matter because they run *independently* of the Robolectric task: a NO-SOURCE
- * `composePreviewRender` says nothing about a Lottie preview whose own renderer ran and threw two
- * seconds ago.
+ * Preview kinds the Android backend renders from their own desktop-classpath task, since
+ * Robolectric can't inflate them. They run independently of [MAIN_RENDER_TASK], so its NO-SOURCE
+ * says nothing about them.
  */
 private val KIND_RENDER_TASKS =
   mapOf("LOTTIE" to "composePreviewRenderLottie", "SVG" to "composePreviewRenderSvg")
 
 /**
- * The task that owns a [kind] preview's outputs in [modulePath].
- *
- * The desktop backend has no per-kind split (`RenderPreviewsTask` renders every kind from
- * [MAIN_RENDER_TASK]), which is exactly how the two are told apart: the kind tasks are
- * unconditional `composePreviewRenderAll` dependencies on Android, so a run that reached this
- * report has an outcome for them — an `onlyIf`-disabled task still reports SKIPPED. No kind task in
- * [taskOutcomes] therefore means no split in this module, and the main renderer owns the output.
+ * The task that owns a [kind] preview's outputs in [modulePath]. Kind tasks always report an
+ * outcome on Android (even SKIPPED), so their absence from [taskOutcomes] means no split here.
  */
 internal fun ownerTaskFor(
   modulePath: String,
@@ -325,33 +265,12 @@ private fun declaredOutputsOf(manifest: PreviewManifest): Set<String> =
     .toSet()
 
 /**
- * The module-relative outputs this run's renderer **could have written a sidecar to** for [result].
- *
- * This is the list that decides what the report is allowed to quote, so it models the renderers
- * rather than guessing:
- * - Every output the manifest declares — each capture's `renderOutput` and each data product's — is
- *   an independent render attempt, and both renderers write the throwable beside the artefact they
- *   were producing. All of them are read, not just the first: a time / scroll fan-out can die
- *   differently at 1000ms than at 500ms.
- * - `renders/<id>.png` (the default stem) only when the **first** capture declares no path, or the
- *   manifest declares nothing at all, or doesn't describe the preview. `RobolectricRenderTest`
- *   anchors the preview-level sidecar on `captures.firstOrNull()` resolved through
- *   `renderOutput.substringAfterLast('/').ifEmpty { "<id>.png" }` (or the first data product when
- *   there are no captures), deletes any stale file there before rendering, and writes the throwable
- *   there from its outer catch; its two per-job writes need a `.gif` extension or a data-product
- *   path, so neither can land on the default stem. A blank capture in any *later* position
- *   therefore cannot produce a fresh default-stem sidecar, and quoting one would report whatever an
- *   older manifest left behind — nothing deletes a stale `.error.json`, since `cleanStaleRenders`
- *   walks `png`/`gif` only. The desktop backend is more permissive (`RenderPreviewsTask` resolves
- *   every blank capture to `<id>.png` and forks the renderer there); modelling Android is
- *   deliberate — it is the stricter of the two, so the risk it takes is "we didn't look" rather
- *   than "we asserted something false", and the shape where they disagree (a declared first capture
- *   followed by a blank one) is not something discovery emits, since it writes a `renderOutput` for
- *   every capture.
- * - Each `@PreviewParameter` fan-out file. The renderer writes one output per provider value
- *   (`<stem>_<label>.png`) and its sidecar beside *that*, which neither the declared template
- *   output nor the default stem ever pointed at — so a per-value failure used to be invisible to
- *   the CLI.
+ * The module-relative outputs this run's renderer could have written a sidecar to for [result]:
+ * - every declared capture and data-product output (each is an independent attempt);
+ * - `renders/<id>.png` only when the first capture declares no path or nothing is declared. This
+ *   models `RobolectricRenderTest`, the stricter backend, so a stale default-stem sidecar from an
+ *   older manifest is never quoted;
+ * - each `@PreviewParameter` fan-out file (`<stem>_<label>.png`), found by scanning.
  */
 private fun refreshableOutputs(
   result: PreviewResult,
@@ -370,10 +289,8 @@ private fun refreshableOutputs(
     preview == null ||
       declared.isEmpty() ||
       preview.captures.firstOrNull()?.renderOutput?.isEmpty() == true
-  // Every template the renderer inserts a parameter suffix into: each declared capture, each
-  // declared data product (`RenderPreviewsTask` forks the renderer per product with the product's
-  // own path, and the renderer suffixes whatever path it is handed), and the effective default for
-  // a blank capture (the plugin resolves it to `renders/<id>.png` *before* the suffix goes in).
+  // Every template the renderer suffixes: each capture (blank resolved to the default stem first)
+  // and each data product.
   val fanoutTemplates =
     if (preview?.params?.previewParameterProviderClassName == null) emptyList()
     else
@@ -394,16 +311,9 @@ private fun refreshableOutputs(
 }
 
 /**
- * The `<stem>_<label>.<ext>` fan-out outputs of a `@PreviewParameter` preview that currently have a
- * sidecar on disk, found by listing each of [templates]' directories.
- *
- * A glob rather than a computed list because only the provider knows its values — the same reason
- * `PreviewResultBuilder.expandParamCaptures` globs for the PNGs. Two exclusions, both about not
- * attributing one preview's failure to another: a name another preview declares as its own output,
- * and a name a *more specific sibling template* owns — with `Foo.png` and `Foo_Dark.png` in one
- * directory, `Foo_Dark_Alice.png` is `Foo_Dark`'s row even though it matches `Foo_`. That second
- * rule is [parameterFanoutOwnedBySibling], shared with the builder that expands the same glob for
- * files that exist, because two copies of it would drift.
+ * The `<stem>_<label>.<ext>` fan-out outputs of [templates] that have a sidecar on disk, found by
+ * listing (only the provider knows its values). Excludes names another preview declares and rows a
+ * more specific sibling template owns ([parameterFanoutOwnedBySibling]).
  */
 private fun paramFanoutOutputs(
   templates: List<String>,

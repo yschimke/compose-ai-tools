@@ -9,51 +9,17 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * The **project version pin** — one place a consumer names the compose-preview version, honoured by
- * every entrypoint (issue #3738).
+ * The project version pin: one place a consumer names the compose-preview version, honoured by
+ * every entrypoint so the CLI, the VS Code extension and CI don't render against different releases
+ * (issue #3738).
  *
- * Before this, each entrypoint picked a version on its own: the CLI auto-injected the plugin at its
- * own [BUNDLE_VERSION], the VS Code extension at its bundled `BUNDLED_PLUGIN_VERSION`, and the
- * `install` / `apply` composite actions at whatever their `version:` input resolved to (`latest` by
- * default). A project driven from more than one of those — the normal case: a developer's CLI, a
- * teammate's VS Code, and CI — silently rendered against three different releases, which is the
- * skew class issue #1920 documented from the CI side. The pin is the fix: **name the version once,
- * and every entrypoint reads it from the project.**
+ * Precedence: `--plugin-version`, then `COMPOSE_PREVIEW_VERSION`, then `gradle.properties`
+ * `composePreview.version` (what `compose-preview pin` writes), then `gradle/libs.versions.toml`
+ * `[versions] composePreviewCli`. Nothing found means the caller's bundled version.
  *
- * # Sources, in precedence order
- * 1. `--plugin-version <v>` on the CLI invocation — a per-run override, nothing is read from disk.
- * 2. `COMPOSE_PREVIEW_VERSION` in the environment — the CI / container override.
- * 3. `gradle.properties` → `composePreview.version` — the canonical pin, and what
- *    [writeGradlePropertiesPin] (`compose-preview pin <version>`) writes. Universal: every Gradle
- *    project has this file, no version catalog required, and it sits in the same `composePreview.*`
- *    namespace as the plugin's other Gradle-property knobs.
- * 4. `gradle/libs.versions.toml` → `[versions] composePreviewCli` — the pre-existing, Renovate-
- *    friendly convention the `install` / `apply` actions already read via `version: catalog`. Kept
- *    as a source so consumers who already pin that way get the CLI and extension honouring it for
- *    free, with no new file to add.
- *
- * Nothing found → `null`, and the caller falls back to its own bundled version. That keeps the
- * zero-config path exactly as it was: a project with no pin behaves as it did before.
- *
- * # Scope: the pin governs auto-inject
- * The pin decides what **auto-inject** applies — the zero-config path ([autoInjectInitScriptArgs])
- * where the CLI and the extension inject the plugin via `--init-script`, which is how the large
- * majority of consumers run. A module that declares the plugin itself (`id("…") version "…"` or a
- * catalog alias) keeps its own version and the pin does not touch it. That is deliberate, not a
- * gap: [scanForComposeAiPreviewDeclaration] already skips injecting into such a module — Gradle's
- * `plugins {}` DSL rejects `id(…) version "…"` when the same plugin is also on the buildscript
- * classpath — so the build script's declaration is the only version in play there. Nothing here
- * ever rewrites a build script or a version catalog.
- *
- * # What a pin does *not* do
- * It cannot change the version of the binary already running. A CLI on 1.1.0 driving a project
- * pinned to 1.0.5 injects the **pinned** plugin (the pin is authoritative — that is the point) and
- * warns once, pointing at `compose-preview update`. [warnOnCliSkew] owns that message; `doctor`
- * reports the same state as a `project.version-pin` check.
- *
- * Kept in lockstep with the VS Code extension's `versionPin.ts` and the composite actions'
- * `resolve-version.py` (`version: pin`) — three implementations of one precedence list, each
- * covered by its own tests.
+ * The pin only governs auto-inject ([autoInjectInitScriptArgs]); a module declaring the plugin
+ * itself keeps its own version, and nothing here rewrites build scripts. Kept in lockstep with the
+ * extension's `versionPin.ts` and the actions' `resolve-version.py`.
  */
 internal const val VERSION_PIN_PROPERTY = "composePreview.version"
 
@@ -64,29 +30,16 @@ internal const val VERSION_PIN_ENV = "COMPOSE_PREVIEW_VERSION"
 internal const val VERSION_PIN_CATALOG_PATH = "gradle/libs.versions.toml"
 
 /**
- * `[versions]` key read from the catalog. Matches the `catalog-key` default the `install` and
- * `apply` composite actions already document, so a project pinned for CI is pinned for the CLI.
+ * `[versions]` key read from the catalog; the `install` / `apply` actions' `catalog-key` default.
  */
 internal const val VERSION_PIN_CATALOG_KEY = "composePreviewCli"
 
 /**
- * The **build root** for [start]: the nearest ancestor (inclusive) holding a settings file, else
- * the nearest ancestor holding a Gradle wrapper. Null when neither exists above [start].
+ * The build root for [start]: the nearest ancestor (inclusive) holding a settings file, else the
+ * nearest holding a Gradle wrapper. Shared by [Command.findProjectRoot] and [PinCommand].
  *
- * Shared by [Command.findProjectRoot] and [PinCommand] so "which directory is the project" has
- * exactly one answer across the CLI.
- *
- * # Why settings, not the wrapper (issue #5031)
- * This used to walk up looking for `gradlew` alone, on the assumption that a wrapper marks a build.
- * It does not — a `settings.gradle(.kts)` does. A **nested build that borrows its parent
- * repository's wrapper** (thunderbird-android's `components/`: its own settings file,
- * `rootProject.name = "components"`, three projects, no `gradlew` of its own) was therefore walked
- * straight past, and the CLI silently drove the *enclosing* build instead — reporting the root
- * build's project count and the root build's configuration failures for a build the user never
- * named. The wrapper search stays as the fallback, for the rare build with no settings file at all.
- *
- * The wrapper is still what supplies the Gradle **distribution**; see [findGradleWrapperRoot],
- * which `GradleConnection` uses to pick one up from an ancestor when the build root has no wrapper.
+ * Settings first because a nested build may borrow its parent's wrapper (issue #5031); the wrapper
+ * still supplies the distribution, see [findGradleWrapperRoot].
  */
 internal fun findGradleProjectRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start
@@ -102,9 +55,8 @@ internal fun hasSettingsFile(dir: File): Boolean =
   File(dir, "settings.gradle.kts").isFile || File(dir, "settings.gradle").isFile
 
 /**
- * Walks up from [start] returning the first directory holding a `gradlew`. This is *not* "which
- * build am I in" ([findGradleProjectRoot] answers that) — it is only "whose wrapper, and therefore
- * whose Gradle distribution, applies here".
+ * The nearest ancestor of [start] holding a `gradlew`: whose Gradle distribution applies, not which
+ * build this is ([findGradleProjectRoot]).
  */
 internal fun findGradleWrapperRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start
@@ -116,16 +68,11 @@ internal fun findGradleWrapperRoot(start: File = File(".").absoluteFile): File? 
 }
 
 /**
- * The **VCS checkout root** for [start]: the nearest ancestor (inclusive) holding a `.git` entry,
- * or null when [start] is not inside a Git checkout. Matches a file as well as a directory, so a
- * worktree or submodule checkout (whose `.git` is a file) counts.
+ * The nearest ancestor (inclusive) holding a `.git` file or directory, or null outside a checkout.
  *
- * This is a different question from [findGradleProjectRoot], and the difference is load-bearing for
- * trust: the build root can be a *nested* directory inside the checkout, while "what may a pull
- * request have written?" is bounded by the checkout. [confirmProjectServeHost] uses this to decide
- * whether a `GRADLE_USER_HOME` is really outside the tree — against the build root alone, a
- * repository whose nested build is the one being driven could confirm its own
- * `composePreview.serveUrl` from a committed `.gradle/gradle.properties` one level up.
+ * Distinct from the build root for trust: [confirmProjectServeHost] bounds "what may a pull request
+ * have written" by the checkout, so a nested build can't confirm its own `composePreview.serveUrl`
+ * from a committed `.gradle/gradle.properties` one level up.
  */
 internal fun findVcsCheckoutRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start.absoluteFile
@@ -148,13 +95,9 @@ internal enum class VersionPinSource(val display: String) {
 internal data class ResolvedVersionPin(val version: String, val source: VersionPinSource)
 
 /**
- * Resolves the project's version pin, or `null` when nothing pins a version.
- *
- * [projectRoot] is the Gradle root (the directory holding `gradlew`); pass `null` when no project
- * has been located yet — the flag and environment sources still apply. Every disk read goes through
- * [fileSystem] and is failure-tolerant: an unreadable or malformed `gradle.properties` / catalog
- * falls through to the next source rather than failing the run, because a broken pin must never be
- * worse than no pin.
+ * Resolves the project's version pin, or `null` when nothing pins a version. [projectRoot] may be
+ * null before a project is located. Unreadable or malformed files fall through to the next source:
+ * a broken pin must never be worse than no pin.
  */
 internal fun resolveVersionPin(
   projectRoot: File?,
@@ -178,34 +121,19 @@ internal fun resolveVersionPin(
   return null
 }
 
-/**
- * Trims a raw pin value and drops a leading `v` (`v1.1.0` → `1.1.0`), matching what
- * `resolve-version.py` does with catalog and literal inputs. Blank values are treated as absent so
- * an empty `composePreview.version=` line doesn't pin the project to the empty string.
- */
+/** Trims a raw pin and drops a leading `v`, as `resolve-version.py` does; blank is absent. */
 private fun String.normalizedPin(): String? = trim().removePrefix("v").takeIf { it.isNotEmpty() }
 
-/**
- * Reads `composePreview.version` from [projectRoot]`/gradle.properties`.
- *
- * Parsed with [Properties] (loaded from the Okio-read text, so the file access still goes through
- * the injected [fileSystem]) rather than a hand-rolled `split('=')`: `gradle.properties` is a Java
- * properties file, so `key : value`, continuation lines, and escapes are all legal and a naive
- * parser would silently misread them.
- */
+/** Reads `composePreview.version` from [projectRoot]`/gradle.properties`. */
 internal fun readGradlePropertiesPin(
   projectRoot: File,
   fileSystem: FileSystem = SystemFileSystem,
 ): String? = readGradleProperty(projectRoot, VERSION_PIN_PROPERTY, fileSystem)?.normalizedPin()
 
 /**
- * One `composePreview.*` value out of [projectRoot]`/gradle.properties`, trimmed, or null when the
- * file, the parse, or the key is missing. The raw value — a caller that needs it normalised (the
- * version pin strips a leading `v`) does that itself, since no other property wants it.
- *
- * Extracted from [readGradlePropertiesPin] when the preview-server URL became the second thing read
- * this way ([resolveProjectServeUrl]): both want the same failure-tolerant read of the same file,
- * and two copies would be two places to get properties-file escaping wrong.
+ * One trimmed value out of [projectRoot]`/gradle.properties`, or null when the file, parse or key
+ * is missing. Parsed with [Properties] since `key : value`, continuations and escapes are all
+ * legal.
  */
 internal fun readGradleProperty(
   projectRoot: File,
@@ -224,12 +152,8 @@ internal fun readGradleProperty(
 }
 
 /**
- * Reads the `[versions]` entry named [key] out of [projectRoot]`/`[catalogPath].
- *
- * Deliberately a scoped regex scan rather than a TOML parse: the CLI has no TOML dependency, and
- * the same shape is already scanned by hand in [renderInitScript]'s catalog-accessor helper. We
- * bound the search to the `[versions]` table so an identically named key under `[libraries]` or
- * `[plugins]` can't be mistaken for the pin.
+ * Reads the `[versions]` entry named [key] out of [projectRoot]`/`[catalogPath]. A regex scan
+ * bounded to the `[versions]` table, since the CLI has no TOML dependency.
  */
 internal fun readCatalogPin(
   projectRoot: File,
@@ -251,17 +175,8 @@ internal fun readCatalogPin(
 
 /**
  * Writes (or replaces) `composePreview.version=<version>` in [projectRoot]`/gradle.properties`,
- * returning the file it wrote.
- *
- * Line-based rather than [Properties]-based on purpose: `Properties.store` drops every comment and
- * reorders the file, and `gradle.properties` is a hand-maintained, comment-heavy file in most
- * projects. The first existing pin line is rewritten in place (keeping its position); otherwise the
- * pin is appended with a short comment explaining what reads it. A missing file is created.
- *
- * **Duplicate assignments are collapsed, not left behind.** A properties file may legally assign
- * the same key twice, and `Properties.load` resolves the *last* one — so rewriting only the first
- * would report a new pin while [readGradlePropertiesPin] kept resolving the old one. Every
- * assignment after the first is dropped so what we wrote is what the file then resolves to.
+ * returning the file. Line-based so the user's comments and order survive (`Properties.store` would
+ * drop them). Later duplicate assignments are removed, since `Properties.load` takes the last.
  */
 internal fun writeGradlePropertiesPin(
   projectRoot: File,
@@ -294,13 +209,9 @@ internal fun writeGradlePropertiesPin(
 }
 
 /**
- * Removes **every** `composePreview.version` assignment (and the comment block this file wrote
- * above the first one) from [projectRoot]`/gradle.properties`. Returns true when at least one pin
- * line was removed.
- *
- * All of them, not just the first: a properties file may legally assign the same key twice, and
- * `Properties.load` takes the last — so leaving a later duplicate behind would report the pin as
- * removed while the project stayed pinned.
+ * Removes every `composePreview.version` assignment (a later duplicate would otherwise keep the
+ * project pinned) and the comment block [writeGradlePropertiesPin] added. True when anything was
+ * removed.
  */
 internal fun removeGradlePropertiesPin(
   projectRoot: File,
@@ -326,13 +237,8 @@ internal fun removeGradlePropertiesPin(
 }
 
 /**
- * True for a (non-comment) line assigning [VERSION_PIN_PROPERTY].
- *
- * Accepts all three separators a Java properties file allows — `key=v`, `key:v`, and bare `key v` —
- * because [readGradlePropertiesPin] reads the file through [Properties], which accepts all three. A
- * writer that recognised fewer forms than the reader would append a second assignment next to a
- * space-separated one it failed to see. The same grammar is mirrored in the extension's
- * `versionPin.ts` and both action scripts, which parse by regex rather than through [Properties].
+ * True for a non-comment line assigning [VERSION_PIN_PROPERTY] with any properties-file separator
+ * (`=`, `:` or whitespace), matching what [Properties] reads.
  */
 private fun String.isPinAssignment(): Boolean {
   val trimmed = trimStart()
@@ -340,9 +246,6 @@ private fun String.isPinAssignment(): Boolean {
   return PIN_ASSIGNMENT_RE.containsMatchIn(trimmed)
 }
 
-/**
- * `composePreview.version` followed by `=`, `:`, or whitespace — the properties-file separators.
- */
 private val PIN_ASSIGNMENT_RE =
   Regex("""^${Regex.escape(VERSION_PIN_PROPERTY)}(?:[ \t]*[=:]|[ \t]|$)""")
 
@@ -359,25 +262,16 @@ private fun pinComment(): String = PIN_COMMENT.joinToString("\n")
 private val cliSkewWarned = AtomicBoolean(false)
 
 /**
- * Warns when the project's pin names a version other than the CLI binary that is running.
- *
- * The pin still wins for the plugin we inject — a pin nobody honours is not a pin — but the daemon
- * and renderer the CLI *ships* are stuck at [BUNDLE_VERSION], so the two can genuinely disagree. A
- * cross-major disagreement is the sharp case (the render/daemon wire format changes across a major,
- * per docs/VERSIONING.md § 3), so it gets the stronger wording; within a major it's a nudge.
- *
- * Silent when no pin is set, when the pin equals [cliVersion], or when either version is a
- * `-SNAPSHOT` / unparseable string — a local snapshot build is deliberately allowed to drive a
- * pinned project without nagging.
+ * Warns when the pin names a version other than the running CLI, whose bundled daemon and renderer
+ * stay at [BUNDLE_VERSION]. Stronger wording across a major (wire format changes,
+ * docs/VERSIONING.md § 3). Silent with no pin, a match, or any `-SNAPSHOT`.
  */
 internal fun warnOnCliSkew(
   pin: ResolvedVersionPin?,
   cliVersion: String = BUNDLE_VERSION,
   stderr: (String) -> Unit = System.err::println,
   once: AtomicBoolean = cliSkewWarned,
-  // The version the "re-pin" remedy names. [MAVEN_LINE_VERSION], not [cliVersion]: a pin is a
-  // plugin coordinate, and advising someone to pin a version whose Central publish was skipped
-  // hands them a build that resolves nothing. The two differ only on such a release.
+  // The re-pin remedy must name a version that was published to Central.
   mavenLineVersion: String = MAVEN_LINE_VERSION,
 ) {
   if (pin == null || pin.version == cliVersion) return
@@ -399,24 +293,20 @@ internal fun warnOnCliSkew(
 }
 
 /**
- * The plugin version every entrypoint-driven Gradle invocation should apply: the project's pin when
- * there is one, else [fallback] (the caller's own bundled version). Emits the skew note via
- * [warnOnCliSkew] as a side effect, so callers get the diagnostic without threading it themselves.
+ * The plugin version to inject: the project's pin, else [fallback]. Emits [warnOnCliSkew] as a side
+ * effect.
  */
 internal fun resolvePluginVersion(
   projectRoot: File?,
   args: List<String> = emptyList(),
   env: (String) -> String? = System::getenv,
   fileSystem: FileSystem = SystemFileSystem,
-  // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]: this value becomes a Gradle coordinate, so it has
-  // to name a version that exists on Maven Central rather than the version this CLI happens to be.
-  // Identical today; see the KDoc on MAVEN_LINE_VERSION for when and why they diverge.
+  // Becomes a Gradle coordinate, so it must exist on Maven Central; see MAVEN_LINE_VERSION.
   fallback: String = MAVEN_LINE_VERSION,
   stderr: (String) -> Unit = System.err::println,
 ): String {
   val pin = resolveVersionPin(projectRoot, args, env, fileSystem)
-  // A `--plugin-version` override is the user saying "this run, that version" — they already know,
-  // so don't lecture them about it.
+  // An explicit `--plugin-version` needs no warning.
   if (pin?.source != VersionPinSource.FLAG) warnOnCliSkew(pin, fallback, stderr)
   return pin?.version ?: fallback
 }

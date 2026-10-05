@@ -11,102 +11,51 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Writes `ee/schimke/composeai/renderer/robolectric.properties` into a generated resources
- * directory added to the `composePreviewRender` test classpath.
+ * Writes package-level `robolectric.properties` files into a generated resources directory on the
+ * `composePreviewRender` test classpath: one for the composable lane (`…/renderer`), one for the
+ * app-tour lane (`…/apptour`) and one for the daemon (`…/daemon`).
  *
- * Robolectric reads package-level `robolectric.properties` from the classpath and merges its fields
- * into each test's effective config. `RobolectricRenderTestBase` deliberately carries NO `@Config`
- * or `@GraphicsMode` annotation so this file is the sole source of truth for those settings — see
- * that class's KDoc for the #142 motivation.
- *
- * Fields written unconditionally:
- * - `sdk=N` — the Android SDK level Robolectric targets. Resolved from the inputs below in priority
- *   order; see [resolveSdk] for the chain and the clamp-vs-fail behaviour around Robolectric's
- *   supported range (issue #1248).
- * - `graphicsMode=NATIVE` — routes Compose capture through HardwareRenderer, the only path that
- *   replays RenderNodes correctly for `roborazzi`'s `captureRoboImage`.
- * - `shadows=…ShadowFontsContractCompat` — globally registers the GoogleFont shadow so
- *   `Font(GoogleFont(...), provider)` renders without the consumer having to add `@Config(shadows =
- *   [...])`, alongside the coil, Wear-clock, Wear-gesture and paused-clock-hwui shadows the render
- *   lane needs. The last of those,
- *   [ShadowPausedClockHardwareRenderer][ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer],
- *   is what makes a capture that samples an animation reproducible — see the comment at the
- *   `shadows=` line below.
- *
- * Fields that depend on [useConsumerApplication]:
- * - Default ([useConsumerApplication] = false): the file pins
- *   `application=android.app.Application`, so Robolectric creates a plain Application and SKIPS the
- *   consumer's `onCreate()`. Consumer-side init that depends on platform features Robolectric
- *   doesn't emulate (BridgingManager on non-Wear sandboxes, Firebase, WorkManager, Play Services)
- *   no longer runs during preview rendering.
- * - Opt-out ([useConsumerApplication] = true): the file is written without `application=`, so
- *   Robolectric falls back to the manifest- declared Application class. Intended for preview setups
- *   that genuinely require their custom Application (e.g. Hilt's generated testing application).
+ * `RobolectricRenderTestBase` carries no `@Config` / `@GraphicsMode`, so these files are the sole
+ * source of `sdk=` ([resolveSdk]), `graphicsMode=NATIVE`, the global shadows, and `application=`.
+ * Unless [useConsumerApplication] is set, the Application is pinned to a plain
+ * `android.app.Application` so consumer `onCreate()` init (DI, Firebase, WorkManager, …) never runs
+ * in the sandbox.
  */
 @CacheableTask
 abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
   @get:Input abstract val useConsumerApplication: Property<Boolean>
 
   /**
-   * The same choice for the app-tour lane (`kind=ACTIVITY` / `kind=APP_TOUR`), which renders from
-   * its own test class in its own package and so gets its own properties file. Defaults to `true`
-   * on the extension: an Activity *is* the app, and the stub Application fails every Hilt / Koin /
-   * `AppComponentFactory` Activity outright. See
-   * [PreviewExtension.appTourUseConsumerApplication][ee.schimke.composeai.plugin.PreviewExtension.appTourUseConsumerApplication].
+   * [useConsumerApplication] for the app-tour lane (`kind=ACTIVITY` / `kind=APP_TOUR`). Defaults to
+   * true on the extension: an Activity is the app, and a stub Application breaks Hilt / Koin
+   * Activities.
    */
   @get:Input abstract val appTourUseConsumerApplication: Property<Boolean>
 
-  /**
-   * Explicit `composePreview.sdkVersion = N` override. When present, used verbatim — validated
-   * strictly against [MIN_SUPPORTED_SDK]..[MAX_SUPPORTED_SDK] (the consumer asked for a specific
-   * level, so an out-of-range value is a configuration error worth failing fast on).
-   */
+  /** Explicit `composePreview.sdkVersion`; out of range is a build failure. */
   @get:Input @get:Optional abstract val sdkOverride: Property<Int>
 
   /**
-   * Consumer's `android.compileSdk`, captured by [AndroidPreviewSupport] in `finalizeDsl`. Used
-   * when [sdkOverride] is absent. Auto-detected values above [MAX_SUPPORTED_SDK] are CLAMPED to
-   * [MAX_SUPPORTED_SDK] with a build warning rather than failing the task — a consumer on
-   * `compileSdk = 37` (e.g. for a transitive minCompileSdk requirement) should still get the
-   * best-effort render at the highest SDK Robolectric supports, not a build break.
+   * The consumer's `android.compileSdk`, captured in `finalizeDsl`. Values above the ceiling are
+   * clamped with a warning rather than failing the build.
    */
   @get:Input @get:Optional abstract val consumerCompileSdk: Property<Int>
 
-  /**
-   * Static fallback when neither [sdkOverride] nor [consumerCompileSdk] is set. Should equal
-   * [DEFAULT_SDK] in normal wiring; only reachable when AGP didn't supply a `compileSdk` and the
-   * user didn't override (unit-test setups).
-   */
+  /** Fallback when neither [sdkOverride] nor [consumerCompileSdk] is set (unit-test setups). */
   @get:Input abstract val defaultSdk: Property<Int>
 
   /**
-   * Overrides [MAX_SUPPORTED_SDK] at task execution time. Production consumers leave this unset and
-   * get the constant — `36` for Robolectric 4.16.1. The SDK compatibility matrix's snapshot probe
-   * cells set this to lift the ceiling alongside forcing a Robolectric snapshot that actually ships
-   * the higher API; without that pairing, lifting the ceiling silently turns runtime sandbox
-   * failures into "passed validation" then a worse runtime error.
-   *
-   * Don't expose on the public `composePreview` extension — this is a matrix-internal escape hatch,
-   * not a knob production builds should reach for. See `docs/SDK_COMPATIBILITY.md` and the
-   * `composeai.matrix.maxSupportedSdk` property in `:samples:sdk-matrix`.
+   * Lifts [MAX_SUPPORTED_SDK] for the SDK matrix's snapshot probe cells, paired with a Robolectric
+   * snapshot that ships the higher API (`composeai.matrix.maxSupportedSdk`). Deliberately not on
+   * the public extension.
    */
   @get:Input @get:Optional abstract val maxSupportedSdkOverride: Property<Int>
 
   /**
-   * Major version of the JVM that will run the `composePreviewRender` test (where Robolectric
-   * actually bootstraps the sandbox). Wired by [AndroidPreviewSupport] to the Gradle build JVM —
-   * the JVM the render Test forks into when the consumer configures no toolchain (e.g. Confetti).
-   * The SDK matrix forks tests into `composeai.matrix.jvmToolchain` and overrides this input
-   * directly. Left unset only by unit tests that drive [resolveSdk] directly, in which case it
-   * defaults to the running JVM.
-   *
-   * Robolectric 4.16.1 refuses to bootstrap an SDK [SDK_REQUIRING_JAVA_21] (Baklava) sandbox unless
-   * the test JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws an
-   * opaque `UnsupportedOperationException`, which fails *every* preview render rather than
-   * surfacing a clear message. When the build runs on an older JDK we lower the effective ceiling
-   * one level (to [MAX_SUPPORTED_SDK_BELOW_JAVA_21]) so a consumer on `compileSdk = 36` still
-   * renders at 35 instead of producing zero PNGs. The daemon path pins the same level for the same
-   * reason — see `RobolectricHost.ANDROID_SDK`.
+   * Major version of the JVM the render test forks into; defaults to the running JVM. Below
+   * [MIN_JAVA_FOR_SDK_36] the ceiling drops to [MAX_SUPPORTED_SDK_BELOW_JAVA_21], since Robolectric
+   * otherwise fails every render with an opaque `UnsupportedOperationException`. The daemon pins
+   * the same level (`RobolectricHost.ANDROID_SDK`).
    */
   @get:Input @get:Optional abstract val buildJavaMajor: Property<Int>
 
@@ -119,57 +68,29 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     dir.deleteRecursively()
     dir.mkdirs()
     val file = dir.resolve("robolectric.properties")
-    // `shadows=` registers our GoogleFont shadow globally for every test
-    // in this package. See [ShadowFontsContractCompat].
-    // `ShadowAsyncImagePainter` forces coil 2's `AsyncImagePainter.isPreview` to false so a
-    // preview render actually loads the image instead of painting a null placeholder (issue
-    // #2952). Shadowing a non-Android library class needs its package instrumented, hence the
-    // `instrumentedPackages` line below — both are inert when the consumer has no coil.
-    // `ShadowWearTimeSource` replaces the `currentTimeMillis()` both Wear Material and Wear
-    // Material3 `TimeText` read, so a preview showing the time renders a fixed `10:10` instead of
-    // the host wall clock and stops diffing on every run (issue #3239).
-    // `ShadowSdkGestureInputManager` replaces Wear Material3's device-only gesture bridge so raw
-    // public `Modifier.oneHandedGesture` components remain registrable and testable off-watch.
-    // Deliberately NOT here: `ShadowContextWrapperPermissionTracker`. `@PermissionPreview` already
-    // flips the rendered branch in this lane — `PermissionsController.set` mirrors grants into
-    // `ShadowApplication`, which `ContextCompat.checkSelfPermission` reads — and the tracker's only
-    // other job is recording queried permissions for the `compose/permissions` payload, which only
-    // the daemon's `data/fetch` can serve. Registering it here would collect a list nothing in this
-    // lane reads while routing every `ContextWrapper.checkPermission` through the connector's grant
-    // map, including previews with no annotation. Daemon-only by decision — issue #3698 and
-    // `docs/DATA_PRODUCTS.md`; `GenerateRobolectricPropertiesTaskTest` pins the absence.
-    // `ShadowPausedClockHardwareRenderer` keeps hwui's frame timestamps in the paused clock's own
-    // domain. Robolectric 4.17-beta-3's `ShadowNativeHardwareRenderer` rewrites them by
-    // `System.nanoTime() - ShadowPausedSystemClock.uptimeNanos()` — under a paused clock that
-    // offset is "however long this JVM has been up" and grows between frames, so every native
-    // render-thread animation (Material's `RippleDrawable` → `RenderNodeAnimator` above all) is
-    // paced by host wall-clock time instead of by the clock the render advances. A still draws one
-    // frame and cannot notice; anything sampling a component mid-animation can, and did: three
-    // renders of one commit produced three different `SwitchButtonOn.apng`s, 28–31 of 114 frames
-    // apart, and are byte-identical with this registered (issue #4578). The daemon registers the
-    // same shadow in `SandboxHoldingRunner` for issue #4159 — one class, both lanes, so a capture
-    // cannot pace its animations differently depending on which one produced it.
+    // Global shadows, each inert when the consumer lacks the library:
+    // - `ShadowFontsContractCompat`: GoogleFont renders without a per-test `@Config`.
+    // - `ShadowAsyncImagePainter`: coil 2 loads images instead of a preview placeholder (#2952).
+    // - `ShadowWearTimeSource`: Wear `TimeText` shows a fixed 10:10 (#3239).
+    // - `ShadowPausedClockHardwareRenderer`: keeps hwui frame timestamps on the paused clock, so
+    //   render-thread animations are reproducible (#4578); the daemon registers the same shadow.
+    // - `ShadowSdkGestureInputManager`: Wear M3 one-handed gestures work off-watch.
+    // `ShadowContextWrapperPermissionTracker` is deliberately daemon-only (#3698);
+    // `GenerateRobolectricPropertiesTaskTest` pins its absence.
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
         "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
         "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
         "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager"
-    // `androidx.wear.compose.materialcore.ResourcesKt` is a CLASS name, not a package: Robolectric
-    // matches `instrumentedPackages` entries as plain class-name prefixes, so naming the class
-    // instruments exactly the one `ShadowWearTimeSource` targets — and nothing else in Wear's
-    // rendering path. Both halves are load-bearing here too: Robolectric can't shadow a class it
-    // didn't rewrite, so dropping this leaves the shadow inert and Wear clocks drifting. Inert when
-    // the consumer has no wear-compose.
+    // Robolectric can only shadow classes it instruments. Entries are class-name prefixes, so
+    // naming `ResourcesKt` instruments just the class `ShadowWearTimeSource` targets.
     val instrumentedPackagesLine =
       "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
         "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl"
-    // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
-    // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
-    // resolving `@Config.application()`'s `android.app.Application` default
-    // during test-class discovery — that resolution fails under some
-    // JVM/classloader combinations and produces `ClassNotFoundException:
-    // android.app.Application`. See issue #142.
+    // Not on `@Config`: JUnit resolving `@Config.application()`'s default during discovery can
+    // throw
+    // `ClassNotFoundException: android.app.Application` (#142).
     val sdkLine = "sdk=$sdkLevel"
     val graphicsLine = "graphicsMode=NATIVE"
     val body =
@@ -200,24 +121,10 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
       }
     file.writeText(body)
 
-    // The app-tour lane ([ee.schimke.composeai.apptour.AppTourRobolectricRenderTest]) is a second
-    // render class in a package of its own, and this is why it exists: Robolectric resolves the
-    // Application per test CLASS, from the properties files merged down that class's package
-    // hierarchy, so two previews in one manifest cannot have different Applications unless they are
-    // rendered by two classes. Composable previews want the stub; an Activity is the app and wants
-    // the manifest's own Application, without which every Hilt / Koin / `AppComponentFactory`
-    // Activity fails on launch.
-    //
-    // `ee.schimke.composeai.apptour` is NOT nested under `…renderer` precisely so this file starts
-    // clean: Robolectric merges parent-package properties into a child's, so a nested package would
-    // inherit the `application=android.app.Application` line above and have to override it. With a
-    // sibling package, omitting `application=` here means exactly what it says — fall back to the
-    // merged manifest.
-    //
-    // Everything else is copied rather than shared: `sdk`/`graphicsMode`/`shadows`/
-    // `instrumentedPackages` must match the composable lane or the same module would render its
-    // activities at a different API level, or without the font/coil/clock shadows, than its
-    // composables.
+    // The app-tour lane ([ee.schimke.composeai.apptour.AppTourRobolectricRenderTest]) has its own
+    // class because Robolectric resolves the Application per test class. Its package is a sibling,
+    // not nested under `…renderer`, so it doesn't inherit the stub `application=` line. The other
+    // fields are copied so activities and composables render identically.
     val appTourDir = outputDir.get().asFile.resolve("ee/schimke/composeai/apptour")
     appTourDir.deleteRecursively()
     appTourDir.mkdirs()
@@ -245,21 +152,10 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
           .trimMargin()
       )
 
-    // The daemon's Robolectric path ([ee.schimke.composeai.daemon.RobolectricHost.SandboxRunner],
-    // package `ee.schimke.composeai.daemon`) does NOT read the renderer-package file written above
-    // —
-    // Robolectric only merges `robolectric.properties` from the running test class's own package
-    // hierarchy. Its historical Application override
-    // ([ee.schimke.composeai.daemon.SandboxHoldingRunner.buildGlobalConfig]) is `@Deprecated` in
-    // Robolectric 4.16 and no longer merged over the consumer's manifest-declared Application, so
-    // the
-    // daemon ends up running the consumer's `Application.onCreate()`
-    // (Koin/Hilt/Firebase/WorkManager)
-    // and crashes every render sandbox — no sandbox becomes render-ready and live previews never
-    // update. Mirror the override into the daemon's own package so the same proven properties-file
-    // mechanism applies. `sdk`/`graphicsMode` come from `@Config`/`@GraphicsMode` on
-    // `SandboxRunner`
-    // (class-level config outranks this package file), so only the `application` line belongs here.
+    // The daemon's [ee.schimke.composeai.daemon.RobolectricHost.SandboxRunner] only reads its own
+    // package's file, and Robolectric 4.16 no longer merges the deprecated `buildGlobalConfig`
+    // Application override, so without this the consumer's `onCreate()` crashes every sandbox.
+    // `sdk` / `graphicsMode` come from `@Config` on `SandboxRunner`.
     val daemonDir = outputDir.get().asFile.resolve("ee/schimke/composeai/daemon")
     daemonDir.deleteRecursively()
     daemonDir.mkdirs()
@@ -293,8 +189,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    */
   internal fun resolveSdk(): Int {
     val javaMajor = buildJavaMajor.orNull ?: Runtime.version().feature()
-    // Robolectric's max SDK for *this build* — the static/overridden jar ceiling, then lowered when
-    // the test JVM is too old to bootstrap the top level (see [buildJavaMajor]).
+    // The jar ceiling, lowered when the test JVM is too old for the top level.
     val jarCeiling = maxSupportedSdkOverride.orNull ?: MAX_SUPPORTED_SDK
     val ceiling =
       if (javaMajor < MIN_JAVA_FOR_SDK_36) minOf(jarCeiling, MAX_SUPPORTED_SDK_BELOW_JAVA_21)
@@ -343,75 +238,31 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     return defaultSdk.get()
   }
 
-  /**
-   * Tail clause for the strict-override error message, naming the JDK gate when the effective
-   * ceiling was lowered below the jar ceiling because the build JVM is older than
-   * [MIN_JAVA_FOR_SDK_36]. Empty otherwise so the JDK-21+ path reads unchanged.
-   */
+  /** Names the JDK gate in the override error when it lowered the ceiling. */
   private fun jdkCeilingSuffix(javaMajor: Int, ceiling: Int, jarCeiling: Int): String =
     if (ceiling < jarCeiling)
       "; SDK > $ceiling needs JDK $MIN_JAVA_FOR_SDK_36+, this build is on JDK $javaMajor"
     else ""
 
   companion object {
-    /**
-     * Floor of Robolectric's supported `sdk=` range. Robolectric 4.16.x ships
-     * `android-all-instrumented` jars for API 21 (LOLLIPOP) and above; setting `sdk=` below this
-     * fails sandbox bootstrap with a missing-jar error rather than the nicer message this task
-     * emits.
-     */
+    /** Lowest API with an `android-all-instrumented` jar. */
     internal const val MIN_SUPPORTED_SDK: Int = 21
 
     /**
-     * Ceiling of the bundled Robolectric's supported `sdk=` range. Pinned to API 36 because
-     * `gradle/libs.versions.toml` pins `robolectric = "4.16.1"`, whose `android-all-instrumented`
-     * jars top out at API 36 (Baklava). Auto-detected `compileSdk` values above this clamp here so
-     * consumers don't trip a runtime sandbox failure (`IllegalArgumentException: API level N is not
-     * available`) — they get a build warning and a best-effort render at API 36 instead.
-     *
-     * Bump in lockstep with `libs.robolectric` in `gradle/libs.versions.toml`. The SDK matrix's
-     * snapshot probe cells (see `docs/SDK_COMPATIBILITY.md`) lift this via the
-     * [maxSupportedSdkOverride] escape hatch when paired with a Robolectric snapshot that actually
-     * ships the higher API; production consumers shouldn't reach for that knob.
-     *
-     * This is the *jar* ceiling. Robolectric additionally refuses to bootstrap an SDK 36 sandbox
-     * unless the test JVM is JDK 21+ (`DefaultSdkProvider.verifySupportedSdk` throws a bare
-     * `UnsupportedOperationException`, not the clear message you'd hope for). On older JDKs the
-     * effective ceiling drops to [MAX_SUPPORTED_SDK_BELOW_JAVA_21] — see [buildJavaMajor] and
-     * [resolveSdk] — so a `compileSdk = 36` consumer on JDK 17 renders at 35 instead of failing
-     * every preview.
+     * Highest API the bundled Robolectric ships a jar for; bump with `libs.robolectric`. The
+     * effective ceiling can be lower on old JDKs; see [buildJavaMajor].
      */
     internal const val MAX_SUPPORTED_SDK: Int = 36
 
-    /**
-     * First Android SDK level Robolectric gates behind the test JVM's Java version. Robolectric
-     * 4.16.1 refuses to bootstrap a sandbox for [SDK_REQUIRING_JAVA_21] (API 36, Baklava) unless
-     * the JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws a bare
-     * `UnsupportedOperationException`, failing every preview render instead of surfacing a clear
-     * message.
-     */
+    /** First API Robolectric refuses to bootstrap below JDK [MIN_JAVA_FOR_SDK_36]. */
     internal const val SDK_REQUIRING_JAVA_21: Int = 36
 
-    /**
-     * JDK major version Robolectric requires before it will bootstrap an [SDK_REQUIRING_JAVA_21]
-     * sandbox.
-     */
     internal const val MIN_JAVA_FOR_SDK_36: Int = 21
 
-    /**
-     * Effective Robolectric SDK ceiling when the render JVM is older than [MIN_JAVA_FOR_SDK_36].
-     * One level below [SDK_REQUIRING_JAVA_21] so a consumer on `compileSdk = 36` still renders
-     * (at 35) under JDK 17 rather than failing every preview. Mirrors
-     * `RobolectricHost.ANDROID_SDK`.
-     */
+    /** Ceiling below JDK [MIN_JAVA_FOR_SDK_36]; mirrors `RobolectricHost.ANDROID_SDK`. */
     internal const val MAX_SUPPORTED_SDK_BELOW_JAVA_21: Int = 35
 
-    /**
-     * Default Robolectric SDK when neither the consumer's `android.compileSdk` nor
-     * `composePreview.sdkVersion` is set. Matches the minimum we expect any AGP consumer to be on;
-     * AGP itself raises a build error if `compileSdk` is unset, so in practice this default is only
-     * reached by unit tests that drive the task directly without an `android { … }` block.
-     */
+    /** SDK when nothing else sets one; AGP requires `compileSdk`, so only unit tests reach it. */
     internal const val DEFAULT_SDK: Int = 35
   }
 }

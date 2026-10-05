@@ -30,128 +30,72 @@ public const val BUNDLE_WEB_DIR: String = "web"
 public const val BUNDLE_PREVIEWS_DIR: String = "previews"
 
 /**
- * Suffix for the per-preview semantics blob carried beside `previews/<id>.png` (issue #1843). The
- * payload is the `compose/semantics`
- * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload] tree — per-node bounds,
- * label/text, and resolved foreground/background colours — the shape the design-parity static
- * bundle reader consumes as a sibling of the rendered PNG. The bundle copy replaces Compose's
- * per-process node ids with the payload's stable refs; the daemon's live data product keeps its
- * native ids for same-session joins.
+ * Suffix for the per-preview `compose/semantics`
+ * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload] beside `previews/<id>.png`
+ * (issue #1843). The bundle copy uses the payload's stable refs instead of per-process node ids.
  */
 public const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
 
 /**
- * Suffix for the per-preview layout-inspector blob carried beside `previews/<id>.png`. The payload
- * is the `layout/inspector` [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] tree
- * — the full LayoutNode walk with per-node bounds and resolved design tokens — so a consumer can
- * build slot-level redlines/wireframes the (a11y-shaped) semantics tree can't express. The bundle
- * copy uses stable structural ids for layout-only nodes and the matching stable semantics ref for
- * nodes shared with the semantics tree.
+ * Suffix for the per-preview `layout/inspector`
+ * [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] beside `previews/<id>.png`:
+ * the full LayoutNode tree, for redlines the semantics tree can't express. Uses stable ids.
  */
 public const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
 
 /**
- * Suffix for the per-preview font-usage blob carried beside `previews/<id>.png`. The payload is the
- * `fonts/used` [ee.schimke.composeai.data.fonts.FontsUsedPayload] — every font resolution the
- * render made (requested vs resolved family, weight, style, fallback chain) — recorded by the
- * daemon's always-on FontsRecorderExtension. Carried so the design-catalog export can generate the
- * in-browser Wasm tier's `fonts.json` from what the previews actually resolved instead of a
- * hand-authored manifest.
+ * Suffix for the per-preview `fonts/used` [ee.schimke.composeai.data.fonts.FontsUsedPayload], from
+ * which the design-catalog export generates the Wasm tier's `fonts.json`.
  */
 public const val BUNDLE_FONTS_SUFFIX: String = ".fonts.json"
 
 /**
- * Suffix for the per-preview layered SVG carried beside `previews/<id>.png`. The payload is the
- * `compose/figma-svg` [ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct] export —
- * an editable vector (real fills/strokes/corner radii + editable text), the same bytes a
- * `data/fetch` for the figma-svg yields — baked by the daemon's always-on render. Carried so the
- * design-catalog export can ship an editable vector per sticker alongside the raster PNG.
+ * Suffix for the per-preview editable `compose/figma-svg`
+ * [ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct] export.
  */
 public const val BUNDLE_FIGMA_SVG_SUFFIX: String = ".figma.svg"
 
 /**
- * Directory suffix for a hybrid figma-svg's per-node raster crops, carried beside its
- * `previews/<id>.figma.svg` as `previews/<id>.figma-raster/<node>.png`. Mirrors the
- * `figma-raster/<node>.png` hrefs the SVG's `<image>` layers reference so they resolve once the
- * design-catalog export copies the SVG (and rewrites those hrefs) onto the delivery branch. Absent
- * for a vector-only export.
+ * Directory suffix for a hybrid figma-svg's per-node raster crops
+ * (`previews/<id>.figma-raster/<node>.png`), mirroring the SVG's `<image>` hrefs.
  */
 public const val BUNDLE_FIGMA_RASTER_DIR_SUFFIX: String = ".figma-raster"
 
 /**
- * Suffix for the `compose/figma-svg` export's font-warning sidecar, carried beside
- * `previews/<id>.figma.svg`. The payload is the export's own `compose-figma-fonts.warnings.json` —
- * which families the render drew that the SVG could not name, which it could, and the missing-glyph
- * family it substituted.
- *
- * **Absent is the healthy state.** The export writes the sidecar only for a degraded preview, so an
- * entry here means that sticker's text shipped as boxes. Carried because it previously went
- * nowhere: the export wrote it into the render's data dir, nothing collected it, and a whole sheet
- * published in missing-glyph boxes with the one artefact naming the lost face left behind on the
- * build machine.
+ * Suffix for the figma-svg export's font-warning sidecar (`compose-figma-fonts.warnings.json`).
+ * Only written for a degraded preview whose text shipped as missing-glyph boxes.
  */
 public const val BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX: String = ".figma-fonts.warnings.json"
 
-/**
- * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
- * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
- * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
- * `--with-semantics` pack is idempotent. New entries are pinned to the DOS epoch so the enriched
- * bundle stays byte-stable. Written via a temp sibling + atomic move so a failure never truncates
- * the bundle. Returns the number of entries written.
- */
+/** [injectSidecarsIntoBundle] for `previews/<id>.semantics.json`. */
 public fun injectSemanticsIntoBundle(
   bundleFile: File,
   semanticsById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, semanticsById, BUNDLE_SEMANTICS_SUFFIX, fileSystem)
 
-/**
- * Inject `previews/<id>.layout.json` entries (id → `layout-inspector.json` bytes) into [bundleFile]
- * — the full LayoutNode tree (per-node bounds + resolved design tokens) the daemon bakes alongside
- * the semantics blob. Carried so consumers can build slot-level redlines/wireframes the a11y
- * semantics tree can't express. Same in-place, idempotent, byte-stable contract as
- * [injectSemanticsIntoBundle]. Returns the number of entries written.
- */
+/** [injectSidecarsIntoBundle] for `previews/<id>.layout.json`. */
 public fun injectLayoutIntoBundle(
   bundleFile: File,
   layoutById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, layoutById, BUNDLE_LAYOUT_SUFFIX, fileSystem)
 
-/**
- * Inject `previews/<id>.fonts.json` entries (id → `fonts-used.json` bytes) into [bundleFile] — the
- * per-preview `fonts/used` record the daemon bakes alongside the semantics blob. Carried so the
- * design-catalog export can generate the in-browser tier's font manifest from recorded usage. Same
- * in-place, idempotent, byte-stable contract as [injectSemanticsIntoBundle]. Returns the number of
- * entries written.
- */
+/** [injectSidecarsIntoBundle] for `previews/<id>.fonts.json`. */
 public fun injectFontsIntoBundle(
   bundleFile: File,
   fontsById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, fontsById, BUNDLE_FONTS_SUFFIX, fileSystem)
 
-/**
- * Inject `previews/<id>.figma.svg` entries (id → `compose-figma.svg` bytes) into [bundleFile] — the
- * layered editable `compose/figma-svg` export the daemon bakes alongside the semantics blob.
- * Carried so the design-catalog export can ship an editable vector per sticker next to the raster
- * PNG. Same in-place, idempotent, byte-stable contract as [injectSemanticsIntoBundle]. Returns the
- * number of entries written.
- */
+/** [injectSidecarsIntoBundle] for `previews/<id>.figma.svg`. */
 public fun injectFigmaSvgIntoBundle(
   bundleFile: File,
   figmaSvgById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, figmaSvgById, BUNDLE_FIGMA_SVG_SUFFIX, fileSystem)
 
-/**
- * Inject `previews/<id>.figma-fonts.warnings.json` entries (id →
- * `compose-figma-fonts.warnings.json` bytes) into [bundleFile] — the font-warning sidecar the
- * figma-svg export writes for a preview it had to draw in missing-glyph boxes. Only degraded
- * previews have one, so this is normally a no-op. Same in-place, idempotent, byte-stable contract
- * as [injectSemanticsIntoBundle]. Returns the number of entries written.
- */
+/** [injectSidecarsIntoBundle] for `previews/<id>.figma-fonts.warnings.json`. */
 public fun injectFigmaFontWarningsIntoBundle(
   bundleFile: File,
   warningsById: Map<String, ByteArray>,
@@ -160,23 +104,13 @@ public fun injectFigmaFontWarningsIntoBundle(
   injectSidecarsIntoBundle(bundleFile, warningsById, BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX, fileSystem)
 
 /**
- * Inject a hybrid figma-svg's per-node raster crops ([figmaRasterById]: preview id → (crop filename
- * → PNG bytes)) into [bundleFile] as `previews/<id>.figma-raster/<node>.png`, so the SVG's `<image
- * href="figma-raster/<node>.png">` layers resolve after the export carries them. Same in-place,
- * idempotent, byte-stable contract as the other injectors. Returns the number of crops written
- * across all previews.
+ * Inject a hybrid figma-svg's per-node raster crops (preview id → crop filename → PNG bytes) as
+ * `previews/<id>.figma-raster/<node>.png`. Returns the number of crops written.
  *
- * Each crop is bounded to [maxEdgePx] on its longest edge on the way in. Crops arrive at device
- * resolution, and the only consumer — the serve host inlining them into a self-contained figma-svg
- * — has always downsampled to exactly this bound before serving them, so the extra pixels were
- * carried across the network and then discarded. They are not free: a handful of full-screen photo
- * crops pushed Jetchat's live bundle to 27MB, past the serve host's 25MiB per-file fetch cap, and
- * the catalog silently degraded to baked PNGs. Pass `Int.MAX_VALUE` to store crops verbatim.
- *
- * Byte-stability is preserved: [downscaleRaster] returns the original bytes unchanged for a crop
- * already within the bound (the common case — component-sized crops), for one that fails to decode,
- * and for one whose re-encode wouldn't actually shrink it. So re-packing an already-bounded bundle
- * writes identical entries.
+ * Crops are bounded to [maxEdgePx] on the way in: the serve host downsamples to that bound anyway,
+ * and full-resolution photo crops once pushed a bundle past its 25MiB fetch cap. [downscaleRaster]
+ * returns already-bounded crops unchanged, so re-packing stays byte-stable. Pass `Int.MAX_VALUE` to
+ * store crops verbatim.
  */
 public fun injectFigmaRasterIntoBundle(
   bundleFile: File,
@@ -197,11 +131,9 @@ public fun injectFigmaRasterIntoBundle(
 }
 
 /**
- * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,
- * preserving the leading PNG cover and every existing entry. Re-injecting replaces any prior entry
- * for the same id+suffix, so a second pack is idempotent. New entries are pinned to the DOS epoch
- * so the enriched bundle stays byte-stable. Written via a temp sibling + atomic move so a failure
- * never truncates the bundle. Returns the number of entries written.
+ * Inject `previews/<id><suffix>` entries into [bundleFile]'s zip portion in place, keeping the
+ * leading PNG cover and every other entry. Idempotent (same-name entries are replaced), byte-stable
+ * (DOS-epoch timestamps) and atomic (temp sibling + move). Returns the number of entries written.
  */
 public fun injectSidecarsIntoBundle(
   bundleFile: File,

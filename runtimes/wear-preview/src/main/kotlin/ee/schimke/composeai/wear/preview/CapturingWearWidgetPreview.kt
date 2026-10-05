@@ -24,36 +24,17 @@ import kotlinx.coroutines.runBlocking
 /**
  * Renders a Glance Wear widget preview **and preserves its encoded RemoteCompose document**.
  *
- * A Wear widget's value is its encoded document — the `RemoteDocument` byte stream the widget host
- * replays. The render pipeline carries that as the `<stem>.rc` sidecar (packed into the portable
- * bundle by `BundlePreviewTask.resolvePreviewIr`), so a bundled widget travels as **data, not
- * compiled `@Preview` bytecode**.
- *
- * The upstream [WearWidgetPreview] captures that document internally
- * (`WearWidgetDocument.captureRawContent(isInspectionMode = true)`) but keeps the bytes to itself
- * and only rasters — so a preview that calls it directly emits **no** `.rc`, and the widget rides
- * the bundle as bytecode. This wrapper closes that gap: it captures the document the same way,
- * hands the bytes to [IrSidecarChannel] (which the render harness drains into the sidecar), and
- * then plays them. One call, both the encoded doc and the rendered PNG.
- *
- * The capture is best-effort: outside a daemon/test render there is no current preview id, so
- * [IrSidecarChannel.offer] is a no-op and only the raster runs (e.g. Android Studio's preview
- * pane).
+ * Upstream [WearWidgetPreview] captures the widget's `RemoteDocument` but only rasters it, so the
+ * widget would ride the bundle as bytecode. This wrapper captures the same document, hands the
+ * bytes to [IrSidecarChannel] (drained into the `<stem>.rc` sidecar), then plays them. Outside a
+ * daemon/test render the offer is a no-op and only the raster runs.
  *
  * ## Which player draws
  *
- * The captured bytes are played by the AndroidX embedded player
- * ([WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED]) — a widget composes into real Compose nodes rather
- * than into one opaque `View`, which is what stopped every widget preview reporting the same
- * unlabelled `RemoteComposePlayer` accessibility error (issue #5259). Select the View-backed lane
- * with `-PcomposePreview.rcPlayer=androidx-view` (or `-Dcomposeai.render.rcPlayer=androidx-view` on
- * the render JVM); see [WearWidgetPreviewPlayer]. Either way the pixels are drawn from the *same*
- * captured document, sized exactly as upstream sizes it — the widget's footprint plus its container
- * padding.
- *
- * Where the embedded player is not on the render classpath, or the capture itself failed, this
- * falls back to the upstream [WearWidgetPreview] rather than failing the render — the same
- * classloader gate the connector's replay lane uses.
+ * [WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED] by default (issue #5259); select the View-backed lane
+ * with `-PcomposePreview.rcPlayer=androidx-view`. Either way the pixels come from the same captured
+ * document, sized as upstream sizes it. Falls back to upstream [WearWidgetPreview] when the
+ * embedded player is missing or the capture failed.
  *
  * ## Backgrounds belong here, not in [content]
  *
@@ -68,15 +49,10 @@ import kotlinx.coroutines.runBlocking
  *
  * ## Renderer version
  *
- * [useSafeFallbackRendererVersion] mirrors upstream's parameter of the same name and default
- * (Glance Wear `1.0.0-alpha18`+): `true` captures against `RendererVersion.SAFE_FALLBACK_VERSION`,
- * the oldest widget host with Remote Compose support, so the preview shows what every host can
- * draw; `false` captures against `RendererVersion.MAX_RENDERER_VERSION`, the latest host's
- * operation set. Either way the version is written into [params] *before* this wrapper's own
- * capture, exactly as upstream does before its capture — so the `.rc` sidecar, the CMP raster and
- * the upstream fallback all describe the same document. Upstream defaults to `true` while its Java
- * player lacks `CORE_TEXT` for widgets (b/553471238); this default follows theirs so switching a
- * preview between this wrapper and `WearWidgetPreview` never changes what it draws.
+ * [useSafeFallbackRendererVersion] mirrors upstream's parameter and default: `true` captures
+ * against `RendererVersion.SAFE_FALLBACK_VERSION` (what every host can draw), `false` against
+ * `MAX_RENDERER_VERSION`. The version is written into [params] before capture, so the sidecar, the
+ * raster and the upstream fallback all describe the same document.
  */
 @Composable
 fun CapturingWearWidgetPreview(
@@ -141,10 +117,8 @@ internal fun CapturingWearWidgetPreviewOnLane(
       }
     }
 
-  // The captured bytes are the widget, so the embedded lane replays them directly. Both fallbacks
-  // route
-  // to upstream, which recaptures the document itself: nothing here can be drawn from a capture
-  // that failed, and the embedded player has to actually be on the classpath to be called.
+  // The embedded lane replays the captured bytes; both fallbacks go to upstream, which captures
+  // the document itself.
   if (
     captured != null &&
       player == WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED &&
@@ -180,23 +154,16 @@ internal fun WearWidgetParams.withRendererVersion(
   )
 
 /**
- * Plays [bytes] with the embedded Compose player at the widget's container size.
- *
- * The size is upstream's, spelled the same way: `WearWidgetPreview` lays its player out at
- * `(widthDp + 2 * horizontalPaddingDp) x (heightDp + 2 * verticalPaddingDp)`, the widget footprint
- * plus the container padding the host draws around it. It has to be stated rather than derived —
- * `RcPlayer` renders the document into the constraints it is given rather than measuring itself
- * from the document header — and stating it here is what keeps a widget's render the same size on
- * either lane, so switching players moves pixels within the frame and never the frame itself.
+ * Plays [bytes] with the embedded player at upstream's size: the widget footprint plus container
+ * padding. Stated explicitly because `RcPlayer` fills its constraints rather than measuring the
+ * document, and matching it keeps both lanes the same size.
  */
 @Composable
 private fun CmpWearWidgetPlayer(bytes: ByteArray, params: WearWidgetParams) {
   val document =
     remember(bytes) {
-      // Before the constructor, not after: `RemoteDocument(bytes)` parses inside it, and a
-      // `BitmapData` carrying an encoded reference throws from `inflateFromBuffer` while the
-      // remote-core globals are off — failing the *whole* document, not just the image. A widget
-      // that draws artwork (the shape issue #5259 quotes) is exactly that document.
+      // Before the constructor, which parses: an encoded `BitmapData` reference otherwise throws
+      // and fails the whole document.
       RemoteImageSupport.enableEncodedImageReferences()
       RemoteDocument(bytes)
     }
