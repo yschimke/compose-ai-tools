@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { NO_LOCATOR, buildIssueIndex, canonicalIssueUrl, parseLocator, parseLocators } from "./parity-issues.mjs";
 
@@ -238,45 +237,7 @@ test("two blocks may not claim the same reference", () => {
   assert.deepEqual(errors, [shape.parse.error]);
 });
 
-// -----------------------------------------------------------------------------------------------
-// The mirror. Not expressible as a fixture, because it is about two files agreeing rather than about
-// any one parse.
-// -----------------------------------------------------------------------------------------------
-
-// `parity-issues.mjs` exists twice: here, and in yschimke/compose-preview-server, whose
-// ServeIssueReport and serve-web writers are tested against the same `fixtures/parity-locators.json`.
-// The copy in THIS repository is the one that runs in production — `parity-issues-reusable.yml`
-// checks out `yschimke/compose-ai-tools` and runs `emit-parity-issues.mjs`, which imports the local
-// module — so a feature that lands only on the server's copy is dead code everywhere it matters.
-//
-// That is not hypothetical. `scope` was added to the server's copy and not to this one, and because
-// nothing compared them, every `scope: variant` locator was silently flattened to component scope
-// for months: the server and the browser both implement variant-scoped bug pills, and no index ever
-// carried a `scope` field for them to act on (compose-ai-tools#5205).
-//
-// Byte-for-byte, deliberately. The two copies have no repository-specific content — no paths, no
-// imports beyond node builtins — so there is no legitimate reason for them to differ, and a
-// tolerant comparison is how the last divergence survived. The same optional-sibling arrangement as
-// the other cross-repository mirrors here: CI supplies the checkout, and a local run without one
-// SKIPS with a reason rather than passing vacuously.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SERVER_COPY = join(
-  (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
-    join(HERE, "..", "..", "..", "compose-preview-server"),
-  "scripts/design-artifacts/parity-issues.mjs",
-);
-const NO_SERVER = {
-  skip: existsSync(SERVER_COPY)
-    ? false
-    : "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT) — the second copy of " +
-      "parity-issues.mjs lives there since #4732",
-};
-
-test("the producer is byte-identical to the preview server's copy", NO_SERVER, () => {
-  assert.equal(
-    readFileSync(SERVER_COPY, "utf8"),
-    readFileSync(join(HERE, "parity-issues.mjs"), "utf8"),
-    "scripts/design-artifacts/parity-issues.mjs has drifted from the copy in compose-preview-server. " +
-      "Both are read by engines that must agree on the wire format; sync them rather than patching one.",
-  );
-});
+// `parity-issues.mjs` used to exist twice, here and in yschimke/compose-preview-server, and a test
+// here compared the two byte for byte. Nothing in that repository ran its copy, so it was deleted
+// there (yschimke/compose-preview-server#1378); this is the only copy. The server's Kotlin reader and
+// serve-web writers still agree with it through `fixtures/parity-locators.json`.
