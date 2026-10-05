@@ -10,28 +10,7 @@ import java.nio.file.attribute.PosixFilePermission
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/**
- * Where the CLI keeps the grants a human has approved for it — the client half of
- * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
- *
- * One JSON file, keyed by **server origin**, at
- * `$XDG_CONFIG_HOME/compose-preview/agent-access.json` (`~/.config/…` when that is unset). Keyed by
- * origin because a token minted by one host means nothing to another, and sending it to the wrong
- * one would be handing a credential to a stranger: [tokenFor] answers only for an exact origin
- * match, so there is no "close enough" path that could cross hosts.
- *
- * The file is created `0600` and re-tightened on every write, because it holds bearer tokens.
- * Best-effort on a filesystem without POSIX permissions (Windows, some mounts) — a failure there
- * must not stop a grant from being saved, but it does earn a warning, since the user is entitled to
- * know their credential is sitting in a world-readable file.
- *
- * Expired entries are dropped on read rather than swept on a schedule: this is a CLI, it runs and
- * exits, and a stale row costs nothing until someone asks about it.
- */
-/**
- * No safe place to keep credentials could be determined. Carries the remedy, because the only thing
- * the user can do about it is name a location.
- */
+/** No safe place to keep credentials could be determined; the message carries the remedy. */
 internal class NoCredentialHomeException :
   IllegalStateException(
     "no user config directory could be determined (XDG_CONFIG_HOME, HOME and user.home are all " +
@@ -39,6 +18,14 @@ internal class NoCredentialHomeException :
       "COMPOSE_PREVIEW_AGENT_ACCESS_FILE to a path you control."
   )
 
+/**
+ * Where the CLI keeps the grants a human has approved for it: the client half of
+ * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+ *
+ * One JSON file keyed by exact server origin, so a token is never sent to another host. Created
+ * `0600` because it holds bearer tokens (warning where POSIX permissions are unavailable). Expired
+ * entries are dropped on read.
+ */
 internal open class AgentAccessStore(
   private val file: File = defaultFile(),
   private val clock: () -> Long = System::currentTimeMillis,
@@ -51,20 +38,14 @@ internal open class AgentAccessStore(
     val origin: String,
     val token: String,
     val scopes: List<String> = emptyList(),
-    /**
-     * Independent permissions the approver ticked ([AgentGrantCapability]). Defaulted, so a file
-     * written by an older CLI reads back without complaint.
-     */
+    /** Permissions the approver ticked ([AgentGrantCapability]); defaulted for older files. */
     val capabilities: List<String> = emptyList(),
     val approvedBy: String = "",
     val label: String = "",
     /** Wall-clock epoch millis. Past ⇒ the entry is dropped on the next read. */
     val expiresAtMillis: Long = 0,
   ) {
-    /**
-     * The same 12-hex-character SHA-256 prefix the server prints on `/status` and in its log, so a
-     * message here names a row a human can actually find. Never the token itself.
-     */
+    /** The 12-hex SHA-256 prefix the server shows on `/status`; never the token itself. */
     val fingerprint: String
       get() = AgentGrantProtocol.fingerprintOf(token)
 
@@ -73,12 +54,8 @@ internal open class AgentAccessStore(
   }
 
   /**
-   * A request that has been opened but not yet collected — what `auth request --no-wait` leaves
-   * behind so a later invocation can finish the job.
-   *
-   * Holds the device secret, which is a credential, and is why this file is `0600`: without it a
-   * `--no-wait` run would print "re-run auth status when they approve" and then have thrown away
-   * the one thing that can redeem the approval.
+   * A request opened but not yet collected (`auth request --no-wait`). Holds the device secret, the
+   * only thing that can redeem the approval.
    */
   @Serializable
   data class Pending(
@@ -88,18 +65,12 @@ internal open class AgentAccessStore(
     val userCode: String = "",
     val approveUrl: String = "",
     val label: String = "",
-    /**
-     * The **approval window** — how long the human has to decide. Drives what `status` displays.
-     */
+    /** The approval window: how long the human has to decide. Drives what `status` displays. */
     val expiresAtMillis: Long = 0,
     /**
-     * How long this record is worth *polling*, which is deliberately longer than the window above.
-     *
-     * The server retains an approved-but-uncollected request until its grant expires, precisely so
-     * that a decision made in the last seconds still reaches its agent. Dropping the device secret
-     * on the window's own deadline put the two halves out of step: the token was still there for
-     * the asking and the only thing that could ask had thrown itself away. Defaults to
-     * [expiresAtMillis] so a record written by an older CLI behaves exactly as it used to.
+     * How long this record is worth polling: longer than the approval window, because the server
+     * keeps an approved-but-uncollected request until its grant expires. Defaults to
+     * [expiresAtMillis] for older records.
      */
     val retainUntilMillis: Long = expiresAtMillis,
   ) {
@@ -131,10 +102,7 @@ internal open class AgentAccessStore(
 
   fun tokenFor(origin: String): String? = entryFor(origin)?.token
 
-  /**
-   * Every un-collected request still worth polling — bounded by [Pending.retainUntilMillis], not by
-   * the human's approval window.
-   */
+  /** Every un-collected request still worth polling (bounded by [Pending.retainUntilMillis]). */
   fun allPending(): List<Pending> {
     val now = clock()
     return read().pending.filter { maxOf(it.retainUntilMillis, it.expiresAtMillis) > now }
@@ -147,23 +115,16 @@ internal open class AgentAccessStore(
   }
 
   /**
-   * Remember an opened request so a later invocation can collect its token.
-   *
-   * Requests **accumulate** rather than replacing each other per origin. Replacing looked tidy and
-   * quietly threw away a credential: run `auth request --no-wait` twice against one server and the
-   * first link stays approvable, so a human could approve it and mint a live grant whose device
-   * secret this store had already discarded. [MAX_PENDING] bounds the pile; the oldest goes first,
-   * which is also the one closest to its own deadline.
+   * Remember an opened request so a later invocation can collect its token. Requests accumulate per
+   * origin, since an earlier link stays approvable on the server. Returns false when [MAX_PENDING]
+   * live records already exist: only dead ones are swept, never a secret that can still be
+   * redeemed.
    */
   fun savePending(pending: Pending): Boolean {
     val key = normalizeOrigin(pending.origin) ?: return false
     return withLock {
       val now = clock()
       val current = read()
-      // Only records that are already dead may be swept to make room. `takeLast` dropped the
-      // OLDEST live one instead — and its approval link is still valid on the server, so a human
-      // could approve a request whose only device secret this had just deleted. When nothing can be
-      // freed the save is refused: the caller finds out, rather than a credential going quietly.
       val kept =
         current.pending.filter {
           maxOf(it.retainUntilMillis, it.expiresAtMillis) > now && it.requestId != pending.requestId
@@ -172,13 +133,8 @@ internal open class AgentAccessStore(
       val retained =
         pending.copy(
           origin = key,
-          // Counted from the END of the approval window, not from now. The two sides measure from
-          // different instants: this record is created when the request is opened, while the server
-          // starts the grant's TTL when it is *approved*. So a request approved in the last seconds
-          // of its window with the maximum TTL yields a grant that outlives a creation-anchored
-          // deadline by the whole window — and `allPending()` would stop handing over the device
-          // secret while the token was still there for the asking. Anchoring here covers every
-          // approval the window permits, by construction.
+          // Anchored to the end of the approval window, not now: the server starts the grant's
+          // TTL at approval, which may be the window's last second.
           retainUntilMillis =
             maxOf(
               pending.retainUntilMillis,
@@ -207,18 +163,12 @@ internal open class AgentAccessStore(
   }
 
   /**
-   * Save (replacing any existing entry for the same origin). Returns false when the write failed.
-   *
-   * `open` for one reason: a test needs a *write* to fail while reads keep working, and a wedged
-   * filesystem cannot express that — a store that cannot write cannot hold the pending record the
-   * test is about either. The failure it stands in for (a full disk, a read-only config dir) is
-   * real, and what must happen next — the device secret survives — is worth pinning.
+   * Save, replacing any entry for the same origin. Returns false when the write failed. `open` so a
+   * test can make writes fail while reads keep working.
    */
   open fun save(entry: Entry): Boolean {
     val key = normalizeOrigin(entry.origin) ?: return false
-    // Read-modify-write under the cross-process lock: two agents finishing `auth request` at the
-    // same moment would otherwise both read the old list, and the later writer would silently drop
-    // the other's freshly approved grant — a credential lost for no visible reason.
+    // Under the cross-process lock so concurrent saves can't drop each other's grants.
     return withLock {
       val now = clock()
       val current = read()
@@ -233,9 +183,7 @@ internal open class AgentAccessStore(
     return withLock {
       val current = read()
       val kept = current.grants.filter { it.origin != key }
-      // A failed write is reported as a failure: "forgotten" is a claim about what the *next*
-      // process will read, and confirming it while the credential is still on disk is the one
-      // answer that must not be given.
+      // A failed write must not report the credential as forgotten.
       if (kept.size == current.grants.size) false else write(current.copy(grants = kept))
     }
   }
@@ -248,46 +196,46 @@ internal open class AgentAccessStore(
     return try {
       JSON.decodeFromString(Wire.serializer(), file.readText())
     } catch (e: Exception) {
-      // A corrupt store is not worth failing a command over — it holds only short-lived tokens that
-      // can be re-requested — but it must be said out loud, or "auth status" silently reports
-      // nothing and the user re-runs a flow that was never going to be read back.
+      // Only short-lived, re-requestable tokens: warn and carry on rather than fail the command.
       warn("could not read ${file.path} (${e.message}); treating it as empty")
       Wire()
     }
   }
 
   /**
-   * Serialise a read-modify-write against other `compose-preview` processes.
-   *
-   * An advisory `FileLock` on a sibling `.lock` file — not on the store itself, which is replaced
-   * rather than written in place. Best-effort: a filesystem that cannot lock (some network mounts)
-   * runs the block anyway, because refusing to save a grant a human just approved is worse than the
-   * race it would avoid.
+   * Serialise a read-modify-write against other `compose-preview` processes with an advisory lock
+   * on a sibling `.lock` file (the store itself is replaced, not written in place). Where the
+   * filesystem cannot lock, the block runs unlocked rather than refusing to save an approved grant.
    */
   private fun <T> withLock(block: () -> T): T {
     val lockFile = File(file.parentFile, file.name + ".lock")
-    return try {
-      file.parentFile?.mkdirs()
-      RandomAccessFile(lockFile, "rw").use { raf -> raf.channel.lock().use { block() } }
-    } catch (e: Exception) {
-      block()
+    val raf =
+      try {
+        file.parentFile?.mkdirs()
+        RandomAccessFile(lockFile, "rw")
+      } catch (_: Exception) {
+        return block()
+      }
+    return raf.use {
+      // Only a failure to *acquire* falls back to running unlocked; an exception from [block] must
+      // propagate rather than run the block a second time.
+      val lock = runCatching { it.channel.lock() }.getOrNull()
+      try {
+        block()
+      } finally {
+        lock?.release()
+      }
     }
   }
 
   /**
-   * Write via a temp file and an atomic rename, so a concurrent reader sees either the old store or
-   * the new one — never a half-written file it would report as empty and then overwrite.
-   * Permissions are applied to the temp file *before* the rename, so the credential is never even
-   * briefly world-readable.
+   * Write via a temp file and an atomic rename, so a concurrent reader never sees a half-written
+   * file. Permissions are applied before the rename, so the credential is never world-readable.
    */
   private fun write(wire: Wire): Boolean {
     return try {
       file.parentFile?.mkdirs()
-      // `createTempFile` demands a prefix of at least three characters, and the store's path is
-      // overridable for CI and tests — so a perfectly reasonable
-      // `COMPOSE_PREVIEW_AGENT_ACCESS_FILE`
-      // of `/tmp/a` made every credential write throw. Padded rather than passed through: the name
-      // is a scratch prefix on a file that is renamed away, so it need only be legal.
+      // `createTempFile` needs a prefix of at least three characters; the path is overridable.
       val temp = File.createTempFile(file.name.padEnd(3, '-'), ".tmp", file.parentFile)
       try {
         temp.writeText(JSON.encodeToString(Wire.serializer(), wire))
@@ -334,20 +282,12 @@ internal open class AgentAccessStore(
   companion object {
     const val SCHEMA_V1 = "compose-preview-agent-access/v1"
 
-    /**
-     * Un-collected requests kept at once. Each is a device secret on disk, so the pile is bounded;
-     * high enough that opening a couple of `--no-wait` asks against different servers never loses
-     * one, low enough that a runaway script cannot fill the file.
-     */
+    /** Un-collected requests kept at once; each is a device secret on disk. */
     const val MAX_PENDING = 8
 
     /**
-     * How long a remembered request stays worth polling **past the close of its approval window** —
-     * the server's own hard ceiling on a grant's life
-     * ([AgentGrantProtocol.HARD_MAX_GRANT_TTL_SECONDS]). Measured from the window's end rather than
-     * from the request's creation, because the server starts a grant's TTL at approval: past
-     * window-end plus this, no grant the request could have produced can still be alive, so the
-     * record owes nobody.
+     * How long a request stays worth polling past its approval window: the server's hard ceiling on
+     * a grant's life ([AgentGrantProtocol.HARD_MAX_GRANT_TTL_SECONDS]).
      */
     const val POLL_RETENTION_SECONDS = 24 * 60 * 60L
 
@@ -359,20 +299,11 @@ internal open class AgentAccessStore(
 
     /**
      * `$COMPOSE_PREVIEW_AGENT_ACCESS_FILE`, else `$XDG_CONFIG_HOME/compose-preview/…`, else
-     * `$HOME/.config/…`, else the JVM's `user.home` **when that is an absolute path**. The override
-     * exists for CI and for tests; the XDG path is where a user would look for it.
-     *
-     * Throws [NoCredentialHomeException] when none of those yields a location, rather than falling
-     * back to the working directory — see the body.
+     * `$HOME/.config/…`, else the JVM's `user.home`. Throws [NoCredentialHomeException] rather than
+     * falling back to the working directory.
      */
     fun defaultFile(
-      /**
-       * Injected so a test can simulate a JVM with no `user.home`, which it otherwise always has.
-       *
-       * Deliberately **before** [env] rather than appended: several call sites pass the environment
-       * as a trailing lambda, and a new last parameter silently rebinds those to this one instead —
-       * they still compile, and they quietly test the wrong thing.
-       */
+      // Before [env], not appended: callers pass the environment as a trailing lambda.
       prop: (String) -> String? = System::getProperty,
       env: (String) -> String? = System::getenv,
     ): File {
@@ -381,47 +312,25 @@ internal open class AgentAccessStore(
         ?.let {
           return File(it)
         }
-      // ONE rule, applied to every candidate: a home must be an absolute path.
-      //
-      // This leak has now been reachable three times by three different routes — the original `.`
-      // fallback, then a relative `user.home`, then a relative `XDG_CONFIG_HOME`/`HOME` — because
-      // each fix was applied to the branch that was pointed at rather than to the question. The
-      // question is the same every time: is this a real home, or does it resolve under whatever
-      // directory the command happens to be run from? For an agent that directory is a checkout,
-      // so the credentials land somewhere CI archives or the next `git add -A` commits, and the
-      // target becomes influenceable by anything that can add a `compose-preview/` path to the
-      // tree. Anything that fails the question is treated as absent.
+      // Every candidate must be absolute. A relative one resolves under the working directory,
+      // which for an agent is a checkout that CI archives or `git add -A` commits.
       val configHome =
         absoluteHome(env("XDG_CONFIG_HOME"))
           ?: absoluteHome(env("HOME"))?.let { "$it/.config" }
-          // The JVM's own view of the user's home, which on Linux comes from the passwd entry
-          // rather than the environment — so it survives the minimal `env -i` service context that
-          // has neither variable set.
+          // From the passwd entry on Linux, so it survives an `env -i` service context.
           ?: absoluteHome(prop("user.home"))?.let { "$it/.config" }
-          // …and if there is genuinely nowhere, REFUSE rather than inventing one.
           ?: throw NoCredentialHomeException()
       return File("$configHome/compose-preview/agent-access.json")
     }
 
-    /**
-     * [candidate] if it is a usable absolute path, else null — the single test every
-     * credential-home candidate goes through. `?` is JVM shorthand for "unknown", and a relative
-     * path is not a home however it was supplied.
-     */
+    /** [candidate] if it is a usable absolute path (`?` is the JVM's "unknown"), else null. */
     private fun absoluteHome(candidate: String?): String? =
       candidate?.trim()?.takeIf { it.isNotEmpty() && it != "?" && File(it).isAbsolute }
 
     /**
-     * `scheme://host[:port]`, lowercased, default ports dropped, path and query discarded.
-     *
-     * Discarding the path is what makes the key an *origin*: `https://h/a` and `https://h/b` are
-     * the same server and must share a grant. Dropping the default port is what stops `https://h`
-     * and `https://h:443` from being two entries for one host, which would make "do I have access?"
-     * depend on how the user happened to type the URL.
-     *
-     * Null for anything that isn't an absolute http(s) URL — including a `user:pass@` form, which
-     * is refused outright rather than stripped: it means the caller is doing something this store
-     * should not quietly normalise away.
+     * `scheme://host[:port]`, lowercased, default port and path dropped, so equivalent spellings
+     * share one grant. Null for anything but an absolute http(s) URL; `user:pass@` is refused
+     * rather than stripped.
      */
     fun normalizeOrigin(raw: String?): String? {
       val text = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
