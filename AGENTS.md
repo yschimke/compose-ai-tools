@@ -63,7 +63,8 @@ until someone runs the script. `--no-verify` bypasses the local hooks; CI
 still won't. Why the PR body matters and how a trailer reached `main` anyway:
 [`docs/AGENT_GUIDE.md` → Git conventions](docs/AGENT_GUIDE.md#git-conventions).
 
-**Reviewers: run the detector before reporting an attribution finding.** This is
+**Human reviewers: run the detector before reporting an attribution finding.** Automated
+reviewers do not report attribution at all; see [Review guidelines](#review-guidelines). This is
 the most-reported and least-real finding on this repo — 14 PRs drew a P1 "the
 author and committer are both `Codex`" comment over 2026-08-31/09-01 and not one
 was real, and the reports since have kept naming commits that are not objects in
@@ -77,6 +78,10 @@ git cat-file -t <sha>          # a commit you are about to name must actually ex
 git log --format='%h %an <%ae> | %cn <%ce>' <base>..<head>
 .github/scripts/agent-attribution-scan.sh --range '<base>..<head>'
 ```
+
+`<head>` must be the pull request's head commit as GitHub reports it: a commit made in a review
+checkout, for example by reapplying the diff, carries the reviewer's identity, and that is how
+every false report so far arose.
 
 `Yuri Schimke <yuri@schimke.ee>` is this repository's human identity, and
 `github-actions[bot]` / `renovate[bot]` are exempt bot accounts (see above) — none
@@ -164,6 +169,15 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   [`.github/renovate.json`](.github/renovate.json)), which GitHub applies only
   once every required check of the `Protect Main` ruleset is green. Do not
   report that setting as a violation of this bullet.
+
+## Review guidelines
+
+- **Do not report commit author, committer or `Co-authored-by:` findings.** Your review sandbox
+  applies the pull request as a new commit under your own identity (`Codex <codex@openai.com>`),
+  so any identity you read from a local `git log` is yours, not the author's. Every such finding
+  on these repositories has named a commit that exists only in the sandbox. Attribution is a
+  human and CI concern; leave it out of reviews entirely. This overrides the human reviewer
+  guidance on attribution elsewhere in this file.
 
 ## Running Gradle
 
