@@ -95,10 +95,10 @@ answered against those numbers rather than against the worked example, and the f
 one case per site so the population stays checkable rather than remembered.
 
 **Batch 04 has landed, and with it D5.** `compose-preview-known-differences/v1` is implemented in
-[`known-differences.mjs`](../../../scripts/design-artifacts/known-differences.mjs), its document
-shape in [`known-differences.schema.json`](../../../scripts/design-artifacts/known-differences.schema.json),
+[`known-differences.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-differences.ts), its document
+shape in [`known-differences.schema.json`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/schema/known-differences.schema.json),
 and its conformance suite in
-[`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/) —
+[`fixtures/known-differences/`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences/test/conformance/fixtures/known-differences/) —
 one case per pilot site, one rejecting case for every rule in §4, and a group pinning the portable
 resampler on its own. Three things worth carrying into 05:
 

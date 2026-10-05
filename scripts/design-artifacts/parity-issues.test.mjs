@@ -256,9 +256,9 @@ test("two blocks may not claim the same reference", () => {
 //
 // Byte-for-byte, deliberately. The two copies have no repository-specific content — no paths, no
 // imports beyond node builtins — so there is no legitimate reason for them to differ, and a
-// tolerant comparison is how the last divergence survived. Same optional-sibling arrangement the
-// tuning mirror in known-difference-score.test.mjs uses: CI supplies the checkout, and a local run
-// without one SKIPS with a reason rather than passing vacuously.
+// tolerant comparison is how the last divergence survived. The same optional-sibling arrangement as
+// the other cross-repository mirrors here: CI supplies the checkout, and a local run without one
+// SKIPS with a reason rather than passing vacuously.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER_COPY = join(
   (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||

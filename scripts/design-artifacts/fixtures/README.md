@@ -3,10 +3,10 @@
 `parity-issues.json` is emitted in the JavaScript producer's wire format and loaded directly by
 `ServeParityIssuesStoreTest`, pinning the producer and Kotlin consumer to the same schema.
 
-`known-differences/` is the conformance suite for `compose-preview-known-differences/v1` — generated
-by `build-known-difference-fixtures.mjs`, consumed by `known-differences.test.mjs` here and, as batch
-05 lands, by `design-parity`'s suite and the server projector's Kotlin tests. It has [its own
-README](known-differences/README.md); do not hand-edit it.
+The conformance suite for `compose-preview-known-differences/v1`, its generator and the engine it
+pins moved to design-parity's
+[`@design-parity/known-differences`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences)
+package, under `test/conformance/`.
 
 The `.rc` files below are captured Remote Compose documents for the player tests.
 

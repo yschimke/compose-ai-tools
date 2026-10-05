@@ -167,14 +167,14 @@ Each exists because two engines would otherwise diverge on identical bytes.
 ## What landed, and the seam with 05
 
 ***Delivered.*** The contract's rules are
-[`scripts/design-artifacts/known-differences.mjs`](../../../scripts/design-artifacts/known-differences.mjs),
+[`scripts/design-artifacts/known-differences.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-differences.ts),
 the document shape is
-[`known-differences.schema.json`](../../../scripts/design-artifacts/known-differences.schema.json)
+[`known-differences.schema.json`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/schema/known-differences.schema.json)
 (shape only — every verdict-deciding rule is prose in §4 and code in the module, because none of
 them is expressible in JSON Schema), the fixtures are
-[`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/), and
+[`fixtures/known-differences/`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences/test/conformance/fixtures/known-differences/), and
 the runner is `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
-[`png-lite.mjs`](../../../scripts/design-artifacts/png-lite.mjs) is the bounded header preflight and
+[`png-lite.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/png-lite.ts) is the bounded header preflight and
 the deliberately-malformed-file writer the fixtures need; `pngjs` is a driver dependency and is not
 what either job wants, since a library decode allocates the oversized raster to measure it and
 refuses to write the APNG, palette mask and lying header the suite is worthless without.
