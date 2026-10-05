@@ -2,6 +2,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 import { servePreviewId } from "./design-references.mjs";
 
 export const SCHEMA = "compose-preview-revision-index/v1";
@@ -40,7 +41,7 @@ export function updateRevisionPreviewIndex(catalog, prior, parent, limit = MAX_R
   return { schema: SCHEMA, current: previewIds(catalog), revisions: revisions.slice(0, limit - 1) };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
       catalog: { type: "string" },

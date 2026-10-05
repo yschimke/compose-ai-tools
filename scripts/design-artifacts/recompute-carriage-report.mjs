@@ -24,6 +24,7 @@
  */
 
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 
 /**
  * Sum the current on-disk size of exactly the bundles named in [manifest], one path per line.
@@ -149,6 +150,6 @@ function main(argv) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(main(process.argv.slice(2)));
 }

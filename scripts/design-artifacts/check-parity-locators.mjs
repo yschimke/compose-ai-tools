@@ -49,6 +49,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 import { parseLocators } from "./parity-issues.mjs";
 
 /** The cell a served preview id names, or null when the id carries no cell segment. */
@@ -220,7 +221,7 @@ function pairs(values, load) {
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
       repo: { type: "string", multiple: true },

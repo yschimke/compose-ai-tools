@@ -28,6 +28,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 /** Extract a Figma file key from a bare key or a `figma.com/design/:key/...` URL. */
 export function fileKeyFromArg(arg) {
@@ -525,7 +526,7 @@ async function main() {
 }
 
 // Only run the CLI when executed directly (not when imported by tests).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error(err.message ?? err);
     process.exit(1);

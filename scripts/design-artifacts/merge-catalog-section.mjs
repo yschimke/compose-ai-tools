@@ -40,6 +40,7 @@
 import { parseArgs } from "node:util";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /**
  * Pure manifest merge: return a new primary manifest with [borrowed]'s components
@@ -239,7 +240,7 @@ export async function mergeCatalogSection({ into, from, section, groupPrefix }) 
 }
 
 // CLI: only run when invoked directly (the exports above are unit-tested).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
       into: { type: "string" },

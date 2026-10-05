@@ -56,6 +56,7 @@
 
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 import { breakpointMatcher, catalogBreakpoints } from "./catalog-breakpoints.mjs";
 import { localeOfPreviewId, modeOfPreviewId } from "./catalog-priority.mjs";
@@ -479,7 +480,7 @@ export function errorsOf(report) {
 // manifest is any `{ previews: [...] }` payload: a module's `build/compose-previews/previews.json`,
 // `compose-preview list --json`, or a bundle manifest — including one kept from the last good run,
 // which is the point: the manifest changes rarely, the spec and its exclusions change constantly.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
       spec: { type: "string" },

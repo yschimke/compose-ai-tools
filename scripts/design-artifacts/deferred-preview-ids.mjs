@@ -39,6 +39,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 import { DEFERRED, modeOfPreviewId, modePriority } from "./catalog-priority.mjs";
 
 /** Every `@Preview` function name a spec references, from components and their variants. */
@@ -212,7 +213,7 @@ export function previewsFromJson(parsed) {
 // needs (it removes them from the partition by set membership); `--anchored-out` writes the same ids
 // `=`-anchored, which is what goes to the CLI. Handing the CLI the plain list defers each id's whole
 // fan-out along with it (#3559).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
       spec: { type: "string" },

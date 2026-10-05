@@ -159,7 +159,10 @@ class DesignReferenceScorer {
  */
 export async function openScorer({ executablePath, log = () => {} } = {}) {
   if (!fs.existsSync(COMPARE_ASSET)) {
-    log(`cannot score references: ${path.basename(COMPARE_ASSET)} is not where this driver expects`);
+    log(
+      `cannot score references: ${path.basename(COMPARE_ASSET)} is not at ${COMPARE_ASSET}; ` +
+        "set COMPOSE_PREVIEW_SERVER_ROOT to a compose-preview-server checkout to score them",
+    );
     return null;
   }
   let chromium;

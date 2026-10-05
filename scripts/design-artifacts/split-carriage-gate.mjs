@@ -30,6 +30,7 @@
  */
 
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 
 /**
  * Report the carriage as a failure once it is at least this share of everything the split wrote.
@@ -183,6 +184,6 @@ function main(argv) {
   return result.level === "error" ? 1 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(main(process.argv.slice(2)));
 }

@@ -89,6 +89,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 import { previewsFromJson } from "./deferred-preview-ids.mjs";
 
 /**
@@ -505,7 +506,7 @@ export function verifyShardRenders(plans, capturedIds, { semanticsRan = true, ex
 // This is intentionally invoked through the pinned driver: an older driver that does not implement
 // the contract fails on the unknown option rather than silently feeding an old file format to a new
 // workflow.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
