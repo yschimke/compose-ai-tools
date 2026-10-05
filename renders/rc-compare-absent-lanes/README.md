@@ -1,7 +1,7 @@
 # rc-compare — the players a run did not include
 
 Committed evidence for the published parity page (`rc-compare.html`,
-[`render-rc-compare-html.mjs`](../../scripts/design-artifacts/render-rc-compare-html.mjs)) when a
+[`render-rc-compare-html.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/render-rc-compare-html.mjs)) when a
 catalog's run covered only some of the Remote Compose players.
 
 Each optional lane is opted into per catalog by
@@ -22,7 +22,7 @@ All three are headless-Chromium captures of the synthetic fixture, in the shape 
 publishes:
 
 ```
-node scripts/design-artifacts/rc-compare-fixture.mjs --out <dir> --omit-lanes embedded,cmp-jvm
+npx -p @design-parity/export-driver design-artifacts rc-compare-fixture --out <dir> --omit-lanes embedded,cmp-jvm
 ```
 
 The `before` capture is that same page with the new paragraph stripped, which is the only rendered

@@ -32,9 +32,9 @@ defines the rows: issue state, labels, title, the locator scope fields, and in p
 have to stay text in the index, but the choice has to be made once and written down).
 
 The doc already prescribes the arrangement that keeps the two languages honest, and it is the same
-one `parity-activity.mjs` uses today: a **pure** producer half `scripts/design-artifacts/parity-issues.mjs`
+one `parity-activity.mjs` uses today: a **pure** producer half `@design-parity/export-driver/parity-issues.mjs`
 (no I/O, no network, unit-testable without `npm ci`) driven by an I/O half `emit-parity-issues.mjs`,
-with the output committed as `scripts/design-artifacts/fixtures/parity-issues.json` **and loaded by
+with the output committed as `@design-parity/export-driver/fixtures/parity-issues.json` **and loaded by
 the Kotlin reader's own test**. That shared fixture is the only thing preventing silent drift — build
 it in this batch, not after.
 

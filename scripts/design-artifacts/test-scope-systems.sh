@@ -41,7 +41,7 @@ expect 'two catalogs' 'compose-m3,wear-m3' \
   'samples/design-catalog-m3/A.kt' 'samples/design-catalog-wear-m3/B.kt'
 
 # --- shared inputs fan out to every system ----------------------------------
-expect 'export driver'      'compose-m3,wear-m3' 'scripts/design-artifacts/generate-design-catalog.mjs'
+expect 'export driver lock' 'compose-m3,wear-m3' '.github/design-artifacts-driver/package-lock.json'
 expect 'this workflow'      'compose-m3,wear-m3' '.github/workflows/design-artifacts.yml'
 expect 'reusable workflow'  'compose-m3,wear-m3' '.github/workflows/design-artifacts-reusable.yml'
 expect 'scope script itself' 'compose-m3,wear-m3' 'scripts/design-artifacts/scope-systems.sh'

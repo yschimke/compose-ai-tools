@@ -76,8 +76,8 @@ class RepositoryConfigsTest(unittest.TestCase):
     #
     # The vendored TypeScript player was the last candidate, and it left with the players
     # (yschimke/rc-players). What remains here is `scripts/design-artifacts/**`, which is outside
-    # the Gradle module tree but deliberately wakes `rc_player_tests` and `design_artifacts` —
-    # the behaviour we want, not the one this test asserted.
+    # the Gradle module tree but deliberately wakes `design_artifacts` — the behaviour we want, not
+    # the one this test asserted.
     #
     # If a TypeScript surface that no Gradle group depends on returns, restore this.
 
@@ -147,14 +147,18 @@ class RepositoryConfigsTest(unittest.TestCase):
     # wrong rather than merely unnecessary. The property it protected is now that repository's to
     # assert, against the paths its own dist task reads.
 
-    def test_other_wasm_catalog_sources_do_not_run_the_rc_player_jobs(self):
-        # Scoped to what the distribution actually copies: the catalog's own Kotlin is not a player
-        # input, and pulling the whole module in would run these jobs on every catalog edit.
+    # `test_other_wasm_catalog_sources_do_not_run_the_rc_player_jobs` lived here too. The
+    # `rc_player_tests` group it asserted on is gone: its one job ran the export driver's browser
+    # guards, which moved to design-parity's CI with the driver's source.
+
+    def test_vendored_fonts_run_the_driver_contract(self):
+        # The driver registers these faces for the Remote Compose lanes, and the contract test
+        # checks each one is vendored here, so removing a face must wake that job.
         result = mod.decide(
-            ["samples/cmp-wasm-catalog/src/wasmJsMain/kotlin/App.kt"],
+            ["samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/Roboto-Regular.ttf"],
             self.load("ci-paths.json"),
         )
-        self.assertFalse(result["rc_player_tests"])
+        self.assertTrue(result["design_artifacts"])
 
 
 

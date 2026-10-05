@@ -1,6 +1,6 @@
 # Wear breakpoint renders lost to a preview-id spelling mismatch
 
-Evidence for the fix in `scripts/design-artifacts/preview-id-alias.mjs`.
+Evidence for the fix in `@design-parity/export-driver/preview-id-alias.mjs`.
 
 ## Symptom
 
@@ -69,8 +69,7 @@ screens, not one render duplicated across a collapsed axis.
 PATH="$PWD/cli/build/install/compose-preview/bin:$PATH" \
   compose-preview bundle pack --module :samples:design-catalog-wear-m3 \
     --with-semantics -o /tmp/wear-bundle.png
-(cd scripts/design-artifacts && npm ci)
-node scripts/design-artifacts/generate-design-catalog.mjs \
+npx -p @design-parity/export-driver design-artifacts generate-design-catalog \
   --spec samples/design-catalog-wear-m3/catalog.spec.json \
   --renders /tmp/wear-bundle.png --out /tmp/out --renderer local
 ```

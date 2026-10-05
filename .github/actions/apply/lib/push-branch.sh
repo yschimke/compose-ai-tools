@@ -99,9 +99,15 @@ with_revision_preview_index() {
   parent="$2"
   [ "$REVISION_PREVIEW_INDEX" = "1" ] || { echo "$candidate"; return; }
 
-  # The export driver's directory: the published package the workflow fetched (`DRIVER_DIR`), or
-  # this checkout's own copy for a caller that has not set one.
-  driver="${DRIVER_DIR:-$HELPER_DIR/../../../../scripts/design-artifacts}"
+  # The export driver's directory: the installed `@design-parity/export-driver` the workflow
+  # exports as `DRIVER_DIR` (`.github/scripts/install-export-driver.sh`). This checkout no longer
+  # carries a copy, so without it there is nothing to run, and the index must not silently stop
+  # rolling forward.
+  driver="${DRIVER_DIR:-}"
+  if [ -z "$driver" ] || [ ! -f "$driver/revision-preview-index.mjs" ]; then
+    echo "::error::REVISION_PREVIEW_INDEX=1 needs DRIVER_DIR to name an installed export driver (got '${driver}')" >&2
+    exit 1
+  fi
   scratch=$(mktemp -d)
   git show "${candidate}:catalog.json" > "$scratch/catalog.json"
   if [ -n "$parent" ] && git show "${parent}:preview-index.json" > "$scratch/prior.json" 2>/dev/null; then

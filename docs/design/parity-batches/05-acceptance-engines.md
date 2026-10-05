@@ -44,7 +44,7 @@ selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 > click, while authoring an acceptance means producing a mask and a crop and recording three hashes.
 >
 > `scope-systems.sh` needs no change, checked rather than assumed: `SHARED_RE` already covers
-> `scripts/design-artifacts/` (the export driver), and a `.design-parity/` committed inside a sample
+> `scripts/design-artifacts/` (then the export driver), and a `.design-parity/` committed inside a sample
 > catalog is matched by that system's own pattern.
 >
 > What is **not** done, and is what the rest of this document still describes:

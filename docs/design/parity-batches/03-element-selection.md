@@ -18,7 +18,7 @@ done** — see below.
 > the one place the shape differs from what the brief anticipated.
 
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §5 and §6
-steps 5–6; `ServeSemanticsTags.kt` and `scripts/design-artifacts/tag-index.mjs` (the two producers,
+steps 5–6; `ServeSemanticsTags.kt` and `@design-parity/export-driver/tag-index.mjs` (the two producers,
 and the KDoc in each explains the rules); `inspect.js` and `viewer.js`'s `data-cp-src` frame
 recording, which is the coupling this batch has to break.
 

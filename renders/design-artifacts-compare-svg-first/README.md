@@ -1,7 +1,7 @@
 # `compare.html` leads with the design vector
 
 Committed evidence for the column swap in
-[`render-compare-html.mjs`](../../scripts/design-artifacts/render-compare-html.mjs),
+[`render-compare-html.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/render-compare-html.mjs),
 the self-contained `compare.html` published on every `design-artifacts/<system>`
 delivery branch.
 

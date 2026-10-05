@@ -13,7 +13,7 @@ moves nothing. What is new is a capture of the half that had none.
 | `diff-baked.light.png` | reference = the baked PNG: the marked column, the mismatch chips, and the offline run's own numbers replayed |
 
 This is the cheap path — every number on it was computed by
-`scripts/design-artifacts/rc-compare.mjs` with pixelmatch and published on the
+`@design-parity/export-driver/rc-compare.mjs` with pixelmatch and published on the
 delivery branch, so the page just shows them.
 
 ## The path that was not

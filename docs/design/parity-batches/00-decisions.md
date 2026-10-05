@@ -24,7 +24,7 @@ been written against opposite readings.
 The design doc says the server publishes tag bounds already transformed into an acceptance's
 *canonical plane*. **Neither producer can do that.** The canonical plane is resolved per comparison,
 from a reference raster and an acceptance record; `ServeSemanticsTags` sees one daemon render and
-`scripts/design-artifacts/tag-index.mjs` sees one packed bundle. Both therefore emit `boundsInRoot`
+`@design-parity/export-driver/tag-index.mjs` sees one packed bundle. Both therefore emit `boundsInRoot`
 render pixels and declare `space: "render-pixels"` on the wire, and `ServeTagIndexStore` rejects any
 entry that declares anything else — so nothing can silently consume these as canonical today.
 

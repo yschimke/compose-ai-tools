@@ -7,7 +7,7 @@ have grey background*.
 ## The problem
 
 `rc-compare` flattens both sides of every comparison onto the mid-grey
-[`BG`](../../../../scripts/design-artifacts/rc-compare-pixels.mjs) before `pixelmatch` runs — the
+[`BG`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/rc-compare-pixels.mjs) before `pixelmatch` runs — the
 catalog PNGs are stickers on a transparent background, and without a shared opaque ground light
 content on transparent scores as a false match against a blank canvas.
 
@@ -49,7 +49,7 @@ whose JS-player capture varies by phase run to run — and left the other 50 ide
 ## The compare page
 
 `rc-compare.html` had a checkerboard behind these cells all along (`.cell img` in
-[`render-rc-compare-html.mjs`](../../../../scripts/design-artifacts/render-rc-compare-html.mjs)),
+[`render-rc-compare-html.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/export-driver/render-rc-compare-html.mjs)),
 which nothing could ever show through while every image was opaque. It now can, so the checker is
 tinted on the diff neutral rather than on the page: transparency reads as transparency, and a pale
 swatch still contrasts with its ground the way the score says it does. Same row, before and after —
@@ -93,7 +93,7 @@ console.log("channels differing:",n);'
 Both compare-page rows above come from a full parity run of that same bundle:
 
 ```sh
-node scripts/design-artifacts/rc-compare.mjs \
+npx -p @design-parity/export-driver design-artifacts rc-compare \
   --bundle bundle.png --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/parity --system remote-m3
 # then screenshot the first row of /tmp/parity/rc-compare.html

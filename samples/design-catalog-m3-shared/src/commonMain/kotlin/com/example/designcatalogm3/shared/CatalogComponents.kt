@@ -63,7 +63,7 @@ import org.jetbrains.compose.resources.stringResource
  * uses the same `androidx.compose.material3.*` package names as the Android one, so the bodies are
  * identical to the Android catalog they replace.
  *
- * **Ids are the catalog's slugged `componentId`** (`slug()` in `scripts/design-artifacts`:
+ * **Ids are the catalog's slugged `componentId`** (`slug()` in `@design-parity/export-driver`:
  * lowercase, non-alphanumeric runs → `-`), 1:1 with `samples/design-catalog-m3/catalog.spec.json`,
  * so `/wasm/compose-m3/?id=<slug>` and the desktop preview functions resolve the same component.
  *

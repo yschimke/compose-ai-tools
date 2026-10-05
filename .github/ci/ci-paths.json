@@ -27,14 +27,6 @@
     "plugin_tests": [
       "gradle-plugin/**"
     ],
-    "rc_player_tests": [
-      "scripts/design-artifacts/rc-compare*",
-      "scripts/design-artifacts/rc-chromium*",
-      "scripts/design-artifacts/rc-cmp-wasm-*",
-      "scripts/design-artifacts/rc-clock*",
-      "scripts/design-artifacts/rc-settle*",
-      ".github/workflows/design-artifacts-reusable.yml"
-    ],
     "module_unit_tests": [
       "api/**",
       "bundle-viewer/**",
@@ -82,7 +74,15 @@
       "design-map/**",
       "scripts/design-artifacts/**",
       ".github/design-artifacts-driver/**",
-      ".github/actions/lib/**"
+      ".github/scripts/install-export-driver.sh",
+      ".github/workflows/design-artifacts-reusable.yml",
+      ".github/actions/lib/**",
+      "samples/design-catalog-m3/**",
+      "samples/design-catalog-wear-m3/**",
+      "samples/design-catalog-m3-shared/**",
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/**",
+      "screen/generator/src/commonMain/kotlin/ee/schimke/composeai/discovery/UiBuilderPolicy.kt",
+      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/UiBuilderTemplateLookup.kt"
     ]
   }
 }
