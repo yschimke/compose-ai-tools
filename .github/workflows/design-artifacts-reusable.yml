@@ -845,7 +845,15 @@ env:
   SOURCE_REPOSITORY: ${{ github.repository }}
   SOURCE_REF_NAME: ${{ github.ref_name }}
 
-  # Which revision of compose-ai-tools' `scripts/design-artifacts/` this privileged
+  # The export driver's scripts run from the published `@design-parity/export-driver` package;
+  # design-parity's packages/export-driver is their source. Which version, and every package under
+  # it, is fixed by the reviewed lock in `.github/design-artifacts-driver/` at the compose-ai-tools
+  # revision resolved below, installed by `.github/scripts/install-export-driver.sh`. So the
+  # reasoning that follows, written when that revision held the driver's source, holds unchanged:
+  # the revision now names the driver through its lock. A revision from before the lock existed
+  # still carries its own copy in `scripts/design-artifacts/`, and runs that.
+  #
+  # Which revision of compose-ai-tools this privileged
   # workflow executes is resolved per-run by the "Resolve the export-driver
   # revision" step before each driver checkout. Two answers, because the callers
   # are in two different trust positions and were being served the wrong one:
@@ -1135,6 +1143,7 @@ jobs:
           }
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
           echo "Export driver: \`${ref}\`" >> "$GITHUB_STEP_SUMMARY"
+
 
   # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
   # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
@@ -1862,6 +1871,22 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      - name: Fetch the export driver (@design-parity/export-driver)
+        run: |
+          set -euo pipefail
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
+
       # ---- Themes an imported project cannot declare for itself ---------------------------------
       #
       # A catalog's Theme control is fed by `@ThemeCatalog` providers, an annotation from this
@@ -1900,7 +1925,7 @@ jobs:
           # catalog at all, nightly) for a field whose absence costs only the theme chips. A
           # catalog that publishes exactly as it did before, and gains its chips when the pin
           # moves, is the correct degradation; a hard failure is a regression dressed as strictness.
-          generator="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs"
+          generator="$DRIVER_DIR/generate-theme-catalogs.mjs"
           if [ ! -f "$generator" ]; then
             echo "::warning title=Declared themes not generated::$SPEC declares 'themes', but the" \
                  "pinned export driver has no generate-theme-catalogs.mjs. The catalog publishes" \
@@ -2048,7 +2073,7 @@ jobs:
           else
             args+=(--no-live-bundle)
           fi
-          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
+          node $DRIVER_DIR/validate-catalog-spec.mjs "${args[@]}" \
             --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
             --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
           # The builder policy, in the same build-free pre-flight and for the same reason. What a
@@ -2139,7 +2164,7 @@ jobs:
           # external caller, immediately. Guarded and degraded the way the `--spec` probe below
           # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
           # notice rather than the build.
-          policy_validator=compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs
+          policy_validator=$DRIVER_DIR/validate-ui-builder-policy.mjs
           if [ ! -f "$policy_validator" ]; then
             echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
             policy_candidates=()
@@ -2239,7 +2264,7 @@ jobs:
           EXCLUDE_PREVIEW_IDS: ${{ inputs.exclude-preview-ids }}
         run: |
           set -euo pipefail
-          preflight=compose-ai-tools/scripts/design-artifacts/spec-preflight.mjs
+          preflight=$DRIVER_DIR/spec-preflight.mjs
           manifest="$GITHUB_WORKSPACE/discovered-previews.json"
           if [ ! -f "$preflight" ]; then
             echo "::notice title=Driver too old for the spec preflight::This run's export driver predates spec-preflight.mjs, so the spec was not checked against the discovered preview ids. Nothing is lost — the render's own gates still run. External callers get it when the next release moves compose-ai-tools/.github/design-artifacts-driver-pin.txt."
@@ -2263,7 +2288,7 @@ jobs:
           SPEC: ${{ inputs.spec }}
         run: |
           set -euo pipefail
-          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
+          node "$DRIVER_DIR/deferred-preview-ids.mjs" \
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --out "$GITHUB_WORKSPACE/mode-filter.txt" \
@@ -2292,7 +2317,7 @@ jobs:
           if [ -s "$GITHUB_WORKSPACE/render-filter.txt" ]; then
             filter_file=(--render-filter-file "$GITHUB_WORKSPACE/render-filter.txt")
           fi
-          previews=$(node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
+          previews=$(node $DRIVER_DIR/shard-preview-ids.mjs \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --shards "$INPUT_RENDER_SHARDS" \
             --index "$MATRIX_SHARD" \
@@ -2303,7 +2328,7 @@ jobs:
           # contract before spending tens of minutes rendering: v1.60.0 wrote one comma-separated
           # line, which v1.60.1's --exclude-preview-id-file correctly treated as one impossible
           # pattern and therefore baked the full catalog in every shard (#4916).
-          if ! node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
+          if ! node $DRIVER_DIR/shard-preview-ids.mjs \
               --verify-exclusions \
               "$GITHUB_WORKSPACE/shard-plan.json" \
               "$GITHUB_WORKSPACE/shard-exclude.txt"; then
@@ -3014,8 +3039,8 @@ jobs:
           catalog-path: ${{ inputs.catalog-path }}
           github-token: ${{ github.token }}
 
-      # The export driver + its render helpers live in compose-ai-tools; check it
-      # out (public repo) so we can run scripts/design-artifacts/.
+      # compose-ai-tools at the pinned commit: its actions, version catalog and player staging.
+      # The driver's scripts come from the published package, fetched by the step after this.
       - name: Check out compose-ai-tools (export driver)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3025,6 +3050,22 @@ jobs:
           ref: ${{ needs.driver.outputs.ref }}
           path: compose-ai-tools
           persist-credentials: false
+
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      - name: Fetch the export driver (@design-parity/export-driver)
+        run: |
+          set -euo pipefail
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
 
       # ---- Themes an imported project cannot declare for itself ---------------------------------
       #
@@ -3064,7 +3105,7 @@ jobs:
           # catalog at all, nightly) for a field whose absence costs only the theme chips. A
           # catalog that publishes exactly as it did before, and gains its chips when the pin
           # moves, is the correct degradation; a hard failure is a regression dressed as strictness.
-          generator="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs"
+          generator="$DRIVER_DIR/generate-theme-catalogs.mjs"
           if [ ! -f "$generator" ]; then
             echo "::warning title=Declared themes not generated::$SPEC declares 'themes', but the" \
                  "pinned export driver has no generate-theme-catalogs.mjs. The catalog publishes" \
@@ -3311,9 +3352,17 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - name: Install export engine (pinned npm packages)
-        working-directory: compose-ai-tools/scripts/design-artifacts
-        run: npm ci --no-audit --no-fund --loglevel=warn
+      # The whole locked tree (`npm ci` against `.github/design-artifacts-driver/package-lock.json`),
+      # replacing the scripts-only fetch above with the same driver bytes plus its dependencies.
+      - name: Install the export driver's npm dependencies
+        run: |
+          set -euo pipefail
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            (cd "$DRIVER_DIR" && npm ci --no-audit --no-fund --loglevel=warn)
+          fi
 
       - name: Validate module selector
         run: |
@@ -3387,7 +3436,7 @@ jobs:
           fi
           preferred="$(node -e 'const fs=require("fs"); try { const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(s.module ?? ""); } catch {}' "$GITHUB_WORKSPACE/$SPEC")"
           preferred_args=(); if [ -n "$preferred" ]; then preferred_args=(--preferred "$preferred"); fi
-          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/preview-modules.mjs" \
+          node "$DRIVER_DIR/preview-modules.mjs" \
             --input "$modules_input" \
             --output "$GITHUB_WORKSPACE/preview-modules.txt" \
             --sources-output "$GITHUB_WORKSPACE/preview-module-sources.txt" \
@@ -3452,7 +3501,7 @@ jobs:
           else
             args+=(--no-live-bundle)
           fi
-          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
+          node $DRIVER_DIR/validate-catalog-spec.mjs "${args[@]}" \
             --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
             --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
           # The builder policy, in the same build-free pre-flight and for the same reason. What a
@@ -3543,7 +3592,7 @@ jobs:
           # external caller, immediately. Guarded and degraded the way the `--spec` probe below
           # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
           # notice rather than the build.
-          policy_validator=compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs
+          policy_validator=$DRIVER_DIR/validate-ui-builder-policy.mjs
           if [ ! -f "$policy_validator" ]; then
             echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
             policy_candidates=()
@@ -3587,7 +3636,7 @@ jobs:
           fi
           variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           compose-preview list --json "${variant[@]}" "${module_args[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
-          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
+          node "$DRIVER_DIR/deferred-preview-ids.mjs" \
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --out "$GITHUB_WORKSPACE/mode-filter.txt" \
@@ -3642,7 +3691,7 @@ jobs:
           EXCLUDE_PREVIEW_IDS: ${{ inputs.exclude-preview-ids }}
         run: |
           set -euo pipefail
-          preflight=compose-ai-tools/scripts/design-artifacts/spec-preflight.mjs
+          preflight=$DRIVER_DIR/spec-preflight.mjs
           manifest="$GITHUB_WORKSPACE/discovered-previews.json"
           if [ ! -f "$preflight" ]; then
             echo "::notice title=Driver too old for the spec preflight::This run's export driver predates spec-preflight.mjs, so the spec was not checked against the discovered preview ids. Nothing is lost — the render's own gates still run. External callers get it when the next release moves compose-ai-tools/.github/design-artifacts-driver-pin.txt."
@@ -3795,7 +3844,7 @@ jobs:
               if [ "$index" -eq 0 ]; then
                 output="$GITHUB_WORKSPACE/module-bundles/0000.png"
               else
-                module_key="$(node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/module-artifact-key.mjs" --module "$discovered_module")"
+                module_key="$(node "$DRIVER_DIR/module-artifact-key.mjs" --module "$discovered_module")"
                 output="$GITHUB_WORKSPACE/module-bundles/$module_key.png"
               fi
               # The authored render filter belongs to the preferred/primary module. Every later
@@ -3855,7 +3904,7 @@ jobs:
           # Cross-check the partitions BEFORE trusting them. Each shard derived its own from its own
           # discovery; they agree by construction, and if they ever don't, the symptom downstream is
           # a completeness-gate failure naming a component, with nothing pointing at the shards.
-          node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs --verify "${plans[@]}"
+          node $DRIVER_DIR/shard-preview-ids.mjs --verify "${plans[@]}"
           if [ "${#bundles[@]}" -eq 1 ]; then
             # One shard did all the work (more shards than previews). Nothing to union.
             cp "${bundles[0]}" "$GITHUB_WORKSPACE/bundle.png"
@@ -3877,7 +3926,7 @@ jobs:
           # 2 by design, and this step runs under `pipefail`, so `node … | grep -q` would carry
           # node's 2 through the pipeline and read as "unsupported" on EVERY driver — silently
           # disabling the exemption the flag exists to deliver.
-          verifier=compose-ai-tools/scripts/design-artifacts/verify-shard-renders.mjs
+          verifier=$DRIVER_DIR/verify-shard-renders.mjs
           verifier_usage=$(node "$verifier" 2>&1 || true)
           spec_arg=()
           if grep -q -- '--spec' <<<"$verifier_usage"; then
@@ -4126,10 +4175,10 @@ jobs:
           set -euo pipefail
           mapfile -t modules < "$GITHUB_WORKSPACE/preview-modules.txt"
           for ((index = 1; index < ${#modules[@]}; index++)); do
-            module_key="$(node compose-ai-tools/scripts/design-artifacts/module-artifact-key.mjs --module "${modules[$index]}")"
+            module_key="$(node $DRIVER_DIR/module-artifact-key.mjs --module "${modules[$index]}")"
             bundle="$GITHUB_WORKSPACE/module-bundles/$module_key.png"
             namespaced="$bundle.namespaced"
-            node compose-ai-tools/scripts/design-artifacts/namespace-live-bundle.mjs \
+            node $DRIVER_DIR/namespace-live-bundle.mjs \
               --input "$bundle" --output "$namespaced" --module "${modules[$index]}"
             mv "$namespaced" "$bundle"
           done
@@ -4159,7 +4208,7 @@ jobs:
             echo "::error title=Render assertions::render-assertions names $ASSERTIONS, which does not exist in the calling repository."
             exit 1
           fi
-          checker=compose-ai-tools/scripts/design-artifacts/check-render-assertions.mjs
+          checker=$DRIVER_DIR/check-render-assertions.mjs
           if [ ! -f "$checker" ]; then
             echo "::error title=Driver too old for render assertions::This run's export driver predates check-render-assertions.mjs, so the declared render assertions cannot be checked. Failing rather than skipping: an assertion that silently does not run reads as coverage that is not there."
             exit 1
@@ -4283,7 +4332,7 @@ jobs:
           if [ -n "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
             runtime=(--ui-builder-runtime-archive "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")
           fi
-          node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
+          node $DRIVER_DIR/generate-design-catalog.mjs \
             --spec "$INPUT_SPEC" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
             "${extra[@]}" \
@@ -4386,7 +4435,7 @@ jobs:
         if: ${{ inputs.defer-figma-svg && inputs.publish-live-bundle }}
         run: |
           set -euo pipefail
-          node compose-ai-tools/scripts/design-artifacts/strip-published-figma-svg.mjs \
+          node $DRIVER_DIR/strip-published-figma-svg.mjs \
             --root "$GITHUB_WORKSPACE/out/bundle"
 
       # The split wrote the carriage report BEFORE the strip above, because it needs the transient
@@ -4399,7 +4448,7 @@ jobs:
         if: ${{ inputs.split-per-preview && inputs.defer-figma-svg && inputs.publish-live-bundle }}
         run: |
           set -euo pipefail
-          node compose-ai-tools/scripts/design-artifacts/recompute-carriage-report.mjs \
+          node $DRIVER_DIR/recompute-carriage-report.mjs \
             --report "$GITHUB_WORKSPACE/split-carriage.json" \
             --bundles-from "$GITHUB_WORKSPACE/split-primary-bundles.txt"
 
@@ -4426,7 +4475,7 @@ jobs:
           SYSTEM: ${{ inputs.system }}
         run: |
           set -euo pipefail
-          node compose-ai-tools/scripts/design-artifacts/split-carriage-gate.mjs \
+          node $DRIVER_DIR/split-carriage-gate.mjs \
             --report "$GITHUB_WORKSPACE/split-carriage.json" \
             --mode "$INPUT_SPLIT_MODE" \
             --system "$SYSTEM"
@@ -4450,12 +4499,12 @@ jobs:
           set -euo pipefail
           incomplete=()
           if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
-          node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
+          node $DRIVER_DIR/generate-design-catalog.mjs \
             --spec "$FOLD_SPEC" \
             --renders "$GITHUB_WORKSPACE/fold-in/$FOLD_BUNDLE" \
             --out "$GITHUB_WORKSPACE/out-fold" \
             "${incomplete[@]}"
-          node compose-ai-tools/scripts/design-artifacts/merge-catalog-section.mjs \
+          node $DRIVER_DIR/merge-catalog-section.mjs \
             --into "$GITHUB_WORKSPACE/out" \
             --from "$GITHUB_WORKSPACE/out-fold" \
             --section "$FOLD_SECTION"
@@ -4625,8 +4674,8 @@ jobs:
           # the design-map containing `.html`: a Figma-only catalog needs the browser too.
           # Idempotent: a no-op when the Remote Compose lane below already installed it in this job.
           install_log="$RUNNER_TEMP/playwright-install-references.log"
-          if ! (cd compose-ai-tools/scripts/design-artifacts &&
-                npx playwright install --with-deps chromium) >"$install_log" 2>&1; then
+          if ! "$DRIVER_ROOT/node_modules/.bin/playwright" install --with-deps chromium \
+                >"$install_log" 2>&1; then
             echo "::warning title=Chromium install failed::HTML design references will be skipped and references will publish without a match score."
             tail -n 40 "$install_log" >&2
           fi
@@ -4642,7 +4691,7 @@ jobs:
           # A warning and not a failure: the references published are byte-for-byte what this
           # catalog would have published with no input at all — stale against the caller's intent,
           # never wrong — and a reference lane must not cost a catalog its render.
-          emitter=compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs
+          emitter=$DRIVER_DIR/emit-design-references.mjs
           # Same shape, same reason: an EXTERNAL caller runs the release-pinned
           # driver, so a freshly merged flag reaches it only when the next
           # release moves design-artifacts-driver-pin.txt. Silence here would
@@ -4710,7 +4759,7 @@ jobs:
             git fetch --shallow-since="35 days ago" origin HEAD 2>/dev/null || \
               echo "::notice::could not deepen the checkout; the code lane may be empty"
           fi
-          node compose-ai-tools/scripts/design-artifacts/emit-parity-activity.mjs \
+          node $DRIVER_DIR/emit-parity-activity.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
             --source-repo "$SOURCE_REPOSITORY" \
@@ -4757,7 +4806,7 @@ jobs:
           # next release moves the pin. Same hazard push-history.sh guards against below, and the
           # same answer: a catalog that cannot publish a verdict panel this run is not a failed
           # render. compose-ai-tools' own runs execute the commit the run is on and never see this.
-          emitter=compose-ai-tools/scripts/design-artifacts/emit-parity-findings.mjs
+          emitter=$DRIVER_DIR/emit-parity-findings.mjs
           if [ ! -f "$emitter" ]; then
             echo "::notice::parity findings: the pinned export driver has no emit-parity-findings.mjs; skipping the verdict panel. It publishes once the driver pin advances."
             exit 0
@@ -4807,7 +4856,7 @@ jobs:
         if: ${{ inputs.publish || inputs.upload-out }}
         run: |
           set -euo pipefail
-          node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
+          node $DRIVER_DIR/emit-design-pages.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
             --spec "$INPUT_SPEC" \
@@ -4822,7 +4871,7 @@ jobs:
         id: rc-compare
         if: ${{ inputs.publish || inputs.upload-out }}
         continue-on-error: ${{ inputs.rc-cmp-wasm-lane }}
-        working-directory: compose-ai-tools/scripts/design-artifacts
+        working-directory: ${{ env.DRIVER_DIR }}
         env:
           RC_CMP_WASM_ALLOWLIST: ${{ inputs.rc-cmp-wasm-allowlist }}
         run: |
@@ -4842,7 +4891,7 @@ jobs:
           fi
           install_log="$RUNNER_TEMP/playwright-install.log"
           echo "Installing Chromium and system dependencies…"
-          if ! npx playwright install --with-deps chromium >"$install_log" 2>&1; then
+          if ! "$DRIVER_ROOT/node_modules/.bin/playwright" install --with-deps chromium >"$install_log" 2>&1; then
             echo "::error title=Chromium install failed::Playwright could not install Chromium. The final 80 log lines follow." >&2
             tail -n 80 "$install_log" >&2
             exit 1
@@ -4974,6 +5023,7 @@ jobs:
             node rc-compare.mjs \
               --bundle "$GITHUB_WORKSPACE/bundle.png" \
               --player "$PLAYER" \
+              --fonts "$GITHUB_WORKSPACE/compose-ai-tools/samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts" \
               --out "$GITHUB_WORKSPACE/out" \
               --stage-embedded "$RC_IN"
           fi
@@ -5068,6 +5118,7 @@ jobs:
           node rc-compare.mjs \
             --bundle "$GITHUB_WORKSPACE/bundle.png" \
             --player "$PLAYER" \
+            --fonts "$GITHUB_WORKSPACE/compose-ai-tools/samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts" \
             --out "$GITHUB_WORKSPACE/out" \
             --system "$INPUT_SYSTEM" \
             --title "$INPUT_SYSTEM" \
@@ -5333,6 +5384,22 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
+      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
+      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
+      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
+      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      - name: Fetch the export driver (@design-parity/export-driver)
+        run: |
+          set -euo pipefail
+          installer=compose-ai-tools/.github/scripts/install-export-driver.sh
+          if [ -x "$installer" ]; then
+            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+          else
+            echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
+            legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
+            { echo "DRIVER_DIR=$legacy"; echo "DRIVER_ROOT=$legacy"; } >> "$GITHUB_ENV"
+          fi
+
       - name: Download the rendered catalog
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -5441,7 +5508,7 @@ jobs:
           # release commit that predates anything this workflow adds. A missing helper is a notice,
           # not a failed publish — the scope degrades to the delivery branch subject, which
           # over-renders rather than under-renders.
-          MARKER="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/mark-published-source.sh"
+          MARKER="$DRIVER_DIR/mark-published-source.sh"
           if [ -f "$MARKER" ]; then
             GH_TOKEN="$SOURCE_TOKEN" bash "$MARKER" \
               --system "$SYSTEM" --repo "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA_FULL"

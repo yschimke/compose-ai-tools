@@ -41,7 +41,7 @@ SYSTEMS=(compose-m3 wear-m3)
 
 # Inputs that change the shape of EVERY bundle: the export driver, and the
 # workflows that drive it. Any hit here fans out to all systems.
-SHARED_RE='^(scripts/design-artifacts/|\.github/workflows/design-artifacts(-reusable)?\.yml$)'
+SHARED_RE='^(scripts/design-artifacts/|\.github/design-artifacts-driver/|\.github/scripts/install-export-driver\.sh$|\.github/workflows/design-artifacts(-reusable)?\.yml$)'
 
 # Per-system inputs. compose-m3 is assembled from several modules — the CMP
 # catalog, its shared + Android-supplement tiers, and the Kotlin/Wasm app — so a
