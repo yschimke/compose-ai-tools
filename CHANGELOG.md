@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.34.1](https://github.com/yschimke/compose-ai-tools/compare/v2.34.0...v2.34.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **cli:** point plugin install hints at compose-agent-plugins ([#5701](https://github.com/yschimke/compose-ai-tools/issues/5701)) ([cb6aceb](https://github.com/yschimke/compose-ai-tools/commit/cb6acebda944046f4096e9eb0a299dbb5abdf877))
+* **render:** bind AGP test-task JVM settings after late registration ([#5704](https://github.com/yschimke/compose-ai-tools/issues/5704)) ([3d5c6f2](https://github.com/yschimke/compose-ai-tools/commit/3d5c6f2f21392bd1fe54d61d9a400660dcfd9dc5))
+* **render:** preserve late AGP resources and expose KMP Android opt-in ([#5703](https://github.com/yschimke/compose-ai-tools/issues/5703)) ([18bbedf](https://github.com/yschimke/compose-ai-tools/commit/18bbedfdb1b0b212a4f2ab4287df96f018c935a8))
+
 ## [2.34.0](https://github.com/yschimke/compose-ai-tools/compare/v2.33.0...v2.34.0) (2026-10-04)
 
 
