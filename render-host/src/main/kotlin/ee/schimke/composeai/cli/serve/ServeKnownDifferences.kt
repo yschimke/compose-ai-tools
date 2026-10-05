@@ -14,7 +14,7 @@ import okio.Path.Companion.toPath
  * §4) and the mask / accepted-candidate rasters it names, published under `parity/`.
  *
  * The host carries the document verbatim and decides nothing: verdicts belong to the shared engine
- * ([known-differences.mjs](../../../../../../../../scripts/design-artifacts/known-differences.mjs)),
+ * ([`@design-parity/known-differences`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-differences.ts)),
  * and pre-parsing here would make a third, untested implementation. This class only discharges the
  * reader obligations no lexical rule can: size checked before allocation, containment resolved
  * against the acceptance's own `<id>/` directory (not just the artifact root), and exact case.
@@ -51,9 +51,8 @@ public object ServeKnownDifferences {
   public const val MAX_ACCEPTANCES: Int = 256
 
   /**
-   * §4's portable path grammar, mirroring `isPortableSegment` in `known-differences.mjs`: the
-   * character class plus the shapes it can't exclude (`.`/`..`, trailing dot or space, Windows
-   * device names).
+   * §4's portable path grammar, mirroring `isPortableSegment` in that engine: the character class
+   * plus the shapes it can't exclude (`.`/`..`, trailing dot or space, Windows device names).
    */
   private val SAFE_SEGMENT = Regex("[A-Za-z0-9._-]{1,255}")
 

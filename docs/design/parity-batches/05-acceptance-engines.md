@@ -11,12 +11,12 @@ selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 > **Status — 5b and 5c landed, 5a outstanding.** What is in `main`:
 >
 > - **The separated-plane score**, in
->   [`known-difference-score.mjs`](../../../scripts/design-artifacts/known-difference-score.mjs),
+>   [`known-difference-score.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-difference-score.ts),
 >   with the `scoring/` fixture group. The seam to the gates is `survivingMasks` — the `valid`
 >   acceptances' masks and no other status — pinned from the gate side by the `survivingMaskIds`
 >   pin and from the score side by the group.
 > - **The canonical plane, measured portably**
->   ([`known-difference-plane.mjs`](../../../scripts/design-artifacts/known-difference-plane.mjs)),
+>   ([`known-difference-plane.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-difference-plane.ts)),
 >   with the `plane/` group. It was pinned by nothing before: every gate case is *handed* its plane.
 > - **The browser engine** — and it is the **same module**, not a port. `png-lite.mjs` stopped
 >   needing `node:zlib` and `node:crypto` (`inflate-lite.mjs`, `sha256-lite.mjs`), so

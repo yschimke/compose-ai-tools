@@ -720,9 +720,9 @@ glyph-sized — rather than against #40 alone, which is how this section previou
 wrong pixel pipelines.
 
 The reference implementation is
-[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs)
+[`@design-parity/known-differences`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-differences.ts)
 and the fixtures are
-[`scripts/design-artifacts/fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/).
+[`test/conformance/fixtures/known-differences/`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences/test/conformance/fixtures/known-differences/).
 
 1. **The portable pixel path is an area average over exact source footprints**, per channel, on
    **8-bit RGBA**, accumulated in double precision and rounded **half-up** (`floor(v + 0.5)`)
@@ -847,7 +847,7 @@ and the fixtures are
 six answers settle the *gates* — what a mask is permitted to suppress — which is the half that had
 to be settled first, because every gate resolves before any score is computed (I1). What turns them
 into `raw`, `accepted` and `unaccepted` is the separated-plane path, and it is implemented in
-[`known-difference-score.mjs`](../../scripts/design-artifacts/known-difference-score.mjs) and pinned
+[`known-difference-score.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-difference-score.ts) and pinned
 by the `scoring/` fixture group. The `expected.json` in a gate case remains a **partial** pin whose
 `pins` array names the keys a runner must check; the score keys live in their own group rather than
 on every gate case, because a gate case is handed canonical planes and no source rasters and so has
@@ -2402,24 +2402,27 @@ The fixtures lose nothing by this and keep their whole job: `design-parity` is s
 implementation, in another language and another repository, and it is what they exist to hold honest.
 
 ***Delivered.*** The contract's rules are implemented in
-[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs),
+[`@design-parity/known-differences`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-differences.ts),
 its document shape in
-[`known-differences.schema.json`](../../scripts/design-artifacts/known-differences.schema.json), and
+[`known-differences.schema.json`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/schema/known-differences.schema.json), and
 the fixtures in
-[`fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/) — one
+[`fixtures/known-differences/`](https://github.com/yschimke/design-parity/tree/main/packages/known-differences/test/conformance/fixtures/known-differences/) — one
 case per pilot site, one rejecting case for every rule, and a group pinning the resampler on its own.
 The **score** is
-[`known-difference-score.mjs`](../../scripts/design-artifacts/known-difference-score.mjs), pinned by
+[`known-difference-score.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/src/known-difference-score.ts), pinned by
 the `scoring/` group. The two meet at `survivingMasks`: the gate evaluator hands out the masks of the
 acceptances that reached `valid`, and the scorer suppresses exactly those. Which acceptances survive
 is pinned by `cases/` (the `survivingMaskIds` pin), what the survivors suppress by `scoring/` — so
 "a `resolved` mask suppresses nothing" is established by two fixtures that meet rather than by one
 asserting its own premise.
-The suite runs as `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
+The suite is [`known-differences.test.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/test/conformance/known-differences.test.mjs) in design-parity's
+`packages/known-differences`, run by `npm run test:conformance` there (and by that repository's
+`npm test`). It moved there with the engine; this repository no longer carries either.
 Two things about it are load-bearing for the runners that follow:
 
-- **The fixtures are generated, and the suite proves it.** `build-known-difference-fixtures.mjs`
-  writes every byte, and one test regenerates the tree into a scratch directory and compares
+- **The fixtures are generated, and the suite proves it.**
+  [`build-known-difference-fixtures.mjs`](https://github.com/yschimke/design-parity/blob/main/packages/known-differences/test/conformance/build-known-difference-fixtures.mjs), run from that
+  package after a build, writes every byte, and one test regenerates the tree into a scratch directory and compares
   digests. A hand-edited case would otherwise survive indefinitely, pinning bytes nobody can
   re-derive — which is precisely the state the other two runners cannot audit from their own
   repositories.
