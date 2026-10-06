@@ -1109,8 +1109,11 @@ an **exact `@Preview` function name** in the module — a mistyped or renamed na
 renders nothing and only surfaces as a late "missing" entry at the end of the
 (long) render. Two build-free helpers in the export driver (`@design-parity/export-driver`) close that
 gap by scanning the module's Kotlin source directly (no Gradle build, no render).
-`<version>` is the one [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json) pins: the version the
-Design Artifacts workflows run, so a local check applies the same rules as the render.
+`<version>` is the export driver your render runs, so a local check applies the same rules. For this
+repository's own catalogs that is the version [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json)
+names on `main`. A repository calling the reusable workflow runs the one that file names at the release
+[`.github/design-artifacts-driver-pin.txt`](../../.github/design-artifacts-driver-pin.txt) pins; a release from before that file
+existed runs its own `scripts/design-artifacts/` copy instead.
 
 - **Scaffold a starting spec** from the `@Preview` functions a module declares —
   one flat `Components` group, every discovered preview a component to caption and

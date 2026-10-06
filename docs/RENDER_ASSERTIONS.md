@@ -146,8 +146,11 @@ widen it rather than to keep writing code.
 
 ## Running them
 
-`<version>` is the one [`.github/design-artifacts-driver/package.json`](../.github/design-artifacts-driver/package.json) pins: the version the
-Design Artifacts workflows run, so a local check applies the same rules as the render.
+`<version>` is the export driver your render runs, so a local check applies the same rules. For this
+repository's own catalogs that is the version [`.github/design-artifacts-driver/package.json`](../.github/design-artifacts-driver/package.json)
+names on `main`. A repository calling the reusable workflow runs the one that file names at the release
+[`.github/design-artifacts-driver-pin.txt`](../.github/design-artifacts-driver-pin.txt) pins; a release from before that file
+existed runs its own `scripts/design-artifacts/` copy instead.
 
 ```
 npx -p @design-parity/export-driver@<version> design-artifacts check-render-assertions \

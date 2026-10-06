@@ -110,8 +110,11 @@ which carries the field-by-field documentation, and a build-free pre-flight besi
 npx -p @design-parity/export-driver@<version> design-artifacts validate-ui-builder-policy --policy ui-builder.policy.json
 ```
 
-`<version>` is the one [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json) pins: the version the
-Design Artifacts workflows run, so a local check applies the same rules as the render.
+`<version>` is the export driver your render runs, so a local check applies the same rules. For this
+repository's own catalogs that is the version [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json)
+names on `main`. A repository calling the reusable workflow runs the one that file names at the release
+[`.github/design-artifacts-driver-pin.txt`](../../.github/design-artifacts-driver-pin.txt) pins; a release from before that file
+existed runs its own `scripts/design-artifacts/` copy instead.
 
 Not a JSON Schema validator — the schema is the contract and the thing an editor autocompletes
 against, and a second hand-rolled implementation of it would drift. It checks the subset a schema
