@@ -1051,8 +1051,8 @@ jobs:
       - name: Run driver-pin refresh tests
         run: ./.github/scripts/test-refresh-driver-pin.sh
       # The lock in .github/design-artifacts-driver/ decides the export driver every privileged
-      # design-artifacts job runs; this gates that it stays an exact version and that the
-      # scripts-only fetch refuses a tarball the lock did not name.
+      # design-artifacts job runs; this gates that it stays an exact version, that the install
+      # refuses a tarball the lock did not name, and that the shard's spec modules import.
       - name: Run export-driver install tests
         run: ./.github/scripts/test-install-export-driver.sh
 

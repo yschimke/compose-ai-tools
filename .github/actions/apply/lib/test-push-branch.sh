@@ -71,9 +71,9 @@ assert_tip render-v3 issues-newer
 
 # A catalog publish carries the prior index forward and promotes its `current` inventory under the
 # actual parent SHA. The index is rolled by the export driver's revision-preview-index.mjs, which
-# the workflows install from the lock; install the same one (scripts only) unless the caller did.
+# the workflows install from the lock; install the same one unless the caller did.
 if [ -z "${DRIVER_DIR:-}" ]; then
-  DRIVER_DIR=$("$(dirname "$HELPER")/../../../scripts/install-export-driver.sh" --scripts-only "$ROOT/export-driver")
+  DRIVER_DIR=$("$(dirname "$HELPER")/../../../scripts/install-export-driver.sh" "$ROOT/export-driver")
 fi
 export DRIVER_DIR
 indexed_without_driver="$ROOT/indexed-without-driver"

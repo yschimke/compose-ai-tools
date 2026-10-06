@@ -146,7 +146,7 @@ test("the driver resolves the export engine version the lock installed", async (
   const { installedPackageVersion } = await driver("package-version.mjs");
   const found = installedPackageVersion(engine, pathToFileURL(join(DRIVER_DIR, "package-version.mjs")).href);
   if (found === undefined && !existsSync(join(DRIVER_DIR, "..", "..", engine))) {
-    t.skip("a scripts-only install has no dependencies; run against a full install");
+    t.skip("this install has no dependencies; run against install-export-driver.sh's");
     return;
   }
   assert.equal(found, locked);
