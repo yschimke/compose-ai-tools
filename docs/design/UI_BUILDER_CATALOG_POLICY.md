@@ -107,8 +107,11 @@ which carries the field-by-field documentation, and a build-free pre-flight besi
 `validate-catalog-spec.mjs`:
 
 ```
-npx -p @design-parity/export-driver design-artifacts validate-ui-builder-policy --policy ui-builder.policy.json
+npx -p @design-parity/export-driver@<version> design-artifacts validate-ui-builder-policy --policy ui-builder.policy.json
 ```
+
+`<version>` is the one [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json) pins: the version the
+Design Artifacts workflows run, so a local check applies the same rules as the render.
 
 Not a JSON Schema validator — the schema is the contract and the thing an editor autocompletes
 against, and a second hand-rolled implementation of it would drift. It checks the subset a schema

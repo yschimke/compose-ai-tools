@@ -146,11 +146,14 @@ widen it rather than to keep writing code.
 
 ## Running them
 
+`<version>` is the one [`.github/design-artifacts-driver/package.json`](../.github/design-artifacts-driver/package.json) pins: the version the
+Design Artifacts workflows run, so a local check applies the same rules as the render.
+
 ```
-npx -p @design-parity/export-driver design-artifacts check-render-assertions \
+npx -p @design-parity/export-driver@<version> design-artifacts check-render-assertions \
   --assertions render-assertions.json --bundle build/previews.zip
 
-npx -p @design-parity/export-driver design-artifacts check-render-assertions \
+npx -p @design-parity/export-driver@<version> design-artifacts check-render-assertions \
   --assertions render-assertions.mjs --previews-dir build/previews
 ```
 

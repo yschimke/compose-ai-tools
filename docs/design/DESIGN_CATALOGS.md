@@ -1108,14 +1108,16 @@ this-system-first regardless, so a chain in the header would contradict the tabl
 an **exact `@Preview` function name** in the module — a mistyped or renamed name
 renders nothing and only surfaces as a late "missing" entry at the end of the
 (long) render. Two build-free helpers in the export driver (`@design-parity/export-driver`) close that
-gap by scanning the module's Kotlin source directly (no Gradle build, no render):
+gap by scanning the module's Kotlin source directly (no Gradle build, no render).
+`<version>` is the one [`.github/design-artifacts-driver/package.json`](../../.github/design-artifacts-driver/package.json) pins: the version the
+Design Artifacts workflows run, so a local check applies the same rules as the render.
 
 - **Scaffold a starting spec** from the `@Preview` functions a module declares —
   one flat `Components` group, every discovered preview a component to caption and
   regroup:
 
   ```sh
-  npx -p @design-parity/export-driver design-artifacts init-catalog-spec \
+  npx -p @design-parity/export-driver@<version> design-artifacts init-catalog-spec \
     --module :app --system meshcore-mobile --title "MeshCore Mobile" \
     --out catalog.spec.json
   ```
@@ -1127,7 +1129,7 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   errors, so it runs as a pre-flight in `design-artifacts.yml` before the render:
 
   ```sh
-  npx -p @design-parity/export-driver design-artifacts validate-catalog-spec --spec catalog.spec.json
+  npx -p @design-parity/export-driver@<version> design-artifacts validate-catalog-spec --spec catalog.spec.json
   ```
 
   The module is taken from the spec's `module` field; override with `--module-dir`
@@ -1156,7 +1158,7 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   --json`, or a copy kept from the last good run) and reports, without rendering:
 
   ```sh
-  npx -p @design-parity/export-driver design-artifacts spec-preflight \
+  npx -p @design-parity/export-driver@<version> design-artifacts spec-preflight \
     --spec catalog.spec.json --previews previews.json \
     --exclude-preview-id 'activity__*,Home_ja'
   ```
@@ -1951,6 +1953,6 @@ offers no theme chips at all, since there would be nothing for them to redraw.
    (Wear).
 2. Add it to `catalog.spec.json` under its group with a caption and, if known,
    the seed-kit frame reference.
-3. Validate the spec (`npx -p @design-parity/export-driver design-artifacts validate-catalog-spec
+3. Validate the spec (`npx -p @design-parity/export-driver@<version> design-artifacts validate-catalog-spec
    --spec <spec>`) to confirm the `preview` name resolves before rendering.
 4. The next render + export picks it up automatically — no harness change.

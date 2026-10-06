@@ -93,7 +93,7 @@ console.log("channels differing:",n);'
 Both compare-page rows above come from a full parity run of that same bundle:
 
 ```sh
-npx -p @design-parity/export-driver design-artifacts rc-compare \
+npx -p @design-parity/export-driver@<version> design-artifacts rc-compare \
   --bundle bundle.png --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/parity --system remote-m3
 # then screenshot the first row of /tmp/parity/rc-compare.html

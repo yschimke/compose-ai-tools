@@ -69,7 +69,7 @@ screens, not one render duplicated across a collapsed axis.
 PATH="$PWD/cli/build/install/compose-preview/bin:$PATH" \
   compose-preview bundle pack --module :samples:design-catalog-wear-m3 \
     --with-semantics -o /tmp/wear-bundle.png
-npx -p @design-parity/export-driver design-artifacts generate-design-catalog \
+npx -p @design-parity/export-driver@<version> design-artifacts generate-design-catalog \
   --spec samples/design-catalog-wear-m3/catalog.spec.json \
   --renders /tmp/wear-bundle.png --out /tmp/out --renderer local
 ```

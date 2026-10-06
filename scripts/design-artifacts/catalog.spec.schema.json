@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
   "title": "Design catalog spec",
-  "description": "Code-led design-catalog spec: declares which @Preview composables (by function name) make up a published sticker sheet, their grouping, sections, captions, and per-component variants. Consumed by scripts/design-artifacts/generate-design-catalog.mjs over a `compose-preview bundle pack` render. Each `preview` MUST equal an exact @Preview function name in the rendered module; validate before rendering with `node scripts/design-artifacts/validate-catalog-spec.mjs`.",
+  "description": "Code-led design-catalog spec: declares which @Preview composables (by function name) make up a published sticker sheet, their grouping, sections, captions, and per-component variants. Consumed by the export driver's generate-design-catalog (@design-parity/export-driver) over a `compose-preview bundle pack` render. Each `preview` MUST equal an exact @Preview function name in the rendered module; validate before rendering with `npx -p @design-parity/export-driver@<version> design-artifacts validate-catalog-spec --spec catalog.spec.json`, at the exact version the render runs, so both apply the same rules.",
   "type": "object",
   "required": ["system", "title"],
   "additionalProperties": false,
@@ -42,7 +42,7 @@
     },
     "themes": {
       "type": "array",
-      "description": "Themes an IMPORTED project has but cannot declare for itself. A first-party catalog annotates its own `PreviewWrapperProvider` classes with @ThemeCatalog / @WearThemeCatalog beside the code and omits this entirely; a project imported without its maintainers' involvement has no dependency on those annotations, so its palettes are described HERE and the providers are generated into the throwaway checkout before discovery runs (scripts/design-artifacts/generate-theme-catalogs.mjs). Each entry expands to one or more providers, which is what puts chips in the served catalog's Theme control, makes `?theme=theme:<providerFqn>` re-render under them, and publishes a `themes/<fqn>.dtcg.json` token set each. Same bargain as `groups`: the inventory is our description of somebody else's code, and it stays in our repository.",
+      "description": "Themes an IMPORTED project has but cannot declare for itself. A first-party catalog annotates its own `PreviewWrapperProvider` classes with @ThemeCatalog / @WearThemeCatalog beside the code and omits this entirely; a project imported without its maintainers' involvement has no dependency on those annotations, so its palettes are described HERE and the providers are generated into the throwaway checkout before discovery runs (the export driver's generate-theme-catalogs). Each entry expands to one or more providers, which is what puts chips in the served catalog's Theme control, makes `?theme=theme:<providerFqn>` re-render under them, and publishes a `themes/<fqn>.dtcg.json` token set each. Same bargain as `groups`: the inventory is our description of somebody else's code, and it stays in our repository.",
       "items": {
         "type": "object",
         "required": ["kind"],

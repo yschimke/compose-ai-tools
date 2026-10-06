@@ -40,7 +40,7 @@ exactly what it scored before.
 ## Regenerating
 
 ```sh
-npx -p @design-parity/export-driver design-artifacts rc-compare \
+npx -p @design-parity/export-driver@<version> design-artifacts rc-compare \
   --bundle bundle.png \
   --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/rc-out --system remote-m3

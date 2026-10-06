@@ -22,7 +22,7 @@ All three are headless-Chromium captures of the synthetic fixture, in the shape 
 publishes:
 
 ```
-npx -p @design-parity/export-driver design-artifacts rc-compare-fixture --out <dir> --omit-lanes embedded,cmp-jvm
+npx -p @design-parity/export-driver@<version> design-artifacts rc-compare-fixture --out <dir> --omit-lanes embedded,cmp-jvm
 ```
 
 The `before` capture is that same page with the new paragraph stripped, which is the only rendered
