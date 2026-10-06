@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.35.0](https://github.com/yschimke/compose-ai-tools/compare/v2.34.1...v2.35.0) (2026-10-06)
+
+
+### Features
+
+* **design-artifacts:** run the export driver from @design-parity/export-driver ([#5713](https://github.com/yschimke/compose-ai-tools/issues/5713)) ([3020176](https://github.com/yschimke/compose-ai-tools/commit/30201769cc1103f6f943fbf10e7cf93858fdf6cd))
+
+
+### Bug Fixes
+
+* agent-access lock no longer re-runs its block; trim verbose comments ([#5709](https://github.com/yschimke/compose-ai-tools/issues/5709)) ([a229f2e](https://github.com/yschimke/compose-ai-tools/commit/a229f2e1f8fe656a1dfae0b3971407f3420f6d58))
+* **design-artifacts:** run export driver 1.5.1 and serve its catalog schema ([#5716](https://github.com/yschimke/compose-ai-tools/issues/5716)) ([48b32f0](https://github.com/yschimke/compose-ai-tools/commit/48b32f0a7cd9356b4d9304cc60b545d0192b07f8))
+* format preview bundle motion suffix documentation ([#5715](https://github.com/yschimke/compose-ai-tools/issues/5715)) ([85b2906](https://github.com/yschimke/compose-ai-tools/commit/85b29066a7fc5695d2928da29c12aef4c132e0fa))
+
 ## [2.34.1](https://github.com/yschimke/compose-ai-tools/compare/v2.34.0...v2.34.1) (2026-10-05)
 
 
