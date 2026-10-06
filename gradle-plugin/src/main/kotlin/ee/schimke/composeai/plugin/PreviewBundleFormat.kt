@@ -752,8 +752,8 @@ const val BUNDLE_PREVIEWS_DIR: String = "previews"
  * Structural suffixes a motion render carries when one `@Preview` function owns more than one of
  * them — `@AnimatedPreview` beside `@InteractionPreview`, or either beside a scroll / time / resize
  * fan-out that already claims the plain name. Emitted by `PreviewDiscovery.buildOutputPlan` and
- * matched again on the way out by `@design-parity/export-driver/catalog-motion-publish.mjs`; kept in
- * step with both.
+ * matched again on the way out by `@design-parity/export-driver/catalog-motion-publish.mjs`; kept
+ * in step with both.
  */
 val BUNDLE_MOTION_SUFFIXES: List<String> = listOf("_interaction", "_anim")
 
