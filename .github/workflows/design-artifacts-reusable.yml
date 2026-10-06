@@ -1871,16 +1871,17 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
-      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
-      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
-      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      # The export driver: `@design-parity/export-driver` and its dependencies, `npm ci` from the
+      # reviewed lock in the checkout above, so every tarball is checked against the lock's
+      # integrity. The whole tree, even where a job runs only spec scripts: those import
+      # `@design-parity/catalog-export` for the spec join's helpers. A checkout from before the
+      # lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
         run: |
           set -euo pipefail
           installer=compose-ai-tools/.github/scripts/install-export-driver.sh
           if [ -x "$installer" ]; then
-            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
           else
             echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
             legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
@@ -2033,10 +2034,9 @@ jobs:
           ./gradlew :cli:installDist --no-daemon --quiet
           echo "$GITHUB_WORKSPACE/compose-ai-tools/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
 
-      # Node for the driver's partition + spec scripts only. Deliberately NO `npm ci`: the three
-      # scripts this job runs (validate-catalog-spec / deferred-preview-ids / shard-preview-ids) are
-      # dependency-free by design — node built-ins and their own siblings — so a shard skips the
-      # ~1 min install of playwright + the design-parity export engine, which only `generate` needs.
+      # Node for the driver's partition + spec scripts (validate-catalog-spec / deferred-preview-ids
+      # / shard-preview-ids). The fetch above installed the locked tree they import; no browser is
+      # installed here, which is the part only `generate` needs.
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -3051,16 +3051,17 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
-      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
-      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
-      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      # The export driver: `@design-parity/export-driver` and its dependencies, `npm ci` from the
+      # reviewed lock in the checkout above, so every tarball is checked against the lock's
+      # integrity. The whole tree, even where a job runs only spec scripts: those import
+      # `@design-parity/catalog-export` for the spec join's helpers. A checkout from before the
+      # lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
         run: |
           set -euo pipefail
           installer=compose-ai-tools/.github/scripts/install-export-driver.sh
           if [ -x "$installer" ]; then
-            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
           else
             echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
             legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
@@ -3352,15 +3353,13 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      # The whole locked tree (`npm ci` against `.github/design-artifacts-driver/package-lock.json`),
-      # replacing the scripts-only fetch above with the same driver bytes plus its dependencies.
+      # The fetch above already installed the locked tree. A checkout from before the lock runs its
+      # own `scripts/design-artifacts/` copy, whose dependencies are installed here from its own lock.
       - name: Install the export driver's npm dependencies
         run: |
           set -euo pipefail
           installer=compose-ai-tools/.github/scripts/install-export-driver.sh
-          if [ -x "$installer" ]; then
-            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
-          else
+          if [ ! -x "$installer" ]; then
             (cd "$DRIVER_DIR" && npm ci --no-audit --no-fund --loglevel=warn)
           fi
 
@@ -5384,16 +5383,17 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # The export driver's scripts: `@design-parity/export-driver` from the reviewed lock in the
-      # checkout above, its tarball checked against the lock's integrity. Scripts only; the steps
-      # that need the driver's npm dependencies install the locked tree themselves. A checkout from
-      # before the lock existed runs its own `scripts/design-artifacts/` copy instead.
+      # The export driver: `@design-parity/export-driver` and its dependencies, `npm ci` from the
+      # reviewed lock in the checkout above, so every tarball is checked against the lock's
+      # integrity. The whole tree, even where a job runs only spec scripts: those import
+      # `@design-parity/catalog-export` for the spec join's helpers. A checkout from before the
+      # lock existed runs its own `scripts/design-artifacts/` copy instead.
       - name: Fetch the export driver (@design-parity/export-driver)
         run: |
           set -euo pipefail
           installer=compose-ai-tools/.github/scripts/install-export-driver.sh
           if [ -x "$installer" ]; then
-            "$installer" --scripts-only "$RUNNER_TEMP/export-driver" >/dev/null
+            "$installer" "$RUNNER_TEMP/export-driver" >/dev/null
           else
             echo "::notice::the pinned compose-ai-tools predates the locked export driver; running its scripts/design-artifacts copy."
             legacy="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts"
