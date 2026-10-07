@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.35.1](https://github.com/yschimke/compose-ai-tools/compare/v2.35.0...v2.35.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** rc-players 2.2.0, compose-preview-contracts 3.20.0, compose-preview-daemon 3.14.1 ([#5722](https://github.com/yschimke/compose-ai-tools/issues/5722)) ([5ddd7f6](https://github.com/yschimke/compose-ai-tools/commit/5ddd7f6089851d4e0af139d910a0f87ec1a3ec77))
+* **design-artifacts:** install the export driver's whole locked tree in every job ([#5719](https://github.com/yschimke/compose-ai-tools/issues/5719)) ([7af6668](https://github.com/yschimke/compose-ai-tools/commit/7af6668ea34a86d3699820d5c70db9fda366fd47))
+
 ## [2.35.0](https://github.com/yschimke/compose-ai-tools/compare/v2.34.1...v2.35.0) (2026-10-06)
 
 
