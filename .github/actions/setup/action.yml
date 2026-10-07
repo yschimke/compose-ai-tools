@@ -16,7 +16,12 @@ inputs:
       Pass 'true' in release/publish jobs to prevent Gradle cache writes —
       avoids cache poisoning from untrusted PR runs reading those entries
       on subsequent workflow invocations. (zizmor: cache-poisoning)
-    default: 'false'
+      Unset, pull requests read the cache and everything else writes it — the
+      same split `integration.yml` already passes explicitly, and setup-gradle's
+      own default. Unset used to mean 'false' everywhere, so every PR job saved
+      its own multi-gigabyte entry that only that PR can read, crowding the
+      repository's cache quota and evicting the `main` entries PRs restore from.
+    default: ''
 
 runs:
   using: 'composite'
@@ -28,4 +33,4 @@ runs:
     - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
       with:
         cache-provider: ${{ inputs.cache-provider }}
-        cache-read-only: ${{ inputs.cache-read-only }}
+        cache-read-only: ${{ inputs.cache-read-only != '' && inputs.cache-read-only || github.event_name == 'pull_request' }}
