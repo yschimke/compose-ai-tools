@@ -356,7 +356,7 @@ coil3 = "3.5.0"
 # 3.11.0 below builds `renderFinished` through; its BOM keeps `common-io` at 3.13.0.
 # 3.15.0 adds `RemoteComposeOverride.playerId` (compose-preview-contracts#129), which
 # `ServeOverrides` sends for an `rcPlayer=` naming a player registered with the daemon.
-composeai-contracts = "3.19.0"
+composeai-contracts = "3.20.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -408,7 +408,7 @@ composeai-contracts = "3.19.0"
 # pool evicting another signature's warm spares on every launch (#215) and drops CDS flags for a
 # worker whose classpath holds a non-empty directory (#213). Every module republishes at 3.13.2;
 # contracts are still 3.15.0.
-composeai-preview-daemon = "3.14.0"
+composeai-preview-daemon = "3.14.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
@@ -444,7 +444,7 @@ composeai-preview-daemon = "3.14.0"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "2.1.4"
+rcplayers = "2.2.0"
 
 [libraries]
 
