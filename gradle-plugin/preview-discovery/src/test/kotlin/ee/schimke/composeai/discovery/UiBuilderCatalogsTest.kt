@@ -118,6 +118,40 @@ class UiBuilderCatalogsTest {
     assertThat(policy.slotCapabilities).hasSize(1)
   }
 
+  /**
+   * `insertContent` is the UI builder's shape for what a component arrives holding, and this file
+   * only carries it: a component's and a builtin's, exactly as authored, and absent when not.
+   */
+  @Test
+  fun `an authored insert content is published as written`() {
+    val seed =
+      Json.parseToJsonElement(
+        """{"slots":{"label":[{"componentId":"wear-m3/text",""" +
+          """"properties":{"text":{"type":"string","value":"Checkbox"}}}]}}"""
+      )
+    val file =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", catalogId = "Controls/Button"),
+          component("Card", catalogId = "Containers/Card"),
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components = mapOf("wear-m3/button" to UiBuilderAuthoredComponent(insertContent = seed)),
+          builtins =
+            mapOf(
+              "wear-m3/widget-host" to UiBuilderBuiltin(role = "screen-root", insertContent = seed)
+            ),
+        ),
+      )!!
+    assertThat(file.statusSemantics.components.getValue("wear-m3/button").insertContent)
+      .isEqualTo(seed)
+    assertThat(file.statusSemantics.components.getValue("wear-m3/card").insertContent).isNull()
+    assertThat(file.statusSemantics.builtins.getValue("wear-m3/widget-host").insertContent)
+      .isEqualTo(seed)
+  }
+
   @Test
   fun `a catalog publishes its declared Compose source adapter`() {
     val file =

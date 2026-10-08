@@ -232,6 +232,14 @@ data class UiBuilderAuthoredComponent(
   val propertyCapabilities: List<JsonElement>? = null,
   val slotCapabilities: List<JsonElement>? = null,
   val modifierCapabilities: List<String>? = null,
+  /**
+   * What the component arrives holding when it is inserted from the builder's palette: encoded
+   * `properties` and `slots` of child nodes, the UI builder's `insertContent` shape
+   * (`UI_BUILDER_CATALOG_CONTRACT.md` § Catalog-published editor policy in compose-ui-builder). Raw
+   * JSON for the reason the capability blocks are; not `@BuilderComponent(starter = …)`, which is
+   * call-site argument text for the export.
+   */
+  val insertContent: JsonElement? = null,
 )
 
 /**
@@ -292,6 +300,11 @@ data class UiBuilderBuiltin(
   val properties: List<JsonElement> = emptyList(),
   /** The modifiers this builtin accepts, or null for the consumer's structural default. */
   val modifierCapabilities: List<String>? = null,
+  /**
+   * What this builtin arrives holding when inserted — see
+   * [UiBuilderAuthoredComponent.insertContent].
+   */
+  val insertContent: JsonElement? = null,
   /** Canonical id of the wrapper call site this catalog ships in its component record. */
   val implementation: String? = null,
   /**

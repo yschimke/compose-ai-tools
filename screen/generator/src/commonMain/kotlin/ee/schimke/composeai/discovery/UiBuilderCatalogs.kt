@@ -178,6 +178,8 @@ data class UiBuilderComponentPolicy(
   val propertyCapabilities: List<JsonElement>? = null,
   val slotCapabilities: List<JsonElement>? = null,
   val modifierCapabilities: List<String>? = null,
+  /** See `UiBuilderAuthoredComponent.insertContent`; only ever authored, never derived. */
+  val insertContent: JsonElement? = null,
 )
 
 /**
@@ -205,6 +207,7 @@ internal fun UiBuilderComponentPolicy.mergedWith(
     propertyCapabilities = authored.propertyCapabilities ?: propertyCapabilities,
     slotCapabilities = authored.slotCapabilities ?: slotCapabilities,
     modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities,
+    insertContent = authored.insertContent ?: insertContent,
   )
 }
 
