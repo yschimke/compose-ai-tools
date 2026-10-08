@@ -241,6 +241,10 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "Stated as empty means the component accepts no modifier; omitted means the consumer falls back to what the component's structure implies. Two different answers, which is why the field is nullable rather than defaulted."
+          },
+          "insertContent": {
+            "type": "object",
+            "description": "What the component arrives holding when inserted from the UI builder's palette: encoded `properties` and `slots` of child nodes, in the UI builder's `insertContent` shape. Carried as raw JSON for the reason `propertyCapabilities` is; the UI builder falls back to its own seed when it does not fit. Not `@BuilderComponent(starter = …)`, which is call-site argument text for the export."
           }
         }
       }
@@ -364,6 +368,10 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "The modifiers this builtin accepts. Omit for the consumer's structural default — the leaf or container set — and state `[]` to accept none. It cannot be inferred: whether `fillMaxWidth` means anything on a host frame is editorial rather than structural."
+          },
+          "insertContent": {
+            "type": "object",
+            "description": "As a component's `insertContent`: what this builtin arrives holding when inserted."
           },
           "implementation": {
             "type": "string",
