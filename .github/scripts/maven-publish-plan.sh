@@ -117,6 +117,33 @@ INCLUDED_BUILD_IDS = [
 for aid in INCLUDED_BUILD_IDS:
     modules.setdefault(aid, INCLUDED_BUILD_DIR)
 
+# Source a module compiles from OUTSIDE its own directory: `kotlin.srcDir("../generator/…")` in
+# `:screen-model`, `kotlin.srcDir(rootDir.resolve("../screen/generator/…"))` in the included build's
+# `:preview-discovery`. Both compile `screen/generator`, which is no module's directory, so a change
+# there moved neither coordinate: `screen-model` stayed at 2.33.0 on Central through every generator
+# fix after it (#5732, #5735) while `preview-discovery` republished only because `gradle-plugin/`
+# happened to change in the same releases. A module's roots are its directory plus these.
+SRC_DIR = re.compile(r'srcDir\(\s*"([^"]+)"\s*\)')
+ROOT_SRC_DIR = re.compile(r'srcDir\(\s*rootDir\.resolve\(\s*"([^"]+)"\s*\)\s*\)')
+
+def source_roots(script, module_dir, build_root):
+    try:
+        text = open(script, encoding="utf-8").read()
+    except OSError:
+        return []
+    found = [os.path.normpath(os.path.join(module_dir, r)) for r in SRC_DIR.findall(text)]
+    found += [os.path.normpath(os.path.join(build_root, r)) for r in ROOT_SRC_DIR.findall(text)]
+    return sorted({r for r in found if not r.startswith("..") and not r.startswith(module_dir + "/")})
+
+roots = {aid: [d] for aid, d in modules.items()}
+for aid, d in modules.items():
+    if d != INCLUDED_BUILD_DIR:
+        roots[aid] += source_roots(d + "/build.gradle.kts", d, ".")
+for aid in INCLUDED_BUILD_IDS:
+    roots[aid] += source_roots(
+        f"{INCLUDED_BUILD_DIR}/{aid}/build.gradle.kts", f"{INCLUDED_BUILD_DIR}/{aid}", INCLUDED_BUILD_DIR
+    )
+
 def central_release(aid):
     """The newest version of `aid` on Central, or None if it has never published there.
 
@@ -413,14 +440,14 @@ def shared_verdict(tag, files):
         return True, None
     return False, pats
 
-def changed_since(version, directory):
-    """Did `directory` move between the tag for `version` and head?"""
+def changed_since(version, directories):
+    """Did any of `directories` move between the tag for `version` and head?"""
     tag = f"v{version}"
     if subprocess.run(["git", "rev-parse", "--verify", "-q", tag + "^{commit}"],
                       capture_output=True).returncode != 0:
-        print(f"  {directory}: no tag {tag}; publishing", file=sys.stderr)
+        print(f"  {directories[0]}: no tag {tag}; publishing", file=sys.stderr)
         return True
-    out = git("diff", "--no-renames", "--name-only", f"{tag}..{head}", "--", directory)
+    out = git("diff", "--no-renames", "--name-only", f"{tag}..{head}", "--", *directories)
     return bool(out.strip())
 
 shared_changed = False
@@ -449,7 +476,7 @@ for aid, directory in modules.items():
     if aid not in recorded:
         print(f"  {aid}: never published; publishing", file=sys.stderr)
         dirty.add(aid)
-    elif changed_since(recorded[aid], directory):
+    elif changed_since(recorded[aid], roots[aid]):
         dirty.add(aid)
     elif recorded[aid] in catalog_pats and uses_catalog_change(directory, catalog_pats[recorded[aid]]):
         print(f"  {aid}: uses a changed catalog entry; publishing", file=sys.stderr)

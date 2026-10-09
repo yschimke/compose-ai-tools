@@ -54,6 +54,8 @@ dependencies { implementation(libs.okio) }
 EOF
 cat > beta/build.gradle.kts <<'EOF'
 plugins { id("composeai.maven-publishing") }
+// As `:screen-model` does: source compiled from outside the module's own directory.
+kotlin { sourceSets { commonMain { kotlin.srcDir("../shared/src/commonMain/kotlin") } } }
 dependencies {
   implementation(project(":alpha"))
   implementation(
@@ -99,6 +101,16 @@ EOF
 # As the real `gradle-plugin/build.gradle.kts` does: the daemon version is baked into the plugin.
 cat > gradle-plugin/build.gradle.kts <<'EOF'
 val previewDaemon = libs.versions.composeai.preview.daemon.get()
+EOF
+# As the included build's `:preview-discovery` does: the same shared source, through `rootDir`.
+mkdir -p gradle-plugin/preview-discovery shared/src/commonMain/kotlin
+cat > gradle-plugin/preview-discovery/build.gradle.kts <<'EOF'
+kotlin.srcDir(rootDir.resolve("../shared/src/commonMain/kotlin"))
+EOF
+cat > shared/src/commonMain/kotlin/Shared.kt <<'EOF'
+package shared
+
+fun generate() = "v1"
 EOF
 cat > root-tasks.gradle.kts <<'EOF'
 tasks.register("printPublishTasks") { doLast { println(":alpha:publish") } }
@@ -227,6 +239,13 @@ check catalog_plugin "gamma"
 # A catalog entry nobody uses publishes nothing.
 change_catalog_unused() { sed -i 's/unused = "1.0"/unused = "2.0"/' gradle/libs.versions.toml; }
 check catalog_unused ""
+
+# Source a module compiles through `srcDir` from outside its own directory is the module's: an edit
+# there publishes `beta` (a relative `srcDir`) and `preview-discovery` (a `rootDir.resolve` one in
+# the included build) and nothing else. `screen-model` missed every generator fix from 2.34 to 2.37
+# for want of this.
+change_shared_source() { sed -i 's/"v1"/"v2"/' shared/src/commonMain/kotlin/Shared.kt; }
+check shared_source "beta preview-discovery"
 
 # A comment-only catalog edit publishes nothing.
 change_catalog_comment() { sed -i 's/# The Kotlin core libraries./# Kotlin./' gradle/libs.versions.toml; }
