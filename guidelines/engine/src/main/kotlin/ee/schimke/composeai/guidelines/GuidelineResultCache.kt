@@ -11,7 +11,6 @@ public data class PreviewGuidelineResult(
   val previewId: String,
   val renderHash: String? = null,
   val record: GuidelineRecordV1,
-  val regions: List<GuidelineRegion> = emptyList(),
   /** Rules still `needs_evidence` after the last round: unchecked, not passed. */
   val unchecked: List<String> = emptyList(),
   val fromCache: Boolean = false,

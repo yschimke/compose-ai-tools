@@ -1,9 +1,9 @@
 package ee.schimke.composeai.guidelines
 
 import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
+import ee.schimke.composeai.guidelines.protocol.GuidelineRegionV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRoutingV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -11,25 +11,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
-
-/**
- * Part of a picture a verdict points at, when no single node holds the problem: [x], [y], [width]
- * and [height] are fractions (0..1) of picture [pictureKind] of subject [subjectId]. A model's
- * estimate — hosts draw it as a soft highlight, never as an exact outline.
- *
- * TODO: switch to `GuidelineRegionV1` once compose-preview-contracts ships it (#157).
- */
-@Serializable
-public data class GuidelineRegion(
-  val subjectId: String? = null,
-  val ruleId: String,
-  val pictureKind: String? = null,
-  val x: Double,
-  val y: Double,
-  val width: Double,
-  val height: Double,
-  val label: String? = null,
-)
 
 /** Which model answered a request, and how it was chosen, as OpenRouter reports it. */
 public data class GuidelineServed(
@@ -42,8 +23,8 @@ public data class GuidelineServed(
 
 /** A model's answer to one batched request, mapped back to preview ids. */
 public data class GuidelineReply(
+  /** Each verdict carries the regions it points at ([GuidelineVerdictV1.regions]). */
   val verdicts: List<GuidelineVerdictV1>,
-  val regions: List<GuidelineRegion>,
   val served: GuidelineServed,
 )
 
@@ -73,7 +54,6 @@ public object GuidelineResponse {
     val root = GUIDELINES_JSON.parseToJsonElement(content.substring(start, end + 1)).jsonObject
     val byAlias = batch.aliases.entries.associate { (id, alias) -> alias to id }
     val verdicts = mutableListOf<GuidelineVerdictV1>()
-    val regions = mutableListOf<GuidelineRegion>()
     (root["verdicts"] as? JsonArray).orEmpty().forEach { element ->
       val item = element as? JsonObject ?: return@forEach
       val ruleId = item.text("ruleId") ?: return@forEach
@@ -81,6 +61,24 @@ public object GuidelineResponse {
       val alias = item.text("subjectId")
       val subjectId = alias?.let { byAlias[it] ?: it.takeIf { id -> id in batch.aliases } }
       if (alias != null && subjectId == null) return@forEach
+      val regions =
+        (item["regions"] as? JsonArray).orEmpty().mapNotNull { region ->
+          val r = region as? JsonObject ?: return@mapNotNull null
+          val picture = (r["picture"] as? JsonPrimitive)?.intOrNull
+          val drawnOn = picture?.let { pictureOrder.getOrNull(it - 1) }
+          val box =
+            listOf("x", "y", "width", "height").map {
+              (r[it] as? JsonPrimitive)?.doubleOrNull?.coerceIn(0.0, 1.0)
+            }
+          if (box.any { it == null }) return@mapNotNull null
+          GuidelineRegionV1.Builder(box[0]!!, box[1]!!, box[2]!!, box[3]!!)
+            .apply {
+              this.subjectId = drawnOn?.first ?: subjectId
+              pictureKind = drawnOn?.second
+              label = r.text("label")
+            }
+            .build()
+        }
       verdicts +=
         GuidelineVerdictV1.Builder(ruleId, verdict)
           .apply {
@@ -104,32 +102,12 @@ public object GuidelineResponse {
                   }
                   .build()
               }
+            this.regions = regions
           }
           .build()
-      (item["regions"] as? JsonArray).orEmpty().forEach { region ->
-        val r = region as? JsonObject ?: return@forEach
-        val picture = (r["picture"] as? JsonPrimitive)?.intOrNull
-        val drawnOn = picture?.let { pictureOrder.getOrNull(it - 1) }
-        val box =
-          listOf("x", "y", "width", "height").map {
-            (r[it] as? JsonPrimitive)?.doubleOrNull?.coerceIn(0.0, 1.0)
-          }
-        if (box.any { it == null }) return@forEach
-        regions +=
-          GuidelineRegion(
-            subjectId = drawnOn?.first ?: subjectId,
-            ruleId = ruleId,
-            pictureKind = drawnOn?.second,
-            x = box[0]!!,
-            y = box[1]!!,
-            width = box[2]!!,
-            height = box[3]!!,
-            label = r.text("label"),
-          )
-      }
     }
     if (verdicts.isEmpty()) error("the reply held no verdicts")
-    GuidelineReply(verdicts, regions, served(completion))
+    GuidelineReply(verdicts, served(completion))
   }
 
   /** The served model, provider, cost, id and routing in a completion body. */

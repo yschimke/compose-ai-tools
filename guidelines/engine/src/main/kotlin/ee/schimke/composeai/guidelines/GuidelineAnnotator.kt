@@ -18,14 +18,21 @@ import javax.imageio.ImageIO
  */
 public object GuidelineAnnotator {
   /**
-   * [png] with [failures] and [regions] drawn on it; the input unchanged when it cannot be read.
+   * [png] with [failures] drawn on it — their nodes, and the regions they point at
+   * ([GuidelineVerdictV1.regions]) that belong to [subjectId] — the input unchanged when it cannot
+   * be read.
    */
   public fun annotate(
     png: ByteArray,
     nodes: List<PreviewNode>,
     failures: List<GuidelineVerdictV1>,
-    regions: List<GuidelineRegion>,
+    subjectId: String? = null,
   ): ByteArray {
+    val regions = failures.flatMap { verdict ->
+      verdict.regions
+        .filter { subjectId == null || it.subjectId == null || it.subjectId == subjectId }
+        .map { verdict.ruleId to it }
+    }
     val source = runCatching { ImageIO.read(ByteArrayInputStream(png)) }.getOrNull() ?: return png
     val image = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_ARGB)
     val g = image.createGraphics()
@@ -43,7 +50,7 @@ public object GuidelineAnnotator {
           label(g, verdict.ruleId, node.left, node.top)
         }
       }
-      regions.forEach { region ->
+      regions.forEach { (ruleId, region) ->
         val x = (region.x * source.width).toInt()
         val y = (region.y * source.height).toInt()
         val w = (region.width * source.width).toInt().coerceAtLeast(1)
@@ -62,7 +69,7 @@ public object GuidelineAnnotator {
             0f,
           )
         g.drawRect(x, y, w, h)
-        label(g, region.ruleId, x, y)
+        label(g, region.label ?: ruleId, x, y)
       }
     } finally {
       g.dispose()

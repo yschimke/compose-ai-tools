@@ -105,7 +105,6 @@ public class GuidelineEngine(
       }
 
       val verdicts = mutableMapOf<String, MutableMap<String, GuidelineVerdictV1>>()
-      val regions = mutableListOf<GuidelineRegion>()
       val served = mutableListOf<GuidelineServed>()
       val setVerdicts = mutableListOf<GuidelineVerdictV1>()
 
@@ -139,7 +138,6 @@ public class GuidelineEngine(
           }
         spent += reply.served.costUsd ?: 0.0
         served += reply.served
-        regions += reply.regions
         reply.verdicts.forEach { verdict ->
           val subjectId = verdict.subjectId
           if (subjectId == null) setVerdicts += verdict
@@ -199,7 +197,6 @@ public class GuidelineEngine(
             previewId = subject.previewId,
             renderHash = subject.renderHash,
             record = record(guidelines, subject, asked, mine, last, share),
-            regions = regions.filter { it.subjectId == subject.previewId || it.subjectId == null },
             unchecked = unchecked,
           )
         results += result

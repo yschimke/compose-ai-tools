@@ -318,11 +318,11 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     results.forEach { result ->
       val subject = subjects.firstOrNull { it.previewId == result.previewId } ?: return@forEach
       val failures = result.failures()
-      if (failures.isEmpty() && result.regions.isEmpty()) return@forEach
+      if (failures.isEmpty()) return@forEach
       val picture = subject.pictures.firstOrNull() ?: return@forEach
       val previewNodes =
         nodes[result.previewId].orEmpty().mapIndexedNotNull { i, n -> n.toPreviewNode(i) }
-      val out = GuidelineAnnotator.annotate(picture.png, previewNodes, failures, result.regions)
+      val out = GuidelineAnnotator.annotate(picture.png, previewNodes, failures, result.previewId)
       val render = renders[result.previewId] ?: return@forEach
       render.resolveSibling(render.nameWithoutExtension + ".guidelines.png").writeBytes(out)
     }
