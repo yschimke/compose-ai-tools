@@ -217,6 +217,11 @@ object PreviewTargetInference {
     previewMethod: MethodInfo,
     scanResult: ScanResult,
     projectClassFqns: Set<String>,
+    /**
+     * A catalog's own additions to [COMPONENT_LIBRARY_FQN_PREFIXES], from the `composePreview {
+     * componentLibraryPrefixes }` extension. See [isComponentLibraryOwner].
+     */
+    extraLibraryPrefixes: List<String> = emptyList(),
   ): List<PreviewTarget> {
     val directCalls =
       try {
@@ -232,7 +237,7 @@ object PreviewTargetInference {
     val candidates =
       calls
         .asSequence()
-        .filter { call -> COMPONENT_LIBRARY_FQN_PREFIXES.any { call.ownerFqn.startsWith(it) } }
+        .filter { call -> isComponentLibraryOwner(call.ownerFqn, extraLibraryPrefixes) }
         .mapNotNull { resolveCandidate(it, scanResult) }
         // Pair each candidate with its metadata up front, because the *source* name lives there
         // and every decision below is about the source name. A candidate whose metadata cannot be
@@ -813,6 +818,26 @@ object PreviewTargetInference {
     val method: MethodInfo,
     val classInfo: ClassInfo,
   )
+
+  /**
+   * Whether a call's JVM owner is in a component library: one of [COMPONENT_LIBRARY_FQN_PREFIXES],
+   * or one of the catalog's [extra] entries.
+   *
+   * An extra entry is matched more tightly than a built-in one. A built-in prefix is a whole
+   * design-system package and is matched with `startsWith`. An extra entry ending in `.` is a
+   * package and matches the same way. Any other entry is one JVM owner class, matched exactly:
+   * `androidx.compose.remote.creation.compose.layout.RemoteTextKt` admits `RemoteText` without also
+   * admitting `RemoteTextKtx`, or the `RemoteBox` and `RemoteRow` beside it in the same package,
+   * which would then compete with the subject for the preview's builder policy.
+   */
+  internal fun isComponentLibraryOwner(
+    ownerFqn: String,
+    extra: List<String> = emptyList(),
+  ): Boolean =
+    COMPONENT_LIBRARY_FQN_PREFIXES.any { ownerFqn.startsWith(it) } ||
+      extra.any { entry ->
+        if (entry.endsWith('.')) ownerFqn.startsWith(entry) else ownerFqn == entry
+      }
 
   /**
    * Whether a resolved call in a component library is the **component a sticker demonstrates**.

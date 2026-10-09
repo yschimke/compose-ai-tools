@@ -95,6 +95,63 @@ class PreviewTargetInferenceTest {
   // --- component-library targets (PreviewInfo.componentTargets) -------------------------------
 
   @Test
+  fun `a configured owner class admits exactly that owner`() {
+    val extra = listOf("androidx.compose.remote.creation.compose.layout.RemoteTextKt")
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner(
+          "androidx.compose.remote.creation.compose.layout.RemoteTextKt",
+          extra,
+        )
+      )
+      .isTrue()
+    // Its neighbours in the same package stay scaffolding, and a longer name is not the owner.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner(
+          "androidx.compose.remote.creation.compose.layout.RemoteBoxKt",
+          extra,
+        )
+      )
+      .isFalse()
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner(
+          "androidx.compose.remote.creation.compose.layout.RemoteTextKtx",
+          extra,
+        )
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `a configured package ending in a dot admits everything under it`() {
+    val extra = listOf("com.example.widgets.")
+    assertThat(PreviewTargetInference.isComponentLibraryOwner("com.example.widgets.ChipKt", extra))
+      .isTrue()
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner("com.example.widgetsextra.ChipKt", extra)
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `an unconfigured owner is not a library and the built-ins still are`() {
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner(
+          "androidx.compose.remote.creation.compose.layout.RemoteTextKt"
+        )
+      )
+      .isFalse()
+    assertThat(PreviewTargetInference.isComponentLibraryOwner("androidx.compose.material3.CardKt"))
+      .isTrue()
+    assertThat(
+        PreviewTargetInference.isComponentLibraryOwner(
+          "androidx.compose.material3.CardKt",
+          listOf("com.example.widgets."),
+        )
+      )
+      .isTrue()
+  }
+
+  @Test
   fun `a component library composable returning Unit is a component target`() {
     assertThat(
         PreviewTargetInference.isComponentLibraryTarget(

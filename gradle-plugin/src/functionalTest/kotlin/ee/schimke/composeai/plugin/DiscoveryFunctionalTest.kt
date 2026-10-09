@@ -177,6 +177,56 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `componentLibraryPrefixes adds a library owner to component-target inference`() {
+    val projectDir = createCmpTestProject()
+    // `BasicText` lives in `androidx.compose.foundation.text`, outside the built-in Material, Wear
+    // and Glimmer packages, so without the opt-in it is never a component target.
+    File(projectDir, "build.gradle.kts")
+      .appendText(
+        """
+
+        composePreview {
+            componentLibraryPrefixes.add("androidx.compose.foundation.text.BasicTextKt")
+        }
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .appendText(
+        """
+
+        @Preview
+        @Composable
+        fun BasicTextPreview() {
+            Box(modifier = Modifier.size(100.dp)) {
+                androidx.compose.foundation.text.BasicText("Basic")
+            }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val basic = manifest.previews.single { it.functionName == "BasicTextPreview" }
+    assertThat(basic.componentTargets.map { it.className to it.functionName })
+      .containsExactly("androidx.compose.foundation.text.BasicTextKt" to "BasicText")
+    // The opt-in names one owner, not the package around it: the `Box` frame stays scaffolding.
+    val red = manifest.previews.single { it.functionName == "RedBoxPreview" }
+    assertThat(red.componentTargets.map { it.functionName }).containsExactly("Text")
+  }
+
+  @Test
   fun `composePreviewDiscover records a parameter knob's literal default`() {
     // The one place the knob-default reader is checked against bytecode the **Compose compiler**
     // actually emitted. `PreviewKnobDefaultsTest` assembles the instruction shape by hand —
