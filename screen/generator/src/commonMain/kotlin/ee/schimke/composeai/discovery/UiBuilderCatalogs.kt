@@ -116,7 +116,13 @@ data class UiBuilderStatusSemantics(
    * Catalog-declared, versioned Compose source adapter; lifted to the wire capability by a host.
    */
   val composeSourceExport: UiBuilderComposeSourceExport? = null,
+  /** Branch-relative paths of the template designs, which every existing reader takes as such. */
   val templates: List<String> = emptyList(),
+  /**
+   * What the New design chooser says about this catalog and its templates, beside [templates]
+   * rather than in it so a reader of the paths is unaffected. Null when the policy authored none.
+   */
+  val newDesign: UiBuilderNewDesignSemantics? = null,
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
   /** Successor rules interpreted by a catalog-upgrade-aware builder. */
@@ -598,7 +604,8 @@ object UiBuilderCatalogs {
           frame = policy.frame,
           code = policy.code,
           composeSourceExport = policy.composeSourceExport,
-          templates = policy.templates,
+          templates = policy.templates.map { it.path },
+          newDesign = newDesignSemantics(policy),
           colorTokens = policy.colorTokens,
           assetRegistry = policy.assetRegistry,
           supersedes = policy.supersedes,
@@ -1293,4 +1300,29 @@ object UiBuilderCatalogs {
       .split('-', '_')
       .filter { it.isNotEmpty() }
       .joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
+}
+
+/**
+ * The chooser copy [policy] authors, or null when it authors none — a bare-path policy with no
+ * `newDesign` publishes no block, exactly as before the field existed.
+ */
+internal fun newDesignSemantics(policy: UiBuilderPolicyFile): UiBuilderNewDesignSemantics? {
+  val described = policy.templates.any { it.describesItself }
+  if (policy.newDesign == null && !described) return null
+  return UiBuilderNewDesignSemantics(
+    label = policy.newDesign?.label,
+    order = policy.newDesign?.order,
+    templates =
+      policy.templates.map {
+        UiBuilderNewDesignTemplateSemantics(
+          id = it.resolvedId,
+          path = it.path,
+          label = it.label,
+          supportingText = it.supportingText,
+          group = it.group,
+          default = it.default,
+          order = it.order,
+        )
+      },
+  )
 }

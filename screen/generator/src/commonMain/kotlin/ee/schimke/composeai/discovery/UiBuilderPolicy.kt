@@ -1,8 +1,17 @@
 package ee.schimke.composeai.discovery
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 
 /** The `schema` value a `ui-builder.policy.json` this generator understands must carry. */
 const val UI_BUILDER_POLICY_SCHEMA: String = "compose-ui-builder-policy/v1"
@@ -170,8 +179,14 @@ data class UiBuilderPolicyFile(
    * adapters it ships; an unknown declaration refuses export rather than executing catalog data.
    */
   val composeSourceExport: UiBuilderComposeSourceExport? = null,
-  /** Branch-relative paths of the template designs offered in the New design chooser. */
-  val templates: List<String> = emptyList(),
+  /**
+   * The template designs offered in the New design chooser: each a branch-relative path, or an
+   * object naming one with what the chooser says about it (label, supporting text, heading, order,
+   * whether it is the default).
+   */
+  val templates: List<UiBuilderTemplateEntry> = emptyList(),
+  /** How the catalog appears in the New design chooser as a whole: its chip's label and order. */
+  val newDesign: UiBuilderNewDesign? = null,
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
   /** Component/property/slot successor rules, carried verbatim for catalog-upgrade previews. */
@@ -426,4 +441,117 @@ data class UiBuilderCode(
   val imports: List<String> = emptyList(),
   /** Structural Kotlin with named holes, keyed by role. A hole-filler, not a language. */
   val templates: Map<String, String> = emptyMap(),
+)
+
+/**
+ * One `templates` entry of a policy: a template design, and what the New design chooser says about
+ * it. Written as a bare branch-relative path when there is nothing to say — the form every policy
+ * used before the chooser's copy had a field — or as an object.
+ *
+ * @property id the id a design URL names the template by; the file name without `.json` when
+ *   absent, which is what a bare path has always meant.
+ */
+@Serializable(with = UiBuilderTemplateEntrySerializer::class)
+data class UiBuilderTemplateEntry(
+  val path: String,
+  val id: String? = null,
+  val label: String? = null,
+  val supportingText: String? = null,
+  val group: String? = null,
+  val default: Boolean = false,
+  val order: Int? = null,
+) {
+  /** The id a design URL names this template by. */
+  val resolvedId: String
+    get() = id ?: path.substringAfterLast('/').removeSuffix(".json")
+
+  /** Whether the entry says anything beyond its path, so a bare path stays a bare path. */
+  val describesItself: Boolean
+    get() =
+      id != null ||
+        label != null ||
+        supportingText != null ||
+        group != null ||
+        default ||
+        order != null
+}
+
+/** The object form of [UiBuilderTemplateEntry], which the bare-path form is a shorthand for. */
+@Serializable
+private data class UiBuilderTemplateObject(
+  val path: String,
+  val id: String? = null,
+  val label: String? = null,
+  val supportingText: String? = null,
+  val group: String? = null,
+  val default: Boolean = false,
+  val order: Int? = null,
+)
+
+internal object UiBuilderTemplateEntrySerializer : KSerializer<UiBuilderTemplateEntry> {
+  override val descriptor: SerialDescriptor = UiBuilderTemplateObject.serializer().descriptor
+
+  override fun deserialize(decoder: Decoder): UiBuilderTemplateEntry {
+    val json = (decoder as? JsonDecoder) ?: error("a templates entry is read from JSON")
+    val element = json.decodeJsonElement()
+    if (element is JsonPrimitive && element.isString) return UiBuilderTemplateEntry(element.content)
+    val o = json.json.decodeFromJsonElement<UiBuilderTemplateObject>(element)
+    return UiBuilderTemplateEntry(
+      o.path,
+      o.id,
+      o.label,
+      o.supportingText,
+      o.group,
+      o.default,
+      o.order,
+    )
+  }
+
+  override fun serialize(encoder: Encoder, value: UiBuilderTemplateEntry) {
+    val json = (encoder as? JsonEncoder) ?: error("a templates entry is written as JSON")
+    if (!value.describesItself) {
+      json.encodeJsonElement(JsonPrimitive(value.path))
+      return
+    }
+    json.encodeJsonElement(
+      json.json.encodeToJsonElement(
+        UiBuilderTemplateObject(
+          value.path,
+          value.id,
+          value.label,
+          value.supportingText,
+          value.group,
+          value.default,
+          value.order,
+        )
+      )
+    )
+  }
+}
+
+/** How a catalog appears in the New design chooser as a whole: its chip's label and position. */
+@Serializable data class UiBuilderNewDesign(val label: String? = null, val order: Int? = null)
+
+/**
+ * What a published catalog tells the New design chooser: its own chip, and the copy for each
+ * template it offers. Published only when the policy authored any of it, so a catalog that names
+ * bare paths and no chip publishes exactly what it did before.
+ */
+@Serializable
+data class UiBuilderNewDesignSemantics(
+  val label: String? = null,
+  val order: Int? = null,
+  val templates: List<UiBuilderNewDesignTemplateSemantics> = emptyList(),
+)
+
+/** One template's chooser card, by the id a design URL names it by. */
+@Serializable
+data class UiBuilderNewDesignTemplateSemantics(
+  val id: String,
+  val path: String,
+  val label: String? = null,
+  val supportingText: String? = null,
+  val group: String? = null,
+  val default: Boolean = false,
+  val order: Int? = null,
 )
