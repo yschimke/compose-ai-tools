@@ -30,7 +30,8 @@ owns, plus one authored file for the residue:
 | `@BuilderComponent` | the catalog repository, beside `@CatalogComponent` | per-component policy no signature holds |
 | `ui-builder.policy.json` | the catalog repository, beside `catalog.spec.json` | catalog-level policy no component owns |
 
-→ **`ui-builder.json`**, generated, never edited.
+→ **`ui-builder.json`**, generated, never edited — and, when the catalog authors one beside its policy,
+its `ui-builder.guidelines.json`, carried verbatim (see [below](#ui-builderguidelinesjson)).
 
 ### Why the split between the annotation and the file
 
@@ -216,6 +217,27 @@ and on a builtin alike:
 `spacingDp` for the layouts that tile. A name the consuming build does not know is inert — the
 component draws as itself — so stating one does not pin the builder's vintage, and a catalog that
 states nothing keeps today's behaviour on every component.
+
+## `ui-builder.guidelines.json`
+
+A catalog may also publish its own **design guidance**: the rules a design built from it is checked
+against, and the pictures that check is shown. The format is compose-ui-builder's
+(`compose-ui-builder/catalog-guidelines/v1`: `catalog`, `platform`, `version`, `frames[]`,
+`rules[]`, see compose-ui-builder's `CatalogGuidelines`); this repository only carries it.
+
+- **Authored** beside the `ui-builder.policy.json` it belongs to, and found **only** in the
+  directory of the policy that was chosen — a repository root's file never attaches itself to a
+  module that owns its own policy, for the reason the policy and cover sheet are resolved as a pair.
+- **Published verbatim** beside `ui-builder.json`: the discovery task writes it to
+  `build/compose-previews/ui-builder.guidelines.json` (where a local `compose-preview-server ui`
+  reads it) and the bundle carries it as the `ui-builder.guidelines.json` entry, next to
+  `ui-builder.json`. A catalog that writes no `ui-builder.json` publishes no guidelines.
+- **Checked** for what a reader cannot work around: the schema, that `catalog` is the catalog's
+  system id, an integer `version`, and, on every rule, `id`, `kind`, `severity`, `guidance`, a
+  `check` that is a question and an `https://` `source`. Discovery drops a malformed file with a
+  warning, as it does a malformed policy; the design-artifacts workflow fails the publish on one
+  (`.github/scripts/validate-ui-builder-guidelines.mjs`), so it is never silently missing.
+- **Absent is ordinary.** No file means the catalog has no guidelines check, and nothing warns.
 
 ## What a consumer may assume
 

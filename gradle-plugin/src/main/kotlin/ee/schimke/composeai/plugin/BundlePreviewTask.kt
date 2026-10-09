@@ -350,6 +350,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val uiBuilderPolicyCandidates: ConfigurableFileCollection
 
+  /**
+   * `ui-builder.guidelines.json` candidates; see
+   * [DiscoverPreviewsTask.uiBuilderGuidelinesCandidates].
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderGuidelinesCandidates: ConfigurableFileCollection
+
   /** `catalog.spec.json` candidates, in the same order and for the same reason. */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -1659,6 +1667,12 @@ abstract class BundlePreviewTask : DefaultTask() {
       // a consumer is told there is no builder catalog, rather than by an empty one it has to
       // recognise.
       uiBuilderJson?.let { zip.writeFile("ui-builder.json", it.toByteArray(Charsets.UTF_8)) }
+      // The catalog's own design guidance, beside the catalog it belongs to, when there is one.
+      if (uiBuilderJson != null) {
+        uiBuilderGuidelinesBytes(uiBuilderJson)?.let {
+          zip.writeFile(UiBuilderGuidelinesFile.FILE_NAME, it)
+        }
+      }
       // The template designs that catalog advertises, at the same branch-relative paths it names
       // them by. `catalog-ui-builder.mjs` publishes out of bundle entries and nothing else, so a
       // design that is not in here cannot reach the delivery branch — the catalog would offer a
@@ -2035,6 +2049,27 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
     val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return null
     return JSON.encodeToString(UiBuilderCatalogFile.serializer(), catalog)
+  }
+
+  /**
+   * The catalog's `ui-builder.guidelines.json`, from beside the policy the catalog was generated
+   * from, when it is well formed; null otherwise, with a warning naming what is wrong.
+   */
+  private fun uiBuilderGuidelinesBytes(uiBuilderJson: String): ByteArray? {
+    val authored = authoredPair() ?: return null
+    val source = UiBuilderGuidelinesFile.besidePolicy(authored.policy) ?: return null
+    val catalogId =
+      runCatching { JSON.decodeFromString<UiBuilderCatalogFile>(uiBuilderJson).catalog.id }
+        .getOrNull() ?: return null
+    val text = source.readText()
+    val problems = UiBuilderGuidelinesFile.problems(text, catalogId)
+    if (problems.isNotEmpty()) {
+      logger.warn(
+        "composePreview: ${source.path} is not carried in the bundle: ${problems.joinToString("; ")}."
+      )
+      return null
+    }
+    return text.toByteArray(Charsets.UTF_8)
   }
 
   /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */

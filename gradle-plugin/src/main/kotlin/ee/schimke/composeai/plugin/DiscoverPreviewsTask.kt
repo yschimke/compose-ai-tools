@@ -241,6 +241,22 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:OutputFile abstract val uiBuilderFile: RegularFileProperty
 
   /**
+   * `ui-builder.guidelines.json` candidates beside each policy candidate, declared so an edit to a
+   * catalog's guidelines re-runs this task. Which one is published is decided by the policy that
+   * was chosen: only the file in that policy's directory (see [UiBuilderGuidelinesFile]).
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderGuidelinesCandidates: ConfigurableFileCollection
+
+  /**
+   * `ui-builder.guidelines.json` beside [uiBuilderFile]: the catalog's own design guidance, copied
+   * verbatim from beside its policy, or nothing. Removed whenever no catalog is written, for the
+   * reason a stale `ui-builder.json` is.
+   */
+  @get:OutputFile abstract val uiBuilderGuidelinesFile: RegularFileProperty
+
+  /**
    * Subdirectory for Lottie capture `renderOutput` paths (see
    * [PreviewDiscovery.Input.lottieRenderSubdir]). Defaults to `"renders"`; the Android task sets a
    * disjoint dir so its JVM Lottie render doesn't share the `renders/` output with the Robolectric
@@ -433,6 +449,26 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
+   * Copy the catalog's `ui-builder.guidelines.json` from beside [policy] next to `ui-builder.json`.
+   *
+   * Like the policy, a malformed file costs only itself and a warning here: discovery feeds every
+   * render lane. The publish is where it fails loudly — the design-artifacts workflow checks it
+   * before rendering, as it checks the policy.
+   */
+  private fun writeUiBuilderGuidelines(policy: File, catalogId: String) {
+    val source = UiBuilderGuidelinesFile.besidePolicy(policy) ?: return
+    val text = source.readText()
+    val problems = UiBuilderGuidelinesFile.problems(text, catalogId)
+    if (problems.isNotEmpty()) {
+      logger.warn(
+        "composePreview: ${source.path} is not published: ${problems.joinToString("; ")}."
+      )
+      return
+    }
+    uiBuilderGuidelinesFile.get().asFile.writeText(text)
+  }
+
+  /**
    * Write `ui-builder.json` beside the record, or remove a stale one.
    *
    * The generator is [UiBuilderCatalogs.generate], which lives in the shared `screen/generator`
@@ -448,6 +484,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   private fun writeUiBuilderCatalog(record: ComponentRecordFile) {
     val out = uiBuilderFile.get().asFile
+    // Published only beside a catalog that is written, so cleared before anything can return.
+    uiBuilderGuidelinesFile.get().asFile.delete()
     // No authored pair — this module publishes no builder catalog. Removing the policy has to
     // remove the catalog it produced: a stale file would keep being published and would describe a
     // catalog nobody authors any more.
@@ -480,6 +518,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return
     out.parentFile.mkdirs()
     out.writeText(json.encodeToString(catalog))
+    writeUiBuilderGuidelines(authored.policy, cover.system)
     // The designs this catalog advertises, copied beside it. `compose-preview-server ui` reads this
     // directory and has no delivery branch to fall back on, so a template that is not here is a
     // template the local builder cannot open — the same 404 the branch lane would have, arriving
