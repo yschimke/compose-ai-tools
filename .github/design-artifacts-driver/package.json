@@ -4,6 +4,6 @@
   "private": true,
   "description": "The export driver the design-artifacts workflows run: @design-parity/export-driver at an exact version, with its whole dependency tree locked in package-lock.json. The workflows install it with `npm ci` through .github/scripts/install-export-driver.sh, so a privileged job runs exactly this reviewed tree and nothing the registry resolves on the day. Renovate moves the version and the lock together.",
   "dependencies": {
-    "@design-parity/export-driver": "1.7.0"
+    "@design-parity/export-driver": "1.8.0"
   }
 }
