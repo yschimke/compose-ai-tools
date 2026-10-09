@@ -832,6 +832,10 @@ public object ServeOverrides {
       // the prior backend's cached pixels under a shared key.
       append("|rcPlayer=").append(o.remoteCompose?.player)
       append("|rcPlayerId=").append(o.remoteCompose?.playerId)
+      // A document carried for replay (`documentBase64`) replaces the preview's own content, so
+      // two different documents under one preview id must never share a key — the digest below
+      // keeps the key fixed-size however large the document is.
+      append("|rcDoc=").append(o.remoteCompose?.documentBase64)
       append("|rc=")
       o.remoteCompose?.namedValues?.toSortedMap()?.forEach { (k, v) ->
         append(k).append('=').append(v).append(';')

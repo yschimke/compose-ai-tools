@@ -856,4 +856,31 @@ class ServeOverridesTest {
       ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "player-b"))),
     )
   }
+
+  @Test
+  fun `cache key differs between two carried remote compose documents`() {
+    fun carrying(document: String?) =
+      ee.schimke.composeai.daemon.protocol.PreviewOverrides(
+        remoteCompose =
+          ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.Builder()
+            .also {
+              it.playerId = "androidx-view"
+              it.documentBase64 = document
+            }
+            .build()
+      )
+    // Same preview, same player: only the replayed bytes differ, and they are the whole render.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", carrying("AQID")),
+      ServeOverrides.cacheKey("preview.A", carrying("BAUG")),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", carrying("AQID")),
+      ServeOverrides.cacheKey("preview.A", carrying(null)),
+    )
+    assertEquals(
+      ServeOverrides.cacheKey("preview.A", carrying("AQID")),
+      ServeOverrides.cacheKey("preview.A", carrying("AQID")),
+    )
+  }
 }
