@@ -133,6 +133,25 @@
               "description": "Sampled frame colours by role, as #RRGGBB or #AARRGGBB.",
               "additionalProperties": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }
             },
+            "hostShapes": {
+              "type": "array",
+              "description": "The host container a widget is drawn in, per host shape and size, as measured: the content box the widget lays out in, the padding around it on each edge, and the corner radius. That shape's frame at that size is the content plus twice each padding, so it differs between shapes of one size (a round host is wider than a squircle); `size` names the scaffold size the footprint is for, not a frame it must equal. A widget cannot choose any of it; the launcher draws it.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["shape", "size", "contentWidthDp", "contentHeightDp", "horizontalPaddingDp", "verticalPaddingDp", "cornerRadiusDp"],
+                "properties": {
+                  "shape": { "type": "string", "description": "The host shape's id (`rectangular`, `squircle`, `round`)." },
+                  "size": { "type": "string", "description": "The `label` of the `sizesDp` entry this footprint is for." },
+                  "label": { "type": "string" },
+                  "contentWidthDp": { "type": "number" },
+                  "contentHeightDp": { "type": "number" },
+                  "horizontalPaddingDp": { "type": "number" },
+                  "verticalPaddingDp": { "type": "number" },
+                  "cornerRadiusDp": { "type": "number" }
+                }
+              }
+            },
             "timeText": {
               "type": "object",
               "description": "A Wear frame's clock: where it sits and what it is frozen to, so a render is reproducible.",
@@ -472,8 +491,36 @@
     },
     "templates": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Branch-relative paths of the template DESIGNS this catalog offers in the New design chooser (`ui-builder/designs/wear-list.json`). Each is an ordinary design document carrying a template marker and a seed environment. Ordinary designs published under the same directory are the design library and are not listed here."
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path"],
+            "description": "A template with what the New design chooser says about it. A bare path is still a template; it is offered under a label derived from its file name.",
+            "properties": {
+              "path": { "type": "string" },
+              "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The id a design URL names the template by (`?template=wear-list`). Absent is the file name without `.json`." },
+              "label": { "type": "string", "description": "The chooser card's title: what a person is starting (`Activity list`), not the file it lives in." },
+              "supportingText": { "type": "string", "description": "One sentence under the label saying what the starting document holds." },
+              "group": { "type": "string", "description": "The heading this card is listed under when the catalog offers more than one kind of thing (`Wear widget`). Absent lists it under none." },
+              "default": { "type": "boolean", "description": "The template a URL naming none opens. At most one per catalog." },
+              "order": { "type": "integer", "description": "Ascending position in the chooser; entries without one follow those with one, in file order." }
+            }
+          }
+        ]
+      },
+      "description": "The template DESIGNS this catalog offers in the New design chooser, each a branch-relative path (`ui-builder/designs/wear-list.json`) or an object naming one with the card's label, supporting text, heading, order and whether it is the default. Each design is an ordinary document carrying a template marker and a seed environment. Ordinary designs published under the same directory are the design library and are not listed here."
+    },
+    "newDesign": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How this catalog appears in the New design chooser, as a whole: the chip a person picks it by and where that chip sits. Labelled by what is being made (`Mobile app`, `Wear widget`) rather than by the catalog's name. Absent leaves the builder's own label for a catalog it knows and the catalog's title otherwise.",
+      "properties": {
+        "label": { "type": "string" },
+        "order": { "type": "integer", "description": "Ascending position among the chooser's catalogs." }
+      }
     },
     "colorTokens": {
       "type": "object",
