@@ -48,6 +48,50 @@ class GuidelinesEvidenceTest {
   }
 
   @Test
+  fun `a preview's source includes the wrapper it calls from another file in its module`() {
+    val module = Files.createTempDirectory("guidelines-wrapper").toFile()
+    val pkg = module.resolve("src/main/kotlin/demo").apply { mkdirs() }
+    val preview =
+      pkg.resolve("Lists.kt").apply {
+        writeText(
+          """
+          package demo
+
+          @Preview
+          @Composable
+          fun WearList() = WearScreen {
+            ScreenScaffold(scrollState = rememberScrollState()) { Text("Hi") }
+          }
+          """
+            .trimIndent()
+        )
+      }
+    pkg
+      .resolve("Frame.kt")
+      .writeText(
+        """
+        package demo
+
+        @Composable
+        internal fun WearScreen(content: @Composable () -> Unit) {
+          AppScaffold(timeText = { TimeText() }) { content() }
+        }
+        """
+          .trimIndent()
+      )
+    val source = PreviewSourceReader.readWithCallees(preview, 4)!!
+    assertTrue(source.startsWith("@Composable\nfun WearList()"), source)
+    assertTrue("// WearScreen, which the preview calls (Frame.kt:4):" in source, source)
+    assertTrue("AppScaffold(timeText = { TimeText() })" in source, source)
+    // A library composable has no declaration in the module and is not pulled in.
+    assertTrue("fun ScreenScaffold" !in source)
+
+    // A handoff root that does not contain the module's `src` gives no index.
+    val elsewhere = Files.createTempDirectory("guidelines-elsewhere").toFile()
+    assertNull(SourceIndex.forSourceFile(preview, within = elsewhere))
+  }
+
+  @Test
   fun `an expression body ends where its brackets close`() {
     val lines = listOf("fun Chip() = Chip(", "  label = \"A\",", ")", "", "fun Other() {}")
     assertEquals("fun Chip() = Chip(\n  label = \"A\",\n)", PreviewSourceReader.extract(lines, 0))

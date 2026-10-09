@@ -797,6 +797,8 @@ internal object ComposePreviewTasks {
       // `renderFiles`' tree — track them as their own input so the bundle re-packs when a sidecar
       // appears/changes (see `catalogTokenFiles` on the task).
       catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
+      // A `compose-preview guidelines` run's results, carried so a hosting server can serve them.
+      guidelineResultsFiles.from(previewOutputDir.map { it.file("guidelines.json") })
       // The two authored files a builder catalog is generated from, resolved the way
       // `composePreviewDiscover` resolves them: the module's own first, then the repository root's.
       uiBuilderPolicyCandidates.from(

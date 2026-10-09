@@ -99,7 +99,13 @@ internal data class HandoffInputs(
           entry.sourceFile?.let { path ->
             val line = entry.bodyLine ?: return@let null
             val root = sourceRoot ?: return@let null
-            within(root, path)?.let { PreviewSourceReader.read(it, line) }
+            within(root, path)?.let {
+              PreviewSourceReader.readWithCallees(
+                it,
+                line,
+                index = SourceIndex.forSourceFile(it, within = root),
+              )
+            }
           }
         PreviewSubject(
           previewId = entry.id,
