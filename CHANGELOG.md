@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.37.0](https://github.com/yschimke/compose-ai-tools/compare/v2.36.0...v2.37.0) (2026-10-09)
+
+
+### Features
+
+* **screen:** read a policy's New design chooser copy and publish it beside the template paths ([#5735](https://github.com/yschimke/compose-ai-tools/issues/5735)) ([7f33f6a](https://github.com/yschimke/compose-ai-tools/commit/7f33f6a43e3fe6b9d226195723437427b171ce3f))
+* **ui-builder:** publish a catalog's ui-builder.guidelines.json beside its ui-builder.json ([#5733](https://github.com/yschimke/compose-ai-tools/issues/5733)) ([b147453](https://github.com/yschimke/compose-ai-tools/commit/b147453acd7b15b0d65e582fa4dd34b50dec986e))
+
+
+### Bug Fixes
+
+* **render-host:** key renders on a carried Remote Compose document ([#5736](https://github.com/yschimke/compose-ai-tools/issues/5736)) ([f10eee2](https://github.com/yschimke/compose-ai-tools/commit/f10eee219225586f3995bd5afc8563194e0cdb15))
+* **screen:** call a component whose only refusal is a placeholder the node supplies ([#5732](https://github.com/yschimke/compose-ai-tools/issues/5732)) ([4fd1353](https://github.com/yschimke/compose-ai-tools/commit/4fd135362fdc57be941acc9a1f79d8c806e46d7c))
+
 ## [2.36.0](https://github.com/yschimke/compose-ai-tools/compare/v2.35.1...v2.36.0) (2026-10-08)
 
 
