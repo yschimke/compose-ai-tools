@@ -67,6 +67,16 @@ public interface ServeHost : AutoCloseable {
   public fun parityIssues(): ParityIssues? = null
 
   /**
+   * The design-guideline result this catalog published for [previewId] (the bundle's
+   * `guidelines.json`, read through [ServeGuidelineResultsStore]): which rules the preview was
+   * asked, each verdict with the nodes and regions it points at, and the model that answered. Null
+   * when the catalog publishes none, or none for this preview.
+   */
+  public fun guidelineResultFor(
+    previewId: String
+  ): ee.schimke.composeai.guidelines.protocol.GuidelineRecordV1? = null
+
+  /**
    * The parity findings this catalog published (`parity/findings.json`) for one preview/reference
    * pair; see [ServeParityFindingStore.forComparison] for unscoped sets.
    */

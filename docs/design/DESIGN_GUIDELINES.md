@@ -116,6 +116,38 @@ publish phase on fork PRs; see Next steps).
   the accessibility bounds and soft boxes for regions, labelled with the rule id.
 - `--json` prints the same; `--fail-on warning|info` sets the exit code.
 
+## Wrapper source
+
+A preview is often a single call into the catalog's frame (`WearList() = WearScreen { … }`), and
+the frame is where the time text, the scaffold and the theme come from. Shown only the preview's
+body, a model reported "ScreenScaffold's timeText is not set" for a screen whose frame supplies
+it. `PreviewSourceReader.readWithCallees` therefore appends the bodies of the functions the preview
+**directly calls** that its own module defines — one level deep, at most 3 of them within 4k
+characters — found through a per-module `SourceIndex` of `fun Name(` declarations under the `src`
+directory holding the preview. Library composables are never in that index, so they are never
+pulled in. In handoff mode the index is bounded by `--source-root`: a fork's staged tree cannot
+make the walk read past it.
+
+The picture description also states the capture's scroll mode in Gradle mode, as handoff mode
+already did: at the END of a scroll, the time text has scrolled away rather than gone missing.
+
+## Hosting the results
+
+- **Bundles carry them.** When `build/compose-previews/guidelines.json` exists, `BundlePreviewTask`
+  (`guidelineResultsFiles`) carries it as the bundle entry `guidelines.json` — only when it reads
+  as a report. The annotated `*.guidelines.png` overlays are **not** carried: a host draws findings
+  from the verdicts' nodes and regions.
+- **render-host loads them.** `ServeGuidelineResultsStore.load(bundleDir)` reads that entry fail-soft
+  into `ServeGuidelineResults` (`catalog`, `model`, `records: Map<previewId, GuidelineRecordV1>`),
+  keeping only the contract-shaped record of each result and bounding it (known verdicts, clamped
+  text, cleaned ids, regions inside the picture). `ServeHost.guidelineResultFor(previewId)` is the
+  host API, `null` by default.
+- **Publishing produces them.** `design-artifacts-reusable.yml` takes `guidelines: true`, the
+  `openrouter_key` secret and `guidelines-max-cost` (default `1.00`). Its "Check design guidelines"
+  step runs `compose-preview guidelines` before `bundle pack`, so the published bundle carries the
+  results; without the secret, or with a CLI older than 2.38.0, it is skipped with a warning, and it
+  never fails the publish.
+
 ## Next steps
 
 1. **Annotated images in the PR comment.** The `apply` pipeline (below) writes
@@ -129,7 +161,7 @@ publish phase on fork PRs; see Next steps).
    module's published coordinate.
 4. **VS Code**: a `compose-preview-guidelines` diagnostic collection modelled on
    `PreviewA11yDiagnostics`, reading `guidelines.json`, key in `SecretStorage`.
-5. **Hosted catalogs**: `ServeGuidelineRecords` in render-host and a `guidelines/result` data
-   product in the server, so a published catalog's findings are served beside its renders.
-6. **Regions in the contract**: `GuidelineRegionV1` (compose-preview-contracts #157) replaces the
-   engine's local `GuidelineRegion` once released.
+5. **Hosted catalogs**: render-host part done (see *Hosting the results*); the server still needs a
+   `guidelines/result` data product served from `ServeHost.guidelineResultFor`, and its bundle host
+   implementing that from `ServeGuidelineResultsStore`.
+6. **Done: regions in the contract** — verdicts carry `GuidelineRegionV1` (contracts 3.24.0).

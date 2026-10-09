@@ -274,6 +274,18 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val catalogTokenFiles: ConfigurableFileCollection
 
   /**
+   * `build/compose-previews/guidelines.json`, the design-guideline results `compose-preview
+   * guidelines` writes, when a run has produced one. Carried as the bundle entry
+   * [GUIDELINE_RESULTS_ENTRY] so a hosting server can serve each preview's verdicts beside its
+   * render. A file collection because "no results" is the ordinary case. The annotated
+   * `*.guidelines.png` overlays are not carried; a host draws findings from the verdicts.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val guidelineResultsFiles: ConfigurableFileCollection
+
+  /**
    * Preview ids to include. First entry is the cover. Empty means "all previews in the manifest";
    * passing the empty list intentionally — most callers will populate this from CLI input.
    */
@@ -769,6 +781,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         dataExtensionFiles = dataExtensionZipFiles,
         overrideFiles = overrideFiles,
         catalogTokenFiles = catalogTokenEntries,
+        guidelineResults = guidelineResultsBytes(),
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -1658,9 +1671,13 @@ abstract class BundlePreviewTask : DefaultTask() {
     dataExtensionFiles: Map<String, ByteArray>,
     overrideFiles: Map<String, ByteArray>,
     catalogTokenFiles: Map<String, ByteArray>,
+    guidelineResults: ByteArray? = null,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
+      // A guidelines run's results, for a hosting server to serve per preview. Absent unless one
+      // ran.
+      guidelineResults?.let { zip.writeFile(GUIDELINE_RESULTS_ENTRY, it) }
       zip.writeFile("bundle.json", bundleJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
       // `components.json` travels with the manifest it was derived from. A detached browser,
@@ -1855,6 +1872,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   private companion object {
+    /** The bundle entry a guidelines run's results travel as; the CLI's file name. */
+    const val GUIDELINE_RESULTS_ENTRY = "guidelines.json"
+
     val JSON = Json {
       prettyPrint = true
       encodeDefaults = true
@@ -2064,6 +2084,11 @@ abstract class BundlePreviewTask : DefaultTask() {
    * The catalog's `ui-builder.guidelines.json`, from beside the policy the catalog was generated
    * from, when it is well formed; null otherwise, with a warning naming what is wrong.
    */
+  private fun guidelineResultsBytes(): ByteArray? =
+    guidelineResultsEntry(guidelineResultsFiles.files) { file ->
+      logger.warn("compose-preview: ${file.name} is not a guidelines report; not bundled")
+    }
+
   private fun uiBuilderGuidelinesBytes(uiBuilderJson: String): ByteArray? {
     val authored = authoredPair() ?: return null
     val source = UiBuilderGuidelinesFile.besidePolicy(authored.policy) ?: return null
@@ -2222,4 +2247,29 @@ internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
     result[raw] = candidate
   }
   return result
+}
+
+/**
+ * The bytes of the first of [candidates] that exists and reads as a guidelines report — a JSON
+ * object with a `results` array, as `compose-preview guidelines` writes — or null. A stray or
+ * truncated file is left out (and [onUnreadable] told) rather than shipped for every host to
+ * reject.
+ */
+internal fun guidelineResultsEntry(
+  candidates: Iterable<File>,
+  onUnreadable: (File) -> Unit = {},
+): ByteArray? {
+  val file = candidates.firstOrNull { it.isFile } ?: return null
+  val bytes = file.readBytes()
+  val readable = runCatching {
+    val root = Json.parseToJsonElement(bytes.toString(Charsets.UTF_8))
+    (root as? kotlinx.serialization.json.JsonObject)?.get("results") is
+      kotlinx.serialization.json.JsonArray
+  }
+    .getOrDefault(false)
+  if (!readable) {
+    onUnreadable(file)
+    return null
+  }
+  return bytes
 }
