@@ -275,6 +275,39 @@ class GuidelineEngineTest {
   }
     .toString()
 
+  @Test
+  fun `a subject's source goes to the model as evidence and in the prompt`() {
+    val withSource =
+      subject("a").copy(source = "@Composable fun A() { Button(Modifier.size(36.dp)) {} }")
+    val batch = PreviewGuidelineRequests.batches(guidelines, listOf(withSource, subject("b")))
+    val request =
+      PreviewGuidelineRequests.request(guidelines, batch.single(), "rules.json", listOf("source"))
+
+    assertThat(request.sourceAttached).isTrue()
+    val source = request.evidence.single { it.kind == GuidelineEvidenceNeedV1.KIND_SOURCE }
+    assertThat(source.subjectId).isEqualTo("a")
+    assertThat(source.mediaType).isEqualTo(PreviewGuidelineRequests.SOURCE_MEDIA_TYPE)
+    assertThat(request.userText).contains("Modifier.size(36.dp)")
+    assertThat(request.systemPrompt).contains("Use the source for rules about code")
+  }
+
+  @Test
+  fun `source is given up before a picture when the batch's source allowance runs out`() {
+    val long = "x".repeat(600)
+    val subjects = listOf(subject("a").copy(source = long), subject("b").copy(source = long))
+    val batches =
+      PreviewGuidelineRequests.batches(
+        guidelines,
+        subjects,
+        GuidelineBudget(maxSourceChars = 800),
+      )
+
+    val batch = batches.single()
+    assertThat(batch.subjects.map { it.pictures.size }).containsExactly(1, 1)
+    assertThat(batch.subjects[0].source).hasLength(600)
+    assertThat(batch.subjects[1].source).hasLength(200)
+  }
+
   private inner class FakeModel : GuidelineModel {
     val replies = ArrayDeque<String>()
     val requests = mutableListOf<GuidelineRequestV1>()

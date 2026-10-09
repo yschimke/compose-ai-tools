@@ -52,16 +52,18 @@ public final class ee/schimke/composeai/guidelines/GuidelineBatch {
 
 public final class ee/schimke/composeai/guidelines/GuidelineBudget {
 	public fun <init> ()V
-	public fun <init> (III)V
-	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IIII)V
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()I
-	public final fun copy (III)Lee/schimke/composeai/guidelines/GuidelineBudget;
-	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineBudget;IIIILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineBudget;IIIIILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineBudget;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getMaxInputTokens ()I
 	public final fun getMaxPictures ()I
+	public final fun getMaxSourceChars ()I
 	public final fun getMaxSubjects ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -305,7 +307,9 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 
 public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;
+	public static final field MAX_SOURCE_CHARS I
 	public static final field PICTURE_TOKENS I
+	public static final field SOURCE_MEDIA_TYPE Ljava/lang/String;
 	public static final field SYSTEM_PROMPT Ljava/lang/String;
 	public final fun batches (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;)Ljava/util/List;
 	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;

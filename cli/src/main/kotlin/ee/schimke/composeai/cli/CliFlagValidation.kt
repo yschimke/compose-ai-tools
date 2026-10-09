@@ -189,6 +189,8 @@ internal object CliFlagValidation {
             "--surface",
             "--previews-json",
             "--renders-dir",
+            "--a11y-json",
+            "--source-root",
           ),
       "diff-semantics" to setOf("--json", "--fail-on-change", "--help", "-h"),
       "devices" to setOf("--json", "--help", "-h"),
