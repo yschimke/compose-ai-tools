@@ -70,7 +70,8 @@ repository's own `serve-wasm` fork is the standing evidence for what a mirror co
 [`api/preview-annotations/…/BuilderComponent.kt`](../../api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/BuilderComponent.kt),
 discovered by the same ClassGraph scan that reads `@CatalogComponent` (`@Target(FUNCTION)`, `BINARY`
 retention, matched by FQN, never loaded), resolved into
-[`BuilderPolicy`](../../screen/generator/src/commonMain/kotlin/ee/schimke/composeai/discovery/BuilderPolicy.kt)
+[`BuilderPolicy`](https://github.com/yschimke/compose-preview-contracts/blob/main/api/component-catalog-protocol/src/main/kotlin/ee/schimke/composeai/discovery/BuilderPolicy.kt)
+(compose-preview-contracts' `component-catalog-protocol`)
 and attached to `PreviewInfo.builder`, then carried onto `ComponentRecord.builder`.
 
 ```kotlin

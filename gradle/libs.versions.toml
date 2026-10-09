@@ -470,6 +470,7 @@ composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol" }
 composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
 composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }
+composeai-component-catalog-protocol = { module = "ee.schimke.composeai:component-catalog-protocol" }
 composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core" }
 composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core" }
 composeai-data-layoutinspector-connector = { module = "ee.schimke.composeai:data-layoutinspector-connector" }

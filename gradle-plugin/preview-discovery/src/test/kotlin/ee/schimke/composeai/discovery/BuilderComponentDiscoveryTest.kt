@@ -34,8 +34,11 @@ class BuilderComponentDiscoveryTest {
     assertThat(policy.id).isEqualTo("wear-m3/checkbox-button")
     assertThat(policy.canvas).isEqualTo("placeholder")
     assertThat(policy.stateCallbacks)
-      .containsExactly(BuilderPair("onCheckedChange", "checked:boolean"))
-    assertThat(policy.starter).containsExactly(BuilderPair("label", "Checkbox"))
+      .containsExactly(
+        BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean").build()
+      )
+    assertThat(policy.starter)
+      .containsExactly(BuilderPair.Builder(key = "label", value = "Checkbox").build())
     assertThat(policy.traits).containsExactly("Action")
     assertThat(policy.nativeOnly).isTrue()
     // Blank arguments record null rather than the value a generator would pick: "the catalog did
@@ -55,7 +58,8 @@ class BuilderComponentDiscoveryTest {
 
     // Split on the FIRST `=`, so a value may contain one; an entry with a blank key or no
     // separator at all costs that entry rather than the build.
-    assertThat(policy.starter).containsExactly(BuilderPair("query", "a=b"))
+    assertThat(policy.starter)
+      .containsExactly(BuilderPair.Builder(key = "query", value = "a=b").build())
     // …and is kept, verbatim, for the generator to report. The leniency is only cheaper than a
     // build failure because the entry is reported; discarding the raw string here would leave the
     // component with a default nobody meant it to have and no symptom at all.
@@ -70,7 +74,8 @@ class BuilderComponentDiscoveryTest {
     // Not folded to null. Writing @BuilderComponent is a statement that somebody considered this
     // component's builder policy, and "nobody has looked at this one" is only reportable if the
     // record can tell that apart from silence.
-    assertThat(discover(jar).manifest.previews.single().builder).isEqualTo(BuilderPolicy())
+    assertThat(discover(jar).manifest.previews.single().builder)
+      .isEqualTo(BuilderPolicy.Builder().build())
   }
 
   @Test

@@ -13,31 +13,41 @@ class ScreenGeneratorTest {
     requiredOptIns: List<String> = emptyList(),
     androidxOptIns: List<String> = emptyList(),
   ) =
-    ComponentRecord(
-      canonicalId = "app/androidx.compose.material3.${name}Kt.$name",
-      symbol =
-        ComponentSymbol(
-          jvmOwner = "androidx.compose.material3.${name}Kt",
-          callable = callable,
-          name = name,
-          origin = ComponentOrigin.LIBRARY,
-        ),
-      parameters = parameters,
-      signatureKnown = true,
-      code =
-        ComponentCode(
-          call = call,
-          imports = listOf(callable),
-          requiredOptIns = requiredOptIns,
-          androidxOptIns = androidxOptIns,
-        ),
-    )
+    ComponentRecord.Builder(
+        canonicalId = "app/androidx.compose.material3.${name}Kt.$name",
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "androidx.compose.material3.${name}Kt",
+              callable = callable,
+              name = name,
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { builder ->
+        builder.parameters = parameters
+        builder.signatureKnown = true
+        builder.code =
+          ComponentCode.Builder()
+            .also { b ->
+              b.call = call
+              b.imports = listOf(callable)
+              b.requiredOptIns = requiredOptIns
+              b.androidxOptIns = androidxOptIns
+            }
+            .build()
+      }
+      .build()
 
   private val text =
     component(
       "Text",
       "androidx.compose.material3.Text",
-      listOf(TargetParameter("text", "String", typeFqn = "kotlin.String")),
+      listOf(
+        TargetParameter.Builder(name = "text", type = "String")
+          .also { b -> b.typeFqn = "kotlin.String" }
+          .build()
+      ),
     )
 
   private val card =
@@ -45,18 +55,21 @@ class ScreenGeneratorTest {
       "Card",
       "androidx.compose.material3.Card",
       listOf(
-        TargetParameter(
-          "modifier",
-          "Modifier",
-          typeFqn = "androidx.compose.ui.Modifier",
-          hasDefault = true,
-        ),
-        TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true),
+        TargetParameter.Builder(name = "modifier", type = "Modifier")
+          .also { b ->
+            b.typeFqn = "androidx.compose.ui.Modifier"
+            b.hasDefault = true
+          }
+          .build(),
+        TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+          .also { b -> b.composableSlot = true }
+          .build(),
       ),
     )
 
   private fun catalog(vararg records: ComponentRecord) =
-    ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
+    ComponentRecordFile.Builder(module = "app", variant = "debug", components = records.toList())
+      .build()
 
   private fun emitted(document: ScreenDocument, catalog: ComponentRecordFile) =
     ScreenGenerator.generate(document, catalog) as ScreenGenerator.Result.Emitted
@@ -423,12 +436,16 @@ class ScreenGeneratorTest {
     // private, the generic, the collided — arrives here without being re-derived.
     val private =
       component("Secret", "com.example.Secret", emptyList(), call = "Secret()")
-        .copy(
-          code =
-            ComponentCode(
-              refusedReason = "not public or internal, so a generated file cannot call it"
-            )
-        )
+        .newBuilder()
+        .also { builder ->
+          builder.code =
+            ComponentCode.Builder()
+              .also { b ->
+                b.refusedReason = "not public or internal, so a generated file cannot call it"
+              }
+              .build()
+        }
+        .build()
     val screen = ScreenDocument("Screen", ScreenNode(private.canonicalId))
 
     assertThat(refusal(screen, catalog(private)).single()).contains("not public or internal")
@@ -440,20 +457,18 @@ class ScreenGeneratorTest {
         "Icon",
         "androidx.compose.material3.Icon",
         listOf(
-          TargetParameter(
-            "imageVector",
-            "ImageVector",
-            typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
-          ),
-          TargetParameter(
-            "contentDescription",
-            "String?",
-            typeFqn = "kotlin.String",
-            nullable = true,
-          ),
+          TargetParameter.Builder(name = "imageVector", type = "ImageVector")
+            .also { b -> b.typeFqn = "androidx.compose.ui.graphics.vector.ImageVector" }
+            .build(),
+          TargetParameter.Builder(name = "contentDescription", type = "String?")
+            .also { b ->
+              b.typeFqn = "kotlin.String"
+              b.nullable = true
+            }
+            .build(),
         ),
       )
-      .let { it.copy(code = ComponentSnippets.codeFor(it)) }
+      .let { it.newBuilder().also { b -> b.code = ComponentSnippets.codeFor(it) }.build() }
 
   @Test
   fun `a call site refused only for a placeholder the node supplies is written`() {
@@ -491,20 +506,18 @@ class ScreenGeneratorTest {
           "IconPicker",
           "com.example.picker.IconPicker",
           listOf(
-            TargetParameter(
-              "imageVector",
-              "ImageVector",
-              typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
-            ),
-            TargetParameter(
-              "state",
-              "PickerState",
-              typeFqn = "com.example.picker.PickerState",
-              noArgFactory = "com.example.picker.rememberPickerState",
-            ),
+            TargetParameter.Builder(name = "imageVector", type = "ImageVector")
+              .also { b -> b.typeFqn = "androidx.compose.ui.graphics.vector.ImageVector" }
+              .build(),
+            TargetParameter.Builder(name = "state", type = "PickerState")
+              .also { b ->
+                b.typeFqn = "com.example.picker.PickerState"
+                b.noArgFactory = "com.example.picker.rememberPickerState"
+              }
+              .build(),
           ),
         )
-        .let { it.copy(code = ComponentSnippets.codeFor(it)) }
+        .let { it.newBuilder().also { b -> b.code = ComponentSnippets.codeFor(it) }.build() }
     assertThat(picker.code?.refusedReason).contains("required parameter `imageVector")
     val screen =
       ScreenDocument(
@@ -572,7 +585,11 @@ class ScreenGeneratorTest {
       component(
         "Odd",
         "com.example.Odd",
-        listOf(TargetParameter("value", "String", typeFqn = "com.example.String")),
+        listOf(
+          TargetParameter.Builder(name = "value", type = "String")
+            .also { b -> b.typeFqn = "com.example.String" }
+            .build()
+        ),
       )
     val screen =
       ScreenDocument(
@@ -612,8 +629,12 @@ class ScreenGeneratorTest {
         "ListItem",
         "androidx.compose.material3.ListItem",
         listOf(
-          TargetParameter("headlineContent", "() -> Unit", composableSlot = true),
-          TargetParameter("supportingContent", "() -> Unit", composableSlot = true),
+          TargetParameter.Builder(name = "headlineContent", type = "() -> Unit")
+            .also { b -> b.composableSlot = true }
+            .build(),
+          TargetParameter.Builder(name = "supportingContent", type = "() -> Unit")
+            .also { b -> b.composableSlot = true }
+            .build(),
         ),
       )
     val source =
@@ -652,7 +673,11 @@ class ScreenGeneratorTest {
       component(
         "InputField",
         "androidx.compose.material3.SearchBarDefaults.InputField",
-        listOf(TargetParameter("query", "String", typeFqn = "kotlin.String")),
+        listOf(
+          TargetParameter.Builder(name = "query", type = "String")
+            .also { b -> b.typeFqn = "kotlin.String" }
+            .build()
+        ),
       )
     val source =
       emitted(
@@ -719,18 +744,35 @@ class ScreenGeneratorTest {
     // `com.a.Badge` and `com.b.Badge` both reduced to `Badge()` under two conflicting imports.
     fun badge(pkg: String) =
       component("Badge", "$pkg.Badge", emptyList()).let {
-        it.copy(
-          canonicalId = "app/$pkg.BadgeKt.Badge",
-          symbol = it.symbol.copy(jvmOwner = "$pkg.BadgeKt", callable = "$pkg.Badge"),
-        )
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.canonicalId = "app/$pkg.BadgeKt.Badge"
+            builder.symbol =
+              it.symbol
+                .newBuilder()
+                .also { b ->
+                  b.jvmOwner = "$pkg.BadgeKt"
+                  b.callable = "$pkg.Badge"
+                }
+                .build()
+          }
+          .build()
       }
     val a = badge("com.a")
     val b = badge("com.b")
     val card2 =
-      card.copy(
-        parameters =
-          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
-      )
+      card
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            listOf(
+              TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+                .also { b -> b.composableSlot = true }
+                .build()
+            )
+        }
+        .build()
     val screen =
       ScreenDocument(
         "Screen",
@@ -754,10 +796,14 @@ class ScreenGeneratorTest {
     // itself — a stack overflow that compiles.
     val same =
       component("HomeScreen", "com.example.HomeScreen", emptyList()).let {
-        it.copy(
-          canonicalId = "app/com.example.HomeScreenKt.HomeScreen",
-          symbol = it.symbol.copy(callable = "com.example.HomeScreen"),
-        )
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.canonicalId = "app/com.example.HomeScreenKt.HomeScreen"
+            builder.symbol =
+              it.symbol.newBuilder().also { b -> b.callable = "com.example.HomeScreen" }.build()
+          }
+          .build()
       }
     val screen = ScreenDocument("HomeScreen", ScreenNode(same.canonicalId))
 
@@ -775,7 +821,11 @@ class ScreenGeneratorTest {
       component(
         "Counted",
         "com.example.Counted",
-        listOf(TargetParameter("count", "Int", typeFqn = "kotlin.Int")),
+        listOf(
+          TargetParameter.Builder(name = "count", type = "Int")
+            .also { b -> b.typeFqn = "kotlin.Int" }
+            .build()
+        ),
       )
     val tooBig =
       ScreenDocument(
@@ -804,12 +854,12 @@ class ScreenGeneratorTest {
         "Dragging",
         "com.example.Dragging",
         listOf(
-          TargetParameter(
-            "onDrag",
-            "(Float, Float) -> Unit",
-            hasDefault = true,
-            composableSlot = true,
-          )
+          TargetParameter.Builder(name = "onDrag", type = "(Float, Float) -> Unit")
+            .also { b ->
+              b.hasDefault = true
+              b.composableSlot = true
+            }
+            .build()
         ),
       )
     val screen =
@@ -837,7 +887,11 @@ class ScreenGeneratorTest {
       component(
         "Sized",
         "com.example.Sized",
-        listOf(TargetParameter("scale", "Float", typeFqn = "kotlin.Float")),
+        listOf(
+          TargetParameter.Builder(name = "scale", type = "Float")
+            .also { b -> b.typeFqn = "kotlin.Float" }
+            .build()
+        ),
       )
     fun screen(v: Double) =
       ScreenDocument(
@@ -859,17 +913,37 @@ class ScreenGeneratorTest {
   fun `opt-in markers are qualified, so two of the same simple name stay distinct`() {
     val a =
       component("A", "com.a.A", emptyList(), requiredOptIns = listOf("com.a.ExperimentalApi")).let {
-        it.copy(canonicalId = "app/com.a.AKt.A", symbol = it.symbol.copy(callable = "com.a.A"))
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.canonicalId = "app/com.a.AKt.A"
+            builder.symbol = it.symbol.newBuilder().also { b -> b.callable = "com.a.A" }.build()
+          }
+          .build()
       }
     val b =
       component("B", "com.b.B", emptyList(), requiredOptIns = listOf("com.b.ExperimentalApi")).let {
-        it.copy(canonicalId = "app/com.b.BKt.B", symbol = it.symbol.copy(callable = "com.b.B"))
+        it
+          .newBuilder()
+          .also { b3 ->
+            b3.canonicalId = "app/com.b.BKt.B"
+            b3.symbol =
+              it.symbol.newBuilder().also { builder -> builder.callable = "com.b.B" }.build()
+          }
+          .build()
       }
     val holder =
-      card.copy(
-        parameters =
-          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
-      )
+      card
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            listOf(
+              TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+                .also { b -> b.composableSlot = true }
+                .build()
+            )
+        }
+        .build()
     val screen =
       ScreenDocument(
         "Screen",
@@ -889,12 +963,9 @@ class ScreenGeneratorTest {
   @Test
   fun `a record from a newer schema is refused rather than read as this one`() {
     val newer =
-      ComponentRecordFile(
-        schemaVersion = COMPONENT_RECORD_SCHEMA_VERSION + 1,
-        module = "app",
-        variant = "debug",
-        components = listOf(text),
-      )
+      ComponentRecordFile.Builder(module = "app", variant = "debug", components = listOf(text))
+        .also { b -> b.schemaVersion = COMPONENT_RECORD_SCHEMA_VERSION + 1 }
+        .build()
 
     assertThat(refusal(ScreenDocument("Screen", ScreenNode(text.canonicalId)), newer).first())
       .contains("newer than")
@@ -921,7 +992,11 @@ class ScreenGeneratorTest {
       component(
         "Counted",
         "com.example.Counted",
-        listOf(TargetParameter("total", "Long", typeFqn = "kotlin.Long")),
+        listOf(
+          TargetParameter.Builder(name = "total", type = "Long")
+            .also { b -> b.typeFqn = "kotlin.Long" }
+            .build()
+        ),
       )
     fun screen(v: Long) =
       ScreenDocument(
@@ -982,10 +1057,17 @@ class ScreenGeneratorTest {
     // The argument loop walks the component's own parameters, so a renamed slot is never reached
     // and its subtree would go unreported — the unresolved-node gap, one level in.
     val holder =
-      card.copy(
-        parameters =
-          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
-      )
+      card
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            listOf(
+              TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+                .also { b -> b.composableSlot = true }
+                .build()
+            )
+        }
+        .build()
     val screen =
       ScreenDocument(
         "Screen",
@@ -1011,12 +1093,12 @@ class ScreenGeneratorTest {
         "Dragging",
         "com.example.Dragging",
         listOf(
-          TargetParameter(
-            "onDrag",
-            "(Float, Float) -> Unit",
-            hasDefault = true,
-            composableSlot = true,
-          )
+          TargetParameter.Builder(name = "onDrag", type = "(Float, Float) -> Unit")
+            .also { b ->
+              b.hasDefault = true
+              b.composableSlot = true
+            }
+            .build()
         ),
       )
     val screen =
@@ -1091,7 +1173,12 @@ class ScreenGeneratorTest {
         "Optional",
         "com.example.Optional",
         listOf(
-          TargetParameter("content", "(() -> Unit)?", hasDefault = true, composableSlot = true)
+          TargetParameter.Builder(name = "content", type = "(() -> Unit)?")
+            .also { b ->
+              b.hasDefault = true
+              b.composableSlot = true
+            }
+            .build()
         ),
       )
     val screen =
@@ -1170,12 +1257,9 @@ class ScreenGeneratorTest {
     // rule, and a stale catalog is regenerated rather than squinted at.
     val plain = component("Plain", "com.example.Plain", emptyList())
     val legacy =
-      ComponentRecordFile(
-        schemaVersion = COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA - 1,
-        module = "app",
-        variant = "debug",
-        components = listOf(plain),
-      )
+      ComponentRecordFile.Builder(module = "app", variant = "debug", components = listOf(plain))
+        .also { b -> b.schemaVersion = COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA - 1 }
+        .build()
 
     val reasons =
       (ScreenGenerator.generate(ScreenDocument("Screen", ScreenNode(plain.canonicalId)), legacy)
@@ -1194,7 +1278,11 @@ class ScreenGeneratorTest {
       component(
         "Labelled",
         "com.example.Labelled",
-        listOf(TargetParameter("label", "String", typeFqn = "kotlin.String")),
+        listOf(
+          TargetParameter.Builder(name = "label", type = "String")
+            .also { b -> b.typeFqn = "kotlin.String" }
+            .build()
+        ),
       )
     val screen =
       ScreenDocument(
@@ -1217,7 +1305,11 @@ class ScreenGeneratorTest {
       component(
         "Labelled",
         "com.example.Labelled",
-        listOf(TargetParameter("label", "String", typeFqn = "kotlin.String")),
+        listOf(
+          TargetParameter.Builder(name = "label", type = "String")
+            .also { b -> b.typeFqn = "kotlin.String" }
+            .build()
+        ),
       )
     fun screen(value: String) =
       ScreenDocument(
@@ -1242,10 +1334,14 @@ class ScreenGeneratorTest {
     // `Composable()` ambiguous between the two.
     val clash =
       component("Composable", "com.example.Composable", emptyList()).let {
-        it.copy(
-          canonicalId = "app/com.example.ComposableKt.Composable",
-          symbol = it.symbol.copy(callable = "com.example.Composable"),
-        )
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.canonicalId = "app/com.example.ComposableKt.Composable"
+            builder.symbol =
+              it.symbol.newBuilder().also { b -> b.callable = "com.example.Composable" }.build()
+          }
+          .build()
       }
 
     val source =
@@ -1271,13 +1367,13 @@ class ScreenGeneratorTest {
         "Optional",
         "com.example.Optional",
         listOf(
-          TargetParameter(
-            "content",
-            "(ColumnScope.() -> Unit)?",
-            hasDefault = true,
-            composableSlot = true,
-            composableSlotReceiver = "androidx.compose.foundation.layout.ColumnScope",
-          )
+          TargetParameter.Builder(name = "content", type = "(ColumnScope.() -> Unit)?")
+            .also { b ->
+              b.hasDefault = true
+              b.composableSlot = true
+              b.composableSlotReceiver = "androidx.compose.foundation.layout.ColumnScope"
+            }
+            .build()
         ),
       )
     val screen =
@@ -1333,10 +1429,17 @@ class ScreenGeneratorTest {
   @Test
   fun `a parameter set as both a value and a slot is reported, and its children too`() {
     val holder =
-      card.copy(
-        parameters =
-          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
-      )
+      card
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            listOf(
+              TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+                .also { b -> b.composableSlot = true }
+                .build()
+            )
+        }
+        .build()
     val screen =
       ScreenDocument(
         "Screen",
@@ -1357,10 +1460,17 @@ class ScreenGeneratorTest {
   fun `children of an unresolved node are still reported`() {
     // A catalog that dropped a whole subtree should name every node it can no longer place.
     val holder =
-      card.copy(
-        parameters =
-          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
-      )
+      card
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            listOf(
+              TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+                .also { b -> b.composableSlot = true }
+                .build()
+            )
+        }
+        .build()
     val screen =
       ScreenDocument(
         "Screen",
@@ -1407,7 +1517,9 @@ class ScreenGeneratorTest {
         // Not `composableSlot`, which is the half that made this a record nobody could write:
         // `LazyColumn`'s `content` is a plain receiver lambda, so the whole container used to
         // refuse as "a parameter, not a @Composable slot".
-        TargetParameter("content", "LazyListScope.() -> Unit", scopeDslReceiver = lazyListScope)
+        TargetParameter.Builder(name = "content", type = "LazyListScope.() -> Unit")
+          .also { b -> b.scopeDslReceiver = lazyListScope }
+          .build()
       ),
     )
 
@@ -1417,12 +1529,12 @@ class ScreenGeneratorTest {
       "ScopedCard",
       "androidx.compose.material3.ScopedCard",
       listOf(
-        TargetParameter(
-          "content",
-          "ColumnScope.() -> Unit",
-          composableSlot = true,
-          composableSlotReceiver = columnScope,
-        )
+        TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
+          .also { b ->
+            b.composableSlot = true
+            b.composableSlotReceiver = columnScope
+          }
+          .build()
       ),
     )
 
@@ -1654,7 +1766,11 @@ class ScreenGeneratorTest {
       component(
         "Swatch",
         "androidx.compose.material3.Swatch",
-        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+        listOf(
+          TargetParameter.Builder(name = "color", type = "Long")
+            .also { b -> b.typeFqn = "kotlin.Long" }
+            .build()
+        ),
       )
     val shades = listOf(0xFFEBEDF0L, 0xFF9BE9A8L, 0xFF40C463L, 0xFF30A14EL)
     val cells =
@@ -1682,7 +1798,11 @@ class ScreenGeneratorTest {
       component(
         "Swatch",
         "androidx.compose.material3.Swatch",
-        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+        listOf(
+          TargetParameter.Builder(name = "color", type = "Long")
+            .also { b -> b.typeFqn = "kotlin.Long" }
+            .build()
+        ),
       )
     val cells =
       listOf(1L, 22L, 333L)
@@ -1816,13 +1936,13 @@ class ScreenGeneratorTest {
         "Holder",
         "androidx.compose.material3.Holder",
         listOf(
-          TargetParameter(
-            "state",
-            "kotlin",
-            typeFqn = "app.kotlin",
-            noArgConstructible = true,
-            hasDefault = false,
-          )
+          TargetParameter.Builder(name = "state", type = "kotlin")
+            .also { b ->
+              b.typeFqn = "app.kotlin"
+              b.noArgConstructible = true
+              b.hasDefault = false
+            }
+            .build()
         ),
       )
 

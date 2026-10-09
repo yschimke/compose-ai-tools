@@ -47,6 +47,10 @@ dependencies {
   // constraints are not exported.
   api(platform(libs.composeai.contracts.bom))
   api(libs.composeai.screen.document)
+  // The `components.json` / `ui-builder.policy.json` / `ui-builder.json` wire types. `api`: the
+  // generator's public signatures (`UiBuilderCatalogs.generate`, `ScreenGenerator`) take and return
+  // them, so a consumer of this artifact needs them on its compile classpath.
+  api(libs.composeai.component.catalog.protocol)
   // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
   // `@Preview`-annotated methods, fans out multi-preview meta-annotations via
   // `scanResult.getClassInfo(...)`. Same coord as :gradle-plugin (and matched at runtime so the

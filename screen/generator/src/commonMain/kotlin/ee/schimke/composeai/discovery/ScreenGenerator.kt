@@ -458,11 +458,9 @@ object ScreenGenerator {
         val initial =
           context.argument(
             declared.initial,
-            TargetParameter(
-              declared.name,
-              declared.typeFqn.removeSuffix("?"),
-              typeFqn = declared.typeFqn.removeSuffix("?"),
-            ),
+            TargetParameter.Builder(name = declared.name, type = declared.typeFqn.removeSuffix("?"))
+              .also { b -> b.typeFqn = declared.typeFqn.removeSuffix("?") }
+              .build(),
             "state",
           ) ?: return@map null
         declaredSoFar += declared.name
@@ -952,14 +950,16 @@ object ScreenGenerator {
     private fun parameterTarget(parameter: ScreenParameter): TargetParameter =
       when (parameter) {
         is ScreenParameter.Value ->
-          TargetParameter(parameter.name, parameter.typeFqn, typeFqn = parameter.typeFqn)
+          TargetParameter.Builder(name = parameter.name, type = parameter.typeFqn)
+            .also { b -> b.typeFqn = parameter.typeFqn }
+            .build()
         is ScreenParameter.Callback ->
-          TargetParameter(
-            parameter.name,
-            "() -> Unit",
-            typeFqn = "kotlin.Function0",
-            lambdaReturnTypeFqn = "kotlin.Unit",
-          )
+          TargetParameter.Builder(name = parameter.name, type = "() -> Unit")
+            .also { b ->
+              b.typeFqn = "kotlin.Function0"
+              b.lambdaReturnTypeFqn = "kotlin.Unit"
+            }
+            .build()
       }
 
     fun functionBodies(): List<String> =
@@ -1101,12 +1101,14 @@ object ScreenGenerator {
               rederived == recorded.refusedReason &&
               ComponentSnippets.refusalWith(record, supplied) == null
           )
-            ComponentCode(
-              call = "${ComponentSnippets.escapeIfKeyword(record.symbol.name)}(…)",
-              imports = listOf(record.symbol.callable),
-              requiredOptIns = record.requiredOptIns,
-              androidxOptIns = record.androidxOptIns,
-            )
+            ComponentCode.Builder()
+              .also { b ->
+                b.call = "${ComponentSnippets.escapeIfKeyword(record.symbol.name)}(…)"
+                b.imports = listOf(record.symbol.callable)
+                b.requiredOptIns = record.requiredOptIns
+                b.androidxOptIns = record.androidxOptIns
+              }
+              .build()
           else recorded
         }
       if (code?.call == null) {
@@ -1486,7 +1488,9 @@ object ScreenGenerator {
             val rendered =
               argument(
                 action.value,
-                TargetParameter(action.variable, declared.typeFqn, typeFqn = declared.typeFqn),
+                TargetParameter.Builder(name = action.variable, type = declared.typeFqn)
+                  .also { b -> b.typeFqn = declared.typeFqn }
+                  .build(),
                 owner,
               ) ?: return null
             "$target.value = $rendered"
@@ -1549,7 +1553,13 @@ object ScreenGenerator {
           }
           val arguments = fields.map { (key, type) ->
             row[key]?.let {
-              argument(it, TargetParameter(key, type, typeFqn = type), "row $rowIndex")
+              argument(
+                it,
+                TargetParameter.Builder(name = key, type = type)
+                  .also { b -> b.typeFqn = type }
+                  .build(),
+                "row $rowIndex",
+              )
             }
           }
           "$className(${arguments.joinToString(", ")})"
@@ -1670,9 +1680,17 @@ object ScreenGenerator {
       }
       val type = requireNotNull(subjectType)
       val subject =
-        argument(selection.subject, TargetParameter("subject", type, typeFqn = type), "selection")
+        argument(
+          selection.subject,
+          TargetParameter.Builder(name = "subject", type = type)
+            .also { b -> b.typeFqn = type }
+            .build(),
+          "selection",
+        )
       val parameter =
-        TargetParameter("case", type.removeSuffix("?"), typeFqn = type.removeSuffix("?"))
+        TargetParameter.Builder(name = "case", type = type.removeSuffix("?"))
+          .also { b -> b.typeFqn = type.removeSuffix("?") }
+          .build()
       val seen = mutableSetOf<String>()
       val rendered =
         selection.cases
@@ -1793,11 +1811,9 @@ object ScreenGenerator {
       val body =
         argument(
           value.result,
-          TargetParameter(
-            name = parameter.name,
-            type = returns.substringAfterLast('.'),
-            typeFqn = returns,
-          ),
+          TargetParameter.Builder(name = parameter.name, type = returns.substringAfterLast('.'))
+            .also { b -> b.typeFqn = returns }
+            .build(),
           owner,
         ) ?: return null
       return "{ $body }"
@@ -1937,7 +1953,9 @@ object ScreenGenerator {
         is ScreenValue.ActionLambda ->
           lambda(
             value.actions,
-            TargetParameter("callback", "() -> Unit", typeFqn = "kotlin.Function0"),
+            TargetParameter.Builder(name = "callback", type = "() -> Unit")
+              .also { b -> b.typeFqn = "kotlin.Function0" }
+              .build(),
             where,
           )
         is ScreenValue.StateRead -> stateRead(value, where)

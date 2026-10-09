@@ -1,192 +1,11 @@
 package ee.schimke.composeai.discovery
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/** The `schema` a generated `ui-builder.json` carries. */
-const val UI_BUILDER_CATALOG_SCHEMA: String = "compose-ui-builder-catalog/v1"
-
-/** The record file a generated builder catalog is paired with, on the branch and in `build/`. */
-const val UI_BUILDER_RECORD_FILE: String = "components.json"
-
-/**
- * `ui-builder.json` — the builder catalog a repository publishes, generated and never edited.
- *
- * Produced by [UiBuilderCatalogs.generate] from three inputs the catalog repository owns: the
- * discovered component record, the `catalog.spec.json` cover sheet, and the authored
- * [UiBuilderPolicyFile]. Written by the discovery task into `build/compose-previews/` beside
- * `components.json`, and copied by the design-artifacts pipeline to the delivery branch root where
- * `catalog.json` names it as `uiBuilderFile`.
- *
- * ### It is policy, and the record beside it is the inventory
- *
- * This file deliberately does **not** restate the components. Every parameter, slot, call site and
- * opt-in marker is already in `components.json`, which travels with it, is published by the same
- * run and is pinned by the same revision; a consumer reads the two together, joining on
- * [UiBuilderComponentPolicy.record]. Deriving a second, fuller component list here would put a
- * second implementation of the derivation rules into the pipeline while the first is still running
- * in the preview server — and two implementations of a rule this exacting is how the two sides of a
- * contract come to disagree.
- *
- * That the derivation eventually moves upstream is the plan
- * ([UI_BUILDER_CATALOG_CONTRACT.md](https://github.com/yschimke/compose-preview-server/blob/main/docs/design/UI_BUILDER_CATALOG_CONTRACT.md));
- * moving it *before* the server reads a published file at all would be a rewrite with nothing to
- * check it against. Publishing policy first is the step that can be proved equivalent, because the
- * server composes it with the same record it already derives from today.
- *
- * ### Every reader may ignore what it does not know
- *
- * The file is published once and read by builders of several vintages that the publisher cannot
- * upgrade — a deployment, a `serve` on a laptop, a local `compose-preview-server ui`, an editor
- * extension reading through one of those. [schema] refuses a future *major*; an unknown field never
- * fails a load, and an adapter or template role a build does not ship costs a placeholder and a log
- * line rather than the catalog.
- */
-@Serializable
-data class UiBuilderCatalogFile(
-  val schema: String = UI_BUILDER_CATALOG_SCHEMA,
-  val catalog: UiBuilderCatalogIdentity,
-  /** Which record this file was generated against, so a consumer can tell they are a pair. */
-  val record: UiBuilderRecordRef,
-  /**
-   * Everything a builder reads, in the one place every existing reader already looks.
-   *
-   * Until compose-preview-contracts can carry typed fields on `CatalogCapabilityV1`, these ride in
-   * `statusSemantics` exactly as `platform`, `previewSurfaces` and `componentMenu` already do.
-   * Making them typed is the right change and is sequenced separately; it is not a prerequisite,
-   * because every reader reads `statusSemantics` today.
-   */
-  val statusSemantics: UiBuilderStatusSemantics,
-  /**
-   * What the generator noticed, in a stable, machine-readable vocabulary.
-   *
-   * Published in the file rather than only logged. A catalog's shelf is drawn from data now, and
-   * the two questions somebody asks of it — "why is this component not on the shelf" and "why is
-   * everything a placeholder" — have to be answerable from the artifact, by a person who was not
-   * watching the build that produced it.
-   */
-  val diagnostics: List<UiBuilderDiagnostic> = emptyList(),
-)
-
-/** Who this catalog is, in the vocabulary the chooser and the pack merge read. */
-@Serializable
-data class UiBuilderCatalogIdentity(
-  val id: String,
-  val title: String,
-  val platform: String,
-  val platformLabel: String,
-  /**
-   * The Gradle module the record was discovered from, and its variant. Diagnostic, not identity.
-   */
-  val module: String? = null,
-  val variant: String? = null,
-)
-
-/** The component record this file is the policy half of. */
-@Serializable
-data class UiBuilderRecordRef(
-  val file: String = UI_BUILDER_RECORD_FILE,
-  val schemaVersion: Int,
-  val components: Int,
-)
-
-/** Everything a builder reads about the catalog, carried where every reader already looks. */
-@Serializable
-data class UiBuilderStatusSemantics(
-  val platform: String,
-  val platformLabel: String,
-  /**
-   * The resolved prefix every derived builder id carries — `componentIdPrefix`, or `<catalogId>/`.
-   *
-   * Published because it is the only way a consumer can name a component this file says nothing
-   * about. An unannotated record component is deliberately absent from [components] and still
-   * belongs on the shelf, so its id has to be DERIVABLE: without this a consumer holding
-   * m3-catalog's record has to guess between `m3/card` and `m3-catalog/card`, and guessing wrong
-   * changes the identity every saved design stores for most of the default shelf.
-   */
-  val componentIdPrefix: String,
-  val previewSurfaces: JsonElement? = null,
-  val browserPreview: JsonElement? = null,
-  val componentMenu: UiBuilderComponentMenu,
-  val frame: JsonElement? = null,
-  val code: UiBuilderCode? = null,
-  /**
-   * Catalog-declared, versioned Compose source adapter; lifted to the wire capability by a host.
-   */
-  val composeSourceExport: UiBuilderComposeSourceExport? = null,
-  /** Branch-relative paths of the template designs, which every existing reader takes as such. */
-  val templates: List<String> = emptyList(),
-  /**
-   * What the New design chooser says about this catalog and its templates, beside [templates]
-   * rather than in it so a reader of the paths is unaffected. Null when the policy authored none.
-   */
-  val newDesign: UiBuilderNewDesignSemantics? = null,
-  val colorTokens: JsonElement? = null,
-  val assetRegistry: JsonElement? = null,
-  /** Successor rules interpreted by a catalog-upgrade-aware builder. */
-  val supersedes: JsonElement? = null,
-  val builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
-  /** Per-component policy, keyed by builder id. The record beside this file is the inventory. */
-  val components: Map<String, UiBuilderComponentPolicy> = emptyMap(),
-)
-
-/** Group order, and the group each policy-carrying component belongs to. */
-@Serializable
-data class UiBuilderComponentMenu(
-  val groupOrder: List<String> = emptyList(),
-  val components: Map<String, UiBuilderMenuEntry> = emptyMap(),
-)
-
-@Serializable data class UiBuilderMenuEntry(val group: String)
-
-/**
- * One component's builder policy as published: [BuilderPolicy], resolved, plus the join back to the
- * record.
- *
- * [record] is the load-bearing field. It is the record's `canonicalId`, so a consumer holding
- * `components.json` and this file can pair a builder id with the signature, the slots and the call
- * site it stands for — without either file restating the other.
- */
-@Serializable
-data class UiBuilderComponentPolicy(
-  /** The record's `canonicalId` — `<module>/<jvmOwner>.<name>`. */
-  val record: String,
-  /** The catalog identity this component publishes under, when it has one. */
-  val catalogId: String? = null,
-  val displayName: String? = null,
-  val canvas: String? = null,
-  val canvasMapping: JsonElement? = null,
-  /**
-   * The layout the editing canvas draws while an author is inside this component — see
-   * [UiBuilderUnrolledMock].
-   *
-   * Absent, which is every component today, keeps the component's own layout while editing. Carried
-   * onto the wire under the component's `wasm` block, which is where the builder reads it.
-   */
-  val unrolled: UiBuilderUnrolledMock? = null,
-  val nativeOnly: Boolean = false,
-  val traits: List<String> = emptyList(),
-  val slots: Map<String, List<String>> = emptyMap(),
-  val stateCallbacks: Map<String, String> = emptyMap(),
-  val starter: Map<String, String> = emptyMap(),
-  val variantProperty: String? = null,
-  val variants: Map<String, String> = emptyMap(),
-  /** Present only when the component is kept off the shelf; the value is the stated reason. */
-  val excluded: String? = null,
-  /**
-   * The vocabulary the catalog states for this component — see `UiBuilderAuthoredComponent`.
-   *
-   * Raw JSON, carried rather than modelled: the shape is the UI builder's and the preview server
-   * validates it. Absent when the catalog states nothing, which is not the same as an empty list.
-   */
-  val propertyCapabilities: List<JsonElement>? = null,
-  val slotCapabilities: List<JsonElement>? = null,
-  val modifierCapabilities: List<String>? = null,
-  /** See `UiBuilderAuthoredComponent.insertContent`; only ever authored, never derived. */
-  val insertContent: JsonElement? = null,
-)
+// The `ui-builder.json` wire types (`UiBuilderCatalogFile` and the shapes it holds) are in
+// compose-preview-contracts' `component-catalog-protocol`; this file is the generator that writes
+// one.
 
 /**
  * The annotation's policy with the authored one laid over it.
@@ -201,32 +20,23 @@ internal fun UiBuilderComponentPolicy.mergedWith(
   authored: UiBuilderAuthoredComponent?
 ): UiBuilderComponentPolicy {
   if (authored == null) return this
-  return copy(
-    record = authored.record ?: record,
-    displayName = authored.displayName ?: displayName,
-    canvas = authored.canvas ?: canvas,
-    canvasMapping = authored.canvasMapping ?: canvasMapping,
-    unrolled = authored.unrolled ?: unrolled,
-    nativeOnly = authored.nativeOnly ?: nativeOnly,
-    traits = authored.traits ?: traits,
-    excluded = authored.excluded ?: excluded,
-    propertyCapabilities = authored.propertyCapabilities ?: propertyCapabilities,
-    slotCapabilities = authored.slotCapabilities ?: slotCapabilities,
-    modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities,
-    insertContent = authored.insertContent ?: insertContent,
-  )
+  return newBuilder()
+    .also { b ->
+      b.record = authored.record ?: record
+      b.displayName = authored.displayName ?: displayName
+      b.canvas = authored.canvas ?: canvas
+      b.canvasMapping = authored.canvasMapping ?: canvasMapping
+      b.unrolled = authored.unrolled ?: unrolled
+      b.nativeOnly = authored.nativeOnly ?: nativeOnly
+      b.traits = authored.traits ?: traits
+      b.excluded = authored.excluded ?: excluded
+      b.propertyCapabilities = authored.propertyCapabilities ?: propertyCapabilities
+      b.slotCapabilities = authored.slotCapabilities ?: slotCapabilities
+      b.modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities
+      b.insertContent = authored.insertContent ?: insertContent
+    }
+    .build()
 }
-
-/**
- * Something the generator noticed, addressed to a person reading the published file.
- *
- * [code] is a stable slug so a gate can assert on it; [subject] is the component, builtin or field
- * it is about; [message] is for the person. Never a build failure on its own — a catalog that is
- * half-annotated is a catalog in progress, and refusing to publish it would leave the author with
- * nothing to look at.
- */
-@Serializable
-data class UiBuilderDiagnostic(val code: String, val subject: String, val message: String)
 
 /**
  * Generates a [UiBuilderCatalogFile] from the discovered record, the cover sheet and the authored
@@ -297,14 +107,15 @@ object UiBuilderCatalogs {
     val diagnostics = mutableListOf<UiBuilderDiagnostic>()
     if (policy.schema != UI_BUILDER_POLICY_SCHEMA) {
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_SCHEMA_UNKNOWN,
-          subject = policy.schema,
-          message =
-            "ui-builder.policy.json declares schema '${policy.schema}'; this generator writes " +
-              "$UI_BUILDER_POLICY_SCHEMA. Generated anyway — refusing would leave the author with " +
-              "nothing to look at — but read the result against the schema it was written for.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_SCHEMA_UNKNOWN,
+            subject = policy.schema,
+            message =
+              "ui-builder.policy.json declares schema '${policy.schema}'; this generator writes " +
+                "$UI_BUILDER_POLICY_SCHEMA. Generated anyway — refusing would leave the author with " +
+                "nothing to look at — but read the result against the schema it was written for.",
+          )
+          .build()
     }
     val catalogId = policy.catalogId?.takeIf { it.isNotBlank() } ?: cover.system
     val idPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() } ?: "$catalogId/"
@@ -325,26 +136,28 @@ object UiBuilderCatalogs {
     // `bundle pack`. Same rule as the schema's, stated where every consumer passes.
     if (!PLATFORM_WORD.matches(policy.platform)) {
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.PLATFORM_MALFORMED,
-          subject = policy.platform,
-          message =
-            "'${policy.platform}' is the word catalogs are grouped by and equality is " +
-              "compatibility, so it is a lower-case word (mobile, wear, remote-compose) rather " +
-              "than a label. As written it joins no consumer expecting the lower-case form.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.PLATFORM_MALFORMED,
+            subject = policy.platform,
+            message =
+              "'${policy.platform}' is the word catalogs are grouped by and equality is " +
+                "compatibility, so it is a lower-case word (mobile, wear, remote-compose) rather " +
+                "than a label. As written it joins no consumer expecting the lower-case form.",
+          )
+          .build()
     }
     val authoredPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() }
     if (authoredPrefix != null && !ID_PREFIX.matches(authoredPrefix)) {
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.ID_PREFIX_MALFORMED,
-          subject = idPrefix,
-          message =
-            "'$idPrefix' prefixes every derived builder id and has to end in '/' " +
-              "(lower-case letters, digits and hyphens, e.g. 'm3/'). As written it derives ids " +
-              "like '${idPrefix}button', which is the string every saved design stores.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.ID_PREFIX_MALFORMED,
+            subject = idPrefix,
+            message =
+              "'$idPrefix' prefixes every derived builder id and has to end in '/' " +
+                "(lower-case letters, digits and hyphens, e.g. 'm3/'). As written it derives ids " +
+                "like '${idPrefix}button', which is the string every saved design stores.",
+          )
+          .build()
     }
     val platformLabel =
       policy.platformLabel?.takeIf { it.isNotBlank() } ?: titleCase(policy.platform)
@@ -353,15 +166,16 @@ object UiBuilderCatalogs {
     validateBuiltins(policy, record, idPrefix, diagnostics)
     for (orphan in record.builderOrphans) {
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_ORPHANED,
-          subject = orphan.previewId,
-          message =
-            "@BuilderComponent(component = \"${orphan.component}\") names nothing ${orphan.previewId} " +
-              "renders, so its policy was attached to no component and every field in it does " +
-              "nothing. That preview renders: " +
-              (orphan.candidates.takeIf { it.isNotEmpty() }?.joinToString() ?: "no components"),
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_ORPHANED,
+            subject = orphan.previewId,
+            message =
+              "@BuilderComponent(component = \"${orphan.component}\") names nothing ${orphan.previewId} " +
+                "renders, so its policy was attached to no component and every field in it does " +
+                "nothing. That preview renders: " +
+                (orphan.candidates.takeIf { it.isNotEmpty() }?.joinToString() ?: "no components"),
+          )
+          .build()
     }
 
     val components = linkedMapOf<String, UiBuilderComponentPolicy>()
@@ -379,21 +193,26 @@ object UiBuilderCatalogs {
         authoredByRecord[recordId] = entry
       } else {
         diagnostics +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.POLICY_CONFLICT,
-            subject = recordId,
-            message =
-              "ui-builder.policy.json publishes both \"${previous.key}\" and " +
-                "\"${entry.key}\" for record $recordId. The first wins; one record is one " +
-                "saved-design component identity.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.POLICY_CONFLICT,
+              subject = recordId,
+              message =
+                "ui-builder.policy.json publishes both \"${previous.key}\" and " +
+                  "\"${entry.key}\" for record $recordId. The first wins; one record is one " +
+                  "saved-design component identity.",
+            )
+            .build()
       }
     }
     val builderIdsByRecord =
       record.components.associate { component ->
         component.canonicalId to
           (authoredByRecord[component.canonicalId]?.key
-            ?: builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy()))
+            ?: builderIdFor(
+              idPrefix,
+              component,
+              component.builder ?: BuilderPolicy.Builder().build(),
+            ))
       }
     val authoredPoliciesByRecord =
       record.components.associate { component ->
@@ -430,17 +249,18 @@ object UiBuilderCatalogs {
         continue
       }
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.ID_COLLISION,
-          subject = builderId,
-          message =
-            "'$builderId' is claimed by both $owner and ${component.canonicalId}. The first wins; " +
-              "give one of them an explicit @BuilderComponent(id = …), because a saved design " +
-              "stores this string and cannot be told which component it meant.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.ID_COLLISION,
+            subject = builderId,
+            message =
+              "'$builderId' is claimed by both $owner and ${component.canonicalId}. The first wins; " +
+                "give one of them an explicit @BuilderComponent(id = …), because a saved design " +
+                "stores this string and cannot be told which component it meant.",
+          )
+          .build()
     }
     for (component in record.components) {
-      val builder = component.builder ?: BuilderPolicy()
+      val builder = component.builder ?: BuilderPolicy.Builder().build()
       val builderId = builderIdsByRecord.getValue(component.canonicalId)
       // The owner the SWEEP established, not "the first annotated component to reach this loop".
       // Keying off `components` alone consulted a map only annotated components ever enter, so an
@@ -464,7 +284,7 @@ object UiBuilderCatalogs {
       val authored = authoredPoliciesByRecord[component.canonicalId]
       val fromAnnotation =
         if (component.builder != null) policyFor(component, builder)
-        else UiBuilderComponentPolicy(record = component.canonicalId)
+        else UiBuilderComponentPolicy.Builder(record = component.canonicalId).build()
       val resolved = fromAnnotation.mergedWith(authored)
       // Every admitted component, not only the annotated ones. Diagnose the RESOLVED policy rather
       // than only the annotation: ui-builder.policy.json is allowed to claim a canvas adapter or
@@ -484,14 +304,15 @@ object UiBuilderCatalogs {
     for ((builderId, _) in policy.components) {
       if (builderId in consumedPolicyIds) continue
       diagnostics +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_ORPHANED,
-          subject = builderId,
-          message =
-            "ui-builder.policy.json states a policy for \"$builderId\", which joins no component " +
-              "in this record, so every field in it does nothing. Check its `record` canonicalId " +
-              "or its builder id against components.json.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_ORPHANED,
+            subject = builderId,
+            message =
+              "ui-builder.policy.json states a policy for \"$builderId\", which joins no component " +
+                "in this record, so every field in it does nothing. Check its `record` canonicalId " +
+                "or its builder id against components.json.",
+          )
+          .build()
     }
 
     // One catalog id is one shelf, whoever draws it.
@@ -571,49 +392,59 @@ object UiBuilderCatalogs {
           // all — nothing declares it, so nothing but the policy file can place it.
           ?: idAlias?.let { groupByCatalogId[it] }
           ?: continue
-      menuEntries[builderId] = UiBuilderMenuEntry(group)
+      menuEntries[builderId] = UiBuilderMenuEntry.Builder(group = group).build()
     }
 
-    return UiBuilderCatalogFile(
-      catalog =
-        UiBuilderCatalogIdentity(
-          id = catalogId,
-          title = cover.title,
-          platform = policy.platform,
-          platformLabel = platformLabel,
-          module = record.module,
-          variant = record.variant,
-        ),
-      record =
-        UiBuilderRecordRef(
-          schemaVersion = record.schemaVersion,
-          components = record.components.size,
-        ),
-      statusSemantics =
-        UiBuilderStatusSemantics(
-          platform = policy.platform,
-          platformLabel = platformLabel,
-          componentIdPrefix = idPrefix,
-          previewSurfaces = policy.previewSurfaces,
-          browserPreview = policy.browserPreview,
-          componentMenu =
-            UiBuilderComponentMenu(
-              groupOrder = policy.menu?.groupOrder.orEmpty(),
-              components = menuEntries,
-            ),
-          frame = policy.frame,
-          code = policy.code,
-          composeSourceExport = policy.composeSourceExport,
-          templates = policy.templates.map { it.path },
-          newDesign = newDesignSemantics(policy),
-          colorTokens = policy.colorTokens,
-          assetRegistry = policy.assetRegistry,
-          supersedes = policy.supersedes,
-          builtins = policy.builtins,
-          components = components,
-        ),
-      diagnostics = diagnostics,
-    )
+    return UiBuilderCatalogFile.Builder(
+        catalog =
+          UiBuilderCatalogIdentity.Builder(
+              id = catalogId,
+              title = cover.title,
+              platform = policy.platform,
+              platformLabel = platformLabel,
+            )
+            .also { b ->
+              b.module = record.module
+              b.variant = record.variant
+            }
+            .build(),
+        record =
+          UiBuilderRecordRef.Builder(
+              schemaVersion = record.schemaVersion,
+              components = record.components.size,
+            )
+            .build(),
+        statusSemantics =
+          UiBuilderStatusSemantics.Builder(
+              platform = policy.platform,
+              platformLabel = platformLabel,
+              componentIdPrefix = idPrefix,
+              componentMenu =
+                UiBuilderComponentMenu.Builder()
+                  .also { b ->
+                    b.groupOrder = policy.menu?.groupOrder.orEmpty()
+                    b.components = menuEntries
+                  }
+                  .build(),
+            )
+            .also { b ->
+              b.previewSurfaces = policy.previewSurfaces
+              b.browserPreview = policy.browserPreview
+              b.frame = policy.frame
+              b.code = policy.code
+              b.composeSourceExport = policy.composeSourceExport
+              b.templates = policy.templates.map { it.path }
+              b.newDesign = newDesignSemantics(policy)
+              b.colorTokens = policy.colorTokens
+              b.assetRegistry = policy.assetRegistry
+              b.supersedes = policy.supersedes
+              b.builtins = policy.builtins
+              b.components = components
+            }
+            .build(),
+      )
+      .also { b -> b.diagnostics = diagnostics }
+      .build()
   }
 
   /**
@@ -750,28 +581,30 @@ object UiBuilderCatalogs {
   internal fun soleFunctionInput(type: String): String? = functionInputs(type)?.singleOrNull()
 
   private fun policyFor(component: ComponentRecord, builder: BuilderPolicy) =
-    UiBuilderComponentPolicy(
-      record = component.canonicalId,
-      // The DECLARING sticker's alias, matching the builder id derived from it. Publishing the
-      // sorted record's first alias instead would have this entry contradict its own id — keyed
-      // `…/tonal` while linking a consumer to `Buttons/Filled` — and a consumer following it lands
-      // on a different sticker than the one whose author wrote this policy.
-      catalogId = builder.declaredForCatalogId ?: component.componentIds.firstOrNull(),
-      displayName = builder.displayName,
-      canvas = builder.canvas,
-      canvasMapping = null,
-      nativeOnly = builder.nativeOnly,
-      traits = builder.traits,
-      slots =
-        builder.slots.associate { pair ->
-          pair.key to pair.value.split('|').map { it.trim() }.filter { it.isNotEmpty() }
-        },
-      stateCallbacks = builder.stateCallbacks.associate { it.key to it.value },
-      starter = builder.starter.associate { it.key to it.value },
-      variantProperty = builder.variantProperty,
-      variants = builder.variants.associate { it.key to it.value },
-      excluded = builder.exclude,
-    )
+    UiBuilderComponentPolicy.Builder(record = component.canonicalId)
+      .also { b ->
+        // The DECLARING sticker's alias, matching the builder id derived from it. Publishing the
+        // sorted record's first alias instead would have this entry contradict its own id — keyed
+        // `…/tonal` while linking a consumer to `Buttons/Filled` — and a consumer following it
+        // lands
+        // on a different sticker than the one whose author wrote this policy.
+        b.catalogId = builder.declaredForCatalogId ?: component.componentIds.firstOrNull()
+        b.displayName = builder.displayName
+        b.canvas = builder.canvas
+        b.canvasMapping = null
+        b.nativeOnly = builder.nativeOnly
+        b.traits = builder.traits
+        b.slots =
+          builder.slots.associate { pair ->
+            pair.key to pair.value.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+          }
+        b.stateCallbacks = builder.stateCallbacks.associate { it.key to it.value }
+        b.starter = builder.starter.associate { it.key to it.value }
+        b.variantProperty = builder.variantProperty
+        b.variants = builder.variants.associate { it.key to it.value }
+        b.excluded = builder.exclude
+      }
+      .build()
 
   /**
    * What is worth saying about one component, in the published file.
@@ -790,57 +623,62 @@ object UiBuilderCatalogs {
   ) {
     if (builder.conflicting.isNotEmpty()) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_CONFLICT,
-          subject = builderId,
-          message =
-            "several previews declare a different @BuilderComponent for ${component.canonicalId}: " +
-              "${builder.declaredBy.joinToString()} won, ${builder.conflicting.joinToString()} " +
-              "was dropped. The resolution is by preview id and is arbitrary; make them agree.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_CONFLICT,
+            subject = builderId,
+            message =
+              "several previews declare a different @BuilderComponent for ${component.canonicalId}: " +
+                "${builder.declaredBy.joinToString()} won, ${builder.conflicting.joinToString()} " +
+                "was dropped. The resolution is by preview id and is arbitrary; make them agree.",
+          )
+          .build()
     }
     if (builder.ambiguousWith.isNotEmpty()) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_AMBIGUOUS_SUBJECT,
-          subject = builderId,
-          message =
-            "the sticker renders ${builder.ambiguousWith.size + 1} components and the annotation " +
-              "names none of them, so the policy was bound to ${component.canonicalId} rather " +
-              "than to ${builder.ambiguousWith.joinToString()}. That is a guess: name the subject " +
-              "with @BuilderComponent(component = \"…\").",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_AMBIGUOUS_SUBJECT,
+            subject = builderId,
+            message =
+              "the sticker renders ${builder.ambiguousWith.size + 1} components and the annotation " +
+                "names none of them, so the policy was bound to ${component.canonicalId} rather " +
+                "than to ${builder.ambiguousWith.joinToString()}. That is a guess: name the subject " +
+                "with @BuilderComponent(component = \"…\").",
+          )
+          .build()
     }
     for (entry in builder.malformed) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.POLICY_MALFORMED_ENTRY,
-          subject = builderId,
-          message =
-            "@BuilderComponent carries `$entry`, which is not a `key=value` entry and was " +
-              "dropped. The component keeps the default this entry meant to change.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.POLICY_MALFORMED_ENTRY,
+            subject = builderId,
+            message =
+              "@BuilderComponent carries `$entry`, which is not a `key=value` entry and was " +
+                "dropped. The component keeps the default this entry meant to change.",
+          )
+          .build()
     }
     resolved.excluded?.let { reason ->
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.COMPONENT_EXCLUDED,
-          subject = builderId,
-          message = "kept off the builder's shelf: $reason",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.COMPONENT_EXCLUDED,
+            subject = builderId,
+            message = "kept off the builder's shelf: $reason",
+          )
+          .build()
     }
     // An excluded component is not offered or drawn, so it needs no canvas adapter. Reporting that
     // it "draws as a placeholder" beside the exclusion diagnostic contradicts the shelf contract.
     if (resolved.excluded.isNullOrBlank() && resolved.canvas.isNullOrBlank()) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.CANVAS_UNCLAIMED,
-          subject = builderId,
-          message =
-            "no canvas adapter claimed, so it draws as a placeholder. That is the honest default " +
-              "and needs no fixing; it is reported so a shelf drawn entirely in placeholders is " +
-              "visible rather than mysterious.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.CANVAS_UNCLAIMED,
+            subject = builderId,
+            message =
+              "no canvas adapter claimed, so it draws as a placeholder. That is the honest default " +
+                "and needs no fixing; it is reported so a shelf drawn entirely in placeholders is " +
+                "visible rather than mysterious.",
+          )
+          .build()
     }
     // A callback entry's own SYNTAX needs no signature at all — `<state>:<type>` is wrong on its
     // face whatever the component turns out to take — so it is checked before the guard below.
@@ -852,14 +690,15 @@ object UiBuilderCatalogs {
       val rawType = pair.value.substringAfter(':', "").trim()
       if (rawState.isEmpty() || !pair.value.contains(':') || rawType !in STATE_TYPES) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_MALFORMED,
-            subject = "$builderId.${pair.key}",
-            message =
-              "'${pair.value}' is not a non-empty '<state>:<type>' with a type from " +
-                "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
-                "initial value from that type, so it cannot complete the hoist without one.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_MALFORMED,
+              subject = "$builderId.${pair.key}",
+              message =
+                "'${pair.value}' is not a non-empty '<state>:<type>' with a type from " +
+                  "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
+                  "initial value from that type, so it cannot complete the hoist without one.",
+            )
+            .build()
       }
     }
     // Variants with nothing to write to. The builder renders the choices and the export has no
@@ -867,13 +706,14 @@ object UiBuilderCatalogs {
     // — indistinguishable from a broken builder unless the catalog says so.
     if (builder.variants.isNotEmpty() && builder.variantProperty?.isNotBlank() != true) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.VARIANTS_WITHOUT_PROPERTY,
-          subject = builderId,
-          message =
-            "declares ${builder.variants.size} variant(s) but no variantProperty, so nothing " +
-              "receives the selected value and every variant is inert.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.VARIANTS_WITHOUT_PROPERTY,
+            subject = builderId,
+            message =
+              "declares ${builder.variants.size} variant(s) but no variantProperty, so nothing " +
+                "receives the selected value and every variant is inert.",
+          )
+          .build()
     }
 
     // A key named twice in any list that later becomes a MAP.
@@ -895,15 +735,16 @@ object UiBuilderCatalogs {
       )) {
       for ((key, entries) in pairs.groupBy { it.key }.filterValues { it.size > 1 }) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.POLICY_MALFORMED_ENTRY,
-            subject = "$builderId.$key",
-            message =
-              "'$label' names '$key' ${entries.size} times " +
-                "(${entries.joinToString { it.value }}). Only the last survives being read into a " +
-                "map, so the others do nothing and the one that wins is whichever was written " +
-                "last — say it once.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.POLICY_MALFORMED_ENTRY,
+              subject = "$builderId.$key",
+              message =
+                "'$label' names '$key' ${entries.size} times " +
+                  "(${entries.joinToString { it.value }}). Only the last survives being read into a " +
+                  "map, so the others do nothing and the one that wins is whichever was written " +
+                  "last — say it once.",
+            )
+            .build()
       }
     }
 
@@ -918,13 +759,14 @@ object UiBuilderCatalogs {
       // against — a component that draws, compiles and does not tick, with no diagnostic.
       if (pair.key !in parameterNames) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER,
-            subject = "$builderId.${pair.key}",
-            message =
-              "'${pair.key}' is not a parameter of ${component.canonicalId}, so nothing hoists " +
-                "against it and the component exports as a picture of itself.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER,
+              subject = "$builderId.${pair.key}",
+              message =
+                "'${pair.key}' is not a parameter of ${component.canonicalId}, so nothing hoists " +
+                  "against it and the component exports as a picture of itself.",
+            )
+            .build()
       }
       // The callback must be FUNCTION-typed, not merely a parameter that exists. `label=…` names a
       // real parameter of most components, and the export would then emit a lambda where the
@@ -932,16 +774,17 @@ object UiBuilderCatalogs {
       val target = parametersByName[pair.key]
       if (target != null && "->" !in target.type) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_NOT_A_FUNCTION,
-            subject = "$builderId.${pair.key}",
-            message =
-              "'${pair.key}' is a parameter of ${component.canonicalId} but its type is " +
-                "'${target.type}', which is not function-typed, so the export would emit a lambda " +
-                "where the component wants a value. (A typealias for a function type renders " +
-                "under its own name and will report here too; the type above is what the record " +
-                "holds.)",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_NOT_A_FUNCTION,
+              subject = "$builderId.${pair.key}",
+              message =
+                "'${pair.key}' is a parameter of ${component.canonicalId} but its type is " +
+                  "'${target.type}', which is not function-typed, so the export would emit a lambda " +
+                  "where the component wants a value. (A typealias for a function type renders " +
+                  "under its own name and will report here too; the type above is what the record " +
+                  "holds.)",
+            )
+            .build()
       }
       val state = pair.value.substringBefore(':').trim()
       // The declared JSON type has to MATCH the state parameter, not merely be a word this
@@ -960,15 +803,16 @@ object UiBuilderCatalogs {
       val declaredTypeWrong = classifier != null && expected != null && classifier !in expected
       if (declaredTypeWrong) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
-            subject = "$builderId.${pair.key}",
-            message =
-              "declares state '$state' as '$declaredType', but ${component.canonicalId} takes it " +
-                "as '${stateParam.type}'. The export would initialise a $declaredType and thread " +
-                "it into a ${stateParam.type}, which does not compile. " +
-                "'$declaredType' means ${expected.sorted().joinToString(" or ")}.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
+              subject = "$builderId.${pair.key}",
+              message =
+                "declares state '$state' as '$declaredType', but ${component.canonicalId} takes it " +
+                  "as '${stateParam.type}'. The export would initialise a $declaredType and thread " +
+                  "it into a ${stateParam.type}, which does not compile. " +
+                  "'$declaredType' means ${expected.sorted().joinToString(" or ")}.",
+            )
+            .build()
       }
       // And the CALLBACK's own input, which is the last half of this that nothing compared.
       //
@@ -993,14 +837,15 @@ object UiBuilderCatalogs {
       val callbackInputs = target?.type?.let(::functionInputs)
       if (callbackInputs != null && callbackInputs.size != 1) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_ARITY,
-            subject = "$builderId.${pair.key}",
-            message =
-              "'${pair.key}' takes ${callbackInputs.size} argument(s) ('${target.type}'), and the " +
-                "export writes it as `{ $state = it }`, which needs exactly one. A callback that " +
-                "fires without carrying the new value cannot update '$state'.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_ARITY,
+              subject = "$builderId.${pair.key}",
+              message =
+                "'${pair.key}' takes ${callbackInputs.size} argument(s) ('${target.type}'), and the " +
+                  "export writes it as `{ $state = it }`, which needs exactly one. A callback that " +
+                  "fires without carrying the new value cannot update '$state'.",
+            )
+            .build()
       }
       // Nullability, in the direction the export actually assigns. The generated lambda writes the
       // callback's argument back into the hoisted state — `onCheckedChange = { checked = it }` — so
@@ -1019,26 +864,28 @@ object UiBuilderCatalogs {
           (callbackInput != classifier || nullableIntoNonNull)
       ) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
-            subject = "$builderId.${pair.key}",
-            message =
-              "state '$state' is a ${stateParam?.type}, but '${pair.key}' takes " +
-                "'${target.type}'. The export writes the callback's argument back into the hoisted " +
-                "state, so the two have to agree; one of the component's two parameters is not " +
-                "the one this entry means.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
+              subject = "$builderId.${pair.key}",
+              message =
+                "state '$state' is a ${stateParam?.type}, but '${pair.key}' takes " +
+                  "'${target.type}'. The export writes the callback's argument back into the hoisted " +
+                  "state, so the two have to agree; one of the component's two parameters is not " +
+                  "the one this entry means.",
+            )
+            .build()
       }
       if (state.isNotEmpty() && state !in parameterNames) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_UNKNOWN,
-            subject = "$builderId.${pair.key}",
-            message =
-              "declares state '$state', which is not a parameter of ${component.canonicalId}. The " +
-                "export cannot thread a state the component does not take, so this entry does " +
-                "nothing.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STATE_CALLBACK_UNKNOWN,
+              subject = "$builderId.${pair.key}",
+              message =
+                "declares state '$state', which is not a parameter of ${component.canonicalId}. The " +
+                  "export cannot thread a state the component does not take, so this entry does " +
+                  "nothing.",
+            )
+            .build()
       }
     }
     // A starter value is printed as a NAMED ARGUMENT at the call site, so a misspelled key is
@@ -1048,14 +895,15 @@ object UiBuilderCatalogs {
     for (pair in builder.starter) {
       if (pair.key !in parameterNames) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.STARTER_UNKNOWN_PARAMETER,
-            subject = "$builderId.${pair.key}",
-            message =
-              "starter names '${pair.key}', which is not a parameter of " +
-                "${component.canonicalId}, so the value is either dropped or printed as a named " +
-                "argument that does not compile.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.STARTER_UNKNOWN_PARAMETER,
+              subject = "$builderId.${pair.key}",
+              message =
+                "starter names '${pair.key}', which is not a parameter of " +
+                  "${component.canonicalId}, so the value is either dropped or printed as a named " +
+                  "argument that does not compile.",
+            )
+            .build()
       }
     }
     // The promoted parameter a variant control writes to. A `styel` typo publishes a control the
@@ -1064,25 +912,27 @@ object UiBuilderCatalogs {
     val variantProperty = builder.variantProperty?.takeIf { it.isNotBlank() }
     if (variantProperty != null && variantProperty !in parameterNames) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.VARIANT_PROPERTY_UNKNOWN,
-          subject = "$builderId.$variantProperty",
-          message =
-            "variantProperty is '$variantProperty', which is not a parameter of " +
-              "${component.canonicalId}, so every variant it offers writes to nothing.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.VARIANT_PROPERTY_UNKNOWN,
+            subject = "$builderId.$variantProperty",
+            message =
+              "variantProperty is '$variantProperty', which is not a parameter of " +
+                "${component.canonicalId}, so every variant it offers writes to nothing.",
+          )
+          .build()
     }
     val slotNames = component.slots.map { it.name }.toSet()
     for (pair in builder.slots) {
       if (pair.key !in slotNames) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.SLOT_UNKNOWN,
-            subject = "$builderId.${pair.key}",
-            message =
-              "declares slot policy for '${pair.key}', which ${component.canonicalId} does not " +
-                "have. Either a rename, or a `@Composable` lambda discovery could not recover.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.SLOT_UNKNOWN,
+              subject = "$builderId.${pair.key}",
+              message =
+                "declares slot policy for '${pair.key}', which ${component.canonicalId} does not " +
+                  "have. Either a rename, or a `@Composable` lambda discovery could not recover.",
+            )
+            .build()
       }
     }
   }
@@ -1094,14 +944,15 @@ object UiBuilderCatalogs {
       // the structural set and are not an error.
       if (role in UI_BUILDER_STRUCTURAL_ROLES || role == "previews" || role == "file") continue
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.TEMPLATE_ROLE_UNKNOWN,
-          subject = role,
-          message =
-            "no template engine role named '$role'. Known roles: " +
-              "${UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString()}, plus 'previews' and 'file'. " +
-              "A build that does not know a role refuses that export, not the catalog.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.TEMPLATE_ROLE_UNKNOWN,
+            subject = role,
+            message =
+              "no template engine role named '$role'. Known roles: " +
+                "${UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString()}, plus 'previews' and 'file'. " +
+                "A build that does not know a role refuses that export, not the catalog.",
+          )
+          .build()
     }
     // The templates are read as templates, not merely as strings. A `${'$'}{contnet}` that no
     // builder
@@ -1111,13 +962,14 @@ object UiBuilderCatalogs {
       when (val holes = StructuralTemplate.holes(template)) {
         is StructuralTemplate.Result2.Failed ->
           into +=
-            UiBuilderDiagnostic(
-              code = Diagnostics.TEMPLATE_MALFORMED,
-              subject = role,
-              message =
-                "the template cannot be read: ${holes.reasons.joinToString("; ")}. A template is " +
-                  "${'$'}{name} substitution and ${'$'}{call(...)} call sites, and nothing else.",
-            )
+            UiBuilderDiagnostic.Builder(
+                code = Diagnostics.TEMPLATE_MALFORMED,
+                subject = role,
+                message =
+                  "the template cannot be read: ${holes.reasons.joinToString("; ")}. A template is " +
+                    "${'$'}{name} substitution and ${'$'}{call(...)} call sites, and nothing else.",
+              )
+              .build()
         is StructuralTemplate.Result2.Ok -> {
           // A `${'$'}{contnet}` typo is a perfectly valid NAME, so nothing about the syntax catches
           // it.
@@ -1133,14 +985,15 @@ object UiBuilderCatalogs {
               .filterNot { it in known }
           for (name in unknown.distinct()) {
             into +=
-              UiBuilderDiagnostic(
-                code = Diagnostics.TEMPLATE_HOLE_UNKNOWN,
-                subject = "$role.$name",
-                message =
-                  "no value is supplied for ${'$'}{$name} in a `$role` template, so an export " +
-                    "through it is refused. Holes this role supplies: " +
-                    "${known.sorted().joinToString()}.",
-              )
+              UiBuilderDiagnostic.Builder(
+                  code = Diagnostics.TEMPLATE_HOLE_UNKNOWN,
+                  subject = "$role.$name",
+                  message =
+                    "no value is supplied for ${'$'}{$name} in a `$role` template, so an export " +
+                      "through it is refused. Holes this role supplies: " +
+                      "${known.sorted().joinToString()}.",
+                )
+                .build()
           }
         }
       }
@@ -1153,34 +1006,37 @@ object UiBuilderCatalogs {
     // the pre-flight the two workflow render lanes run.
     if (code.strategy !in UI_BUILDER_CODE_STRATEGIES) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.STRATEGY_UNKNOWN,
-          subject = "code.strategy",
-          message =
-            "code.strategy is '${code.strategy}', which no exporter implements. It is " +
-              UI_BUILDER_CODE_STRATEGIES.sorted().joinToString(" or ") { "'$it'" } +
-              ".",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.STRATEGY_UNKNOWN,
+            subject = "code.strategy",
+            message =
+              "code.strategy is '${code.strategy}', which no exporter implements. It is " +
+                UI_BUILDER_CODE_STRATEGIES.sorted().joinToString(" or ") { "'$it'" } +
+                ".",
+          )
+          .build()
     }
     if (code.strategy == "templates" && code.templates.isEmpty()) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.STRATEGY_WITHOUT_TEMPLATES,
-          subject = "code.strategy",
-          message =
-            "code.strategy is 'templates' but no templates are declared, so every node falls back " +
-              "to a record call site — which is what 'record' means.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.STRATEGY_WITHOUT_TEMPLATES,
+            subject = "code.strategy",
+            message =
+              "code.strategy is 'templates' but no templates are declared, so every node falls back " +
+                "to a record call site — which is what 'record' means.",
+          )
+          .build()
     }
     if (code.strategy != "templates" && code.templates.isNotEmpty()) {
       into +=
-        UiBuilderDiagnostic(
-          code = Diagnostics.TEMPLATES_WITHOUT_STRATEGY,
-          subject = "code.templates",
-          message =
-            "templates are declared but code.strategy is '${code.strategy}', so none of them is " +
-              "read. Set code.strategy to 'templates'.",
-        )
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.TEMPLATES_WITHOUT_STRATEGY,
+            subject = "code.templates",
+            message =
+              "templates are declared but code.strategy is '${code.strategy}', so none of them is " +
+                "read. Set code.strategy to 'templates'.",
+          )
+          .build()
     }
   }
 
@@ -1197,47 +1053,50 @@ object UiBuilderCatalogs {
     val recordIds =
       record.components
         .map { component ->
-          builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
+          builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy.Builder().build())
         }
         .toSet()
     for ((id, builtin) in policy.builtins) {
       if (builtin.role !in UI_BUILDER_STRUCTURAL_ROLES) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.BUILTIN_ROLE_UNKNOWN,
-            subject = id,
-            message =
-              "role '${builtin.role}' is not one the template engine knows. Known roles: " +
-                UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.BUILTIN_ROLE_UNKNOWN,
+              subject = id,
+              message =
+                "role '${builtin.role}' is not one the template engine knows. Known roles: " +
+                  UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
+            )
+            .build()
       }
       // The shelf role is the OTHER vocabulary — `Scaffold` / `Container` / `Leaf` — and a word
       // outside it names no shelf at all, so the component is filed nowhere and the editor has no
       // name for it. Null is not an error: it is how a catalog asks for the consumer's derivation.
       if (builtin.shelfRole != null && builtin.shelfRole !in UI_BUILDER_SHELF_ROLES) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN,
-            subject = id,
-            message =
-              "shelfRole '${builtin.shelfRole}' is not a shelf role. It is one of " +
-                UI_BUILDER_SHELF_ROLES.sorted().joinToString() +
-                ", and it is not the structural `role` beside it — that one says which template " +
-                "writes this component.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN,
+              subject = id,
+              message =
+                "shelfRole '${builtin.shelfRole}' is not a shelf role. It is one of " +
+                  UI_BUILDER_SHELF_ROLES.sorted().joinToString() +
+                  ", and it is not the structural `role` beside it — that one says which template " +
+                  "writes this component.",
+            )
+            .build()
       }
       val adapterStatus = builtin.wasm?.adapterStatus
       if (adapterStatus != null && adapterStatus !in UI_BUILDER_WASM_ADAPTER_STATUSES) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN,
-            subject = id,
-            message =
-              "wasm.adapterStatus is '$adapterStatus', which no consumer decodes. It is " +
-                UI_BUILDER_WASM_ADAPTER_STATUSES.sorted().joinToString() +
-                ". A status the consumer cannot read fails the whole capability document, not " +
-                "one field.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN,
+              subject = id,
+              message =
+                "wasm.adapterStatus is '$adapterStatus', which no consumer decodes. It is " +
+                  UI_BUILDER_WASM_ADAPTER_STATUSES.sorted().joinToString() +
+                  ". A status the consumer cannot read fails the whole capability document, not " +
+                  "one field.",
+            )
+            .build()
       }
       // A `code` block whose symbol is blank publishes an export that calls nothing, and a
       // consumer reads the presence of the block as "this catalog knows the call" — so it stops
@@ -1247,15 +1106,16 @@ object UiBuilderCatalogs {
       // this for `layout/for-each`, which has no callable to name. A catalog republishing those
       // declarations faithfully is doing the thing this field was added for; what it needs is to
       // be told, not to be turned away.
-      if (builtin.code != null && builtin.code.symbol.isBlank()) {
+      if (builtin.code?.symbol?.isBlank() == true) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.BUILTIN_CODE_EMPTY,
-            subject = id,
-            message =
-              "declares a `code` block with no symbol, so an export through it writes a call to " +
-                "nothing. State the callable, or omit the block and keep the placeholder.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.BUILTIN_CODE_EMPTY,
+              subject = id,
+              message =
+                "declares a `code` block with no symbol, so an export through it writes a call to " +
+                  "nothing. State the callable, or omit the block and keep the placeholder.",
+            )
+            .build()
       }
       // A slot's role selects a template exactly as the builtin's own role does, and it was checked
       // in the JavaScript pre-flight and nowhere else. That pre-flight runs in the two workflow
@@ -1271,26 +1131,28 @@ object UiBuilderCatalogs {
         val name = role?.content ?: continue
         if (name !in UI_BUILDER_STRUCTURAL_ROLES) {
           into +=
-            UiBuilderDiagnostic(
-              code = Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN,
-              subject = "$id/$slot",
-              message =
-                "slot role '$name' is not one the template engine knows, so the slot selects no " +
-                  "template. Known roles: " +
-                  UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
-            )
+            UiBuilderDiagnostic.Builder(
+                code = Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN,
+                subject = "$id/$slot",
+                message =
+                  "slot role '$name' is not one the template engine knows, so the slot selects no " +
+                    "template. Known roles: " +
+                    UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
+              )
+              .build()
         }
       }
       if (id in recordIds) {
         into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.BUILTIN_SHADOWS_RECORD,
-            subject = id,
-            message =
-              "declared as a builtin, but a record component already publishes under this id. A " +
-                "builtin is for a component with no call site; this one has one, so put its " +
-                "policy on the sticker with @BuilderComponent instead.",
-          )
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.BUILTIN_SHADOWS_RECORD,
+              subject = id,
+              message =
+                "declared as a builtin, but a record component already publishes under this id. A " +
+                  "builtin is for a component with no call site; this one has one, so put its " +
+                  "policy on the sticker with @BuilderComponent instead.",
+            )
+            .build()
       }
     }
   }
@@ -1309,20 +1171,22 @@ object UiBuilderCatalogs {
 internal fun newDesignSemantics(policy: UiBuilderPolicyFile): UiBuilderNewDesignSemantics? {
   val described = policy.templates.any { it.describesItself }
   if (policy.newDesign == null && !described) return null
-  return UiBuilderNewDesignSemantics(
-    label = policy.newDesign?.label,
-    order = policy.newDesign?.order,
-    templates =
-      policy.templates.map {
-        UiBuilderNewDesignTemplateSemantics(
-          id = it.resolvedId,
-          path = it.path,
-          label = it.label,
-          supportingText = it.supportingText,
-          group = it.group,
-          default = it.default,
-          order = it.order,
-        )
-      },
-  )
+  return UiBuilderNewDesignSemantics.Builder()
+    .also { builder ->
+      builder.label = policy.newDesign?.label
+      builder.order = policy.newDesign?.order
+      builder.templates =
+        policy.templates.map {
+          UiBuilderNewDesignTemplateSemantics.Builder(id = it.resolvedId, path = it.path)
+            .also { b ->
+              b.label = it.label
+              b.supportingText = it.supportingText
+              b.group = it.group
+              b.default = it.default
+              b.order = it.order
+            }
+            .build()
+        }
+    }
+    .build()
 }
