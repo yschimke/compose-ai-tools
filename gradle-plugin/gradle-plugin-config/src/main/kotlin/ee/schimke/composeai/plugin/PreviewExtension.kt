@@ -253,6 +253,32 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(true)
 
   /**
+   * Extra owners whose composables count as **library components** when a preview calls them, on
+   * top of the built-in Material 3, Material, Wear Material, Remote Material 3 and Glimmer
+   * packages.
+   *
+   * A catalog sticker usually wraps the component it demonstrates — `Sticker { Frame { Component()
+   * } }` — and discovery records the nested library call as one of the preview's
+   * `componentTargets`, which is what gives it a record in `components.json` and lets a
+   * `ui-builder.policy.json` entry join it. A catalog built on a library outside the built-in list
+   * gets no record for that call, so its policy entry is reported orphaned and silently does
+   * nothing.
+   *
+   * Each entry is either a package ending in `.`, which admits every composable under it, or one
+   * exact JVM owner class, which admits only the composables declared in it. Prefer the owner
+   * class: a whole layout package also admits `Box`/`Row`/`Column`-shaped scaffolding, and a
+   * sticker's frame then competes with its subject for the preview's builder policy.
+   *
+   * ```kotlin
+   * composePreview {
+   *   componentLibraryPrefixes.add("androidx.compose.remote.creation.compose.layout.RemoteTextKt")
+   * }
+   * ```
+   */
+  val componentLibraryPrefixes: ListProperty<String> =
+    objects.listProperty(String::class.java).convention(emptyList())
+
+  /**
    * When `true` (default), the plugin auto-adds the test/runtime dependencies it needs
    * (`androidx.compose.ui:ui-test-manifest`, `:ui-test-junit4`, and conditionally
    * `androidx.wear.tiles:tiles-renderer`) to the consumer's classpath. When `false`, the plugin

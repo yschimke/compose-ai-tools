@@ -98,6 +98,7 @@ public object PreviewDiscoveryCli {
     var animatedPreviewApngSupported = false
     var isWear = false
     var retargetWearPreviews = true
+    val componentLibraryPrefixes = mutableListOf<String>()
     var outPath: File? = null
 
     var i = 0
@@ -128,6 +129,7 @@ public object PreviewDiscoveryCli {
           retargetWearPreviews =
             requireValue(args, i).toBooleanStrictOrNull()
               ?: throw ArgError("--retarget-wear-previews must be 'true' or 'false'")
+        "--component-library-prefix" -> componentLibraryPrefixes += requireValue(args, i)
         "--fail-on-empty" -> {
           failOnEmpty = true
           i++
@@ -162,6 +164,7 @@ public object PreviewDiscoveryCli {
           animatedPreviewApngSupported = animatedPreviewApngSupported,
           isWear = isWear,
           retargetWearPreviews = retargetWearPreviews,
+          componentLibraryPrefixes = componentLibraryPrefixes,
         ),
       outFile = out,
     )
@@ -218,6 +221,11 @@ public object PreviewDiscoveryCli {
                           out so device-less Wear previews stay wrap-content and crop to their
                           intrinsic bounds — needed for Wear widget/tile previews exported as
                           fixed-size drawable assets (#2670). No-op unless --wear is true.
+        --component-library-prefix <owner>
+                          Repeatable. An extra owner whose composables count as library
+                          components: a package ending in '.', or one exact JVM owner class
+                          (e.g. androidx.compose.remote.creation.compose.layout.RemoteTextKt).
+                          Added to the built-in Material, Wear and Glimmer packages.
         --help, -h        Print this message.
 
       Exit codes: 0 = success, 1 = discovery failure, 2 = argument parsing failure.
