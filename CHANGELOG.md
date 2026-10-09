@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.38.0](https://github.com/yschimke/compose-ai-tools/compare/v2.37.0...v2.38.0) (2026-10-09)
+
+
+### Features
+
+* **discovery:** componentLibraryPrefixes, a catalog's own library owners for component targets ([#5741](https://github.com/yschimke/compose-ai-tools/issues/5741)) ([9f5b943](https://github.com/yschimke/compose-ai-tools/commit/9f5b943b3746746b513d6453bd758e6c2c771643))
+* **guidelines:** a design-guidelines engine and compose-preview guidelines command ([#5739](https://github.com/yschimke/compose-ai-tools/issues/5739)) ([c331dc9](https://github.com/yschimke/compose-ai-tools/commit/c331dc908d2ebf6bddd6a105634cb7104bd689bb))
+* **guidelines:** regions on each verdict, as GuidelineRegionV1 from contracts 3.24.0 ([#5744](https://github.com/yschimke/compose-ai-tools/issues/5744)) ([cb625a3](https://github.com/yschimke/compose-ai-tools/commit/cb625a3e088c8f001d21b20728359969fb72a768))
+* **guidelines:** source and accessibility evidence everywhere, follow-up rounds, and a PR comment pipeline ([#5740](https://github.com/yschimke/compose-ai-tools/issues/5740)) ([a15d7fc](https://github.com/yschimke/compose-ai-tools/commit/a15d7fcdd11ffe77aa29d8baf96dffcc1a69209f))
+* **screen:** read the catalog wire types from compose-preview-contracts ([#5743](https://github.com/yschimke/compose-ai-tools/issues/5743)) ([d080dba](https://github.com/yschimke/compose-ai-tools/commit/d080dba1f8010f817fc0865c09ea29700cc98175))
+
 ## [2.37.0](https://github.com/yschimke/compose-ai-tools/compare/v2.36.0...v2.37.0) (2026-10-09)
 
 
