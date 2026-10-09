@@ -2697,7 +2697,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  * library; everything the CLI does here is reachable from any third-party tooling that compiles
  * against the same coordinates.
  */
-class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
+open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
   /**
    * Tracks ATF availability across modules so [run] can fail the CLI when no module successfully
    * produced any a11y data. Read by [atfUnavailableExitMessage]; set by
