@@ -358,7 +358,10 @@ coil3 = "3.5.0"
 # `ServeOverrides` sends for an `rcPlayer=` naming a player registered with the daemon.
 # 3.21.0 adds `RemoteComposeOverride.documentBase64` (compose-preview-contracts#145): a Remote
 # Compose document a render carries for replay, which `ServeOverrides.cacheKey` keys on.
-composeai-contracts = "3.21.0"
+# 3.23.1 adds `component-catalog-protocol` (compose-preview-contracts#153): the `components.json`,
+# `ui-builder.policy.json` and `ui-builder.json` wire types the generator used to define here. 3.23.0
+# never reached Central (compose-preview-contracts#155), so this is the module's first version.
+composeai-contracts = "3.23.1"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -468,6 +471,7 @@ composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol" }
 composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
 composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }
+composeai-component-catalog-protocol = { module = "ee.schimke.composeai:component-catalog-protocol" }
 composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core" }
 composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core" }
 composeai-data-layoutinspector-connector = { module = "ee.schimke.composeai:data-layoutinspector-connector" }

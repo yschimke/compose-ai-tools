@@ -111,7 +111,12 @@ class ComponentRecordsTest {
       target(
         "androidx.compose.material3.CardKt",
         "Card",
-        parameters = listOf(TargetParameter("modifier", "Modifier", hasDefault = true)),
+        parameters =
+          listOf(
+            TargetParameter.Builder(name = "modifier", type = "Modifier")
+              .also { b -> b.hasDefault = true }
+              .build()
+          ),
       )
     val withNone = target("androidx.compose.material3.CardKt", "Card")
 
@@ -187,15 +192,22 @@ class ComponentRecordsTest {
     val slots =
       ComponentRecords.slotsOf(
         listOf(
-          TargetParameter("onClick", "() -> Unit"),
-          TargetParameter("modifier", "Modifier", hasDefault = true),
-          TargetParameter(
-            "content",
-            "RowScope.() -> Unit",
-            composableSlot = true,
-            composableSlotReceiver = "androidx.compose.foundation.layout.RowScope",
-          ),
-          TargetParameter("footer", "() -> Unit", hasDefault = true, composableSlot = true),
+          TargetParameter.Builder(name = "onClick", type = "() -> Unit").build(),
+          TargetParameter.Builder(name = "modifier", type = "Modifier")
+            .also { b -> b.hasDefault = true }
+            .build(),
+          TargetParameter.Builder(name = "content", type = "RowScope.() -> Unit")
+            .also { b ->
+              b.composableSlot = true
+              b.composableSlotReceiver = "androidx.compose.foundation.layout.RowScope"
+            }
+            .build(),
+          TargetParameter.Builder(name = "footer", type = "() -> Unit")
+            .also { b ->
+              b.hasDefault = true
+              b.composableSlot = true
+            }
+            .build(),
         )
       )
 
@@ -315,9 +327,13 @@ class ComponentRecordsTest {
                   "Button",
                   parameters =
                     listOf(
-                      TargetParameter("onClick", "() -> Unit"),
-                      TargetParameter("modifier", "Modifier", hasDefault = true),
-                      TargetParameter("content", "RowScope.() -> Unit", composableSlot = true),
+                      TargetParameter.Builder(name = "onClick", type = "() -> Unit").build(),
+                      TargetParameter.Builder(name = "modifier", type = "Modifier")
+                        .also { b -> b.hasDefault = true }
+                        .build(),
+                      TargetParameter.Builder(name = "content", type = "RowScope.() -> Unit")
+                        .also { b -> b.composableSlot = true }
+                        .build(),
                     ),
                   signatureKnown = true,
                 )
@@ -346,7 +362,10 @@ class ComponentRecordsTest {
                 target(
                   "androidx.compose.material3.IconKt",
                   "Icon",
-                  parameters = listOf(TargetParameter("imageVector", "ImageVector")),
+                  parameters =
+                    listOf(
+                      TargetParameter.Builder(name = "imageVector", type = "ImageVector").build()
+                    ),
                   signatureKnown = true,
                 )
               ),
@@ -386,7 +405,7 @@ class ComponentRecordsTest {
           preview(
             "p2",
             componentTargets = listOf(card),
-            builder = BuilderPolicy(canvas = "material3/Card"),
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "material3/Card" }.build(),
           ),
         )
       )
@@ -402,7 +421,7 @@ class ComponentRecordsTest {
   @Test
   fun `two previews declaring the same policy agree rather than conflict`() {
     val card = target("androidx.compose.material3.CardKt", "Card")
-    val policy = BuilderPolicy(canvas = "material3/Card")
+    val policy = BuilderPolicy.Builder().also { b -> b.canvas = "material3/Card" }.build()
     val file =
       ComponentRecords.from(
         manifest(
@@ -427,8 +446,16 @@ class ComponentRecordsTest {
           // resolution is by preview id: manifest order is not a fact anybody controls, and a
           // record that changed which policy it published when a preview was renamed would be
           // unreviewable.
-          preview("p9", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "b")),
-          preview("p1", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "a")),
+          preview(
+            "p9",
+            componentTargets = listOf(card),
+            builder = BuilderPolicy.Builder().also { builder -> builder.canvas = "b" }.build(),
+          ),
+          preview(
+            "p1",
+            componentTargets = listOf(card),
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "a" }.build(),
+          ),
         )
       )
 
@@ -450,7 +477,7 @@ class ComponentRecordsTest {
             "p1",
             componentTargets = listOf(card),
             targets = listOf(card),
-            builder = BuilderPolicy(canvas = "material3/Card"),
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "material3/Card" }.build(),
           )
         )
       )
@@ -471,7 +498,13 @@ class ComponentRecordsTest {
           preview(
             "p1",
             componentTargets = listOf(button, text),
-            builder = BuilderPolicy(id = "wear-m3/button", canvas = "placeholder"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/button"
+                  b.canvas = "placeholder"
+                }
+                .build(),
           )
         )
       )
@@ -495,7 +528,13 @@ class ComponentRecordsTest {
           preview(
             "p1",
             componentTargets = listOf(button, text),
-            builder = BuilderPolicy(component = "Text", canvas = "material3/Text"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.component = "Text"
+                  b.canvas = "material3/Text"
+                }
+                .build(),
           )
         )
       )
@@ -511,7 +550,13 @@ class ComponentRecordsTest {
           preview(
             "p2",
             componentTargets = listOf(button, text),
-            builder = BuilderPolicy(component = "CheckboxButton", canvas = "p"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.component = "CheckboxButton"
+                  b.canvas = "p"
+                }
+                .build(),
           )
         )
       )
@@ -533,7 +578,13 @@ class ComponentRecordsTest {
           preview(
             "p1",
             componentTargets = listOf(wearText, foundationText),
-            builder = BuilderPolicy(component = "Text", canvas = "p"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.component = "Text"
+                  b.canvas = "p"
+                }
+                .build(),
           )
         )
       )
@@ -550,7 +601,12 @@ class ComponentRecordsTest {
             "p2",
             componentTargets = listOf(wearText, foundationText),
             builder =
-              BuilderPolicy(component = "androidx.wear.compose.material3.Text", canvas = "p"),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.component = "androidx.wear.compose.material3.Text"
+                  b.canvas = "p"
+                }
+                .build(),
           )
         )
       )
@@ -572,7 +628,13 @@ class ComponentRecordsTest {
       preview(
         "p-orphan",
         componentTargets = listOf(wearText, foundationText),
-        builder = BuilderPolicy(component = "Text", canvas = "p"),
+        builder =
+          BuilderPolicy.Builder()
+            .also { b ->
+              b.component = "Text"
+              b.canvas = "p"
+            }
+            .build(),
       )
     val plain = preview("p-plain", componentTargets = listOf(wearText))
 

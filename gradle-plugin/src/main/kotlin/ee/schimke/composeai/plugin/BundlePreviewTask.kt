@@ -731,12 +731,18 @@ abstract class BundlePreviewTask : DefaultTask() {
           fullRecord.components.associate {
             it.canonicalId to remapPolicyPreviewIds(it.builder, bundleIds)
           }
-        carried.copy(
-          components =
-            carried.components.map {
-              it.copy(builder = policyByComponent[it.canonicalId] ?: it.builder)
-            }
-        )
+        carried
+          .newBuilder()
+          .also { b3 ->
+            b3.components =
+              carried.components.map {
+                it
+                  .newBuilder()
+                  .also { b -> b.builder = policyByComponent[it.canonicalId] ?: it.builder }
+                  .build()
+              }
+          }
+          .build()
       }
     val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord)
     val zipBytes =
@@ -2016,10 +2022,13 @@ abstract class BundlePreviewTask : DefaultTask() {
     // every orphan beside them was half the filter: `carried` already holds exactly the orphans of
     // the previews that were selected, so there is nothing to recompute.
     val record =
-      full.copy(
-        components = full.components.filter { it.canonicalId in carriedIds },
-        builderOrphans = carried.builderOrphans,
-      )
+      full
+        .newBuilder()
+        .also { b ->
+          b.components = full.components.filter { it.canonicalId in carriedIds }
+          b.builderOrphans = carried.builderOrphans
+        }
+        .build()
     val authored = authoredPair() ?: return null
     val (policyFile, specFile) = authored.policy to authored.spec
     val lenient = Json { ignoreUnknownKeys = true }
@@ -2189,11 +2198,14 @@ private val SPATIAL_IMAGE_SUFFIXES = listOf(".png", ".jpg", ".jpeg", ".webp")
 internal fun remapPolicyPreviewIds(
   policy: BuilderPolicy?,
   bundleIds: Map<String, String>,
-): BuilderPolicy? =
-  policy?.copy(
-    declaredBy = policy.declaredBy.mapNotNull(bundleIds::get),
-    conflicting = policy.conflicting.mapNotNull(bundleIds::get),
-  )
+): BuilderPolicy? = policy?.let { p ->
+  p.newBuilder()
+    .also { b ->
+      b.declaredBy = p.declaredBy.mapNotNull(bundleIds::get)
+      b.conflicting = p.conflicting.mapNotNull(bundleIds::get)
+    }
+    .build()
+}
 
 internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
   val used = HashSet<String>()

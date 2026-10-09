@@ -1348,22 +1348,24 @@ object PreviewDiscovery {
   private fun extractBuilderEntry(annotations: List<AnnotationInfo>): BuilderPolicy? {
     val builder = annotations.firstOrNull { it.name == BUILDER_COMPONENT_FQN } ?: return null
     val malformed = mutableListOf<String>()
-    return BuilderPolicy(
-      id = annStringOrNull(builder, "id"),
-      component = annStringOrNull(builder, "component"),
-      group = annStringOrNull(builder, "group"),
-      displayName = annStringOrNull(builder, "displayName"),
-      canvas = annStringOrNull(builder, "canvas"),
-      stateCallbacks = builderPairs(builder, "stateCallbacks", malformed),
-      starter = builderPairs(builder, "starter", malformed),
-      slots = builderPairs(builder, "slots", malformed),
-      traits = annStringArray(builder, "traits").map { it.trim() }.filter { it.isNotEmpty() },
-      variantProperty = annStringOrNull(builder, "variantProperty"),
-      variants = builderPairs(builder, "variants", malformed),
-      nativeOnly = annBoolean(builder, "nativeOnly"),
-      exclude = annStringOrNull(builder, "exclude"),
-      malformed = malformed,
-    )
+    return BuilderPolicy.Builder()
+      .also { b ->
+        b.id = annStringOrNull(builder, "id")
+        b.component = annStringOrNull(builder, "component")
+        b.group = annStringOrNull(builder, "group")
+        b.displayName = annStringOrNull(builder, "displayName")
+        b.canvas = annStringOrNull(builder, "canvas")
+        b.stateCallbacks = builderPairs(builder, "stateCallbacks", malformed)
+        b.starter = builderPairs(builder, "starter", malformed)
+        b.slots = builderPairs(builder, "slots", malformed)
+        b.traits = annStringArray(builder, "traits").map { it.trim() }.filter { it.isNotEmpty() }
+        b.variantProperty = annStringOrNull(builder, "variantProperty")
+        b.variants = builderPairs(builder, "variants", malformed)
+        b.nativeOnly = annBoolean(builder, "nativeOnly")
+        b.exclude = annStringOrNull(builder, "exclude")
+        b.malformed = malformed
+      }
+      .build()
   }
 
   /**
@@ -1388,7 +1390,7 @@ object PreviewDiscovery {
         into += "$param: $entry"
         return@mapNotNull null
       }
-      BuilderPair(key = key, value = entry.substring(separator + 1).trim())
+      BuilderPair.Builder(key = key, value = entry.substring(separator + 1).trim()).build()
     }
 
   /** Reads a `String` annotation parameter, returning `null` when absent or blank. */

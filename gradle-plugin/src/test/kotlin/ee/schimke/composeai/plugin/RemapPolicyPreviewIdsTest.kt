@@ -21,7 +21,10 @@ class RemapPolicyPreviewIdsTest {
   @Test
   fun `a sanitised preview id is carried in the bundle's namespace`() {
     val remapped =
-      remapPolicyPreviewIds(BuilderPolicy(declaredBy = listOf("pkg.Card_A B")), bundleIds)!!
+      remapPolicyPreviewIds(
+        BuilderPolicy.Builder().also { b -> b.declaredBy = listOf("pkg.Card_A B") }.build(),
+        bundleIds,
+      )!!
 
     assertThat(remapped.declaredBy).containsExactly(bundleIds.getValue("pkg.Card_A B"))
     assertThat(remapped.declaredBy.single()).doesNotContain(" ")
@@ -37,7 +40,10 @@ class RemapPolicyPreviewIdsTest {
     assertThat(second).isNotEqualTo(first)
 
     val remapped =
-      remapPolicyPreviewIds(BuilderPolicy(conflicting = listOf("pkg.Card_A_B")), bundleIds)!!
+      remapPolicyPreviewIds(
+        BuilderPolicy.Builder().also { b -> b.conflicting = listOf("pkg.Card_A_B") }.build(),
+        bundleIds,
+      )!!
     assertThat(remapped.conflicting).containsExactly(second)
   }
 
@@ -47,10 +53,12 @@ class RemapPolicyPreviewIdsTest {
     // unselected one is left out rather than carried through in either form.
     val remapped =
       remapPolicyPreviewIds(
-        BuilderPolicy(
-          declaredBy = listOf("pkg.Card_Plain", "pkg.Card_NotBundled"),
-          conflicting = listOf("pkg.Card_NotBundled"),
-        ),
+        BuilderPolicy.Builder()
+          .also { b ->
+            b.declaredBy = listOf("pkg.Card_Plain", "pkg.Card_NotBundled")
+            b.conflicting = listOf("pkg.Card_NotBundled")
+          }
+          .build(),
         bundleIds,
       )!!
 
@@ -63,18 +71,25 @@ class RemapPolicyPreviewIdsTest {
     // `ambiguousWith` is component ids and `traits` / `malformed` are not ids at all, so of the
     // policy's five string lists only the two preview-id ones are mapped.
     val policy =
-      BuilderPolicy(
-        id = "wear-m3/card",
-        canvas = "p",
-        traits = listOf("scrollable"),
-        ambiguousWith = listOf("pkg.OtherComponent"),
-        malformed = listOf("canvas"),
-        declaredBy = listOf("pkg.Card_Plain"),
-      )
+      BuilderPolicy.Builder()
+        .also { b ->
+          b.id = "wear-m3/card"
+          b.canvas = "p"
+          b.traits = listOf("scrollable")
+          b.ambiguousWith = listOf("pkg.OtherComponent")
+          b.malformed = listOf("canvas")
+          b.declaredBy = listOf("pkg.Card_Plain")
+        }
+        .build()
 
     val remapped = remapPolicyPreviewIds(policy, bundleIds)!!
     assertThat(remapped)
-      .isEqualTo(policy.copy(declaredBy = listOf(bundleIds.getValue("pkg.Card_Plain"))))
+      .isEqualTo(
+        policy
+          .newBuilder()
+          .also { b -> b.declaredBy = listOf(bundleIds.getValue("pkg.Card_Plain")) }
+          .build()
+      )
 
     assertThat(remapPolicyPreviewIds(null, bundleIds)).isNull()
   }

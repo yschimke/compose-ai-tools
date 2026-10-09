@@ -214,171 +214,193 @@ object M3Palette {
     requiredOptIns: List<String> = emptyList(),
     androidxOptIns: List<String> = emptyList(),
   ): ComponentRecord =
-    ComponentRecord(
-      canonicalId = id,
-      componentIds = listOf(id),
-      symbol =
-        ComponentSymbol(
-          jvmOwner = "$pkg.${name}Kt",
-          callable = "$pkg.$name",
-          name = name,
-          origin = ComponentOrigin.LIBRARY,
-        ),
-      parameters = parameters,
-      slots = slots,
-      signatureKnown = true,
-      code =
-        ComponentCode(
-          call = "$name()",
-          imports = listOf("$pkg.$name"),
-          requiredOptIns = requiredOptIns,
-          androidxOptIns = androidxOptIns,
-        ),
-    )
+    ComponentRecord.Builder(
+        canonicalId = id,
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "$pkg.${name}Kt",
+              callable = "$pkg.$name",
+              name = name,
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { builder ->
+        builder.componentIds = listOf(id)
+        builder.parameters = parameters
+        builder.slots = slots
+        builder.signatureKnown = true
+        builder.code =
+          ComponentCode.Builder()
+            .also { b ->
+              b.call = "$name()"
+              b.imports = listOf("$pkg.$name")
+              b.requiredOptIns = requiredOptIns
+              b.androidxOptIns = androidxOptIns
+            }
+            .build()
+      }
+      .build()
 
   private fun slot(
     name: String,
     receiverScope: String? = null,
     type: String = "@Composable () -> Unit",
   ) =
-    TargetParameter(
-      name = name,
-      type = type,
-      hasDefault = false,
-      composableSlot = true,
-      composableSlotReceiver = receiverScope,
-    )
+    TargetParameter.Builder(name = name, type = type)
+      .also { b ->
+        b.hasDefault = false
+        b.composableSlot = true
+        b.composableSlotReceiver = receiverScope
+      }
+      .build()
 
   private fun value(name: String, type: String, typeFqn: String, hasDefault: Boolean = true) =
-    TargetParameter(name = name, type = type, typeFqn = typeFqn, hasDefault = hasDefault)
+    TargetParameter.Builder(name = name, type = type)
+      .also { b ->
+        b.typeFqn = typeFqn
+        b.hasDefault = hasDefault
+      }
+      .build()
 
   private fun modifier() = value("modifier", "Modifier", "androidx.compose.ui.Modifier")
 
   /** The records, as the file [ee.schimke.composeai.discovery.ScreenGenerator] takes. */
   val records: ComponentRecordFile =
-    ComponentRecordFile(
-      module = "m3-builder-palette",
-      variant = "authored",
-      components =
-        listOf(
-          // `Scaffold.content` is `@Composable (PaddingValues) -> Unit` — the padding arrives as a
-          // parameter, not a receiver, so no receiver scope is recorded for it. Recorded as that
-          // type, so a document can name the parameter (`ScreenNode.slotParameters`) and pad its
-          // body by it instead of drawing under the bars.
-          record(
-            "scaffold",
-            M3,
-            "Scaffold",
-            parameters =
-              listOf(
-                modifier(),
-                slot("topBar"),
-                slot("floatingActionButton"),
-                slot("content", type = "@Composable (PaddingValues) -> Unit"),
-              ),
-            slots =
-              listOf(
-                ComponentSlot("topBar", required = false),
-                ComponentSlot("floatingActionButton", required = false),
-                ComponentSlot("content", required = true),
-              ),
+    ComponentRecordFile.Builder(
+        module = "m3-builder-palette",
+        variant = "authored",
+        components =
+          listOf(
+            // `Scaffold.content` is `@Composable (PaddingValues) -> Unit` — the padding arrives as
+            // a
+            // parameter, not a receiver, so no receiver scope is recorded for it. Recorded as that
+            // type, so a document can name the parameter (`ScreenNode.slotParameters`) and pad its
+            // body by it instead of drawing under the bars.
+            record(
+              "scaffold",
+              M3,
+              "Scaffold",
+              parameters =
+                listOf(
+                  modifier(),
+                  slot("topBar"),
+                  slot("floatingActionButton"),
+                  slot("content", type = "@Composable (PaddingValues) -> Unit"),
+                ),
+              slots =
+                listOf(
+                  ComponentSlot.Builder(name = "topBar", required = false).build(),
+                  ComponentSlot.Builder(name = "floatingActionButton", required = false).build(),
+                  ComponentSlot.Builder(name = "content", required = true).build(),
+                ),
+            ),
+            record(
+              "surface",
+              M3,
+              "Surface",
+              parameters = listOf(modifier(), value("color", "Color", COLOR), slot("content")),
+              slots = listOf(ComponentSlot.Builder(name = "content", required = true).build()),
+            ),
+            record(
+              "column",
+              LAYOUT,
+              "Column",
+              parameters =
+                listOf(
+                  modifier(),
+                  value("verticalArrangement", "Arrangement.Vertical", ARRANGEMENT_VERTICAL),
+                  slot("content", "$LAYOUT.ColumnScope"),
+                ),
+              slots =
+                listOf(
+                  ComponentSlot.Builder(name = "content", required = true)
+                    .also { b -> b.receiverScope = "$LAYOUT.ColumnScope" }
+                    .build()
+                ),
+            ),
+            record(
+              "card",
+              M3,
+              "ElevatedCard",
+              parameters = listOf(modifier(), slot("content", "$LAYOUT.ColumnScope")),
+              slots =
+                listOf(
+                  ComponentSlot.Builder(name = "content", required = true)
+                    .also { b -> b.receiverScope = "$LAYOUT.ColumnScope" }
+                    .build()
+                ),
+            ),
+            // `TopAppBar` is still `@ExperimentalMaterial3Api`, which is why the opt-in is recorded
+            // rather than assumed: the generator writes the annotation onto the screen, and it is
+            // an
+            // AndroidX-mechanism marker, so it goes under `androidx.annotation.OptIn` rather than
+            // `kotlin.OptIn`. A screen using no app bar carries neither.
+            record(
+              "top-app-bar",
+              M3,
+              "TopAppBar",
+              parameters = listOf(modifier(), slot("title")),
+              slots = listOf(ComponentSlot.Builder(name = "title", required = true).build()),
+              requiredOptIns = listOf("$M3.ExperimentalMaterial3Api"),
+            ),
+            record(
+              "list-item",
+              M3,
+              "ListItem",
+              parameters = listOf(modifier(), slot("headlineContent"), slot("supportingContent")),
+              slots =
+                listOf(
+                  ComponentSlot.Builder(name = "headlineContent", required = true).build(),
+                  ComponentSlot.Builder(name = "supportingContent", required = false).build(),
+                ),
+            ),
+            record(
+              "button",
+              M3,
+              "Button",
+              parameters =
+                listOf(
+                  value("onClick", "() -> Unit", "kotlin.Function0", hasDefault = false),
+                  modifier(),
+                  value("enabled", "Boolean", "kotlin.Boolean"),
+                  value("contentPadding", "PaddingValues", PADDING_VALUES),
+                  slot("content", "$LAYOUT.RowScope"),
+                ),
+              slots =
+                listOf(
+                  ComponentSlot.Builder(name = "content", required = true)
+                    .also { b -> b.receiverScope = "$LAYOUT.RowScope" }
+                    .build()
+                ),
+            ),
+            record(
+              "fab",
+              M3,
+              "FloatingActionButton",
+              parameters =
+                listOf(
+                  value("onClick", "() -> Unit", "kotlin.Function0", hasDefault = false),
+                  modifier(),
+                  slot("content"),
+                ),
+              slots = listOf(ComponentSlot.Builder(name = "content", required = true).build()),
+            ),
+            record(
+              "text",
+              M3,
+              "Text",
+              parameters =
+                listOf(
+                  value("text", "String", "kotlin.String", hasDefault = false),
+                  modifier(),
+                  value("style", "TextStyle", TEXT_STYLE),
+                ),
+            ),
+            record("divider", M3, "HorizontalDivider", parameters = listOf(modifier())),
           ),
-          record(
-            "surface",
-            M3,
-            "Surface",
-            parameters = listOf(modifier(), value("color", "Color", COLOR), slot("content")),
-            slots = listOf(ComponentSlot("content", required = true)),
-          ),
-          record(
-            "column",
-            LAYOUT,
-            "Column",
-            parameters =
-              listOf(
-                modifier(),
-                value("verticalArrangement", "Arrangement.Vertical", ARRANGEMENT_VERTICAL),
-                slot("content", "$LAYOUT.ColumnScope"),
-              ),
-            slots =
-              listOf(
-                ComponentSlot("content", required = true, receiverScope = "$LAYOUT.ColumnScope")
-              ),
-          ),
-          record(
-            "card",
-            M3,
-            "ElevatedCard",
-            parameters = listOf(modifier(), slot("content", "$LAYOUT.ColumnScope")),
-            slots =
-              listOf(
-                ComponentSlot("content", required = true, receiverScope = "$LAYOUT.ColumnScope")
-              ),
-          ),
-          // `TopAppBar` is still `@ExperimentalMaterial3Api`, which is why the opt-in is recorded
-          // rather than assumed: the generator writes the annotation onto the screen, and it is an
-          // AndroidX-mechanism marker, so it goes under `androidx.annotation.OptIn` rather than
-          // `kotlin.OptIn`. A screen using no app bar carries neither.
-          record(
-            "top-app-bar",
-            M3,
-            "TopAppBar",
-            parameters = listOf(modifier(), slot("title")),
-            slots = listOf(ComponentSlot("title", required = true)),
-            requiredOptIns = listOf("$M3.ExperimentalMaterial3Api"),
-          ),
-          record(
-            "list-item",
-            M3,
-            "ListItem",
-            parameters = listOf(modifier(), slot("headlineContent"), slot("supportingContent")),
-            slots =
-              listOf(
-                ComponentSlot("headlineContent", required = true),
-                ComponentSlot("supportingContent", required = false),
-              ),
-          ),
-          record(
-            "button",
-            M3,
-            "Button",
-            parameters =
-              listOf(
-                value("onClick", "() -> Unit", "kotlin.Function0", hasDefault = false),
-                modifier(),
-                value("enabled", "Boolean", "kotlin.Boolean"),
-                value("contentPadding", "PaddingValues", PADDING_VALUES),
-                slot("content", "$LAYOUT.RowScope"),
-              ),
-            slots =
-              listOf(ComponentSlot("content", required = true, receiverScope = "$LAYOUT.RowScope")),
-          ),
-          record(
-            "fab",
-            M3,
-            "FloatingActionButton",
-            parameters =
-              listOf(
-                value("onClick", "() -> Unit", "kotlin.Function0", hasDefault = false),
-                modifier(),
-                slot("content"),
-              ),
-            slots = listOf(ComponentSlot("content", required = true)),
-          ),
-          record(
-            "text",
-            M3,
-            "Text",
-            parameters =
-              listOf(
-                value("text", "String", "kotlin.String", hasDefault = false),
-                modifier(),
-                value("style", "TextStyle", TEXT_STYLE),
-              ),
-          ),
-          record("divider", M3, "HorizontalDivider", parameters = listOf(modifier())),
-        ),
-    )
+      )
+      .build()
 
   private val byId = records.components.associateBy { it.canonicalId }
 

@@ -18,24 +18,28 @@ class ComponentSnippetsTest {
     hasContextReceivers: Boolean = false,
     requiredOptIns: List<String> = emptyList(),
   ) =
-    ComponentRecord(
-      canonicalId = "app/$jvmOwner.$name",
-      symbol =
-        ComponentSymbol(
-          jvmOwner = jvmOwner,
-          callable = callable,
-          name = name,
-          origin = ComponentOrigin.LIBRARY,
-          receiver = receiver,
-        ),
-      parameters = parameters,
-      signatureKnown = signatureKnown,
-      callableFromAnotherFile = callableFromAnotherFile,
-      hasTypeParameters = hasTypeParameters,
-      overloadsCollided = overloadsCollided,
-      hasContextReceivers = hasContextReceivers,
-      requiredOptIns = requiredOptIns,
-    )
+    ComponentRecord.Builder(
+        canonicalId = "app/$jvmOwner.$name",
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = jvmOwner,
+              callable = callable,
+              name = name,
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .also { b -> b.receiver = receiver }
+            .build(),
+      )
+      .also { b ->
+        b.parameters = parameters
+        b.signatureKnown = signatureKnown
+        b.callableFromAnotherFile = callableFromAnotherFile
+        b.hasTypeParameters = hasTypeParameters
+        b.overloadsCollided = overloadsCollided
+        b.hasContextReceivers = hasContextReceivers
+        b.requiredOptIns = requiredOptIns
+      }
+      .build()
 
   private fun parameter(
     name: String,
@@ -47,16 +51,16 @@ class ComponentSnippetsTest {
     noArgConstructible: Boolean = false,
     noArgFactory: String? = null,
   ) =
-    TargetParameter(
-      name = name,
-      type = type,
-      typeFqn = typeFqn,
-      hasDefault = hasDefault,
-      composableSlot = composableSlot,
-      nullable = nullable,
-      noArgConstructible = noArgConstructible,
-      noArgFactory = noArgFactory,
-    )
+    TargetParameter.Builder(name = name, type = type)
+      .also { b ->
+        b.typeFqn = typeFqn
+        b.hasDefault = hasDefault
+        b.composableSlot = composableSlot
+        b.nullable = nullable
+        b.noArgConstructible = noArgConstructible
+        b.noArgFactory = noArgFactory
+      }
+      .build()
 
   private fun emitted(record: ComponentRecord): ComponentSnippet.Emitted =
     ComponentSnippets.callSite(record) as ComponentSnippet.Emitted

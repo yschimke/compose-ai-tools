@@ -29,6 +29,9 @@ kotlin {
       dependencies {
         api(libs.kotlinx.serialization.json)
         api(libs.composeai.screen.document)
+        // The catalog wire types the generator reads and writes; `api` for the same reason as in
+        // `:preview-discovery`, which compiles the same generator source for the JVM.
+        api(libs.composeai.component.catalog.protocol)
       }
     }
     val jvmTest by getting { dependencies { implementation(libs.junit) } }
@@ -42,9 +45,9 @@ composeAiMavenPublishing {
     description =
       "The composition document a UI builder assembles and the generator that turns it into " +
         "Compose source, compiled for the JVM and for `wasmJs` so a browser-side builder can " +
-        "generate with no server round-trip. API-exports `ScreenDocument` from contracts and carries `ScreenGenerator` and the " +
-        "`ComponentRecord` catalog they read, plus the editing operations and source highlighter " +
-        "a builder needs around them.",
+        "generate with no server round-trip. API-exports `ScreenDocument` and the `ComponentRecord` " +
+        "catalog types from contracts and carries `ScreenGenerator`, plus the editing operations " +
+        "and source highlighter a builder needs around them.",
   )
   inceptionYear.set("2026")
 }

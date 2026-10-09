@@ -38,12 +38,13 @@ object ComponentRecords {
       )
       collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId, subject)
     }
-    return ComponentRecordFile(
-      module = manifest.module,
-      variant = manifest.variant,
-      components = byId.values.map { it.toRecord() }.sortedBy { it.canonicalId },
-      builderOrphans = orphans.sortedBy { it.previewId },
-    )
+    return ComponentRecordFile.Builder(
+        module = manifest.module,
+        variant = manifest.variant,
+        components = byId.values.map { it.toRecord() }.sortedBy { it.canonicalId },
+      )
+      .also { b -> b.builderOrphans = orphans.sortedBy { it.previewId } }
+      .build()
   }
 
   private fun collect(
@@ -61,16 +62,19 @@ object ComponentRecords {
           MutableComponent(
             canonicalId = id,
             symbol =
-              ComponentSymbol(
-                jvmOwner = target.className,
-                callable = callableFqn(target),
-                name = target.functionName,
-                origin = origin,
-                jvmName = target.jvmName,
-                descriptor = target.descriptor,
-                sourceFile = target.sourceFile,
-                receiver = target.receiver,
-              ),
+              ComponentSymbol.Builder(
+                  jvmOwner = target.className,
+                  callable = callableFqn(target),
+                  name = target.functionName,
+                  origin = origin,
+                )
+                .also { b ->
+                  b.jvmName = target.jvmName
+                  b.descriptor = target.descriptor
+                  b.sourceFile = target.sourceFile
+                  b.receiver = target.receiver
+                }
+                .build(),
             parameters = target.parameters,
             signatureKnown = target.signatureKnown,
             jvmName = target.jvmName,
@@ -124,14 +128,15 @@ object ComponentRecords {
         existing.receiver = target.receiver
       }
       existing.bindings +=
-        ComponentBinding(
-          previewId = preview.id,
-          componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
-          // Already resolved by discovery: the per-component override, else the file's
-          // `@CatalogGroup`, else `Components`. Carried so the builder's shelf can be built for
-          // components that annotate nothing.
-          group = preview.catalog?.group?.takeIf { it.isNotBlank() },
-        )
+        ComponentBinding.Builder(previewId = preview.id)
+          .also { b ->
+            b.componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() }
+            // Already resolved by discovery: the per-component override, else the file's
+            // `@CatalogGroup`, else `Components`. Carried so the builder's shelf can be built for
+            // components that annotate nothing.
+            b.group = preview.catalog?.group?.takeIf { it.isNotBlank() }
+          }
+          .build()
       // Builder policy travels with the preview that declared it — but onto ONE component, not
       // every component the preview renders. A sticker is routinely `Button { Text(label) }`, and
       // both calls are recorded here; writing the button's builder id, canvas adapter and state
@@ -179,7 +184,12 @@ object ComponentRecords {
     // The catalog identity of the sticker that declared this, so a derived builder id comes from
     // THIS sticker rather than from the alphabetically first of a shared callable's aliases.
     val declared =
-      policy.copy(declaredForCatalogId = preview.catalog?.componentId?.takeIf { it.isNotBlank() })
+      policy
+        .newBuilder()
+        .also { b ->
+          b.declaredForCatalogId = preview.catalog?.componentId?.takeIf { it.isNotBlank() }
+        }
+        .build()
     if (candidates.isEmpty()) {
       // Reported whether or not the annotation named a subject. A policy that bound to nothing is
       // an annotation somebody wrote whose every field does nothing, and that is true of an
@@ -187,11 +197,12 @@ object ComponentRecords {
       // exactly as it is true of a misspelled `component = "…"`. Recording only the named case left
       // the commoner one silent — the author sees no canvas, no starter and no diagnostic.
       orphans +=
-        BuilderOrphan(
-          previewId = preview.id,
-          component = policy.component?.takeIf { it.isNotBlank() } ?: "(no subject named)",
-          candidates = emptyList(),
-        )
+        BuilderOrphan.Builder(
+            previewId = preview.id,
+            component = policy.component?.takeIf { it.isNotBlank() } ?: "(no subject named)",
+          )
+          .also { b -> b.candidates = emptyList() }
+          .build()
       return null
     }
 
@@ -207,14 +218,20 @@ object ComponentRecords {
       val bySimpleName = candidates.filter { (_, target) -> target.functionName == named }
       val match = exact.firstOrNull() ?: bySimpleName.singleOrNull()
       if (match == null && bySimpleName.size > 1) {
-        orphans += BuilderOrphan(preview.id, named, bySimpleName.map { it.first })
+        orphans +=
+          BuilderOrphan.Builder(previewId = preview.id, component = named)
+            .also { b -> b.candidates = bySimpleName.map { it.first } }
+            .build()
         return null
       }
       if (match == null) {
         // Reported rather than dropped. A subject naming nothing the preview renders is a rename
         // that got away, and the generator reads the record rather than the manifest — so if the
         // orphan does not travel in the file, it cannot be reported anywhere a person will look.
-        orphans += BuilderOrphan(preview.id, named, candidates.map { it.first })
+        orphans +=
+          BuilderOrphan.Builder(previewId = preview.id, component = named)
+            .also { b -> b.candidates = candidates.map { it.first } }
+            .build()
         return null
       }
       return BuilderSubject(match.first, declared)
@@ -223,7 +240,8 @@ object ComponentRecords {
     val (subject, rest) = candidates.first() to candidates.drop(1)
     return BuilderSubject(
       subject.first,
-      if (rest.isEmpty()) declared else declared.copy(ambiguousWith = rest.map { it.first }),
+      if (rest.isEmpty()) declared
+      else declared.newBuilder().also { b -> b.ambiguousWith = rest.map { it.first } }.build(),
     )
   }
 
@@ -268,13 +286,13 @@ object ComponentRecords {
     parameters
       .filter { it.composableSlot }
       .map { parameter ->
-        ComponentSlot(
-          name = parameter.name,
-          required = !parameter.hasDefault,
-          // The QUALIFIED receiver recorded from metadata, not a slice of the human-readable
-          // rendered type: `RowScope` alone cannot be imported, and two libraries can define it.
-          receiverScope = parameter.composableSlotReceiver,
-        )
+        ComponentSlot.Builder(name = parameter.name, required = !parameter.hasDefault)
+          .also { b ->
+            // The QUALIFIED receiver recorded from metadata, not a slice of the human-readable
+            // rendered type: `RowScope` alone cannot be imported, and two libraries can define it.
+            b.receiverScope = parameter.composableSlotReceiver
+          }
+          .build()
       }
 
   private class MutableComponent(
@@ -330,34 +348,52 @@ object ComponentRecords {
       val winner = ordered.first().second
       val agreed = ordered.filter { it.second == winner }.map { it.first }
       val conflicting = ordered.filterNot { it.second == winner }.map { it.first }
-      return winner.copy(declaredBy = agreed, conflicting = conflicting)
+      return winner
+        .newBuilder()
+        .also { b ->
+          b.declaredBy = agreed
+          b.conflicting = conflicting
+        }
+        .build()
     }
 
     fun toRecord(): ComponentRecord {
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
       val record =
-        ComponentRecord(
-          canonicalId = canonicalId,
-          // Every alias any preview published this symbol under, not whichever the manifest listed
-          // first — a shared component such as `Card` is rendered by several previews and would
-          // otherwise take an arbitrary, order-dependent id.
-          componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
-          symbol = symbol.copy(receiver = receiver, jvmName = jvmName, descriptor = descriptor),
-          parameters = parameters,
-          slots = slotsOf(parameters),
-          bindings = resolvedBindings,
-          signatureKnown = signatureKnown,
-          callableFromAnotherFile = callableFromAnotherFile,
-          hasTypeParameters = hasTypeParameters,
-          overloadsCollided = overloadsCollided,
-          hasContextReceivers = hasContextReceivers,
-          requiredOptIns = requiredOptIns,
-          androidxOptIns = androidxOptIns,
-          builder = mergedBuilderPolicy(),
-        )
+        ComponentRecord.Builder(
+            canonicalId = canonicalId,
+            symbol =
+              symbol
+                .newBuilder()
+                .also { b ->
+                  b.receiver = receiver
+                  b.jvmName = jvmName
+                  b.descriptor = descriptor
+                }
+                .build(),
+          )
+          .also { b ->
+            // Every alias any preview published this symbol under, not whichever the manifest
+            // listed
+            // first — a shared component such as `Card` is rendered by several previews and would
+            // otherwise take an arbitrary, order-dependent id.
+            b.componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted()
+            b.parameters = parameters
+            b.slots = slotsOf(parameters)
+            b.bindings = resolvedBindings
+            b.signatureKnown = signatureKnown
+            b.callableFromAnotherFile = callableFromAnotherFile
+            b.hasTypeParameters = hasTypeParameters
+            b.overloadsCollided = overloadsCollided
+            b.hasContextReceivers = hasContextReceivers
+            b.requiredOptIns = requiredOptIns
+            b.androidxOptIns = androidxOptIns
+            b.builder = mergedBuilderPolicy()
+          }
+          .build()
       // Printed from the finished record, so the snippet is answering the same symbol, parameters
       // and receiver a consumer will read beside it.
-      return record.copy(code = ComponentSnippets.codeFor(record))
+      return record.newBuilder().also { b -> b.code = ComponentSnippets.codeFor(record) }.build()
     }
   }
 }

@@ -28,19 +28,24 @@ class UiBuilderCatalogsTest {
     browserPreview: kotlinx.serialization.json.JsonElement? = null,
     components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
   ) =
-    UiBuilderPolicyFile(
-      schema = UI_BUILDER_POLICY_SCHEMA,
-      platform = platform,
-      platformLabel = platformLabel,
-      builtins = builtins,
-      code = code,
-      componentIdPrefix = componentIdPrefix,
-      browserPreview = browserPreview,
-      components = components,
-    )
+    UiBuilderPolicyFile.Builder(schema = UI_BUILDER_POLICY_SCHEMA, platform = platform)
+      .also { b ->
+        b.platformLabel = platformLabel
+        b.builtins = builtins
+        b.code = code
+        b.componentIdPrefix = componentIdPrefix
+        b.browserPreview = browserPreview
+        b.components = components
+      }
+      .build()
 
   private fun record(vararg components: ComponentRecord) =
-    ComponentRecordFile(module = ":catalog", variant = "debug", components = components.toList())
+    ComponentRecordFile.Builder(
+        module = ":catalog",
+        variant = "debug",
+        components = components.toList(),
+      )
+      .build()
 
   private fun component(
     name: String,
@@ -56,28 +61,37 @@ class UiBuilderCatalogsTest {
     // `Buttons/Tonal` over one `Button`. The default is the single binding above.
     bindings: List<ComponentBinding>? = null,
   ) =
-    ComponentRecord(
-      canonicalId = ":catalog/androidx.wear.compose.material3.${name}Kt.$name",
-      componentIds = catalogIds ?: listOfNotNull(catalogId),
-      symbol =
-        ComponentSymbol(
-          jvmOwner = "androidx.wear.compose.material3.${name}Kt",
-          callable = "androidx.wear.compose.material3.$name",
-          name = name,
-          origin = ComponentOrigin.LIBRARY,
-        ),
-      parameters = parameters,
-      slots = ComponentRecords.slotsOf(parameters),
-      signatureKnown = signatureKnown,
-      builder = builder,
-      // One binding carrying the catalog's own resolved group, which is what a real record holds
-      // and what the menu is built from for a component that annotates nothing.
-      bindings =
-        bindings
-          ?: listOf(
-            ComponentBinding(previewId = "${name}Preview", componentId = catalogId, group = group)
-          ),
-    )
+    ComponentRecord.Builder(
+        canonicalId = ":catalog/androidx.wear.compose.material3.${name}Kt.$name",
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "androidx.wear.compose.material3.${name}Kt",
+              callable = "androidx.wear.compose.material3.$name",
+              name = name,
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { b3 ->
+        b3.componentIds = catalogIds ?: listOfNotNull(catalogId)
+        b3.parameters = parameters
+        b3.slots = ComponentRecords.slotsOf(parameters)
+        b3.signatureKnown = signatureKnown
+        b3.builder = builder
+        // One binding carrying the catalog's own resolved group, which is what a real record holds
+        // and what the menu is built from for a component that annotates nothing.
+        b3.bindings =
+          bindings
+            ?: listOf(
+              ComponentBinding.Builder(previewId = "${name}Preview")
+                .also { b ->
+                  b.componentId = catalogId
+                  b.group = group
+                }
+                .build()
+            )
+      }
+      .build()
 
   /**
    * A catalog states a component's vocabulary in the policy file, without annotating anything.
@@ -97,15 +111,17 @@ class UiBuilderCatalogsTest {
           components =
             mapOf(
               "wear-m3/button" to
-                UiBuilderAuthoredComponent(
-                  displayName = "Button",
-                  traits = listOf("Action"),
-                  modifierCapabilities = listOf("padding", "size"),
-                  propertyCapabilities =
-                    listOf(Json.parseToJsonElement("""{"name":"style","jsonType":"string"}""")),
-                  slotCapabilities =
-                    listOf(Json.parseToJsonElement("""{"name":"label","ordered":false}""")),
-                )
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b ->
+                    b.displayName = "Button"
+                    b.traits = listOf("Action")
+                    b.modifierCapabilities = listOf("padding", "size")
+                    b.propertyCapabilities =
+                      listOf(Json.parseToJsonElement("""{"name":"style","jsonType":"string"}"""))
+                    b.slotCapabilities =
+                      listOf(Json.parseToJsonElement("""{"name":"label","ordered":false}"""))
+                  }
+                  .build()
             ),
         ),
       )
@@ -138,10 +154,17 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           componentIdPrefix = "wear-m3/",
-          components = mapOf("wear-m3/button" to UiBuilderAuthoredComponent(insertContent = seed)),
+          components =
+            mapOf(
+              "wear-m3/button" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.insertContent = seed }.build()
+            ),
           builtins =
             mapOf(
-              "wear-m3/widget-host" to UiBuilderBuiltin(role = "screen-root", insertContent = seed)
+              "wear-m3/widget-host" to
+                UiBuilderBuiltin.Builder(role = "screen-root")
+                  .also { b -> b.insertContent = seed }
+                  .build()
             ),
         ),
       )!!
@@ -158,15 +181,19 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(component("Button", catalogId = "Controls/Button")),
         cover,
-        UiBuilderPolicyFile(
-          schema = UI_BUILDER_POLICY_SCHEMA,
-          platform = "mobile",
-          composeSourceExport = UiBuilderComposeSourceExport("compose-material3", 1),
-        ),
+        UiBuilderPolicyFile.Builder(schema = UI_BUILDER_POLICY_SCHEMA, platform = "mobile")
+          .also { b ->
+            b.composeSourceExport =
+              UiBuilderComposeSourceExport.Builder(adapter = "compose-material3", version = 1)
+                .build()
+          }
+          .build(),
       )
 
     assertThat(file!!.statusSemantics.composeSourceExport)
-      .isEqualTo(UiBuilderComposeSourceExport("compose-material3", 1))
+      .isEqualTo(
+        UiBuilderComposeSourceExport.Builder(adapter = "compose-material3", version = 1).build()
+      )
   }
 
   /**
@@ -188,7 +215,8 @@ class UiBuilderCatalogsTest {
             "LinearProgressIndicator",
             catalogId = "Progress/Linear",
             group = "Progress",
-            builder = BuilderPolicy(id = "wear-m3/progress-indicator"),
+            builder =
+              BuilderPolicy.Builder().also { b -> b.id = "wear-m3/progress-indicator" }.build(),
           )
         ),
         cover,
@@ -197,11 +225,13 @@ class UiBuilderCatalogsTest {
           components =
             mapOf(
               "wear-m3/linear-progress-indicator" to
-                UiBuilderAuthoredComponent(
-                  record = canonicalId,
-                  group = "Progress",
-                  displayName = "Linear progress indicator",
-                )
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b ->
+                    b.record = canonicalId
+                    b.group = "Progress"
+                    b.displayName = "Linear progress indicator"
+                  }
+                  .build()
             ),
         ),
       )!!
@@ -235,7 +265,10 @@ class UiBuilderCatalogsTest {
         policy(
           componentIdPrefix = "wear-m3/",
           components =
-            mapOf("wear-m3/button" to UiBuilderAuthoredComponent(displayName = "Button")),
+            mapOf(
+              "wear-m3/button" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.displayName = "Button" }.build()
+            ),
         ),
       )
     val policy = file!!.statusSemantics.components.getValue("wear-m3/button")
@@ -253,7 +286,11 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           componentIdPrefix = "wear-m3/",
-          components = mapOf("wear-m3/button" to UiBuilderAuthoredComponent(group = "Controls")),
+          components =
+            mapOf(
+              "wear-m3/button" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.group = "Controls" }.build()
+            ),
         ),
       )
     assertThat(file!!.statusSemantics.componentMenu.components.getValue("wear-m3/button").group)
@@ -275,7 +312,11 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           componentIdPrefix = "wear-m3/",
-          components = mapOf("wear-m3/buton" to UiBuilderAuthoredComponent(displayName = "Typo")),
+          components =
+            mapOf(
+              "wear-m3/buton" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.displayName = "Typo" }.build()
+            ),
         ),
       )
     val orphan =
@@ -311,9 +352,18 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             catalogId = "Toggles/CheckboxButton",
-            builder = BuilderPolicy(canvas = "placeholder"),
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "placeholder" }.build(),
           ),
-          component("EdgeButton", builder = BuilderPolicy(id = "wear-m3/edge", canvas = "p")),
+          component(
+            "EdgeButton",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/edge"
+                  b.canvas = "p"
+                }
+                .build(),
+          ),
         ),
         cover,
         policy(),
@@ -335,7 +385,11 @@ class UiBuilderCatalogsTest {
     val generated =
       UiBuilderCatalogs.generate(
         record(
-          component("Button", catalogId = "Buttons/Filled", builder = BuilderPolicy(canvas = "p"))
+          component(
+            "Button",
+            catalogId = "Buttons/Filled",
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+          )
         ),
         UiBuilderCatalogs.CoverSheet(system = "m3-catalog", title = "Material 3"),
         policy(platform = "mobile", componentIdPrefix = "m3/"),
@@ -359,8 +413,26 @@ class UiBuilderCatalogsTest {
     val generated =
       UiBuilderCatalogs.generate(
         record(
-          component("Button", builder = BuilderPolicy(id = "wear-m3/button", canvas = "p")),
-          component("FilledButton", builder = BuilderPolicy(id = "wear-m3/button", canvas = "p")),
+          component(
+            "Button",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/button"
+                  b.canvas = "p"
+                }
+                .build(),
+          ),
+          component(
+            "FilledButton",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/button"
+                  b.canvas = "p"
+                }
+                .build(),
+          ),
         ),
         cover,
         policy(),
@@ -377,7 +449,7 @@ class UiBuilderCatalogsTest {
   fun `an unclaimed canvas adapter is reported without being an error`() {
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy())),
+        record(component("Card", builder = BuilderPolicy.Builder().build())),
         cover,
         policy(),
       )!!
@@ -393,10 +465,14 @@ class UiBuilderCatalogsTest {
   fun `an authored canvas adapter is claimed in the resolved diagnostics`() {
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy())),
+        record(component("Card", builder = BuilderPolicy.Builder().build())),
         cover,
         policy(
-          components = mapOf("wear-m3/card" to UiBuilderAuthoredComponent(canvas = "wear-m3/card"))
+          components =
+            mapOf(
+              "wear-m3/card" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.canvas = "wear-m3/card" }.build()
+            )
         ),
       )!!
 
@@ -415,14 +491,18 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters = listOf(parameter("checked")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks =
-                  listOf(
-                    BuilderPair("onCheckedChange", "checked:boolean"),
-                    BuilderPair("onSelectedChange", "selected:boolean"),
-                  ),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build(),
+                      BuilderPair.Builder(key = "onSelectedChange", value = "selected:boolean")
+                        .build(),
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -448,11 +528,17 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             signatureKnown = false,
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-                slots = listOf(BuilderPair("content", "Content")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                  b.slots = listOf(BuilderPair.Builder(key = "content", value = "Content").build())
+                }
+                .build(),
           )
         ),
         cover,
@@ -472,14 +558,25 @@ class UiBuilderCatalogsTest {
   fun `a builtin must name a structural role and must not shadow a record component`() {
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        record(
+          component(
+            "Card",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          )
+        ),
         cover,
         policy(
           builtins =
             mapOf(
-              "wear-m3/screen-scaffold" to UiBuilderBuiltin(role = "screen-root"),
-              "wear-m3/mystery" to UiBuilderBuiltin(role = "carousel"),
-              "wear-m3/card" to UiBuilderBuiltin(role = "list"),
+              "wear-m3/screen-scaffold" to UiBuilderBuiltin.Builder(role = "screen-root").build(),
+              "wear-m3/mystery" to UiBuilderBuiltin.Builder(role = "carousel").build(),
+              "wear-m3/card" to UiBuilderBuiltin.Builder(role = "list").build(),
             )
         ),
       )!!
@@ -532,7 +629,9 @@ class UiBuilderCatalogsTest {
           components =
             mapOf(
               "wear-m3/sticker" to
-                UiBuilderAuthoredComponent(excluded = "the catalog's own preview frame")
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b -> b.excluded = "the catalog's own preview frame" }
+                  .build()
             ),
         ),
       )!!
@@ -566,11 +665,12 @@ class UiBuilderCatalogsTest {
           builtins =
             mapOf(
               "wear-m3/widget-host" to
-                UiBuilderBuiltin(
-                  role = "screen-root",
-                  traits = listOf("WearWidgetHost", "ScreenContent"),
-                  modifierCapabilities = listOf("padding"),
-                )
+                UiBuilderBuiltin.Builder(role = "screen-root")
+                  .also { b ->
+                    b.traits = listOf("WearWidgetHost", "ScreenContent")
+                    b.modifierCapabilities = listOf("padding")
+                  }
+                  .build()
             )
         ),
       )!!
@@ -595,22 +695,26 @@ class UiBuilderCatalogsTest {
           builtins =
             mapOf(
               "compose-foundation/box" to
-                UiBuilderBuiltin(
-                  role = "container",
-                  shelfRole = "Container",
-                  wasm =
-                    UiBuilderBuiltinWasm(
-                      platformSupported = JsonPrimitive(true),
-                      adapterStatus = "planned",
-                    ),
-                  code =
-                    UiBuilderBuiltinCode(
-                      symbol = "Box",
-                      imports = listOf("androidx.compose.foundation.layout.Box"),
-                    ),
-                  svg = UiBuilderBuiltinSvg(status = "verified", fallback = "none"),
-                  slots = mapOf("children" to Json.parseToJsonElement("{\"ordered\": false}")),
-                )
+                UiBuilderBuiltin.Builder(role = "container")
+                  .also { builder ->
+                    builder.shelfRole = "Container"
+                    builder.wasm =
+                      UiBuilderBuiltinWasm.Builder()
+                        .also { b ->
+                          b.platformSupported = JsonPrimitive(true)
+                          b.adapterStatus = "planned"
+                        }
+                        .build()
+                    builder.code =
+                      UiBuilderBuiltinCode.Builder(symbol = "Box")
+                        .also { b -> b.imports = listOf("androidx.compose.foundation.layout.Box") }
+                        .build()
+                    builder.svg =
+                      UiBuilderBuiltinSvg.Builder(status = "verified", fallback = "none").build()
+                    builder.slots =
+                      mapOf("children" to Json.parseToJsonElement("{\"ordered\": false}"))
+                  }
+                  .build()
             )
         ),
       )!!
@@ -655,26 +759,35 @@ class UiBuilderCatalogsTest {
           builtins =
             mapOf(
               "compose-foundation/lazy-grid" to
-                UiBuilderBuiltin(
-                  role = "container",
-                  unrolled =
-                    UiBuilderUnrolledMock(
-                      layout = "wrap",
-                      cellWidthDp = JsonPrimitive(280),
-                      spacingDp = JsonPrimitive(4),
-                    ),
-                )
+                UiBuilderBuiltin.Builder(role = "container")
+                  .also { builder ->
+                    builder.unrolled =
+                      UiBuilderUnrolledMock.Builder(layout = "wrap")
+                        .also { b ->
+                          b.cellWidthDp = JsonPrimitive(280)
+                          b.spacingDp = JsonPrimitive(4)
+                        }
+                        .build()
+                  }
+                  .build()
             ),
           components =
             mapOf(
               "m3/lazy-column" to
-                UiBuilderAuthoredComponent(
-                  displayName = "Lazy column",
-                  canvas = "material3/LazyColumn",
-                  unrolled = UiBuilderUnrolledMock(layout = "stack"),
-                ),
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b ->
+                    b.displayName = "Lazy column"
+                    b.canvas = "material3/LazyColumn"
+                    b.unrolled = UiBuilderUnrolledMock.Builder(layout = "stack").build()
+                  }
+                  .build(),
               "m3/card" to
-                UiBuilderAuthoredComponent(displayName = "Card", canvas = "material3/Card"),
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b ->
+                    b.displayName = "Card"
+                    b.canvas = "material3/Card"
+                  }
+                  .build(),
             ),
         ),
       )!!
@@ -743,10 +856,12 @@ class UiBuilderCatalogsTest {
           components =
             mapOf(
               "remote-m3/button" to
-                UiBuilderAuthoredComponent(
-                  canvas = "wear-m3/button",
-                  canvasMapping = canvasMapping,
-                )
+                UiBuilderAuthoredComponent.Builder()
+                  .also { b ->
+                    b.canvas = "wear-m3/button"
+                    b.canvasMapping = canvasMapping
+                  }
+                  .build()
             ),
         ),
       )!!
@@ -763,19 +878,34 @@ class UiBuilderCatalogsTest {
     // and why each has to refuse the other's vocabulary rather than publish a word nothing decodes.
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "m3/card", canvas = "p"))),
+        record(
+          component(
+            "Card",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          )
+        ),
         cover,
         policy(
           builtins =
             mapOf(
               "compose-foundation/box" to
-                UiBuilderBuiltin(role = "container", shelfRole = "container"),
+                UiBuilderBuiltin.Builder(role = "container")
+                  .also { b -> b.shelfRole = "container" }
+                  .build(),
               "compose-foundation/column" to
-                UiBuilderBuiltin(
-                  role = "container",
-                  wasm = UiBuilderBuiltinWasm(adapterStatus = "soon"),
-                  code = UiBuilderBuiltinCode(symbol = " "),
-                ),
+                UiBuilderBuiltin.Builder(role = "container")
+                  .also { builder ->
+                    builder.wasm =
+                      UiBuilderBuiltinWasm.Builder().also { b -> b.adapterStatus = "soon" }.build()
+                    builder.code = UiBuilderBuiltinCode.Builder(symbol = " ").build()
+                  }
+                  .build(),
             )
         ),
       )!!
@@ -803,24 +933,36 @@ class UiBuilderCatalogsTest {
     // make first-class, published a misspelled role with nothing said about it.
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        record(
+          component(
+            "Card",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          )
+        ),
         cover,
         policy(
           builtins =
             mapOf(
               "wear-m3/screen-scaffold" to
-                UiBuilderBuiltin(
-                  role = "screen-root",
-                  slots =
-                    mapOf(
-                      "content" to Json.parseToJsonElement("{\"role\": \"lisst\"}"),
-                      "footer" to Json.parseToJsonElement("{\"role\": \"list\"}"),
-                      // Not a role at all, and not this generator's to diagnose: the slot's shape
-                      // belongs to the loader, so an unreadable one is left alone rather than
-                      // turned into a second opinion about somebody else's contract.
-                      "header" to Json.parseToJsonElement("\"just a string\""),
-                    ),
-                )
+                UiBuilderBuiltin.Builder(role = "screen-root")
+                  .also { b ->
+                    b.slots =
+                      mapOf(
+                        "content" to Json.parseToJsonElement("{\"role\": \"lisst\"}"),
+                        "footer" to Json.parseToJsonElement("{\"role\": \"list\"}"),
+                        // Not a role at all, and not this generator's to diagnose: the slot's shape
+                        // belongs to the loader, so an unreadable one is left alone rather than
+                        // turned into a second opinion about somebody else's contract.
+                        "header" to Json.parseToJsonElement("\"just a string\""),
+                      )
+                  }
+                  .build()
             )
         ),
       )!!
@@ -846,9 +988,20 @@ class UiBuilderCatalogsTest {
     // the builtin slot role, in the same file, found one round later.
     val misspelled =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        record(
+          component(
+            "Card",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          )
+        ),
         cover,
-        policy(code = UiBuilderCode(strategy = "templtes")),
+        policy(code = UiBuilderCode.Builder().also { b -> b.strategy = "templtes" }.build()),
       )!!
 
     val codes = misspelled.diagnostics.map { it.code to it.subject }
@@ -863,14 +1016,28 @@ class UiBuilderCatalogsTest {
     for (known in listOf("record", "templates")) {
       val fine =
         UiBuilderCatalogs.generate(
-          record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+          record(
+            component(
+              "Card",
+              builder =
+                BuilderPolicy.Builder()
+                  .also { b ->
+                    b.id = "wear-m3/card"
+                    b.canvas = "p"
+                  }
+                  .build(),
+            )
+          ),
           cover,
           policy(
             code =
-              UiBuilderCode(
-                strategy = known,
-                templates = if (known == "templates") mapOf("screen-root" to "Box {}") else mapOf(),
-              )
+              UiBuilderCode.Builder()
+                .also { b ->
+                  b.strategy = known
+                  b.templates =
+                    if (known == "templates") mapOf("screen-root" to "Box {}") else mapOf()
+                }
+                .build()
           ),
         )!!
       assertThat(fine.diagnostics.map { it.code })
@@ -884,7 +1051,15 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(),
         cover,
-        policy(code = UiBuilderCode(strategy = "record", templates = mapOf("list" to "…"))),
+        policy(
+          code =
+            UiBuilderCode.Builder()
+              .also { b ->
+                b.strategy = "record"
+                b.templates = mapOf("list" to "…")
+              }
+              .build()
+        ),
       )!!
     assertThat(declaredButUnused.diagnostics.map { it.code })
       .contains(UiBuilderCatalogs.Diagnostics.TEMPLATES_WITHOUT_STRATEGY)
@@ -893,7 +1068,7 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(),
         cover,
-        policy(code = UiBuilderCode(strategy = "templates")),
+        policy(code = UiBuilderCode.Builder().also { b -> b.strategy = "templates" }.build()),
       )!!
     assertThat(claimedButAbsent.diagnostics.map { it.code })
       .contains(UiBuilderCatalogs.Diagnostics.STRATEGY_WITHOUT_TEMPLATES)
@@ -904,10 +1079,12 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           code =
-            UiBuilderCode(
-              strategy = "templates",
-              templates = mapOf("screen-root" to "…", "previews" to "…", "carousel" to "…"),
-            )
+            UiBuilderCode.Builder()
+              .also { b ->
+                b.strategy = "templates"
+                b.templates = mapOf("screen-root" to "…", "previews" to "…", "carousel" to "…")
+              }
+              .build()
         ),
       )!!
     assertThat(
@@ -928,11 +1105,13 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           code =
-            UiBuilderCode(
-              strategy = "templates",
-              templates =
-                mapOf("screen-root" to "AppScaffold {\n  \${content}\n}", "list" to "a \${ b"),
-            )
+            UiBuilderCode.Builder()
+              .also { builder ->
+                builder.strategy = "templates"
+                builder.templates =
+                  mapOf("screen-root" to "AppScaffold {\n  \${content}\n}", "list" to "a \${ b")
+              }
+              .build()
         ),
       )!!
 
@@ -953,12 +1132,14 @@ class UiBuilderCatalogsTest {
           component(
             "Button",
             builder =
-              BuilderPolicy(
-                id = "wear-m3/button",
-                canvas = "placeholder",
-                ambiguousWith = listOf(":catalog/…TextKt.Text"),
-                malformed = listOf("starter: noSeparator"),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/button"
+                  b.canvas = "placeholder"
+                  b.ambiguousWith = listOf(":catalog/…TextKt.Text")
+                  b.malformed = listOf("starter: noSeparator")
+                }
+                .build(),
           )
         ),
         cover,
@@ -989,10 +1170,15 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters = listOf(parameter("checked"), parameter("onCheckedChange")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks = listOf(BuilderPair("onChekedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onChekedChange", value = "checked:boolean").build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1019,14 +1205,20 @@ class UiBuilderCatalogsTest {
     // the variant.
     val foundationCard =
       component("Card", catalogId = "Layout/Card").let {
-        it.copy(
-          canonicalId = ":catalog/androidx.wear.compose.foundation.CardKt.Card",
-          symbol =
-            it.symbol.copy(
-              jvmOwner = "androidx.wear.compose.foundation.CardKt",
-              callable = "androidx.wear.compose.foundation.Card",
-            ),
-        )
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.canonicalId = ":catalog/androidx.wear.compose.foundation.CardKt.Card"
+            builder.symbol =
+              it.symbol
+                .newBuilder()
+                .also { b ->
+                  b.jvmOwner = "androidx.wear.compose.foundation.CardKt"
+                  b.callable = "androidx.wear.compose.foundation.Card"
+                }
+                .build()
+          }
+          .build()
       }
     val generated =
       UiBuilderCatalogs.generate(
@@ -1051,7 +1243,16 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(
           component("Card"),
-          component("Tile", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p")),
+          component(
+            "Tile",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          ),
         ),
         cover,
         policy(),
@@ -1072,11 +1273,16 @@ class UiBuilderCatalogsTest {
             "Button",
             parameters = listOf(parameter("style")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                variantProperty = "styel",
-                variants = listOf(BuilderPair("Filled", "ButtonStyle.Filled")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.variantProperty = "styel"
+                  b.variants =
+                    listOf(
+                      BuilderPair.Builder(key = "Filled", value = "ButtonStyle.Filled").build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1103,18 +1309,20 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters = listOf(parameter("checked"), parameter("onCheckedChange")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks =
-                  listOf(
-                    BuilderPair("onCheckedChange", "checked"),
-                    BuilderPair("onCheckedChange2", "checked:bool"),
-                    // A colon and a supported type, and no state at all: it passed the malformed
-                    // check because the colon was there, and the unknown-state check because the
-                    // empty name was skipped as "nothing declared".
-                    BuilderPair("onCheckedChange3", ":boolean"),
-                  ),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked").build(),
+                      BuilderPair.Builder(key = "onCheckedChange2", value = "checked:bool").build(),
+                      // A colon and a supported type, and no state at all: it passed the malformed
+                      // check because the colon was there, and the unknown-state check because the
+                      // empty name was skipped as "nothing declared".
+                      BuilderPair.Builder(key = "onCheckedChange3", value = ":boolean").build(),
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1145,10 +1353,15 @@ class UiBuilderCatalogsTest {
             "Button",
             parameters = listOf(parameter("style")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                variants = listOf(BuilderPair("Filled", "ButtonStyle.Filled")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.variants =
+                    listOf(
+                      BuilderPair.Builder(key = "Filled", value = "ButtonStyle.Filled").build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1175,15 +1388,18 @@ class UiBuilderCatalogsTest {
                 parameter("onCheckedChange", type = "(Boolean) -> Unit"),
               ),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks =
-                  listOf(
-                    BuilderPair("label", "checked:boolean"),
-                    // The correct shape, which must NOT be reported.
-                    BuilderPair("onCheckedChange", "checked:boolean"),
-                  ),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "label", value = "checked:boolean").build(),
+                      // The correct shape, which must NOT be reported.
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build(),
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1208,10 +1424,15 @@ class UiBuilderCatalogsTest {
             "Unknown",
             signatureKnown = false,
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:bool")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:bool").build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1241,10 +1462,15 @@ class UiBuilderCatalogsTest {
                 parameter("onCheckedChange", type = "(Boolean) -> Unit"),
               ),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:string")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:string").build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1276,10 +1502,16 @@ class UiBuilderCatalogsTest {
                 parameter("onCheckedChange", type = "(Boolean) -> Unit"),
               ),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
           )
         ),
         cover,
@@ -1303,7 +1535,13 @@ class UiBuilderCatalogsTest {
             "Button",
             catalogId = "Actions/Button",
             group = "Actions",
-            builder = BuilderPolicy(canvas = "p", group = "Overridden"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.group = "Overridden"
+                }
+                .build(),
           ),
         ),
         cover,
@@ -1368,7 +1606,10 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           components =
-            mapOf("wear-m3/animated-pane" to UiBuilderAuthoredComponent(group = "Layout"))
+            mapOf(
+              "wear-m3/animated-pane" to
+                UiBuilderAuthoredComponent.Builder().also { b -> b.group = "Layout" }.build()
+            )
         ),
       )!!
     assertThat(placed.statusSemantics.componentMenu.components["wear-m3/animated-pane"]?.group)
@@ -1386,7 +1627,12 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters = listOf(parameter("label")),
             builder =
-              BuilderPolicy(canvas = "placeholder", starter = listOf(BuilderPair("lable", "Hi"))),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.starter = listOf(BuilderPair.Builder(key = "lable", value = "Hi").build())
+                }
+                .build(),
           )
         ),
         cover,
@@ -1410,7 +1656,7 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(component("Card")),
         cover,
-        policy().copy(componentIdPrefix = "m3/"),
+        policy().newBuilder().also { b -> b.componentIdPrefix = "m3/" }.build(),
       )!!
     assertThat(prefixed.statusSemantics.componentIdPrefix).isEqualTo("m3/")
 
@@ -1430,7 +1676,13 @@ class UiBuilderCatalogsTest {
           component(
             "Button",
             catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
-            builder = BuilderPolicy(canvas = "placeholder", declaredForCatalogId = "Buttons/Tonal"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.declaredForCatalogId = "Buttons/Tonal"
+                }
+                .build(),
           )
         ),
         cover,
@@ -1448,17 +1700,28 @@ class UiBuilderCatalogsTest {
     // it cannot be reported anywhere a person will look.
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p")))
-          .copy(
-            builderOrphans =
+        record(
+            component(
+              "Card",
+              builder =
+                BuilderPolicy.Builder()
+                  .also { b ->
+                    b.id = "wear-m3/card"
+                    b.canvas = "p"
+                  }
+                  .build(),
+            )
+          )
+          .newBuilder()
+          .also { builder ->
+            builder.builderOrphans =
               listOf(
-                BuilderOrphan(
-                  previewId = "p1",
-                  component = "CheckboxButton",
-                  candidates = listOf(":catalog/…CardKt.Card"),
-                )
+                BuilderOrphan.Builder(previewId = "p1", component = "CheckboxButton")
+                  .also { b -> b.candidates = listOf(":catalog/…CardKt.Card") }
+                  .build()
               )
-          ),
+          }
+          .build(),
         cover,
         policy(),
       )!!
@@ -1480,9 +1743,29 @@ class UiBuilderCatalogsTest {
     val generated =
       UiBuilderCatalogs.generate(
         record(
-          component("Button", catalogId = "Buttons/Filled", builder = BuilderPolicy(canvas = "p"))
-            .let { it.copy(componentIds = listOf("Buttons/Filled", "Buttons/Tonal")) }
-            .let { it.copy(builder = it.builder!!.copy(declaredForCatalogId = "Buttons/Tonal")) }
+          component(
+              "Button",
+              catalogId = "Buttons/Filled",
+              builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+            )
+            .let {
+              it
+                .newBuilder()
+                .also { b -> b.componentIds = listOf("Buttons/Filled", "Buttons/Tonal") }
+                .build()
+            }
+            .let {
+              it
+                .newBuilder()
+                .also { b3 ->
+                  b3.builder =
+                    it.builder!!
+                      .newBuilder()
+                      .also { b -> b.declaredForCatalogId = "Buttons/Tonal" }
+                      .build()
+                }
+                .build()
+            }
         ),
         cover,
         policy(),
@@ -1500,7 +1783,9 @@ class UiBuilderCatalogsTest {
       UiBuilderCatalogs.generate(
         record(component("Card", catalogId = "Containment/Card")),
         cover,
-        policy(builtins = mapOf("wear-m3/card" to UiBuilderBuiltin(role = "decoration"))),
+        policy(
+          builtins = mapOf("wear-m3/card" to UiBuilderBuiltin.Builder(role = "decoration").build())
+        ),
       )!!
 
     assertThat(generated.diagnostics.map { it.code to it.subject })
@@ -1519,10 +1804,12 @@ class UiBuilderCatalogsTest {
         cover,
         policy(
           code =
-            UiBuilderCode(
-              strategy = "templates",
-              templates = mapOf("screen-root" to "AppScaffold {\n  \${contnet}\n}"),
-            )
+            UiBuilderCode.Builder()
+              .also { b ->
+                b.strategy = "templates"
+                b.templates = mapOf("screen-root" to "AppScaffold {\n  \${contnet}\n}")
+              }
+              .build()
         ),
       )!!
 
@@ -1544,12 +1831,18 @@ class UiBuilderCatalogsTest {
             catalogId = "Toggles/CheckboxButton",
             parameters = listOf(parameter("checked")),
             builder =
-              BuilderPolicy(
-                canvas = "placeholder",
-                starter = listOf(BuilderPair("label", "Checkbox")),
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-                traits = listOf("Action"),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "placeholder"
+                  b.starter = listOf(BuilderPair.Builder(key = "label", value = "Checkbox").build())
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                  b.traits = listOf("Action")
+                }
+                .build(),
           )
         ),
         cover,
@@ -1635,7 +1928,18 @@ class UiBuilderCatalogsTest {
 
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        record(
+          component(
+            "Card",
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/card"
+                  b.canvas = "p"
+                }
+                .build(),
+          )
+        ),
         cover,
         policy,
       )!!
@@ -1664,7 +1968,13 @@ class UiBuilderCatalogsTest {
           component("Button", catalogId = "Buttons/Button", group = "Actions"),
           component(
             "Other",
-            builder = BuilderPolicy(id = "wear-m3/button", canvas = "frame/round-screen"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.id = "wear-m3/button"
+                  b.canvas = "frame/round-screen"
+                }
+                .build(),
           ),
         ),
         cover,
@@ -1729,19 +2039,27 @@ class UiBuilderCatalogsTest {
           component(
             "Button",
             catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
-            builder = BuilderPolicy(declaredForCatalogId = "Buttons/Tonal", canvas = "p"),
+            builder =
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.declaredForCatalogId = "Buttons/Tonal"
+                  b.canvas = "p"
+                }
+                .build(),
             bindings =
               listOf(
-                ComponentBinding(
-                  previewId = "FilledPreview",
-                  componentId = "Buttons/Filled",
-                  group = "Actions",
-                ),
-                ComponentBinding(
-                  previewId = "TonalPreview",
-                  componentId = "Buttons/Tonal",
-                  group = "Selection",
-                ),
+                ComponentBinding.Builder(previewId = "FilledPreview")
+                  .also { b ->
+                    b.componentId = "Buttons/Filled"
+                    b.group = "Actions"
+                  }
+                  .build(),
+                ComponentBinding.Builder(previewId = "TonalPreview")
+                  .also { b ->
+                    b.componentId = "Buttons/Tonal"
+                    b.group = "Selection"
+                  }
+                  .build(),
               ),
           )
         ),
@@ -1761,10 +2079,16 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("checked", type = "kotlin.Boolean"),
@@ -1795,10 +2119,16 @@ class UiBuilderCatalogsTest {
           component(
             "Switch",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("checked", type = "kotlin.Boolean"),
@@ -1818,10 +2148,15 @@ class UiBuilderCatalogsTest {
           component(
             "Slider",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onValueChange", "value:number")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onValueChange", value = "value:number").build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("value", type = "kotlin.Float"),
@@ -1847,10 +2182,16 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("checked", type = "kotlin.Boolean"),
@@ -1877,10 +2218,16 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("checked", type = "kotlin.Boolean?"),
@@ -1907,15 +2254,21 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks =
-                  listOf(
-                    BuilderPair("onChange", "checked:boolean"),
-                    BuilderPair("onChange", "value:number"),
-                  ),
-                starter = listOf(BuilderPair("label", "A"), BuilderPair("label", "B")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onChange", value = "checked:boolean").build(),
+                      BuilderPair.Builder(key = "onChange", value = "value:number").build(),
+                    )
+                  b.starter =
+                    listOf(
+                      BuilderPair.Builder(key = "label", value = "A").build(),
+                      BuilderPair.Builder(key = "label", value = "B").build(),
+                    )
+                }
+                .build(),
             signatureKnown = false,
           )
         ),
@@ -1940,9 +2293,14 @@ class UiBuilderCatalogsTest {
     // the string every saved design stores.
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+        record(
+          component(
+            "Button",
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+          )
+        ),
         cover,
-        policy().copy(componentIdPrefix = "m3"),
+        policy().newBuilder().also { b -> b.componentIdPrefix = "m3" }.build(),
       )!!
 
     val reported =
@@ -1958,10 +2316,19 @@ class UiBuilderCatalogsTest {
     // The derived fallback is `<catalogId>/`, whose shape follows from the cover sheet rather than
     // from anything anybody wrote — pointing a diagnostic at a field the author never set would
     // send them looking for something that is not in their policy.
-    for (policyFile in listOf(policy().copy(componentIdPrefix = "m3/"), policy())) {
+    for (policyFile in
+      listOf(
+        policy().newBuilder().also { b -> b.componentIdPrefix = "m3/" }.build(),
+        policy(),
+      )) {
       val generated =
         UiBuilderCatalogs.generate(
-          record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+          record(
+            component(
+              "Button",
+              builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+            )
+          ),
           cover,
           policyFile,
         )!!
@@ -1985,16 +2352,18 @@ class UiBuilderCatalogsTest {
             catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
             bindings =
               listOf(
-                ComponentBinding(
-                  previewId = "ATonalPreview",
-                  componentId = "Buttons/Tonal",
-                  group = "Selection",
-                ),
-                ComponentBinding(
-                  previewId = "ZFilledPreview",
-                  componentId = "Buttons/Filled",
-                  group = "Actions",
-                ),
+                ComponentBinding.Builder(previewId = "ATonalPreview")
+                  .also { b ->
+                    b.componentId = "Buttons/Tonal"
+                    b.group = "Selection"
+                  }
+                  .build(),
+                ComponentBinding.Builder(previewId = "ZFilledPreview")
+                  .also { b ->
+                    b.componentId = "Buttons/Filled"
+                    b.group = "Actions"
+                  }
+                  .build(),
               ),
           )
         ),
@@ -2016,9 +2385,14 @@ class UiBuilderCatalogsTest {
     // `bundle pack` — the same gap the componentIdPrefix check was added for.
     val generated =
       UiBuilderCatalogs.generate(
-        record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+        record(
+          component(
+            "Button",
+            builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+          )
+        ),
         cover,
-        policy().copy(platform = "Wear"),
+        policy().newBuilder().also { b -> b.platform = "Wear" }.build(),
       )!!
 
     assertThat(generated.diagnostics.map { it.code })
@@ -2027,9 +2401,14 @@ class UiBuilderCatalogsTest {
     for (word in listOf("wear", "remote-compose")) {
       val fine =
         UiBuilderCatalogs.generate(
-          record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+          record(
+            component(
+              "Button",
+              builder = BuilderPolicy.Builder().also { b -> b.canvas = "p" }.build(),
+            )
+          ),
           cover,
-          policy().copy(platform = word),
+          policy().newBuilder().also { b -> b.platform = word }.build(),
         )!!
       assertThat(fine.diagnostics.map { it.code })
         .doesNotContain(UiBuilderCatalogs.Diagnostics.PLATFORM_MALFORMED)
@@ -2048,10 +2427,15 @@ class UiBuilderCatalogsTest {
             component(
               "CheckboxButton",
               builder =
-                BuilderPolicy(
-                  canvas = "p",
-                  stateCallbacks = listOf(BuilderPair("onClick", "checked:boolean")),
-                ),
+                BuilderPolicy.Builder()
+                  .also { b ->
+                    b.canvas = "p"
+                    b.stateCallbacks =
+                      listOf(
+                        BuilderPair.Builder(key = "onClick", value = "checked:boolean").build()
+                      )
+                  }
+                  .build(),
               parameters =
                 listOf(
                   parameter("checked", type = "kotlin.Boolean"),
@@ -2074,10 +2458,16 @@ class UiBuilderCatalogsTest {
           component(
             "CheckboxButton",
             builder =
-              BuilderPolicy(
-                canvas = "p",
-                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
-              ),
+              BuilderPolicy.Builder()
+                .also { b ->
+                  b.canvas = "p"
+                  b.stateCallbacks =
+                    listOf(
+                      BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean")
+                        .build()
+                    )
+                }
+                .build(),
             parameters =
               listOf(
                 parameter("checked", type = "kotlin.Boolean"),
@@ -2093,7 +2483,7 @@ class UiBuilderCatalogsTest {
   }
 
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
-    TargetParameter(name = name, type = type, hasDefault = true)
+    TargetParameter.Builder(name = name, type = type).also { b -> b.hasDefault = true }.build()
 
   @Test
   fun `a templates entry is a path or an object, and a bare path stays a bare path`() {
@@ -2114,7 +2504,15 @@ class UiBuilderCatalogsTest {
       .inOrder()
     assertThat(policy.templates[0].describesItself).isFalse()
     assertThat(policy.templates[1].resolvedId).isEqualTo("wear-list")
-    assertThat(policy.newDesign).isEqualTo(UiBuilderNewDesign(label = "Wear app", order = 2))
+    assertThat(policy.newDesign)
+      .isEqualTo(
+        UiBuilderNewDesign.Builder()
+          .also { b ->
+            b.label = "Wear app"
+            b.order = 2
+          }
+          .build()
+      )
 
     val written =
       Json.parseToJsonElement(json.encodeToString(UiBuilderPolicyFile.serializer(), policy))
@@ -2129,7 +2527,15 @@ class UiBuilderCatalogsTest {
   @Test
   fun `a policy with bare paths and no chip publishes no chooser block, and paths as before`() {
     val policy =
-      policy().copy(templates = listOf(UiBuilderTemplateEntry("ui-builder/designs/wear-list.json")))
+      policy()
+        .newBuilder()
+        .also { b ->
+          b.templates =
+            listOf(
+              UiBuilderTemplateEntry.Builder(path = "ui-builder/designs/wear-list.json").build()
+            )
+        }
+        .build()
     val semantics =
       checkNotNull(UiBuilderCatalogs.generate(record(), cover, policy)).statusSemantics
 
@@ -2141,18 +2547,27 @@ class UiBuilderCatalogsTest {
   fun `the chooser copy a policy authors is published beside the paths, by template id`() {
     val policy =
       policy()
-        .copy(
-          newDesign = UiBuilderNewDesign(label = "Wear app", order = 2),
-          templates =
+        .newBuilder()
+        .also { b3 ->
+          b3.newDesign =
+            UiBuilderNewDesign.Builder()
+              .also { b ->
+                b.label = "Wear app"
+                b.order = 2
+              }
+              .build()
+          b3.templates =
             listOf(
-              UiBuilderTemplateEntry("ui-builder/designs/wear-screen.json"),
-              UiBuilderTemplateEntry(
-                "ui-builder/designs/wear-list.json",
-                label = "Activity list",
-                default = true,
-              ),
-            ),
-        )
+              UiBuilderTemplateEntry.Builder(path = "ui-builder/designs/wear-screen.json").build(),
+              UiBuilderTemplateEntry.Builder(path = "ui-builder/designs/wear-list.json")
+                .also { b ->
+                  b.label = "Activity list"
+                  b.default = true
+                }
+                .build(),
+            )
+        }
+        .build()
     val semantics =
       checkNotNull(UiBuilderCatalogs.generate(record(), cover, policy)).statusSemantics
 

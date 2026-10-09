@@ -141,10 +141,16 @@ object ComponentSnippets {
    */
   fun refusalWith(record: ComponentRecord, supplied: Set<String>): String? {
     val filled =
-      record.copy(
-        parameters =
-          record.parameters.map { if (it.name in supplied) it.copy(hasDefault = true) else it }
-      )
+      record
+        .newBuilder()
+        .also { builder ->
+          builder.parameters =
+            record.parameters.map {
+              if (it.name in supplied) it.newBuilder().also { b -> b.hasDefault = true }.build()
+              else it
+            }
+        }
+        .build()
     return (callSite(filled) as? ComponentSnippet.Refused)?.reason
   }
 
@@ -158,13 +164,16 @@ object ComponentSnippets {
   fun codeFor(record: ComponentRecord): ComponentCode =
     when (val snippet = callSite(record)) {
       is ComponentSnippet.Emitted ->
-        ComponentCode(
-          call = snippet.code,
-          imports = snippet.imports,
-          requiredOptIns = snippet.requiredOptIns,
-          androidxOptIns = snippet.androidxOptIns,
-        )
-      is ComponentSnippet.Refused -> ComponentCode(refusedReason = snippet.reason)
+        ComponentCode.Builder()
+          .also { b ->
+            b.call = snippet.code
+            b.imports = snippet.imports
+            b.requiredOptIns = snippet.requiredOptIns
+            b.androidxOptIns = snippet.androidxOptIns
+          }
+          .build()
+      is ComponentSnippet.Refused ->
+        ComponentCode.Builder().also { b -> b.refusedReason = snippet.reason }.build()
     }
 
   /**

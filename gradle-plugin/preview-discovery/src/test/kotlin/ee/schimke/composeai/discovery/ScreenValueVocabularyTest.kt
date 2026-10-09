@@ -20,43 +20,55 @@ class ScreenValueVocabularyTest {
     componentIds: List<String> = emptyList(),
     canonicalId: String = "app/androidx.compose.material3.${name}Kt.$name",
   ) =
-    ComponentRecord(
-      canonicalId = canonicalId,
-      componentIds = componentIds,
-      symbol =
-        ComponentSymbol(
-          jvmOwner = "androidx.compose.material3.${name}Kt",
-          callable = callable,
-          name = name,
-          origin = ComponentOrigin.LIBRARY,
-        ),
-      parameters = parameters,
-      signatureKnown = true,
-      code = ComponentCode(call = "$name()", imports = listOf(callable)),
-    )
+    ComponentRecord.Builder(
+        canonicalId = canonicalId,
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "androidx.compose.material3.${name}Kt",
+              callable = callable,
+              name = name,
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { builder ->
+        builder.componentIds = componentIds
+        builder.parameters = parameters
+        builder.signatureKnown = true
+        builder.code =
+          ComponentCode.Builder()
+            .also { b ->
+              b.call = "$name()"
+              b.imports = listOf(callable)
+            }
+            .build()
+      }
+      .build()
 
   private val colorParameter =
-    TargetParameter(
-      "color",
-      "Color",
-      typeFqn = "androidx.compose.ui.graphics.Color",
-      hasDefault = true,
-    )
+    TargetParameter.Builder(name = "color", type = "Color")
+      .also { b ->
+        b.typeFqn = "androidx.compose.ui.graphics.Color"
+        b.hasDefault = true
+      }
+      .build()
 
   private val modifierParameter =
-    TargetParameter(
-      "modifier",
-      "Modifier",
-      typeFqn = "androidx.compose.ui.Modifier",
-      hasDefault = true,
-    )
+    TargetParameter.Builder(name = "modifier", type = "Modifier")
+      .also { b ->
+        b.typeFqn = "androidx.compose.ui.Modifier"
+        b.hasDefault = true
+      }
+      .build()
 
   private val text =
     component(
       "Text",
       "androidx.compose.material3.Text",
       listOf(
-        TargetParameter("text", "String", typeFqn = "kotlin.String"),
+        TargetParameter.Builder(name = "text", type = "String")
+          .also { b -> b.typeFqn = "kotlin.String" }
+          .build(),
         modifierParameter,
         colorParameter,
       ),
@@ -68,8 +80,12 @@ class ScreenValueVocabularyTest {
       "Button",
       "androidx.compose.material3.Button",
       listOf(
-        TargetParameter("onClick", "() -> Unit", typeFqn = "kotlin.Function0"),
-        TargetParameter("label", "String", typeFqn = "kotlin.String"),
+        TargetParameter.Builder(name = "onClick", type = "() -> Unit")
+          .also { b -> b.typeFqn = "kotlin.Function0" }
+          .build(),
+        TargetParameter.Builder(name = "label", type = "String")
+          .also { b -> b.typeFqn = "kotlin.String" }
+          .build(),
       ),
       componentIds = listOf("m3/button"),
     )
@@ -79,19 +95,20 @@ class ScreenValueVocabularyTest {
       "Column",
       "androidx.compose.foundation.layout.Column",
       listOf(
-        TargetParameter(
-          "content",
-          "@Composable ColumnScope.() -> Unit",
-          composableSlot = true,
-          composableSlotReceiver = COLUMN_SCOPE,
-        )
+        TargetParameter.Builder(name = "content", type = "@Composable ColumnScope.() -> Unit")
+          .also { b ->
+            b.composableSlot = true
+            b.composableSlotReceiver = COLUMN_SCOPE
+          }
+          .build()
       ),
       componentIds = listOf("layout/column"),
       canonicalId = "app/androidx.compose.foundation.layout.ColumnKt.Column",
     )
 
   private fun catalog(vararg records: ComponentRecord) =
-    ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
+    ComponentRecordFile.Builder(module = "app", variant = "debug", components = records.toList())
+      .build()
 
   /**
    * The vocabulary these fixtures name. Passed explicitly in every case, because the generator
@@ -499,8 +516,12 @@ class ScreenValueVocabularyTest {
       "IconPair",
       "com.example.IconPair",
       listOf(
-        TargetParameter("first", "ImageVector", typeFqn = VECTOR),
-        TargetParameter("second", "ImageVector", typeFqn = VECTOR),
+        TargetParameter.Builder(name = "first", type = "ImageVector")
+          .also { b -> b.typeFqn = VECTOR }
+          .build(),
+        TargetParameter.Builder(name = "second", type = "ImageVector")
+          .also { b -> b.typeFqn = VECTOR }
+          .build(),
       ),
       componentIds = listOf("m3/icon-pair"),
     )
@@ -511,7 +532,11 @@ class ScreenValueVocabularyTest {
       component(
         "padding",
         "com.example.decor.padding",
-        listOf(TargetParameter("content", "() -> Unit", composableSlot = true)),
+        listOf(
+          TargetParameter.Builder(name = "content", type = "() -> Unit")
+            .also { b -> b.composableSlot = true }
+            .build()
+        ),
         canonicalId = "app/com.example.decor.PaddingKt.padding",
       )
     assertThat(
@@ -944,7 +969,13 @@ class ScreenValueVocabularyTest {
   fun `a component's markers are checked too, since one printer serves both`() {
     val gated =
       component("Gated", "androidx.compose.material3.Gated", emptyList()).let {
-        it.copy(code = it.code!!.copy(requiredOptIns = listOf("not a name")))
+        it
+          .newBuilder()
+          .also { builder ->
+            builder.code =
+              it.code!!.newBuilder().also { b -> b.requiredOptIns = listOf("not a name") }.build()
+          }
+          .build()
       }
     assertThat(refusal(ScreenNode(gated.canonicalId), catalog(gated)))
       .containsExactly(
@@ -1294,8 +1325,12 @@ class ScreenValueVocabularyTest {
         "TextField",
         "androidx.compose.material3.TextField",
         listOf(
-          TargetParameter("value", "String", typeFqn = "kotlin.String"),
-          TargetParameter("onValueChange", "(String) -> Unit", typeFqn = "kotlin.Function1"),
+          TargetParameter.Builder(name = "value", type = "String")
+            .also { b -> b.typeFqn = "kotlin.String" }
+            .build(),
+          TargetParameter.Builder(name = "onValueChange", type = "(String) -> Unit")
+            .also { b -> b.typeFqn = "kotlin.Function1" }
+            .build(),
         ),
         componentIds = listOf("m3/text-field"),
       )
@@ -1411,7 +1446,7 @@ class ScreenValueVocabularyTest {
       component(
         "Canvas",
         "androidx.compose.foundation.Canvas",
-        listOf(TargetParameter("onDraw", "DrawScope.() -> Unit")),
+        listOf(TargetParameter.Builder(name = "onDraw", type = "DrawScope.() -> Unit").build()),
         componentIds = listOf("foundation/canvas"),
       )
     val result =
@@ -1502,7 +1537,11 @@ class ScreenValueVocabularyTest {
       component(
         "TintInitial",
         "androidx.compose.material3.TintInitial",
-        listOf(TargetParameter("text", "String", typeFqn = "kotlin.String")),
+        listOf(
+          TargetParameter.Builder(name = "text", type = "String")
+            .also { b -> b.typeFqn = "kotlin.String" }
+            .build()
+        ),
         componentIds = listOf("m3/tint-initial"),
       )
     val result =
@@ -1633,7 +1672,11 @@ class ScreenValueVocabularyTest {
       component(
         "Card",
         "androidx.compose.material3.Card",
-        listOf(TargetParameter("content", "() -> Unit", composableSlot = true)),
+        listOf(
+          TargetParameter.Builder(name = "content", type = "() -> Unit")
+            .also { b -> b.composableSlot = true }
+            .build()
+        ),
         componentIds = listOf("m3/card"),
       )
     val result =
@@ -1672,13 +1715,18 @@ class ScreenValueVocabularyTest {
       "PaneScaffold",
       "androidx.compose.material3.adaptive.layout.PaneScaffold",
       listOf(
-        TargetParameter(
-          "directive",
-          "PaneScaffoldDirective",
-          typeFqn = DIRECTIVE,
-          hasDefault = true,
-        ),
-        TargetParameter("partitions", "Int", typeFqn = "kotlin.Int", hasDefault = true),
+        TargetParameter.Builder(name = "directive", type = "PaneScaffoldDirective")
+          .also { b ->
+            b.typeFqn = DIRECTIVE
+            b.hasDefault = true
+          }
+          .build(),
+        TargetParameter.Builder(name = "partitions", type = "Int")
+          .also { b ->
+            b.typeFqn = "kotlin.Int"
+            b.hasDefault = true
+          }
+          .build(),
       ),
       componentIds = listOf("adaptive/pane-scaffold"),
     )
@@ -2011,12 +2059,12 @@ class ScreenValueVocabularyTest {
   }
 
   private val progressParameter =
-    TargetParameter(
-      "progress",
-      "() -> Float",
-      typeFqn = "kotlin.Function0",
-      lambdaReturnTypeFqn = "kotlin.Float",
-    )
+    TargetParameter.Builder(name = "progress", type = "() -> Float")
+      .also { b ->
+        b.typeFqn = "kotlin.Function0"
+        b.lambdaReturnTypeFqn = "kotlin.Float"
+      }
+      .build()
 
   /** The determinate indicator, which was refused outright while no `ScreenValue` was a lambda. */
   private val indicator =
@@ -2074,12 +2122,12 @@ class ScreenValueVocabularyTest {
         "Measured",
         "androidx.compose.material3.Measured",
         listOf(
-          TargetParameter(
-            "measure",
-            "(Int) -> Float",
-            typeFqn = "kotlin.Function1",
-            lambdaReturnTypeFqn = "kotlin.Float",
-          )
+          TargetParameter.Builder(name = "measure", type = "(Int) -> Float")
+            .also { b ->
+              b.typeFqn = "kotlin.Function1"
+              b.lambdaReturnTypeFqn = "kotlin.Float"
+            }
+            .build()
         ),
       )
 

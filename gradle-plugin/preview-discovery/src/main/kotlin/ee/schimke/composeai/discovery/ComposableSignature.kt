@@ -406,18 +406,18 @@ internal object ComposableSignature {
     // `receiverFqnOf` answers null for a function type with no receiver, so an ordinary
     // `(String) -> Unit` callback stays what it was.
     val dsl = if (slot) null else receiverFqnOf(type)
-    return TargetParameter(
-      name = name,
-      type = renderType(type),
-      typeFqn =
-        (type.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.'),
-      hasDefault = declaresDefaultValue,
-      composableSlot = slot,
-      composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
-      nullable = type.isNullable,
-      scopeDslReceiver = dsl,
-      lambdaReturnTypeFqn = lambdaReturnFqnOf(type),
-    )
+    return TargetParameter.Builder(name = name, type = renderType(type))
+      .also { b ->
+        b.typeFqn =
+          (type.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.')
+        b.hasDefault = declaresDefaultValue
+        b.composableSlot = slot
+        b.composableSlotReceiver = if (slot) receiverFqnOf(type) else null
+        b.nullable = type.isNullable
+        b.scopeDslReceiver = dsl
+        b.lambdaReturnTypeFqn = lambdaReturnFqnOf(type)
+      }
+      .build()
   }
 
   /**
@@ -433,7 +433,12 @@ internal object ComposableSignature {
     val constructible = isNoArgConstructible(scanResult, fqn)
     val factory = noArgFactoryFor(scanResult, fqn)
     if (!constructible && factory == null) return this
-    return copy(noArgConstructible = constructible, noArgFactory = factory)
+    return newBuilder()
+      .also { b ->
+        b.noArgConstructible = constructible
+        b.noArgFactory = factory
+      }
+      .build()
   }
 
   /**
