@@ -5,7 +5,7 @@
 // publish loudly, because a guidelines file that is silently dropped looks exactly like a catalog
 // that has none.
 //
-//   node validate-ui-builder-guidelines.mjs --guidelines <file> [--catalog <system id>]
+//   node validate-ui-builder-guidelines.mjs --guidelines <file> [--catalog <ui-builder catalog id>]
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);

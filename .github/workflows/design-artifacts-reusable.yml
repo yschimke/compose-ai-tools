@@ -2208,8 +2208,13 @@ jobs:
             for candidate in "${guidelines_policies[@]+"${guidelines_policies[@]}"}"; do
               guidelines="$(dirname "$candidate")/ui-builder.guidelines.json"
               if [ -f "$candidate" ] && [ -f "$guidelines" ]; then
-                catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
-                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                # The UI-builder catalog id the guidelines sit beside — the policy's `catalogId`,
+                # which is the published ui-builder.json's `catalog.id` and what the Gradle plugin's
+                # UiBuilderGuidelinesFile checks against. The spec's `system` is only the fallback:
+                # it names the design system, and differs where the repository and the builder
+                # catalog are named apart (wear-m3-catalog publishes the builder catalog `wear-m3`).
+                catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
                 node "$guidelines_validator" --guidelines "$guidelines" ${catalog_id:+--catalog "$catalog_id"}
               fi
             done
@@ -3653,8 +3658,13 @@ jobs:
             for candidate in "${guidelines_policies[@]+"${guidelines_policies[@]}"}"; do
               guidelines="$(dirname "$candidate")/ui-builder.guidelines.json"
               if [ -f "$candidate" ] && [ -f "$guidelines" ]; then
-                catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
-                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                # The UI-builder catalog id the guidelines sit beside — the policy's `catalogId`,
+                # which is the published ui-builder.json's `catalog.id` and what the Gradle plugin's
+                # UiBuilderGuidelinesFile checks against. The spec's `system` is only the fallback:
+                # it names the design system, and differs where the repository and the builder
+                # catalog are named apart (wear-m3-catalog publishes the builder catalog `wear-m3`).
+                catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
                 node "$guidelines_validator" --guidelines "$guidelines" ${catalog_id:+--catalog "$catalog_id"}
               fi
             done
