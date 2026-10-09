@@ -2094,4 +2094,77 @@ class UiBuilderCatalogsTest {
 
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
     TargetParameter(name = name, type = type, hasDefault = true)
+
+  @Test
+  fun `a templates entry is a path or an object, and a bare path stays a bare path`() {
+    val json = Json { ignoreUnknownKeys = true }
+    val text =
+      """
+      {"schema": "$UI_BUILDER_POLICY_SCHEMA", "platform": "wear",
+       "newDesign": {"label": "Wear app", "order": 2},
+       "templates": [
+         "ui-builder/designs/wear-screen.json",
+         {"path": "ui-builder/designs/wear-list.json", "label": "Activity list",
+          "supportingText": "Six title cards.", "default": true, "order": 2}
+       ]}
+      """
+    val policy = json.decodeFromString<UiBuilderPolicyFile>(text)
+    assertThat(policy.templates.map { it.path })
+      .containsExactly("ui-builder/designs/wear-screen.json", "ui-builder/designs/wear-list.json")
+      .inOrder()
+    assertThat(policy.templates[0].describesItself).isFalse()
+    assertThat(policy.templates[1].resolvedId).isEqualTo("wear-list")
+    assertThat(policy.newDesign).isEqualTo(UiBuilderNewDesign(label = "Wear app", order = 2))
+
+    val written =
+      Json.parseToJsonElement(json.encodeToString(UiBuilderPolicyFile.serializer(), policy))
+        .jsonObject
+        .getValue("templates")
+        .let { it as kotlinx.serialization.json.JsonArray }
+    assertThat(written[0]).isEqualTo(JsonPrimitive("ui-builder/designs/wear-screen.json"))
+    assertThat(written[1].jsonObject.getValue("label").jsonPrimitive.content)
+      .isEqualTo("Activity list")
+  }
+
+  @Test
+  fun `a policy with bare paths and no chip publishes no chooser block, and paths as before`() {
+    val policy =
+      policy().copy(templates = listOf(UiBuilderTemplateEntry("ui-builder/designs/wear-list.json")))
+    val semantics =
+      checkNotNull(UiBuilderCatalogs.generate(record(), cover, policy)).statusSemantics
+
+    assertThat(semantics.templates).containsExactly("ui-builder/designs/wear-list.json")
+    assertThat(semantics.newDesign).isNull()
+  }
+
+  @Test
+  fun `the chooser copy a policy authors is published beside the paths, by template id`() {
+    val policy =
+      policy()
+        .copy(
+          newDesign = UiBuilderNewDesign(label = "Wear app", order = 2),
+          templates =
+            listOf(
+              UiBuilderTemplateEntry("ui-builder/designs/wear-screen.json"),
+              UiBuilderTemplateEntry(
+                "ui-builder/designs/wear-list.json",
+                label = "Activity list",
+                default = true,
+              ),
+            ),
+        )
+    val semantics =
+      checkNotNull(UiBuilderCatalogs.generate(record(), cover, policy)).statusSemantics
+
+    assertThat(semantics.templates)
+      .containsExactly("ui-builder/designs/wear-screen.json", "ui-builder/designs/wear-list.json")
+      .inOrder()
+    val chooser = checkNotNull(semantics.newDesign)
+    assertThat(chooser.label).isEqualTo("Wear app")
+    assertThat(chooser.templates.map { it.id })
+      .containsExactly("wear-screen", "wear-list")
+      .inOrder()
+    assertThat(chooser.templates[1].label).isEqualTo("Activity list")
+    assertThat(chooser.templates[1].default).isTrue()
+  }
 }
