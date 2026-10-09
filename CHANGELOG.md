@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+* **design-artifacts:** check ui-builder.guidelines.json against the builder catalog id, not the spec's system ([#5750](https://github.com/yschimke/compose-ai-tools/issues/5750)) ([7f599a1](https://github.com/yschimke/compose-ai-tools/commit/7f599a173decbb8313b8d02b51494433b9e57e20))
 * **release:** publish a module when source it compiles through srcDir changes ([#5746](https://github.com/yschimke/compose-ai-tools/issues/5746)) ([733ee6a](https://github.com/yschimke/compose-ai-tools/commit/733ee6ae271d29041d6310bbf2dd13f3d7ae4ded))
 
 ## [2.38.0](https://github.com/yschimke/compose-ai-tools/compare/v2.37.0...v2.38.0) (2026-10-09)
