@@ -129,6 +129,26 @@ object ComponentSnippets {
   }
 
   /**
+   * Why [record] cannot be called by a generator that supplies [supplied] itself, or null when it
+   * can.
+   *
+   * [callSite] answers for a call printed from the record ALONE, so a required `imageVector:
+   * ImageVector` refuses it: no literal is correct without knowing the icon. A screen generator is
+   * not printing from the record alone — a design node hands it that argument — so the one gap the
+   * refusal names is not its gap. This is the same decision with each supplied parameter treated as
+   * one the call may omit, so every other refusal (collided overloads, a receiver, type parameters,
+   * visibility) still stands, and only a placeholder the caller does not need is excused.
+   */
+  fun refusalWith(record: ComponentRecord, supplied: Set<String>): String? {
+    val filled =
+      record.copy(
+        parameters =
+          record.parameters.map { if (it.name in supplied) it.copy(hasDefault = true) else it }
+      )
+    return (callSite(filled) as? ComponentSnippet.Refused)?.reason
+  }
+
+  /**
    * [callSite] as the wire shape `components.json` carries, so the record answers "how do I call
    * this?" without a consumer linking this library.
    *

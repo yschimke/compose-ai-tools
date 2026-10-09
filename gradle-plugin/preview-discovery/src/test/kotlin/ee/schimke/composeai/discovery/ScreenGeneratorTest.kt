@@ -434,6 +434,62 @@ class ScreenGeneratorTest {
     assertThat(refusal(screen, catalog(private)).single()).contains("not public or internal")
   }
 
+  /** `Icon(imageVector: ImageVector)`, as discovery records it: no literal answers for the icon. */
+  private val icon =
+    component(
+        "Icon",
+        "androidx.compose.material3.Icon",
+        listOf(
+          TargetParameter(
+            "imageVector",
+            "ImageVector",
+            typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+          ),
+          TargetParameter(
+            "contentDescription",
+            "String?",
+            typeFqn = "kotlin.String",
+            nullable = true,
+          ),
+        ),
+      )
+      .let { it.copy(code = ComponentSnippets.codeFor(it)) }
+
+  @Test
+  fun `a call site refused only for a placeholder the node supplies is written`() {
+    assertThat(icon.code?.refusedReason).contains("required parameter `imageVector")
+    val vector =
+      ScreenValue.Reference(
+        rootFqn = "androidx.compose.material.icons.Icons",
+        members = listOf("Filled", "Home"),
+        typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(icon.canonicalId, arguments = mapOf("imageVector" to vector)),
+      )
+
+    val result =
+      ScreenGenerator.generate(
+        screen,
+        catalog(icon),
+        expressionPackages = setOf("androidx.compose.material.icons"),
+      )
+    assertThat((result as? ScreenGenerator.Result.Refused)?.reasons.orEmpty()).isEmpty()
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertThat(source).contains("Icon(")
+    assertThat(source).contains("imageVector = ")
+  }
+
+  @Test
+  fun `a call site refused for a placeholder the node does not supply stays refused`() {
+    val screen = ScreenDocument("Screen", ScreenNode(icon.canonicalId))
+
+    assertThat(refusal(screen, catalog(icon)).single())
+      .contains("no placeholder can be written for required parameter `imageVector")
+  }
+
   @Test
   fun `a property the component does not declare is refused rather than dropped`() {
     // Dropping it silently would generate a screen that compiles and is not the one designed.

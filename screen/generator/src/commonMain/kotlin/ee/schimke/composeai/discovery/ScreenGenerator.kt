@@ -1083,7 +1083,32 @@ object ScreenGenerator {
       }
       // The licence to call at all. Everything a refusal protects against — private, generic,
       // collided, unreadable, not importable — is already decided here, once, by the producer.
-      val code = record.code
+      //
+      // A record refused only for a placeholder this node supplies is still callable: the record
+      // could not print `Icon(imageVector = …)` on its own, but this node names the icon. The
+      // decision is re-run with the node's own arguments, slots and handlers counted as present.
+      // Only when the record's own fields reproduce the refusal it stores: a producer may know
+      // something its fields do not say, and that refusal is never second-guessed here. Opt-ins
+      // then come from the record itself, which is where the code block copies them from.
+      val recorded = record.code
+      val code =
+        if (recorded?.call != null || recorded == null) recorded
+        else {
+          val supplied = node.arguments.keys + node.slots.keys + node.handlers.keys
+          val rederived = ComponentSnippets.refusalWith(record, emptySet())
+          if (
+            rederived != null &&
+              rederived == recorded.refusedReason &&
+              ComponentSnippets.refusalWith(record, supplied) == null
+          )
+            ComponentCode(
+              call = "${ComponentSnippets.escapeIfKeyword(record.symbol.name)}(…)",
+              imports = listOf(record.symbol.callable),
+              requiredOptIns = record.requiredOptIns,
+              androidxOptIns = record.androidxOptIns,
+            )
+          else recorded
+        }
       if (code?.call == null) {
         reasons +=
           "`${node.componentId}` has no call site: ${code?.refusedReason ?: "no code was recorded"}"
