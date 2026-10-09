@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.36.0](https://github.com/yschimke/compose-ai-tools/compare/v2.35.1...v2.36.0) (2026-10-08)
+
+
+### Features
+
+* **ui-builder:** carry a component's insert content into the published catalog ([#5730](https://github.com/yschimke/compose-ai-tools/issues/5730)) ([8e2b116](https://github.com/yschimke/compose-ai-tools/commit/8e2b116d641121ef47dc1bb4c39d0087e4e18b18))
+
+
+### Bug Fixes
+
+* **ci:** pin the serve-wasm upstream to [#165](https://github.com/yschimke/compose-ai-tools/issues/165)'s squash commit ([#5723](https://github.com/yschimke/compose-ai-tools/issues/5723)) ([f1c18fc](https://github.com/yschimke/compose-ai-tools/commit/f1c18fcc4558badb52219dea33e2a5732f7d0bdb))
+* **deps:** renderer-xr 2.0.2, XR testing fakes 1.0.0-rc02, Glimmer alpha21 ([#5727](https://github.com/yschimke/compose-ai-tools/issues/5727)) ([ee7aaae](https://github.com/yschimke/compose-ai-tools/commit/ee7aaaea1a27a5a090913c83849ab7ec48525225))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.2.1 ([#5726](https://github.com/yschimke/compose-ai-tools/issues/5726)) ([93286ac](https://github.com/yschimke/compose-ai-tools/commit/93286ac57f99db4f1bc8dd7c7149d58580c4b4ff))
+
 ## [2.35.1](https://github.com/yschimke/compose-ai-tools/compare/v2.35.0...v2.35.1) (2026-10-07)
 
 
