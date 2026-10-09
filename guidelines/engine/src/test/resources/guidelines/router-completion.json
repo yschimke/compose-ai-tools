@@ -1,0 +1,741 @@
+{
+ "id": "gen-1791535844-krZxDPJ7TgPHq4KeGfGf",
+ "object": "chat.completion",
+ "created": 1791535844,
+ "model": "deepseek/deepseek-v4.1-flash",
+ "provider": "CoreWeave",
+ "system_fingerprint": null,
+ "service_tier": null,
+ "choices": [
+  {
+   "index": 0,
+   "logprobs": null,
+   "finish_reason": "stop",
+   "native_finish_reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": "{\"verdicts\":[]}"
+   }
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 4897,
+  "completion_tokens": 3662,
+  "total_tokens": 8559,
+  "cost": 0.0033597,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0033597,
+   "upstream_inference_prompt_cost": 0.0009794,
+   "upstream_inference_completions_cost": 0.0023803
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 2669,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "openrouter_metadata": {
+  "requested": "typesafe/jev-router",
+  "strategy": "direct",
+  "region": "LHR",
+  "summary": "available=4, attempts=2, selected=CoreWeave",
+  "attempt": 2,
+  "is_byok": false,
+  "endpoints": {
+   "total": 5,
+   "available": [
+    {
+     "provider": "Together",
+     "model": "deepseek/deepseek-v4.1-flash-20260910",
+     "selected": false
+    },
+    {
+     "provider": "CoreWeave",
+     "model": "deepseek/deepseek-v4.1-flash-20260910",
+     "selected": true
+    },
+    {
+     "provider": "Google AI Studio",
+     "model": "google/gemini-3.8-flash-20260902",
+     "selected": false
+    },
+    {
+     "provider": "Google",
+     "model": "google/gemini-3.8-flash-20260902",
+     "selected": false
+    }
+   ]
+  },
+  "generation_time": 16586,
+  "attempts": [
+   {
+    "provider": "Together",
+    "model": "deepseek/deepseek-v4.1-flash-20260910",
+    "status": 429
+   },
+   {
+    "provider": "CoreWeave",
+    "model": "deepseek/deepseek-v4.1-flash-20260910",
+    "status": 200
+   }
+  ],
+  "pipeline": [
+   {
+    "type": "plugin",
+    "name": "jev-router",
+    "summary": "Selected a model and effort with the decision policy",
+    "data": {
+     "version": "jev-high-sol-kimi-fast-20261008",
+     "answers": {
+      "task": {
+       "type": "choice",
+       "choice": "classification_tagging",
+       "confidence": 0.45,
+       "probabilities": {
+        "code:general_impl": 0,
+        "code:debugging": 0,
+        "code:review_security": 0.15,
+        "code:sql_database": 0,
+        "code:frontend_ui": 0.24000000000000002,
+        "code:devops_config": 0,
+        "code:shell_execution": 0,
+        "code:file_read_write": 0,
+        "code:repo_scan": 0,
+        "agent:multi_step_planning": 0,
+        "agent:web_search": 0,
+        "agent:workflow_execution": 0.01,
+        "agent:tool_dispatch": 0,
+        "agent:memory_extraction": 0,
+        "classification_tagging": 0.47000000000000003,
+        "data:extraction": 0.01,
+        "data:transformation": 0.01,
+        "devops": 0,
+        "summarization": 0,
+        "translation": 0,
+        "content_writing": 0,
+        "research_report": 0,
+        "qa_knowledge": 0.03,
+        "conversational_reply": 0,
+        "customer_support": 0,
+        "finance_trading": 0,
+        "security_audit": 0.02,
+        "math": 0,
+        "roleplay_fiction": 0,
+        "other": 0.06
+       }
+      },
+      "task_changed": {
+       "type": "noul",
+       "noul": 0.07
+      },
+      "difficulty": {
+       "type": "score",
+       "confidence": 0.92,
+       "probabilities": {
+        "0": 0,
+        "1": 0.04,
+        "2": 0.9,
+        "3": 0.06,
+        "4": 0
+       }
+      },
+      "precision": {
+       "type": "score",
+       "confidence": 0.6,
+       "probabilities": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0.52,
+        "4": 0.48
+       }
+      },
+      "big_model_gain": {
+       "type": "noul",
+       "noul": 0.26
+      },
+      "visual_quality": {
+       "type": "noul",
+       "noul": 0.15
+      },
+      "codebase_integration": {
+       "type": "noul",
+       "noul": 0.09
+      },
+      "output_length": {
+       "type": "score",
+       "confidence": 0.62,
+       "probabilities": {
+        "0": 0.59,
+        "1": 0.36,
+        "2": 0.05,
+        "3": 0,
+        "4": 0
+       }
+      },
+      "latency_sensitive": {
+       "type": "noul",
+       "noul": 0.05
+      }
+     },
+     "input_tokens": 3337,
+     "output_tokens": 451,
+     "pool_source": "snapshot",
+     "provider_rule": "model",
+     "provider_order": "together,coreweave,deepseek",
+     "pool_generated_at": "2026-10-09T08:00:15.355Z",
+     "pool_model_count": 13,
+     "selected_tier_prior": {
+      "tier": "general",
+      "source": "intelligence_proxy",
+      "metric": "intelligence_index",
+      "score": 39.5,
+      "spend_share": 0.025438492568696534,
+      "token_share": 0.07861200587391422
+     },
+     "floor": "general",
+     "executor_floor": "general",
+     "reason": "initial",
+     "pipeline": "default",
+     "question_rule_ids": [],
+     "signal_vector": {
+      "failures": 0,
+      "message_count": 0,
+      "input_tokens": 0,
+      "cached_tokens": 0,
+      "has_incumbent": false
+     },
+     "selection_probabilities": [
+      {
+       "model": "deepseek/deepseek-v4.1-flash-20260910",
+       "effort": "high",
+       "probability": 0.8954248420304408
+      },
+      {
+       "model": "google/gemini-3.8-flash-20260902",
+       "effort": "medium",
+       "probability": 0.10457515796955923
+      }
+     ],
+     "reconsidered": true,
+     "profile_advantage": 0,
+     "cost_estimate": "Downshifts and throughput candidates use mean eligible-endpoint cost. Provider choice, cache reuse and output length remain estimates, not next-turn guarantees",
+     "estimated_input_tokens": 4806,
+     "estimated_output_tokens": 512,
+     "evaluations": [
+      {
+       "model": "deepseek/deepseek-v4.1-flash-20260910",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0030959,
+       "estimated_response_ms": 12460.976744186046
+      },
+      {
+       "model": "deepseek/deepseek-v4.1-flash-20260910",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0049903,
+       "estimated_response_ms": 24367.95348837209
+      },
+      {
+       "model": "deepseek/deepseek-v4.1-flash-20260910",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.0016751,
+       "estimated_response_ms": 3530.7441860465115
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.01561592,
+       "estimated_response_ms": 21633.214285714286
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.02104312,
+       "estimated_response_ms": 39918.92857142857
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.03189752,
+       "estimated_response_ms": 76490.35714285714
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.04275192,
+       "estimated_response_ms": 113061.78571428571
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.05360632,
+       "estimated_response_ms": 149633.2142857143
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.157983
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.077343
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.104223
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.211743
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.265503
+      },
+      {
+       "model": "openai/gpt-6-luna-20260922",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.001594876,
+       "estimated_response_ms": 82288.23076923078
+      },
+      {
+       "model": "openai/gpt-6-luna-20260922",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.000780796,
+       "estimated_response_ms": 23211.307692307695
+      },
+      {
+       "model": "openai/gpt-6-luna-20260922",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.001052156,
+       "estimated_response_ms": 42903.61538461539
+      },
+      {
+       "model": "openai/gpt-6-luna-20260922",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.002137596,
+       "estimated_response_ms": 121672.84615384616
+      },
+      {
+       "model": "openai/gpt-6-luna-20260922",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.002680316,
+       "estimated_response_ms": 161057.46153846156
+      },
+      {
+       "model": "anthropic/claude-fable-5.1-20260831",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.07366,
+       "estimated_response_ms": 29577
+      },
+      {
+       "model": "anthropic/claude-fable-5.1-20260831",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.09926,
+       "estimated_response_ms": 45577
+      },
+      {
+       "model": "anthropic/claude-fable-5.1-20260831",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.15046,
+       "estimated_response_ms": 77577
+      },
+      {
+       "model": "anthropic/claude-fable-5.1-20260831",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.20166,
+       "estimated_response_ms": 109577
+      },
+      {
+       "model": "anthropic/claude-fable-5.1-20260831",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.25286,
+       "estimated_response_ms": 141577
+      },
+      {
+       "model": "x-ai/grok-4.7-20260916",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0131068
+      },
+      {
+       "model": "x-ai/grok-4.7-20260916",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0162812
+      },
+      {
+       "model": "x-ai/grok-4.7-20260916",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.02263
+      },
+      {
+       "model": "x-ai/grok-4.7-20260916",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0289788
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.0081835,
+       "estimated_response_ms": 11839.075757575758
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0103595,
+       "estimated_response_ms": 19596.651515151516
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0147115,
+       "estimated_response_ms": 35111.80303030303
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0190635,
+       "estimated_response_ms": 50626.954545454544
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0234155,
+       "estimated_response_ms": 66142.10606060606
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.0309372
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0416892
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0631932
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0846972
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.1062012
+      },
+      {
+       "model": "z-ai/glm-5.3-flash-20260826",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0008733618244848485,
+       "estimated_response_ms": 42248.5
+      },
+      {
+       "model": "z-ai/glm-5.3-flash-20260826",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0017191594797575757,
+       "estimated_response_ms": 138248.5
+      },
+      {
+       "model": "z-ai/glm-5.3-flash-20260826",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "model_exclusion",
+       "estimated_cost": 0.0028468896867878788,
+       "estimated_response_ms": 266248.5
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.01528445
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.02059645
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.03122045
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "xhigh",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.04184445
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.05246845
+      },
+      {
+       "model": "moonshotai/kimi-k3-20260715",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.0213614,
+       "estimated_response_ms": 12859.363636363636
+      },
+      {
+       "model": "moonshotai/kimi-k3-20260715",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0436334,
+       "estimated_response_ms": 47768.454545454544
+      },
+      {
+       "model": "moonshotai/kimi-k3-20260715",
+       "effort": "max",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0733294,
+       "estimated_response_ms": 94313.90909090909
+      },
+      {
+       "model": "google/gemini-3.8-flash-20260902",
+       "effort": "medium",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0074445,
+       "estimated_response_ms": 18446.08208955224
+      },
+      {
+       "model": "google/gemini-3.8-flash-20260902",
+       "effort": "low",
+       "quality": "unknown",
+       "admitted": false,
+       "reason": "tier",
+       "estimated_cost": 0.0055245,
+       "estimated_response_ms": 10804.29104477612
+      },
+      {
+       "model": "google/gemini-3.8-flash-20260902",
+       "effort": "high",
+       "quality": "unknown",
+       "admitted": true,
+       "reason": "heuristic",
+       "estimated_cost": 0.0112845,
+       "estimated_response_ms": 33729.66417910448
+      }
+     ],
+     "candidates": [
+      {
+       "model": "deepseek/deepseek-v4.1-flash-20260910",
+       "effort": "high",
+       "tier": "general",
+       "estimated_cost": 0.0030959
+      },
+      {
+       "model": "google/gemini-3.8-flash-20260902",
+       "effort": "medium",
+       "tier": "general",
+       "estimated_cost": 0.0074445
+      },
+      {
+       "model": "meta/muse-spark-1.3-20260902",
+       "effort": "medium",
+       "tier": "deep",
+       "estimated_cost": 0.0103595
+      },
+      {
+       "model": "anthropic/claude-sonnet-5.5-20260928",
+       "effort": "medium",
+       "tier": "deep",
+       "estimated_cost": 0.02059645
+      },
+      {
+       "model": "openai/gpt-6.1-sol-20260929",
+       "effort": "medium",
+       "tier": "deep",
+       "estimated_cost": 0.02104312
+      },
+      {
+       "model": "anthropic/claude-opus-5.5-20260921",
+       "effort": "medium",
+       "tier": "deep",
+       "estimated_cost": 0.0416892
+      },
+      {
+       "model": "moonshotai/kimi-k3-20260715",
+       "effort": "high",
+       "tier": "deep",
+       "estimated_cost": 0.0436334
+      },
+      {
+       "model": "openai/gpt-6-astra-20260903",
+       "effort": "medium",
+       "tier": "deep",
+       "estimated_cost": 0.104223
+      }
+     ],
+     "input_modalities": [
+      "text",
+      "image"
+     ],
+     "classification_input_modalities": [
+      "text"
+     ],
+     "resolved_models": [
+      "deepseek/deepseek-v4.1-flash-20260910",
+      "google/gemini-3.8-flash-20260902",
+      "meta/muse-spark-1.3-20260902"
+     ],
+     "provider_allowlist_fallback_models": []
+    }
+   }
+  ]
+ }
+}

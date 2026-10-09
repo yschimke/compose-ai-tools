@@ -358,7 +358,9 @@ coil3 = "3.5.0"
 # `ServeOverrides` sends for an `rcPlayer=` naming a player registered with the daemon.
 # 3.21.0 adds `RemoteComposeOverride.documentBase64` (compose-preview-contracts#145): a Remote
 # Compose document a render carries for replay, which `ServeOverrides.cacheKey` keys on.
-composeai-contracts = "3.21.0"
+# 3.23.1 adds `design-guidelines-protocol` (compose-preview-contracts#149, #151, #152): the
+# design-guideline shapes `:design-guidelines` builds its batched requests and records over.
+composeai-contracts = "3.23.1"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -477,6 +479,9 @@ composeai-common-io = { module = "ee.schimke.composeai:common-io" }
 # `ServeHost.parityIssues()` — the shape a catalog publishes for component-parity issues. Contracts
 # (layer 0) owns the wire shape; `:render-host` owns validation and storage over it.
 composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol" }
+# `:design-guidelines` — catalog guidelines, the batched request, verdicts and records. Contracts
+# (layer 0) owns the wire shape; the engine that builds and sends it is layer 1.
+composeai-design-guidelines-protocol = { module = "ee.schimke.composeai:design-guidelines-protocol" }
 
 # The daemon BOM. THE one coordinate carrying a version for the whole daemon stack: every
 # `ee.schimke.composeai` module published by yschimke/compose-preview-daemon takes its version from

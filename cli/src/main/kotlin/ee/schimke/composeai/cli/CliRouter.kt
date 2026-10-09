@@ -32,6 +32,8 @@ internal object CliRouter {
           "diff-semantics",
           "devices",
           "extensions",
+          // Design-guideline findings from a model, beside `a11y`'s deterministic ones.
+          "guidelines",
           "history",
           // Sits next to `history` on purpose: different branch, different shape (see
           // HistoryManifestCommand). Adjacency plus distinct names beats hiding it elsewhere.

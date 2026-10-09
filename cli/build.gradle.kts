@@ -277,6 +277,8 @@ dependencies {
   // out is what lets `:mcp` move to compose-preview-server without taking `render-matrix` with it
   // (#5176).
   implementation(project(":render-matrix"))
+  // `compose-preview guidelines`: the batched design-guidelines check over rendered previews.
+  implementation(project(":design-guidelines"))
 
   // The Remote Compose JSON codec behind `compose-preview rc`. Brings `remote-core`,
   // `remote-creation-core` and `org.json` into the CLI distribution — 1.6 MB, all JVM jars, no

@@ -177,6 +177,19 @@ internal object CliFlagValidation {
             "--baseline-dir",
           ),
       "a11y" to reportFlags,
+      "guidelines" to
+        reportFlags +
+          setOf(
+            "--model",
+            "--max-cost",
+            "--rounds",
+            "--no-triage",
+            "--annotate",
+            "--guidelines",
+            "--surface",
+            "--previews-json",
+            "--renders-dir",
+          ),
       "diff-semantics" to setOf("--json", "--fail-on-change", "--help", "-h"),
       "devices" to setOf("--json", "--help", "-h"),
       "extensions" to setOf("--json"),

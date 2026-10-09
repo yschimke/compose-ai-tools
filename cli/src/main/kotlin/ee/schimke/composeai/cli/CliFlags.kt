@@ -29,6 +29,14 @@ internal object CliFlags {
     setOf(
       "--module",
       "--filter",
+      // `guidelines`
+      "--model",
+      "--max-cost",
+      "--rounds",
+      "--guidelines",
+      "--surface",
+      "--previews-json",
+      "--renders-dir",
       "--id",
       "--id-file",
       "--exclude-preview-id",
