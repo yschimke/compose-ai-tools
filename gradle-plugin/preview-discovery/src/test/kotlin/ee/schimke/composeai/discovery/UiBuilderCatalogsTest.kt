@@ -175,6 +175,46 @@ class UiBuilderCatalogsTest {
       .isEqualTo(seed)
   }
 
+  /**
+   * A record component's shelf role, stated as a builtin's is: slot presence cannot say `Scaffold`,
+   * so `NavigationSuiteScaffold` derived as a Container. Carried as written, absent when not, and a
+   * word outside the set is reported rather than silently ignored downstream.
+   */
+  @Test
+  fun `an authored shelf role is published, and an unknown one is reported`() {
+    fun stated(shelfRole: String) =
+      UiBuilderAuthoredComponent.Builder().also { b -> b.shelfRole = shelfRole }.build()
+    val file =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", catalogId = "Controls/Button"),
+          component("Card", catalogId = "Containers/Card"),
+          component("Chip", catalogId = "Controls/Chip"),
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf("wear-m3/button" to stated("Scaffold"), "wear-m3/chip" to stated("scaffold")),
+        ),
+      )!!
+    val components = file.statusSemantics.components
+    assertThat(components.getValue("wear-m3/button").shelfRole).isEqualTo("Scaffold")
+    assertThat(components.getValue("wear-m3/card").shelfRole).isNull()
+    assertThat(
+        file.diagnostics.filter {
+          it.code == UiBuilderCatalogs.Diagnostics.COMPONENT_SHELF_ROLE_UNKNOWN
+        }
+      )
+      .hasSize(1)
+    assertThat(
+        file.diagnostics
+          .single { it.code == UiBuilderCatalogs.Diagnostics.COMPONENT_SHELF_ROLE_UNKNOWN }
+          .subject
+      )
+      .isEqualTo("wear-m3/chip")
+  }
+
   @Test
   fun `a catalog publishes its declared Compose source adapter`() {
     val file =

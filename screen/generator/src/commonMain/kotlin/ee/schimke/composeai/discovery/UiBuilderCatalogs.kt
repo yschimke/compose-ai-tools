@@ -34,6 +34,7 @@ internal fun UiBuilderComponentPolicy.mergedWith(
       b.slotCapabilities = authored.slotCapabilities ?: slotCapabilities
       b.modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities
       b.insertContent = authored.insertContent ?: insertContent
+      b.shelfRole = authored.shelfRole ?: shelfRole
     }
     .build()
 }
@@ -79,6 +80,7 @@ object UiBuilderCatalogs {
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
     const val BUILTIN_SLOT_ROLE_UNKNOWN = "policy.builtin.slot.role.unknown"
     const val BUILTIN_SHELF_ROLE_UNKNOWN = "policy.builtin.shelfRole.unknown"
+    const val COMPONENT_SHELF_ROLE_UNKNOWN = "policy.component.shelfRole.unknown"
     const val BUILTIN_WASM_STATUS_UNKNOWN = "policy.builtin.wasm.adapterStatus.unknown"
     const val BUILTIN_CODE_EMPTY = "policy.builtin.code.symbol.empty"
     const val STRATEGY_UNKNOWN = "policy.code.strategy.unknown"
@@ -301,6 +303,23 @@ object UiBuilderCatalogs {
     // away, and dropping it leaves the component with a default nobody meant it to have and no
     // symptom at all. This is the shape a catalog authoring its vocabulary by hand will hit — a
     // typo in a builder id looks exactly like a component that is deliberately not stated.
+    // A record component's shelf role, as a builtin's: slot presence cannot say `Scaffold`, so a
+    // catalog states it. A word outside the set names no shelf, and the consumer ignores it in
+    // favour of the derivation — reported here so the catalog finds out.
+    for ((builderId, authored) in policy.components) {
+      val shelfRole = authored.shelfRole ?: continue
+      if (shelfRole in UI_BUILDER_SHELF_ROLES) continue
+      diagnostics +=
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.COMPONENT_SHELF_ROLE_UNKNOWN,
+            subject = builderId,
+            message =
+              "shelfRole '$shelfRole' is not a shelf role. It is one of " +
+                UI_BUILDER_SHELF_ROLES.sorted().joinToString() +
+                "; the consumer ignores it and derives the role from whether the component has slots.",
+          )
+          .build()
+    }
     for ((builderId, _) in policy.components) {
       if (builderId in consumedPolicyIds) continue
       diagnostics +=

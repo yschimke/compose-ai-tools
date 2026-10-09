@@ -246,6 +246,10 @@
             "type": "string",
             "description": "Kept off the shelf, with the stated reason. The reason is published, so a component missing from a catalog says why rather than looking lost."
           },
+          "shelfRole": {
+            "enum": ["Scaffold", "Container", "Leaf"],
+            "description": "What this component IS on the shelf, which decides what the editor calls it and which slots will take it: the same field, vocabulary and fallback as a builtin's `shelfRole`, and published as `role`. Omit it and the consumer derives it from whether the component has slots, which cannot tell a scaffold from a container: `NavigationSuiteScaffold` has slots, so it derives as a Container and can be dropped into a button."
+          },
           "propertyCapabilities": {
             "type": "array",
             "items": { "type": "object" },

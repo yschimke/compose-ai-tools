@@ -360,7 +360,9 @@ coil3 = "3.5.0"
 # Compose document a render carries for replay, which `ServeOverrides.cacheKey` keys on.
 # 3.23.1 adds `design-guidelines-protocol` (compose-preview-contracts#149, #151, #152): the
 # design-guideline shapes `:design-guidelines` builds its batched requests and records over.
-composeai-contracts = "3.24.0"
+# 3.25.0 adds `shelfRole` to a record component's authored and published policy
+# (compose-preview-contracts#161), which `mergedWith` carries into `ui-builder.json`.
+composeai-contracts = "3.25.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
