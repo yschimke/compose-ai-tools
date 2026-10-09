@@ -803,6 +803,10 @@ internal object ComposePreviewTasks {
         project.layout.projectDirectory.file("ui-builder.policy.json"),
         project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
       )
+      uiBuilderGuidelinesCandidates.from(
+        project.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
+        project.rootProject.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
+      )
       catalogSpecCandidates.from(
         project.layout.projectDirectory.file("catalog.spec.json"),
         project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
@@ -1977,6 +1981,9 @@ internal object ComposePreviewTasks {
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       componentsFile.set(previewOutputDir.map { it.file("components.json") })
       uiBuilderFile.set(previewOutputDir.map { it.file("ui-builder.json") })
+      uiBuilderGuidelinesFile.set(
+        previewOutputDir.map { it.file(UiBuilderGuidelinesFile.FILE_NAME) }
+      )
       // The tree the copied template designs land in, beside the catalog that names them.
       uiBuilderTemplateDir.set(previewOutputDir.map { it.dir("ui-builder") })
       // Most specific first: the module's own authored files, then the repository root's. Both
@@ -1986,6 +1993,10 @@ internal object ComposePreviewTasks {
       uiBuilderPolicyCandidates.from(
         project.layout.projectDirectory.file("ui-builder.policy.json"),
         project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
+      )
+      uiBuilderGuidelinesCandidates.from(
+        project.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
+        project.rootProject.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
       )
       catalogSpecCandidates.from(
         project.layout.projectDirectory.file("catalog.spec.json"),

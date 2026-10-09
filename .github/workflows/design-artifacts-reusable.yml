@@ -2164,6 +2164,9 @@ jobs:
           # external caller, immediately. Guarded and degraded the way the `--spec` probe below
           # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
           # notice rather than the build.
+          # Kept before the policy pre-flight can empty the list: the guidelines check below does not
+          # depend on the driver's age.
+          guidelines_policies=("${policy_candidates[@]+"${policy_candidates[@]}"}")
           policy_validator=$DRIVER_DIR/validate-ui-builder-policy.mjs
           if [ ! -f "$policy_validator" ]; then
             echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
@@ -2174,6 +2177,21 @@ jobs:
               node "$policy_validator" --policy "$candidate"
             fi
           done
+          # The catalog's own design guidance, published verbatim beside its ui-builder.json when it
+          # sits beside the policy. Checked here so a malformed file fails the publish rather than
+          # being dropped by discovery with a warning nobody reads. A compose-ai-tools checkout old
+          # enough to lack the checker skips it, as an old driver skips the policy check.
+          guidelines_validator="$GITHUB_WORKSPACE/compose-ai-tools/.github/scripts/validate-ui-builder-guidelines.mjs"
+          if [ -f "$guidelines_validator" ]; then
+            for candidate in "${guidelines_policies[@]+"${guidelines_policies[@]}"}"; do
+              guidelines="$(dirname "$candidate")/ui-builder.guidelines.json"
+              if [ -f "$candidate" ] && [ -f "$guidelines" ]; then
+                catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
+                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                node "$guidelines_validator" --guidelines "$guidelines" ${catalog_id:+--catalog "$catalog_id"}
+              fi
+            done
+          fi
           echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
           echo "deferred-modes=$(cat "$GITHUB_WORKSPACE/deferred-modes.txt")" >> "$GITHUB_OUTPUT"
 
@@ -3591,6 +3609,9 @@ jobs:
           # external caller, immediately. Guarded and degraded the way the `--spec` probe below
           # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
           # notice rather than the build.
+          # Kept before the policy pre-flight can empty the list: the guidelines check below does not
+          # depend on the driver's age.
+          guidelines_policies=("${policy_candidates[@]+"${policy_candidates[@]}"}")
           policy_validator=$DRIVER_DIR/validate-ui-builder-policy.mjs
           if [ ! -f "$policy_validator" ]; then
             echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
@@ -3601,6 +3622,21 @@ jobs:
               node "$policy_validator" --policy "$candidate"
             fi
           done
+          # The catalog's own design guidance, published verbatim beside its ui-builder.json when it
+          # sits beside the policy. Checked here so a malformed file fails the publish rather than
+          # being dropped by discovery with a warning nobody reads. A compose-ai-tools checkout old
+          # enough to lack the checker skips it, as an old driver skips the policy check.
+          guidelines_validator="$GITHUB_WORKSPACE/compose-ai-tools/.github/scripts/validate-ui-builder-guidelines.mjs"
+          if [ -f "$guidelines_validator" ]; then
+            for candidate in "${guidelines_policies[@]+"${guidelines_policies[@]}"}"; do
+              guidelines="$(dirname "$candidate")/ui-builder.guidelines.json"
+              if [ -f "$candidate" ] && [ -f "$guidelines" ]; then
+                catalog_id=$(jq -r '.system // empty' "$SPEC" 2>/dev/null || true)
+                [ -n "$catalog_id" ] || catalog_id=$(jq -r '.catalogId // empty' "$candidate" 2>/dev/null || true)
+                node "$guidelines_validator" --guidelines "$guidelines" ${catalog_id:+--catalog "$catalog_id"}
+              fi
+            done
+          fi
           # The `--preview` patterns that render just the required entries. EMPTY for every
           # spec that defers no entry — i.e. all of them today — in which case the render
           # step below sees an empty property and renders everything, exactly as before.
