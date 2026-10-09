@@ -483,6 +483,58 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `a remembered placeholder beside a supplied argument imports its factory`() {
+    // The refusal is the icon; the state is answered by the `remember…` factory discovery found,
+    // which the generated file names by its simple name and so has to import.
+    val picker =
+      component(
+          "IconPicker",
+          "com.example.picker.IconPicker",
+          listOf(
+            TargetParameter(
+              "imageVector",
+              "ImageVector",
+              typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+            ),
+            TargetParameter(
+              "state",
+              "PickerState",
+              typeFqn = "com.example.picker.PickerState",
+              noArgFactory = "com.example.picker.rememberPickerState",
+            ),
+          ),
+        )
+        .let { it.copy(code = ComponentSnippets.codeFor(it)) }
+    assertThat(picker.code?.refusedReason).contains("required parameter `imageVector")
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          picker.canonicalId,
+          arguments =
+            mapOf(
+              "imageVector" to
+                ScreenValue.Reference(
+                  rootFqn = "androidx.compose.material.icons.Icons",
+                  members = listOf("Filled", "Home"),
+                  typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+                )
+            ),
+        ),
+      )
+
+    val source =
+      (ScreenGenerator.generate(
+          screen,
+          catalog(picker),
+          expressionPackages = setOf("androidx.compose.material.icons"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+    assertThat(source).contains("state = rememberPickerState()")
+    assertThat(source).contains("import com.example.picker.rememberPickerState")
+  }
+
+  @Test
   fun `a call site refused for a placeholder the node does not supply stays refused`() {
     val screen = ScreenDocument("Screen", ScreenNode(icon.canonicalId))
 

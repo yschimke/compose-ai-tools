@@ -1299,16 +1299,20 @@ object ScreenGenerator {
               // choose: this import is the *record's* parameter type. It is reserved on the same
               // terms as the other three — a type whose simple name is `kotlin` would capture the
               // qualifier a folded run writes.
-              ComponentSnippets.constructedTypeOf(parameter)?.let {
-                val simple = it.substringAfterLast('.')
-                if (simple in RESERVED_BY_THE_WRAPPER) {
-                  reasons +=
-                    "`${record.symbol.name}`.`${parameter.name}` imports `$simple`, which the " +
-                      "generated file spends on its own scaffolding"
-                } else {
-                  imports += ComponentSnippets.escapeCallableIfKeyword(it)
+              // A `rememberT()` placeholder names a factory the same way, and imports it on the
+              // same terms; the two are mutually exclusive, so a parameter brings at most one.
+              (ComponentSnippets.constructedTypeOf(parameter)
+                  ?: ComponentSnippets.factoryCallableOf(parameter))
+                ?.let {
+                  val simple = it.substringAfterLast('.')
+                  if (simple in RESERVED_BY_THE_WRAPPER) {
+                    reasons +=
+                      "`${record.symbol.name}`.`${parameter.name}` imports `$simple`, which the " +
+                        "generated file spends on its own scaffolding"
+                  } else {
+                    imports += ComponentSnippets.escapeCallableIfKeyword(it)
+                  }
                 }
-              }
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $placeholder"
             }
           }
