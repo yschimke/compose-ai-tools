@@ -416,7 +416,10 @@ composeai-contracts = "3.24.0"
 # (`overrides.remoteCompose.documentBase64`, compose-preview-daemon#231) in place of the preview's
 # own content, which is what makes the contracts 3.21.0 field above mean anything at runtime.
 # Built against contracts 3.21.0.
-composeai-preview-daemon = "3.15.0"
+# 3.15.1 is built on rc-players 2.4.0 (compose-preview-daemon#232) and contracts 3.24.0
+# (compose-preview-daemon#234), the same set this build pins, so the daemon BOM no longer pulls
+# either back.
+composeai-preview-daemon = "3.15.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
