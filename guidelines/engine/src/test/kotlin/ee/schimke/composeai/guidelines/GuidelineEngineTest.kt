@@ -3,6 +3,7 @@ package ee.schimke.composeai.guidelines
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.guidelines.protocol.CatalogGuidelinesV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
+import ee.schimke.composeai.guidelines.protocol.GuidelineRegionV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
 import java.awt.image.BufferedImage
@@ -144,7 +145,7 @@ class GuidelineEngineTest {
     assertThat(reply.verdicts.map { it.subjectId to it.ruleId })
       .containsExactly("a" to "touch", "b" to "any", null to "consistent")
     assertThat(reply.verdicts[1].needs.single().kind).isEqualTo("a11y-hierarchy")
-    assertThat(reply.regions.single().subjectId).isEqualTo("b")
+    assertThat(reply.verdicts.flatMap { it.regions }.single().subjectId).isEqualTo("b")
     assertThat(reply.served.model).isEqualTo("deepseek/deepseek-v4.1-flash")
   }
 
@@ -252,10 +253,12 @@ class GuidelineEngineTest {
         listOf(PreviewNode("n1", null, "", 2, 2, 20, 20)),
         listOf(
           GuidelineVerdictV1.Builder("touch", GuidelineVerdictV1.FAIL)
-            .apply { nodeIds = listOf("n1") }
+            .apply {
+              nodeIds = listOf("n1")
+              regions = listOf(GuidelineRegionV1.Builder(0.5, 0.5, 0.4, 0.4).build())
+            }
             .build()
         ),
-        listOf(GuidelineRegion(ruleId = "touch", x = 0.5, y = 0.5, width = 0.4, height = 0.4)),
       )
     val image = ImageIO.read(out.inputStream())
     assertThat(image.width).isEqualTo(40)
