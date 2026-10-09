@@ -5,6 +5,7 @@ import ee.schimke.composeai.guidelines.GuidelineAnnotator
 import ee.schimke.composeai.guidelines.GuidelineBudget
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
+import ee.schimke.composeai.guidelines.GuidelineModel
 import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
@@ -35,9 +36,11 @@ import kotlinx.serialization.json.Json
  * It renders like every report command, then runs the `a11y` fetch [A11yCommand] already drives,
  * because each preview's accessibility nodes are what a finding points at; then it hands the
  * renders, their sha256 and their nodes to the `:design-guidelines` engine, which batches them,
- * asks the model, fetches nothing more (a follow-up render needs a live session, not wired here
- * yet), and caches each result by render hash under `build/compose-previews/guidelines/`. The
- * results land in `build/compose-previews/guidelines.json`.
+ * asks the model, fetches what a follow-up round asks for ([CliEvidenceHost]: nodes, source, and
+ * renders at other settings through the module's render daemon), and caches each result by render
+ * hash under `build/compose-previews/guidelines/`. The results land in
+ * `build/compose-previews/guidelines.json`. Each preview's source goes to the model with its
+ * render, so rules about code are judged on the code.
  *
  * `--previews-json` / `--renders-dir` run the same engine over handoff renders with no Gradle,
  * which is what a CI publish job holds.
@@ -54,6 +57,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val surfaceOverride: String? = args.flagValue("--surface")
   private val previewsJson: String? = args.flagValue("--previews-json")
   private val rendersDir: String? = args.flagValue("--renders-dir")
+  private val a11yJson: String? = args.flagValue("--a11y-json")
+  private val sourceRoot: String? = args.flagValue("--source-root")
 
   override fun run() {
     val key = System.getenv(KEY_ENV)?.trim()?.takeIf { it.isNotEmpty() }
@@ -111,17 +116,36 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         }
         continue
       }
-      val nodes = readNodes(buildDir)
+      val nodes = readNodes(buildDir.resolve("accessibility.json"))
       val renders = moduleResults.associate { it.id to renderFile(it, projectDir) }
-      val subjects = moduleResults.mapNotNull { result ->
-        subjectFor(result, renders[result.id], nodes[result.id])
+      val manifest = manifests.firstOrNull { it.first.gradlePath == module }
+      val infos = manifest?.second?.previews.orEmpty().associateBy { it.id }
+      val sources = { id: String ->
+        infos[id]?.let { info ->
+          val file = info.sourceFile ?: return@let null
+          val line = info.bodyLine ?: return@let null
+          PreviewSourceReader.read(projectDir.resolve(file), line)
+        }
       }
+      val subjects = moduleResults.mapNotNull { result ->
+        subjectFor(result, renders[result.id], nodes[result.id], sources(result.id))
+      }
+      // What a follow-up round may ask for: this run's nodes and sources, and renders at other
+      // settings through the module's render daemon.
+      val host =
+        CliEvidenceHost(
+          projectDir = projectDir,
+          moduleName = manifest?.second?.module ?: module,
+          nodes = nodes,
+          sources = sources,
+        )
       val run =
         engine(
             client,
             buildDir,
             guidelines,
             guidelinesLocation ?: "${buildDir.path}/" + CatalogGuidelinesV1.FILE_NAME,
+            host,
           )
           .run(guidelines, subjects)
       writeReport(
@@ -149,16 +173,19 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     )
   }
 
-  /** The engine over [client], caching under [buildDir] and fetching nothing a live run would. */
+  /**
+   * The engine over [client], caching under [buildDir], fetching follow-up evidence from [host].
+   */
   private fun engine(
-    client: OpenRouterClient,
+    client: GuidelineModel,
     buildDir: File,
     guidelines: CatalogGuidelinesV1,
     rulesSource: String,
+    host: GuidelineEvidenceHost = GuidelineEvidenceHost.None,
   ): GuidelineEngine =
     GuidelineEngine(
         model = client,
-        host = GuidelineEvidenceHost.None,
+        host = host,
         cache = GuidelineResultCache(buildDir.resolve("guidelines")),
         options =
           GuidelineRunOptions(
@@ -173,12 +200,19 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       )
       .also { if (guidelines.rules.isEmpty()) System.err.println("guidelines: no rules to ask") }
 
-  /** Handoff mode: renders in a directory, ids optionally listed; no Gradle, no daemon. */
+  /**
+   * Handoff mode: no Gradle, no daemon — what a CI publish job holds. Renders come from
+   * `--renders-dir` (every PNG in it) or from `--previews-json`: either a flat list of ids, or the
+   * module's real `previews.json`, whose captures name each render and whose `sourceFile` and
+   * `bodyLine` give each preview's source under `--source-root` (the module directory).
+   * `--a11y-json` (the a11y pipeline's `accessibility.json`) gives each preview's nodes, so
+   * findings cite node ids and `--annotate` can outline them. A follow-up round can ask for nothing
+   * more: the host lists no fetchable evidence.
+   */
   private fun runHandoff(client: OpenRouterClient): Int {
-    val dir = File(rendersDir ?: ".")
     val location = guidelinesLocation
     if (location == null) {
-      System.err.println("guidelines: --renders-dir needs --guidelines <file-or-url>")
+      System.err.println("guidelines: handoff mode needs --guidelines <file-or-url>")
       return 2
     }
     val guidelines =
@@ -189,46 +223,25 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             return 2
           }
       }
-    val ids = previewsJson?.let { path ->
-      Json.parseToJsonElement(File(path).readText()).let { element ->
-        (element as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
-          (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-            ?: ((it as? kotlinx.serialization.json.JsonObject)?.get("id")
-                as? kotlinx.serialization.json.JsonPrimitive)
-              ?.content
-        }
-      }
-    }
-    val pngs = dir.listFiles { file -> file.extension == "png" }.orEmpty().sortedBy { it.name }
-    val subjects =
-      pngs
-        .filter { ids == null || it.nameWithoutExtension in ids }
-        .map { file ->
-          val bytes = file.readBytes()
-          PreviewSubject(
-            previewId = file.nameWithoutExtension,
-            surface = surfaceOverride ?: GuidelineSurfaces.COMPONENT,
-            renderHash = sha256(bytes),
-            pictures = listOf(SubjectPicture(KIND_DEVICE, bytes, 0, 0)),
-          )
-        }
-    val run = engine(client, dir, guidelines, location).run(guidelines, subjects)
-    dir
+    val inputs =
+      HandoffInputs.read(
+        previewsJson = previewsJson?.let(::File),
+        rendersDir = rendersDir?.let(::File),
+        a11yJson = a11yJson?.let(::File),
+        sourceRoot = sourceRoot?.let(::File),
+        surfaceOverride = surfaceOverride,
+      )
+    val outDir = File(rendersDir ?: previewsJson?.let { File(it).absoluteFile.parent } ?: ".")
+    val run = engine(client, outDir, guidelines, location).run(guidelines, inputs.subjects)
+    val report = ModuleGuidelines("handoff", guidelines.catalog, model, run.results)
+    outDir
       .resolve("guidelines.json")
-      .writeText(
-        REPORT_JSON.encodeToString(
-          ModuleGuidelines.serializer(),
-          ModuleGuidelines("handoff", guidelines.catalog, model, run.results),
-        )
-      )
-    if (jsonOutput) {
-      println(
-        REPORT_JSON.encodeToString(
-          ModuleGuidelines.serializer(),
-          ModuleGuidelines("handoff", guidelines.catalog, model, run.results),
-        )
-      )
-    } else GuidelinesReportRenderer.print("handoff", guidelines, run)
+      .writeText(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
+    if (annotate) {
+      annotateAll(run.results, inputs.subjects, inputs.nodes, inputs.renders)
+    }
+    if (jsonOutput) println(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
+    else GuidelinesReportRenderer.print("handoff", guidelines, run)
     return if (tripped(run.results, guidelines)) 1 else 0
   }
 
@@ -241,6 +254,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     result: PreviewResult,
     png: File?,
     nodes: List<AccessibilityNode>?,
+    source: String?,
   ): PreviewSubject? {
     png ?: return null
     val bytes = png.readBytes()
@@ -262,11 +276,11 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           )
         ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
+      source = source,
     )
   }
 
-  private fun readNodes(buildDir: File): Map<String, List<AccessibilityNode>> {
-    val file = buildDir.resolve("accessibility.json")
+  private fun readNodes(file: File): Map<String, List<AccessibilityNode>> {
     if (!file.isFile) return emptyMap()
     return runCatching {
         REPORT_JSON.decodeFromString(AccessibilityReport.serializer(), file.readText())

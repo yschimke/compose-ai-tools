@@ -251,6 +251,32 @@ inputs:
       Pair with `cli-version: 'none'` if the CLI isn't needed at all;
       a11y / notifications pipelines still require it.
     default: 'false'
+  guidelines:
+    description: >
+      When `true`, check the PR's changed and new previews against their
+      catalog's design guidelines (`ui-builder.guidelines.json`) with a model
+      through OpenRouter, and post a sticky `<!-- guidelines-report -->`
+      comment. The render phase stages each changed preview's render, source,
+      accessibility nodes and the catalog's rules into the handoff; the check
+      itself runs where `openrouter-key` is set (the publish phase, or a
+      single-job run). Off by default: it spends the key's budget.
+    default: 'false'
+  openrouter-key:
+    description: >
+      OpenRouter API key for the guidelines check. Pass a secret, and only to
+      the phase that holds secrets (`publish` in the split workflow). Empty
+      skips the check with a notice.
+    default: ''
+  guidelines-max-cost:
+    description: >
+      Stop the guidelines check once this many US dollars are spent; previews
+      left are reported unchecked.
+    default: '0.25'
+  guidelines-file:
+    description: >
+      Path to a `ui-builder.guidelines.json` to use for every module, instead
+      of each module's own `build/compose-previews/ui-builder.guidelines.json`.
+    default: ''
 
 runs:
   using: 'composite'
@@ -1099,6 +1125,28 @@ runs:
     # the documented upload uses `if-no-files-found: error`, so skipping this
     # step outright would turn an intentional no-op into a red workflow and
     # never reach the `workflow_run` publisher at all.
+    # What the design-guidelines check needs from the PR checkout, for the
+    # changed previews only: renders, source, accessibility nodes and the
+    # catalog's rules. Staged here because the publish job has the key but
+    # neither the PR's source nor its renders.
+    - name: Stage design-guidelines inputs
+      if: steps.resolve.outputs.phase != 'publish' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment')
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GUIDELINES_FILE: ${{ inputs.guidelines-file }}
+      run: |
+        set -euo pipefail
+        rm -rf _guidelines
+        if [ ! -s _changed_previews.json ]; then
+          echo "guidelines: no changed previews to check."
+          exit 0
+        fi
+        args=(--changed _changed_previews.json --out _guidelines --root .)
+        [ -n "$GUIDELINES_FILE" ] && args+=(--guidelines-file "$GUIDELINES_FILE")
+        staged=$(python3 "$ACTION_PATH/../lib/guidelines-stage.py" "${args[@]}")
+        echo "guidelines: staged $staged changed preview(s)."
+
     - name: Stage fork-safe handoff
       if: steps.resolve.outputs.phase == 'render'
       shell: bash
@@ -1138,7 +1186,7 @@ runs:
                  _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
                  _a11y_renders _a11y_comment.md \
                  _notification_renders _notification_comment.md \
-                 _notification_baseline_findings.json; do
+                 _notification_baseline_findings.json _guidelines; do
           [ -e "$f" ] || continue
           cp -a "$f" "$HANDOFF_DIR/$f"
         done
@@ -1590,6 +1638,64 @@ runs:
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- a11y-report -->"
         export BODY_FILE="_a11y_comment.md"
+        bash "$ACTION_PATH/lib/post-comment.sh"
+
+    # The CLI is only installed in the render phase; the publish job, which
+    # holds the key, installs it here when there is something to check.
+    - name: Install CLI for the design-guidelines check
+      if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && hashFiles('_guidelines/**/previews.json') != '')
+      # The released action intentionally composes the matching released helper.
+      uses: yschimke/compose-ai-tools/.github/actions/install@v2.37.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      with:
+        version: ${{ (inputs.cli-version == 'auto' || inputs.cli-version == 'source' || inputs.cli-version == 'none') && 'latest' || inputs.cli-version }}
+        catalog-path: ${{ inputs.catalog-path }}
+        catalog-key: ${{ inputs.catalog-key }}
+
+    - name: Check design guidelines
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.openrouter-key }}
+        MAX_COST: ${{ inputs.guidelines-max-cost }}
+      run: |
+        set -uo pipefail
+        if [ -z "${COMPOSE_PREVIEW_OPENROUTER_KEY:-}" ]; then
+          echo "::notice::compose-preview/apply: guidelines enabled but no openrouter-key in this phase; skipping the check."
+          exit 0
+        fi
+        if ! command -v compose-preview >/dev/null; then
+          echo "::warning::compose-preview/apply: no CLI with the guidelines command; skipping."
+          exit 0
+        fi
+        for module_dir in _guidelines/*/; do
+          [ -f "$module_dir/previews.json" ] || continue
+          # Handoff mode: no Gradle. Findings cite the staged accessibility nodes;
+          # --annotate writes <render>.guidelines.png beside each render.
+          compose-preview guidelines \
+            --previews-json "$module_dir/previews.json" \
+            --a11y-json "$module_dir/accessibility.json" \
+            --source-root "$module_dir/src" \
+            --guidelines "$module_dir/ui-builder.guidelines.json" \
+            --max-cost "$MAX_COST" --annotate \
+            || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
+        done
+        python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md
+
+    - name: Upsert guidelines PR comment
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') != '')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        export MARKER="<!-- guidelines-report -->"
+        export BODY_FILE="_guidelines_comment.md"
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     - name: Push notifications baseline / PR renders

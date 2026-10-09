@@ -199,7 +199,8 @@ private fun printFullUsage() {
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
                        --max-cost, --rounds, --no-triage, --annotate, --guidelines <file|url>,
-                       --surface, --previews-json / --renders-dir (no Gradle), --json, --fail-on
+                       --surface, --previews-json / --renders-dir / --a11y-json /
+                       --source-root (no Gradle), --json, --fail-on
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what
                        changed semantically — a cheap, pixel-free regression signal:
                        `compose-preview diff-semantics <base> <head> [--json] [--fail-on-change]`

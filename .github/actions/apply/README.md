@@ -729,6 +729,28 @@ Two caveats worth knowing:
   cached. Pinning faces by content hash — so a substitution is a hard failure
   rather than a silent metric change — needs a lockfile and is not part of this.
 
+## Design guidelines check
+
+Off by default. With `guidelines: true` the action checks the PR's **changed and new** previews
+against their catalog's design guidelines (`ui-builder.guidelines.json`, published by the catalog
+beside `ui-builder.json`) with a model through OpenRouter, and posts a sticky
+`<!-- guidelines-report -->` comment: each finding with its rule, reason, confidence, the
+accessibility nodes it names and a link to the developer.android.com guide it comes from.
+
+| Input | Default | |
+| --- | --- | --- |
+| `guidelines` | `false` | Turn the check on. |
+| `openrouter-key` | `''` | OpenRouter key. Empty skips the check with a notice. |
+| `guidelines-max-cost` | `0.25` | Dollars to spend at most; what is left is reported unchecked. |
+| `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
+
+In the split (fork-safe) workflow, the render job stages each changed preview's render, source,
+accessibility nodes and the catalog's rules into the handoff (`_guidelines/`); pass
+`openrouter-key` **only to the publish job**, which runs `compose-preview guidelines` in handoff
+mode over them. A single-job run does both. At the default model a screen costs about
+$0.003–0.007, and previews are judged in batches. See
+[docs/design/DESIGN_GUIDELINES.md](../../../docs/design/DESIGN_GUIDELINES.md).
+
 ## Re-run checkbox
 
 Set `rerun-checkbox: true` to put an unchecked **Re-run preview diff** item

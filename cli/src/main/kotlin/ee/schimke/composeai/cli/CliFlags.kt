@@ -37,6 +37,8 @@ internal object CliFlags {
       "--surface",
       "--previews-json",
       "--renders-dir",
+      "--a11y-json",
+      "--source-root",
       "--id",
       "--id-file",
       "--exclude-preview-id",

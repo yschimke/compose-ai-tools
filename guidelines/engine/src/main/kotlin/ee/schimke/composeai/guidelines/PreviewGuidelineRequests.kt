@@ -91,6 +91,12 @@ public data class GuidelineBudget(
   val maxPictures: Int = 12,
   val maxInputTokens: Int = 60_000,
   val maxSubjects: Int = 16,
+  /**
+   * How much source one batch may carry, in characters. Source is the first thing given up under
+   * pressure: a subject whose source would pass this, or whose source alone would not fit the
+   * request, goes in without it (truncated where a part fits) rather than losing a picture.
+   */
+  val maxSourceChars: Int = 32_000,
 )
 
 /** A batch: subjects sharing a surface, so they share one rule list. */
@@ -108,7 +114,10 @@ public object PreviewGuidelineRequests {
   public const val SYSTEM_PROMPT: String =
     "You review rendered Android UI previews against design guidelines. You are given several " +
       "subjects (rendered @Preview functions), each with its pictures and, when available, its " +
-      "accessibility nodes. Judge EACH subject separately against every rule listed for it: " +
+      "accessibility nodes and its Kotlin source. Use the source for rules about code — fixed " +
+      "sizes and padding, hard-coded colours and text sizes, missing content descriptions, which " +
+      "component or variant is used — and the pictures for what is drawn. Judge EACH subject " +
+      "separately against every rule listed for it: " +
       "verdict `pass` when the rule's yes/no `check` is answered yes, `fail` when it is no, " +
       "`not_applicable` when the rule does not apply to that subject. When you cannot decide " +
       "from what is given but more evidence would decide it, answer `needs_evidence` and list " +
@@ -141,7 +150,18 @@ public object PreviewGuidelineRequests {
         var current = mutableListOf<PreviewSubject>()
         var pictures = 0
         var tokens = rulesTokens + SYSTEM_PROMPT.length / 4
-        for (subject in group) {
+        var sourceChars = 0
+        val fixedTokens = rulesTokens + SYSTEM_PROMPT.length / 4
+        for (original in group) {
+          var subject = original
+          // A subject whose source alone would not fit a request keeps only what fits.
+          val withoutSource = estimateTokens(subject.copy(source = null))
+          subject.source?.let { source ->
+            val room = (budget.maxInputTokens - fixedTokens - withoutSource) * 4
+            if (source.length.coerceAtMost(MAX_SOURCE_CHARS) > room) {
+              subject = subject.copy(source = source.take(room.coerceAtLeast(0)).ifEmpty { null })
+            }
+          }
           val subjectTokens = estimateTokens(subject)
           val subjectPictures = subject.pictures.size
           val full =
@@ -153,11 +173,19 @@ public object PreviewGuidelineRequests {
             out += GuidelineBatch(surface, current)
             current = mutableListOf()
             pictures = 0
-            tokens = rulesTokens + SYSTEM_PROMPT.length / 4
+            tokens = fixedTokens
+            sourceChars = 0
           }
+          // The batch's source allowance: past it, a subject keeps what is left, or none.
+          subject.source?.let { source ->
+            val left = budget.maxSourceChars - sourceChars
+            val kept = source.take(left.coerceAtLeast(0).coerceAtMost(MAX_SOURCE_CHARS))
+            subject = subject.copy(source = kept.ifEmpty { null })
+          }
+          sourceChars += subject.source?.length ?: 0
           current += subject
           pictures += subjectPictures
-          tokens += subjectTokens
+          tokens += estimateTokens(subject)
         }
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)
         out
@@ -228,7 +256,21 @@ public object PreviewGuidelineRequests {
             )
             .apply { subjectId = subject.previewId }
             .build()
-        }
+        } +
+        batch.subjects
+          .filter { it.source != null }
+          .map { subject ->
+            GuidelineEvidenceV1.Builder(
+                GuidelineEvidenceNeedV1.KIND_SOURCE,
+                SOURCE_MEDIA_TYPE,
+                subject.source!!.take(MAX_SOURCE_CHARS),
+              )
+              .apply {
+                subjectId = subject.previewId
+                description = "The @Preview function's Kotlin source"
+              }
+              .build()
+          }
 
     val userText = buildString {
       append("Platform: ").append(guidelines.platform).append('\n')
@@ -449,5 +491,9 @@ public object PreviewGuidelineRequests {
   public const val PICTURE_TOKENS: Int = 1_200
 
   private const val MAX_NODES = 80
-  private const val MAX_SOURCE_CHARS = 8_000
+
+  /** The most source one subject carries, in characters. */
+  public const val MAX_SOURCE_CHARS: Int = 8_000
+
+  public const val SOURCE_MEDIA_TYPE: String = "text/x-kotlin"
 }

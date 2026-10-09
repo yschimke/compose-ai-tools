@@ -49,7 +49,14 @@ holds comes back as a region (a fraction box on a numbered picture).
 
 ## Evidence loop
 
-The first pass carries what is cheap: one render and the nodes the `a11y` pass already produced.
+The first pass carries what is cheap: one render, the nodes the `a11y` pass already produced, and
+the preview's **source** — the `@Preview` function from `previews.json`'s `bodyLine` to the end of
+its body (`PreviewSourceReader`, capped at 200 lines / 8k chars), sent as a `source` evidence item
+and in the prompt. Pictures alone miss code-level problems: on a live run the XPeng screen's render
+judged clean, while its fixed 36dp tap targets, two filled buttons, hard-coded type and colours
+and unlabelled icon buttons are facts of the code. Each batch carries at most
+`GuidelineBudget.maxSourceChars` of source (32k): under pressure, source is given up before a
+picture.
 
 1. **Triage** (optional, `--no-triage` to skip). Jev (`typesafe/jev-1.13`, text only, typed
    probabilities, ~$0.0003) is asked per subject whether a dark-theme render, a large-font render or
@@ -60,9 +67,27 @@ The first pass carries what is cheap: one render and the nodes the `a11y` pass a
 3. **Rounds 1..n** (`--rounds`, default 1). Only those subjects, only those rules, with the evidence
    gathered. A rule still undecided is reported **unchecked**, never passed.
 
-The CLI's host lists nothing fetchable yet (a follow-up render needs the live session, which the
-`guidelines` command does not keep open after the `a11y` pass), so today triage is skipped and an
-undecided rule is unchecked; wiring `MatrixCell` re-renders through the session is the next step.
+In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y-hierarchy`, `source` and
+`render`: a render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn
+through the module's render daemon, one short session per follow-up render — they are few, so that
+is simpler than a session held for the run. A layout-direction-only need has no cell and is left
+undecided. Triage runs. In handoff mode the host supplies nothing more, so the request lists no
+fetchable evidence and the model is not invited to ask.
+
+## Handoff mode (CI)
+
+No Gradle, no daemon:
+
+```
+compose-preview guidelines --previews-json <module>/previews.json \
+  --a11y-json <module>/accessibility.json --source-root <module-dir> \
+  --guidelines <ui-builder.guidelines.json> [--annotate] [--max-cost 0.25]
+```
+
+`--previews-json` takes the module's real `previews.json` (each capture names its render, each
+preview its `sourceFile` and `bodyLine`) or a flat id list narrowing `--renders-dir`. Paths in it
+are confined to the staged tree: the file comes from the PR, possibly a fork, and a `../` must not
+make the publish job read a runner file and send it to a model.
 
 ## Caching and cost
 
@@ -93,13 +118,12 @@ publish phase on fork PRs; see Next steps).
 
 ## Next steps
 
-1. **Follow-up evidence in the CLI.** Keep the render session open after the `a11y` pass and
-   implement `GuidelineEvidenceHost.render` through `MatrixCell`/`PreviewOverrides`, so triage and
-   `needs_evidence` rounds can draw dark, large-font and device renders.
-2. **Preview-diff pipeline.** A `guidelines` pipeline in `.github/actions/apply` beside `a11y`,
-   run on the changed ids from `compare-previews.py`, posting a `<!-- guidelines-report -->`
-   comment. The OpenRouter key exists only in the publish phase, which runs this command in handoff
-   mode (`--renders-dir`) over the renders the render phase handed over.
+1. **Annotated images in the PR comment.** The `apply` pipeline (below) writes
+   `<render>.guidelines.png` but does not push them yet; `guidelines-report.py` embeds them once
+   they are pushed to a branch and `--image-repo`/`--image-ref` name that commit.
+2. **Done: preview-diff pipeline** — see the `apply` action's `guidelines` input: the render phase
+   stages changed previews (`guidelines-stage.py`: renders, source, nodes, rules) into the handoff;
+   the phase holding `openrouter-key` runs handoff mode and posts `<!-- guidelines-report -->`.
 3. **MCP tools** in compose-preview-server: `check_preview_guidelines` (engine over the live daemon,
    which can fetch every evidence kind) and a keyless `preview_guidelines_prompt`, consuming this
    module's published coordinate.
