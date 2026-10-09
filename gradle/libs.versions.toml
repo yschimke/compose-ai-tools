@@ -452,7 +452,12 @@ composeai-preview-daemon = "3.15.0"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "2.2.1"
+# 2.4.0: since 2.3.0 the bundle's `fonts/` are variable faces, and the CMP player draws a variable
+# file listed once per weight at each weight (rc-players#597; 2.2.1 drew every row at the file's
+# default instance), so `rc-render-jvm` and the Wasm bundle beside it agree again. Also draw-list
+# sounds, per-frame redraw of clock-driven canvases, StateLayout enter/exit and shared elements
+# matched by their AnimationSpec id.
+rcplayers = "2.4.0"
 
 [libraries]
 
