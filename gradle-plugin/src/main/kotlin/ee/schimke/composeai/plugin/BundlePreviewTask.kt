@@ -781,7 +781,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         dataExtensionFiles = dataExtensionZipFiles,
         overrideFiles = overrideFiles,
         catalogTokenFiles = catalogTokenEntries,
-        guidelineResults = guidelineResultsBytes(),
+        guidelineResults = guidelineResultsBytes(bundleIds),
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -2084,8 +2084,8 @@ abstract class BundlePreviewTask : DefaultTask() {
    * The catalog's `ui-builder.guidelines.json`, from beside the policy the catalog was generated
    * from, when it is well formed; null otherwise, with a warning naming what is wrong.
    */
-  private fun guidelineResultsBytes(): ByteArray? =
-    guidelineResultsEntry(guidelineResultsFiles.files) { file ->
+  private fun guidelineResultsBytes(bundleIds: Map<String, String>): ByteArray? =
+    guidelineResultsEntry(guidelineResultsFiles.files, bundleIds) { file ->
       logger.warn("compose-preview: ${file.name} is not a guidelines report; not bundled")
     }
 
@@ -2257,19 +2257,48 @@ internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
  */
 internal fun guidelineResultsEntry(
   candidates: Iterable<File>,
+  bundleIds: Map<String, String>? = null,
   onUnreadable: (File) -> Unit = {},
 ): ByteArray? {
   val file = candidates.firstOrNull { it.isFile } ?: return null
   val bytes = file.readBytes()
-  val readable = runCatching {
-    val root = Json.parseToJsonElement(bytes.toString(Charsets.UTF_8))
-    (root as? kotlinx.serialization.json.JsonObject)?.get("results") is
-      kotlinx.serialization.json.JsonArray
-  }
-    .getOrDefault(false)
-  if (!readable) {
+  val root =
+    runCatching { Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)) }.getOrNull()
+      as? kotlinx.serialization.json.JsonObject
+  val results = root?.get("results") as? kotlinx.serialization.json.JsonArray
+  if (root == null || results == null) {
     onUnreadable(file)
     return null
   }
-  return bytes
+  if (bundleIds == null) return bytes
+  // Keyed as everything else inside the bundle is: the CLI writes raw preview ids, while a host
+  // looks results up by the bundle id ([assignBundleEntryIds] sanitises and de-duplicates them).
+  // A result for a preview this bundle does not carry is dropped.
+  val remapped = results.mapNotNull { element ->
+    val result = element as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+    val raw =
+      (result["previewId"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        ?: return@mapNotNull null
+    val id = bundleIds[raw] ?: return@mapNotNull null
+    kotlinx.serialization.json.JsonObject(
+      result.mapValues { (key, value) ->
+        when {
+          key == "previewId" -> kotlinx.serialization.json.JsonPrimitive(id)
+          key == "record" && value is kotlinx.serialization.json.JsonObject ->
+            kotlinx.serialization.json.JsonObject(
+              value.mapValues { (k, v) ->
+                if (k == "previewId") kotlinx.serialization.json.JsonPrimitive(id) else v
+              }
+            )
+          else -> value
+        }
+      }
+    )
+  }
+  val rewritten =
+    kotlinx.serialization.json.JsonObject(
+      root + ("results" to kotlinx.serialization.json.JsonArray(remapped))
+    )
+  return Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), rewritten)
+    .toByteArray(Charsets.UTF_8)
 }

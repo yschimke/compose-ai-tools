@@ -173,8 +173,21 @@ public class GuidelineEngine(
             .filter { it.subjectId != null && it.subjectId != from && it.subjectId in inBatch }
             .forEach { region ->
               val owner = region.subjectId!!
+              val existing = verdicts[owner]?.get(reported.ruleId)
+              // A rule the owner was never asked (another surface or profile) does not become a
+              // finding on it: the region stays with the verdict that named it.
+              val ownerSubject = target.subjects.firstOrNull { it.previewId == owner }
+              val applies =
+                ownerSubject != null &&
+                  guidelines
+                    .subjectRules(
+                      ownerSubject.surface,
+                      ownerSubject.profile,
+                      ownerSubject.pictures.isNotEmpty(),
+                    )
+                    .any { it.id == reported.ruleId }
+              if (existing == null && !applies) return@forEach
               val mine = verdicts.getOrPut(owner) { mutableMapOf() }
-              val existing = mine[reported.ruleId]
               // The owner's own failure gains the region; a preview the model did not judge on
               // that rule gets the finding where it was seen. One the model passed keeps its
               // verdict, and the region stays with the verdict that named it, undrawn.
@@ -259,9 +272,10 @@ public class GuidelineEngine(
             unchecked = unchecked,
           )
         results += result
-        // Keyed on the subject as it arrived: triage and follow-up rounds attach evidence the next
-        // run's lookup will not have, so a key over the augmented subject would never be found.
-        val arrived = batch0.subjects.firstOrNull { it.previewId == subject.previewId } ?: subject
+        // Keyed on the subject as the caller handed it in: batching may truncate its source to fit
+        // the budget, and triage and follow-up rounds attach evidence, none of which the next
+        // run's lookup (over the caller's subject) will have.
+        val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
         cache?.put(result, arrived, guidelines, options.model)
       }
     }

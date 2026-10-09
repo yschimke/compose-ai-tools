@@ -9,7 +9,10 @@ preview (``_changed_previews.json`` from ``compare-previews.py copy-changed``), 
     <out>/<module-key>/previews.json             the module manifest, narrowed to those previews,
                                                  with each capture's render rewritten into renders/
     <out>/<module-key>/renders/<name>.png        their renders
-    <out>/<module-key>/src/<sourceFile>          their source files (the CLI extracts each function)
+    <out>/<module-key>/src/<sourceFile>          their source files (the CLI extracts each function),
+                                                 and the module files declaring the composables those
+                                                 files call, so a wrapper defined elsewhere in the
+                                                 module reaches the CLI's source index (bounded)
     <out>/<module-key>/accessibility.json        their accessibility nodes, when the a11y run made them
     <out>/<module-key>/ui-builder.guidelines.json the catalog's guidelines
 
@@ -37,6 +40,67 @@ from pathlib import Path
 
 GUIDELINES_FILE = "ui-builder.guidelines.json"
 SKIP_DIRS = {"node_modules", ".git", ".gradle"}
+# Source scans also skip build outputs, which hold generated copies rather than the module's code.
+SOURCE_SKIP_DIRS = SKIP_DIRS | {"build"}
+
+# Calls that may name a module composable: a capitalised name followed by `(` or `{`.
+CALL = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\s*[({]")
+DECLARATION = re.compile(r"\bfun\s+(?:<[^>]*>\s*)?([A-Z][A-Za-z0-9_]*)\s*\(")
+# Bounds on the callee files staged per module, so a fork cannot make the handoff large.
+MAX_CALLEE_FILES = 40
+MAX_CALLEE_BYTES = 512 * 1024
+
+
+def module_declarations(module_dir: Path) -> dict[str, list[Path]]:
+    """Composable-looking `fun Name(` declarations in the module's Kotlin sources, by name, as the
+    CLI's `SourceIndex` finds them."""
+    found: dict[str, list[Path]] = {}
+    src = module_dir / "src"
+    if not src.is_dir():
+        return found
+    for path in sorted(src.rglob("*.kt")):
+        if any(part in SOURCE_SKIP_DIRS for part in path.parts) or path.is_symlink():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for name in DECLARATION.findall(text):
+            found.setdefault(name, []).append(path)
+    return found
+
+
+def stage_callees(module_dir: Path, sources: list[Path], target: Path) -> int:
+    """Copies, under `target/src/`, the module files declaring composables that `sources` call
+    (one level), within MAX_CALLEE_FILES and MAX_CALLEE_BYTES. Returns the number copied."""
+    if not sources:
+        return 0
+    declarations = module_declarations(module_dir)
+    wanted: list[Path] = []
+    for source in sources:
+        try:
+            text = source.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for name in dict.fromkeys(CALL.findall(text)):
+            for path in declarations.get(name, []):
+                if path not in wanted and path not in sources:
+                    wanted.append(path)
+    copied = 0
+    budget = MAX_CALLEE_BYTES
+    for path in wanted[:MAX_CALLEE_FILES]:
+        size = path.stat().st_size
+        if size > budget:
+            continue
+        relative = path.relative_to(module_dir)
+        dest = target / "src" / relative
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, dest)
+        budget -= size
+        copied += 1
+    return copied
 
 
 def find_manifests(root: Path) -> list[Path]:
@@ -138,6 +202,7 @@ def stage(
         shutil.copyfile(rules, target / GUIDELINES_FILE)
 
         kept = []
+        staged_sources: list[Path] = []
         for preview in selected:
             captures = []
             for capture in preview.get("captures", []):
@@ -157,8 +222,11 @@ def stage(
                 dest = target / "src" / source_file
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(module_dir / source_file, dest)
+                if module_dir / source_file not in staged_sources:
+                    staged_sources.append(module_dir / source_file)
             kept.append({**preview, "captures": captures})
             staged += 1
+        stage_callees(module_dir, staged_sources, target)
         (target / "previews.json").write_text(
             json.dumps({**manifest, "previews": kept}, indent=2) + "\n", encoding="utf-8"
         )

@@ -1150,7 +1150,14 @@ runs:
         if [ -n "$pr" ]; then
           gh api --paginate "repos/$REPO/pulls/$pr/files" --jq '.[].filename' \
             > _pr_changed_files.txt 2>/dev/null \
-            || { echo "guidelines: could not list the PR's changed files; checking visual changes only."; : > _pr_changed_files.txt; }
+            || {
+              echo "guidelines: could not list the PR's changed files; checking visual changes only."
+              : > _pr_changed_files.txt
+              # Recorded so the publish job never reads "nothing staged" as "nothing to check" and
+              # resolves a findings comment that no model run has looked at again.
+              mkdir -p _guidelines
+              : > _guidelines/_lookup_failed
+            }
         fi
         if [ ! -s _changed_previews.json ] && [ ! -s _pr_changed_files.txt ]; then
           echo "guidelines: no changed previews to check."
@@ -1717,7 +1724,9 @@ runs:
     # a comment that already exists, and only when the check could run (the key is here): without
     # it, the earlier findings were never re-checked, so they are not resolved.
     - name: Resolve guidelines PR comment
-      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') == '')
+      # Not when the render phase could not list the PR's changed files: a source-only change may
+      # then have staged nothing, which is not the same as the revision needing no check.
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') == '' && hashFiles('_guidelines/_lookup_failed') == '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}

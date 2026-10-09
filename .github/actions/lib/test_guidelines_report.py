@@ -200,6 +200,17 @@ class StageTest(unittest.TestCase):
         (previews / "previews.json").write_text(json.dumps({"previews": [{"id": "a"}]}))
         self.assertEqual(gs.stage(root, {"a"}, root / "_g", None), 0)
 
+    def test_a_wrapper_called_from_another_file_is_staged_with_the_preview(self) -> None:
+        root = self._two_previews()
+        module = root / "catalog"
+        (module / "src" / "Go.kt").write_text("fun Go() = WearScreen { Text(\"go\") }\n")
+        (module / "src" / "Frame.kt").write_text("@Composable\nfun WearScreen(content: () -> Unit) {}\n")
+        (module / "src" / "Unrelated.kt").write_text("fun Other() {}\n")
+        out = root / "_guidelines"
+        gs.stage(root, {"x.Go"}, out, None)
+        staged = sorted(p.name for p in (out / "catalog" / "src").rglob("*.kt"))
+        self.assertEqual(staged, ["Frame.kt", "Go.kt"])
+
     def test_a_module_at_the_scan_root_gets_its_own_directory(self) -> None:
         root = Path(tempfile.mkdtemp())
         self.assertEqual(gs.module_key(root, root), "root")

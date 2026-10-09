@@ -407,6 +407,46 @@ class GuidelineEngineTest {
     assertThat(a.failures().single { it.ruleId == "touch" }.regions).isEmpty()
   }
 
+  @Test
+  fun `a subject whose source was cut to fit the batch is still answered from the cache next run`() {
+    val dir = Files.createTempDirectory("guidelines-cache-cut").toFile()
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    val options =
+      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSourceChars = 100))
+    val long = listOf(subject("a").copy(source = "x".repeat(600)))
+    GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+      .run(guidelines, long)
+    val second =
+      GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+        .run(guidelines, long)
+    assertThat(model.requests).hasSize(1)
+    assertThat(second.results.single().fromCache).isTrue()
+    dir.deleteRecursively()
+  }
+
+  @Test
+  fun `a region does not become a finding on a preview the rule was never asked of`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"v7","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Not v7.",
+         "needs":[],"regions":[{"picture":2,"x":0.1,"y":0.2,"width":0.3,"height":0.4,"label":null}]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(
+          guidelines,
+          listOf(subject("a").copy(profile = "launcher-widgets-v7"), subject("b")),
+        )
+    val b = run.results.single { it.previewId == "b" }
+    assertThat(b.failures().map { it.ruleId }).doesNotContain("v7")
+    val a = run.results.single { it.previewId == "a" }
+    assertThat(a.failures().single { it.ruleId == "v7" }.regions).hasSize(1)
+  }
+
   private inner class FakeModel : GuidelineModel {
     val replies = ArrayDeque<String>()
     val requests = mutableListOf<GuidelineRequestV1>()
