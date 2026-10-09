@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.39.0](https://github.com/yschimke/compose-ai-tools/compare/v2.38.0...v2.39.0) (2026-10-09)
+
+
+### Features
+
+* **guidelines:** wrapper source for previews, and guideline results carried in bundles for hosting ([#5749](https://github.com/yschimke/compose-ai-tools/issues/5749)) ([fe53e51](https://github.com/yschimke/compose-ai-tools/commit/fe53e51210edbf7be7ba32a4020836386c692b40))
+
+
+### Bug Fixes
+
+* **release:** publish a module when source it compiles through srcDir changes ([#5746](https://github.com/yschimke/compose-ai-tools/issues/5746)) ([733ee6a](https://github.com/yschimke/compose-ai-tools/commit/733ee6ae271d29041d6310bbf2dd13f3d7ae4ded))
+
 ## [2.38.0](https://github.com/yschimke/compose-ai-tools/compare/v2.37.0...v2.38.0) (2026-10-09)
 
 
