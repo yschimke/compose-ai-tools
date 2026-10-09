@@ -1975,6 +1975,7 @@ internal object ComposePreviewTasks {
           .map { it.toBooleanStrictOrNull() ?: true }
           .orElse(extension.retargetWearPreviews)
       )
+      componentLibraryPrefixes.set(extension.componentLibraryPrefixes)
       // No per-extension opt-in plumbed here — a11y data products are produced only by the
       // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
       // task writes an empty `dataExtensionReports` map.

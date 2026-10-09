@@ -1,0 +1,179 @@
+package ee.schimke.composeai.guidelines
+
+import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
+import ee.schimke.composeai.guidelines.protocol.GuidelineRoutingV1
+import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+
+/**
+ * Part of a picture a verdict points at, when no single node holds the problem: [x], [y], [width]
+ * and [height] are fractions (0..1) of picture [pictureKind] of subject [subjectId]. A model's
+ * estimate — hosts draw it as a soft highlight, never as an exact outline.
+ *
+ * TODO: switch to `GuidelineRegionV1` once compose-preview-contracts ships it (#157).
+ */
+@Serializable
+public data class GuidelineRegion(
+  val subjectId: String? = null,
+  val ruleId: String,
+  val pictureKind: String? = null,
+  val x: Double,
+  val y: Double,
+  val width: Double,
+  val height: Double,
+  val label: String? = null,
+)
+
+/** Which model answered a request, and how it was chosen, as OpenRouter reports it. */
+public data class GuidelineServed(
+  val model: String? = null,
+  val provider: String? = null,
+  val costUsd: Double? = null,
+  val generationId: String? = null,
+  val routing: GuidelineRoutingV1? = null,
+)
+
+/** A model's answer to one batched request, mapped back to preview ids. */
+public data class GuidelineReply(
+  val verdicts: List<GuidelineVerdictV1>,
+  val regions: List<GuidelineRegion>,
+  val served: GuidelineServed,
+)
+
+/** Reading a chat completion's answer to a [PreviewGuidelineRequests.request]. */
+public object GuidelineResponse {
+  /**
+   * The verdicts in completion [body] for [batch]. Subject aliases (`s1`) become preview ids; a
+   * region's picture number becomes its subject and picture kind, using [pictureOrder] — the
+   * request's pictures as (preview id, kind), in order.
+   */
+  public fun parse(
+    body: String,
+    batch: GuidelineBatch,
+    pictureOrder: List<Pair<String, String>>,
+  ): Result<GuidelineReply> = runCatching {
+    val completion = GUIDELINES_JSON.parseToJsonElement(body).jsonObject
+    val content =
+      ((completion["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
+        ?.get("message")
+        ?.let { it as? JsonObject }
+        ?.get("content")
+        ?.let { (it as? JsonPrimitive)?.contentOrNull }
+        ?: error("no message content in the completion")
+    val start = content.indexOf('{')
+    val end = content.lastIndexOf('}')
+    require(start >= 0 && end > start) { "no JSON object in: ${content.take(200)}" }
+    val root = GUIDELINES_JSON.parseToJsonElement(content.substring(start, end + 1)).jsonObject
+    val byAlias = batch.aliases.entries.associate { (id, alias) -> alias to id }
+    val verdicts = mutableListOf<GuidelineVerdictV1>()
+    val regions = mutableListOf<GuidelineRegion>()
+    (root["verdicts"] as? JsonArray).orEmpty().forEach { element ->
+      val item = element as? JsonObject ?: return@forEach
+      val ruleId = item.text("ruleId") ?: return@forEach
+      val verdict = item.text("verdict") ?: return@forEach
+      val alias = item.text("subjectId")
+      val subjectId = alias?.let { byAlias[it] ?: it.takeIf { id -> id in batch.aliases } }
+      if (alias != null && subjectId == null) return@forEach
+      verdicts +=
+        GuidelineVerdictV1.Builder(ruleId, verdict)
+          .apply {
+            this.subjectId = subjectId
+            confidence = (item["confidence"] as? JsonPrimitive)?.doubleOrNull ?: 0.0
+            nodeIds =
+              (item["nodeIds"] as? JsonArray).orEmpty().mapNotNull {
+                (it as? JsonPrimitive)?.contentOrNull
+              }
+            reason = item.text("reason").orEmpty()
+            needs =
+              (item["needs"] as? JsonArray).orEmpty().mapNotNull { need ->
+                val n = need as? JsonObject ?: return@mapNotNull null
+                val kind = n.text("kind") ?: return@mapNotNull null
+                GuidelineEvidenceNeedV1.Builder(kind)
+                  .apply {
+                    theme = n.text("theme")
+                    fontScale = (n["fontScale"] as? JsonPrimitive)?.doubleOrNull
+                    device = n.text("device")
+                    reason = n.text("reason").orEmpty()
+                  }
+                  .build()
+              }
+          }
+          .build()
+      (item["regions"] as? JsonArray).orEmpty().forEach { region ->
+        val r = region as? JsonObject ?: return@forEach
+        val picture = (r["picture"] as? JsonPrimitive)?.intOrNull
+        val drawnOn = picture?.let { pictureOrder.getOrNull(it - 1) }
+        val box =
+          listOf("x", "y", "width", "height").map {
+            (r[it] as? JsonPrimitive)?.doubleOrNull?.coerceIn(0.0, 1.0)
+          }
+        if (box.any { it == null }) return@forEach
+        regions +=
+          GuidelineRegion(
+            subjectId = drawnOn?.first ?: subjectId,
+            ruleId = ruleId,
+            pictureKind = drawnOn?.second,
+            x = box[0]!!,
+            y = box[1]!!,
+            width = box[2]!!,
+            height = box[3]!!,
+            label = r.text("label"),
+          )
+      }
+    }
+    if (verdicts.isEmpty()) error("the reply held no verdicts")
+    GuidelineReply(verdicts, regions, served(completion))
+  }
+
+  /** The served model, provider, cost, id and routing in a completion body. */
+  public fun served(completion: JsonObject): GuidelineServed {
+    val model = completion.text("model")
+    val routing =
+      ((completion["openrouter_metadata"] as? JsonObject)?.get("pipeline") as? JsonArray)
+        ?.mapNotNull { it as? JsonObject }
+        ?.firstOrNull { it.text("name") == "jev-router" }
+        ?.let { stage ->
+          val data = stage["data"] as? JsonObject ?: return@let null
+          val probability =
+            (data["selection_probabilities"] as? JsonArray)
+              ?.mapNotNull { it as? JsonObject }
+              ?.firstOrNull { candidate ->
+                val id = candidate.text("model")
+                model != null && id != null && (id == model || id.startsWith("$model-"))
+              }
+              ?.let { (it["probability"] as? JsonPrimitive)?.doubleOrNull }
+          GuidelineRoutingV1.Builder("typesafe/jev-router")
+            .apply {
+              version = data.text("version")
+              reason = data.text("reason")
+              this.probability = probability
+              scores =
+                (data["answers"] as? JsonObject)
+                  ?.mapNotNull { (key, value) ->
+                    ((value as? JsonObject)?.get("noul") as? JsonPrimitive)?.doubleOrNull?.let {
+                      key to it
+                    }
+                  }
+                  ?.toMap()
+                  .orEmpty()
+            }
+            .build()
+        }
+    return GuidelineServed(
+      model = model,
+      provider = completion.text("provider"),
+      costUsd = ((completion["usage"] as? JsonObject)?.get("cost") as? JsonPrimitive)?.doubleOrNull,
+      generationId = completion.text("id"),
+      routing = routing,
+    )
+  }
+
+  private fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
+}

@@ -359,6 +359,14 @@ include(":daemon:bta-host-fixture")
 // calls stays in layer 1. The MCP server consumes it as a published coordinate now.
 include(":render-matrix")
 
+// The design-guidelines engine: a catalog's `ui-builder.guidelines.json` asked about batches of
+// rendered @Previews through OpenRouter, with an evidence loop and a render-hash cache. Behaviour
+// over contract types with an outbound HTTP client and no socket of its own, so layer 1; the CLI's
+// `guidelines` command drives it, and the MCP server and the VS Code extension consume it as a
+// published coordinate.
+include(":design-guidelines")
+project(":design-guidelines").projectDir = file("guidelines/engine")
+
 // The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,
 // packed-bundle materialisation and manifest reads, with no web server underneath. Moved here from
 // yschimke/compose-preview-server. docs/build-scripts/SETTINGS.md#render-host

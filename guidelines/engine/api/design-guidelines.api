@@ -1,0 +1,436 @@
+public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoader {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;
+	public final fun load (Ljava/io/File;Ljava/lang/String;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public final fun load (Ljava/lang/String;Ljava/lang/String;Lokhttp3/OkHttpClient;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public static synthetic fun load$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/io/File;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public static synthetic fun load$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/lang/String;Ljava/lang/String;Lokhttp3/OkHttpClient;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public final fun parse (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public static synthetic fun parse$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+}
+
+public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded {
+	public fun <init> (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)V
+	public synthetic fun <init> (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGuidelines ()Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;
+	public final fun getProblem ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoaderKt {
+	public static final fun appliesToProfile (Lee/schimke/composeai/guidelines/protocol/GuidelineRuleV1;Ljava/lang/String;)Z
+	public static final fun appliesToSurface (Lee/schimke/composeai/guidelines/protocol/GuidelineRuleV1;Ljava/lang/String;)Z
+	public static final fun setRules (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Z)Ljava/util/List;
+	public static synthetic fun setRules$default (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;ZILjava/lang/Object;)Ljava/util/List;
+	public static final fun subjectRules (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;Ljava/lang/String;Z)Ljava/util/List;
+	public static synthetic fun subjectRules$default (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineAnnotator {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineAnnotator;
+	public final fun annotate ([BLjava/util/List;Ljava/util/List;Ljava/util/List;)[B
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineBatch {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/guidelines/GuidelineBatch;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineBatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAliases ()Ljava/util/Map;
+	public final fun getSubjects ()Ljava/util/List;
+	public final fun getSurface ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineBudget {
+	public fun <init> ()V
+	public fun <init> (III)V
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineBudget;IIIILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxInputTokens ()I
+	public final fun getMaxPictures ()I
+	public final fun getMaxSubjects ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineEngine {
+	public fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun run (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineEngineKt {
+	public static final fun failures (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;D)Ljava/util/List;
+	public static synthetic fun failures$default (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;DILjava/lang/Object;)Ljava/util/List;
+}
+
+public abstract interface class ee/schimke/composeai/guidelines/GuidelineEvidenceHost {
+	public abstract fun getAvailable ()Ljava/util/List;
+	public fun nodes (Ljava/lang/String;)Ljava/util/List;
+	public fun render (Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
+	public fun source (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineEvidenceHost$DefaultImpls {
+	public static fun nodes (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/util/List;
+	public static fun render (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
+	public static fun source (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineEvidenceHost$None : ee/schimke/composeai/guidelines/GuidelineEvidenceHost {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineEvidenceHost$None;
+	public fun getAvailable ()Ljava/util/List;
+	public fun nodes (Ljava/lang/String;)Ljava/util/List;
+	public fun render (Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
+	public fun source (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/guidelines/GuidelineModel {
+	public abstract fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineModel$DefaultImpls {
+	public static fun decide (Lee/schimke/composeai/guidelines/GuidelineModel;Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineRegion {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineRegion$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;DDDDLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;DDDDLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()D
+	public final fun component5 ()D
+	public final fun component6 ()D
+	public final fun component7 ()D
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;DDDDLjava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRegion;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRegion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;DDDDLjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRegion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()D
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getPictureKind ()Ljava/lang/String;
+	public final fun getRuleId ()Ljava/lang/String;
+	public final fun getSubjectId ()Ljava/lang/String;
+	public final fun getWidth ()D
+	public final fun getX ()D
+	public final fun getY ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/guidelines/GuidelineRegion$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineRegion$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/guidelines/GuidelineRegion;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/guidelines/GuidelineRegion;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineRegion$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineReply {
+	public fun <init> (Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineServed;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lee/schimke/composeai/guidelines/GuidelineServed;
+	public final fun copy (Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineServed;)Lee/schimke/composeai/guidelines/GuidelineReply;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineReply;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineServed;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineReply;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRegions ()Ljava/util/List;
+	public final fun getServed ()Lee/schimke/composeai/guidelines/GuidelineServed;
+	public final fun getVerdicts ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineResponse {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineResponse;
+	public final fun parse-0E7RQCE (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/util/List;)Ljava/lang/Object;
+	public final fun served (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/GuidelineServed;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineResultCache {
+	public fun <init> (Ljava/io/File;)V
+	public final fun get (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;ILjava/lang/String;)V
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public final fun component3 ()I
+	public final fun component4 ()Z
+	public final fun component5 ()D
+	public final fun component6 ()Ljava/lang/Double;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunOptions;Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBudget ()Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public final fun getMaxCostUsd ()Ljava/lang/Double;
+	public final fun getMaxRounds ()I
+	public final fun getModel ()Ljava/lang/String;
+	public final fun getRanBy ()Ljava/lang/String;
+	public final fun getRulesSource ()Ljava/lang/String;
+	public final fun getTriage ()Z
+	public final fun getTriageThreshold ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
+	public fun <init> (Ljava/util/List;DILjava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()D
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;DILjava/util/List;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunResult;Ljava/util/List;DILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCostUsd ()D
+	public final fun getProblems ()Ljava/util/List;
+	public final fun getRequests ()I
+	public final fun getResults ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineServed {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/Double;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;)Lee/schimke/composeai/guidelines/GuidelineServed;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineServed;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineServed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCostUsd ()Ljava/lang/Double;
+	public final fun getGenerationId ()Ljava/lang/String;
+	public final fun getModel ()Ljava/lang/String;
+	public final fun getProvider ()Ljava/lang/String;
+	public final fun getRouting ()Lee/schimke/composeai/guidelines/protocol/GuidelineRoutingV1;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineSurfaces {
+	public static final field COMPONENT Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineSurfaces;
+	public static final field SCREEN Ljava/lang/String;
+	public static final field WIDGET Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/JevTriage {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/JevTriage;
+	public static final field MODEL Ljava/lang/String;
+	public final fun body (Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public static synthetic fun body$default (Lee/schimke/composeai/guidelines/JevTriage;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonObject;
+	public final fun getA11Y ()Lee/schimke/composeai/guidelines/JevTriage$Offer;
+	public final fun getDARK_THEME ()Lee/schimke/composeai/guidelines/JevTriage$Offer;
+	public final fun getDEFAULT_OFFERS ()Ljava/util/List;
+	public final fun getLARGE_FONT ()Lee/schimke/composeai/guidelines/JevTriage$Offer;
+	public final fun wanted (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/util/List;D)Ljava/util/Map;
+	public static synthetic fun wanted$default (Lee/schimke/composeai/guidelines/JevTriage;Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/util/List;DILjava/lang/Object;)Ljava/util/Map;
+}
+
+public final class ee/schimke/composeai/guidelines/JevTriage$Offer {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/JevTriage$Offer;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/JevTriage$Offer;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/JevTriage$Offer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getNeed ()Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;
+	public final fun getQuestion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/ModelResponse {
+	public fun <init> (ILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/ModelResponse;ILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBody ()Ljava/lang/String;
+	public final fun getStatus ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke/composeai/guidelines/GuidelineModel {
+	public static final field Companion Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;
+	public static final field DEFAULT_MODEL Ljava/lang/String;
+	public fun <init> (Ljava/lang/String;Lokhttp3/OkHttpClient;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lokhttp3/OkHttpClient;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
+	public final fun chatBody (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;
+	public static final field PICTURE_TOKENS I
+	public static final field SYSTEM_PROMPT Ljava/lang/String;
+	public final fun batches (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;)Ljava/util/List;
+	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;
+	public final fun getRESPONSE_SCHEMA ()Lkotlinx/serialization/json/JsonObject;
+	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
+	public static synthetic fun request$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult {
+	public static final field Companion Lee/schimke/composeai/guidelines/PreviewGuidelineResult$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Ljava/util/List;Z)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Ljava/util/List;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFromCache ()Z
+	public final fun getPreviewId ()Ljava/lang/String;
+	public final fun getRecord ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
+	public final fun getRegions ()Ljava/util/List;
+	public final fun getRenderHash ()Ljava/lang/String;
+	public final fun getUnchecked ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/guidelines/PreviewGuidelineResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/PreviewGuidelineResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/guidelines/PreviewGuidelineResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewNode {
+	public static final field Companion Lee/schimke/composeai/guidelines/PreviewNode$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIII)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIII)Lee/schimke/composeai/guidelines/PreviewNode;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewNode;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewNode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottom ()I
+	public final fun getId ()Ljava/lang/String;
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getLeft ()I
+	public final fun getRight ()I
+	public final fun getRole ()Ljava/lang/String;
+	public final fun getTop ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewNode$Companion {
+	public final fun parseBounds (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/PreviewNode;
+	public static synthetic fun parseBounds$default (Lee/schimke/composeai/guidelines/PreviewNode$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewNode;
+}
+
+public final class ee/schimke/composeai/guidelines/PreviewSubject {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/PreviewSubject;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewSubject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewSubject;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getNodes ()Ljava/util/List;
+	public final fun getPictures ()Ljava/util/List;
+	public final fun getPreviewId ()Ljava/lang/String;
+	public final fun getProfile ()Ljava/lang/String;
+	public final fun getRenderHash ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getSurface ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/SubjectPicture {
+	public fun <init> (Ljava/lang/String;[BIILjava/lang/String;Ljava/lang/Double;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;[BIILjava/lang/String;Ljava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()[B
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/Double;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;[BIILjava/lang/String;Ljava/lang/Double;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/SubjectPicture;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/SubjectPicture;Ljava/lang/String;[BIILjava/lang/String;Ljava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/SubjectPicture;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getDevice ()Ljava/lang/String;
+	public final fun getFontScale ()Ljava/lang/Double;
+	public final fun getHeightDp ()I
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getPng ()[B
+	public final fun getTheme ()Ljava/lang/String;
+	public final fun getWidthDp ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

@@ -17,6 +17,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
+    "guidelines" to { a -> GuidelinesCommand(a).run() },
     "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
     "history" to { a -> HistoryCommand(a).run() },
     "history-manifest" to { a -> HistoryManifestCommand(a).run() },
@@ -140,7 +141,7 @@ private fun printUsage(full: Boolean = false) {
       help             Show this message (`help --all` for every command + flag)
 
     Command groups (each command is also callable directly by its name):
-      inspect   a11y · diff-semantics · devices · extensions · history · profile · rc
+      inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
       setup     update · init-script · pin · auth
@@ -194,6 +195,11 @@ private fun printFullUsage() {
                        still writes the recording but exits non-zero (code 2).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
+      guidelines       Check rendered previews against their catalog's design guidelines
+                       (ui-builder.guidelines.json) with a model through OpenRouter, in
+                       batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
+                       --max-cost, --rounds, --no-triage, --annotate, --guidelines <file|url>,
+                       --surface, --previews-json / --renders-dir (no Gradle), --json, --fail-on
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what
                        changed semantically — a cheap, pixel-free regression signal:
                        `compose-preview diff-semantics <base> <head> [--json] [--fail-on-change]`

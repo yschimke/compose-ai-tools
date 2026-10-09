@@ -300,6 +300,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val retargetWearPreviews: Property<Boolean>
 
   /**
+   * Extra library owners for component-target inference: packages ending in `.` or exact JVM owner
+   * classes. Wired from the `composePreview.componentLibraryPrefixes` extension.
+   */
+  @get:Input abstract val componentLibraryPrefixes: ListProperty<String>
+
+  /**
    * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`). Used to
    * detect whether this is a Wear OS module — a `<uses-feature android:name=
    * "android.hardware.type.watch" …>` declaration — so frame-less, device-less component previews
@@ -383,6 +389,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         animatedPreviewApngSupported = animatedPreviewApngSupported.getOrElse(false),
         isWear = isWear,
         retargetWearPreviews = retargetWearPreviews.getOrElse(true),
+        componentLibraryPrefixes = componentLibraryPrefixes.getOrElse(emptyList()),
         mergedManifest = mergedManifest.orNull?.asFile?.takeIf { it.exists() },
         tourSpecFiles = tourSpecFiles.files.filter { it.isFile },
       )

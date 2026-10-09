@@ -179,6 +179,14 @@ object PreviewDiscovery {
      */
     val retargetWearPreviews: Boolean = true,
     /**
+     * Owners whose nested calls count as library components, on top of the built-in Material, Wear
+     * and Glimmer packages. Each entry is a package ending in `.` or one exact JVM owner class
+     * (`androidx.compose.remote.creation.compose.layout.RemoteTextKt`). Wired from the
+     * `composePreview { componentLibraryPrefixes }` extension property; see
+     * [PreviewTargetInference.isComponentLibraryOwner].
+     */
+    val componentLibraryPrefixes: List<String> = emptyList(),
+    /**
      * The variant's merged `AndroidManifest.xml`, when the build system has one (AGP
      * `SingleArtifact.MERGED_MANIFEST`). Non-null on the Android backend only. Drives app-level
      * discovery: its `<activity>` declarations become [PreviewManifest.activities] metadata plus
@@ -2353,6 +2361,7 @@ object PreviewDiscovery {
         previewMethod = method,
         scanResult = scanResult,
         projectClassFqns = projectClassFqns,
+        extraLibraryPrefixes = input.componentLibraryPrefixes,
       )
     }
     val inferredTargets = lazy {
