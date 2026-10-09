@@ -1135,14 +1135,28 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         GUIDELINES_FILE: ${{ inputs.guidelines-file }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -euo pipefail
         rm -rf _guidelines
-        if [ ! -s _changed_previews.json ]; then
+        # The PR's changed paths, so an edit that leaves the render identical (a content
+        # description, a hard-coded colour) is still checked. Best effort: without it only
+        # visually changed previews are.
+        pr="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        : > _pr_changed_files.txt
+        if [ -n "$pr" ]; then
+          gh api --paginate "repos/$REPO/pulls/$pr/files" --jq '.[].filename' \
+            > _pr_changed_files.txt 2>/dev/null \
+            || { echo "guidelines: could not list the PR's changed files; checking visual changes only."; : > _pr_changed_files.txt; }
+        fi
+        if [ ! -s _changed_previews.json ] && [ ! -s _pr_changed_files.txt ]; then
           echo "guidelines: no changed previews to check."
           exit 0
         fi
-        args=(--changed _changed_previews.json --out _guidelines --root .)
+        args=(--changed _changed_previews.json --out _guidelines --root . --changed-files _pr_changed_files.txt)
         [ -n "$GUIDELINES_FILE" ] && args+=(--guidelines-file "$GUIDELINES_FILE")
         staged=$(python3 "$ACTION_PATH/../lib/guidelines-stage.py" "${args[@]}")
         echo "guidelines: staged $staged changed preview(s)."
@@ -1696,6 +1710,33 @@ runs:
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- guidelines-report -->"
         export BODY_FILE="_guidelines_comment.md"
+        bash "$ACTION_PATH/lib/post-comment.sh"
+
+    # A later revision with nothing to check (no staged previews, or zero results) writes no
+    # comment, which would leave an earlier revision's findings standing. Replace them, but only in
+    # a comment that already exists, and only when the check could run (the key is here): without
+    # it, the earlier findings were never re-checked, so they are not resolved.
+    - name: Resolve guidelines PR comment
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') == '')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        export MARKER="<!-- guidelines-report -->"
+        export BODY_FILE="_guidelines_resolved.md"
+        export UPDATE_ONLY=1
+        {
+          echo "$MARKER"
+          echo "## Design guidelines"
+          echo
+          echo "Nothing in this revision needed a design-guidelines check, so there are no findings. Findings from earlier revisions no longer apply."
+        } > "$BODY_FILE"
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     - name: Push notifications baseline / PR renders

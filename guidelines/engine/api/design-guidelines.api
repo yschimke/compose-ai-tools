@@ -131,9 +131,17 @@ public final class ee/schimke/composeai/guidelines/GuidelineResponse {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineResultCache {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineResultCache$Companion;
+	public static final field REQUEST_FORMAT I
 	public fun <init> (Ljava/io/File;)V
+	public final fun get (Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
 	public final fun get (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
 	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;ILjava/lang/String;)V
+	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)V
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineResultCache$Companion {
+	public final fun inputsKey (Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
@@ -164,15 +172,18 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
-	public fun <init> (Ljava/util/List;DILjava/util/List;)V
+	public fun <init> (Ljava/util/List;DILjava/util/List;I)V
+	public synthetic fun <init> (Ljava/util/List;DILjava/util/List;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/util/List;
 	public final fun component2 ()D
 	public final fun component3 ()I
 	public final fun component4 ()Ljava/util/List;
-	public final fun copy (Ljava/util/List;DILjava/util/List;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
-	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunResult;Ljava/util/List;DILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
+	public final fun component5 ()I
+	public final fun copy (Ljava/util/List;DILjava/util/List;I)Lee/schimke/composeai/guidelines/GuidelineRunResult;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunResult;Ljava/util/List;DILjava/util/List;IILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCostUsd ()D
+	public final fun getFailedRequests ()I
 	public final fun getProblems ()Ljava/util/List;
 	public final fun getRequests ()I
 	public final fun getResults ()Ljava/util/List;

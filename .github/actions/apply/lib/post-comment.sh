@@ -81,6 +81,13 @@ done < <(list_comments "$PLACEHOLDER_JQ" || true)
 MARKER_JQ=".[] | select(.body | startswith(\"${MARKER}\")) | .id"
 COMMENT_ID=$(list_comments "$MARKER_JQ" | head -1)
 
+# UPDATE_ONLY=1: rewrite the sticky comment if one exists, never start one. For a "resolved" body
+# that should replace stale findings but has nothing to say on a PR that never had any.
+if [ -z "$COMMENT_ID" ] && [ "${UPDATE_ONLY:-0}" = "1" ]; then
+  echo "post-comment: no '${MARKER}' comment to update; leaving the PR alone." >&2
+  exit 0
+fi
+
 if [ -n "$COMMENT_ID" ]; then
   # `-F`, not `-f`: only `--field` expands a leading `@` into the file's
   # contents. `--raw-field` sends the value verbatim, so `-f body=@file`

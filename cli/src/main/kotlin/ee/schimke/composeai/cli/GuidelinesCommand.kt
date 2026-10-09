@@ -95,6 +95,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
 
     val reports = mutableListOf<ModuleGuidelines>()
     var failed = false
+    var incomplete = false
     for ((module, moduleResults) in results.groupBy { it.module }) {
       val projectDir =
         manifests.firstOrNull { it.first.gradlePath == module }?.first?.projectDir
@@ -156,6 +157,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       if (annotate) annotateAll(run.results, subjects, nodes, renders)
       reports += ModuleGuidelines(module, guidelines.catalog, model, run.results)
       failed = failed || tripped(run.results, guidelines)
+      incomplete = incomplete || incomplete(module, run)
       if (!jsonOutput) GuidelinesReportRenderer.print(module, guidelines, run)
     }
     if (jsonOutput)
@@ -166,9 +168,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           System.err.println("Unknown --fail-on value: $failOn (expected warning|info|none)")
           EXIT_UNKNOWN_FAIL_ON
         }
-        failed -> 1
-        raw.buildOk -> 0
-        else -> 2
+        else -> guidelinesExitCode(incomplete, failed, raw.buildOk)
       }
     )
   }
@@ -242,7 +242,24 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     }
     if (jsonOutput) println(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
     else GuidelinesReportRenderer.print("handoff", guidelines, run)
-    return if (tripped(run.results, guidelines)) 1 else 0
+    return guidelinesExitCode(
+      incomplete = incomplete("handoff", run),
+      failed = tripped(run.results, guidelines),
+      buildOk = true,
+    )
+  }
+
+  /**
+   * Whether [run] failed to judge previews it was asked to: requests that errored, were refused or
+   * came back unreadable. Said on stderr, so a caller sees why the command did not exit 0.
+   */
+  private fun incomplete(module: String, run: GuidelineRunResult): Boolean {
+    if (run.failedRequests == 0) return false
+    System.err.println(
+      "guidelines: $module: ${run.failedRequests} model request(s) failed; the previews in them " +
+        "were not checked."
+    )
+    return true
   }
 
   private fun renderFile(result: PreviewResult, projectDir: File): File? =
@@ -419,3 +436,16 @@ internal object GuidelinesReportRenderer {
     run.problems.forEach { System.err.println("  problem: $it") }
   }
 }
+
+/**
+ * The guidelines command's exit status. A check that could not run is not a pass: previews it never
+ * judged must not let CI through as clean, so an [incomplete] run is 2 even when what did come back
+ * had findings. Findings at `--fail-on` are 1; a failed build with nothing else wrong is 2.
+ */
+internal fun guidelinesExitCode(incomplete: Boolean, failed: Boolean, buildOk: Boolean): Int =
+  when {
+    incomplete -> 2
+    failed -> 1
+    buildOk -> 0
+    else -> 2
+  }

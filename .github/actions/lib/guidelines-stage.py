@@ -16,8 +16,14 @@ preview (``_changed_previews.json`` from ``compare-previews.py copy-changed``), 
 A module without a guidelines file (``--guidelines-file`` overrides) stages nothing: there are no
 rules to ask. Source is data the model reads, never executed, so staging it from a fork is safe.
 
+The visual diff alone misses what the check now reads beyond pixels: an edit that adds a content
+description or replaces a hard-coded colour can leave the render identical. ``--changed-files``
+(the PR's changed paths, one per line, relative to the repository root) also selects every
+preview whose ``sourceFile`` changed, and every preview of a module whose guidelines file changed
+(the rules being judged changed, so every verdict may).
+
     guidelines-stage.py --changed _changed_previews.json --out _guidelines [--root .]
-                        [--guidelines-file path]
+                        [--guidelines-file path] [--changed-files _pr_changed_files.txt]
 Prints the number of previews staged.
 """
 from __future__ import annotations
@@ -54,7 +60,58 @@ def safe_relative(path: str) -> bool:
     return not candidate.is_absolute() and ".." not in candidate.parts
 
 
-def stage(root: Path, changed: set[str], out: Path, guidelines_file: Path | None) -> int:
+def repo_relative(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def rules_changed(
+    module_dir: Path, root: Path, guidelines_file: Path | None, changed_files: set[str]
+) -> bool:
+    """Whether the guidelines this module is judged against changed in the PR."""
+    if guidelines_file is not None:
+        return repo_relative(guidelines_file, root) in changed_files
+    module = repo_relative(module_dir, root)
+    authored = {GUIDELINES_FILE, f"{module}/{GUIDELINES_FILE}" if module != "." else GUIDELINES_FILE}
+    return any(path in authored for path in changed_files)
+
+
+def select(
+    previews: list[dict],
+    changed: set[str],
+    changed_files: set[str],
+    module_dir: Path,
+    root: Path,
+    all_of_module: bool,
+) -> list[dict]:
+    """The previews to check: changed renders, changed source files, or every one when the rules
+    changed."""
+    if all_of_module:
+        return list(previews)
+    module = repo_relative(module_dir, root)
+    picked = []
+    for preview in previews:
+        source = preview.get("sourceFile")
+        source_changed = (
+            bool(source)
+            and safe_relative(source)
+            and (source if module == "." else f"{module}/{source}") in changed_files
+        )
+        if preview.get("id") in changed or source_changed:
+            picked.append(preview)
+    return picked
+
+
+def stage(
+    root: Path,
+    changed: set[str],
+    out: Path,
+    guidelines_file: Path | None,
+    changed_files: set[str] | None = None,
+) -> int:
+    changed_files = changed_files or set()
     staged = 0
     for manifest_path in find_manifests(root):
         previews_dir = manifest_path.parent
@@ -63,7 +120,14 @@ def stage(root: Path, changed: set[str], out: Path, guidelines_file: Path | None
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        selected = [p for p in manifest.get("previews", []) if p.get("id") in changed]
+        selected = select(
+            manifest.get("previews", []),
+            changed,
+            changed_files,
+            module_dir,
+            root,
+            rules_changed(module_dir, root, guidelines_file, changed_files),
+        )
         if not selected:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
@@ -121,19 +185,29 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--root", default=".")
     ap.add_argument("--guidelines-file")
+    ap.add_argument("--changed-files")
     args = ap.parse_args()
+    changed: set[str] = set()
     changed_path = Path(args.changed)
-    if not changed_path.is_file():
-        print(0)
-        return 0
-    try:
-        changed = {e["previewId"] for e in json.loads(changed_path.read_text(encoding="utf-8"))}
-    except (json.JSONDecodeError, KeyError, TypeError):
-        print("guidelines-stage: unreadable changed list", file=sys.stderr)
+    if changed_path.is_file() and changed_path.stat().st_size > 0:
+        try:
+            changed = {
+                e["previewId"] for e in json.loads(changed_path.read_text(encoding="utf-8"))
+            }
+        except (json.JSONDecodeError, KeyError, TypeError):
+            print("guidelines-stage: unreadable changed list", file=sys.stderr)
+    changed_files: set[str] = set()
+    if args.changed_files and Path(args.changed_files).is_file():
+        changed_files = {
+            line.strip()
+            for line in Path(args.changed_files).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+    if not changed and not changed_files:
         print(0)
         return 0
     rules = Path(args.guidelines_file) if args.guidelines_file else None
-    print(stage(Path(args.root), changed, Path(args.out), rules))
+    print(stage(Path(args.root), changed, Path(args.out), rules, changed_files))
     return 0
 
 

@@ -174,6 +174,19 @@ class PostCommentTest(unittest.TestCase):
         self.assertEqual(len(self.comments()), 1)
         self.assertTrue(self.comments()[0]["body"].startswith(MARKER))
 
+    def test_update_only_rewrites_an_existing_comment(self):
+        body = f"{MARKER}\n## Design guidelines\n\nresolved.\n"
+        existing = [{"id": 7, "body": f"{MARKER}\nold findings", "user": {"type": "Bot"}}]
+        self.run_script(body, existing, env={"UPDATE_ONLY": "1"})
+        self.assertEqual([c["call"] for c in self.calls()], ["patch"])
+        self.assertEqual(self.comments()[0]["body"], body)
+
+    def test_update_only_never_starts_a_comment(self):
+        body = f"{MARKER}\n## Design guidelines\n\nresolved.\n"
+        self.run_script(body, [], env={"UPDATE_ONLY": "1"})
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.comments(), [])
+
     def test_repeated_runs_keep_exactly_one_comment(self):
         comments = []
         for i in range(3):

@@ -156,6 +156,43 @@ class StageTest(unittest.TestCase):
         nodes = json.loads((target / "accessibility.json").read_text())
         self.assertEqual([e["previewId"] for e in nodes["entries"]], ["x.Stop"])
 
+    def _two_previews(self) -> Path:
+        root = Path(tempfile.mkdtemp())
+        module = root / "catalog"
+        previews = module / "build" / "compose-previews"
+        (previews / "renders").mkdir(parents=True)
+        for name in ("Stop-1.png", "Go-2.png"):
+            (previews / "renders" / name).write_bytes(b"png")
+        (module / "src").mkdir()
+        (module / "src" / "Stop.kt").write_text("fun Stop() {}\n")
+        (module / "src" / "Go.kt").write_text("fun Go() {}\n")
+        (previews / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
+        (previews / "previews.json").write_text(json.dumps({"module": "catalog", "previews": [
+            {"id": "x.Stop", "sourceFile": "src/Stop.kt", "bodyLine": 1,
+             "captures": [{"renderOutput": "renders/Stop-1.png"}]},
+            {"id": "x.Go", "sourceFile": "src/Go.kt", "bodyLine": 1,
+             "captures": [{"renderOutput": "renders/Go-2.png"}]},
+        ]}))
+        return root
+
+    def test_a_source_only_edit_is_staged_though_the_render_did_not_change(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, set(), out, None, {"catalog/src/Go.kt"})
+        self.assertEqual(staged, 1)
+        manifest = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in manifest["previews"]], ["x.Go"])
+
+    def test_changed_rules_stage_every_preview_of_the_module(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, set(), out, None, {"catalog/ui-builder.guidelines.json"})
+        self.assertEqual(staged, 2)
+
+    def test_unrelated_changes_stage_nothing(self) -> None:
+        root = self._two_previews()
+        self.assertEqual(gs.stage(root, set(), root / "_g", None, {"README.md"}), 0)
+
     def test_a_module_without_guidelines_stages_nothing(self) -> None:
         root = Path(tempfile.mkdtemp())
         previews = root / "m" / "build" / "compose-previews"

@@ -200,7 +200,8 @@ private fun printFullUsage() {
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
                        --max-cost, --rounds, --no-triage, --annotate, --guidelines <file|url>,
                        --surface, --previews-json / --renders-dir / --a11y-json /
-                       --source-root (no Gradle), --json, --fail-on
+                       --source-root (no Gradle), --json, --fail-on. Exits 1 on findings
+                       at --fail-on, 2 when a model request failed (previews unchecked)
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what
                        changed semantically — a cheap, pixel-free regression signal:
                        `compose-preview diff-semantics <base> <head> [--json] [--fail-on-change]`
