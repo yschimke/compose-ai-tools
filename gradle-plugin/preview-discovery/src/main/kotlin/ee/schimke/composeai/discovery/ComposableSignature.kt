@@ -370,11 +370,13 @@ internal object ComposableSignature {
   }
 
   /**
-   * `@kotlin.Deprecated` at any level (`HIDDEN` is also synthetic) or `@java.lang.Deprecated`.
-   * Every callable this reader offers consults it.
+   * `@kotlin.Deprecated` at any level (`HIDDEN` also keeps the annotation) or
+   * `@java.lang.Deprecated`. The JVM synthetic flag alone is not a deprecation: `@JvmSynthetic`
+   * sets it on functions Kotlin can still call. Every callable this reader offers consults it.
    */
-  fun isDeprecated(method: MethodInfo): Boolean =
-    method.isSynthetic || DEPRECATED_ANNOTATIONS.any { method.hasAnnotation(it) }
+  fun isDeprecated(method: MethodInfo): Boolean = DEPRECATED_ANNOTATIONS.any {
+    method.hasAnnotation(it)
+  }
 
   /** [isDeprecated] for a class: a deprecated type has no constructor worth printing. */
   internal fun isDeprecated(info: ClassInfo): Boolean = DEPRECATED_ANNOTATIONS.any {
