@@ -161,14 +161,15 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   the repair does not cover are listed in `docs/AGENT_GUIDE.md`.
 - **Wire new visual surfaces into the preview workflow** so the next change to
   them is diffed without anyone remembering to do it.
-- **Don't auto-merge your own PR.** Opening, tracking and fix-up commits are
-  automatic; pressing merge on a PR *you* opened is the user's call, and no agent
-  approves or merges one. This is about agent-opened PRs. It is not a blanket
-  ban on merge automation in the repository: Renovate's dependency PRs are
-  automerged by configuration (`platformAutomerge` in
-  [`.github/renovate.json`](.github/renovate.json)), which GitHub applies only
-  once every required check of the `Protect Main` ruleset is green. Do not
-  report that setting as a violation of this bullet.
+- **Merge only when explicitly requested.** Only merge a PR or enable auto-merge
+  when the user specifically asks. If the request or intended PRs are unclear,
+  ask for clarification before merging. A request to implement, fix, review,
+  or open a PR does not by itself authorize merging. Honor required checks,
+  reviews, and branch protections. Opening,
+  tracking and fix-up commits remain automatic. This rule governs agent merge
+  actions; existing configured Renovate automation is unchanged (`platformAutomerge`
+  in [`.github/renovate.json`](.github/renovate.json)), and GitHub applies it only
+  once every required check of the `Protect Main` ruleset is green.
 
 ## Review guidelines
 
