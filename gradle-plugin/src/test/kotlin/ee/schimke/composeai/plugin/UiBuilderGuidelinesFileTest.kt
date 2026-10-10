@@ -170,4 +170,45 @@ class UiBuilderGuidelinesFileTest {
         "include https://x/p.json has no `sha256` (64 lowercase hex digits)",
       )
   }
+
+  @Test
+  fun `more includes than a reader takes are not flattened`() {
+    val many =
+      (1..UiBuilderGuidelinesFile.MAX_INCLUDES + 1).joinToString(",") {
+        """{"url": "$packUrl?$it", "sha256": "${sha256(pack)}"}"""
+      }
+    val text = valid.trimEnd().removeSuffix("}") + """, "includes": [$many]}"""
+    val flat = UiBuilderGuidelinesFile.flatten(text) { pack }
+    assertThat(flat.text).isEqualTo(text)
+    assertThat(flat.problem).contains("more than")
+  }
+
+  @Test
+  fun `a pack with a malformed rule is not merged in`() {
+    val bad =
+      String(pack).replace("\"check\": \"all?\"", "\"check\": \"a statement\"").toByteArray()
+    val text = including(sha = sha256(bad))
+    val flat = UiBuilderGuidelinesFile.flatten(text) { bad }
+    assertThat(flat.text).isEqualTo(text)
+    assertThat(flat.problem).contains("is not a question")
+  }
+
+  @Test
+  fun `a verified pack is reused by URL and pin, and a new pin fetches again`() {
+    var fetches = 0
+    val counting: (String) -> ByteArray = {
+      fetches++
+      pack
+    }
+    // A distinct URL keeps this test's cache entries its own.
+    val url = "https://raw.githubusercontent.com/o/r/v2/cached.guidelines.json"
+    fun withPin(pin: String) =
+      valid.trimEnd().removeSuffix("}") + """, "includes": [{"url": "$url", "sha256": "$pin"}]}"""
+    assertThat(UiBuilderGuidelinesFile.flatten(withPin(sha256(pack)), counting).problem).isNull()
+    assertThat(UiBuilderGuidelinesFile.flatten(withPin(sha256(pack)), counting).problem).isNull()
+    assertThat(fetches).isEqualTo(1)
+    assertThat(UiBuilderGuidelinesFile.flatten(withPin("1".repeat(64)), counting).problem)
+      .contains("does not match its pin")
+    assertThat(fetches).isEqualTo(2)
+  }
 }
