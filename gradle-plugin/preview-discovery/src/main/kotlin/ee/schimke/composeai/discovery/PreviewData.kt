@@ -1433,7 +1433,34 @@ data class PreviewInfo(
    * ordinary application previews are unchanged.
    */
   val componentTargets: List<PreviewTarget> = emptyList(),
+  /**
+   * The widget this preview draws, when it draws one rather than a screen or a component — see
+   * [PreviewWidget]. `null` for every other preview, so older manifests and modules without widgets
+   * are unchanged.
+   */
+  val widget: PreviewWidget? = null,
 )
+
+/**
+ * A preview that draws a widget: what a design-guidelines check asks widget rules of, since nothing
+ * else in the manifest says so — a Glance Wear widget sticker pins `widthDp`/`heightDp` and names
+ * no device, exactly like a component sticker.
+ *
+ * [host] is whose container it is drawn for: [HOST_WEAR] (a Glance Wear widget, drawn through
+ * `WearWidgetPreview` / `CapturingWearWidgetPreview` or fed a glance-wear `@PreviewParameter`
+ * provider) or [HOST_LAUNCHER] (a Glance app widget, or one captured in a simulated launcher).
+ * [profile] is the Remote Compose profile it targets in the guidelines' spelling, when discovery
+ * can tell: a Wear widget is always [PROFILE_WEAR_WIDGETS]; a launcher widget's profile is the
+ * caller's choice at runtime and is left null.
+ */
+@Serializable
+data class PreviewWidget(val host: String, val profile: String? = null) {
+  companion object {
+    const val HOST_WEAR: String = "wear"
+    const val HOST_LAUNCHER: String = "launcher"
+    const val PROFILE_WEAR_WIDGETS: String = "wear-widgets"
+  }
+}
 
 /**
  * A composable that a `@Preview` function is presumed to render. Attached to [PreviewInfo.targets]

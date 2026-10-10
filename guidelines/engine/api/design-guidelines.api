@@ -25,6 +25,7 @@ public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loade
 public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoaderKt {
 	public static final fun appliesToProfile (Lee/schimke/composeai/guidelines/protocol/GuidelineRuleV1;Ljava/lang/String;)Z
 	public static final fun appliesToSurface (Lee/schimke/composeai/guidelines/protocol/GuidelineRuleV1;Ljava/lang/String;)Z
+	public static final fun noRulesFor (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/PreviewSubject;)Ljava/lang/String;
 	public static final fun setRules (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Z)Ljava/util/List;
 	public static synthetic fun setRules$default (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;ZILjava/lang/Object;)Ljava/util/List;
 	public static final fun subjectRules (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;Ljava/lang/String;Z)Ljava/util/List;
@@ -217,11 +218,27 @@ public final class ee/schimke/composeai/guidelines/GuidelineServed {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/guidelines/GuidelineSubjectKind {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineSubjectKind;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineSubjectKind;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineSubjectKind;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProfile ()Ljava/lang/String;
+	public final fun getSurface ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineSurfaces {
 	public static final field COMPONENT Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineSurfaces;
 	public static final field SCREEN Ljava/lang/String;
+	public static final field WEAR_WIDGETS_PROFILE Ljava/lang/String;
 	public static final field WIDGET Ljava/lang/String;
+	public final fun of (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/GuidelineSubjectKind;
 }
 
 public final class ee/schimke/composeai/guidelines/JevTriage {
@@ -327,6 +344,7 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult {
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZZILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFromCache ()Z
+	public final fun getNoRules ()Ljava/lang/String;
 	public final fun getPending ()Z
 	public final fun getPreviewId ()Ljava/lang/String;
 	public final fun getRecord ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;

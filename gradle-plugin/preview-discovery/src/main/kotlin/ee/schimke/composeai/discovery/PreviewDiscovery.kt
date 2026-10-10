@@ -2355,13 +2355,14 @@ object PreviewDiscovery {
     // `inferredTargets` (see `PreviewInfo.componentTargets`), so a separate lazy walk. Lazy for the
     // same reason: a multi-preview fans one function into N `PreviewInfo`s and the bytecode does
     // not change between them.
+    val renderedCalls = lazy {
+      PreviewTargetInference.renderedCalls(classInfo, method, scanResult, projectClassFqns)
+    }
     val inferredComponentTargets = lazy {
       PreviewTargetInference.inferComponents(
-        previewClassInfo = classInfo,
-        previewMethod = method,
-        scanResult = scanResult,
-        projectClassFqns = projectClassFqns,
-        extraLibraryPrefixes = input.componentLibraryPrefixes,
+        renderedCalls.value,
+        scanResult,
+        input.componentLibraryPrefixes,
       )
     }
     val inferredTargets = lazy {
@@ -2420,13 +2421,16 @@ object PreviewDiscovery {
     }
     val firstNewPreviewIndex = previews.size
     fun tagFunctionLevel() {
-      if (catalogEntry == null && captureGutter == null && builderEntry == null) return
       for (i in firstNewPreviewIndex until previews.size) {
         val preview = previews[i]
+        val widget = widgetOf(preview, renderedCalls)
+        if (catalogEntry == null && captureGutter == null && builderEntry == null && widget == null)
+          continue
         previews[i] =
           preview.copy(
             catalog = catalogEntry ?: preview.catalog,
             builder = builderEntry ?: preview.builder,
+            widget = widget ?: preview.widget,
             params =
               if (captureGutter == null) preview.params
               else preview.params.copy(captureGutter = captureGutter),
@@ -5295,6 +5299,30 @@ object PreviewDiscovery {
    * scratch canvas; honouring it renders a 216×124dp widget's background across 1000×1000dp instead
    * of cropping to the frame the widget was designed in.
    */
+  /**
+   * The widget [preview] draws, or null when it is not one ([PreviewWidget]). A Glance Wear widget
+   * is one drawn through a widget-preview entry point ([PreviewTargetInference.drawsWearWidget], a
+   * bytecode walk [calls] defers until a composable preview needs it) or fed a glance-wear
+   * `@PreviewParameter` provider ([isWearWidgetPreview]); a launcher widget is a Glance app-widget
+   * preview or one captured in a simulated launcher (`@LauncherWidgetPreview` /
+   * `@LauncherWidgetResize`).
+   */
+  internal fun widgetOf(
+    preview: PreviewInfo,
+    calls: Lazy<List<PreviewTargetInference.Invocation>>,
+  ): PreviewWidget? {
+    val params = preview.params
+    if (
+      params.kind == PreviewKind.GLANCE_APPWIDGET ||
+        preview.captures.any { it.launcherWidget != null }
+    )
+      return PreviewWidget(PreviewWidget.HOST_LAUNCHER)
+    if (params.kind != PreviewKind.COMPOSE) return null
+    if (isWearWidgetPreview(params) || PreviewTargetInference.drawsWearWidget(calls.value))
+      return PreviewWidget(PreviewWidget.HOST_WEAR, PreviewWidget.PROFILE_WEAR_WIDGETS)
+    return null
+  }
+
   private fun isWearWidgetPreview(params: PreviewParams): Boolean {
     val provider = params.previewParameterProviderClassName ?: return false
     return WEAR_WIDGET_PARAM_PROVIDER_PREFIXES.any { provider.startsWith(it) }

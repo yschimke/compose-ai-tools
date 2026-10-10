@@ -20,7 +20,18 @@ public data class PreviewGuidelineResult(
    * unchecked. Never cached; the next run asks again.
    */
   val pending: Boolean = false,
-)
+) {
+  /**
+   * Why it was asked nothing: no rule of the catalog's applies to its surface and profile
+   * ([noRulesFor]). Such a result is neither a pass nor a finding — nothing was judged.
+   *
+   * A body property rather than a constructor parameter, so the constructor and `copy` keep the ABI
+   * callers compiled against an earlier release use (their default-argument bridges included).
+   * Serialized like the others; `equals` and `copy` do not see it.
+   */
+  public var noRules: String? = null
+    internal set
+}
 
 /**
  * Results kept under [directory] (`build/compose-previews/guidelines/`), keyed by everything a
@@ -160,7 +171,7 @@ public class GuidelineResultCache(private val directory: File) {
      * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
      * how evidence is attached), so results from an older engine are not reused.
      */
-    public const val REQUEST_FORMAT: Int = 4
+    public const val REQUEST_FORMAT: Int = 5
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, every picture's bytes and

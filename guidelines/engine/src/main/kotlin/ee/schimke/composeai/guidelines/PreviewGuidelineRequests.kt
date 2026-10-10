@@ -335,6 +335,16 @@ public object PreviewGuidelineRequests {
       }
       append("Evidence you may ask for with `needs_evidence`: ")
       append(evidenceAvailable.ifEmpty { listOf("none") }.joinToString()).append('\n')
+      unrenderedFrames(guidelines, batch)
+        .takeIf { it.isNotEmpty() }
+        ?.let { frames ->
+          append("Not rendered here: the catalog's ").append(frames.joinToString())
+          append(" picture(s). Each subject has only the pictures listed under it. Where a rule ")
+          append(
+            "asks you to look at one of those pictures, judge it on the pictures you have and "
+          )
+          append("name the one you judged; never cite a picture that is not attached.\n")
+        }
       append("\nSubjects:\n")
       batch.subjects.forEach { subject ->
         val alias = batch.aliases.getValue(subject.previewId)
@@ -451,6 +461,28 @@ public object PreviewGuidelineRequests {
           )
       }
       .build()
+  }
+
+  /**
+   * The catalog's frames for [batch]'s surface ([CatalogGuidelinesV1.frames]: a widget in each
+   * launcher's host container, a list unrolled, a fixed size) that no subject has a picture of,
+   * named as the catalog names them. A host that renders only each preview's own capture (a CI
+   * publish job) draws none of them, and a rule pointing at "the Samsung picture" must not be
+   * answered as if there were one.
+   */
+  internal fun unrenderedFrames(
+    guidelines: CatalogGuidelinesV1,
+    batch: GuidelineBatch,
+  ): List<String> {
+    val drawn = batch.subjects.flatMap { subject -> subject.pictures.map { it.kind } }.toSet()
+    return guidelines.frames
+      .filter { it.surface == null || it.surface == batch.surface }
+      .filter { it.kind != GuidelinePictureV1.KIND_DEVICE && it.kind !in drawn }
+      .map { frame ->
+        (frame.label ?: frame.kind) +
+          (frame.hostShape?.let { " ($it ${frame.kind})" } ?: " (${frame.kind})")
+      }
+      .distinct()
   }
 
   /** The schema verdicts are held to: per subject, with evidence needs and overlay regions. */

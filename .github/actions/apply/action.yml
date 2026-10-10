@@ -281,6 +281,21 @@ inputs:
       Path to a `ui-builder.guidelines.json` to use for every module, instead
       of each module's own `build/compose-previews/ui-builder.guidelines.json`.
     default: ''
+  guidelines-surface:
+    description: >
+      Judge every checked preview as this surface (`component`, `screen` or
+      `widget`) instead of what its manifest entry says. Each preview's surface
+      normally comes from discovery (a widget preview is recorded as one);
+      this is for a project on a plugin that predates that, and only where
+      every checked preview is the same kind. Empty keeps each preview's own.
+    default: ''
+  guidelines-profile:
+    description: >
+      With `guidelines-surface`, the Remote Compose profile every checked
+      preview targets (`wear-widgets`, `launcher-widgets-v7`, …): a rule
+      naming a profile is asked only of a preview targeting it. Empty keeps
+      each preview's own.
+    default: ''
 
 runs:
   using: 'composite'
@@ -1719,6 +1734,8 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.openrouter-key }}
         MAX_COST: ${{ inputs.guidelines-max-cost }}
+        GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
+        GUIDELINES_PROFILE: ${{ inputs.guidelines-profile }}
       run: |
         set -uo pipefail
         if [ -z "${COMPOSE_PREVIEW_OPENROUTER_KEY:-}" ]; then
@@ -1739,6 +1756,20 @@ runs:
         # stage a picture the comment would then show as this check's markings.
         rm -f _guidelines/*/renders/*.guidelines.png
         rm -rf _guidelines_images
+        # Optional overrides of each preview's surface and profile, from the caller's own inputs.
+        kind_args=()
+        case "$GUIDELINES_SURFACE" in
+          '') ;;
+          component|screen|widget) kind_args+=(--surface "$GUIDELINES_SURFACE") ;;
+          *) echo "::warning::compose-preview/apply: guidelines-surface must be component, screen or widget; ignoring it." ;;
+        esac
+        if [ -n "$GUIDELINES_PROFILE" ]; then
+          if [[ "$GUIDELINES_PROFILE" =~ ^[a-z0-9][a-z0-9.+-]*$ ]]; then
+            kind_args+=(--profile "$GUIDELINES_PROFILE")
+          else
+            echo "::warning::compose-preview/apply: guidelines-profile is not a profile name; ignoring it."
+          fi
+        fi
         checked=0
         for module_dir in _guidelines/*/; do
           [ -f "$module_dir/previews.json" ] || continue
@@ -1763,7 +1794,7 @@ runs:
             --a11y-json "$module_dir/accessibility.json" \
             --source-root "$module_dir/src" \
             --guidelines "$module_dir/ui-builder.guidelines.json" \
-            --max-cost "$remaining" --annotate --rounds 2 \
+            --max-cost "$remaining" --annotate --rounds 2 "${kind_args[@]}" \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
         # Stages exactly the pictures the comment will embed (the render with its findings marked,

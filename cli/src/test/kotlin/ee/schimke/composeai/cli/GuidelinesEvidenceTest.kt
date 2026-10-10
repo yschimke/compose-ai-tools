@@ -378,6 +378,86 @@ class GuidelinesEvidenceTest {
   }
 
   @Test
+  fun `a widget preview in the manifest is judged as a widget of its profile`() {
+    // remote-m3-catalog#72's sticker: a fixed widthDp/heightDp and no device, so before discovery
+    // recorded `widget` it was judged a component and asked none of the catalog's widget rules.
+    val dir = Files.createTempDirectory("guidelines-handoff-widget").toFile()
+    val renders = dir.resolve("renders").apply { mkdirs() }
+    renders.resolve("Widget-1.png").writeBytes(png())
+    renders.resolve("Button-1.png").writeBytes(png())
+    val previews =
+      dir.resolve("previews.json").apply {
+        writeText(
+          """
+          {"module": "remote-catalog", "previews": [
+            {"id": "x.WidgetContainerLargeRemote", "functionName": "WidgetContainerLargeRemote",
+             "params": {"device": null, "widthDp": 216, "heightDp": 124},
+             "captures": [{"renderOutput": "renders/Widget-1.png"}],
+             "widget": {"host": "wear", "profile": "wear-widgets"}},
+            {"id": "x.FilledRemoteButton", "functionName": "FilledRemoteButton",
+             "params": {"device": null},
+             "captures": [{"renderOutput": "renders/Button-1.png"}]}
+          ]}
+          """
+        )
+      }
+
+    val subjects =
+      HandoffInputs.read(previews, null, null, null, null).subjects.associateBy { it.previewId }
+    assertEquals(
+      GuidelineSurfaces.WIDGET,
+      subjects.getValue("x.WidgetContainerLargeRemote").surface,
+    )
+    assertEquals("wear-widgets", subjects.getValue("x.WidgetContainerLargeRemote").profile)
+    assertEquals(GuidelineSurfaces.COMPONENT, subjects.getValue("x.FilledRemoteButton").surface)
+    assertNull(subjects.getValue("x.FilledRemoteButton").profile)
+
+    // The overrides replace both, for a manifest from a plugin that predates the field.
+    val overridden =
+      HandoffInputs.read(previews, null, null, null, "widget", profileOverride = "wear-widgets")
+        .subjects
+    assertTrue(overridden.all { it.surface == "widget" && it.profile == "wear-widgets" })
+    // A live run reads the same classification off the module's manifest.
+    assertEquals(
+      GuidelineSurfaces.WIDGET,
+      HandoffInputs.readKinds(previews).getValue("x.WidgetContainerLargeRemote").surface,
+    )
+  }
+
+  @Test
+  fun `guidelines json says when nothing was judged`() {
+    val buildDir = Files.createTempDirectory("guidelines-unjudged").toFile()
+    val subjects =
+      listOf(
+        PreviewSubject(
+          previewId = "a",
+          surface = GuidelineSurfaces.WIDGET,
+          renderHash = "h-a",
+          pictures = listOf(SubjectPicture("device", png(), 8, 8)),
+        )
+      )
+    // guidelines() asks only `screen` rules: a widget is asked nothing, and no request is made.
+    val model = FakeModel()
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(guidelines(), subjects)
+    assertEquals(0, model.requests.size)
+
+    writeGuidelinesReport(buildDir, ModuleGuidelines.of(":catalog", "wear-m3", "m", run), false)
+
+    val written =
+      GuidelinesCommand.REPORT_JSON.decodeFromString(
+        ModuleGuidelines.serializer(),
+        buildDir.resolve("guidelines.json").readText(),
+      )
+    assertEquals(0, written.requests)
+    assertEquals(0, written.failedRequests)
+    assertTrue(written.results.single().noRules!!.contains("surface `widget`"))
+    assertTrue(written.problems.single().contains("not checked"), written.problems.toString())
+    buildDir.deleteRecursively()
+  }
+
+  @Test
   fun `an incomplete check exits 2 even with findings, so CI never reads it as clean`() {
     assertEquals(2, guidelinesExitCode(incomplete = true, failed = false, buildOk = true))
     assertEquals(2, guidelinesExitCode(incomplete = true, failed = true, buildOk = true))
