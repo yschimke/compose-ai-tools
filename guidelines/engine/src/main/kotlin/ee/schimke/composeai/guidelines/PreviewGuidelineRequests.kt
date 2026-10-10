@@ -118,23 +118,23 @@ public data class GuidelineBudget(
    * request, goes in without it (truncated where a part fits) rather than losing a picture.
    */
   val maxSourceChars: Int = 32_000,
+) {
   /**
    * How many verdicts one reply may be asked for: each subject's rules, summed. This bounds the
    * reply rather than the request, and the reply is what takes the time — twelve Wear screens asked
-   * 24 rules each is 288 verdicts, a reply that ran past the 300 s request timeout twice while
-   * three components in their own request answered in seconds. At the default a screen batch of
-   * that catalog holds five.
+   * 24 rules each is 288 verdicts, a reply that ran past the 300 s request timeout on every try
+   * while three components in their own request answered in seconds. At the default a screen batch
+   * of that catalog holds five.
+   *
+   * A body property, so the constructor and `copy` keep their ABI: set it with [withMaxVerdicts],
+   * and note that `copy` resets it to [DEFAULT_MAX_VERDICTS].
    */
-  val maxVerdicts: Int = DEFAULT_MAX_VERDICTS,
-) {
-  /** The budget before [maxVerdicts]: binary compatibility for callers built against it. */
-  @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
-  public constructor(
-    maxPictures: Int,
-    maxInputTokens: Int,
-    maxSubjects: Int,
-    maxSourceChars: Int,
-  ) : this(maxPictures, maxInputTokens, maxSubjects, maxSourceChars, DEFAULT_MAX_VERDICTS)
+  public var maxVerdicts: Int = DEFAULT_MAX_VERDICTS
+    private set
+
+  /** This budget, holding a reply to [maxVerdicts] verdicts. */
+  public fun withMaxVerdicts(maxVerdicts: Int): GuidelineBudget =
+    copy().also { it.maxVerdicts = maxVerdicts }
 
   public companion object {
     /** [maxVerdicts] unless told otherwise. */

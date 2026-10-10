@@ -110,31 +110,17 @@ public data class GuidelineRunOptions(
   /** Where the rules came from, linked from each request's provenance. */
   val rulesSource: String = CatalogGuidelinesV1.FILE_NAME,
   val ranBy: String? = null,
-  /** Retrying and splitting a request that failed. */
-  val retry: GuidelineRetry = GuidelineRetry(),
 ) {
-  /** The options before [retry]: binary compatibility for callers built against them. */
-  @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
-  public constructor(
-    model: String,
-    budget: GuidelineBudget,
-    maxRounds: Int,
-    triage: Boolean,
-    triageThreshold: Double,
-    maxCostUsd: Double?,
-    rulesSource: String,
-    ranBy: String?,
-  ) : this(
-    model,
-    budget,
-    maxRounds,
-    triage,
-    triageThreshold,
-    maxCostUsd,
-    rulesSource,
-    ranBy,
-    GuidelineRetry(),
-  )
+  /**
+   * Retrying and splitting a request that failed. A body property, so the constructor and `copy`
+   * keep their ABI: set it with [withRetry], and note that `copy` resets it to the default.
+   */
+  public var retry: GuidelineRetry = GuidelineRetry()
+    private set
+
+  /** These options, retrying as [retry] says. */
+  public fun withRetry(retry: GuidelineRetry): GuidelineRunOptions =
+    copy().also { it.retry = retry }
 }
 
 /** A whole run: one result per subject, what it cost, and what went wrong on the way. */

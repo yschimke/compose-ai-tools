@@ -219,7 +219,7 @@ class GuidelineRetryTest {
     val run =
       engine(
           model,
-          GuidelineRunOptions(triage = false, retry = GuidelineRetry(maxFailedAttempts = 2)),
+          GuidelineRunOptions(triage = false).withRetry(GuidelineRetry(maxFailedAttempts = 2)),
           sleeps,
         )
         .run(guidelines, (1..4).map { subject("p$it") })
@@ -398,7 +398,7 @@ class GuidelineRetryTest {
     // A screen is asked three rules here: two screens fill six, the third starts a new batch.
     val screens = (1..5).map { subject("s$it", GuidelineSurfaces.SCREEN) }
     val batches =
-      PreviewGuidelineRequests.batches(guidelines, screens, GuidelineBudget(maxVerdicts = 6))
+      PreviewGuidelineRequests.batches(guidelines, screens, GuidelineBudget().withMaxVerdicts(6))
     assertThat(batches.map { it.subjects.size }).containsExactly(2, 2, 1).inOrder()
     // At the default, twelve screens asked 24 rules each go in batches of five, not one of twelve.
     assertThat(GuidelineBudget.DEFAULT_MAX_VERDICTS / 24).isEqualTo(5)

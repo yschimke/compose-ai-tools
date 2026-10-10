@@ -171,7 +171,7 @@ is asked once more, budget permitting, and is otherwise a failed request.
 ## Failed requests
 
 `OpenRouterClient` makes each call once; `GuidelineEngine` decides what to do when one fails
-(`GuidelineRunOptions.retry`, a `GuidelineRetry`):
+(`GuidelineRunOptions.withRetry(GuidelineRetry(…))`):
 
 - **No answer.** A request the transport gave up on comes back as `ModelResponse.NO_ANSWER` (0)
   with what gave up on it — `no complete answer within the 300 s request timeout` for OkHttp's
