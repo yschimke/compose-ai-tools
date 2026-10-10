@@ -530,6 +530,32 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a Retry-After past the retry ceiling pauses no one`() {
+    val inner = FakeDecisions()
+    var calls = 0
+    val limited =
+      object : GuidelineModel by inner {
+        override fun decide(body: JsonObject): ModelResponse {
+          if (synchronized(this) { calls++ } == 0) {
+            return ModelResponse(429, """{"error":{"message":"rate limited"}}""").also {
+              it.retryAfterMillis = 3_600_000
+            }
+          }
+          return inner.decide(body)
+        }
+      }
+    val waits = Collections.synchronizedList(mutableListOf<Long>())
+    val engine = jev(limited)
+    engine.sleep = { waits += it }
+    val run = engine.run(guidelines, (1..3).map { subject("c$it") })
+    // The hour is not waited, by the request that met it or by any other: that one fails, the
+    // rest are asked.
+    assertThat(waits.none { it > 60_000 }).isTrue()
+    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(inner.bodies).hasSize(2)
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(

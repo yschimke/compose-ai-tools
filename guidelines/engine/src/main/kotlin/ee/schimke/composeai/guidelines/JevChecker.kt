@@ -545,7 +545,10 @@ internal class JevChecker(
             )
         // A rate limit holds every worker, and is published before this settlement wakes the
         // workers waiting on it, whether or not this request is asked again.
-        if (refused?.kind == FailureKind.RATE_LIMITED) ledger.pauseAll(backoff)
+        // A wait past the retry ceiling is not waited out, by this worker or any other.
+        if (refused?.kind == FailureKind.RATE_LIMITED && backoff <= options.retry.maxDelayMillis) {
+          ledger.pauseAll(backoff)
+        }
         ledger.settle(reservation, spent, counted = true)
         val failure: FailedRequest =
           if (response.status in 200..299) {
