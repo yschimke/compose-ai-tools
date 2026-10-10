@@ -16,10 +16,19 @@ public interface GuidelineEvidenceHost {
   /** The evidence kinds this host can supply (`GuidelineEvidenceNeedV1.KIND_*`). */
   public val available: List<String>
 
+  /**
+   * The kinds it can supply for [previewId]: [available] unless some exist only for some previews
+   * (an already-rendered scroll capture, [PreviewGuidelineRequests.KIND_SCROLL_CAPTURE]).
+   */
+  public fun available(previewId: String): List<String> = available
+
   /** [previewId]'s accessibility nodes, or null when the host cannot get them. */
   public fun nodes(previewId: String): List<PreviewNode>? = null
 
-  /** [previewId] rendered as [need] asks (theme, font scale, device), or null. */
+  /**
+   * [previewId] rendered as [need] asks (theme, font scale, device), or the already-rendered
+   * capture a [PreviewGuidelineRequests.KIND_SCROLL_CAPTURE] need asks for, or null.
+   */
   public fun render(previewId: String, need: GuidelineEvidenceNeedV1): SubjectPicture? = null
 
   /** [previewId]'s source, or null. */
@@ -129,9 +138,10 @@ public class GuidelineEngine(
             guidelines,
             target,
             options.rulesSource,
-            host.available,
+            target.subjects.flatMap { host.available(it.previewId) }.distinct(),
             round,
             onlyRules,
+            target.subjects.associate { it.previewId to host.available(it.previewId) },
           )
         val response = runCatching {
           model.complete(request, options.model)
@@ -295,7 +305,7 @@ public class GuidelineEngine(
           // Never ask the host for a kind it did not advertise, whoever asked for it: Jev's
           // triage or the model's own `needs_evidence`.
           wanted
-            .filter { it.kind in host.available }
+            .filter { it.kind in host.available(subject.previewId) }
             .forEach { need ->
               when (need.kind) {
                 GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
@@ -306,6 +316,16 @@ public class GuidelineEngine(
                 GuidelineEvidenceNeedV1.KIND_SOURCE ->
                   if (updated.source == null) {
                     host.source(subject.previewId)?.let { updated = updated.copy(source = it) }
+                  }
+                PreviewGuidelineRequests.KIND_SCROLL_CAPTURE ->
+                  if (
+                    updated.pictures.none {
+                      it.kind == PreviewGuidelineRequests.KIND_SCROLL_CAPTURE
+                    }
+                  ) {
+                    host.render(subject.previewId, need)?.let {
+                      updated = updated.copy(pictures = updated.pictures + it)
+                    }
                   }
                 GuidelineEvidenceNeedV1.KIND_RENDER -> {
                   val already =

@@ -214,6 +214,88 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a staged scroll capture is offered only where it exists and served in round two`() {
+    // The handoff shape: no build to render with, only a long screenshot the render job staged
+    // for `a`. Round 0 cannot tell scrolled from clipped and asks; round 1 decides from it.
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.4,"nodeIds":[],
+         "reason":"","needs":[{"kind":"scroll-capture","theme":null,"fontScale":null,"device":null,"reason":"scrolled or clipped?"}],"regions":[]},
+        {"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"touch","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.85,"nodeIds":[],"reason":"Cut across the list.","needs":[],
+         "regions":[{"picture":1,"x":0.1,"y":0.7,"width":0.8,"height":0.2,"label":null}]}
+      ]}"""
+    model.costs += listOf(0.0031, 0.0014)
+    val served = mutableListOf<String>()
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_SCROLL_CAPTURE)
+
+        override fun available(previewId: String) = if (previewId == "a") available else emptyList()
+
+        override fun render(previewId: String, need: GuidelineEvidenceNeedV1): SubjectPicture {
+          served += previewId
+          return SubjectPicture(PreviewGuidelineRequests.KIND_SCROLL_CAPTURE, png, 40, 40)
+        }
+      }
+    val engine =
+      GuidelineEngine(model, host, options = GuidelineRunOptions(triage = true, maxRounds = 2))
+
+    val run = engine.run(guidelines, listOf(subject("a"), subject("b")))
+
+    // Two requests, no triage call (it offers nothing this host serves), one capture served.
+    assertThat(model.decisions).isEmpty()
+    assertThat(model.requests.map { it.round }).containsExactly(0, 1).inOrder()
+    assertThat(model.requests[0].evidenceAvailable).containsExactly("scroll-capture")
+    assertThat(model.requests[0].userText).contains("Evidence that may be asked for s2: none")
+    assertThat(model.requests[0].pictures).hasSize(2)
+    assertThat(model.requests[1].pictures).hasSize(2)
+    assertThat(served).containsExactly("a")
+    val a = run.results.single { it.previewId == "a" }
+    assertThat(a.unchecked).isEmpty()
+    assertThat(a.failures().single().regions.single().pictureKind).isEqualTo("device")
+    assertThat(run.requests).isEqualTo(2)
+    assertThat(run.costUsd).isWithin(1e-9).of(0.0045)
+  }
+
+  @Test
+  fun `a capture is never fetched for a preview the host has none for`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.4,"nodeIds":[],
+         "reason":"","needs":[{"kind":"scroll-capture","theme":null,"fontScale":null,"device":null,"reason":"?"}],"regions":[]},
+        {"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    model.replies +=
+      """{"verdicts":[{"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.4,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    val served = mutableListOf<String>()
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_SCROLL_CAPTURE)
+
+        override fun available(previewId: String) = emptyList<String>()
+
+        override fun render(previewId: String, need: GuidelineEvidenceNeedV1): SubjectPicture? {
+          served += previewId
+          return null
+        }
+      }
+    val run =
+      GuidelineEngine(model, host, options = GuidelineRunOptions(triage = false, maxRounds = 2))
+        .run(guidelines, listOf(subject("a")))
+    assertThat(served).isEmpty()
+    assertThat(model.requests[0].evidenceAvailable).isEmpty()
+    assertThat(run.results.single().unchecked).containsExactly("touch")
+  }
+
+  @Test
   fun `a rule still undecided after the last round is unchecked, not passed`() {
     val model = FakeModel()
     model.replies +=
@@ -514,6 +596,8 @@ class GuidelineEngineTest {
 
   private inner class FakeModel : GuidelineModel {
     val replies = ArrayDeque<String>()
+    /** Each reply's cost, in order; 0.001 once these run out. */
+    val costs = ArrayDeque<Double>()
     val requests = mutableListOf<GuidelineRequestV1>()
     val decisions = mutableListOf<JsonObject>()
     var decision: String? = null
@@ -522,7 +606,10 @@ class GuidelineEngineTest {
     override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
       requests += request
       if (status !in 200..299) return ModelResponse(status, """{"error":{"message":"busy"}}""")
-      return ModelResponse(200, completion(replies.removeFirst()))
+      return ModelResponse(
+        200,
+        completion(replies.removeFirst(), costs.removeFirstOrNull() ?: 0.001),
+      )
     }
 
     override fun decide(body: JsonObject): ModelResponse {

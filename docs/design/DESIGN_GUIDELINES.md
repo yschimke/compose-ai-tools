@@ -136,9 +136,17 @@ already did: at the END of a scroll, the time text has scrolled away rather than
 A finding like "the footer is cut off" means nothing until the model knows whether the container
 scrolls. Each subject's accessibility nodes carry their `states` (`scrollable`, `clickable`, …) and
 the viewport's pixel size, and a node extending past the viewport is marked `off:bottom` (or
-`top`, `left`, `right`). When the renderer wrote a long screenshot beside a scrolled capture
-(`<render>_SCROLL_long.png`), it goes along as a second picture, staged into the handoff too. The
-system prompt says content cut along a scrollable axis is scrolled away, not clipped.
+`top`, `left`, `right`). The system prompt says content cut along a scrollable axis is scrolled
+away, not clipped. That text evidence goes up front; pictures do not.
+
+When the renderer wrote a long screenshot beside a scrolled capture (`<render>_SCROLL_long.png`),
+the render phase stages it beside the render in the handoff, and handoff mode offers it as
+requestable evidence: kind `scroll-capture` (`PreviewGuidelineRequests.KIND_SCROLL_CAPTURE`), listed
+in `evidenceAvailable` only for previews that have one (`GuidelineEvidenceHost.available(id)`). A
+`needs_evidence` verdict asking for it is answered in a follow-up round from the staged file
+(`HandoffEvidenceHost`); the publish job renders nothing and builds nothing. A preview with no
+extra capture offers what it did before — nothing. The `apply` action runs `--rounds 2`, and every
+round counts against the one `guidelines-max-cost` budget.
 
 Where the a11y pipeline ran, the Accessibility Test Framework results in `accessibility.json` are
 listed per subject as measured checks, and the prompt says they decide the touch-target and
