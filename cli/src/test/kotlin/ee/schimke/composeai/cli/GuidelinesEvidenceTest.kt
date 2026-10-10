@@ -330,6 +330,8 @@ class GuidelinesEvidenceTest {
       "a11y" !in host.available("B"),
       "nothing came back, so later previews are not offered it",
     )
+    // Both promised a11y in their identity and got none: a kept result for them is forgotten.
+    assertTrue(host.a11yMissing("A") && host.a11yMissing("B"))
   }
 
   @Test

@@ -1038,6 +1038,21 @@ class GuidelineEngineTest {
       )
   }
 
+  @Test
+  fun `a removed result is asked again`() {
+    val dir = Files.createTempDirectory("guidelines-cache-remove").toFile()
+    val cache = GuidelineResultCache(dir)
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    GuidelineEngine(model, cache = cache, options = GuidelineRunOptions(triage = false))
+      .run(guidelines, listOf(subject("a")))
+    assertThat(cache.get(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNotNull()
+    cache.remove(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)
+    assertThat(cache.get(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNull()
+    dir.deleteRecursively()
+  }
+
   private inner class FakeHost(
     override val available: List<String> = listOf("a11y-hierarchy", "render")
   ) : GuidelineEvidenceHost {

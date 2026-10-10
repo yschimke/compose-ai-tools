@@ -155,6 +155,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineResultCache {
 	public final fun prune (Ljava/util/Set;)V
 	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;ILjava/lang/String;)V
 	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)V
+	public final fun remove (Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)V
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineResultCache$Companion {

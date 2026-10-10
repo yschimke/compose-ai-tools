@@ -103,6 +103,19 @@ public class GuidelineResultCache(private val directory: File) {
     marker(subject.previewId).apply { parentFile.mkdirs() }.writeText("")
   }
 
+  /**
+   * Forgets the result kept for [subject] against [guidelines] by [model], when one is. For a host
+   * whose evidence failed after the result was kept under inputs that promised it (the CLI's
+   * accessibility fetch), so the next run asks again rather than reuse a verdict reached without
+   * it.
+   */
+  public fun remove(subject: PreviewSubject, guidelines: CatalogGuidelinesV1, model: String) {
+    subject.renderHash ?: return
+    val key = inputsKey(subject, guidelines, model)
+    File(directory, path(key)).delete()
+    touched -= key
+  }
+
   @Deprecated(
     "Keyed only on the render and the rules' version, so a source-only edit or changed rule " +
       "text returns a stale verdict. Use get(subject, guidelines, model)."
