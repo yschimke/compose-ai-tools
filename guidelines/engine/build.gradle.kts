@@ -52,3 +52,9 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2026")
 }
+
+// GeneralGuidelinesPackTest reads the shared pack, so an edit to it re-runs the test.
+tasks.withType<Test>().configureEach {
+  inputs.dir("../packs").withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("packs")
+  systemProperty("guidelines.packs.dir", file("../packs").absolutePath)
+}

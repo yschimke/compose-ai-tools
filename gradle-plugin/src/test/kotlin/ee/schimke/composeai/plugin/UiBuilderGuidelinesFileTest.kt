@@ -3,6 +3,9 @@ package ee.schimke.composeai.plugin
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.nio.file.Files
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 /**
@@ -67,5 +70,104 @@ class UiBuilderGuidelinesFileTest {
       )
       .forEach { expected -> assertThat(problems.any { expected in it }).isTrue() }
     assertThat(UiBuilderGuidelinesFile.problems("[]", "x")).containsExactly("is not a JSON object")
+  }
+
+  private val pack =
+    """
+    {"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "general",
+     "platform": "any", "version": 1,
+     "frames": [{"kind": "sized", "label": "2x1", "widthDp": 130, "heightDp": 102},
+                {"kind": "device"}],
+     "rules": [
+       {"id": "general.all", "kind": "structure", "severity": "info", "guidance": "g",
+        "check": "all?", "source": "https://developer.android.com/a"},
+       {"id": "general.wear", "platforms": ["wear"], "kind": "structure", "severity": "info",
+        "guidance": "g", "check": "wear?", "source": "https://developer.android.com/b"},
+       {"id": "general.launcher", "platforms": ["launcher"], "kind": "structure",
+        "severity": "info", "guidance": "g", "check": "launcher?",
+        "source": "https://developer.android.com/c"},
+       {"id": "general.skip", "kind": "structure", "severity": "info", "guidance": "g",
+        "check": "skip?", "source": "https://developer.android.com/d"},
+       {"id": "launcher.purpose.single-use-case", "kind": "structure", "severity": "info",
+        "guidance": "pack", "check": "pack?", "source": "https://developer.android.com/e"}
+     ]}
+    """
+      .toByteArray()
+
+  private val packUrl = "https://raw.githubusercontent.com/o/r/v1/general.guidelines.json"
+
+  private fun sha256(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+      "%02x".format(it)
+    }
+
+  private fun including(sha: String = sha256(pack), extra: String = "") =
+    valid.trimEnd().removeSuffix("}") +
+      """, "includes": [{"url": "$packUrl", "sha256": "$sha"$extra}]}"""
+
+  @Test
+  fun `a file with no includes is published byte for byte`() {
+    val flat = UiBuilderGuidelinesFile.flatten(valid) { error("nothing to fetch") }
+    assertThat(flat.text).isEqualTo(valid)
+    assertThat(flat.problem).isNull()
+  }
+
+  @Test
+  fun `includes are merged in and removed, so the published file is flat`() {
+    val text = including(extra = ""","exclude": ["general.skip"]""")
+    assertThat(UiBuilderGuidelinesFile.problems(text, "remote-widgets")).isEmpty()
+    val flat =
+      UiBuilderGuidelinesFile.flatten(text) { url ->
+        check(url == packUrl)
+        pack
+      }
+    assertThat(flat.problem).isNull()
+    val root = kotlinx.serialization.json.Json.parseToJsonElement(flat.text).jsonObject
+    assertThat(root.keys).doesNotContain("includes")
+    val ids =
+      root.getValue("rules").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content }
+    // The catalog's own rule wins over the pack's of the same id; the launcher rule is carried,
+    // the wear one and the excluded one are not.
+    assertThat(ids)
+      .containsExactly("launcher.purpose.single-use-case", "general.all", "general.launcher")
+      .inOrder()
+    assertThat(
+        root
+          .getValue("rules")
+          .jsonArray
+          .first()
+          .jsonObject
+          .getValue("guidance")
+          .jsonPrimitive
+          .content
+      )
+      .isEqualTo("Focus on one task.")
+    // The pack's sized frame duplicates the catalog's and is not added twice.
+    assertThat(root.getValue("frames").jsonArray).hasSize(2)
+    // The flat file is still a valid guidelines file for the catalog.
+    assertThat(UiBuilderGuidelinesFile.problems(flat.text, "remote-widgets")).isEmpty()
+  }
+
+  @Test
+  fun `a pack that does not match its pin is published as written, with the reason`() {
+    val text = including(sha = "0".repeat(64))
+    val flat = UiBuilderGuidelinesFile.flatten(text) { pack }
+    assertThat(flat.text).isEqualTo(text)
+    assertThat(flat.problem).contains("does not match its pin")
+  }
+
+  @Test
+  fun `an include must be an https URL with a sha256`() {
+    val problems =
+      UiBuilderGuidelinesFile.problems(
+        valid.trimEnd().removeSuffix("}") +
+          ""","includes": [{"url": "http://x/p.json", "sha256": "abc"}, {"url": "https://x/p.json"}]}""",
+        "remote-widgets",
+      )
+    assertThat(problems)
+      .containsExactly(
+        "include #0's `url` is not an https URL",
+        "include https://x/p.json has no `sha256` (64 lowercase hex digits)",
+      )
   }
 }

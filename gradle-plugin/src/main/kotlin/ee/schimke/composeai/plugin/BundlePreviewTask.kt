@@ -2082,7 +2082,8 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * The catalog's `ui-builder.guidelines.json`, from beside the policy the catalog was generated
-   * from, when it is well formed; null otherwise, with a warning naming what is wrong.
+   * from, flattened (its included rule packs merged in), when it is well formed; null otherwise,
+   * with a warning naming what is wrong.
    */
   private fun guidelineResultsBytes(bundleIds: Map<String, String>): ByteArray? =
     guidelineResultsEntry(guidelineResultsFiles.files, bundleIds) { file ->
@@ -2103,7 +2104,13 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
       return null
     }
-    return text.toByteArray(Charsets.UTF_8)
+    val flat = UiBuilderGuidelinesFile.flatten(text)
+    flat.problem?.let {
+      logger.warn(
+        "composePreview: ${source.path}'s includes are not resolved ($it); bundled as written."
+      )
+    }
+    return flat.text.toByteArray(Charsets.UTF_8)
   }
 
   /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */

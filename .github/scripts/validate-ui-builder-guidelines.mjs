@@ -5,7 +5,12 @@
 // publish loudly, because a guidelines file that is silently dropped looks exactly like a catalog
 // that has none.
 //
+// A file's `includes` (shared rule packs, each `{ url, sha256 }`) are fetched and checked against
+// their pins here too: the Gradle plugin flattens them into the published file, and a pin that does
+// not resolve would otherwise publish a catalog quietly missing every rule of the pack.
+//
 //   node validate-ui-builder-guidelines.mjs --guidelines <file> [--catalog <ui-builder catalog id>]
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
@@ -52,6 +57,38 @@ if (root !== undefined && (root === null || typeof root !== 'object' || Array.is
       problems.push(`rule ${name}'s \`source\` is not an https URL`);
     }
   });
+  if (root.includes !== undefined && !Array.isArray(root.includes)) {
+    problems.push('`includes` is not a list');
+  }
+  for (const [index, include] of (Array.isArray(root.includes) ? root.includes : []).entries()) {
+    const url = include && typeof include.url === 'string' ? include.url : undefined;
+    if (!url || !url.startsWith('https://')) {
+      problems.push(`include #${index}'s \`url\` is not an https URL`);
+      continue;
+    }
+    if (typeof include.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(include.sha256)) {
+      problems.push(`include ${url} has no \`sha256\` (64 lowercase hex digits)`);
+      continue;
+    }
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (!response.ok) throw new Error(`answered ${response.status}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > 1024 * 1024) throw new Error('larger than 1 MiB');
+      const actual = createHash('sha256').update(bytes).digest('hex');
+      if (actual !== include.sha256) {
+        problems.push(`include ${url} does not match its pin (sha256 ${actual})`);
+        continue;
+      }
+      const pack = JSON.parse(bytes.toString('utf8'));
+      if (pack.schema !== SCHEMA) problems.push(`include ${url} is not a guidelines pack`);
+      if (Array.isArray(pack.includes) && pack.includes.length) {
+        problems.push(`include ${url} includes others; packs may not nest`);
+      }
+    } catch (e) {
+      problems.push(`include ${url} could not be read (${e.message})`);
+    }
+  }
 }
 
 if (problems.length) {
@@ -60,4 +97,7 @@ if (problems.length) {
   }
   process.exit(1);
 }
-console.log(`${file}: ${root.rules.length} rule(s), ${(root.frames ?? []).length} frame(s), ok`);
+console.log(
+  `${file}: ${root.rules.length} rule(s), ${(root.frames ?? []).length} frame(s), ` +
+    `${(root.includes ?? []).length} include(s), ok`,
+);
