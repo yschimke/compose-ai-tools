@@ -124,12 +124,12 @@ class ReportTest(unittest.TestCase):
         self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}])
         body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
         assert body is not None
-        self.assertIn(
-            '<img src="https://raw.githubusercontent.com/org/repo/0123abc/guidelines/catalog/'
-            'Stop-1.guidelines.png" width="200" />',
-            body,
-        )
+        url = ("https://raw.githubusercontent.com/org/repo/0123abc/guidelines/catalog/"
+               "Stop-1.guidelines.png")
+        # Shown at a width the badges read at, and linked to the full-size picture.
+        self.assertIn(f'<a href="{url}"><img src="{url}" width="320" /></a>', body)
         self.assertIn("1 finding location(s) marked", body)
+        self.assertIn("- **1** ⚠️ **wear.touch-target-48dp** on `stop` (85%)", body)
 
     def test_a_finding_naming_nothing_on_the_render_shows_the_render_and_says_so(self) -> None:
         # No accessibility nodes were staged, so `stop` names nothing the annotator can outline.
@@ -139,6 +139,43 @@ class ReportTest(unittest.TestCase):
         self.assertIn("0123abc/guidelines/catalog/Stop-1.png", body)
         self.assertNotIn("Stop-1.guidelines.png", body)
         self.assertIn("Nothing marked", body)
+        # Nothing on the picture carries a number, so neither does the finding.
+        self.assertIn("- ⚠️ **wear.touch-target-48dp** on `stop`", body)
+
+    def test_findings_carry_the_badge_numbers_the_annotator_draws(self) -> None:
+        # The annotator numbers findings with a mark, in the order listed (by confidence); a
+        # finding with nothing on the render is listed without a number and does not take one.
+        self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}])
+        report = json.loads((self.tmp / "catalog" / "guidelines.json").read_text())
+        report["results"][0]["record"]["verdicts"] = [
+            {"ruleId": "wear.button.emphasis", "verdict": "fail", "confidence": 0.6,
+             "nodeIds": [], "reason": "Region, listed third.",
+             "regions": [{"subjectId": "x.StopKt.Stop", "x": 0.5, "y": 0.5, "width": 0.2,
+                          "height": 0.2}]},
+            {"ruleId": "wear.touch-target-48dp", "verdict": "fail", "confidence": 0.9,
+             "nodeIds": ["stop"], "reason": "Node, listed first."},
+            {"ruleId": "wear.layout.no-clipping", "verdict": "fail", "confidence": 0.7,
+             "nodeIds": ["gone"], "reason": "Names nothing on the render, listed second.",
+             "regions": [{"subjectId": "x.StopKt.Stop", "pictureKind": "long", "x": 0, "y": 0,
+                          "width": 1, "height": 1}]},
+        ]
+        (self.tmp / "catalog" / "guidelines.json").write_text(json.dumps(report))
+        body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
+        assert body is not None
+        self.assertIn("2 finding location(s) marked", body)
+        listed = [line for line in body.splitlines() if line.startswith("- ")]
+        self.assertEqual(len(listed), 4)
+        self.assertTrue(listed[0].startswith("- **1** ⚠️ **wear.touch-target-48dp**"), listed[0])
+        self.assertTrue(listed[1].startswith("- ⚠️ **wear.layout.no-clipping**"), listed[1])
+        self.assertTrue(listed[2].startswith("- **2** ℹ️ **wear.button.emphasis**"), listed[2])
+
+    def test_no_numbers_without_the_picture_they_refer_to(self) -> None:
+        # Marks exist, but no image location was given, so no picture is embedded.
+        self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}])
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertNotIn("<img", body)
+        self.assertIn("- ⚠️ **wear.touch-target-48dp** on `stop`", body)
 
     def test_a_region_marks_the_render_without_nodes(self) -> None:
         self._renders()

@@ -115,8 +115,10 @@ publish phase on fork PRs; see Next steps).
 - `build/compose-previews/guidelines.json` — one `ModuleGuidelines` per module: each preview's
   `GuidelineRecordV1` (verdicts, served model, cost), its regions and its unchecked rules. A narrowed
   run merges into what is there.
-- `--annotate` writes `<render>.guidelines.png` beside each render with findings: node outlines from
-  the accessibility bounds and soft boxes for regions, labelled with the rule id.
+- `--annotate` writes `<render>.guidelines.png` beside each render with findings: outlines (solid for
+  nodes from the accessibility bounds, dashed for regions) drawn just outside what they mark and
+  never filled over it, each with a numbered badge. Findings are numbered in the order they are
+  listed, counting only those with a mark; the PR comment lists them under the same numbers.
 - `--json` prints the same; `--fail-on warning|info` sets the exit code.
 
 ## Wrapper source
