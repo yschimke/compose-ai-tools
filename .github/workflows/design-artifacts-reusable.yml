@@ -5555,7 +5555,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/design-parity
-          ref: 6ba2118ea00b504c243a904006700b0d9c482af3
+          ref: 0398335d32a3809b0bb95a3dc1c97e0bf4eb5077 # main
           path: _catalog_section_tools
           persist-credentials: false
       - name: Download prepared catalog section
