@@ -319,7 +319,7 @@ public class CoordinateResolver(
     } catch (e: Exception) {
       fileSystem.delete(destPath, mustExist = false)
       // Transport errors (reset, timeout, dropped tunnel) are transient.
-      FetchFailure(url, "${e.javaClass.simpleName}: ${e.message ?: "no message"}", transient = true)
+      FetchFailure(url, transportReason(e), transient = true)
     }
   }
 
@@ -335,15 +335,39 @@ public class CoordinateResolver(
     public val DEFAULT_REMOTE_REPOSITORIES: List<String> =
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
-    /** Attempts per URL, the first included. */
-    internal const val MAX_ATTEMPTS: Int = 3
+    /**
+     * Attempts per URL, the first included. Only a transient answer is retried — a 404 is final —
+     * so a coordinate that really is gone costs one request whatever this says; the extra attempts
+     * buy a dropped connection a 7s window (1s, 2s, 4s) instead of 3s, which a brief network blip
+     * on a laptop outlasted.
+     */
+    internal const val MAX_ATTEMPTS: Int = 4
 
     /** The longest a server's `Retry-After` is honoured for; past it, the retry is not worth it. */
     internal const val MAX_RETRY_AFTER_MS: Long = 10_000L
 
-    /** 1s, then 2s: short enough that a coordinate which really is gone costs little. */
+    /** 1s, 2s, 4s: doubling from one second, unless the server said how long to wait. */
     internal fun backoffMs(attempt: Int, retryAfterMs: Long?): Long =
       retryAfterMs?.coerceIn(0L, MAX_RETRY_AFTER_MS) ?: (1_000L shl (attempt - 1))
+
+    /**
+     * A transport failure as an operator can act on it. ktor surfaces a body the OkHttp engine
+     * abandoned as `ClosedByteChannelException`, which says only THAT the stream closed; why — a
+     * timeout, a reset, an early end of stream, TLS — is its cause. So the deepest cause is named
+     * beside it, or a dropped download reads `dl.google.com answered ClosedByteChannelException`
+     * and nothing in it says what to fix.
+     */
+    internal fun transportReason(e: Throwable): String {
+      fun describe(t: Throwable) = "${t.javaClass.simpleName}: ${t.message ?: "no message"}"
+      var root = e
+      val seen = mutableSetOf<Throwable>(e)
+      while (true) {
+        val next = root.cause ?: break
+        if (!seen.add(next)) break
+        root = next
+      }
+      return if (root === e) describe(e) else "${describe(e)} (caused by ${describe(root)})"
+    }
 
     /** `Retry-After` in its delta-seconds form; the HTTP-date form falls back to the backoff. */
     internal fun retryAfterMs(header: String): Long? =
