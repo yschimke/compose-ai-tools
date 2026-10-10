@@ -251,6 +251,23 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a run answered wholly from the cache still says what it left unchecked`() {
+    val dir = Files.createTempDirectory("jev-cache-only").toFile()
+    try {
+      val cache = GuidelineResultCache(dir)
+      jev(FakeDecisions(), cache = cache).run(guidelines, listOf(subject("a")))
+      val again = FakeDecisions()
+      val run = jev(again, cache = cache).run(guidelines, listOf(subject("a")))
+      assertThat(again.bodies).isEmpty()
+      val problems = run.problems.joinToString("\n")
+      assertThat(problems).contains("1 rule verdict(s) on 1 preview(s)")
+      assertThat(problems).contains("set-scoped rule(s) were not asked")
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `answers to questions nobody asked are dropped and counted`() {
     val model =
       object : GuidelineModel {
@@ -316,11 +333,13 @@ class JevCheckerTest {
         GuidelineRunOptions(triage = false, maxCostUsd = 0.00003).withChecker(GuidelineChecker.JEV),
         System::currentTimeMillis,
       )
-    checker.parallelism = 1
-    val run = checker.run(guidelines, (1..4).map { subject("c$it") })
+    // Four at once, the default: before the first answer the price is unknown, so the others wait
+    // for it rather than all reserving at zero and crossing the cap together.
+    checker.parallelism = 4
+    val run = checker.run(guidelines, (1..8).map { subject("c$it") })
     // The first costs 0.00002; a second at that price would cross 0.00003.
     assertThat(model.bodies).hasSize(1)
-    assertThat(run.results.count { it.pending }).isEqualTo(3)
+    assertThat(run.results.count { it.pending }).isEqualTo(7)
     assertThat(run.problems.joinToString("\n")).contains("the cost cap")
   }
 

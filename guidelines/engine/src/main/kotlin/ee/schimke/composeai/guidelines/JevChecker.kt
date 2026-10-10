@@ -9,6 +9,8 @@ import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -139,9 +141,6 @@ internal class JevChecker(
 
     var capped = 0
     var failedRequests = 0
-    var textOnly = 0
-    var cannotTell = 0
-    val textOnlyPreviews = mutableSetOf<String>()
     outcomes.forEach { outcome ->
       val subject = outcome.subject
       val arrived = pending.first { it.previewId == subject.previewId }
@@ -160,13 +159,6 @@ internal class JevChecker(
           val result =
             result(guidelines, subject, asked, outcome.verdicts, outcome.served, outcome.cost)
           results += result
-          outcome.verdicts
-            .filter { it.verdict == GuidelineVerdictV1.NEEDS_EVIDENCE }
-            .forEach { verdict ->
-              textOnlyPreviews += subject.previewId
-              if (asked.firstOrNull { it.id == verdict.ruleId }?.kind == KIND_VISUAL) textOnly++
-              else cannotTell++
-            }
           // Keyed on the subject as the caller handed it in, as the vision engine does: the
           // evidence attached here is not on the next run's lookup.
           cache?.put(result, arrived, guidelines, cacheModel)
@@ -174,6 +166,22 @@ internal class JevChecker(
       }
     }
 
+    // Counted over every result, cached ones included: a run answered wholly from the cache still
+    // says what the checker could not judge.
+    val visualKind = guidelines.rules.associate { it.id to it.kind }
+    var textOnly = 0
+    var cannotTell = 0
+    val textOnlyPreviews = mutableSetOf<String>()
+    results
+      .filter { it.noRules == null && !it.pending }
+      .forEach { result ->
+        result.record.verdicts
+          .filter { it.verdict == GuidelineVerdictV1.NEEDS_EVIDENCE }
+          .forEach { verdict ->
+            textOnlyPreviews += result.previewId
+            if (visualKind[verdict.ruleId] == KIND_VISUAL) textOnly++ else cannotTell++
+          }
+      }
     if (textOnly + cannotTell > 0) {
       problems +=
         "${textOnly + cannotTell} rule verdict(s) on ${textOnlyPreviews.size} preview(s) were " +
@@ -181,7 +189,7 @@ internal class JevChecker(
           "$cannotTell Jev could not tell from the text)"
     }
     val setRules = guidelines.setRules()
-    if (setRules.isNotEmpty() && prepared.isNotEmpty()) {
+    if (setRules.isNotEmpty() && askable.isNotEmpty()) {
       problems +=
         "${setRules.size} set-scoped rule(s) were not asked (${setRules.joinToString { it.id }}): " +
           "the jev checker judges each preview on its own"
@@ -261,8 +269,10 @@ internal class JevChecker(
     var served: GuidelineServed? = null
     var cost = 0.0
     for (chunk in JevRuleRequests.chunks(guidelines, subject, textual)) {
-      var reservation = ledger.reserve() ?: return Outcome(subject, capped = true)
+      // Built before the reservation: nothing between reserving and settling may throw, or the
+      // requests waiting on the first one's price would wait for ever.
       val body = JevRuleRequests.body(guidelines, subject, chunk, jevModel)
+      var reservation = ledger.reserve() ?: return Outcome(subject, capped = true)
       var attempt = 0
       while (true) {
         attempt++
@@ -403,23 +413,42 @@ internal class JevChecker(
 
     private var dearest = 0.0
     private var inFlight = 0.0
+    private var started = 0
     private var failed = 0
 
-    @Synchronized
-    fun reserve(): Double? {
-      cap ?: return 0.0
+    /** Whether a request has come back, so [dearest] is a price rather than a guess of zero. */
+    private var priced = false
+    private val lock = ReentrantLock()
+    private val settled = lock.newCondition()
+
+    /**
+     * A reservation for one more request, or null when the cap cannot afford it. Under a cap,
+     * nothing is started beside the first request until it has come back: before then the price is
+     * unknown, and parallel requests reserved at zero could all cross the cap.
+     */
+    fun reserve(): Double? = lock.withLock {
+      if (cap == null) {
+        started++
+        return 0.0
+      }
+      while (!priced && started > 0) settled.await()
       val committed = spent + inFlight
       if (committed >= cap || committed + dearest > cap) return null
+      started++
       inFlight += dearest
-      return dearest
+      dearest
     }
 
-    @Synchronized
-    fun settle(reservation: Double, cost: Double, counted: Boolean) {
+    fun settle(reservation: Double, cost: Double, counted: Boolean) = lock.withLock {
       inFlight = (inFlight - reservation).coerceAtLeast(0.0)
-      if (counted) requests++
+      started--
+      if (counted) {
+        requests++
+        priced = true
+      }
       spent += cost
       dearest = maxOf(dearest, cost)
+      settled.signalAll()
     }
 
     @Synchronized
