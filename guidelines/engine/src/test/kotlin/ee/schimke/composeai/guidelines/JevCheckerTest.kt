@@ -573,6 +573,33 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a fetch that throws fails the previews it was for, not silently`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+        override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) =
+          error("daemon gone")
+      }
+    val model =
+      FakeDecisions(
+        answer = { _, rule, key ->
+          if (rule == "touch" && !isNode(key)) "needs:a11y" to 0.8 else null
+        }
+      )
+    val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
+    // One batched fetch failed: one failed request, however many previews it was for.
+    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(run.problems.joinToString("\n"))
+      .contains("the evidence host's fetch for 2 preview(s) failed: daemon gone (a, b)")
+    val result = run.results.single { it.previewId == "a" }
+    // What round 0 decided stands; the rule waiting on the fetch is unchecked, not passed.
+    assertThat(result.unchecked).contains("touch")
+    assertThat(result.record.verdicts.single { it.ruleId == "described" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(
