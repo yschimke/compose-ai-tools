@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.40.0](https://github.com/yschimke/compose-ai-tools/compare/v2.39.2...v2.40.0) (2026-10-10)
+
+
+### Features
+
+* **design-artifacts:** apply an import's patches to the upstream checkout ([#5762](https://github.com/yschimke/compose-ai-tools/issues/5762)) ([78c4bcd](https://github.com/yschimke/compose-ai-tools/commit/78c4bcdf7b12cf3ee8524d3aa7fe01eaa41d931a))
+* **guidelines:** overlay findings on the render in the PR comment ([#5766](https://github.com/yschimke/compose-ai-tools/issues/5766)) ([539c9e5](https://github.com/yschimke/compose-ai-tools/commit/539c9e54f9238a3f9760ea6a6731650b9c5f0c8b))
+* **ui-builder:** publish a record component's stated shelf role ([#5754](https://github.com/yschimke/compose-ai-tools/issues/5754)) ([30dd2a8](https://github.com/yschimke/compose-ai-tools/commit/30dd2a8dba9032613c56e3fc42a6cc40ee41846d))
+
+
+### Bug Fixes
+
+* **bundle-coordinates:** name why a download's stream closed, and give a dropped connection a longer retry window ([#5763](https://github.com/yschimke/compose-ai-tools/issues/5763)) ([22955ee](https://github.com/yschimke/compose-ai-tools/commit/22955eec9bccde3b0ec012716269d7abc4254688))
+* **deps:** pick up compose-preview-daemon 3.15.2 ([#5767](https://github.com/yschimke/compose-ai-tools/issues/5767)) ([aa7f9c3](https://github.com/yschimke/compose-ai-tools/commit/aa7f9c3835e0581f113b14c708552fef94ffa29c))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.25.0 ([#5759](https://github.com/yschimke/compose-ai-tools/issues/5759)) ([1ec4d03](https://github.com/yschimke/compose-ai-tools/commit/1ec4d034bffe52949f0d387531986ebaabc07a39))
+* **guidelines:** keep the OpenRouter key out of builds and bound PR spend ([#5765](https://github.com/yschimke/compose-ai-tools/issues/5765)) ([9ccd6dc](https://github.com/yschimke/compose-ai-tools/commit/9ccd6dc676024ed9a4662c0505fe175e14553a05))
+
 ## [2.39.2](https://github.com/yschimke/compose-ai-tools/compare/v2.39.1...v2.39.2) (2026-10-10)
 
 
