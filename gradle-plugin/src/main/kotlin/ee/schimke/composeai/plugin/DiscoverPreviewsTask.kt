@@ -456,7 +456,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
-   * Copy the catalog's `ui-builder.guidelines.json` from beside [policy] next to `ui-builder.json`.
+   * Copy the catalog's `ui-builder.guidelines.json` from beside [policy] next to `ui-builder.json`,
+   * with the rule packs it includes merged in.
    *
    * Like the policy, a malformed file costs only itself and a warning here: discovery feeds every
    * render lane. The publish is where it fails loudly — the design-artifacts workflow checks it
@@ -472,7 +473,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       )
       return
     }
-    uiBuilderGuidelinesFile.get().asFile.writeText(text)
+    // Published flat: the rule packs it includes are merged in here, once, so the server and the
+    // browser read every rule without fetching anything (UiBuilderGuidelinesFile.flatten).
+    val flat = UiBuilderGuidelinesFile.flatten(text)
+    flat.problem?.let {
+      logger.warn(
+        "composePreview: ${source.path}'s includes are not resolved ($it); published as written."
+      )
+    }
+    uiBuilderGuidelinesFile.get().asFile.writeText(flat.text)
   }
 
   /**

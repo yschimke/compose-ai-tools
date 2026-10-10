@@ -38,6 +38,49 @@ check. Per subject:
 - **Scope.** `subject` rules are asked per subject; `set` rules once per batch, across all of it.
 - **Pictures.** Visual rules are left out of a subject with no picture.
 
+## Shared rule packs (`includes`)
+
+A catalog file can take in a shared pack instead of copying general guidance into every catalog:
+
+```json
+"includes": [
+  {
+    "url": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/<tag>/guidelines/packs/general.guidelines.json",
+    "sha256": "<sha256 of the pack's bytes, lowercase hex>"
+  }
+]
+```
+
+An include is `https` only and pinned by `sha256`, so it names one exact pack; optional `exclude`
+(rule ids to leave out) and `profiles` (narrows carried rules that name none) tune it. Merging, in
+`GuidelinesIncludes` (engine) and `UiBuilderGuidelinesFile.flatten` (Gradle plugin), which must
+agree:
+
+- a pack rule naming `platforms` is carried only into a catalog whose `platform` it lists
+  (`mobile`, `foundation`, `wear`, `glasses`, `remote-compose`); none means every platform;
+- a rule the catalog defines itself, by id, replaces the pack's;
+- a pack's frames are added where the catalog does not already ask for the same one;
+- a pack may not include another, is at most 1 MiB, and a file has at most 8 includes.
+
+**Published flat.** Discovery (`DiscoverPreviewsTask`) and bundling resolve the includes and write
+`build/compose-previews/ui-builder.guidelines.json` with the pack merged in and no `includes` left,
+so compose-preview-server (which reads that file from the delivery branch, and from a local
+module's `build/compose-previews/`) and the browser editor need no change. If a pack cannot be read
+the file is published as written, with a warning; the publish workflow's
+`validate-ui-builder-guidelines.mjs` fetches every include and checks its pin before rendering, so
+a bad pin fails the publish rather than shipping a catalog without the pack's rules. The CLI's
+loader resolves includes itself (`--guidelines` pointing at an unflattened file), and refuses the
+whole file when one does not resolve: a check asked of part of the rules must not read as the whole
+check.
+
+[`guidelines/packs/general.guidelines.json`](../../guidelines/packs/general.guidelines.json) is
+the general pack: credentials, forms, accessibility semantics, text, theming and actions, each rule
+quoting developer.android.com and linking it. Wear catalogs take Wear-specific input and sign-in
+rules (remote input, Credential Manager / OAuth / Data Layer, hand-off to the phone) in place of
+the phone's form rules; Remote Compose catalogs take none of the text-entry rules.
+`GeneralGuidelinesPackTest` validates it. Include it by a release tag, and re-pin `sha256` when
+moving to a newer tag.
+
 ## Batching
 
 Not one call per preview. Subjects of one surface share a request, up to a budget (default 12

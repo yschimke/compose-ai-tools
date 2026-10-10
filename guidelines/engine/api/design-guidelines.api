@@ -5,6 +5,7 @@ public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoader {
 	public static synthetic fun load$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/io/File;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
 	public static synthetic fun load$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/lang/String;Ljava/lang/String;Lokhttp3/OkHttpClient;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
 	public final fun parse (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
+	public final fun parse (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
 	public static synthetic fun parse$default (Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/CatalogGuidelinesLoader$Loaded;
 }
 
@@ -222,6 +223,13 @@ public final class ee/schimke/composeai/guidelines/GuidelineSurfaces {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineSurfaces;
 	public static final field SCREEN Ljava/lang/String;
 	public static final field WIDGET Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelinesIncludes {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelinesIncludes;
+	public static final field MAX_INCLUDES I
+	public static final field MAX_PACK_BYTES I
+	public final fun httpFetcher (Lokhttp3/OkHttpClient;)Lkotlin/jvm/functions/Function1;
 }
 
 public final class ee/schimke/composeai/guidelines/JevTriage {

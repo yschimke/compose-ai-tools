@@ -19,8 +19,44 @@ public object CatalogGuidelinesLoader {
   /** The outcome of a load: the guidelines, or why there are none. */
   public data class Loaded(val guidelines: CatalogGuidelinesV1?, val problem: String? = null)
 
-  /** The guidelines in [text], checked against [expectedCatalog] when one is given. */
-  public fun parse(text: String, expectedCatalog: String? = null): Loaded {
+  /**
+   * The guidelines in [text], checked against [expectedCatalog] when one is given.
+   *
+   * A file that declares `includes` (shared rule packs, see [GuidelinesIncludes]) is refused here,
+   * since a check run on its own rules alone would look complete; read it with the overload taking
+   * a fetcher, or with [load], which resolve them.
+   */
+  public fun parse(text: String, expectedCatalog: String? = null): Loaded =
+    parse(text, expectedCatalog, fetch = null)
+
+  /**
+   * The guidelines in [text] with the rule packs it includes merged in, each read through [fetch]
+   * (an `https` URL to its bytes) and checked against its pinned sha256. Any include that cannot be
+   * read, does not match its pin, or is not a pack refuses the whole file, naming why: a check
+   * asked of part of a catalog's rules must not read as the whole check.
+   */
+  public fun parse(
+    text: String,
+    expectedCatalog: String?,
+    fetch: ((String) -> ByteArray)?,
+  ): Loaded {
+    val own = parseOwn(text, expectedCatalog)
+    val guidelines = own.guidelines ?: return own
+    val includes =
+      try {
+        GuidelinesIncludes.declared(text)
+      } catch (e: Exception) {
+        return Loaded(null, "unreadable `includes`: ${parseFailure(e)}")
+      }
+    if (includes.isEmpty()) return own
+    if (fetch == null) {
+      return Loaded(null, "declares ${includes.size} include(s), which were not resolved")
+    }
+    return GuidelinesIncludes.resolve(guidelines, includes, fetch)
+  }
+
+  /** [text] as one guidelines file, its `includes` (if any) left aside. */
+  internal fun parseOwn(text: String, expectedCatalog: String? = null): Loaded {
     val parsed =
       try {
         GUIDELINES_JSON.decodeFromString(CatalogGuidelinesV1.serializer(), text)
@@ -58,9 +94,13 @@ public object CatalogGuidelinesLoader {
 
   private val OFFSET = Regex("""at offset (\d+)""")
 
-  /** The guidelines in [file], or none when it does not exist. */
+  /**
+   * The guidelines in [file], or none when it does not exist. Its includes, if any, are fetched
+   * over `https`.
+   */
   public fun load(file: File, expectedCatalog: String? = null): Loaded =
-    if (!file.isFile) Loaded(null) else parse(file.readText(), expectedCatalog)
+    if (!file.isFile) Loaded(null)
+    else parse(file.readText(), expectedCatalog, GuidelinesIncludes.httpFetcher(DEFAULT_HTTP))
 
   /**
    * The guidelines at [location]: an `http(s)` URL (a catalog's delivery branch) or a path. A URL
@@ -79,7 +119,8 @@ public object CatalogGuidelinesLoader {
         when {
           response.code == 404 -> Loaded(null)
           !response.isSuccessful -> Loaded(null, "$location answered ${response.code}")
-          else -> parse(response.body.string(), expectedCatalog)
+          else ->
+            parse(response.body.string(), expectedCatalog, GuidelinesIncludes.httpFetcher(http))
         }
       }
     } catch (e: java.io.IOException) {
