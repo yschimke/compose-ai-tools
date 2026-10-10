@@ -457,6 +457,7 @@ object UiBuilderCatalogs {
               b.templates = policy.templates.map { it.path }
               b.newDesign = newDesignSemantics(policy)
               b.colorTokens = policy.colorTokens
+              b.designTokens = policy.designTokens
               b.assetRegistry = policy.assetRegistry
               b.supersedes = policy.supersedes
               b.builtins = policy.builtins
