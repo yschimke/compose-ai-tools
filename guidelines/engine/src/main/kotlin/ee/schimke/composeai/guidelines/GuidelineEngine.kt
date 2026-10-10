@@ -62,8 +62,37 @@ public interface GuidelineEvidenceHost {
   }
 }
 
-/** A request whose reply has no usable verdict is asked once more, budget permitting. */
-private const val MAX_ATTEMPTS = 2
+/**
+ * What a run does when a request fails. A request that failed for a reason that may pass — no
+ * answer, a timeout, 408, 429, 5xx, an error OpenRouter returned in place of a completion, or a
+ * reply with no usable verdict — is asked again after a backoff, up to [maxAttempts] tries,
+ * honouring the server's `Retry-After`. A batch that still fails is split in half, and each half
+ * asked, down to single subjects ([split]), so one slow batch cannot leave every preview in it
+ * unchecked. A timeout on a batch of several subjects is split at once rather than asked again: the
+ * same request would take as long again.
+ *
+ * Each retry and each half is a new request under the run's cost cap: none is started that the cap
+ * cannot afford, and whatever a failed reply cost is counted. A problem is recorded once for each
+ * request that finally failed, not for every attempt.
+ */
+public data class GuidelineRetry(
+  /** Tries of one request, the first included; 1 asks once. */
+  val maxAttempts: Int = 2,
+  /** The wait before the first retry, doubled for each after it. */
+  val initialDelayMillis: Long = 2_000,
+  /**
+   * The longest wait before a retry. A `Retry-After` asking for longer is not waited for: the
+   * request is treated as having failed its last try.
+   */
+  val maxDelayMillis: Long = 60_000,
+  /** Whether a batch that keeps failing is split in half and each half asked. */
+  val split: Boolean = true,
+  /**
+   * How many failed tries the whole run may follow with a retry or a split. Past it, each request
+   * is asked once: when the provider is down, retrying every batch only makes the run slower.
+   */
+  val maxFailedAttempts: Int = 8,
+)
 
 /** How a run behaves. */
 public data class GuidelineRunOptions(
@@ -81,7 +110,18 @@ public data class GuidelineRunOptions(
   /** Where the rules came from, linked from each request's provenance. */
   val rulesSource: String = CatalogGuidelinesV1.FILE_NAME,
   val ranBy: String? = null,
-)
+) {
+  /**
+   * Retrying and splitting a request that failed. A body property, so the constructor and `copy`
+   * keep their ABI: set it with [withRetry], and note that `copy` resets it to the default.
+   */
+  public var retry: GuidelineRetry = GuidelineRetry()
+    private set
+
+  /** These options, retrying as [retry] says. */
+  public fun withRetry(retry: GuidelineRetry): GuidelineRunOptions =
+    copy().also { it.retry = retry }
+}
 
 /** A whole run: one result per subject, what it cost, and what went wrong on the way. */
 public data class GuidelineRunResult(
@@ -115,6 +155,9 @@ public class GuidelineEngine(
   private val options: GuidelineRunOptions = GuidelineRunOptions(),
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
+  /** How a retry waits; tests replace it. */
+  internal var sleep: (Long) -> Unit = { Thread.sleep(it) }
+
   public fun run(
     guidelines: CatalogGuidelinesV1,
     subjects: List<PreviewSubject>,
@@ -129,6 +172,16 @@ public class GuidelineEngine(
     var dearest = 0.0
     var capped = 0
     var retried = 0
+    // Requests asked again after a failure that may pass (no answer, 408, 429, 5xx, a provider
+    // error), and every failed try, which the run-wide allowance for retries and splits counts.
+    var retriedTransient = 0
+    var failedAttempts = 0
+    // Requests abandoned without an answer: one may still have been billed, so each is counted
+    // against the cap at what the dearest request cost, though not reported as spent.
+    var unpriced = 0.0
+    var abandoned = 0
+    // Batches split after their request kept failing, as "<n> previews (<why>)".
+    val splits = mutableListOf<String>()
     // Verdicts dropped because they answer a question nobody asked: rule ids the request never
     // listed for that subject (by id, counted), and subjects outside the request.
     val invented = linkedMapOf<String, Int>()
@@ -137,8 +190,12 @@ public class GuidelineEngine(
     /** Whether one more request, expected to cost what the dearest so far did, fits the cap. */
     fun affordable(): Boolean {
       val cap = options.maxCostUsd ?: return true
-      return spent < cap && spent + dearest <= cap
+      val committed = spent + unpriced
+      return committed < cap && committed + dearest <= cap
     }
+
+    /** Whether the run may still follow a failed try with a retry or a split. */
+    fun mayRecover(): Boolean = failedAttempts <= options.retry.maxFailedAttempts
 
     // A subject no rule applies to costs no request: asked about nothing, a model can only answer
     // nothing, which reads as an unreadable reply at best and a clean pass at worst.
@@ -164,10 +221,14 @@ public class GuidelineEngine(
     // re-asking previews whose earlier verdict went stale. Batched apart: batching groups by
     // surface, which would otherwise interleave the two.
     val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
-    val batches =
-      PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
-        PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
-    for (batch0 in batches) {
+    // A queue, not a list: a batch whose request keeps failing comes back as its two halves, asked
+    // next, already triaged.
+    val queue = ArrayDeque<QueuedBatch>()
+    (PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
+        PreviewGuidelineRequests.batches(guidelines, stale, options.budget))
+      .forEach { queue.addLast(QueuedBatch(it, triaged = false)) }
+    while (queue.isNotEmpty()) {
+      val (batch0, triaged) = queue.removeFirst()
       if (!affordable()) {
         batch0.subjects.forEach { results += unchecked(guidelines, it) }
         capped += batch0.subjects.size
@@ -175,7 +236,7 @@ public class GuidelineEngine(
       }
       // Triage: fetch the evidence Jev expects to matter before the vision model sees the batch.
       var batch = batch0
-      if (options.triage && host.available.isNotEmpty()) {
+      if (!triaged && options.triage && host.available.isNotEmpty()) {
         val rulesSummary =
           guidelines.subjectRules(batch.surface).joinToString("\n") { "${it.id}: ${it.check}" }
         // Only offer what this host can supply: a decision for a render the host cannot draw
@@ -200,7 +261,12 @@ public class GuidelineEngine(
       // Everything this batch's requests cost, replies that could not be used included.
       var batchSpent = 0.0
 
-      fun ask(target: GuidelineBatch, round: Int, onlyRules: Map<String, Set<String>>?): Boolean {
+      /** Asks [target]: null when its verdicts are in, or why it finally failed. */
+      fun ask(
+        target: GuidelineBatch,
+        round: Int,
+        onlyRules: Map<String, Set<String>>?,
+      ): FailedRequest? {
         val request =
           PreviewGuidelineRequests.request(
             guidelines,
@@ -233,55 +299,91 @@ public class GuidelineEngine(
             model.complete(request, options.model)
           }
             .getOrElse {
-              problems += "request failed: ${it.message}"
-              failedRequests++
-              return false
+              return FailedRequest("request failed: ${it.message}", FailureKind.FATAL)
             }
           requests++
-          if (response.status !in 200..299) {
-            problems += "the model answered ${response.status}: ${response.body.take(200)}"
-            failedRequests++
-            return false
-          }
-          // Paid for whether or not the answer can be used.
+          // Paid for whether or not the answer can be used; an error in place of a completion can
+          // carry a cost too.
           val cost = GuidelineResponse.cost(response.body) ?: 0.0
           spent += cost
           batchSpent += cost
           dearest = maxOf(dearest, cost)
-          val parsed = GuidelineResponse.parse(response.body, target, order)
-          val reply = parsed.getOrNull()
-          val problem: String
-          if (reply != null) {
-            strays += reply.strays
-            // Only a verdict on a rule this request listed for that subject (or for the set) is an
-            // answer; anything else is a rule the model made up and has no guide to link.
-            val (valid, dropped) =
-              reply.verdicts.partition { verdict ->
-                val subjectId = verdict.subjectId
-                if (subjectId == null) verdict.ruleId in askedOnce
-                else verdict.ruleId in askedOf[subjectId].orEmpty()
+          val failure: FailedRequest =
+            if (response.status in 200..299) {
+              val error = GuidelineResponse.failure(response.body)
+              if (error != null) {
+                error
+              } else {
+                val parsed = GuidelineResponse.parse(response.body, target, order)
+                val reply = parsed.getOrNull()
+                if (reply != null) {
+                  strays += reply.strays
+                  // Only a verdict on a rule this request listed for that subject (or for the
+                  // set) is an answer; anything else is a rule the model made up and has no guide
+                  // to link.
+                  val (valid, dropped) =
+                    reply.verdicts.partition { verdict ->
+                      val subjectId = verdict.subjectId
+                      if (subjectId == null) verdict.ruleId in askedOnce
+                      else verdict.ruleId in askedOf[subjectId].orEmpty()
+                    }
+                  dropped.forEach { invented.merge(it.ruleId, 1, Int::plus) }
+                  if (valid.isNotEmpty()) {
+                    kept = valid
+                    answer = reply
+                    break
+                  }
+                  FailedRequest(
+                    "the reply answered no rule it was asked (it named " +
+                      dropped.map { it.ruleId }.distinct().take(8).joinToString() +
+                      ")",
+                    FailureKind.UNUSABLE,
+                  )
+                } else {
+                  FailedRequest(
+                    "unreadable reply: ${parsed.exceptionOrNull()?.message}",
+                    FailureKind.UNUSABLE,
+                  )
+                }
               }
-            dropped.forEach { invented.merge(it.ruleId, 1, Int::plus) }
-            if (valid.isNotEmpty()) {
-              kept = valid
-              answer = reply
-              break
+            } else {
+              FailedRequest.of(response)
             }
-            problem =
-              "the reply answered no rule it was asked (it named " +
-                dropped.map { it.ruleId }.distinct().take(8).joinToString() +
-                ")"
+          failedAttempts++
+          if (response.status == ModelResponse.NO_ANSWER && cost == 0.0) {
+            abandoned++
+            unpriced += dearest
+          }
+          val tries = if (attempt > 1) " (after $attempt tries)" else ""
+          val wait =
+            response.retryAfterMillis
+              ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
+                options.retry.maxDelayMillis
+              )
+          val stop =
+            when {
+              failure.kind == FailureKind.FATAL || failure.kind == FailureKind.TOO_LARGE -> ""
+              // Our own timeout gave up on it: the same request would take as long again, and
+              // its halves are the retry.
+              failure.kind == FailureKind.TIMEOUT &&
+                target.subjects.size > 1 &&
+                options.retry.split &&
+                round == 0 -> ""
+              attempt >= options.retry.maxAttempts -> ""
+              !mayRecover() -> "; not asked again: the run's failures used up its retries"
+              wait > options.retry.maxDelayMillis ->
+                "; not asked again: the server asked for a ${wait / 1000} s wait"
+              !affordable() -> "; not asked again: the cost cap left no room"
+              else -> null
+            }
+          if (stop != null) return failure.copy(problem = failure.problem + tries + stop)
+          if (failure.kind == FailureKind.UNUSABLE) {
+            // A reply with nothing usable is usually a bad draw, not a bad question: ask at once.
+            retried++
           } else {
-            problem = "unreadable reply: ${parsed.exceptionOrNull()?.message}"
+            retriedTransient++
+            sleep(wait)
           }
-          // One more try, if it fits the budget: a reply with nothing usable is usually a bad
-          // draw, not a bad question.
-          if (attempt >= MAX_ATTEMPTS || !affordable()) {
-            problems += problem
-            failedRequests++
-            return false
-          }
-          retried++
         }
         served += answer.served
         // A region lives with the subject whose picture it is drawn on: a verdict about one
@@ -343,10 +445,22 @@ public class GuidelineEngine(
               }
             }
         }
-        return true
+        return null
       }
 
-      if (!ask(batch, 0, null)) {
+      val failure = ask(batch, 0, null)
+      if (failure != null) {
+        if (failure.splittable && batch.subjects.size > 1 && options.retry.split && mayRecover()) {
+          // One slow or failing batch must not sink every preview in it: ask its halves, next.
+          // Each is a request of its own under the cap, checked as it comes off the queue.
+          val half = (batch.subjects.size + 1) / 2
+          queue.addFirst(QueuedBatch(batch.copy(subjects = batch.subjects.drop(half)), true))
+          queue.addFirst(QueuedBatch(batch.copy(subjects = batch.subjects.take(half)), true))
+          splits += "${batch.subjects.size} previews (${failure.problem.take(120)})"
+          continue
+        }
+        problems += failure.problem
+        failedRequests++
         batch.subjects.forEach { results += unchecked(guidelines, it) }
         continue
       }
@@ -378,7 +492,11 @@ public class GuidelineEngine(
             gathered.surface,
             gathered.subjects.filter { it.previewId in undecided },
           )
-        if (!ask(followUp, round, undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() })) {
+        val followUpFailure =
+          ask(followUp, round, undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() })
+        if (followUpFailure != null) {
+          problems += followUpFailure.problem
+          failedRequests++
           interrupted = undecided.keys
           break
         }
@@ -437,6 +555,22 @@ public class GuidelineEngine(
     }
     if (retried > 0) {
       problems += "$retried request(s) were asked again after a reply with no usable verdict"
+    }
+    if (retriedTransient > 0) {
+      problems +=
+        "$retriedTransient request(s) were asked again after a failure that may pass (no " +
+          "answer, a timeout, 408, 429, 5xx or a provider error)"
+    }
+    if (splits.isNotEmpty()) {
+      problems +=
+        "${splits.size} request(s) kept failing and were split into smaller ones: " +
+          splits.take(4).joinToString("; ") +
+          (if (splits.size > 4) " and ${splits.size - 4} more" else "")
+    }
+    if (abandoned > 0 && unpriced > 0.0 && options.maxCostUsd != null) {
+      problems +=
+        "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
+          "counted \$${money(unpriced)} for them"
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests)
   }
@@ -577,6 +711,54 @@ public class GuidelineEngine(
       unchecked = asked.map { it.id },
       pending = true,
     )
+  }
+}
+
+/** A batch waiting to be asked; [triaged] once Jev has already been asked about its subjects. */
+private data class QueuedBatch(val batch: GuidelineBatch, val triaged: Boolean)
+
+/** Why a request did not come back as verdicts, and what may still be done about it. */
+internal enum class FailureKind {
+  /** It may pass: no answer, 408, 5xx, a provider error. Asked again, then split. */
+  TRANSIENT,
+  /** 429: asked again after the wait it named; asking about fewer subjects would not help. */
+  RATE_LIMITED,
+  /** Our own timeout abandoned it: split at once when it has several subjects. */
+  TIMEOUT,
+  /** 413: too big to ask. Split, never asked again as it is. */
+  TOO_LARGE,
+  /** A reply with no usable verdict. Asked again at once, then split. */
+  UNUSABLE,
+  /** Nothing to retry: an invalid key, no credit, a malformed request. */
+  FATAL,
+}
+
+/** A request that failed, in the words the run's problems use. */
+internal data class FailedRequest(val problem: String, val kind: FailureKind) {
+  /** Whether asking about fewer subjects at once might succeed. */
+  val splittable: Boolean
+    get() = kind != FailureKind.FATAL && kind != FailureKind.RATE_LIMITED
+
+  companion object {
+    /** [response], not a 2xx, as a failure. */
+    fun of(response: ModelResponse): FailedRequest {
+      val status = response.status
+      if (status == ModelResponse.NO_ANSWER) {
+        return FailedRequest(
+          "the request got no answer: " + (response.transportError ?: response.body.take(200)),
+          if (response.timedOut) FailureKind.TIMEOUT else FailureKind.TRANSIENT,
+        )
+      }
+      val kind =
+        when (status) {
+          408 -> FailureKind.TRANSIENT
+          413 -> FailureKind.TOO_LARGE
+          429 -> FailureKind.RATE_LIMITED
+          in 500..599 -> FailureKind.TRANSIENT
+          else -> FailureKind.FATAL
+        }
+      return FailedRequest("the model answered $status: ${response.body.take(200)}", kind)
+    }
   }
 }
 

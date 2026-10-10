@@ -54,6 +54,8 @@ public final class ee/schimke/composeai/guidelines/GuidelineBatch {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineBudget {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineBudget$Companion;
+	public static final field DEFAULT_MAX_VERDICTS I
 	public fun <init> ()V
 	public fun <init> (IIII)V
 	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -68,8 +70,13 @@ public final class ee/schimke/composeai/guidelines/GuidelineBudget {
 	public final fun getMaxPictures ()I
 	public final fun getMaxSourceChars ()I
 	public final fun getMaxSubjects ()I
+	public final fun getMaxVerdicts ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public final fun withMaxVerdicts (I)Lee/schimke/composeai/guidelines/GuidelineBudget;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineBudget$Companion {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineEngine {
@@ -162,6 +169,27 @@ public final class ee/schimke/composeai/guidelines/GuidelineResultCache$Companio
 	public final fun inputsKey (Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/guidelines/GuidelineRetry {
+	public fun <init> ()V
+	public fun <init> (IJJZI)V
+	public synthetic fun <init> (IJJZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()Z
+	public final fun component5 ()I
+	public final fun copy (IJJZI)Lee/schimke/composeai/guidelines/GuidelineRetry;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRetry;IJJZIILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRetry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInitialDelayMillis ()J
+	public final fun getMaxAttempts ()I
+	public final fun getMaxDelayMillis ()J
+	public final fun getMaxFailedAttempts ()I
+	public final fun getSplit ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public fun <init> ()V
 	public fun <init> (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;)V
@@ -182,11 +210,13 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
 	public final fun getRanBy ()Ljava/lang/String;
+	public final fun getRetry ()Lee/schimke/composeai/guidelines/GuidelineRetry;
 	public final fun getRulesSource ()Ljava/lang/String;
 	public final fun getTriage ()Z
 	public final fun getTriageThreshold ()D
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
@@ -289,6 +319,8 @@ public final class ee/schimke/composeai/guidelines/JevTriage$Offer {
 }
 
 public final class ee/schimke/composeai/guidelines/ModelResponse {
+	public static final field Companion Lee/schimke/composeai/guidelines/ModelResponse$Companion;
+	public static final field NO_ANSWER I
 	public fun <init> (ILjava/lang/String;)V
 	public final fun component1 ()I
 	public final fun component2 ()Ljava/lang/String;
@@ -296,9 +328,20 @@ public final class ee/schimke/composeai/guidelines/ModelResponse {
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/ModelResponse;ILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBody ()Ljava/lang/String;
+	public final fun getRetryAfterMillis ()Ljava/lang/Long;
 	public final fun getStatus ()I
+	public final fun getTimedOut ()Z
+	public final fun getTransportError ()Ljava/lang/String;
 	public fun hashCode ()I
+	public final fun setRetryAfterMillis (Ljava/lang/Long;)V
+	public final fun setTimedOut (Z)V
+	public final fun setTransportError (Ljava/lang/String;)V
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/ModelResponse$Companion {
+	public final fun noAnswer (Ljava/lang/String;Z)Lee/schimke/composeai/guidelines/ModelResponse;
+	public static synthetic fun noAnswer$default (Lee/schimke/composeai/guidelines/ModelResponse$Companion;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
 }
 
 public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke/composeai/guidelines/GuidelineModel {
@@ -312,6 +355,9 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke
 
 public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 	public final fun chatBody (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public final fun getDEFAULT_REQUEST_TIMEOUT ()Ljava/time/Duration;
+	public final fun httpClient (Ljava/time/Duration;)Lokhttp3/OkHttpClient;
+	public static synthetic fun httpClient$default (Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;Ljava/time/Duration;ILjava/lang/Object;)Lokhttp3/OkHttpClient;
 }
 
 public final class ee/schimke/composeai/guidelines/PreviewCheck {

@@ -33,6 +33,7 @@ internal object CliFlags {
       "--model",
       "--max-cost",
       "--rounds",
+      "--request-timeout",
       "--guidelines",
       "--surface",
       "--profile",

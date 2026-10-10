@@ -118,7 +118,29 @@ public data class GuidelineBudget(
    * request, goes in without it (truncated where a part fits) rather than losing a picture.
    */
   val maxSourceChars: Int = 32_000,
-)
+) {
+  /**
+   * How many verdicts one reply may be asked for: each subject's rules, summed. This bounds the
+   * reply rather than the request, and the reply is what takes the time — twelve Wear screens asked
+   * 24 rules each is 288 verdicts, a reply that ran past the 300 s request timeout on every try
+   * while three components in their own request answered in seconds. At the default a screen batch
+   * of that catalog holds five.
+   *
+   * A body property, so the constructor and `copy` keep their ABI: set it with [withMaxVerdicts],
+   * and note that `copy` resets it to [DEFAULT_MAX_VERDICTS].
+   */
+  public var maxVerdicts: Int = DEFAULT_MAX_VERDICTS
+    private set
+
+  /** This budget, holding a reply to [maxVerdicts] verdicts. */
+  public fun withMaxVerdicts(maxVerdicts: Int): GuidelineBudget =
+    copy().also { it.maxVerdicts = maxVerdicts }
+
+  public companion object {
+    /** [maxVerdicts] unless told otherwise. */
+    public const val DEFAULT_MAX_VERDICTS: Int = 120
+  }
+}
 
 /** A batch: subjects sharing a surface, so they share one rule list. */
 public data class GuidelineBatch(
@@ -181,7 +203,8 @@ public object PreviewGuidelineRequests {
 
   /**
    * Splits [subjects] into batches by surface, each within [budget]. A subject's text is estimated
-   * at four characters a token and a picture at [PICTURE_TOKENS].
+   * at four characters a token and a picture at [pictureTokens]; its verdicts are the rules it is
+   * asked ([GuidelineBudget.maxVerdicts]).
    */
   public fun batches(
     guidelines: CatalogGuidelinesV1,
@@ -199,6 +222,7 @@ public object PreviewGuidelineRequests {
         var pictures = 0
         var tokens = rulesTokens + SYSTEM_PROMPT.length / 4
         var sourceChars = 0
+        var verdicts = 0
         val fixedTokens = rulesTokens + SYSTEM_PROMPT.length / 4
         for (original in group) {
           var subject = original
@@ -212,17 +236,21 @@ public object PreviewGuidelineRequests {
           }
           val subjectTokens = estimateTokens(subject)
           val subjectPictures = subject.pictures.size
+          val subjectVerdicts =
+            guidelines.subjectRules(surface, subject.profile, subject.pictures.isNotEmpty()).size
           val full =
             current.isNotEmpty() &&
               (current.size >= budget.maxSubjects ||
                 pictures + subjectPictures > budget.maxPictures ||
-                tokens + subjectTokens > budget.maxInputTokens)
+                tokens + subjectTokens > budget.maxInputTokens ||
+                verdicts + subjectVerdicts > budget.maxVerdicts)
           if (full) {
             out += GuidelineBatch(surface, current)
             current = mutableListOf()
             pictures = 0
             tokens = fixedTokens
             sourceChars = 0
+            verdicts = 0
           }
           // The batch's source allowance: past it, a subject keeps what is left, or none.
           subject.source?.let { source ->
@@ -233,6 +261,7 @@ public object PreviewGuidelineRequests {
           sourceChars += subject.source?.length ?: 0
           current += subject
           pictures += subjectPictures
+          verdicts += subjectVerdicts
           tokens += estimateTokens(subject)
         }
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)
@@ -652,7 +681,7 @@ public object PreviewGuidelineRequests {
   }
 
   private fun estimateTokens(subject: PreviewSubject): Int =
-    subject.pictures.size * PICTURE_TOKENS +
+    subject.pictures.sumOf { pictureTokens(it) } +
       subject.nodes.take(MAX_NODES).size * 20 +
       subject.checks.take(MAX_CHECKS).size * 60 +
       (subject.source?.length?.coerceAtMost(MAX_SOURCE_CHARS) ?: 0) / 4 +
@@ -670,8 +699,25 @@ public object PreviewGuidelineRequests {
     }
   }
 
-  /** A rough input-token cost of one attached picture. */
+  /** A rough input-token cost of one attached picture: the least any picture is counted at. */
   public const val PICTURE_TOKENS: Int = 1_200
+
+  /**
+   * [picture]'s estimated input tokens: [PICTURE_TOKENS], or a pixel count over 750 (how vision
+   * models commonly bill an image) for a picture big enough to cost more — a tall scroll capture or
+   * a tablet screen. Its size is read from the PNG's header; a picture that is not a PNG counts at
+   * [PICTURE_TOKENS].
+   */
+  internal fun pictureTokens(picture: SubjectPicture): Int {
+    val png = picture.png
+    if (png.size < 24 || png[12] != 'I'.code.toByte() || png[15] != 'R'.code.toByte()) {
+      return PICTURE_TOKENS
+    }
+    fun int(at: Int): Long =
+      (0 until 4).fold(0L) { acc, i -> (acc shl 8) or (png[at + i].toLong() and 0xFF) }
+    val pixels = int(16) * int(20)
+    return maxOf(PICTURE_TOKENS.toLong(), (pixels / 750).coerceAtMost(100_000)).toInt()
+  }
 
   private const val MAX_NODES = 80
 

@@ -198,7 +198,8 @@ private fun printFullUsage() {
       guidelines       Check rendered previews against their catalog's design guidelines
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
-                       --max-cost, --rounds, --no-triage, --annotate, --guidelines <file|url>,
+                       --max-cost, --rounds, --request-timeout <seconds> (default 300),
+                       --no-triage, --annotate, --guidelines <file|url>,
                        --surface / --profile (default: each preview's manifest entry),
                        --previews-json / --renders-dir / --a11y-json /
                        --source-root (no Gradle), --json, --fail-on. Exits 1 on findings

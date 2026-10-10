@@ -55,6 +55,13 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
   private val rounds: Int = args.flagValue("--rounds")?.toIntOrNull() ?: 1
   /**
+   * How long one model request may take, start to end, in seconds: a vision request over a dozen
+   * screens can take minutes to answer. A request that runs past it is abandoned, and the engine
+   * asks about fewer previews at once instead.
+   */
+  private val requestTimeoutSeconds: Long? =
+    args.flagValue("--request-timeout")?.toLongOrNull()?.takeIf { it > 0 }
+  /**
    * Handoff mode's follow-up evidence: the captures the render job staged (see [HandoffInputs]).
    */
   private var handoffHost: GuidelineEvidenceHost? = null
@@ -77,7 +84,15 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       )
       exitProcess(2)
     }
-    val client = OpenRouterClient(key)
+    val client =
+      OpenRouterClient(
+        key,
+        http =
+          OpenRouterClient.httpClient(
+            requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+              ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+          ),
+      )
     if (previewsJson != null || rendersDir != null) exitProcess(runHandoff(client))
 
     val raw =
