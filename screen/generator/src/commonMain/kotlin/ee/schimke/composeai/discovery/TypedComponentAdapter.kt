@@ -301,7 +301,16 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               declaredProperties.associate { property ->
                 property.name to
                   buildJsonObject {
-                    put("type", property.codec.jsonType)
+                    // JSON Schema types and document literal wrapper names are different
+                    // vocabularies.
+                    put(
+                      "type",
+                      when (property.codec.jsonType) {
+                        "boolean" -> "bool"
+                        "integer" -> "int"
+                        else -> property.codec.jsonType
+                      },
+                    )
                     put("value", defaultValue(property))
                   }
               }
