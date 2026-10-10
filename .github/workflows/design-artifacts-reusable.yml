@@ -3863,6 +3863,8 @@ jobs:
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           args=(guidelines --max-cost "$MAX_COST")
           if [ -n "${INPUT_MODULE:-}" ]; then args+=(--module "$INPUT_MODULE"); fi
+          # The same flavour the bundle renders below, or the check judges different previews.
+          if [ -n "${INPUT_VARIANT:-}" ]; then args+=(--variant "$INPUT_VARIANT"); fi
           if ! run compose-preview "${args[@]}"; then
             echo "::warning title=Guidelines incomplete::compose-preview guidelines did not finish; the bundle carries whatever results it wrote."
           fi

@@ -311,24 +311,166 @@ class GuidelineEngineTest {
     assertThat(batch.subjects[1].source).hasLength(200)
   }
 
+  @Test
+  fun `a request that fails is counted, and its previews are unchecked rather than passed`() {
+    val model = FakeModel().apply { status = 503 }
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a"), subject("b")))
+    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(run.problems.single()).contains("503")
+    assertThat(run.results.map { it.unchecked.isNotEmpty() }).containsExactly(true, true)
+  }
+
+  @Test
+  fun `stopping at the cost cap is a limit, not a failed request`() {
+    val run =
+      GuidelineEngine(FakeModel(), options = GuidelineRunOptions(triage = false, maxCostUsd = 0.0))
+        .run(guidelines, listOf(subject("a")))
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.problems.single()).contains("cost cap")
+  }
+
+  @Test
+  fun `the cache misses when the source, the surface or the rules' text change`() {
+    val dir = Files.createTempDirectory("guidelines-cache-inputs").toFile()
+    val model = FakeModel()
+    repeat(4) {
+      model.replies +=
+        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    }
+    val options = GuidelineRunOptions(triage = false)
+    fun run(subject: PreviewSubject, rules: CatalogGuidelinesV1 = guidelines) =
+      GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+        .run(rules, listOf(subject))
+    val base = subject("a").copy(source = "fun A() = Text(\"a\")")
+
+    run(base)
+    assertThat(run(base).results.single().fromCache).isTrue()
+    assertThat(model.requests).hasSize(1)
+
+    run(base.copy(source = "fun A() = Text(\"a\", color = Color(0xFF00FF00))"))
+    assertThat(model.requests).hasSize(2)
+
+    run(base.copy(surface = GuidelineSurfaces.SCREEN))
+    assertThat(model.requests).hasSize(3)
+
+    val reworded =
+      guidelines
+        .newBuilder()
+        .apply {
+          rules = guidelines.rules.map { it.newBuilder().apply { check = "really ok?" }.build() }
+        }
+        .build()
+    run(base, reworded)
+    assertThat(model.requests).hasSize(4)
+    dir.deleteRecursively()
+  }
+
+  @Test
+  fun `a host is never asked for evidence it did not advertise`() {
+    val model = FakeModel()
+    model.decision = """{"answers":{"s1__a11y":{"type":"noul","noul":0.1}}}"""
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.3,"nodeIds":[],"reason":"",
+         "needs":[{"kind":"render","theme":"dark","fontScale":null,"device":null,"reason":"contrast"}],"regions":[]},
+        {"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    val host = FakeHost(available = listOf("a11y-hierarchy"))
+    GuidelineEngine(model, host, options = GuidelineRunOptions(maxRounds = 1))
+      .run(guidelines, listOf(subject("a")))
+    assertThat(host.renderRequests).isEmpty()
+    // Jev was offered only what the host can fetch.
+    val questions = model.decisions.single()["questions"]!!.jsonObject.keys
+    assertThat(questions.none { "dark_theme" in it || "large_font" in it }).isTrue()
+  }
+
+  @Test
+  fun `a region on another preview's picture is kept for that preview`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Clipped.",
+         "needs":[],"regions":[{"picture":2,"x":0.1,"y":0.2,"width":0.3,"height":0.4,"label":null}]},
+        {"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a"), subject("b")))
+    val b = run.results.single { it.previewId == "b" }
+    val moved = b.failures().single { it.ruleId == "touch" }
+    assertThat(moved.regions.single().subjectId).isEqualTo("b")
+    assertThat(moved.reason).contains("judging a")
+    val a = run.results.single { it.previewId == "a" }
+    assertThat(a.failures().single { it.ruleId == "touch" }.regions).isEmpty()
+  }
+
+  @Test
+  fun `a subject whose source was cut to fit the batch is still answered from the cache next run`() {
+    val dir = Files.createTempDirectory("guidelines-cache-cut").toFile()
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    val options =
+      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSourceChars = 100))
+    val long = listOf(subject("a").copy(source = "x".repeat(600)))
+    GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+      .run(guidelines, long)
+    val second =
+      GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+        .run(guidelines, long)
+    assertThat(model.requests).hasSize(1)
+    assertThat(second.results.single().fromCache).isTrue()
+    dir.deleteRecursively()
+  }
+
+  @Test
+  fun `a region does not become a finding on a preview the rule was never asked of`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"v7","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Not v7.",
+         "needs":[],"regions":[{"picture":2,"x":0.1,"y":0.2,"width":0.3,"height":0.4,"label":null}]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(
+          guidelines,
+          listOf(subject("a").copy(profile = "launcher-widgets-v7"), subject("b")),
+        )
+    val b = run.results.single { it.previewId == "b" }
+    assertThat(b.failures().map { it.ruleId }).doesNotContain("v7")
+    val a = run.results.single { it.previewId == "a" }
+    assertThat(a.failures().single { it.ruleId == "v7" }.regions).hasSize(1)
+  }
+
   private inner class FakeModel : GuidelineModel {
     val replies = ArrayDeque<String>()
     val requests = mutableListOf<GuidelineRequestV1>()
+    val decisions = mutableListOf<JsonObject>()
     var decision: String? = null
+    var status: Int = 200
 
     override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
       requests += request
+      if (status !in 200..299) return ModelResponse(status, """{"error":{"message":"busy"}}""")
       return ModelResponse(200, completion(replies.removeFirst()))
     }
 
-    override fun decide(body: JsonObject): ModelResponse =
-      decision?.let { ModelResponse(200, it) } ?: ModelResponse(500, "{}")
+    override fun decide(body: JsonObject): ModelResponse {
+      decisions += body
+      return decision?.let { ModelResponse(200, it) } ?: ModelResponse(500, "{}")
+    }
   }
 
-  private inner class FakeHost : GuidelineEvidenceHost {
+  private inner class FakeHost(
+    override val available: List<String> = listOf("a11y-hierarchy", "render")
+  ) : GuidelineEvidenceHost {
     val nodeRequests = mutableListOf<String>()
     val renderRequests = mutableListOf<GuidelineEvidenceNeedV1>()
-    override val available = listOf("a11y-hierarchy", "render")
 
     override fun nodes(previewId: String): List<PreviewNode> {
       nodeRequests += previewId

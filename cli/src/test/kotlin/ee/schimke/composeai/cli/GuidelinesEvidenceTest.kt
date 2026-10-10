@@ -261,4 +261,13 @@ class GuidelinesEvidenceTest {
 
     override fun decide(body: JsonObject): ModelResponse = ModelResponse(500, "{}")
   }
+
+  @Test
+  fun `an incomplete check exits 2 even with findings, so CI never reads it as clean`() {
+    assertEquals(2, guidelinesExitCode(incomplete = true, failed = false, buildOk = true))
+    assertEquals(2, guidelinesExitCode(incomplete = true, failed = true, buildOk = true))
+    assertEquals(1, guidelinesExitCode(incomplete = false, failed = true, buildOk = true))
+    assertEquals(0, guidelinesExitCode(incomplete = false, failed = false, buildOk = true))
+    assertEquals(2, guidelinesExitCode(incomplete = false, failed = false, buildOk = false))
+  }
 }

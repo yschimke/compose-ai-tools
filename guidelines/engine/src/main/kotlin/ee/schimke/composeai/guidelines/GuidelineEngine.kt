@@ -52,6 +52,12 @@ public data class GuidelineRunResult(
   val costUsd: Double,
   val requests: Int,
   val problems: List<String>,
+  /**
+   * Requests that did not come back as verdicts: a transport error, a non-2xx answer (an invalid
+   * key, 429, 5xx) or an unreadable reply. Their previews are reported unchecked, so a run with any
+   * is incomplete, unlike stopping at the cost cap, which is a limit the caller chose.
+   */
+  val failedRequests: Int = 0,
 )
 
 /**
@@ -79,9 +85,10 @@ public class GuidelineEngine(
     val results = mutableListOf<PreviewGuidelineResult>()
     var spent = 0.0
     var requests = 0
+    var failedRequests = 0
 
     val pending = subjects.filter { subject ->
-      val hit = cache?.get(subject.previewId, subject.renderHash, guidelines.version, options.model)
+      val hit = cache?.get(subject, guidelines, options.model)
       if (hit != null) results += hit
       hit == null
     }
@@ -97,9 +104,17 @@ public class GuidelineEngine(
       if (options.triage && host.available.isNotEmpty()) {
         val rulesSummary =
           guidelines.subjectRules(batch.surface).joinToString("\n") { "${it.id}: ${it.check}" }
-        val reply = runCatching { model.decide(JevTriage.body(batch, rulesSummary)) }.getOrNull()
+        // Only offer what this host can supply: a decision for a render the host cannot draw
+        // would cost a question and fetch nothing.
+        val offers = JevTriage.DEFAULT_OFFERS.filter { it.need.kind in host.available }
+        val reply =
+          offers
+            .takeIf { it.isNotEmpty() }
+            ?.let { runCatching { model.decide(JevTriage.body(batch, rulesSummary, offers)) } }
+            ?.getOrNull()
         if (reply != null && reply.status in 200..299) {
-          val wants = JevTriage.wanted(reply.body, batch, threshold = options.triageThreshold)
+          val wants =
+            JevTriage.wanted(reply.body, batch, offers, threshold = options.triageThreshold)
           if (wants.isNotEmpty()) batch = withEvidence(batch, wants)
         }
       }
@@ -123,25 +138,82 @@ public class GuidelineEngine(
         }
           .getOrElse {
             problems += "request failed: ${it.message}"
+            failedRequests++
             return false
           }
         requests++
         if (response.status !in 200..299) {
           problems += "the model answered ${response.status}: ${response.body.take(200)}"
+          failedRequests++
           return false
         }
         val order = request.pictures.map { (it.subjectId ?: "") to it.kind }
         val reply =
           GuidelineResponse.parse(response.body, target, order).getOrElse {
             problems += "unreadable reply: ${it.message}"
+            failedRequests++
             return false
           }
         spent += reply.served.costUsd ?: 0.0
         served += reply.served
+        // A region lives with the subject whose picture it is drawn on: a verdict about one
+        // preview may point at another's picture, and nested only in the first it would be
+        // filtered out of both previews' overlays. Moved after every verdict is in, so a later
+        // verdict for the owner cannot overwrite it.
+        val inBatch = target.subjects.map { it.previewId }.toSet()
         reply.verdicts.forEach { verdict ->
           val subjectId = verdict.subjectId
           if (subjectId == null) setVerdicts += verdict
           else verdicts.getOrPut(subjectId) { mutableMapOf() }[verdict.ruleId] = verdict
+        }
+        reply.verdicts.forEach { reported ->
+          val from = reported.subjectId ?: return@forEach
+          if (reported.verdict != GuidelineVerdictV1.FAIL) return@forEach
+          reported.regions
+            .filter { it.subjectId != null && it.subjectId != from && it.subjectId in inBatch }
+            .forEach { region ->
+              val owner = region.subjectId!!
+              val existing = verdicts[owner]?.get(reported.ruleId)
+              // A rule the owner was never asked (another surface or profile) does not become a
+              // finding on it: the region stays with the verdict that named it.
+              val ownerSubject = target.subjects.firstOrNull { it.previewId == owner }
+              val applies =
+                ownerSubject != null &&
+                  guidelines
+                    .subjectRules(
+                      ownerSubject.surface,
+                      ownerSubject.profile,
+                      ownerSubject.pictures.isNotEmpty(),
+                    )
+                    .any { it.id == reported.ruleId }
+              if (existing == null && !applies) return@forEach
+              val mine = verdicts.getOrPut(owner) { mutableMapOf() }
+              // The owner's own failure gains the region; a preview the model did not judge on
+              // that rule gets the finding where it was seen. One the model passed keeps its
+              // verdict, and the region stays with the verdict that named it, undrawn.
+              val moved =
+                when {
+                  existing == null ->
+                    reported
+                      .newBuilder()
+                      .apply {
+                        subjectId = owner
+                        nodeIds = emptyList()
+                        regions = listOf(region)
+                        reason = "Seen while judging $from: ${reported.reason}"
+                      }
+                      .build()
+                  existing.verdict == GuidelineVerdictV1.FAIL ->
+                    existing.newBuilder().apply { regions = existing.regions + region }.build()
+                  else -> return@forEach
+                }
+              mine[reported.ruleId] = moved
+              val source = verdicts.getValue(from)
+              source[reported.ruleId]?.let { current ->
+                source[reported.ruleId] =
+                  current.newBuilder().apply { regions = current.regions - region }.build()
+              }
+            }
         }
         return true
       }
@@ -200,10 +272,14 @@ public class GuidelineEngine(
             unchecked = unchecked,
           )
         results += result
-        cache?.put(result, guidelines.version, options.model)
+        // Keyed on the subject as the caller handed it in: batching may truncate its source to fit
+        // the budget, and triage and follow-up rounds attach evidence, none of which the next
+        // run's lookup (over the caller's subject) will have.
+        val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
+        cache?.put(result, arrived, guidelines, options.model)
       }
     }
-    return GuidelineRunResult(results, spent, requests, problems)
+    return GuidelineRunResult(results, spent, requests, problems, failedRequests)
   }
 
   /** [batch] with the evidence in [needs] fetched from the host and attached to its subjects. */
@@ -216,32 +292,36 @@ public class GuidelineEngine(
         batch.subjects.map { subject ->
           val wanted = needs[subject.previewId] ?: return@map subject
           var updated = subject
-          wanted.forEach { need ->
-            when (need.kind) {
-              GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
-              GuidelineEvidenceNeedV1.KIND_SEMANTICS ->
-                if (updated.nodes.isEmpty()) {
-                  host.nodes(subject.previewId)?.let { updated = updated.copy(nodes = it) }
-                }
-              GuidelineEvidenceNeedV1.KIND_SOURCE ->
-                if (updated.source == null) {
-                  host.source(subject.previewId)?.let { updated = updated.copy(source = it) }
-                }
-              GuidelineEvidenceNeedV1.KIND_RENDER -> {
-                val already =
-                  updated.pictures.any {
-                    it.theme == need.theme &&
-                      it.fontScale == need.fontScale &&
-                      it.device == need.device
+          // Never ask the host for a kind it did not advertise, whoever asked for it: Jev's
+          // triage or the model's own `needs_evidence`.
+          wanted
+            .filter { it.kind in host.available }
+            .forEach { need ->
+              when (need.kind) {
+                GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
+                GuidelineEvidenceNeedV1.KIND_SEMANTICS ->
+                  if (updated.nodes.isEmpty()) {
+                    host.nodes(subject.previewId)?.let { updated = updated.copy(nodes = it) }
                   }
-                if (!already) {
-                  host.render(subject.previewId, need)?.let {
-                    updated = updated.copy(pictures = updated.pictures + it)
+                GuidelineEvidenceNeedV1.KIND_SOURCE ->
+                  if (updated.source == null) {
+                    host.source(subject.previewId)?.let { updated = updated.copy(source = it) }
+                  }
+                GuidelineEvidenceNeedV1.KIND_RENDER -> {
+                  val already =
+                    updated.pictures.any {
+                      it.theme == need.theme &&
+                        it.fontScale == need.fontScale &&
+                        it.device == need.device
+                    }
+                  if (!already) {
+                    host.render(subject.previewId, need)?.let {
+                      updated = updated.copy(pictures = updated.pictures + it)
+                    }
                   }
                 }
               }
             }
-          }
           updated
         }
     )

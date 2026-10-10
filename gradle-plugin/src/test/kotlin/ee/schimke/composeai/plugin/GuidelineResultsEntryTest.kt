@@ -26,4 +26,19 @@ class GuidelineResultsEntryTest {
     stray.writeText("{truncated")
     assertThat(guidelineResultsEntry(listOf(stray))).isNull()
   }
+
+  @Test
+  fun `results are keyed by the bundle's preview ids, and previews it does not carry are dropped`() {
+    val report =
+      """{"module":":catalog","results":[""" +
+        """{"previewId":"x.A B","record":{"previewId":"x.A B","model":"m"}},""" +
+        """{"previewId":"x.Gone","record":{"previewId":"x.Gone","model":"m"}}]}"""
+    val file = tmp.newFile("guidelines.json").apply { writeText(report) }
+    val bytes = guidelineResultsEntry(listOf(file), mapOf("x.A B" to "x_a_b"))!!
+    val text = bytes.toString(Charsets.UTF_8)
+    assertThat(text).contains("\"previewId\":\"x_a_b\"")
+    assertThat(text).doesNotContain("x.A B")
+    assertThat(text).doesNotContain("x.Gone")
+    assertThat(text).contains("\"module\":\":catalog\"")
+  }
 }
