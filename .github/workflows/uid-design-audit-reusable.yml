@@ -6,6 +6,10 @@ name: UID design audit (reusable)
 on:
   workflow_call:
     inputs:
+      enabled:
+        description: Explicit opt-out; when enabled, a missing key is an incomplete audit and fails.
+        type: boolean
+        default: true
       pilot-directory:
         description: Trusted default-branch directory holding ci/evidence.py, references.json and rules.
         type: string
@@ -20,8 +24,8 @@ on:
         default: adaptive-uid-design-audit
     secrets:
       OPENROUTER_API_KEY:
-        description: OpenRouter key, matching the catalog guidelines workflow.
-        required: true
+        description: Required when enabled; may be omitted only when the audit is disabled.
+        required: false
 
 permissions:
   contents: read
@@ -32,7 +36,13 @@ env:
 
 jobs:
   audit:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    # workflow_run has base-repository secrets even when the source run is a fork PR.
+    # A missing head_repository fails closed. No fork opt-in is exposed here.
+    if: >-
+      inputs.enabled &&
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -64,6 +74,7 @@ jobs:
         with:
           version: '2.40.0'
           plugin-readiness-timeout: '0'
+          require-digest: 'true'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-ai-tools
@@ -98,4 +109,5 @@ jobs:
         with:
           name: ${{ inputs.audit-artifact }}
           path: _uid_audit/
+          overwrite: true
           if-no-files-found: error
