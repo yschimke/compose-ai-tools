@@ -400,7 +400,12 @@ class GuidelineRetryTest {
     val batches =
       PreviewGuidelineRequests.batches(guidelines, screens, GuidelineBudget().withMaxVerdicts(6))
     assertThat(batches.map { it.subjects.size }).containsExactly(2, 2, 1).inOrder()
-    // At the default, twelve screens asked 24 rules each go in batches of five, not one of twelve.
-    assertThat(GuidelineBudget.DEFAULT_MAX_VERDICTS / 24).isEqualTo(5)
+    // At the default, twelve screens asked 24 rules each go in batches of six, not one of twelve:
+    // the worst case (every rule listed) and the expected reply agree on six.
+    assertThat(GuidelineBudget.DEFAULT_MAX_VERDICTS / 24).isEqualTo(6)
+    assertThat(
+        GuidelineBudget.DEFAULT_MAX_REPLY_TOKENS / PreviewGuidelineRequests.expectedReplyTokens(24)
+      )
+      .isEqualTo(6)
   }
 }

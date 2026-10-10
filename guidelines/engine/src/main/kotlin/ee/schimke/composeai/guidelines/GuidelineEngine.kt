@@ -185,6 +185,8 @@ public class GuidelineEngine(
     // Verdicts dropped because they answer a question nobody asked: rule ids the request never
     // listed for that subject (by id, counted), and subjects outside the request.
     val invented = linkedMapOf<String, Int>()
+    // Subjects a reply left rules of with neither a verdict nor an `others` statement.
+    var unstated = 0
     val strays = mutableListOf<String>()
 
     /** Whether one more request, expected to cost what the dearest so far did, fits the cap. */
@@ -258,6 +260,11 @@ public class GuidelineEngine(
       val verdicts = mutableMapOf<String, MutableMap<String, GuidelineVerdictV1>>()
       val served = mutableListOf<GuidelineServed>()
       val setVerdicts = mutableListOf<GuidelineVerdictV1>()
+      // Rules passed by an `others` statement rather than listed, by preview id, and of the set.
+      val implicit = mutableMapOf<String, MutableSet<String>>()
+      val setImplicit = mutableSetOf<String>()
+      // Subjects a reply left rules of with neither a verdict nor an `others` statement.
+      val uncovered = mutableSetOf<String>()
       // Everything this batch's requests cost, replies that could not be used included.
       var batchSpent = 0.0
 
@@ -328,7 +335,9 @@ public class GuidelineEngine(
                       else verdict.ruleId in askedOf[subjectId].orEmpty()
                     }
                   dropped.forEach { invented.merge(it.ruleId, 1, Int::plus) }
-                  if (valid.isNotEmpty()) {
+                  // A reply listing no finding but stating that everything else passes is the
+                  // common, cheap answer, not an empty one.
+                  if (valid.isNotEmpty() || reply.othersPass.isNotEmpty()) {
                     kept = valid
                     answer = reply
                     break
@@ -393,8 +402,41 @@ public class GuidelineEngine(
         val inBatch = target.subjects.map { it.previewId }.toSet()
         kept.forEach { verdict ->
           val subjectId = verdict.subjectId
-          if (subjectId == null) setVerdicts += verdict
-          else verdicts.getOrPut(subjectId) { mutableMapOf() }[verdict.ruleId] = verdict
+          if (subjectId == null) {
+            setVerdicts.removeAll { it.ruleId == verdict.ruleId }
+            setVerdicts += verdict
+            setImplicit -= verdict.ruleId
+          } else {
+            verdicts.getOrPut(subjectId) { mutableMapOf() }[verdict.ruleId] = verdict
+            implicit[subjectId]?.remove(verdict.ruleId)
+          }
+        }
+        // The reply lists only what does not pass; its `others` statement passes the rest of what
+        // was asked. A rule neither listed nor covered by a statement stays unchecked.
+        target.subjects.forEach { subject ->
+          val id = subject.previewId
+          val listed = kept.filter { it.subjectId == id }.map { it.ruleId }.toSet()
+          val rest = askedOf[id].orEmpty() - listed
+          if (rest.isEmpty()) return@forEach
+          val confidence = answer.othersPass[id]
+          if (confidence == null) {
+            uncovered += id
+            return@forEach
+          }
+          val mine = verdicts.getOrPut(id) { mutableMapOf() }
+          rest.forEach { ruleId ->
+            mine[ruleId] = implicitPass(ruleId, id, confidence)
+            implicit.getOrPut(id) { mutableSetOf() } += ruleId
+          }
+        }
+        val setListed = kept.filter { it.subjectId == null }.map { it.ruleId }.toSet()
+        val setRest = askedOnce - setListed
+        answer.othersPass[GuidelineReply.SET]?.let { confidence ->
+          setRest.forEach { ruleId ->
+            setVerdicts.removeAll { it.ruleId == ruleId }
+            setVerdicts += implicitPass(ruleId, null, confidence)
+            setImplicit += ruleId
+          }
         }
         kept.forEach { reported ->
           val from = reported.subjectId ?: return@forEach
@@ -503,6 +545,7 @@ public class GuidelineEngine(
         current = gathered
       }
 
+      unstated += uncovered.size
       val share = if (batch.subjects.isEmpty()) 0.0 else batchSpent / batch.subjects.size
       val last = served.lastOrNull()
       batch.subjects.forEach { subject ->
@@ -518,17 +561,29 @@ public class GuidelineEngine(
             }
         val result =
           PreviewGuidelineResult(
-            previewId = subject.previewId,
-            renderHash = subject.renderHash,
-            record = record(guidelines, subject, asked, mine, last, share),
-            unchecked = unchecked,
-          )
+              previewId = subject.previewId,
+              renderHash = subject.renderHash,
+              record = record(guidelines, subject, asked, mine, last, share),
+              unchecked = unchecked,
+            )
+            .also { result ->
+              result.implicitPasses =
+                asked
+                  .map { it.id }
+                  .filter { it in implicit[subject.previewId].orEmpty() || it in setImplicit }
+                  .filter { id -> mine.any { it.ruleId == id && it.verdict == PASS } }
+            }
         results += result
         // Keyed on the subject as the caller handed it in: batching may truncate its source to fit
         // the budget, and triage and follow-up rounds attach evidence, none of which the next
         // run's lookup (over the caller's subject) will have.
         val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
-        if (subject.previewId !in interrupted)
+        // A reply that left rules of it unanswered is not kept either: the next run asks again
+        // rather than reuse a result that is part unchecked for no reason of the rules'.
+        if (
+          subject.previewId !in interrupted &&
+            !(subject.previewId in uncovered && unchecked.isNotEmpty())
+        )
           cache?.put(result, arrived, guidelines, options.model)
       }
     }
@@ -547,6 +602,11 @@ public class GuidelineEngine(
             .take(12)
             .joinToString { (id, n) -> if (n > 1) "$id ×$n" else id } +
           (if (invented.size > 12) " and ${invented.size - 12} more" else "")
+    }
+    if (unstated > 0) {
+      problems +=
+        "$unstated preview(s) got a reply that neither listed some of their rules nor stated " +
+          "that the rest pass; those rules are reported unchecked"
     }
     if (strays.isNotEmpty()) {
       problems +=
@@ -567,6 +627,12 @@ public class GuidelineEngine(
           splits.take(4).joinToString("; ") +
           (if (splits.size > 4) " and ${splits.size - 4} more" else "")
     }
+    if ((model as? OpenRouterClient)?.relaxedParameters == true) {
+      problems +=
+        "no provider of ${options.model} honours every parameter sent (the strict reply schema, " +
+          "max_tokens), so requests were routed without provider.require_parameters and a " +
+          "reply may ignore the schema"
+    }
     if (abandoned > 0 && unpriced > 0.0 && options.maxCostUsd != null) {
       problems +=
         "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
@@ -574,6 +640,16 @@ public class GuidelineEngine(
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests)
   }
+
+  /** [ruleId] passed by a reply's `others` statement for [subjectId] (null: the set). */
+  private fun implicitPass(ruleId: String, subjectId: String?, confidence: Double) =
+    GuidelineVerdictV1.Builder(ruleId, PASS)
+      .apply {
+        this.subjectId = subjectId
+        this.confidence = confidence
+        reason = IMPLICIT_PASS_REASON
+      }
+      .build()
 
   private fun money(value: Double): String = String.format(java.util.Locale.ROOT, "%.4f", value)
 
@@ -713,6 +789,15 @@ public class GuidelineEngine(
     )
   }
 }
+
+private const val PASS = GuidelineVerdictV1.PASS
+
+/**
+ * The `reason` of a pass a reply did not list: covered by its statement that every rule it left out
+ * passes ([PreviewGuidelineResult.implicitPasses] names them).
+ */
+public const val IMPLICIT_PASS_REASON: String =
+  "Passed implicitly: not among the reply's findings, which stated every other rule passes."
 
 /** A batch waiting to be asked; [triaged] once Jev has already been asked about its subjects. */
 private data class QueuedBatch(val batch: GuidelineBatch, val triaged: Boolean)

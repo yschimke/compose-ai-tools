@@ -572,7 +572,11 @@ class GuidelinesEvidenceTest {
         replies.removeFirstOrNull()
           ?: ("""{"verdicts":[{"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,""" +
             """"nodeIds":["stop"],"reason":"The icon button is fixed at 36dp.","needs":[],""" +
-            """"regions":[]}]}""")
+            """"regions":[]}],"others":[""" +
+            request.subjects.indices.joinToString(",") {
+              """{"subjectId":"s${it + 1}","verdict":"pass","confidence":0.9}"""
+            } +
+            "]}")
       val body = buildJsonObject {
         put("id", "gen-1")
         put("model", "deepseek/deepseek-v4.1-flash")

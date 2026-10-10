@@ -546,7 +546,11 @@ internal object GuidelinesReportRenderer {
         "%.4f".format(run.costUsd) +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
-        (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "")
+        (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
+        (run.results
+          .sumOf { it.implicitPasses.size }
+          .takeIf { it > 0 }
+          ?.let { ", $it rule(s) passed implicitly (not among the reply's findings)" } ?: "")
     )
     run.results.forEach { result ->
       val failures = result.failures()

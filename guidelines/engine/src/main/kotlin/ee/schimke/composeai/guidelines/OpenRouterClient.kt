@@ -89,8 +89,26 @@ public class OpenRouterClient(
   private val baseUrl: String = "https://openrouter.ai",
   private val title: String = "compose-preview guidelines",
 ) : GuidelineModel {
-  override fun complete(request: GuidelineRequestV1, model: String): ModelResponse =
-    post("$baseUrl/api/v1/chat/completions", chatBody(request, model).toString())
+  /**
+   * Whether a request was routed without `provider.require_parameters`: no provider of the model
+   * honoured every parameter sent (the strict JSON schema, `max_tokens`), so OpenRouter answered
+   * 404 and the request was sent again without the requirement, as it is for the rest of this
+   * client's life. Its replies may then ignore the schema; one that does is unreadable and asked
+   * again like any other.
+   */
+  @Volatile
+  public var relaxedParameters: Boolean = false
+    private set
+
+  override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
+    val url = "$baseUrl/api/v1/chat/completions"
+    if (!relaxedParameters) {
+      val strict = post(url, chatBody(request, model, requireParameters = true).toString())
+      if (!noEndpointHonours(strict)) return strict
+      relaxedParameters = true
+    }
+    return post(url, chatBody(request, model, requireParameters = false).toString())
+  }
 
   override fun decide(body: JsonObject): ModelResponse =
     post("$baseUrl/api/alpha/decisions", body.toString())
@@ -121,10 +139,25 @@ public class OpenRouterClient(
     /** The model a guidelines check asks unless told otherwise. */
     public const val DEFAULT_MODEL: String = "deepseek/deepseek-v4.1-flash"
 
-    /** The chat-completions body for [request]: the text first, then every picture in order. */
-    public fun chatBody(request: GuidelineRequestV1, model: String): JsonObject = buildJsonObject {
+    /**
+     * The chat-completions body for [request]: the text first, then every picture in order, held to
+     * the reply schema, its length bounded by [PreviewGuidelineRequests.replyTokenLimit], and
+     * routed only to providers that honour all of that (`provider.require_parameters`).
+     */
+    public fun chatBody(request: GuidelineRequestV1, model: String): JsonObject =
+      chatBody(request, model, requireParameters = true)
+
+    internal fun chatBody(
+      request: GuidelineRequestV1,
+      model: String,
+      requireParameters: Boolean,
+    ): JsonObject = buildJsonObject {
       put("model", model)
       put("temperature", 0)
+      put("max_tokens", PreviewGuidelineRequests.replyTokenLimit(request))
+      // OpenRouter's structured-outputs guidance: a strict `json_schema` is honoured only by some
+      // providers, and without this a request may be routed to one that ignores it.
+      if (requireParameters) putJsonObject("provider") { put("require_parameters", true) }
       putJsonArray("messages") {
         add(
           buildJsonObject {
@@ -167,6 +200,14 @@ public class OpenRouterClient(
         }
       }
     }
+
+    /**
+     * Whether [response] is OpenRouter saying no provider of the model supports every parameter the
+     * request sent: a 404 `No endpoints found …`, what `require_parameters` answers when none
+     * qualifies.
+     */
+    internal fun noEndpointHonours(response: ModelResponse): Boolean =
+      response.status == 404 && response.body.contains("No endpoints found", ignoreCase = true)
 
     private val JSON = "application/json".toMediaType()
 

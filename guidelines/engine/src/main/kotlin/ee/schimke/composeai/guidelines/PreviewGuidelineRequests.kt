@@ -121,10 +121,15 @@ public data class GuidelineBudget(
 ) {
   /**
    * How many verdicts one reply may be asked for: each subject's rules, summed. This bounds the
-   * reply rather than the request, and the reply is what takes the time — twelve Wear screens asked
-   * 24 rules each is 288 verdicts, a reply that ran past the 300 s request timeout on every try
-   * while three components in their own request answered in seconds. At the default a screen batch
-   * of that catalog holds five.
+   * reply's WORST case — every rule asked listed as a finding — rather than the request, and the
+   * reply is what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply
+   * that ran past the 300 s request timeout on every try while three components in their own
+   * request answered in seconds.
+   *
+   * Replies list only what does not pass ([PreviewGuidelineRequests.SYSTEM_PROMPT]), so a reply
+   * holding every verdict asked is the exception; the expected size is held by [maxReplyTokens]. At
+   * the default, all-fail is about [maxVerdicts] × [PreviewGuidelineRequests.VERDICT_TOKENS] ≈
+   * 11.5k tokens, under three minutes at the ~70 tokens/s a flash model writes.
    *
    * A body property, so the constructor and `copy` keep their ABI: set it with [withMaxVerdicts],
    * and note that `copy` resets it to [DEFAULT_MAX_VERDICTS].
@@ -132,13 +137,38 @@ public data class GuidelineBudget(
   public var maxVerdicts: Int = DEFAULT_MAX_VERDICTS
     private set
 
+  /**
+   * How many tokens one reply is EXPECTED to take ([PreviewGuidelineRequests.expectedReplyTokens]):
+   * an `others` statement per subject plus the share of its rules a model typically lists. Output
+   * is written one token at a time while input is read in one pass, so this, not [maxInputTokens],
+   * is what a batch's latency follows. At the default a reply takes about 45 s and a Wear screen
+   * batch of 24 rules each holds six.
+   *
+   * A body property like [maxVerdicts]: set it with [withMaxReplyTokens].
+   */
+  public var maxReplyTokens: Int = DEFAULT_MAX_REPLY_TOKENS
+    private set
+
   /** This budget, holding a reply to [maxVerdicts] verdicts. */
   public fun withMaxVerdicts(maxVerdicts: Int): GuidelineBudget =
-    copy().also { it.maxVerdicts = maxVerdicts }
+    copy().also {
+      it.maxVerdicts = maxVerdicts
+      it.maxReplyTokens = this.maxReplyTokens
+    }
+
+  /** This budget, expecting a reply of at most [maxReplyTokens] tokens. */
+  public fun withMaxReplyTokens(maxReplyTokens: Int): GuidelineBudget =
+    copy().also {
+      it.maxVerdicts = this.maxVerdicts
+      it.maxReplyTokens = maxReplyTokens
+    }
 
   public companion object {
     /** [maxVerdicts] unless told otherwise. */
-    public const val DEFAULT_MAX_VERDICTS: Int = 120
+    public const val DEFAULT_MAX_VERDICTS: Int = 144
+
+    /** [maxReplyTokens] unless told otherwise. */
+    public const val DEFAULT_MAX_REPLY_TOKENS: Int = 3_000
   }
 }
 
@@ -160,14 +190,20 @@ public object PreviewGuidelineRequests {
       "accessibility nodes and its Kotlin source. Use the source for rules about code — fixed " +
       "sizes and padding, hard-coded colours and text sizes, missing content descriptions, which " +
       "component or variant is used — and the pictures for what is drawn. Judge EACH subject " +
-      "separately against every rule listed for it: " +
-      "one verdict per listed rule, its `ruleId` copied exactly from that subject's list; never " +
-      "invent a rule id, rename one, or report a problem under a rule that is not listed for " +
-      "that subject (a verdict for any other id is discarded). " +
-      "Verdict `pass` when the rule's yes/no `check` is answered yes, `fail` when it is no, " +
-      "`not_applicable` when the rule does not apply to that subject. When you cannot decide " +
-      "from what is given but more evidence would decide it, answer `needs_evidence` and list " +
-      "what you need in `needs` (only kinds listed as available) instead of guessing. Judge only " +
+      "separately against every rule listed for it, but WRITE DOWN ONLY WHAT DOES NOT PASS: " +
+      "a `verdicts` entry for each rule that is `fail` or `needs_evidence` (and " +
+      "`not_applicable` only where calling it a pass would mislead), its `ruleId` copied " +
+      "exactly from that subject's list; never invent a rule id, rename one, or report a " +
+      "problem under a rule that is not listed for that subject (a verdict for any other id is " +
+      "discarded). Then, in `others`, one entry per subject (and one with `subjectId` null for " +
+      "the rules judged once across all subjects) saying what every rule you did NOT list for " +
+      "it is: `pass` when you judged each of them and each passes, `unchecked` when you could " +
+      "not judge them. A rule with no verdict and no `others` entry covering it is reported " +
+      "unchecked, never passed, so always write the `others` entry. " +
+      "A rule passes when its yes/no `check` is answered yes and fails when it is no. When you " +
+      "cannot decide from what is given but more evidence would decide it, answer " +
+      "`needs_evidence` and list what you need in `needs` (only kinds listed as available) " +
+      "instead of guessing. Judge only " +
       "from what is provided; do not assume content that is not there; answer `fail` only when " +
       "the subject clearly breaks the rule. Every verdict names its `subjectId` (e.g. `s1`); a " +
       "verdict for a rule judged once across all subjects has `subjectId` null. `nodeIds` cite " +
@@ -198,13 +234,18 @@ public object PreviewGuidelineRequests {
       "When measured accessibility checks are listed for a subject, they decide the rules they " +
       "measure (touch target size, contrast) over your estimate from the picture; cite the " +
       "node or region they name. `confidence` is your " +
-      "probability (0 to 1) that the verdict is right. `reason` is one short sentence a designer " +
-      "can act on. Reply with JSON only, held to the response schema."
+      "probability (0 to 1) that the verdict is right (in `others`, that every rule it covers " +
+      "passes). `reason` is one short sentence a designer can act on. Reply with JSON only, " +
+      "held to the response schema."
 
   /**
-   * Splits [subjects] into batches by surface, each within [budget]. A subject's text is estimated
-   * at four characters a token and a picture at [pictureTokens]; its verdicts are the rules it is
-   * asked ([GuidelineBudget.maxVerdicts]).
+   * Splits [subjects] into batches by surface, each within [budget], before anything is asked: a
+   * batch whose reply would be slow is never formed, rather than found out by a timeout. Each batch
+   * is bounded on both sides of the request — its input (a subject's text estimated at four
+   * characters a token and a picture at [pictureTokens], [GuidelineBudget.maxInputTokens]) and its
+   * reply, expected ([expectedReplyTokens], [GuidelineBudget.maxReplyTokens]) and at worst (every
+   * rule asked listed, [GuidelineBudget.maxVerdicts]). Deterministic: the same subjects, in the
+   * same order, make the same batches.
    */
   public fun batches(
     guidelines: CatalogGuidelinesV1,
@@ -223,6 +264,7 @@ public object PreviewGuidelineRequests {
         var tokens = rulesTokens + SYSTEM_PROMPT.length / 4
         var sourceChars = 0
         var verdicts = 0
+        var replyTokens = 0
         val fixedTokens = rulesTokens + SYSTEM_PROMPT.length / 4
         for (original in group) {
           var subject = original
@@ -238,12 +280,14 @@ public object PreviewGuidelineRequests {
           val subjectPictures = subject.pictures.size
           val subjectVerdicts =
             guidelines.subjectRules(surface, subject.profile, subject.pictures.isNotEmpty()).size
+          val subjectReply = expectedReplyTokens(subjectVerdicts)
           val full =
             current.isNotEmpty() &&
               (current.size >= budget.maxSubjects ||
                 pictures + subjectPictures > budget.maxPictures ||
                 tokens + subjectTokens > budget.maxInputTokens ||
-                verdicts + subjectVerdicts > budget.maxVerdicts)
+                verdicts + subjectVerdicts > budget.maxVerdicts ||
+                replyTokens + subjectReply > budget.maxReplyTokens)
           if (full) {
             out += GuidelineBatch(surface, current)
             current = mutableListOf()
@@ -251,6 +295,7 @@ public object PreviewGuidelineRequests {
             tokens = fixedTokens
             sourceChars = 0
             verdicts = 0
+            replyTokens = 0
           }
           // The batch's source allowance: past it, a subject keeps what is left, or none.
           subject.source?.let { source ->
@@ -262,6 +307,7 @@ public object PreviewGuidelineRequests {
           current += subject
           pictures += subjectPictures
           verdicts += subjectVerdicts
+          replyTokens += subjectReply
           tokens += estimateTokens(subject)
         }
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)
@@ -477,6 +523,10 @@ public object PreviewGuidelineRequests {
       append((shared + setRules).distinctBy { it.id }.joinToString { it.id })
       append(". A verdict for any other ruleId, or for a rule not listed for its subject, is ")
       append("discarded.\n")
+      append("\nList only the verdicts that are not `pass`, then one `others` entry for each of ")
+      append(batch.subjects.joinToString { batch.aliases.getValue(it.previewId) })
+      if (setRules.isNotEmpty()) append(" and one with `subjectId` null")
+      append(" covering every rule you did not list.\n")
     }
 
     return GuidelineRequestV1.Builder(
@@ -576,8 +626,26 @@ public object PreviewGuidelineRequests {
   public val RESPONSE_SCHEMA: JsonObject = buildJsonObject {
     put("type", "object")
     put("additionalProperties", false)
-    putJsonArray("required") { add(JsonPrimitive("verdicts")) }
+    required("verdicts", "others")
     putJsonObject("properties") {
+      putJsonObject("others") {
+        put("type", "array")
+        putJsonObject("items") {
+          put("type", "object")
+          put("additionalProperties", false)
+          required("subjectId", "verdict", "confidence")
+          putJsonObject("properties") {
+            putJsonObject("subjectId") { nullable("string") }
+            putJsonObject("verdict") {
+              put("type", "string")
+              putJsonArray("enum") {
+                listOf(OTHERS_PASS, OTHERS_UNCHECKED).forEach { add(JsonPrimitive(it)) }
+              }
+            }
+            putJsonObject("confidence") { put("type", "number") }
+          }
+        }
+      }
       putJsonObject("verdicts") {
         put("type", "array")
         putJsonObject("items") {
@@ -698,6 +766,56 @@ public object PreviewGuidelineRequests {
       add(JsonPrimitive("null"))
     }
   }
+
+  /**
+   * The tokens a reply is expected to take for a subject asked [rules] rules: its `others`
+   * statement ([OTHERS_TOKENS]) plus [EXPECTED_LISTED_SHARE] of its rules listed at
+   * [VERDICT_TOKENS] each.
+   */
+  public fun expectedReplyTokens(rules: Int): Int =
+    OTHERS_TOKENS + Math.ceil(rules * EXPECTED_LISTED_SHARE * VERDICT_TOKENS).toInt()
+
+  /**
+   * The `max_tokens` a request for [request] is sent with: every rule asked of every subject listed
+   * at [VERDICT_TOKENS] (the reply's worst case, an over-estimate where subjects are asked
+   * different rules), an `others` statement each, and [REPLY_HEADROOM_TOKENS] for a reasoning
+   * model's thinking, which most providers count against the same limit. A reply that runs away —
+   * repeating itself, or writing far past what was asked — is cut there instead of holding its
+   * batch until the request timeout; a reply cut short is unreadable, and is asked again and then
+   * split like any other.
+   */
+  public fun replyTokenLimit(request: GuidelineRequestV1): Int {
+    val subjects = request.subjects.size.coerceAtLeast(1)
+    return subjects * request.rules.asked.size * VERDICT_TOKENS +
+      (subjects + 1) * OTHERS_TOKENS +
+      REPLY_HEADROOM_TOKENS
+  }
+
+  /**
+   * One listed verdict's tokens: `subjectId`, `ruleId`, `verdict`, `confidence`, a one-sentence
+   * `reason`, empty `nodeIds` / `needs` and usually one region. The old every-rule reply averaged
+   * about 70 a verdict; a listed one is mostly a `fail`, which carries the region.
+   */
+  public const val VERDICT_TOKENS: Int = 80
+
+  /** One `others` statement's tokens. */
+  public const val OTHERS_TOKENS: Int = 20
+
+  /**
+   * The share of a subject's rules a reply is expected to list (`fail`, `needs_evidence`, the odd
+   * `not_applicable`). A catalog under review fails a handful of its two dozen rules a screen; a
+   * quarter leaves room for a bad screen without sizing every batch for the worst.
+   */
+  public const val EXPECTED_LISTED_SHARE: Double = 0.25
+
+  /** The `max_tokens` allowance on top of the reply itself, for a reasoning model's thinking. */
+  public const val REPLY_HEADROOM_TOKENS: Int = 8_192
+
+  /** An `others` statement: every rule not listed for the subject passes. */
+  public const val OTHERS_PASS: String = "pass"
+
+  /** An `others` statement: the rules not listed for the subject were not judged. */
+  public const val OTHERS_UNCHECKED: String = "unchecked"
 
   /** A rough input-token cost of one attached picture: the least any picture is counted at. */
   public const val PICTURE_TOKENS: Int = 1_200

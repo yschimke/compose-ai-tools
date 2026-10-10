@@ -128,14 +128,49 @@ and re-pin `sha256` when moving to a newer tag.
 
 ## Batching
 
-Not one call per preview. Subjects of one surface share a request, up to a budget (default 12
-pictures, ~60k input tokens, 16 subjects, 120 verdicts): the rules are sent once, and `set` rules
-see the whole batch. The verdict cap — each subject's rules, summed — bounds the *reply*, which is
-what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply that ran past
-the request timeout twice, while the request itself came to about 25k input tokens by the batcher's
-estimate, well inside the token budget. At 120 a screen batch of that catalog holds five. (A re-run failed the same twelve-screen
-request the same way while the component request passed both times: it was the request's size, not
-a blip, and asking it again would not have helped.) A picture counts 1,200 tokens, or its pixels
+Not one call per preview. Subjects of one surface share a request, up to a budget fixed before
+anything is asked (default 12 pictures, ~60k input tokens, 16 subjects, 144 verdicts asked and an
+expected reply of 3,000 tokens): the rules are sent once, and `set` rules see the whole batch. A
+batch is bounded on both sides, because the reply is what takes the time — input is read in one
+pass, output written a token at a time at roughly 70 tokens/s for a flash model. Twelve Wear
+screens asked 24 rules each was 288 verdicts written out, about 20k output tokens, a reply that
+ran past the 300 s request timeout twice while the request itself came to about 25k input tokens
+by the batcher's estimate, well inside the token budget. (A re-run failed the same twelve-screen
+request the same way while the component request passed both times: it was the request's size,
+not a blip, and asking it again would not have helped.)
+
+**Replies list only what does not pass.** Since `REQUEST_FORMAT` 8 a reply holds a `verdicts`
+entry for each `fail` and `needs_evidence` (and a `not_applicable` only where a pass would
+mislead), plus one `others` statement per subject — and one with `subjectId` null for the `set`
+rules — saying every rule it did not list is `pass` (or `unchecked`):
+
+```json
+{"verdicts": [{"subjectId": "s2", "ruleId": "wear.touch-target", "verdict": "fail",
+               "confidence": 0.8, "nodeIds": [], "reason": "The chips are 40dp tall.",
+               "needs": [], "regions": [{"picture": 2, "x": 0.1, "y": 0.4, "width": 0.8,
+               "height": 0.2, "label": null}]}],
+ "others": [{"subjectId": "s1", "verdict": "pass", "confidence": 0.9},
+            {"subjectId": "s2", "verdict": "pass", "confidence": 0.85},
+            {"subjectId": null, "verdict": "pass", "confidence": 0.9}]}
+```
+
+The engine records the listed verdicts and expands each `pass` statement into a pass verdict for
+every rule that subject was asked and the reply did not list — never for a rule it was not asked —
+whose `reason` is `IMPLICIT_PASS_REASON`; `PreviewGuidelineResult.implicitPasses` names them, so a
+record still carries a verdict per rule. A subject with neither a verdict nor a `pass` statement
+for a rule leaves that rule **unchecked**, never passed, says so in `problems`, and is not cached.
+The twelve-screen request's reply drops from ~9.1k to ~1.3k tokens on the bench in
+`GuidelineFailuresOnlyTest` (three findings a screen).
+
+The two reply bounds: the expected size (`GuidelineBudget.maxReplyTokens`,
+`PreviewGuidelineRequests.expectedReplyTokens`: a 20-token statement plus a quarter of the rules
+listed at 80 tokens each) keeps a batch fast; the worst case (`maxVerdicts`, every rule asked
+listed, ~11.5k tokens) keeps a bad batch under the timeout. Both put six of those screens in a
+batch. Each request is sent with `max_tokens` at that worst case plus 8k for a reasoning model's
+thinking, so a runaway reply is cut rather than held to the timeout, and with
+`provider.require_parameters` so it is routed only to providers honouring the strict schema
+(OpenRouter's structured-outputs guidance); a model none of whose providers do is retried without
+it, once per client, and the run's `problems` say so. A picture counts 1,200 tokens, or its pixels
 over 750 when that is more — a tall scroll capture or a tablet screen. Each subject carries its render (tagged with its subject id) and optionally its source;
 its accessibility data is evidence it is asked for (see *Accessibility evidence*). The model names the subject (`s1`, …) in every
 verdict and cites node ids, which map back to bounds for overlays; a visual problem no single node
