@@ -72,7 +72,8 @@ public data class GuidelineRunResult(
 /**
  * Checks rendered previews against a catalog's guidelines.
  *
- * Previews whose render is unchanged are answered from [cache]. The rest go in batches
+ * Previews whose render is unchanged are answered from [cache]. The rest go in batches, those the
+ * cache has never seen ahead of those it holds a stale verdict for
  * ([PreviewGuidelineRequests.batches]); before each batch an optional Jev triage decides which
  * extra evidence (a dark or large-font render, accessibility nodes) each subject needs, and the
  * [host] fetches only that. After round 0, rules the model answered `needs_evidence` are re-asked
@@ -102,7 +103,14 @@ public class GuidelineEngine(
       hit == null
     }
 
-    for (batch0 in PreviewGuidelineRequests.batches(guidelines, pending, options.budget)) {
+    // Previews never checked go first, so a capped run spends its budget widening coverage before
+    // re-asking previews whose earlier verdict went stale. Batched apart: batching groups by
+    // surface, which would otherwise interleave the two.
+    val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
+    val batches =
+      PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
+        PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
+    for (batch0 in batches) {
       if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
         batch0.subjects.forEach { results += unchecked(guidelines, it) }
         problems += "the cost cap was reached; ${batch0.subjects.size} previews were not checked"
@@ -235,6 +243,9 @@ public class GuidelineEngine(
 
       // Evidence rounds: re-ask only the subjects and rules the model could not decide.
       var current = batch
+      // Subjects whose follow-up was cut short by the cap or a failed request: their undecided
+      // rules were never re-asked, so their result is not cached and the next run asks again.
+      var interrupted = emptySet<String>()
       for (round in 1..options.maxRounds) {
         val undecided =
           current.subjects
@@ -246,7 +257,10 @@ public class GuidelineEngine(
             }
             .filterValues { it.isNotEmpty() }
         if (undecided.isEmpty() || host.available.isEmpty()) break
-        if (options.maxCostUsd != null && spent >= options.maxCostUsd) break
+        if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
+          interrupted = undecided.keys
+          break
+        }
         val needs = undecided.mapValues { (_, list) -> list.flatMap { it.needs }.distinct() }
         val gathered = withEvidence(current, needs)
         val followUp =
@@ -255,6 +269,7 @@ public class GuidelineEngine(
             gathered.subjects.filter { it.previewId in undecided },
           )
         if (!ask(followUp, round, undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() })) {
+          interrupted = undecided.keys
           break
         }
         current = gathered
@@ -286,7 +301,8 @@ public class GuidelineEngine(
         // the budget, and triage and follow-up rounds attach evidence, none of which the next
         // run's lookup (over the caller's subject) will have.
         val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
-        cache?.put(result, arrived, guidelines, options.model)
+        if (subject.previewId !in interrupted)
+          cache?.put(result, arrived, guidelines, options.model)
       }
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests)
@@ -393,6 +409,7 @@ public class GuidelineEngine(
       renderHash = subject.renderHash,
       record = record(guidelines, subject, asked, emptyList(), null, 0.0),
       unchecked = asked.map { it.id },
+      pending = true,
     )
   }
 }

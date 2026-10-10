@@ -3,9 +3,12 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.guidelines.CatalogGuidelinesLoader
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineModel
+import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.ModelResponse
+import ee.schimke.composeai.guidelines.PreviewSubject
+import ee.schimke.composeai.guidelines.SubjectPicture
 import ee.schimke.composeai.guidelines.failures
 import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1
@@ -320,6 +323,49 @@ class GuidelinesEvidenceTest {
     }
 
     override fun decide(body: JsonObject): ModelResponse = ModelResponse(500, "{}")
+  }
+
+  @Test
+  fun `a run answered from the cache still writes every result to guidelines json`() {
+    val buildDir = Files.createTempDirectory("guidelines-report").toFile()
+    val subjects =
+      listOf("a", "b").map { id ->
+        PreviewSubject(
+          previewId = id,
+          label = id,
+          surface = GuidelineSurfaces.SCREEN,
+          renderHash = "h-$id",
+          pictures = listOf(SubjectPicture("device", png(), 8, 8)),
+        )
+      }
+    val model = FakeModel()
+    fun run() =
+      GuidelineEngine(
+          model,
+          cache = GuidelineResultCache(buildDir.resolve("guidelines")),
+          options = GuidelineRunOptions(triage = false),
+        )
+        .run(guidelines(), subjects)
+    run()
+    val cached = run()
+    assertEquals(1, model.requests.size)
+    assertTrue(cached.results.all { it.fromCache })
+
+    writeGuidelinesReport(
+      buildDir,
+      ModuleGuidelines(":catalog", "wear-m3", "m", cached.results),
+      narrowed = false,
+    )
+
+    val written =
+      GuidelinesCommand.REPORT_JSON.decodeFromString(
+        ModuleGuidelines.serializer(),
+        buildDir.resolve("guidelines.json").readText(),
+      )
+    assertEquals(listOf("a", "b"), written.results.map { it.previewId })
+    assertTrue(written.results.all { it.fromCache && !it.pending })
+    assertEquals(1, written.results.single { it.previewId == "a" }.failures().size)
+    buildDir.deleteRecursively()
   }
 
   @Test
