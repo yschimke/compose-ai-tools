@@ -55,7 +55,7 @@ object TypedAdapterDiscovery {
               }
             val record =
               ComponentRecord.Builder(
-                  "$module/${selected.owner}.${selected.name}",
+                  "$module/${selected.owner}.${signature.name}",
                   ComponentSymbol.Builder(
                       selected.owner,
                       selected.owner.substringBeforeLast('.') + "." + signature.name,

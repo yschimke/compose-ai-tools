@@ -57,6 +57,43 @@ class TypedAdapterDiscoveryTest {
         .single()
     assertEquals("ee.schimke.composeai.discovery.adapterSourceName", record.symbol.callable)
     assertEquals("adapterJvmAlias", record.symbol.jvmName)
+    val normal =
+      ComponentRecords.from(
+          PreviewManifest(
+            module = ":app",
+            variant = "jvm",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = "alias-preview",
+                  functionName = "preview",
+                  className = entry.owner,
+                  targets =
+                    listOf(
+                      PreviewTarget(
+                        className = entry.owner,
+                        functionName = "adapterSourceName",
+                        jvmName = "adapterJvmAlias",
+                        confidence = TargetConfidence.HIGH,
+                        signatureKnown = true,
+                      )
+                    ),
+                )
+              ),
+          )
+        )
+        .components
+        .single()
+    assertEquals(normal.canonicalId, record.canonicalId)
+    val adapter = TypedComponentAdapter<Unit>("acme/aliased", record)
+    val generated =
+      TypedAdapterCatalog.generate(
+        ComponentRecordFile.Builder(":app", "jvm", listOf(record)).build(),
+        UiBuilderCatalogs.CoverSheet("acme", "Acme"),
+        UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "mobile").build(),
+        listOf(adapter),
+      )
+    assertEquals(normal.canonicalId, generated.record.components.single().canonicalId)
   }
 
   @Test
