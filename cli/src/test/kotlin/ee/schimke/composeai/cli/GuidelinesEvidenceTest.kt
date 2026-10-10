@@ -166,7 +166,7 @@ class GuidelinesEvidenceTest {
   }
 
   @Test
-  fun `handoff sends the long screenshot beside a scrolled capture and the ATF results`() {
+  fun `handoff offers the staged long screenshot as evidence and sends the ATF results`() {
     val dir = Files.createTempDirectory("guidelines-handoff-long").toFile()
     val renders = dir.resolve("renders").apply { mkdirs() }
     renders.resolve("List-1.png").writeBytes(png())
@@ -199,14 +199,30 @@ class GuidelinesEvidenceTest {
         )
       }
 
-    val subject =
-      HandoffInputs.read(dir.resolve("previews.json"), null, a11y, null, null).subjects.single()
+    val inputs = HandoffInputs.read(dir.resolve("previews.json"), null, a11y, null, null)
+    val subject = inputs.subjects.single()
 
-    assertEquals(listOf("device", "long"), subject.pictures.map { it.kind })
-    assertTrue(subject.pictures[1].description!!.contains("long screenshot"))
+    // The long screenshot is not sent up front: it is offered, and served from the staged file.
+    assertEquals(listOf("device"), subject.pictures.map { it.kind })
+    assertEquals(listOf("scroll-capture"), inputs.host.available("x.List"))
+    assertEquals(emptyList<String>(), inputs.host.available("x.Other"))
+    val need = GuidelineEvidenceNeedV1.Builder("scroll-capture").build()
+    val long = inputs.host.render("x.List", need)!!
+    assertEquals("scroll-capture", long.kind)
+    assertEquals(192, long.widthDp)
+    assertTrue(long.description!!.contains("long screenshot"))
+    assertEquals(null, inputs.host.render("x.Other", need))
     assertEquals(listOf("scrollable"), subject.nodes.single().states)
     assertEquals("TouchTargetSizeCheck", subject.checks.single().type)
     assertEquals("4,4,28,28", subject.checks.single().bounds)
+  }
+
+  @Test
+  fun `a handoff with no extra captures offers no evidence, as before`() {
+    val dir = Files.createTempDirectory("guidelines-handoff-plain").toFile()
+    dir.resolve("A.png").writeBytes(png())
+    val inputs = HandoffInputs.read(null, dir, null, null, null)
+    assertEquals(emptyList<String>(), inputs.host.available)
   }
 
   @Test

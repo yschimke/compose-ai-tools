@@ -1755,13 +1755,15 @@ runs:
           fi
           checked=$((checked + 1))
           # Handoff mode: no Gradle. Findings cite the staged accessibility nodes;
-          # --annotate writes <render>.guidelines.png beside each render.
+          # --annotate writes <render>.guidelines.png beside each render. Follow-up rounds can
+          # only be served the captures the render job staged (a long screenshot); nothing is
+          # rendered here. Every round counts against the one budget above.
           compose-preview guidelines \
             --previews-json "$module_dir/previews.json" \
             --a11y-json "$module_dir/accessibility.json" \
             --source-root "$module_dir/src" \
             --guidelines "$module_dir/ui-builder.guidelines.json" \
-            --max-cost "$remaining" --annotate \
+            --max-cost "$remaining" --annotate --rounds 2 \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
         # Stages exactly the pictures the comment will embed (the render with its findings marked,
