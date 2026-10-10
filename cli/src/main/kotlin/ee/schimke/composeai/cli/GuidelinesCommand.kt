@@ -423,6 +423,11 @@ data class ModuleGuidelines(
   val requests: Int? = null,
   val failedRequests: Int = 0,
   val problems: List<String> = emptyList(),
+  /**
+   * What the run spent, every request included: a reply that could not be used is paid for but
+   * belongs to no result's record, so summing the records under-counts. Null in older files.
+   */
+  val costUsd: Double? = null,
 ) {
   companion object {
     fun of(module: String, catalog: String, model: String, run: GuidelineRunResult) =
@@ -434,6 +439,7 @@ data class ModuleGuidelines(
         requests = run.requests,
         failedRequests = run.failedRequests,
         problems = run.problems,
+        costUsd = run.costUsd,
       )
   }
 }

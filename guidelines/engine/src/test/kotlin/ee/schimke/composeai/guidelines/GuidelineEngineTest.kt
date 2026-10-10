@@ -434,6 +434,112 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a verdict on a rule the request never asked is dropped and counted`() {
+    val model = FakeModel()
+    // "component" subjects are asked `any` and `touch`, and the set is asked `consistent`.
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Small.","needs":[],"regions":[]},
+        {"subjectId":"s1","ruleId":"clipping","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Cut.","needs":[],"regions":[]},
+        {"subjectId":"s1","ruleId":"screen-only","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"No time.","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"clipping","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Cut.","needs":[],"regions":[]},
+        {"subjectId":"s9","ruleId":"touch","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"?","needs":[],"regions":[]},
+        {"subjectId":null,"ruleId":"R5","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"?","needs":[],"regions":[]}
+      ]}"""
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a"), subject("b")))
+
+    val a = run.results.single { it.previewId == "a" }
+    assertThat(a.record.verdicts.map { it.ruleId }).containsExactly("touch")
+    assertThat(a.unchecked).containsExactly("any")
+    val b = run.results.single { it.previewId == "b" }
+    assertThat(b.record.verdicts).isEmpty()
+    assertThat(b.unchecked).containsExactly("any", "touch")
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.problems)
+      .contains(
+        "4 verdict(s) named a rule their request did not ask and were dropped: clipping ×2, " +
+          "screen-only, R5"
+      )
+    assertThat(run.problems.single { "outside their request" in it }).contains("s9/touch")
+  }
+
+  @Test
+  fun `a reply answering no rule it was asked is asked once more, then counted as failed`() {
+    val invented =
+      """{"verdicts":[{"subjectId":"s1","ruleId":"contrast","verdict":"fail","confidence":0.9,"nodeIds":[],"reason":"Low.","needs":[],"regions":[]}]}"""
+    val good =
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s1","ruleId":"touch","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    val retried = FakeModel().apply { replies += listOf(invented, good) }
+    val run =
+      GuidelineEngine(retried, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a")))
+    assertThat(run.requests).isEqualTo(2)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.single().unchecked).isEmpty()
+    assertThat(run.costUsd).isWithin(1e-9).of(0.002)
+    // What the first, unusable reply cost is still the preview's.
+    assertThat(run.results.single().record.costUsd!!).isWithin(1e-9).of(0.002)
+    assertThat(run.problems)
+      .contains("1 request(s) were asked again after a reply with no usable verdict")
+
+    val twice = FakeModel().apply { replies += listOf(invented, """{"verdicts":[]}""") }
+    val failed =
+      GuidelineEngine(twice, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a")))
+    assertThat(twice.requests).hasSize(2)
+    assertThat(failed.failedRequests).isEqualTo(1)
+    assertThat(failed.results.single().pending).isTrue()
+    // Both replies were paid for, though neither could be used.
+    assertThat(failed.costUsd).isWithin(1e-9).of(0.002)
+    assertThat(failed.problems.single { it.startsWith("unreadable") }).contains("no verdicts")
+  }
+
+  @Test
+  fun `the cap is not crossed by a request expected to cost more than is left`() {
+    val pass =
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    val model = FakeModel().apply { repeat(4) { replies += pass } }
+    val run =
+      GuidelineEngine(
+          model,
+          options =
+            GuidelineRunOptions(
+              triage = false,
+              budget = GuidelineBudget(maxSubjects = 1),
+              maxCostUsd = 0.0025,
+            ),
+        )
+        .run(guidelines, (1..4).map { subject("p$it") })
+    // Two requests of 0.001 leave 0.0005: a third, expected to cost 0.001, would cross the cap.
+    assertThat(model.requests).hasSize(2)
+    assertThat(run.costUsd).isAtMost(0.0025)
+    assertThat(run.results.filter { it.pending }.map { it.previewId }).containsExactly("p3", "p4")
+    assertThat(run.problems.single()).contains("cost cap")
+    assertThat(run.problems.single()).contains("2 previews were not checked")
+  }
+
+  @Test
+  fun `the prompt lists each subject's rule ids and says no other id is valid`() {
+    val batch =
+      GuidelineBatch(
+        "component",
+        listOf(subject("a"), subject("w").copy(profile = "launcher-widgets-v7")),
+      )
+    val request = PreviewGuidelineRequests.request(guidelines, batch, "src", emptyList())
+    assertThat(request.userText).contains("Rules for s1: any, touch\n")
+    assertThat(request.userText).contains("Rules for s2: any, touch, v7\n")
+    assertThat(request.userText)
+      .contains(
+        "The only valid ruleIds are the ones listed here, spelled exactly as listed: " +
+          "any, touch, v7, consistent."
+      )
+    assertThat(request.systemPrompt).contains("never invent a rule id")
+  }
+
+  @Test
   fun `the prompt says which nodes scroll, which run past the viewport, and what ATF measured`() {
     val list = PreviewNode("list", null, "", 0, 0, 40, 90, states = listOf("scrollable"))
     val footer = PreviewNode("footer", "TextView", "Remove first", 2, 30, 55, 38)

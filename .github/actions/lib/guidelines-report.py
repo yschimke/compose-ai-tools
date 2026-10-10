@@ -18,6 +18,11 @@ A run that judged nothing is never reported as a pass: previews whose request fa
 cost cap), previews no rule applies to (``noRules``) and modules the check wrote no results for are
 listed as NOT checked, with the engine's problem lines quoted.
 
+Previews staged only because the PR changed the rules (a ``<module>.rules-changed/`` directory, see
+``guidelines-stage.py``) are a second tier: the comment leads with the PR's own changed previews,
+and in particular with any of them that were NOT checked, then reports the rules tier apart, with
+how many such previews were left for the catalog publish (``_rules_only.json``).
+
 Images are embedded only from a GitHub-hosted, commit-pinned location (``--image-repo`` and
 ``--image-ref``, with the pictures pushed under ``--image-prefix/<module>/``), as the a11y comment
 does: other hosts are stripped from PR bodies. ``--stage-images <dir>`` copies exactly the pictures
@@ -53,6 +58,8 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # The engine's own problem lines, quoted so a failed or empty run says why.
 MAX_PROBLEMS = 10
 MAX_PROBLEM_CHARS = 300
+RULES_TIER = "rules-changed"
+RULES_ONLY_FILE = "_rules_only.json"
 
 
 def load(module_dir: Path) -> tuple[dict, dict] | None:
@@ -213,6 +220,71 @@ def staged_ids(module_dir: Path) -> list[str]:
     ] if isinstance(previews, list) else []
 
 
+def selection(module_dir: Path) -> str | None:
+    """`rules-changed` for a module directory staged only because the rules changed, else None."""
+    try:
+        data = json.loads((module_dir / "previews.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = data.get("guidelinesSelection") if isinstance(data, dict) else None
+    return RULES_TIER if value == RULES_TIER else None
+
+
+def rules_only_counts(dir_: Path) -> tuple[int, int]:
+    """(staged, deferred) previews selected only because the rules changed, from the stage step."""
+    try:
+        data = json.loads((dir_ / RULES_ONLY_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0, 0
+    if not isinstance(data, dict):
+        return 0, 0
+
+    def count(key: str) -> int:
+        value = data.get(key)
+        return value if isinstance(value, int) and 0 <= value < 1_000_000 else 0
+
+    return count("staged"), count("deferred")
+
+
+class Tier:
+    """What one tier (the PR's changed previews, or those the rules change selected) came to."""
+
+    def __init__(self) -> None:
+        self.checked = 0
+        self.failed_requests = 0
+        self.pending: list[str] = []
+        self.no_rules: dict[str, list[str]] = {}
+        self.no_results: list[str] = []
+
+    def not_checked(self) -> int:
+        return self.missed() + sum(len(v) for v in self.no_rules.values())
+
+    def missed(self) -> int:
+        """Previews that should have been judged and were not: a failed request, the cost cap, or
+        no results at all. A preview no rule applies to was not missed; nothing could judge it."""
+        return len(self.pending) + len(self.no_results)
+
+    def missed_lines(self, failed_requests: int) -> list[str]:
+        out = []
+        if self.pending:
+            out.append(
+                f"- {len(self.pending)} because their model request failed or the cost cap was "
+                "reached"
+                + (f" ({failed_requests} request(s) failed)" if failed_requests else "")
+                + f": {names(self.pending)}"
+            )
+        if self.no_results:
+            out.append(
+                f"- {len(self.no_results)} because the check wrote no results for them (it failed "
+                f"before answering, or the budget ran out first): {names(self.no_results)}"
+            )
+        return out
+
+    def no_rule_lines(self) -> list[str]:
+        return [f"- {len(ids)} because {quoted(reason)}: {names(ids)}"
+                for reason, ids in self.no_rules.items()]
+
+
 def short(preview_id: str) -> str:
     return f"`{preview_id.rsplit('.', 1)[-1]}`"
 
@@ -230,6 +302,8 @@ def quoted(problem: str) -> str:
 
 def build(dir_: Path, args: argparse.Namespace) -> str | None:
     modules = sorted(p for p in dir_.iterdir() if p.is_dir()) if dir_.is_dir() else []
+    # The PR's own changed previews first, in the findings as in the summary.
+    modules.sort(key=lambda p: (selection(p) == RULES_TIER, p.name))
     stage_dir = Path(args.stage_images) if getattr(args, "stage_images", None) else None
     sections: list[str] = []
     total_checked = total_findings = images = 0
@@ -237,46 +311,55 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     models: set[str] = set()
     seen: set[str] = set()
     # What was handed to the check and never judged, by why: a request that failed or the cost cap
-    # (`pending`), no rule applying (`noRules`, by reason), or a module the check wrote nothing for.
-    pending: list[str] = []
-    no_rules: dict[str, list[str]] = {}
-    no_results: list[str] = []
-    failed_requests = 0
+    # (`pending`), no rule applying (`noRules`, by reason), or a module the check wrote nothing for;
+    # per tier, since a PR-changed preview left unchecked matters more than a rules-changed one.
+    tiers = {None: Tier(), RULES_TIER: Tier()}
     problems: list[str] = []
     for module_dir in modules:
         if not SAFE_NAME.match(module_dir.name):
             continue
+        tier = tiers[selection(module_dir)]
         loaded = load(module_dir)
         if loaded is None:
             # Staged but no readable results: the check failed, or never reached this module.
             for preview_id in staged_ids(module_dir):
                 if preview_id not in seen:
                     seen.add(preview_id)
-                    no_results.append(preview_id)
+                    tier.no_results.append(preview_id)
             continue
         report, rules = loaded
-        failed_requests += int(report.get("failedRequests") or 0)
+        tier.failed_requests += int(report.get("failedRequests") or 0)
         for problem in report.get("problems") or []:
             if quoted(problem) not in problems:
                 problems.append(quoted(problem))
         names_by_id = render_names(module_dir)
         nodes = node_ids(module_dir)
         results = report.get("results", [])
+        # The run's own total counts replies that could not be used; older CLIs record none.
+        records_cost = sum(
+            float((r.get("record") or {}).get("costUsd") or 0.0)
+            for r in results if isinstance(r, dict)
+        )
+        try:
+            run_cost = float(report.get("costUsd") or 0.0)
+        except (TypeError, ValueError):
+            run_cost = 0.0
+        total_cost += max(records_cost, run_cost)
         for result in results:
             record = result.get("record", {})
-            total_cost += float(record.get("costUsd") or 0.0)
             preview_id = result.get("previewId", "?")
             # A preview staged under two module directories is the same composable; report it once.
             if preview_id in seen:
                 continue
             seen.add(preview_id)
             if result.get("noRules"):
-                no_rules.setdefault(str(result["noRules"]), []).append(preview_id)
+                tier.no_rules.setdefault(str(result["noRules"]), []).append(preview_id)
                 continue
             if result.get("pending"):
-                pending.append(preview_id)
+                tier.pending.append(preview_id)
                 continue
             total_checked += 1
+            tier.checked += 1
             if record.get("servedModel"):
                 models.add(record["servedModel"])
             found = failures(record)
@@ -333,40 +416,66 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 lines.append(f"- ❔ Unchecked (needs evidence this run could not get): "
                              f"{', '.join(f'`{u}`' for u in unchecked)}")
             sections.append("\n".join(lines) + "\n")
-    not_checked = len(pending) + sum(len(v) for v in no_rules.values()) + len(no_results)
+    mine, by_rules = tiers[None], tiers[RULES_TIER]
+    not_checked = mine.not_checked() + by_rules.not_checked()
+    rules_staged, rules_deferred = rules_only_counts(dir_)
     if total_checked == 0 and not_checked == 0:
         return None
     model_text = ", ".join(sorted(models)) or "the configured model"
     header = [MARKER, "### Design guidelines", ""]
-    if total_checked:
+    if total_checked == 0:
+        # Nothing was judged: say so, never a pass.
         header += [
-            f"{total_checked} changed preview(s) checked against their catalog's design guidelines; "
+            f"❌ **Not checked.** None of the {not_checked} preview(s) was judged against its "
+            f"catalog's design guidelines, so this is not a pass. ${total_cost:.4f} spent.",
+            "",
+        ]
+    elif mine.missed():
+        # Lead with the PR's own previews that were never judged: that is what a reader came for.
+        header += [
+            f"❌ **{mine.missed()} of this PR's {mine.checked + mine.not_checked()} changed "
+            "preview(s) were NOT checked**, so this is not a pass for them:",
+            *mine.missed_lines(mine.failed_requests),
+            "",
+        ]
+    if total_checked:
+        split = (
+            f" ({mine.checked} changed by this PR, {by_rules.checked} because the guidelines "
+            "changed)"
+            if by_rules.checked
+            else ""
+        )
+        noun = "preview(s)" if by_rules.checked else "changed preview(s)"
+        header += [
+            f"{total_checked} {noun} checked against their catalog's design guidelines{split}; "
             f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}.",
             "",
         ]
-    else:
-        # Nothing was judged: say so, never a pass.
+    if total_checked == 0 and mine.missed():
+        header.append(f"**{mine.missed()} of this PR's changed preview(s) were NOT checked:**")
+        header += mine.missed_lines(mine.failed_requests)
+        header.append("")
+    if mine.no_rules:
+        header.append(f"**{sum(len(v) for v in mine.no_rules.values())} changed preview(s) were "
+                      "NOT checked** because no rule applies to them:")
+        header += mine.no_rule_lines()
+        header.append("")
+    if by_rules.not_checked():
+        header.append(
+            f"{by_rules.not_checked()} preview(s) selected only because the guidelines changed "
+            "were NOT checked:"
+        )
+        header += by_rules.missed_lines(by_rules.failed_requests)
+        header += by_rules.no_rule_lines()
+        header.append("")
+    if rules_deferred:
         header += [
-            f"❌ **Not checked.** None of the {not_checked} changed preview(s) was judged against "
-            f"its catalog's design guidelines, so this is not a pass. ${total_cost:.4f} spent.",
+            f"<sub>This PR changes the guidelines, so every preview of the module is judged against "
+            f"new rules: {rules_staged} were staged here behind the PR's own ({by_rules.checked} "
+            f"of them checked), and {rules_deferred} more were left for the catalog publish, which "
+            "re-checks every preview against the new rules.</sub>",
             "",
         ]
-    if not_checked:
-        header.append(f"**{not_checked} preview(s) were NOT checked:**")
-        if pending:
-            header.append(
-                f"- {len(pending)} because their model request failed or the cost cap was reached"
-                + (f" ({failed_requests} request(s) failed)" if failed_requests else "")
-                + f": {names(pending)}"
-            )
-        for reason, ids in no_rules.items():
-            header.append(f"- {len(ids)} because {quoted(reason)}: {names(ids)}")
-        if no_results:
-            header.append(
-                f"- {len(no_results)} because the check wrote no results for them (it failed "
-                f"before answering, or the budget ran out first): {names(no_results)}"
-            )
-        header.append("")
     if problems:
         header += ["Problems the check reported:", "", "```text"]
         header += problems[:MAX_PROBLEMS]

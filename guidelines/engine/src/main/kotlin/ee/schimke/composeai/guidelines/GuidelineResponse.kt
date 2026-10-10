@@ -26,7 +26,14 @@ public data class GuidelineReply(
   /** Each verdict carries the regions it points at ([GuidelineVerdictV1.regions]). */
   val verdicts: List<GuidelineVerdictV1>,
   val served: GuidelineServed,
-)
+) {
+  /**
+   * The verdicts left out of [verdicts] because their `subjectId` named no subject of the batch, as
+   * `subjectId/ruleId`. A body property, so the constructor and `copy` keep their ABI.
+   */
+  public var strays: List<String> = emptyList()
+    internal set
+}
 
 /** Reading a chat completion's answer to a [PreviewGuidelineRequests.request]. */
 public object GuidelineResponse {
@@ -54,13 +61,17 @@ public object GuidelineResponse {
     val root = GUIDELINES_JSON.parseToJsonElement(content.substring(start, end + 1)).jsonObject
     val byAlias = batch.aliases.entries.associate { (id, alias) -> alias to id }
     val verdicts = mutableListOf<GuidelineVerdictV1>()
+    val strays = mutableListOf<String>()
     (root["verdicts"] as? JsonArray).orEmpty().forEach { element ->
       val item = element as? JsonObject ?: return@forEach
       val ruleId = item.text("ruleId") ?: return@forEach
       val verdict = item.text("verdict") ?: return@forEach
       val alias = item.text("subjectId")
       val subjectId = alias?.let { byAlias[it] ?: it.takeIf { id -> id in batch.aliases } }
-      if (alias != null && subjectId == null) return@forEach
+      if (alias != null && subjectId == null) {
+        strays += "$alias/$ruleId"
+        return@forEach
+      }
       val regions =
         (item["regions"] as? JsonArray).orEmpty().mapNotNull { region ->
           val r = region as? JsonObject ?: return@mapNotNull null
@@ -106,9 +117,26 @@ public object GuidelineResponse {
           }
           .build()
     }
-    if (verdicts.isEmpty()) error("the reply held no verdicts")
-    GuidelineReply(verdicts, served(completion))
+    if (verdicts.isEmpty()) {
+      error(
+        "the reply held no verdicts" +
+          (if (strays.isEmpty()) "" else " for this batch's subjects (it named ${strays.take(5)})")
+      )
+    }
+    GuidelineReply(verdicts, served(completion)).also { it.strays = strays }
   }
+
+  /**
+   * What the completion [body] cost, whether or not its answer can be read: a reply that held no
+   * usable verdict was still paid for. Null when the body is not a completion or names no cost.
+   */
+  internal fun cost(body: String): Double? = runCatching {
+    ((GUIDELINES_JSON.parseToJsonElement(body).jsonObject["usage"] as? JsonObject)?.get("cost")
+        as? JsonPrimitive)
+      ?.doubleOrNull
+  }
+    .getOrNull()
+    ?.takeIf { it.isFinite() && it > 0.0 }
 
   /** The served model, provider, cost, id and routing in a completion body. */
   public fun served(completion: JsonObject): GuidelineServed {
