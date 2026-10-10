@@ -420,6 +420,52 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a subject only set rules apply to is not reported as checked`() {
+    val setOnly =
+      CatalogGuidelinesLoader.parse(
+          """
+          {"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "wear-m3",
+           "platform": "wear", "version": 1, "rules": [
+            {"id": "consistent", "kind": "structure", "severity": "info", "guidance": "g",
+             "check": "one primary?", "source": "https://developer.android.com/e", "scope": "set"}
+          ]}
+          """
+        )
+        .guidelines!!
+    val model = FakeDecisions()
+    val run = jev(model).run(setOnly, listOf(subject("a")))
+    assertThat(model.bodies).isEmpty()
+    assertThat(run.results.single().noRules).contains("only set-scoped rules")
+  }
+
+  @Test
+  fun `under a cap, never-checked subjects are asked before stale ones`() {
+    val dir = Files.createTempDirectory("jev-order").toFile()
+    try {
+      val cache = GuidelineResultCache(dir)
+      // `old` was checked once, under another render: stale now.
+      jev(FakeDecisions(), cache = cache).run(guidelines, listOf(subject("old")))
+      val changed = subject("old").copy(renderHash = "h-old-2")
+      val model = FakeDecisions()
+      val checker =
+        JevChecker(
+          model,
+          GuidelineEvidenceHost.None,
+          cache,
+          GuidelineRunOptions(triage = false, maxCostUsd = 0.00003)
+            .withChecker(GuidelineChecker.JEV),
+          System::currentTimeMillis,
+        )
+      checker.parallelism = 4
+      val run = checker.run(guidelines, listOf(changed, subject("new")))
+      assertThat(model.bodies.map { name(it) }).containsExactly("new")
+      assertThat(run.results.single { it.previewId == "old" }.pending).isTrue()
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `a subject split into chunks keeps the verdicts of a chunk asked before the cap`() {
     // Thirty rules with long guidance: more than one request's worth of questions.
     val long = "x".repeat(8_000)

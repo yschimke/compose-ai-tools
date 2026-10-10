@@ -119,7 +119,14 @@ class GuidelineFactsTest {
         "ATF TouchTargetSizeCheck ERROR on 'Play': measured 18dp, needs 48dp.",
       )
     assertThat(facts.all { it.decisive }).isTrue()
-    assertThat(GuidelineFacts.fromChecks(emptyList()).single().text).contains("no errors")
+    // Results that ran clean say so; no results at all claim nothing, since ATF may not have run.
+    assertThat(
+        GuidelineFacts.fromChecks(listOf(PreviewCheck("TextContrastCheck", "INFO", "ok")))
+          .single()
+          .text
+      )
+      .contains("no errors")
+    assertThat(GuidelineFacts.fromChecks(emptyList())).isEmpty()
   }
 
   @Test

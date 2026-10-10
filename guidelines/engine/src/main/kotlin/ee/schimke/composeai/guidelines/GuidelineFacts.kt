@@ -86,8 +86,7 @@ public object GuidelineFacts {
       }
     }
     facts += fromNodes(subject.nodes, viewport, density, isRound)
-    if (subject.nodes.isNotEmpty() || subject.checks.isNotEmpty())
-      facts += fromChecks(subject.checks)
+    facts += fromChecks(subject.checks)
     subject.source?.let { facts += fromSource(it) }
     return facts
   }
@@ -319,6 +318,8 @@ public object GuidelineFacts {
   private val DP = Regex("""(\d+(?:\.\d+)?)\s*dp""", RegexOption.IGNORE_CASE)
 
   internal fun fromChecks(checks: List<PreviewCheck>): List<GuidelineFact> {
+    // No results at all may mean ATF never ran: say nothing rather than claim a clean run.
+    if (checks.isEmpty()) return emptyList()
     val reported = checks.filter { it.level.uppercase() != "INFO" }
     if (reported.isEmpty()) {
       return listOf(

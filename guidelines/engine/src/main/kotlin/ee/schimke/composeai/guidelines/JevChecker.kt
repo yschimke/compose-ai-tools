@@ -124,6 +124,8 @@ internal class JevChecker(
 
   /** One subject through the rounds. Touched by one worker at a time, and between rounds. */
   private inner class Asked(val arrived: PreviewSubject, guidelines: CatalogGuidelinesV1) {
+    /** The cache held an older result for it: asked after every never-checked subject. */
+    var stale = false
     var subject: PreviewSubject = arrived
     val asked: List<GuidelineRuleV1> =
       guidelines.subjectRules(arrived.surface, arrived.profile, arrived.pictures.isNotEmpty())
@@ -200,7 +202,18 @@ internal class JevChecker(
     val results = mutableListOf<PreviewGuidelineResult>()
 
     val askable = subjects.filter { subject ->
-      val reason = guidelines.noRulesFor(subject) ?: return@filter true
+      // A subject only set-scoped rules apply to is asked nothing here: this checker never asks
+      // set rules, so it must not read as checked.
+      val reason =
+        guidelines.noRulesFor(subject)
+          ?: ("only set-scoped rules of the `${guidelines.catalog}` guidelines apply, and the " +
+              "jev checker judges each preview on its own")
+            .takeIf {
+              guidelines
+                .subjectRules(subject.surface, subject.profile, subject.pictures.isNotEmpty())
+                .isEmpty()
+            }
+          ?: return@filter true
       results +=
         result(guidelines, subject, emptyList(), emptyList(), null, 0.0).also {
           it.noRules = reason
@@ -220,7 +233,9 @@ internal class JevChecker(
       hit == null
     }
     val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
-    val states = (unseen + stale).map { Asked(it, guidelines) }
+    val states =
+      unseen.map { Asked(it, guidelines) } +
+        stale.map { Asked(it, guidelines).also { state -> state.stale = true } }
     prepare(states, guidelines.platform)
 
     val ledger = requestPool ?: Ledger(options.maxCostUsd, options.retry.maxFailedAttempts)
@@ -236,17 +251,24 @@ internal class JevChecker(
         }
         if (active.isEmpty()) break
         val last = round == maxRounds
-        active
-          .map { state ->
-            pool.submit(
-              Callable {
-                // One subject's error is its own failed request, not the run's.
-                runCatching { ask(guidelines, state, round, last, ledger) }
-                  .onFailure { state.failure = "the jev checker failed: ${it.message}" }
-              }
-            )
-          }
-          .forEach { it.get() }
+        // Under a cap, never-checked subjects are asked as a wave before any stale one may
+        // contend for what the cap has left, so a capped run widens coverage first.
+        val waves =
+          if (options.maxCostUsd == null) listOf(active)
+          else active.partition { !it.stale }.toList().filter { it.isNotEmpty() }
+        waves.forEach { wave ->
+          wave
+            .map { state ->
+              pool.submit(
+                Callable {
+                  // One subject's error is its own failed request, not the run's.
+                  runCatching { ask(guidelines, state, round, last, ledger) }
+                    .onFailure { state.failure = "the jev checker failed: ${it.message}" }
+                }
+              )
+            }
+            .forEach { it.get() }
+        }
         serve(active.filter { it.failure == null && !it.capped }, guidelines.platform)
       }
     } finally {
