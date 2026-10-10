@@ -233,6 +233,9 @@ public class GuidelineEngine(
 
       // Evidence rounds: re-ask only the subjects and rules the model could not decide.
       var current = batch
+      // Subjects whose follow-up was cut short by the cap or a failed request: their undecided
+      // rules were never re-asked, so their result is not cached and the next run asks again.
+      var interrupted = emptySet<String>()
       for (round in 1..options.maxRounds) {
         val undecided =
           current.subjects
@@ -244,7 +247,10 @@ public class GuidelineEngine(
             }
             .filterValues { it.isNotEmpty() }
         if (undecided.isEmpty() || host.available.isEmpty()) break
-        if (options.maxCostUsd != null && spent >= options.maxCostUsd) break
+        if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
+          interrupted = undecided.keys
+          break
+        }
         val needs = undecided.mapValues { (_, list) -> list.flatMap { it.needs }.distinct() }
         val gathered = withEvidence(current, needs)
         val followUp =
@@ -253,6 +259,7 @@ public class GuidelineEngine(
             gathered.subjects.filter { it.previewId in undecided },
           )
         if (!ask(followUp, round, undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() })) {
+          interrupted = undecided.keys
           break
         }
         current = gathered
@@ -284,7 +291,8 @@ public class GuidelineEngine(
         // the budget, and triage and follow-up rounds attach evidence, none of which the next
         // run's lookup (over the caller's subject) will have.
         val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
-        cache?.put(result, arrived, guidelines, options.model)
+        if (subject.previewId !in interrupted)
+          cache?.put(result, arrived, guidelines, options.model)
       }
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests)

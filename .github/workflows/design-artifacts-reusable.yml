@@ -3960,6 +3960,8 @@ jobs:
           fi
           # Coverage: checked by the model this run, answered from the cache, and pending (not
           # reached before the cost cap, or in a failed request) — the next publish asks those first.
+          # Pending is also read as "no verdicts, rules unchecked", which is how a CLI older than
+          # the `pending` flag writes the same result, so a pinned older CLI is not overcounted.
           mapfile -d '' reports < <(find . -path '*/build/compose-previews/guidelines.json' -not -path '*/node_modules/*' -print0)
           if [ "${#reports[@]}" -gt 0 ]; then
             {
@@ -3968,7 +3970,8 @@ jobs:
               echo "| Module | Checked | Cached | Pending |"
               echo "| --- | ---: | ---: | ---: |"
               for report in "${reports[@]}"; do
-                jq -r '"| `\(.module)` | \([.results[] | select((.fromCache // false | not) and (.pending // false | not))] | length) | \([.results[] | select(.fromCache == true)] | length) | \([.results[] | select(.pending == true)] | length) |"' "$report" || true
+                jq -r 'def pending: .pending == true or (((.record.verdicts // []) | length) == 0 and ((.unchecked // []) | length) > 0);
+                  "| `\(.module)` | \([.results[] | select((.fromCache // false | not) and (pending | not))] | length) | \([.results[] | select(.fromCache == true)] | length) | \([.results[] | select(pending)] | length) |"' "$report" || true
               done
               echo
               echo "Pending previews are checked first on the next publish; raise \`guidelines-max-cost\` to converge in fewer publishes."

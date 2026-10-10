@@ -429,6 +429,36 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a result whose follow-up round was cut short is not cached`() {
+    val dir = Files.createTempDirectory("guidelines-cache-followup").toFile()
+    val model = FakeModel()
+    val undecided =
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.3,"nodeIds":[],
+         "reason":"","needs":[{"kind":"a11y-hierarchy","theme":null,"fontScale":null,"device":null,"reason":"bounds"}],"regions":[]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    model.replies += undecided
+    fun engine(cap: Double?) =
+      GuidelineEngine(
+        model,
+        FakeHost(),
+        cache = GuidelineResultCache(dir),
+        options = GuidelineRunOptions(triage = false, maxRounds = 1, maxCostUsd = cap),
+      )
+
+    // The first reply spends the cap, so "a"'s follow-up is never asked.
+    val capped = engine(cap = 0.0005).run(guidelines, listOf(subject("a"), subject("b")))
+    assertThat(model.requests).hasSize(1)
+    assertThat(capped.results.single { it.previewId == "a" }.unchecked).contains("touch")
+
+    val cache = GuidelineResultCache(dir)
+    assertThat(cache.checked("a")).isFalse()
+    assertThat(cache.checked("b")).isTrue()
+    dir.deleteRecursively()
+  }
+
+  @Test
   fun `pruning keeps only the results a run read or wrote`() {
     val dir = Files.createTempDirectory("guidelines-cache-prune").toFile()
     val model = FakeModel()
