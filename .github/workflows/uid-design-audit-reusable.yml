@@ -11,7 +11,15 @@ on:
         type: boolean
         default: true
       pilot-directory:
-        description: Trusted default-branch directory holding ci/evidence.py, references.json and rules.
+        description: Trusted default-branch directory holding references.json.
+        type: string
+        required: true
+      guidelines-url:
+        description: Trusted HTTPS URL to canonical flat guidelines at an immutable revision.
+        type: string
+        required: true
+      guidelines-sha256:
+        description: SHA-256 of the canonical guideline bytes; mismatch fails before auditing.
         type: string
         required: true
       evidence-artifact:
@@ -57,13 +65,19 @@ jobs:
           path: _uid_evidence
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/design-parity
+          ref: ed4612aa297cf65534787ac89417e7caee03be86
+          path: _uid_tools
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - run: python -m pip install Pillow==12.3.0
       - name: Stage bounded image data using the trusted capture plan
         run: >-
-          python "$PILOT_DIR/ci/evidence.py"
+          python _uid_tools/scripts/uid/evidence.py
           --plan "$PILOT_DIR/references.json" --root _uid_evidence
           --stage _uid_audit
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -81,12 +95,34 @@ jobs:
           ref: 92a06f2ea364359eb2398ff125f5d88f4f22a75a
           path: _audit_engine
           persist-credentials: false
+      - name: Fetch canonical guidelines with verified digest
+        env:
+          GUIDELINES_URL: ${{ inputs.guidelines-url }}
+          GUIDELINES_SHA256: ${{ inputs.guidelines-sha256 }}
+        run: |
+          python - <<'PYCODE'
+          import hashlib, json, os, re, urllib.request
+          from pathlib import Path
+          url, expected = os.environ['GUIDELINES_URL'], os.environ['GUIDELINES_SHA256']
+          if not url.startswith('https://') or not re.fullmatch(r'[0-9a-f]{64}', expected):
+              raise SystemExit('Guidelines require an HTTPS URL and SHA-256 pin')
+          with urllib.request.urlopen(url, timeout=30) as response:
+              if not response.url.startswith('https://'):
+                  raise SystemExit('Guidelines must remain on HTTPS')
+              data = response.read(1_048_577)
+          if len(data) > 1_048_576 or hashlib.sha256(data).hexdigest() != expected:
+              raise SystemExit('Guidelines exceed size limit or do not match their SHA-256 pin')
+          rules = json.loads(data)
+          if rules.get('schema') != 'compose-ui-builder/catalog-guidelines/v1' or not rules.get('rules') or rules.get('includes'):
+              raise SystemExit('Expected a nonempty, flat published guidelines pack')
+          Path('_uid_audit/ui-builder.guidelines.json').write_bytes(data)
+          Path('_uid_audit/guidelines-source.json').write_text(json.dumps({'url': url, 'sha256': expected}, indent=2) + '\n')
+          PYCODE
       - name: Preserve rules, engine prompt source and run provenance
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           SOURCE_RUN: ${{ github.event.workflow_run.id }}
         run: |
-          cp "$PILOT_DIR/ui-builder.guidelines.json" _uid_audit/
           cp _audit_engine/guidelines/engine/src/main/kotlin/ee/schimke/composeai/guidelines/PreviewGuidelineRequests.kt _uid_audit/engine-prompt-source.kt
           printf 'source_sha=%s\nsource_run=%s\ncli=2.40.0\nprovider=OpenRouter\nmax_cost_usd=0.25\n' "$SOURCE_SHA" "$SOURCE_RUN" > _uid_audit/provenance.txt
       - name: Audit previews with the existing guidelines engine

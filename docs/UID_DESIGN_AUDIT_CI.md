@@ -2,7 +2,7 @@
 
 `uid-design-audit-reusable.yml` centralizes the picture-based OpenRouter audit
 used by the Home Assistant and MeshCore adaptive UID pilots. The caller only
-needs its trigger, pilot directory and explicit secret mapping:
+needs its trigger, pilot directory, pinned canonical guidelines and explicit secret mapping:
 
 ```yaml
 name: Adaptive UID design audit
@@ -18,6 +18,8 @@ jobs:
     uses: yschimke/compose-ai-tools/.github/workflows/uid-design-audit-reusable.yml@<reviewed-commit-sha>
     with:
       pilot-directory: adaptive-uid-pilot
+      guidelines-url: https://raw.githubusercontent.com/yschimke/m3-catalog/<commit-sha>/ui-builder.guidelines.json
+      guidelines-sha256: <sha256-of-file-bytes>
     secrets:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 ```
@@ -28,15 +30,19 @@ The shared workflow accepts only successful `workflow_run` events whose
 head-repository metadata are skipped before allocating the credentialed job.
 This limits automatic spending to repository-controlled heads; the $0.25 limit
 is per invocation, not a daily quota. It checks out
-that repository's **default branch**, never the PR revision. Its staging script,
-capture plan and guidelines therefore come from trusted default-branch code.
+that repository's **default branch**, never the PR revision. Its capture plan and guideline URL/digest therefore come from trusted default-branch
+configuration. The staging implementation is pinned to design-parity.
 The previous run's artifact is treated as data: only the bounded PNGs admitted by
-`ci/evidence.py --stage` reach the audit engine. UID files and PR code are not
+design-parity's `scripts/uid/evidence.py --stage` reach the audit engine. UID files and PR code are not
 executed with the API key.
 
-The caller directory must contain `ci/evidence.py`, `references.json` and
-`ui-builder.guidelines.json`. Keep changes to those files reviewed as trusted
-code. This extraction keeps the existing pilot staging contract and validation.
+The caller directory only needs `references.json`. The workflow fetches the
+canonical guidelines over HTTPS, enforces a 1 MiB limit, verifies their SHA-256,
+and saves both the exact bytes and URL/digest provenance in the audit artifact.
+Use an immutable commit URL and a flat, nonempty published guideline pack; nested
+includes are rejected so the archived bytes cover every rule used. No app-local
+rule copy is required. A changed rule pack needs an explicit pin update.
+
 `evidence-artifact` defaults to `adaptive-uid-evidence`; `audit-artifact` defaults
 to `adaptive-uid-design-audit`. The build/render/compare workflow lives in
 [design-parity](https://github.com/yschimke/design-parity/blob/main/docs/UID_PARITY_CI.md).
@@ -71,3 +77,8 @@ PR-generated images can contain text that steers the model's critique even after
 image validation. Treat the response as untrusted, advisory feedback. It must not
 be used as an authorization signal, an automatic merge gate, or instructions for
 executing commands or changing repository state.
+
+For a separate interactive design critique, use
+[`UID_DESIGN_CRITIQUE_PROMPT.txt`](UID_DESIGN_CRITIQUE_PROMPT.txt) with the app's
+README, capture plan and evidence. This shared prompt does not replace the
+versioned guidelines engine prompt used by CI.
