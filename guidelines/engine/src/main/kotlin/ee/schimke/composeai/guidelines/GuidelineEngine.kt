@@ -185,8 +185,10 @@ public class GuidelineEngine(
     // Verdicts dropped because they answer a question nobody asked: rule ids the request never
     // listed for that subject (by id, counted), and subjects outside the request.
     val invented = linkedMapOf<String, Int>()
-    // Subjects a reply left rules of with neither a verdict nor an `others` statement.
+    // Subjects a reply left rules of with neither a verdict nor an `others` statement, and batches
+    // whose set-wide rules it left so.
     var unstated = 0
+    var setUnstated = 0
     val strays = mutableListOf<String>()
 
     /** Whether one more request, expected to cost what the dearest so far did, fits the cap. */
@@ -545,6 +547,19 @@ public class GuidelineEngine(
         current = gathered
       }
 
+      // The rules judged once across the batch that no verdict or `others` statement decided: a
+      // reply passing every subject's own rules but saying nothing of these leaves them unjudged,
+      // so no subject of the batch is cached as complete and the next run asks again. (`unchecked`
+      // lists a subject's own rules, as its record's `asked` does.)
+      val setAsked = PreviewGuidelineRequests.askedRules(guidelines, batch, 0, null).second
+      val setUnchecked =
+        setAsked
+          .map { it.id }
+          .filter { id ->
+            setVerdicts.none { it.ruleId == id && it.verdict != GuidelineVerdictV1.NEEDS_EVIDENCE }
+          }
+      val setUncovered = setUnchecked.isNotEmpty()
+      if (setUncovered) setUnstated++
       unstated += uncovered.size
       val share = if (batch.subjects.isEmpty()) 0.0 else batchSpent / batch.subjects.size
       val last = served.lastOrNull()
@@ -568,8 +583,7 @@ public class GuidelineEngine(
             )
             .also { result ->
               result.implicitPasses =
-                asked
-                  .map { it.id }
+                (asked.map { it.id } + setAsked.map { it.id })
                   .filter { it in implicit[subject.previewId].orEmpty() || it in setImplicit }
                   .filter { id -> mine.any { it.ruleId == id && it.verdict == PASS } }
             }
@@ -582,7 +596,8 @@ public class GuidelineEngine(
         // rather than reuse a result that is part unchecked for no reason of the rules'.
         if (
           subject.previewId !in interrupted &&
-            !(subject.previewId in uncovered && unchecked.isNotEmpty())
+            !(subject.previewId in uncovered && unchecked.isNotEmpty()) &&
+            !setUncovered
         )
           cache?.put(result, arrived, guidelines, options.model)
       }
@@ -607,6 +622,11 @@ public class GuidelineEngine(
       problems +=
         "$unstated preview(s) got a reply that neither listed some of their rules nor stated " +
           "that the rest pass; those rules are reported unchecked"
+    }
+    if (setUnstated > 0) {
+      problems +=
+        "$setUnstated batch(es) got a reply that decided none of the rules judged once across " +
+          "the batch; their previews are not cached, so the next run asks again"
     }
     if (strays.isNotEmpty()) {
       problems +=

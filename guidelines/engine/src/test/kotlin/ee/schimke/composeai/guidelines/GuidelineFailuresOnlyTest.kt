@@ -124,8 +124,8 @@ class GuidelineFailuresOnlyTest {
     val b = run.results.single { it.previewId == "b" }
     assertThat(a.unchecked).isEmpty()
     assertThat(a.failures().map { it.ruleId }).containsExactly("touch")
-    assertThat(a.implicitPasses).containsExactly("any", "text")
-    assertThat(b.implicitPasses).containsExactly("any", "touch", "text")
+    assertThat(a.implicitPasses).containsExactly("any", "text", "consistent")
+    assertThat(b.implicitPasses).containsExactly("any", "touch", "text", "consistent")
     // The record still carries a verdict per rule asked, each implicit pass saying so.
     val passes = b.record.verdicts.filter { it.verdict == GuidelineVerdictV1.PASS }
     assertThat(passes.map { it.ruleId }).containsExactly("any", "touch", "text", "consistent")
@@ -142,7 +142,11 @@ class GuidelineFailuresOnlyTest {
       completion(
         reply(
           listOf(verdict("s2", "any", "fail")),
-          listOf(others("s1"), others("s3", PreviewGuidelineRequests.OTHERS_UNCHECKED)),
+          listOf(
+            others("s1"),
+            others("s3", PreviewGuidelineRequests.OTHERS_UNCHECKED),
+            others(null),
+          ),
         )
       )
     }
@@ -154,16 +158,34 @@ class GuidelineFailuresOnlyTest {
     assertThat(byId.getValue("a").unchecked).isEmpty()
     // No statement for s2: what it did not list stays unchecked.
     assertThat(byId.getValue("b").unchecked).containsExactly("touch", "text")
-    assertThat(byId.getValue("b").implicitPasses).isEmpty()
+    // Only the set-wide rule, which the statement with `subjectId` null passed for the batch.
+    assertThat(byId.getValue("b").implicitPasses).containsExactly("consistent")
     // `unchecked` is a statement, but not a pass.
     assertThat(byId.getValue("c").unchecked).containsExactly("any", "touch", "text")
     assertThat(run.problems.joinToString()).contains("2 preview(s) got a reply that neither")
     // Kept with the record, so a result read back from the cache still says which passes were
     // implicit.
     assertThat(cache.get(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)?.implicitPasses)
-      .containsExactly("any", "touch", "text")
+      .containsExactly("any", "touch", "text", "consistent")
     assertThat(cache.get(subject("b"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNull()
     assertThat(cache.get(subject("c"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNull()
+  }
+
+  @Test
+  fun `set rules no statement covers keep every subject of the batch out of the cache`() {
+    val dir = Files.createTempDirectory("guidelines").toFile()
+    val cache = GuidelineResultCache(dir)
+    // Every subject's own rules pass; the set-wide rule gets no verdict and no statement.
+    val model = Model { completion(reply(emptyList(), listOf(others("s1"), others("s2")))) }
+    val run =
+      GuidelineEngine(model, cache = cache, options = GuidelineRunOptions(triage = false))
+        .run(guidelines, listOf(subject("a"), subject("b")))
+    run.results.forEach { result ->
+      assertThat(result.record.verdicts.map { it.ruleId }).doesNotContain("consistent")
+    }
+    assertThat(cache.get(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNull()
+    assertThat(cache.get(subject("b"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNull()
+    assertThat(run.problems.joinToString()).contains("1 batch(es) got a reply that decided none")
   }
 
   @Test
