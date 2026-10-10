@@ -159,7 +159,7 @@ public data class GuidelineRunOptions(
     get() =
       when (checker) {
         GuidelineChecker.VISION -> model
-        else -> "checker:${checker.id}/$answeringModel"
+        else -> "checker:${checker.id}@${JevChecker.FORMAT}/$answeringModel"
       }
 }
 

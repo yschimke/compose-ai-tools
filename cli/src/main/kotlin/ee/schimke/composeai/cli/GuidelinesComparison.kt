@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.guidelines.JevRuleTrace
+import ee.schimke.composeai.guidelines.JevSubjectTrace
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
 import java.io.File
@@ -30,6 +32,8 @@ internal object GuidelinesComparison {
     val hereConfidence: Double?,
     val there: String,
     val thereConfidence: Double?,
+    /** How the jev checker reached [here], when it was the one that answered. */
+    val trace: JevRuleTrace? = null,
   ) {
     val outcome: Outcome
       get() {
@@ -48,6 +52,8 @@ internal object GuidelinesComparison {
     val rows: List<Row>,
     val onlyHere: List<String>,
     val onlyThere: List<String>,
+    /** The jev checker's per-preview traces on this side, for previews in both. */
+    val traces: Map<String, JevSubjectTrace> = emptyMap(),
   )
 
   private val DECIDED =
@@ -92,13 +98,14 @@ internal object GuidelinesComparison {
       (a.record.asked + b.record.asked).distinct().sorted().map { rule ->
         val (h, hc) = verdictOf(a, rule)
         val (t, tc) = verdictOf(b, rule)
-        Row(id, rule, h, hc, t, tc)
+        Row(id, rule, h, hc, t, tc, a.jev?.rules?.firstOrNull { it.ruleId == rule })
       }
     }
     return Comparison(
       rows,
       onlyHere = (mine.keys - theirs.keys).sorted(),
       onlyThere = (theirs.keys - mine.keys).sorted(),
+      traces = both.mapNotNull { id -> mine.getValue(id).jev?.let { id to it } }.toMap(),
     )
   }
 
@@ -129,17 +136,32 @@ internal object GuidelinesComparison {
       val found = rows.count { it.there == GuidelineVerdictV1.FAIL && it.here == it.there }
       appendLine("  findings there also found here: $found of $failsThere")
     }
+    val traces = comparison.traces
+    if (traces.isNotEmpty()) {
+      val latencies = traces.values.map { it.latencyMillis }
+      appendLine(
+        "  jev here: ${traces.size} preview(s), ${traces.values.sumOf { it.requests }} " +
+          "request(s), $" +
+          String.format(Locale.ROOT, "%.5f", traces.values.sumOf { it.costUsd }) +
+          ", latency mean ${latencies.average().toLong()} ms (max ${latencies.max()} ms), " +
+          "rounds " +
+          traces.values
+            .groupingBy { it.rounds }
+            .eachCount()
+            .toSortedMap()
+            .entries
+            .joinToString { (r, n) -> "$r×$n" }
+      )
+    }
     if (rows.isNotEmpty()) {
-      appendLine("  by rule (agree / disagree / decided here only / decided there only / neither):")
+      appendLine(
+        "  by rule (agree / disagree / decided here only / decided there only / neither; " +
+          "agreement where both decided; facts handed to jev; rounds; evidence asked for; cost):"
+      )
       rows
         .groupBy { it.ruleId }
         .toSortedMap()
-        .forEach { (rule, list) ->
-          val c = list.groupingBy { it.outcome }.eachCount()
-          appendLine(
-            "    $rule: " + Outcome.entries.joinToString(" / ") { (c[it] ?: 0).toString() }
-          )
-        }
+        .forEach { (rule, list) -> appendLine(ruleLine(rule, list, traces)) }
     }
     val disagreements = rows.filter { it.outcome == Outcome.DISAGREE }
     if (disagreements.isNotEmpty()) {
@@ -151,6 +173,45 @@ internal object GuidelinesComparison {
         )
       }
     }
+  }
+
+  private fun ruleLine(
+    rule: String,
+    list: List<Row>,
+    traces: Map<String, JevSubjectTrace>,
+  ): String {
+    val c = list.groupingBy { it.outcome }.eachCount()
+    val both = (c[Outcome.AGREE] ?: 0) + (c[Outcome.DISAGREE] ?: 0)
+    val line = StringBuilder("    $rule: ")
+    line.append(Outcome.entries.joinToString(" / ") { (c[it] ?: 0).toString() })
+    if (both > 0) {
+      line.append(String.format(Locale.ROOT, "; %.0f%%", 100.0 * (c[Outcome.AGREE] ?: 0) / both))
+    }
+    val ruleTraces = list.mapNotNull { it.trace }
+    if (ruleTraces.isEmpty()) return line.toString()
+    val facts = ruleTraces.flatMap { it.facts }.groupingBy { it }.eachCount()
+    line.append(
+      "; facts " +
+        if (facts.isEmpty()) "none"
+        else
+          facts.entries.sortedByDescending { it.value }.joinToString(", ") { (k, n) -> "$k×$n" } +
+            " (in ${ruleTraces.count { it.facts.isNotEmpty() }} of ${ruleTraces.size})"
+    )
+    line.append(
+      String.format(Locale.ROOT, "; rounds %.1f", ruleTraces.map { it.round + 1 }.average())
+    )
+    val asked = ruleTraces.flatMap { it.requested }.groupingBy { it }.eachCount()
+    if (asked.isNotEmpty()) {
+      line.append("; asked " + asked.entries.joinToString(", ") { (k, n) -> "$k×$n" })
+    }
+    // Each preview's spend, shared across the rules it put to Jev.
+    val cost = list.sumOf { row ->
+      val subject = traces[row.previewId] ?: return@sumOf 0.0
+      if (row.trace == null || row.trace.choice == "visual") return@sumOf 0.0
+      subject.costUsd / subject.rules.count { it.choice != "visual" }.coerceAtLeast(1)
+    }
+    line.append(String.format(Locale.ROOT, "; $%.5f", cost))
+    return line.toString()
   }
 
   private fun shown(verdict: String, confidence: Double?): String =

@@ -31,6 +31,21 @@ public data class PreviewGuidelineResult(
    */
   public var noRules: String? = null
     internal set
+
+  /**
+   * How the EXPERIMENTAL jev checker reached this result — rounds, requests, spend, latency, and
+   * per rule the facts it was handed and the evidence it asked for — for comparing it against a
+   * vision run. Null for any other checker. A body property, like [noRules].
+   */
+  public var jev: JevSubjectTrace? = null
+    internal set
+
+  /** A copy carrying the body properties `copy` leaves behind. */
+  internal fun copyWithBody(fromCache: Boolean): PreviewGuidelineResult =
+    copy(fromCache = fromCache).also {
+      it.noRules = noRules
+      it.jev = jev
+    }
 }
 
 /**
@@ -136,7 +151,7 @@ public class GuidelineResultCache(private val directory: File) {
         GUIDELINES_JSON.decodeFromString(PreviewGuidelineResult.serializer(), file.readText())
       }
       .getOrNull()
-      ?.copy(fromCache = true)
+      ?.copyWithBody(fromCache = true)
   }
 
   @Deprecated(
@@ -153,7 +168,7 @@ public class GuidelineResultCache(private val directory: File) {
     temp.writeText(
       GUIDELINES_JSON.encodeToString(
         PreviewGuidelineResult.serializer(),
-        result.copy(fromCache = false),
+        result.copyWithBody(fromCache = false),
       )
     )
     if (!temp.renameTo(file)) {

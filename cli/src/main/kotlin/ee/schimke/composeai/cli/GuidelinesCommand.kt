@@ -54,7 +54,11 @@ import kotlinx.serialization.json.Json
 class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
   private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
-  private val rounds: Int = args.flagValue("--rounds")?.toIntOrNull() ?: 1
+  private val roundsFlag: Int? = args.flagValue("--rounds")?.toIntOrNull()
+  /** Follow-up rounds: 1 for the vision model, 3 for the jev checker, which starts minimal. */
+  private val rounds: Int
+    get() = roundsFlag ?: if (checker == GuidelineChecker.JEV) JEV_ROUNDS else 1
+
   /**
    * How long one model request may take, start to end, in seconds: a vision request over a dozen
    * screens can take minutes to answer. A request that runs past it is abandoned, and the engine
@@ -546,6 +550,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
 
   companion object {
     const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
+    /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */
+    private const val JEV_ROUNDS = 3
     private const val KIND_DEVICE = "device"
     internal val REPORT_JSON = Json {
       ignoreUnknownKeys = true

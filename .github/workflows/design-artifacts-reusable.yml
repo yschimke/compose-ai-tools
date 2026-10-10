@@ -603,9 +603,9 @@ on:
         description: >-
           EXPERIMENTAL. Which model answers the guidelines check: `vision` (the default) or `jev`,
           Jev deciding each structural rule from the preview's source, accessibility nodes and
-          measured checks only. With `jev` the accessibility data is fetched for every preview it
-          asks about, visual rules are published unchecked, and its results are cached apart from
-          the vision model's. Needs a CLI with `--checker`.
+          measured checks only, starting from a minimal excerpt and asking for more over up to three
+          follow-up rounds. Visual rules are published unchecked, and its results are cached apart
+          from the vision model's. Needs a CLI with `--checker`.
         required: false
         type: string
         default: 'vision'

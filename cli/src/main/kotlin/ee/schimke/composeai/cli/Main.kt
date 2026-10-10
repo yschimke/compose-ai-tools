@@ -201,7 +201,8 @@ private fun printFullUsage() {
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
                        --no-triage, --annotate, --guidelines <file|url>,
                        --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
-                       decides structural rules from source and a11y text only, and
+                       decides structural rules from text only, starting minimal and
+                       asking for a11y/source/facts over --rounds (default 3), and
                        leaves rules needing the picture unchecked),
                        --compare-with <guidelines.json> (verdicts vs another run's),
                        --surface / --profile (default: each preview's manifest entry),

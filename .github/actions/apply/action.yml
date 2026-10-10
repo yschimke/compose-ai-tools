@@ -350,8 +350,9 @@ inputs:
       EXPERIMENTAL. Which model answers the guidelines check: `vision` (the
       default, a vision model judging each render, its source and its
       evidence) or `jev` (Jev, TypeSafe's text-only decision model, deciding
-      each structural rule from the preview's source, accessibility nodes and
-      measured checks). With `jev`, visual rules and any rule Jev cannot tell
+      each structural rule from the preview's source, accessibility nodes,
+      measured checks and facts computed from them, starting minimal and
+      asking for more over three follow-up rounds). With `jev`, visual rules and any rule Jev cannot tell
       from the text are reported unchecked ("needs the picture"), never
       passed, and the comment says the check was text-only. Needs a CLI with
       `--checker`.
@@ -1920,9 +1921,11 @@ runs:
         fi
         # EXPERIMENTAL: the text-only Jev checker, only when asked for; the default passes nothing,
         # so a CLI without `--checker` runs exactly as before.
+        rounds=2
         case "$GUIDELINES_CHECKER" in
           ''|vision) ;;
-          jev) kind_args+=(--checker jev) ;;
+          # Minimal first: Jev asks for evidence over up to three follow-up rounds.
+          jev) kind_args+=(--checker jev); rounds=3 ;;
           *) echo "::warning::compose-preview/apply: guidelines-checker must be vision or jev; using vision." ;;
         esac
         checked=0
@@ -1953,7 +1956,7 @@ runs:
             --a11y-json "$module_dir/accessibility.json" \
             --source-root "$module_dir/src" \
             --guidelines "$module_dir/ui-builder.guidelines.json" \
-            --max-cost "$remaining" --annotate --rounds 2 "${kind_args[@]}" \
+            --max-cost "$remaining" --annotate --rounds "$rounds" "${kind_args[@]}" \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
         # Stages exactly the pictures the comment will embed (the render with its findings marked,
