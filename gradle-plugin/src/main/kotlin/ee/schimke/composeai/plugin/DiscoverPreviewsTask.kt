@@ -3,6 +3,7 @@ package ee.schimke.composeai.plugin
 import ee.schimke.composeai.discovery.ComponentRecordFile
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
+import ee.schimke.composeai.discovery.PreviewManifest
 import ee.schimke.composeai.discovery.UiBuilderCatalogs
 import ee.schimke.composeai.discovery.UiBuilderPolicyFile
 import java.io.File
@@ -405,8 +406,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         // reason to omit the file.
         val componentsOut = componentsFile.get().asFile
         componentsOut.parentFile.mkdirs()
-        componentsOut.writeText(json.encodeToString(ComponentRecords.from(outcome.manifest)))
-        writeUiBuilderCatalog(ComponentRecords.from(outcome.manifest))
+        // The builder catalog decides which overload each component's record speaks for (the one
+        // its policy describes, never a deprecated one), so it runs first and `components.json`
+        // publishes the record it chose — the export path reads that record, and must call the
+        // same overload the catalog offers properties for.
+        val record = writeUiBuilderCatalog(outcome.manifest)
+        componentsOut.writeText(json.encodeToString(record))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
@@ -498,7 +503,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * trade. The generator's own findings travel *inside* the published file as `diagnostics`, where
    * a person who was not watching this build can still read them.
    */
-  private fun writeUiBuilderCatalog(record: ComponentRecordFile) {
+  private fun writeUiBuilderCatalog(manifest: PreviewManifest): ComponentRecordFile {
+    val record = ComponentRecords.from(manifest)
     val out = uiBuilderFile.get().asFile
     // Published only beside a catalog that is written, so cleared before anything can return.
     uiBuilderGuidelinesFile.get().asFile.delete()
@@ -507,7 +513,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // catalog nobody authors any more.
     val authored =
       authoredPair()
-        ?: return run { UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile) }
+        ?: return run {
+          UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile)
+          record
+        }
     val (policyFile, specFile) = authored.policy to authored.spec
     val policy = runCatching {
       lenientJson.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
@@ -518,7 +527,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             "(${failure.message ?: failure::class.simpleName}); no ui-builder.json written."
         )
         UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile)
-        return
+        return record
       }
     val spec = specFile?.let {
       runCatching { lenientJson.decodeFromString<CatalogCoverSheet>(it.readText()) }.getOrNull()
@@ -531,7 +540,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
         title = spec?.title ?: policy.catalogId ?: record.module,
       )
-    val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return
+    val selection =
+      ComponentRecords.select(manifest, UiBuilderCatalogs.authoredNames(cover, policy))
+    val catalog =
+      UiBuilderCatalogs.generate(selection.record, cover, policy, selection.diagnostics)
+        ?: return selection.record
     out.parentFile.mkdirs()
     out.writeText(json.encodeToString(catalog))
     writeUiBuilderGuidelines(authored.policy, cover.system)
@@ -585,6 +598,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         "${catalog.statusSemantics.components.size} component policies, " +
         "${catalog.statusSemantics.builtins.size} builtins, $unresolved diagnostic(s))"
     )
+    return selection.record
   }
 
   /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */

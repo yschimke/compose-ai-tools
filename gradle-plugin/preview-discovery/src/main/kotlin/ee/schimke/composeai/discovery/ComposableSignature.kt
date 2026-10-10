@@ -492,6 +492,23 @@ internal object ComposableSignature {
     }
   }
 
+  /**
+   * Whether [method] is deprecated at any level: `@kotlin.Deprecated` (`WARNING` and `ERROR` keep
+   * the annotation; `HIDDEN` also compiles the method synthetic) or `@java.lang.Deprecated`.
+   *
+   * A generator must never print a deprecated call, so every place this reader offers something to
+   * call — a component overload, a `rememberT()` factory, a `T()` constructor — consults it.
+   */
+  fun isDeprecated(method: MethodInfo): Boolean =
+    method.isSynthetic || DEPRECATED_ANNOTATIONS.any { method.hasAnnotation(it) }
+
+  /** [isDeprecated] for a class: a deprecated type has no constructor worth printing. */
+  internal fun isDeprecated(info: ClassInfo): Boolean = DEPRECATED_ANNOTATIONS.any {
+    info.hasAnnotation(it)
+  }
+
+  private val DEPRECATED_ANNOTATIONS = listOf("kotlin.Deprecated", "java.lang.Deprecated")
+
   /** Whether [info] is a file facade declaring [factoryName] in the shape described above. */
   private fun declaresNoArgComposableFactory(
     info: ClassInfo,
@@ -523,8 +540,11 @@ internal object ComposableSignature {
     // there. Matched on the name alone rather than the descriptor, because the Compose compiler
     // appends a `Composer, Int` and a default mask that no metadata signature accounts for.
     val jvmName = declared.signature?.name ?: factoryName
+    // A deprecated factory is no placeholder: printing it would put a deprecated call in source
+    // that is supposed to read as current API.
     return info.getMethodInfo(jvmName).any { method ->
       method.hasAnnotation(COMPOSABLE_ANNOTATION) &&
+        !isDeprecated(method) &&
         requiredOptInsOf(method, OPT_IN_MARKER_ANNOTATIONS).isEmpty()
     }
   }
@@ -564,6 +584,16 @@ internal object ComposableSignature {
       if (!info.isPublic || info.isAbstract || info.isInterface || info.isEnum) return false
       if (info.isAnnotation) return false
       if (requiredOptInsOf(info, OPT_IN_MARKER_ANNOTATIONS).isNotEmpty()) return false
+      // A deprecated type, or one whose every public constructor is deprecated, prints no `T()`:
+      // the placeholder would be deprecated source. Annotations only — Kotlin's
+      // `DefaultConstructorMarker` bridge is synthetic without being deprecated.
+      if (isDeprecated(info)) return false
+      val constructors = info.declaredConstructorInfo.filter { it.isPublic }
+      if (
+        constructors.isNotEmpty() &&
+          constructors.all { c -> DEPRECATED_ANNOTATIONS.any { c.hasAnnotation(it) } }
+      )
+        return false
       val metadata = readClassMetadata(info) ?: return false
       val kmClass =
         (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass

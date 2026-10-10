@@ -286,6 +286,79 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `the overload most previews call speaks for the record, with its own whole signature`() {
+    // m3-catalog's shape: the sticker and a screen call OutlinedTextField(value, onValueChange);
+    // one other preview reaches the TextFieldState overload. Refusing all of them would withdraw
+    // the component; merging would pair the String descriptor with the state overload's parameters.
+    fun param(name: String, type: String, default: Boolean = false) =
+      TargetParameter.Builder(name = name, type = type).also { b -> b.hasDefault = default }.build()
+    val byValue =
+      target(
+        "androidx.compose.material3.OutlinedTextFieldKt",
+        "OutlinedTextField",
+        parameters =
+          listOf(
+            param("value", "String"),
+            param("onValueChange", "(String) -> Unit"),
+            param("singleLine", "Boolean", default = true),
+          ),
+        descriptor = "(Ljava/lang/String;Lkotlin/jvm/functions/Function1;Z)V",
+        signatureKnown = true,
+      )
+    val byState =
+      target(
+        "androidx.compose.material3.OutlinedTextFieldKt",
+        "OutlinedTextField",
+        parameters =
+          listOf(
+            param("state", "TextFieldState"),
+            param("modifier", "Modifier", default = true),
+            param("enabled", "Boolean", default = true),
+            param("lineLimits", "TextFieldLineLimits", default = true),
+          ),
+        descriptor = "(Landroidx/compose/foundation/text/input/TextFieldState;)V",
+        signatureKnown = true,
+      )
+
+    val record =
+      ComponentRecords.from(
+          manifest(
+            preview("state", componentTargets = listOf(byState)),
+            preview("sticker", componentTargets = listOf(byValue)),
+            preview("screen", componentTargets = listOf(byValue)),
+          )
+        )
+        .components
+        .single()
+
+    assertThat(record.overloadsCollided).isFalse()
+    assertThat(record.symbol.descriptor).isEqualTo(byValue.descriptor)
+    assertThat(record.parameters.map { it.name })
+      .containsExactly("value", "onValueChange", "singleLine")
+      .inOrder()
+    assertThat(record.code?.call).startsWith("OutlinedTextField(value = ")
+  }
+
+  @Test
+  fun `a tie between overloads stays collided, because nothing says which one is meant`() {
+    val a = target("com.example.ChipKt", "Chip", descriptor = "(I)V", signatureKnown = true)
+    val b = target("com.example.ChipKt", "Chip", descriptor = "(J)V", signatureKnown = true)
+    val record =
+      ComponentRecords.from(
+          manifest(
+            preview("p1", targets = listOf(a)),
+            preview("p2", targets = listOf(b)),
+            preview("p3", targets = listOf(a)),
+            preview("p4", targets = listOf(b)),
+          )
+        )
+        .components
+        .single()
+    assertThat(record.overloadsCollided).isTrue()
+    assertThat(record.symbol.descriptor).isNull()
+  }
+
+  @Test
   fun `one component seen by several previews keeps its descriptor`() {
     // The common case, and the reason the rule above is "disagree" rather than "seen twice":
     // `Card` is rendered by many previews and every one of them reports the same method.
@@ -658,5 +731,117 @@ class ComponentRecordsTest {
       )
 
     assertThat(file.components.single().builder).isNull()
+  }
+
+  private fun overloadParam(name: String, type: String, default: Boolean = false) =
+    TargetParameter.Builder(name = name, type = type).also { b -> b.hasDefault = default }.build()
+
+  private val stateOverload =
+    TargetOverload(
+      jvmName = "OutlinedTextField",
+      descriptor = "(Landroidx/compose/foundation/text/input/TextFieldState;)V",
+      parameters =
+        listOf(
+          TargetParameter.Builder(name = "state", type = "TextFieldState")
+            .also { b ->
+              b.typeFqn = "androidx.compose.foundation.text.input.TextFieldState"
+              b.noArgFactory = "androidx.compose.foundation.text.input.rememberTextFieldState"
+            }
+            .build(),
+          overloadParam("modifier", "Modifier", default = true),
+          overloadParam("enabled", "Boolean", default = true),
+        ),
+    )
+  private val valueOverload =
+    TargetOverload(
+      jvmName = "OutlinedTextField",
+      descriptor = "(Ljava/lang/String;Lkotlin/jvm/functions/Function1;Z)V",
+      parameters =
+        listOf(
+          overloadParam("value", "String"),
+          overloadParam("onValueChange", "(String) -> Unit"),
+          overloadParam("enabled", "Boolean", default = true),
+          overloadParam("singleLine", "Boolean", default = true),
+        ),
+    )
+
+  private fun calling(
+    overload: TargetOverload,
+    all: List<TargetOverload>,
+    deprecated: Boolean = false,
+  ) =
+    PreviewTarget(
+      className = "androidx.compose.material3.OutlinedTextFieldKt",
+      functionName = "OutlinedTextField",
+      jvmName = overload.jvmName,
+      descriptor = overload.descriptor,
+      confidence = TargetConfidence.HIGH,
+      parameters = overload.parameters,
+      signatureKnown = true,
+      deprecated = deprecated,
+      overloads = all,
+    )
+
+  @Test
+  fun `the policy's names choose the overload, even one no preview calls`() {
+    val all = listOf(stateOverload, valueOverload)
+    val selection =
+      ComponentRecords.select(
+        manifest(
+          preview("a", componentTargets = listOf(calling(stateOverload, all))),
+          preview("b", componentTargets = listOf(calling(stateOverload, all))),
+        )
+      ) {
+        setOf("value", "enabled", "singleLine", "label")
+      }
+    val record = selection.record.components.single()
+    assertThat(record.symbol.descriptor).isEqualTo(valueOverload.descriptor)
+    assertThat(record.parameters.map { it.name }).contains("singleLine")
+    assertThat(record.code?.call).startsWith("OutlinedTextField(value = ")
+    assertThat(selection.diagnostics).isEmpty()
+    // Bindings still name the previews that rendered the component.
+    assertThat(record.bindings.map { it.previewId }).containsExactly("a", "b")
+  }
+
+  @Test
+  fun `with no policy, a deprecated overload the previews call is never the record`() {
+    val deprecatedValue = valueOverload.copy(deprecated = true)
+    val all = listOf(deprecatedValue, stateOverload)
+    val record =
+      ComponentRecords.from(
+          manifest(
+            preview(
+              "a",
+              componentTargets = listOf(calling(deprecatedValue, all, deprecated = true)),
+            )
+          )
+        )
+        .components
+        .single()
+    assertThat(record.symbol.descriptor).isEqualTo(stateOverload.descriptor)
+    assertThat(record.code?.call).startsWith("OutlinedTextField(state = ")
+  }
+
+  @Test
+  fun `a component whose only form is deprecated gets no code`() {
+    val only =
+      PreviewTarget(
+        className = "androidx.compose.material3.DividerKt",
+        functionName = "Divider",
+        jvmName = "Divider",
+        descriptor = "(Landroidx/compose/ui/Modifier;)V",
+        confidence = TargetConfidence.HIGH,
+        parameters = listOf(overloadParam("modifier", "Modifier", default = true)),
+        signatureKnown = true,
+        deprecated = true,
+      )
+    val selection =
+      ComponentRecords.select(manifest(preview("a", componentTargets = listOf(only)))) {
+        emptySet()
+      }
+    val record = selection.record.components.single()
+    assertThat(record.code?.call).isNull()
+    assertThat(record.code?.refusedReason).contains("deprecated")
+    assertThat(selection.diagnostics.single().code).isEqualTo(OverloadSelection.ALL_DEPRECATED)
   }
 }

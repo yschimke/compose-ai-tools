@@ -1576,6 +1576,23 @@ data class PreviewTarget(
    * the one point that can see it — the annotation's own meta-annotations.
    */
   val androidxOptIns: List<String> = emptyList(),
+  /**
+   * Whether this method is deprecated — `@kotlin.Deprecated` at any level (a `HIDDEN` one is
+   * compiled synthetic) or `@java.lang.Deprecated`. Read from the class file, so it is the method a
+   * call site would actually bind to. A generator never emits a deprecated call (see [overloads]).
+   */
+  val deprecated: Boolean = false,
+  /**
+   * Every `@Composable` overload of [functionName] declared on [className], in declaration order,
+   * the invoked one included; empty when there is only one, and for project targets.
+   *
+   * A component record speaks for ONE signature, and the overload a preview happens to call is not
+   * necessarily the one a catalog's policy describes (`OutlinedTextField(value, …)` versus the
+   * `TextFieldState` overload; compose-ai-tools#5807). Carrying all of them lets the
+   * builder-catalog step pick the overload whose parameters cover the policy, and skip deprecated
+   * ones.
+   */
+  val overloads: List<TargetOverload> = emptyList(),
 )
 
 @Serializable
@@ -1841,4 +1858,22 @@ data class ResourceManifest(
   val variant: String,
   val resources: List<ResourcePreview> = emptyList(),
   val manifestReferences: List<ManifestReference> = emptyList(),
+)
+
+/**
+ * One `@Composable` overload of a [PreviewTarget]'s function: enough of its signature to print a
+ * call from it, and whether it is deprecated. See [PreviewTarget.overloads].
+ */
+@Serializable
+data class TargetOverload(
+  val jvmName: String,
+  val descriptor: String,
+  val parameters: List<TargetParameter> = emptyList(),
+  val receiver: String? = null,
+  val callableFromAnotherFile: Boolean = true,
+  val hasTypeParameters: Boolean = false,
+  val hasContextReceivers: Boolean = false,
+  val requiredOptIns: List<String> = emptyList(),
+  val androidxOptIns: List<String> = emptyList(),
+  val deprecated: Boolean = false,
 )

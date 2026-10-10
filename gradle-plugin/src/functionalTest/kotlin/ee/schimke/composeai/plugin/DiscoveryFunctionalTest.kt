@@ -227,6 +227,155 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `a call to one overload is recorded as that overload, not the first of its name`() {
+    val projectDir = createCmpTestProject()
+    // Material 3 publishes OutlinedTextField as a TextFieldState overload AND a String one. The
+    // sticker calls the String one; recording the first of the name made m3-catalog's record offer
+    // `value` against a signature that has none, and the generator refused it.
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .appendText(
+        """
+
+        @Preview
+        @Composable
+        fun OutlinedFieldPreview() {
+            androidx.compose.material3.OutlinedTextField(value = "Text", onValueChange = {})
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val target =
+      manifest.previews
+        .single { it.functionName == "OutlinedFieldPreview" }
+        .componentTargets
+        .single()
+    assertThat(target.functionName).isEqualTo("OutlinedTextField")
+    assertThat(target.descriptor).startsWith("(Ljava/lang/String;Lkotlin/jvm/functions/Function1;")
+  }
+
+  @Test
+  fun `a deprecated overload or factory is read from the class file and never becomes the record`() {
+    val projectDir = createCmpTestProject()
+    File(projectDir, "build.gradle.kts")
+      .appendText(
+        """
+
+        composePreview {
+            componentLibraryPrefixes.add("test.lib.ChipsKt")
+            componentLibraryPrefixes.add("test.lib.GaugeKt")
+        }
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/lib/Chips.kt").apply {
+      parentFile.mkdirs()
+      writeText(
+        """
+        package test.lib
+
+        import androidx.compose.runtime.Composable
+
+        @Deprecated("Use the overload taking a label")
+        @Composable
+        fun Chip(text: String, enabled: Boolean = true) {}
+
+        @Composable
+        fun Chip(label: String, onClick: () -> Unit = {}, enabled: Boolean = true) {}
+        """
+          .trimIndent()
+      )
+    }
+    File(projectDir, "src/main/kotlin/test/lib/Gauge.kt").apply {
+      writeText(
+        """
+        package test.lib
+
+        import androidx.compose.runtime.Composable
+
+        class GaugeState private constructor(val level: Float) {
+            companion object { fun of(level: Float) = GaugeState(level) }
+        }
+
+        @Deprecated("Use GaugeState.of")
+        @Composable
+        fun rememberGaugeState(): GaugeState = GaugeState.of(0f)
+
+        @Composable
+        fun Gauge(state: GaugeState) {}
+        """
+          .trimIndent()
+      )
+    }
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .appendText(
+        """
+
+        @Suppress("DEPRECATION")
+        @Preview
+        @Composable
+        fun ChipPreview() {
+            test.lib.Chip(text = "Old")
+        }
+
+        @Suppress("DEPRECATION")
+        @Preview
+        @Composable
+        fun GaugePreview() {
+            test.lib.Gauge(state = test.lib.rememberGaugeState())
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val chip =
+      manifest.previews.single { it.functionName == "ChipPreview" }.componentTargets.single()
+    // The preview calls the deprecated overload, and that is what was invoked...
+    assertThat(chip.deprecated).isTrue()
+    // ...but every overload is carried, with the class file's deprecation on each.
+    assertThat(chip.overloads.map { it.parameters.first().name to it.deprecated })
+      .containsExactly("text" to true, "label" to false)
+
+    val records =
+      json.decodeFromString<ComponentRecordFile>(
+        File(projectDir, "build/compose-previews/components.json").readText()
+      )
+    val chipRecord = records.components.single { it.symbol.name == "Chip" }
+    // The record never speaks for the deprecated form.
+    assertThat(chipRecord.parameters.map { it.name }).containsExactly("label", "onClick", "enabled")
+    assertThat(chipRecord.code?.call).isEqualTo("Chip(label = \"\")")
+
+    // A deprecated `rememberGaugeState()` is no placeholder: the required state is not writable.
+    val gauge = records.components.single { it.symbol.name == "Gauge" }
+    assertThat(gauge.parameters.single().noArgFactory).isNull()
+    assertThat(gauge.code?.refusedReason).contains("state")
+  }
+
+  @Test
   fun `composePreviewDiscover records a parameter knob's literal default`() {
     // The one place the knob-default reader is checked against bytecode the **Compose compiler**
     // actually emitted. `PreviewKnobDefaultsTest` assembles the instruction shape by hand —

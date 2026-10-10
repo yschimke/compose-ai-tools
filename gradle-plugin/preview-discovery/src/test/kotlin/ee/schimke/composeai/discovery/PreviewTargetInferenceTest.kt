@@ -5,6 +5,49 @@ import org.junit.Test
 
 class PreviewTargetInferenceTest {
 
+  private data class Method(val descriptor: String, val composable: Boolean = true)
+
+  @Test
+  fun `the overload a call invoked is the one recorded, not the first of its name`() {
+    // OutlinedTextField's TextFieldState overload listed before the String one, as in the class
+    // file.
+    val state = Method("(Landroidx/compose/foundation/text/input/TextFieldState;…)V")
+    val value = Method("(Ljava/lang/String;Lkotlin/jvm/functions/Function1;…)V")
+    val picked =
+      PreviewTargetInference.calledOverload(
+        listOf(state, value),
+        value.descriptor,
+        descriptorOf = Method::descriptor,
+        isComposable = Method::composable,
+      )
+    assertThat(picked).isEqualTo(value)
+  }
+
+  @Test
+  fun `an unmatched descriptor falls back to the first composable, and non-composables never win`() {
+    val helper = Method("(Ljava/lang/String;)V", composable = false)
+    val first = Method("(I)V")
+    val second = Method("(J)V")
+    assertThat(
+        PreviewTargetInference.calledOverload(
+          listOf(helper, first, second),
+          "(Ljava/lang/String;)V",
+          descriptorOf = Method::descriptor,
+          isComposable = Method::composable,
+        )
+      )
+      .isEqualTo(first)
+    assertThat(
+        PreviewTargetInference.calledOverload(
+          listOf(helper),
+          "(Ljava/lang/String;)V",
+          descriptorOf = Method::descriptor,
+          isComposable = Method::composable,
+        )
+      )
+      .isNull()
+  }
+
   @Test
   fun `nameMatches strips Preview suffix`() {
     assertThat(PreviewTargetInference.nameMatches("FooPreview", "Foo")).isTrue()
