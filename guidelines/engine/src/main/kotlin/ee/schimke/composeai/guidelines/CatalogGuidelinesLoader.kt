@@ -25,7 +25,7 @@ public object CatalogGuidelinesLoader {
       try {
         GUIDELINES_JSON.decodeFromString(CatalogGuidelinesV1.serializer(), text)
       } catch (e: Exception) {
-        return Loaded(null, "not a readable ${CatalogGuidelinesV1.FILE_NAME}: ${e.message}")
+        return Loaded(null, "not a readable ${CatalogGuidelinesV1.FILE_NAME}: ${parseFailure(e)}")
       }
     if (!parsed.schema.startsWith("compose-ui-builder/catalog-guidelines/")) {
       return Loaded(null, "unknown schema `${parsed.schema}`")
@@ -39,6 +39,24 @@ public object CatalogGuidelinesLoader {
     }
     return Loaded(parsed)
   }
+
+  /**
+   * Why [text] did not parse, without quoting it. A kotlinx decoding message carries the input
+   * itself (`JSON input: …`, the whole text when it is short) and a JSON path whose map keys are
+   * the input's, and a caller can point [load] at any local file, so the reason names only the
+   * failure and its offset: a problem string must never echo the contents of a file that turned out
+   * not to be guidelines.
+   */
+  internal fun parseFailure(e: Exception): String {
+    if (e is kotlinx.serialization.MissingFieldException) {
+      // Names the serializer's own fields, never the input's.
+      return "missing ${e.missingFields.joinToString { "`$it`" }}"
+    }
+    val offset = OFFSET.find(e.message.orEmpty())?.groupValues?.get(1)
+    return if (offset != null) "malformed JSON at offset $offset" else "malformed JSON"
+  }
+
+  private val OFFSET = Regex("""at offset (\d+)""")
 
   /** The guidelines in [file], or none when it does not exist. */
   public fun load(file: File, expectedCatalog: String? = null): Loaded =

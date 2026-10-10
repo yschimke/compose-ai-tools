@@ -150,6 +150,7 @@ See [`action.yml`](action.yml) for the full schema. Summary:
 | `properties-path` | `gradle.properties` | File read for `composePreview.version` when `version=pin`. |
 | `github-token` | workflow token | Token used for the releases API call. Falls back to `github.token`. |
 | `plugin-readiness-timeout` | `300` | Seconds to wait for the resolved version's Gradle plugin to be resolvable before failing with an explicit message. `0` skips the probe. |
+| `require-digest` | `false` | `true` refuses to install when the release's sha256 digest cannot be read, instead of warning and installing unverified. |
 
 ## Related actions
 

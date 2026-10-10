@@ -9,6 +9,7 @@ import java.util.Collections
 import java.util.Properties
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
+import org.gradle.tooling.LongRunningOperation
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationDescriptor
@@ -174,6 +175,7 @@ class GradleConnection(
       if (combinedArguments.isNotEmpty()) {
         launcher.withArguments(combinedArguments)
       }
+      launcher.withoutWithheldEnvironment()
 
       if (verbose) {
         launcher.setStandardOutput(System.err)
@@ -357,6 +359,7 @@ class GradleConnection(
         .withCancellationToken(tokenSource.token())
         .apply {
           if (extraArguments.isNotEmpty()) withArguments(extraArguments)
+          withoutWithheldEnvironment()
           if (verbose) {
             setStandardOutput(System.err)
             setStandardError(System.err)
@@ -389,7 +392,10 @@ class GradleConnection(
     return try {
       connection
         .model(org.gradle.tooling.model.build.BuildEnvironment::class.java)
-        .apply { if (extraArguments.isNotEmpty()) withArguments(extraArguments) }
+        .apply {
+          if (extraArguments.isNotEmpty()) withArguments(extraArguments)
+          withoutWithheldEnvironment()
+        }
         .get()
         .also { modelAccessFailure = null }
     } catch (e: Exception) {
@@ -448,6 +454,30 @@ class GradleConnection(
         detail = messages.drop(1).takeIf { it.isNotEmpty() }?.joinToString(" -> "),
       )
   }
+}
+
+/**
+ * Environment variables a build must never see. The Tooling API hands the client's whole
+ * environment to the Gradle daemon, and through it to every build script, plugin and forked worker
+ * of the project being built, which may be a third party's. A credential the CLI holds for its own
+ * use (the design-guidelines OpenRouter key) stays in the CLI.
+ */
+internal val WITHHELD_BUILD_ENVIRONMENT: Set<String> = setOf("COMPOSE_PREVIEW_OPENROUTER_KEY")
+
+/**
+ * The environment to hand a build: [parent] without [WITHHELD_BUILD_ENVIRONMENT], or null when
+ * [parent] holds none of them, so an ordinary run keeps the Tooling API's default (inherit).
+ */
+internal fun buildEnvironmentWithout(
+  parent: Map<String, String>,
+  withheld: Set<String> = WITHHELD_BUILD_ENVIRONMENT,
+): Map<String, String>? {
+  if (parent.keys.none { it in withheld }) return null
+  return parent.filterKeys { it !in withheld }
+}
+
+private fun LongRunningOperation.withoutWithheldEnvironment() {
+  buildEnvironmentWithout(System.getenv())?.let { setEnvironmentVariables(it) }
 }
 
 /**

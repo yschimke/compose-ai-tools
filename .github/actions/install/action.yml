@@ -64,6 +64,14 @@ inputs:
       Gradle build).
     default: '300'
 
+  require-digest:
+    description: >
+      'true' to refuse the install when the release metadata or its
+      sha256 digest cannot be read, instead of warning and installing
+      unverified. The apply action sets it in the job that holds the
+      OpenRouter key; the default keeps the best-effort posture.
+    default: 'false'
+
 outputs:
   version:
     description: 'Resolved version, no leading "v" (e.g. "0.8.1").'
@@ -117,8 +125,24 @@ runs:
       env:
         VER: ${{ steps.resolve.outputs.version }}
         GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
+        REQUIRE_DIGEST: ${{ inputs.require-digest }}
       run: |
         set -euo pipefail
+        # resolve-version.py already refuses anything else; checked again here
+        # because this is the step that puts VER into a URL and a path.
+        if ! printf '%s' "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+          printf '::error::Refusing to install %s: not a release version.\n' "$VER"
+          exit 1
+        fi
+        # Unverified is a warning by default and an error when the caller
+        # asked for a verified install.
+        unverified() {
+          if [ "${REQUIRE_DIGEST:-false}" = "true" ]; then
+            printf '::error::%s; refusing to install unverified (require-digest).\n' "$1"
+            exit 1
+          fi
+          printf '::warning::%s; skipping sha256 verification\n' "$1"
+        }
         # Repo is hardcoded — the action ships from this repo and
         # downloads its own releases. Don't expose it as an input
         # (would invite use against forks with no integrity story).
@@ -149,9 +173,9 @@ runs:
           --connect-timeout 30 --max-time 300 \
           -o "$tmp/$asset" "$url"
 
-        # Best-effort sha256 verification via the releases API. The
-        # asset's `digest` field is "sha256:<hex>". On failure (network,
-        # rate limit, missing digest) we warn and continue — same
+        # sha256 verification via the releases API. The asset's `digest`
+        # field is "sha256:<hex>". On failure (network, rate limit, missing
+        # digest) we warn and continue unless `require-digest` is set — same
         # posture as the canonical installer (yschimke/skills), since the curl above already
         # rode HTTPS to github.com.
         api="https://api.github.com/repos/${repo}/releases/tags/v${VER}"
@@ -184,10 +208,10 @@ runs:
             fi
             printf 'Verified sha256: %s\n' "$got"
           else
-            printf '::warning::No sha256 digest in release metadata for %s; skipping verification\n' "$asset"
+            unverified "No sha256 digest in release metadata for $asset"
           fi
         else
-          printf '::warning::Could not fetch release metadata for v%s; skipping sha256 verification\n' "$VER"
+          unverified "Could not fetch release metadata for v$VER"
         fi
 
         # Hardcoded install dir keeps the $GITHUB_PATH literal in the

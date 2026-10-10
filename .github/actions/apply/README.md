@@ -741,13 +741,19 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | --- | --- | --- |
 | `guidelines` | `false` | Turn the check on. |
 | `openrouter-key` | `''` | OpenRouter key. Empty skips the check with a notice. |
-| `guidelines-max-cost` | `0.25` | Dollars to spend at most; what is left is reported unchecked. |
+| `guidelines-max-cost` | `0.25` | Dollars to spend at most across every module of the run; what is left is reported unchecked. |
 | `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
 
 In the split (fork-safe) workflow, the render job stages each changed preview's render, source,
 accessibility nodes and the catalog's rules into the handoff (`_guidelines/`); pass
 `openrouter-key` **only to the publish job**, which runs `compose-preview guidelines` in handoff
-mode over them. A single-job run does both. At the default model a screen costs about
+mode over them. A single-job run does both.
+
+The publish job treats the handoff as the PR's output, not its own: it restores only the entries
+the render phase stages, checks at most 20 module directories, spends one `guidelines-max-cost`
+budget across all of them, and installs the CLI this action was released with (a literal
+`cli-version` is honoured; `auto`, `latest`, `catalog` and `pin` are not, since `latest` floats
+and the last two would read workspace files the handoff could supply), refusing a release it cannot verify by sha256. At the default model a screen costs about
 $0.003–0.007, and previews are judged in batches. See
 [docs/design/DESIGN_GUIDELINES.md](../../../docs/design/DESIGN_GUIDELINES.md).
 

@@ -144,6 +144,25 @@ class MainDispatchTests(ResolverTestCase):
             resolve_version.main()
         self.assertEqual(out.value.strip(), "1.2.3")
 
+    def test_a_prerelease_literal_is_accepted(self) -> None:
+        os.environ["INPUT_VERSION"] = "2.40.0-rc.1"
+        with _capture() as out:
+            resolve_version.main()
+        self.assertEqual(out.value.strip(), "2.40.0-rc.1")
+
+    def test_a_malformed_literal_is_refused(self) -> None:
+        for bad in ("1.2", "1.2.3/../../x", "1.2.3 extra", "latest-ish", "1.2.3\n4.5.6"):
+            with self.subTest(bad=bad):
+                os.environ["INPUT_VERSION"] = bad
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    resolve_version.main()
+
+    def test_a_malformed_pin_is_refused(self) -> None:
+        self.write_properties("composePreview.version=1.2.3$(id)\n")
+        os.environ["INPUT_VERSION"] = "pin"
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            resolve_version.main()
+
     def test_catalog_mode_still_requires_the_catalog(self) -> None:
         # `catalog` stays the narrow "read exactly this key" mode: a
         # gradle.properties pin must not satisfy it.
