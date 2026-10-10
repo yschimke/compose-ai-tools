@@ -96,6 +96,9 @@ object ComponentRecords {
       // overloads always agree on the source name, and can disagree on the JVM one, because
       // mangling is per-signature. `Chip(label: String)` and `Chip(width: Dp)` are `Chip` and
       // `Chip-a1b2c3d`.
+      target.descriptor?.let { d ->
+        existing.overloads.getOrPut(d) { OverloadSeen(target) }.previews += preview.id
+      }
       if (existing.jvmName != target.jvmName) {
         existing.jvmName = null
         existing.overloadsCollided = true
@@ -295,6 +298,11 @@ object ComponentRecords {
           .build()
       }
 
+  /** One overload seen under a canonical id, and the previews whose call sites invoked it. */
+  private class OverloadSeen(val target: PreviewTarget) {
+    val previews: MutableSet<String> = linkedSetOf()
+  }
+
   private class MutableComponent(
     val canonicalId: String,
     val symbol: ComponentSymbol,
@@ -313,6 +321,11 @@ object ComponentRecords {
      * null [descriptor], which is also what an unrecorded one looks like.
      */
     var overloadsCollided: Boolean = false
+
+    /**
+     * Every overload a preview called under this id, by descriptor, with the previews calling it.
+     */
+    val overloads: MutableMap<String, OverloadSeen> = linkedMapOf()
 
     var receiver: String? = symbol.receiver
 
@@ -357,7 +370,38 @@ object ComponentRecords {
         .build()
     }
 
+    /**
+     * When previews called more than one overload under this id, the one most of them called.
+     *
+     * Discovery records the overload each call site actually invoked, so a catalog whose stickers
+     * reach one function two ways — `Button(onClick, content)` beside `Button(onClick, shapes, …)`,
+     * or `OutlinedTextField(value, onValueChange)` beside a screen using the `TextFieldState` one —
+     * arrives here with several descriptors. Refusing code for all of them would withdraw every
+     * component a second call site touches; keeping whichever arrived first would publish a
+     * signature by manifest order. So the overload most previews call speaks for the record, with
+     * its whole signature rather than a merge of several, and only a TIE stays collided — that
+     * disagreement is real and somebody has to resolve it.
+     */
+    private fun adoptMajorityOverload() {
+      if (!overloadsCollided || overloads.size < 2) return
+      val ranked = overloads.values.sortedByDescending { it.previews.size }
+      if (ranked[0].previews.size == ranked[1].previews.size) return
+      val t = ranked[0].target
+      descriptor = t.descriptor
+      jvmName = t.jvmName
+      parameters = t.parameters
+      receiver = t.receiver
+      signatureKnown = t.signatureKnown
+      callableFromAnotherFile = t.callableFromAnotherFile
+      hasTypeParameters = t.hasTypeParameters
+      hasContextReceivers = t.hasContextReceivers
+      requiredOptIns = t.requiredOptIns
+      androidxOptIns = t.androidxOptIns
+      overloadsCollided = false
+    }
+
     fun toRecord(): ComponentRecord {
+      adoptMajorityOverload()
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
       val record =
         ComponentRecord.Builder(
