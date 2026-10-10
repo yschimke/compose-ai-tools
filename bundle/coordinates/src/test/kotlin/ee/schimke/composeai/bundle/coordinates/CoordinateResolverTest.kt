@@ -377,6 +377,43 @@ class CoordinateResolverTest {
   }
 
   @Test
+  fun `a download cut off mid-body is retried, and the warning names why it closed`() {
+    // The shape of a dropped connection: the server promises 1024 bytes and hangs up after 8.
+    var jarRequests = 0
+    val s = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    s.createContext("/") { exchange ->
+      if (exchange.requestURI.path.endsWith(".jar")) jarRequests++
+      exchange.sendResponseHeaders(200, 1024)
+      exchange.responseBody.write(ByteArray(8))
+      exchange.close()
+    }
+    s.start()
+    server = s
+    val resolver = networkResolver("http://127.0.0.1:${s.address.port}").apply { sleeper = {} }
+
+    val r = resolver.resolve(maven(sha = "a".repeat(64)))
+
+    assertNull(r.file)
+    assertEquals(CoordinateResolver.MAX_ATTEMPTS, jarRequests, "a transport failure is transient")
+    val warning = warnings.single { it.contains("could not resolve") }
+    assertTrue(
+      warning.contains("after ${CoordinateResolver.MAX_ATTEMPTS} attempts"),
+      "names its attempts: $warning",
+    )
+  }
+
+  @Test
+  fun `a transport failure names its deepest cause, not only the wrapper`() {
+    val root = java.net.SocketTimeoutException("timeout")
+    val wrapped = IllegalStateException("Channel was closed", java.io.IOException("io", root))
+    assertEquals(
+      "IllegalStateException: Channel was closed (caused by SocketTimeoutException: timeout)",
+      CoordinateResolver.transportReason(wrapped),
+    )
+    assertEquals("SocketTimeoutException: timeout", CoordinateResolver.transportReason(root))
+  }
+
+  @Test
   fun `a 404 is an answer, not retried, and says the artifact is nowhere`() {
     val (base, hits) = startScriptedRepo(listOf(404), byteArrayOf(1))
     val slept = mutableListOf<Long>()
