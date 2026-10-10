@@ -352,16 +352,6 @@ coil3 = "3.5.0"
 # the shared ref to 3.1.1 because layoutinspector-core had published one, and `:samples:android`
 # could not configure at all (`Could not find ee.schimke.composeai:screen-document:3.1.1`). The
 # daemon line below carries the same lesson and the same shape.
-# 3.14.0 adds `RenderFinishedParams.workTrace` (compose-preview-contracts#128), which daemon
-# 3.11.0 below builds `renderFinished` through; its BOM keeps `common-io` at 3.13.0.
-# 3.15.0 adds `RemoteComposeOverride.playerId` (compose-preview-contracts#129), which
-# `ServeOverrides` sends for an `rcPlayer=` naming a player registered with the daemon.
-# 3.21.0 adds `RemoteComposeOverride.documentBase64` (compose-preview-contracts#145): a Remote
-# Compose document a render carries for replay, which `ServeOverrides.cacheKey` keys on.
-# 3.23.1 adds `design-guidelines-protocol` (compose-preview-contracts#149, #151, #152): the
-# design-guideline shapes `:design-guidelines` builds its batched requests and records over.
-# 3.25.0 adds `shelfRole` to a record component's authored and published policy
-# (compose-preview-contracts#161), which `mergedWith` carries into `ui-builder.json`.
 composeai-contracts = "3.25.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
