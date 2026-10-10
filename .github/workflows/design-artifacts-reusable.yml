@@ -492,6 +492,11 @@ on:
         required: false
         type: string
         default: ''
+      upstream-patches:
+        description: 'IMPORT MODE ONLY. A directory in the CALLER''s checkout (e.g. imports/<slug>/patches) whose *.patch files are applied, in file-name order, to the upstream checkout right after it is fetched, with `git apply`. For the change an import needs and the upstream has not taken yet: a preview that only renders inside the app''s Activity, refactored so its content is an ordinary composable. Each patch is a step on the way to an upstream pull request, not a permanent fork; one that no longer applies fails the run, so a patch the upstream has absorbed is noticed and dropped. Empty (the default) applies nothing.'
+        required: false
+        type: string
+        default: ''
       stub-google-services-packages:
         description: 'IMPORT MODE ONLY. Comma-separated Android applicationIds to write a stub google-services.json for, into the rendered module of the throwaway checkout. For an upstream that applies the Google Services plugin unconditionally but does not commit the file, where the build cannot configure at all without one. These must be the EXACT applicationId of each variant, suffixes included: the plugin does no prefix fallback, so naming only the base package fails with "No matching client found for package name". Empty (the default) writes nothing.'
         required: false
@@ -1349,6 +1354,36 @@ jobs:
             "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
+
+      # The import's own patches, applied to the THROWAWAY upstream checkout and nothing else: see
+      # the `upstream-patches` input. Read from the caller's checkout, which is the import's reviewed
+      # configuration, never from the upstream tree. `git apply` with no fuzz, so a patch that has
+      # drifted from the upstream fails here, by name, instead of rendering something half-applied.
+      - name: Apply the import's patches to the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.upstream-patches != '' }}
+        env:
+          PATCHES: ${{ inputs.upstream-patches }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCHES" | grep -Eq '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' || {
+            echo "::error::upstream-patches '${PATCHES}' is not a relative path in the caller checkout"; exit 1; }
+          case "/${PATCHES}/" in */../*|*/upstream/*)
+            echo "::error::upstream-patches '${PATCHES}' must not contain '..' or point into upstream/"; exit 1 ;;
+          esac
+          dir="$GITHUB_WORKSPACE/$PATCHES"
+          test -d "$dir" || { echo "::error::upstream-patches '${PATCHES}' is not a directory"; exit 1; }
+          shopt -s nullglob
+          patches=("$dir"/*.patch)
+          [ ${#patches[@]} -gt 0 ] || { echo "::error::no *.patch files in '${PATCHES}'"; exit 1; }
+          for patch in "${patches[@]}"; do
+            name=$(basename "$patch")
+            if ! git -C upstream apply --whitespace=nowarn "$patch"; then
+              echo "::error::${name} no longer applies to the upstream revision. If upstream has taken" \
+                "the change, delete the patch; otherwise rebase it."
+              exit 1
+            fi
+            echo "applied ${name}"
+          done
 
       # An imported project may harden its build against precisely what an import does: resolve a
       # plugin it has never heard of. Where it ships dependency verification metadata, the
@@ -2527,6 +2562,36 @@ jobs:
             "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
+
+      # The import's own patches, applied to the THROWAWAY upstream checkout and nothing else: see
+      # the `upstream-patches` input. Read from the caller's checkout, which is the import's reviewed
+      # configuration, never from the upstream tree. `git apply` with no fuzz, so a patch that has
+      # drifted from the upstream fails here, by name, instead of rendering something half-applied.
+      - name: Apply the import's patches to the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.upstream-patches != '' }}
+        env:
+          PATCHES: ${{ inputs.upstream-patches }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCHES" | grep -Eq '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' || {
+            echo "::error::upstream-patches '${PATCHES}' is not a relative path in the caller checkout"; exit 1; }
+          case "/${PATCHES}/" in */../*|*/upstream/*)
+            echo "::error::upstream-patches '${PATCHES}' must not contain '..' or point into upstream/"; exit 1 ;;
+          esac
+          dir="$GITHUB_WORKSPACE/$PATCHES"
+          test -d "$dir" || { echo "::error::upstream-patches '${PATCHES}' is not a directory"; exit 1; }
+          shopt -s nullglob
+          patches=("$dir"/*.patch)
+          [ ${#patches[@]} -gt 0 ] || { echo "::error::no *.patch files in '${PATCHES}'"; exit 1; }
+          for patch in "${patches[@]}"; do
+            name=$(basename "$patch")
+            if ! git -C upstream apply --whitespace=nowarn "$patch"; then
+              echo "::error::${name} no longer applies to the upstream revision. If upstream has taken" \
+                "the change, delete the patch; otherwise rebase it."
+              exit 1
+            fi
+            echo "applied ${name}"
+          done
 
       # An imported project may harden its build against precisely what an import does: resolve a
       # plugin it has never heard of. Where it ships dependency verification metadata, the
