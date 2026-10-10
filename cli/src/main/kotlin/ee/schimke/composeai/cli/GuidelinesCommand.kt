@@ -732,10 +732,14 @@ internal fun writeGuidelinesReport(buildDir: File, report: ModuleGuidelines, nar
         )
       }
         .getOrNull()
+      // Another checker's results are not kept: the report names one checker for all of them,
+      // and a vision finding must not read as Jev's, nor the reverse.
       val kept =
-        previous?.results.orEmpty().filter { old ->
-          report.results.none { it.previewId == old.previewId }
-        }
+        previous
+          ?.takeIf { it.checker == report.checker }
+          ?.results
+          .orEmpty()
+          .filter { old -> report.results.none { it.previewId == old.previewId } }
       report.copy(results = kept + report.results)
     } else report
   file.parentFile.mkdirs()
