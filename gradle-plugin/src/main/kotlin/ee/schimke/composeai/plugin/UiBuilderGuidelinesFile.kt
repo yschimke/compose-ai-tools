@@ -102,12 +102,13 @@ internal object UiBuilderGuidelinesFile {
    * [text] with the rule packs its `includes` name merged in and the `includes` removed, so the
    * published file is flat and every reader — compose-preview-server, the browser editor — sees the
    * whole rule set without fetching anything. The merge is the `:design-guidelines` engine's
-   * (`GuidelinesIncludes`): a pack rule naming `platforms` is carried only into a catalog whose
-   * `platform` it lists, an `exclude`d id or one the catalog defines itself is left out, an
-   * include's `profiles` narrows the carried rules naming none, and a pack's frames are added where
-   * the catalog does not already ask for the same one. At most [MAX_INCLUDES] includes, and a
-   * pack's rules must pass the same checks as the catalog's own ([problems]). A file with no
-   * includes comes back byte-for-byte.
+   * (`GuidelinesIncludes`): packs are layers in include order with the catalog's own rules last, a
+   * later layer's rule replacing an earlier one of the same id where it stood; a pack rule naming
+   * `platforms` is carried only into a catalog whose `platform` it lists, an `exclude`d id is left
+   * out of that include, an include's `profiles` narrows the carried rules naming none, and a
+   * pack's frames are added where the catalog does not already ask for the same one. At most
+   * [MAX_INCLUDES] includes, and a pack's rules must pass the same checks as the catalog's own
+   * ([problems]). A file with no includes comes back byte-for-byte.
    *
    * When a pack cannot be read or does not match its pin, [text] comes back as written, includes
    * and all, with the reason: a reader that resolves includes (the CLI) still can, and the publish
@@ -119,8 +120,10 @@ internal object UiBuilderGuidelinesFile {
     if (includes.isEmpty()) return Flattened(text)
     if (includes.size > MAX_INCLUDES) return Flattened(text, "more than $MAX_INCLUDES includes")
     val platform = root.string("platform")
-    val rules = (root["rules"] as? JsonArray).orEmpty().toMutableList()
-    val ids = rules.mapNotNullTo(mutableSetOf()) { (it as? JsonObject)?.string("id") }
+    val own = (root["rules"] as? JsonArray).orEmpty()
+    // Layered: each pack in include order, then the catalog's own rules; a later layer's rule
+    // replaces an earlier one of the same id where it stood.
+    val layered = LinkedHashMap<String, JsonElement>()
     val frames = (root["frames"] as? JsonArray).orEmpty().toMutableList()
     for ((index, element) in includes.withIndex()) {
       val include = element as? JsonObject
@@ -159,16 +162,19 @@ internal object UiBuilderGuidelinesFile {
       val profiles = include.strings("profiles")
       for (rule in (pack["rules"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()) {
         val id = rule.string("id") ?: continue
-        if (id in ids || id in exclude) continue
+        if (id in exclude) continue
         val platforms = rule.strings("platforms")
         if (platforms.isNotEmpty() && platform !in platforms) continue
-        ids += id
-        rules +=
+        layered[id] =
           if (profiles.isEmpty() || rule.strings("profiles").isNotEmpty()) rule
           else JsonObject(rule + ("profiles" to JsonArray(profiles.map(::JsonPrimitive))))
       }
       (pack["frames"] as? JsonArray).orEmpty().filterNot { it in frames }.forEach { frames += it }
     }
+    own.forEachIndexed { index, rule ->
+      layered[(rule as? JsonObject)?.string("id") ?: "#own-$index"] = rule
+    }
+    val rules = layered.values.toList()
     val flat =
       buildMap<String, JsonElement> {
         root.forEach { (key, value) ->

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.guidelines
 
 import ee.schimke.composeai.guidelines.protocol.CatalogGuidelinesV1
+import ee.schimke.composeai.guidelines.protocol.GuidelineRuleV1
 import java.io.IOException
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
@@ -14,8 +15,10 @@ import okhttp3.Request
  * Merging, the same as the Gradle plugin's flattening (`UiBuilderGuidelinesFile.flatten`), which
  * resolves them once at publish so the server and the browser read a flat file:
  * - a pack rule naming `platforms` is carried only into a catalog whose `platform` it lists;
- * - a rule whose id the include `exclude`s is left out, and one the catalog defines itself is the
- *   catalog's (its own rule replaces the pack's);
+ * - packs are layers, in include order, with the catalog's own rules as the last layer: a rule
+ *   replaces one of the same id from an earlier layer, so a form-factor pack (`wear-compose`) can
+ *   override a general one (`compose-ui`) and a catalog can override either;
+ * - a rule whose id the include `exclude`s is left out of that include;
  * - an include's `profiles` narrows every carried rule that names no profiles of its own;
  * - a pack's frames are added where the catalog does not already ask for the same one;
  * - a pack may not include another (no nesting), and is at most [MAX_PACK_BYTES].
@@ -120,24 +123,25 @@ public object GuidelinesIncludes {
     own: CatalogGuidelinesV1,
     packs: List<Pair<Include, CatalogGuidelinesV1>>,
   ): CatalogGuidelinesV1 {
-    val rules = own.rules.toMutableList()
-    val ids = rules.mapTo(mutableSetOf()) { it.id }
+    // Layered: each pack in include order, then the catalog's own rules. A later layer's rule
+    // replaces an earlier one of the same id where it stood; a new id is appended.
+    val rules = LinkedHashMap<String, GuidelineRuleV1>()
     val frames = own.frames.toMutableList()
     for ((include, pack) in packs) {
       for (rule in pack.rules) {
-        if (rule.id in ids || rule.id in include.exclude) continue
+        if (rule.id in include.exclude) continue
         if (rule.platforms.isNotEmpty() && own.platform !in rule.platforms) continue
-        ids += rule.id
-        rules +=
+        rules[rule.id] =
           if (include.profiles.isEmpty() || rule.profiles.isNotEmpty()) rule
           else rule.newBuilder().also { it.profiles = include.profiles }.build()
       }
       pack.frames.filterNot { it in frames }.forEach { frames += it }
     }
+    own.rules.forEach { rules[it.id] = it }
     return own
       .newBuilder()
       .also {
-        it.rules = rules
+        it.rules = rules.values.toList()
         it.frames = frames.toList()
       }
       .build()

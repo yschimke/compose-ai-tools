@@ -94,7 +94,7 @@ class UiBuilderGuidelinesFileTest {
     """
       .toByteArray()
 
-  private val packUrl = "https://raw.githubusercontent.com/o/r/v1/general.guidelines.json"
+  private val packUrl = "https://raw.githubusercontent.com/o/r/v1/compose-ui.guidelines.json"
 
   private fun sha256(bytes: ByteArray): String =
     java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
@@ -126,16 +126,16 @@ class UiBuilderGuidelinesFileTest {
     assertThat(root.keys).doesNotContain("includes")
     val ids =
       root.getValue("rules").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content }
-    // The catalog's own rule wins over the pack's of the same id; the launcher rule is carried,
-    // the wear one and the excluded one are not.
+    // The catalog's own rule replaces the pack's of the same id where it stood; the launcher rule
+    // is carried, the wear one and the excluded one are not.
     assertThat(ids)
-      .containsExactly("launcher.purpose.single-use-case", "general.all", "general.launcher")
+      .containsExactly("general.all", "general.launcher", "launcher.purpose.single-use-case")
       .inOrder()
     assertThat(
         root
           .getValue("rules")
           .jsonArray
-          .first()
+          .last()
           .jsonObject
           .getValue("guidance")
           .jsonPrimitive

@@ -1,0 +1,86 @@
+{
+  "schema": "compose-ui-builder/catalog-guidelines/v1",
+  "catalog": "wear-compose",
+  "platform": "wear",
+  "version": 1,
+  "about": "Wear OS Compose guidance that is not Material-specific: text input and sign-in through the Wear APIs, rotary scrolling, proportional margins on round screens. Include it after compose-ui: it replaces compose-ui's compose.sign-in.credential-manager and compose.input.keyboard-options with the Wear versions. Each rule quotes developer.android.com and links it.",
+  "rules": [
+    {
+      "id": "compose.sign-in.credential-manager",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Credential Manager is the recommended API for authentication on Wear OS. … There are two other acceptable authentication methods for Wear OS apps: OAuth 2.0 (either variant), and Mobile Auth Token Data Layer Sharing.",
+      "check": "If the screen signs the user in, does it use the Wear OS methods — Credential Manager (passkeys first, through CredentialManager.getCredential), OAuth 2.0 (PKCE with RemoteAuthClient, or the Device Authorization Grant opening the verification page on the phone with RemoteActivityHelper), or a token the phone app shares over the Data Layer — or Horologist's auth-composables-material3 screens built on them, rather than a hand-built username and password form typed on the watch? Judge from the source and the screen. Answer not_applicable when the screen does not sign anyone in.",
+      "source": "https://developer.android.com/training/wearables/apps/auth-wear",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.input.keyboard-options",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Wear OS users can choose between various input options from Remote Input. … RemoteInput and Wear OS apps expect only single-line text entry.",
+      "check": "Does the screen take any text through the system's remote input — RemoteInput launched with androidx.wear.input's RemoteInputIntentHelper, which offers dictation, emoji, canned and smart replies and the keyboard — or through speech recognition (RecognizerIntent), rather than drawing its own on-screen keyboard or editable multi-line text fields on the watch? Answer not_applicable when the screen takes no text; a button or chip that opens remote input passes.",
+      "source": "https://developer.android.com/training/wearables/user-input/wear-ime",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "wear-compose.input.minimise-typing",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Help people complete tasks on the watch within seconds to avoid ergonomic discomfort or arm fatigue. … Support speech-to-text, because it's much faster on a watch.",
+      "check": "Does the screen keep typed input to a single short entry, offering choices, voice, or continuing on the phone (RemoteActivityHelper from androidx.wear:wear-remote-interactions) for anything longer, rather than a form of several text fields to fill in on the watch? Answer not_applicable when the screen asks for no text.",
+      "source": "https://developer.android.com/training/wearables/principles",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "wear-compose.sign-in.two-options",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Offer at least one secondary option to handle users dismissing Credential Manager. Provide at least two distinct sign-in options in total.",
+      "check": "If the screen is where the user chooses how to sign in, does it offer at least two distinct ways (for example Credential Manager and an OAuth or phone hand-off option), rather than a single one such as only \"Sign in on phone\"? Answer not_applicable when the screen is not a sign-in choice.",
+      "source": "https://developer.android.com/design/ui/wear/guides/m2-5/behaviors-and-patterns/sign-in",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "wear-compose.sign-in.not-required",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Don't require authentication for all functionality. Instead, provide as many features as possible to the user without requiring them to sign in.",
+      "check": "If the screen asks the user to sign in, is that tied to an action that needs an account, or does it offer a way to skip or continue as a guest, rather than a sign-in wall in front of everything? Answer not_applicable when the screen does not ask the user to sign in.",
+      "source": "https://developer.android.com/training/wearables/apps/auth-wear",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "wear-compose.rotary.scrolling",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Though expected behavior may vary based on the type of input, be sure to support rotary input for all essential interactions.",
+      "check": "Judge from the source. Does every scrolling list respond to rotary input — a ScalingLazyColumn, TransformingLazyColumn or Picker inside AppScaffold and ScreenScaffold with its state passed to the ScreenScaffold, or Modifier.rotaryScrollable — rather than a plain Column with verticalScroll or a LazyColumn with no rotary handling? Answer not_applicable when nothing scrolls.",
+      "source": "https://developer.android.com/training/wearables/compose/rotary-input",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "wear-compose.layout.percentage-margins",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "All top, bottom, and side margins should be defined in percentages to avoid clipping and provide proportional scaling of elements.",
+      "check": "Judge from the source. Are the screen's outer margins proportional to the screen — the scaffold's content padding, rememberResponsiveColumnPadding, or a fraction of the screen size — rather than fixed dp padding on the outermost container, which clips on small round screens and wastes space on large ones? Answer not_applicable when the subject is a component shown on its own.",
+      "source": "https://developer.android.com/design/ui/wear/guides/foundations/adaptive-design",
+      "surfaces": [
+        "screen"
+      ]
+    }
+  ]
+}

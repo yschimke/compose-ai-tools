@@ -1,0 +1,275 @@
+{
+  "schema": "compose-ui-builder/catalog-guidelines/v1",
+  "catalog": "wear-widgets",
+  "platform": "any",
+  "version": 1,
+  "about": "Wear OS widget guidance (Remote Compose widgets in the Wear carousel): drawn whole in the Samsung and Pixel Watch containers, background on the widget document, fixed container heights with no nested scrolling, focused and predictable actions, 48dp targets, colour roles and type. Derived from remote-m3-catalog's remote-catalog rules, with each guidance trimmed to text developer.android.com publishes. Widget surfaces on the wear-widgets profile only; no text-entry rules.",
+  "rules": [
+    {
+      "id": "wear.layout.no-clipping",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "All top, bottom, and side margins should be defined in percentages to avoid clipping and provide proportional scaling of elements.",
+      "check": "Is every piece of text, every icon and every control drawn whole, with none of its pixels missing? Answer fail only when part of a glyph, an icon or a control's own shape is visibly cut off in a picture: a letter sliced, an icon missing a side, a button's edge flattened where the edge or a container covers it. Being close to the edge, or to a curve, is not clipping, and neither is a container's own rounded outline. Look at the Samsung (round) and the Pixel Watch (squircle) pictures, answer fail only for content cut in one of them, and name which picture in your reason.",
+      "source": "https://developer.android.com/design/ui/wear/guides/foundations/adaptive-design",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.touch-target-48dp",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Reserves at least 48.dp in size to disambiguate touch interactions if the element would measure smaller.",
+      "check": "Is the tap area of every tappable control at least 48dp in each direction? Count the padding Wear adds to compact and extra-small buttons and icon buttons (their tap area is 48dp even when they draw smaller); flag only controls given a fixed size or height that leaves the tap area under 48dp.",
+      "source": "https://developer.android.com/reference/kotlin/androidx/wear/compose/material3/package-summary",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.color.role-pairs",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "These color pairs provide a minimum of 3:1 color contrast.",
+      "check": "Where the design overrides colors, does it pair each container color with its matching content (on-) role, or with colors that are clearly high contrast?",
+      "source": "https://developer.android.com/design/ui/wear/guides/styles/color/roles-tokens",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.empty-state-has-action",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "All empty states should have a clear call-to-action to the user knows what to do to fix a potential issue, or find out more information.",
+      "check": "If this design shows an empty, error or signed-out state, does it offer a clear action? Answer not_applicable when it does not show such a state.",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/tiles/states",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.gestures.no-hidden-actions",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Never hide a gesture-only action.",
+      "check": "Does every action bound to a gesture (long press, swipe, double tap) also have a visible control that performs it?",
+      "source": "https://developer.android.com/design/ui/wear/guides/patterns/gestures",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.background-on-container",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Always supply your widget's background brush directly to WearWidgetDocument … so the host system can paint and mask the background to the native OEM container shape. Setting a transparent or black canvas and drawing a custom rounded container inside the layout can cause floating box and letterboxing defects on some devices.",
+      "check": "Is the widget's background supplied to the widget document (WearWidgetDocument's background, or the catalog's widget container) rather than drawn by a coloured or rounded box inside the content?",
+      "source": "https://developer.android.com/training/wearables/widgets/get_started",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.content-fills-container",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Ensure your root container composable uses RemoteModifier.fillMaxSize(). Because container DP dimensions and safe insets vary across watch models, hardcoding fixed dimensions or outer padding can cause clipping or misaligned layouts.",
+      "check": "Does the content directly inside the widget container fill it (fillMaxSize), with no fixed width, height or outer padding?",
+      "source": "https://developer.android.com/training/wearables/widgets/get_started",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.type.numerals-digits-only",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Numeral text styles are used for numerical digits, usually limited to a few characters.",
+      "check": "Is every text with a numeral style purely digits, a time or a short number (no words)? Answer not_applicable when no numeral styles are used.",
+      "source": "https://developer.android.com/design/ui/wear/guides/styles/typography/apply",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.type.theme-styles",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Tokens assign an element's type style by a configurable value, rather than a set value, making managing styles and themes considerably easier.",
+      "check": "Do text nodes set a theme style rather than a raw font size, line height or letter spacing, and do colours come from the theme's colour roles rather than hex values on individual components? Typography set once on the widget's root container is the theme, and is fine.",
+      "source": "https://developer.android.com/design/ui/wear/guides/styles/typography",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.actions-labelled",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Use both icons and labels when possible.",
+      "check": "Are icon-only controls (icon-button, icon-only edge-button) kept to universally recognisable actions (add, close, play, settings), with other actions labelled? Answer not_applicable when there are no icon-only controls.",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/apps/best-practices",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.color.container-not-for-content",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "They shouldn't be used for text or icons.",
+      "check": "Is no *Container colour role (primaryContainer, secondaryContainer, tertiaryContainer, errorContainer) used as a text colour, icon tint or contentColor? Answer not_applicable when the design names no colour roles.",
+      "source": "https://developer.android.com/design/ui/wear/guides/styles/color/roles-tokens",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.no-edge-button",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Because partial-height widgets integrate directly into a vertically scrolling surface, this fixed bottomSlot paradigm no longer exists.",
+      "check": "Does the widget avoid an edge button (the full-screen EdgeButton pattern), using an inline button or a whole-container tap instead?",
+      "source": "https://developer.android.com/training/wearables/widgets/migration",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.streamlined",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "Rather than porting a dense, full-screen Tile layout one-to-one, streamline your design to emphasize primary information within the main content area.",
+      "check": "Does the widget lead with one primary piece of information rather than a dense grid of equal items?",
+      "source": "https://developer.android.com/training/wearables/widgets/migration",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.predictable-actions",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Experiences on the watch don't have the luxury of having ample space to communicate their meaning, so the most effective Tiles have easily predictable interactive components.",
+      "check": "Can a user tell from each tappable element alone what tapping it will do, and do no two overlapping tap targets lead to different outcomes (such as a clickable card or container wrapping a button that does something else)?",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/tiles/bestpractices",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.small-single-row",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "To ensure enough space for interactive elements on smaller screens, the app title can be hidden when a Tile uses two rows (and a bottom section). This ensures the rows are tall enough (at least 48dp).",
+      "check": "If this design is a small widget (76dp tall), does it avoid stacking a title above a row of tap targets, or two rows of tap targets? Answer not_applicable for other designs.",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/tiles/bestpractices",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.no-screen-chrome",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Because partial-height widgets integrate directly into a vertically scrolling surface, this fixed bottomSlot paradigm no longer exists.",
+      "check": "Does the widget avoid full-screen watch chrome — horizontal or vertical page indicators and curved progress indicators — which are drawn for the round bezel of a whole screen, not for a widget in the carousel?",
+      "source": "https://developer.android.com/training/wearables/widgets/migration",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.no-nested-scrolling",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Partial-height widgets (e.g., SMALL and LARGE container types) provide a focused, glanceable surface.",
+      "check": "Does every layout inside the widget fit within its container's fixed height, with no vertical or horizontal scroll modifier?",
+      "source": "https://developer.android.com/training/wearables/widgets/migration",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.adaptive-slots-complete",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Make the most of additional real estate by utilizing breakpoints to offer powerful new experiences on larger screens which are not possible on devices with smaller screens.",
+      "check": "If the widget adapts between container sizes, does the smallest size alone still carry the widget's primary information and primary action, with what the larger size adds being only extra detail? Answer not_applicable when the widget has one size.",
+      "source": "https://developer.android.com/design/ui/wear/guides/foundations/adaptive-design",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.icons.content-description",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "contentDescriptions define the text that Talkback uses to describe any content that does not have a textual representation.",
+      "check": "Does every icon that is the whole content of a control (an icon button, or a button with no text label) set a non-empty contentDescription, and does every icon beside a visible text label leave contentDescription empty so the label is not announced twice? Answer not_applicable when the design contains no icons.",
+      "source": "https://developer.android.com/training/wearables/accessibility",
+      "profiles": [
+        "wear-widgets"
+      ]
+    }
+  ]
+}

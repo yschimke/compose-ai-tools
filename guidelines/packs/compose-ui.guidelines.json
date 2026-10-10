@@ -1,0 +1,272 @@
+{
+  "schema": "compose-ui-builder/catalog-guidelines/v1",
+  "catalog": "compose-ui",
+  "platform": "any",
+  "version": 1,
+  "about": "Compose UI guidance that holds on every form factor, independent of Material: accessibility semantics, text, theming from tokens, measured touch targets and contrast, credentials and text entry, loading and error states, destructive actions. Each rule quotes developer.android.com and links it. A form-factor pack included after this one replaces a rule by id (wear-compose replaces the text-entry and sign-in rules Wear does differently).",
+  "rules": [
+    {
+      "id": "compose.a11y.icon-only-described",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "For each UI element in your app, include a description that describes the element's purpose. In most cases, you include this description in the element's contentDescription attribute",
+      "check": "Does every control that shows only an icon — an icon button, a floating action button without text, an icon-only toggle or chip — carry a content description naming its action (its accessibility node has a label)? Controls with visible text need none. Answer not_applicable when there are no icon-only controls.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/apps"
+    },
+    {
+      "id": "compose.a11y.decorative-no-description",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "If a UI element has a contentDescription parameter but is purely decorative (such as an Icon that is part of another UI element), pass null to avoid redundant labeling.",
+      "check": "Are purely decorative images and icons — ones beside text that already says the same, or inside a control that is already labelled — given no content description (contentDescription = null), so a screen reader does not read the same thing twice? Answer not_applicable when there are none.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/apps"
+    },
+    {
+      "id": "compose.a11y.toggle-state",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "When building a custom component, make sure you provide all relevant semantic properties for accessibility purposes. For example, if your component mimics a standard control like a switch or button, these properties include the component's role (such as Role.Switch or Role.Button), stateDescription (such as \"On\", \"Off\", \"Checked\", or \"Not checked\"), and any relevant action labels.",
+      "check": "Does every on/off, checked or selected control (switch, checkbox, radio button, toggle button, selectable chip or row) expose its state — a standard toggle component, Modifier.toggleable / selectable, or a stateDescription — rather than a plain clickable whose state shows only visually? The accessibility nodes' states (checked, selected) show it. Answer not_applicable when there are no such controls.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/principles"
+    },
+    {
+      "id": "compose.a11y.headings",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "If a particular element represents a heading, you can indicate its purpose for accessibility services by setting the heading property in the semantics modifier.",
+      "check": "Where the screen has section titles (text heading a group of items), are they marked as headings (semantics { heading() }, or a component that does so) so screen-reader users can move between sections? Answer not_applicable when there are no section titles.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/principles",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.a11y.merge-rows",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Use the parent container's semantics modifier to set mergeDescendants to true. … When grouping related elements like in the previous example, make only the parent container interactive. Avoid adding clickable or focusable modifiers to the inner child elements.",
+      "check": "Is each list row, card or tile that reads as one item a single focus stop — one clickable (or mergeDescendants) parent whose icon, title and subtitle belong to that one accessibility node — with separate focus stops only for distinct secondary actions? Answer not_applicable when there are no such items.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/principles"
+    },
+    {
+      "id": "compose.a11y.not-colour-alone",
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "To assist users with color vision deficiencies, use cues other than color to distinguish UI elements within your app's screens.",
+      "check": "Is every meaning carried by colour also carried by something else — an icon, text, a shape, an outline or an underline? An error shown only in red, a selected item only tinted or a link only coloured would not be. Answer not_applicable when colour is only decorative.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/principles"
+    },
+    {
+      "id": "compose.a11y.traversal-order",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "isTraversalGroup and traversalIndex are semantic properties that let you influence the traversal order for accessibility services in scenarios where Compose's default sorting algorithm is not sufficient.",
+      "check": "Would accessibility focus follow the visual reading order — in the accessibility nodes, top to bottom and start to end, with each group (a card, a pane, a floating button over a list) visited together — rather than jumping between unrelated regions?",
+      "source": "https://developer.android.com/develop/ui/compose/accessibility/traversal",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.a11y.touch-target",
+      "platforms": [
+        "mobile",
+        "foundation",
+        "wear"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "For touch interfaces, we recommend that each interactive UI element have a focusable area, or touch target size, of at least 48dpx48dp.",
+      "check": "Where the subject's measured accessibility checks include a touch-target result, decide from that. Otherwise: is every tappable element's touch target at least 48dp in each direction, counting the minimum touch target Compose adds to clickable components? Flag only a size or height modifier that leaves the target under 48dp. Answer not_applicable when nothing is tappable.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/apps"
+    },
+    {
+      "id": "compose.a11y.text-contrast",
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "If the text is smaller than 18sp, or if the text is bold and smaller than 14sp, use foreground and background colors that result in a color contrast ratio of at least 4.5:1. For all other text, set the color contrast ratio to at least 3:1.",
+      "check": "Where the subject's measured accessibility checks include a contrast result, decide from that; otherwise judge the picture. Does all text meet 4.5:1 against its background (3:1 for text 18sp and larger, or bold and 14sp or larger)? Disabled controls are exempt.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/apps"
+    },
+    {
+      "id": "compose.text.not-truncated",
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "you should still perform UI testing with the maximum font size enabled (200%) to ensure that your app applies the font sizes correctly and can accommodate larger font sizes without impacting usability.",
+      "check": "Is the essential text — titles, action labels, values, error messages — shown in full rather than cut off, ellipsized mid-phrase or clipped by its container? Content cut at a scrollable edge where more can be scrolled to is not truncation; content cut at the very end of a scroll is. Until a large-font render is attached, judge the picture at its own scale, and from the source note fixed heights or maxLines = 1 on essential text.",
+      "source": "https://developer.android.com/about/versions/14/features"
+    },
+    {
+      "id": "compose.text.font-scale",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "To allow users to adjust the font size, specify font size in scalable pixels (sp)",
+      "check": "Are text sizes given in sp (the theme's typography, or .sp) rather than dp or pixels, and do containers holding text avoid fixed heights that would clip it as the font scale grows? A large-font render is not attached yet, so decide from the source; if the source is not given, answer needs_evidence asking for it rather than guessing. Answer not_applicable when the source sets no text size or container height.",
+      "source": "https://developer.android.com/design/ui/mobile/guides/foundations/accessibility"
+    },
+    {
+      "id": "compose.text.string-resources",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Use the stringResource API to retrieve a string statically defined in XML resources.",
+      "check": "Judge from the source. Is the screen's user-visible text read from string resources (stringResource(R.string.…)) or passed in by the caller, rather than written as literals inside the screen's composables? Sample content a @Preview function passes in is data, not hard-coding. Answer not_applicable when the source shows no user-visible text in the screen itself.",
+      "source": "https://developer.android.com/develop/ui/compose/resources",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.text.rtl-mirroring",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "People who use RTL scripts prefer an RTL user interface, which includes right-aligned menus, right-aligned text, and forward arrows pointing to the left.",
+      "check": "Are directional icons (back and forward arrows, chevrons, send, undo and redo) the auto-mirrored variants (Icons.AutoMirrored.…, or a drawable with android:autoMirrored=\"true\"), so they point the right way in a right-to-left layout? A right-to-left render is not attached yet, so decide from the source; if the source is not given, answer needs_evidence asking for it rather than guessing. Answer not_applicable when there are no directional icons.",
+      "source": "https://developer.android.com/training/basics/supporting-devices/languages"
+    },
+    {
+      "id": "compose.theme.colours-from-theme",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Warning: Prefer colors from the theme rather than hard-coded colors. Even though it's possible to access colors using the colorResource function, it's recommended that the colors of your app are defined in a MaterialTheme",
+      "check": "Judge from the source. Do the subject's colours come from the theme (the theme's colour roles, or the component's defaults) rather than hard-coded Color(0x…) or Color.Red literals? Images and brand artwork are exempt. Answer not_applicable when the source sets no colour.",
+      "source": "https://developer.android.com/develop/ui/compose/resources"
+    },
+    {
+      "id": "compose.theme.dark-theme",
+      "platforms": [
+        "mobile",
+        "foundation"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "To support light and dark themes, use isSystemInDarkTheme().",
+      "check": "Does the theme follow the system setting to a dark colour scheme (isSystemInDarkTheme(), or dynamic colour for both), rather than a light scheme only? When a dark render is attached, judge it: is everything still legible, with nothing light-on-light or dark-on-dark? Answer not_applicable for a subject that only uses the theme it is given.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3"
+    },
+    {
+      "id": "compose.sign-in.credential-manager",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Credential Manager is the recommended Jetpack API for credential exchange in Android apps.",
+      "check": "If the screen signs the user in or up, does it offer Credential Manager (passkeys, saved passwords, Sign in with Google through CredentialManager.getCredential) rather than only a hand-built username-and-password form? Judge from the source. Answer not_applicable when the screen does not sign anyone in.",
+      "source": "https://developer.android.com/identity/credential-manager",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.sign-in.password-masked",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "SecureTextField is a composable built on top of state-based text fields for writing a password field.",
+      "check": "Judge from the source and the accessibility nodes. Is every field that takes a password, PIN or other secret masked — a SecureTextField / OutlinedSecureTextField, or a text field with PasswordVisualTransformation — rather than a plain text field that shows what is typed? Answer not_applicable when the subject has no such field.",
+      "source": "https://developer.android.com/develop/ui/compose/text/user-input",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.sign-in.password-visibility",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "You can create an icon to hide or show a password based on a user toggle to improve security and enhance the user experience.",
+      "check": "Does each masked password field offer a show/hide toggle — a trailing icon button, with a content description, that reveals the password on request? Answer not_applicable when the subject has no password field.",
+      "source": "https://developer.android.com/develop/ui/compose/quick-guides/content/show-hide-password",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.sign-in.sensitive-hidden",
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "FLAG_SECURE is a Window flag that tells Android not to allow screenshots or to display the window view on a non-secure display (such as Casting the screen). This is useful for applications that need to protect sensitive information, like banking apps or password managers.",
+      "check": "Does the picture avoid showing a secret in full and in plain text — a whole payment card number, a password, a private key or recovery code — showing it masked or shortened (for example only a card's last four digits) unless the user has just asked to reveal it? Answer not_applicable when nothing secret is shown.",
+      "source": "https://developer.android.com/security/fraud-prevention/activities"
+    },
+    {
+      "id": "compose.input.autofill-content-type",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "To indicate that a TextField is Autofill-enabled, set the ContentType semantics with the types that the field can accept. This indicates to Autofill services what kind of user data might be relevant to this specific field.",
+      "check": "Does each field for a username, email address, password, new password or one-time code set its autofill content type (Modifier.semantics { contentType = ContentType.Username / EmailAddress / Password / NewPassword / SmsOtpCode })? This is not in the accessibility data yet, so decide from the source; if the source is not given, answer needs_evidence asking for it rather than guessing. Answer not_applicable when the subject has no such field.",
+      "source": "https://developer.android.com/develop/ui/compose/text/autofill",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.input.otp-field",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "For a one-time password in a single view, you can use AUTOFILL_HINT_SMS_OTP.",
+      "check": "Is a one-time or verification code field marked as one for autofill (ContentType.SmsOtpCode in Compose, the AUTOFILL_HINT_SMS_OTP hint in Views), so the code can be filled in from the SMS? This is not in the accessibility data yet, so decide from the source; if the source is not given, answer needs_evidence asking for it rather than guessing. Answer not_applicable when the subject has no code field.",
+      "source": "https://developer.android.com/identity/autofill/autofill-optimize",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.input.visible-label",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "It's also common for a text field to have a corresponding descriptive label that describes what users must enter as input.",
+      "check": "Does every text field have a visible label — the field's label, or text beside it — saying what to enter, rather than placeholder (hint) text alone, which disappears once typing starts? Answer not_applicable when the subject has no text field.",
+      "source": "https://developer.android.com/guide/topics/ui/accessibility/principles",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.input.error-announced",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "When defining error states, you can inform the accessibility services of its error semantics, and provide expanded error messaging.",
+      "check": "Where a field is shown in an error state, is it marked as an error (isError = true, or semantics { error(…) }) with the message in its supporting text or error semantics, so it is announced, rather than only turning red? Answer not_applicable when nothing is in an error state.",
+      "source": "https://developer.android.com/develop/ui/compose/accessibility/semantics",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.input.keyboard-options",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "TextField lets you set keyboard configuration options, such as the keyboard layout, or enable the autocorrect if it's supported by the keyboard.",
+      "check": "Judge from the source. Do the text fields' KeyboardOptions fit what each takes — keyboardType Email for an email address, Number or Phone for digits, Password for a password — with an imeAction that moves on (Next) between fields and finishes (Done, Go, Search or Send) on the last? Answer not_applicable when the subject has no text field, or only free text where the defaults fit.",
+      "source": "https://developer.android.com/develop/ui/compose/text/user-input",
+      "surfaces": [
+        "screen",
+        "component"
+      ]
+    },
+    {
+      "id": "compose.states.loading-and-error",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Progress indicators visually surface the status of an operation. They use motion to bring to the user's attention how near completion the process is, such as loading or processing data.",
+      "check": "Judge from the source. Where the screen shows content that loads (from a repository, the network or a state holder), does it handle the loading state (a progress indicator) and a failure (a message, with a way to retry), rather than drawing only the loaded content? A preview of one state is fine when the source shows the others are handled. Answer not_applicable when the content is static.",
+      "source": "https://developer.android.com/develop/ui/compose/components/progress",
+      "surfaces": [
+        "screen"
+      ]
+    },
+    {
+      "id": "compose.actions.destructive-confirmed",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Confirming user action, such as when deleting a file.",
+      "check": "Where the screen offers a destructive or irreversible action (delete, remove, discard), is it confirmed (a confirmation dialog) or undoable (an Undo snackbar or equivalent), and visually distinct from the screen's main action rather than styled as it? Judge from the source where it shows the click handler. Answer not_applicable when there is no such action.",
+      "source": "https://developer.android.com/develop/ui/compose/components/dialog",
+      "surfaces": [
+        "screen"
+      ]
+    }
+  ]
+}
