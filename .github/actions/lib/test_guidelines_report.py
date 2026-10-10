@@ -65,8 +65,11 @@ def _result(preview_id: str, verdicts: list[dict], unchecked: list[str] | None =
 def _args(**kw) -> argparse.Namespace:
     return argparse.Namespace(
         image_repo=kw.get("image_repo"), image_ref=kw.get("image_ref"),
-        image_prefix=kw.get("image_prefix", "guidelines"),
+        image_prefix=kw.get("image_prefix", "guidelines"), stage_images=kw.get("stage_images"),
     )
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
 class ReportTest(unittest.TestCase):
@@ -107,14 +110,76 @@ class ReportTest(unittest.TestCase):
         self.assertIn("$0.0068", body)
         self.assertNotIn("<img", body)
 
+    def _renders(self, annotated: bool = True, nodes: list[dict] | None = None) -> None:
+        renders = self.tmp / "catalog" / "renders"
+        renders.mkdir(exist_ok=True)
+        (renders / "Stop-1.png").write_bytes(PNG)
+        if annotated:
+            (renders / "Stop-1.guidelines.png").write_bytes(PNG)
+        if nodes is not None:
+            (self.tmp / "catalog" / "accessibility.json").write_text(json.dumps({"entries": [
+                {"previewId": "x.StopKt.Stop", "nodes": nodes}]}))
+
     def test_images_only_from_a_pinned_github_location(self) -> None:
+        self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}])
         body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
         assert body is not None
         self.assertIn(
-            "https://raw.githubusercontent.com/org/repo/0123abc/guidelines/catalog/"
-            "Stop-1.guidelines.png",
+            '<img src="https://raw.githubusercontent.com/org/repo/0123abc/guidelines/catalog/'
+            'Stop-1.guidelines.png" width="200" />',
             body,
         )
+        self.assertIn("1 finding location(s) marked", body)
+
+    def test_a_finding_naming_nothing_on_the_render_shows_the_render_and_says_so(self) -> None:
+        # No accessibility nodes were staged, so `stop` names nothing the annotator can outline.
+        self._renders()
+        body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
+        assert body is not None
+        self.assertIn("0123abc/guidelines/catalog/Stop-1.png", body)
+        self.assertNotIn("Stop-1.guidelines.png", body)
+        self.assertIn("Nothing marked", body)
+
+    def test_a_region_marks_the_render_without_nodes(self) -> None:
+        self._renders()
+        report = json.loads((self.tmp / "catalog" / "guidelines.json").read_text())
+        verdict = report["results"][0]["record"]["verdicts"][0]
+        verdict["nodeIds"] = []
+        verdict["regions"] = [
+            {"subjectId": "x.StopKt.Stop", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2},
+            {"subjectId": "x.OkKt.Ok", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2},
+        ]
+        (self.tmp / "catalog" / "guidelines.json").write_text(json.dumps(report))
+        body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
+        assert body is not None
+        self.assertIn("Stop-1.guidelines.png", body)
+        self.assertIn("1 finding location(s) marked", body)
+
+    def test_stage_images_copies_exactly_what_the_comment_embeds(self) -> None:
+        self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}])
+        (self.tmp / "catalog" / "renders" / "Unrelated.png").write_bytes(PNG)
+        stage = Path(tempfile.mkdtemp())
+        gr.build(self.tmp, _args(stage_images=str(stage)))
+        staged = sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file())
+        self.assertEqual(staged, ["guidelines/catalog/Stop-1.guidelines.png"])
+
+    def test_a_file_that_is_not_a_png_is_never_embedded(self) -> None:
+        self._renders(annotated=False)
+        (self.tmp / "catalog" / "renders" / "Stop-1.png").write_text("<html>")
+        body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
+        assert body is not None
+        self.assertNotIn("<img", body)
+
+    def test_a_preview_under_two_module_directories_is_reported_once(self) -> None:
+        twin = self.tmp / "catalog-desktop"
+        twin.mkdir()
+        for name in ("ui-builder.guidelines.json", "previews.json", "guidelines.json"):
+            (twin / name).write_text((self.tmp / "catalog" / name).read_text())
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertEqual(body.count("#### `Stop`"), 1)
+        self.assertIn("2 changed preview(s) checked", body)
+        self.assertIn("**1 finding(s)**", body)
 
     def test_no_results_means_no_comment(self) -> None:
         empty = Path(tempfile.mkdtemp())
@@ -129,6 +194,7 @@ class StageTest(unittest.TestCase):
         (previews / "renders").mkdir(parents=True)
         (previews / "renders" / "Stop-1.png").write_bytes(b"png")
         (previews / "renders" / "Other-2.png").write_bytes(b"png")
+        (previews / "renders" / "Stop-1_SCROLL_long.png").write_bytes(b"png")
         (module / "src").mkdir()
         (module / "src" / "Stop.kt").write_text("fun Stop() {}\n")
         (previews / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
@@ -152,6 +218,7 @@ class StageTest(unittest.TestCase):
         self.assertEqual([p["id"] for p in manifest["previews"]], ["x.Stop"])
         self.assertEqual(manifest["previews"][0]["captures"][0]["renderOutput"], "renders/Stop-1.png")
         self.assertTrue((target / "renders" / "Stop-1.png").is_file())
+        self.assertTrue((target / "renders" / "Stop-1_SCROLL_long.png").is_file())
         self.assertTrue((target / "src" / "src" / "Stop.kt").is_file())
         self.assertTrue((target / "ui-builder.guidelines.json").is_file())
         nodes = json.loads((target / "accessibility.json").read_text())
@@ -175,6 +242,25 @@ class StageTest(unittest.TestCase):
              "captures": [{"renderOutput": "renders/Go-2.png"}]},
         ]}))
         return root
+
+    def test_a_preview_two_modules_discover_is_staged_once_where_its_source_is(self) -> None:
+        # PR #760 in wear-m3-catalog: `:catalog-desktop` re-renders `:catalog`'s previews, with a
+        # `sourceFile` reaching into `../catalog/`, so it was checked twice — once without source.
+        root = self._two_previews()
+        desktop = root / "catalog-desktop" / "build" / "compose-previews"
+        (desktop / "renders").mkdir(parents=True)
+        (desktop / "renders" / "Stop-1.png").write_bytes(b"png")
+        (desktop / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
+        (desktop / "accessibility.json").write_text(json.dumps({"entries": []}))
+        (desktop / "previews.json").write_text(json.dumps({"module": "catalog-desktop", "previews": [
+            {"id": "x.Stop", "sourceFile": "../catalog/src/Stop.kt", "bodyLine": 1,
+             "captures": [{"renderOutput": "renders/Stop-1.png"}]},
+        ]}))
+        out = root / "_guidelines"
+        staged = gs.stage(root, {"x.Stop"}, out, None)
+        self.assertEqual(staged, 1)
+        self.assertTrue((out / "catalog" / "src" / "src" / "Stop.kt").is_file())
+        self.assertFalse((out / "catalog-desktop").exists())
 
     def test_a_source_only_edit_is_staged_though_the_render_did_not_change(self) -> None:
         root = self._two_previews()

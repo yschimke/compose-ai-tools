@@ -166,6 +166,50 @@ class GuidelinesEvidenceTest {
   }
 
   @Test
+  fun `handoff sends the long screenshot beside a scrolled capture and the ATF results`() {
+    val dir = Files.createTempDirectory("guidelines-handoff-long").toFile()
+    val renders = dir.resolve("renders").apply { mkdirs() }
+    renders.resolve("List-1.png").writeBytes(png())
+    renders.resolve("List-1_SCROLL_long.png").writeBytes(png())
+    dir
+      .resolve("previews.json")
+      .writeText(
+        """
+        {"module": "catalog", "previews": [
+          {"id": "x.List", "functionName": "List",
+           "params": {"device": "id:wearos_small_round", "widthDp": 192, "heightDp": 192},
+           "captures": [{"renderOutput": "renders/List-1.png", "scroll": {"mode": "END"}}]}
+        ]}
+        """
+      )
+    val a11y =
+      dir.resolve("accessibility.json").apply {
+        writeText(
+          """
+          {"module": "catalog", "entries": [
+            {"previewId": "x.List", "findings": [
+              {"level": "ERROR", "type": "TouchTargetSizeCheck", "message": "24dp tall.",
+               "viewDescription": "Button", "boundsInScreen": "4,4,28,28"}
+            ], "nodes": [
+              {"label": "", "role": null, "ref": "list", "states": ["scrollable"], "merged": false,
+               "boundsInScreen": "0,0,40,90"}
+            ]}
+          ]}
+          """
+        )
+      }
+
+    val subject =
+      HandoffInputs.read(dir.resolve("previews.json"), null, a11y, null, null).subjects.single()
+
+    assertEquals(listOf("device", "long"), subject.pictures.map { it.kind })
+    assertTrue(subject.pictures[1].description!!.contains("long screenshot"))
+    assertEquals(listOf("scrollable"), subject.nodes.single().states)
+    assertEquals("TouchTargetSizeCheck", subject.checks.single().type)
+    assertEquals("4,4,28,28", subject.checks.single().bounds)
+  }
+
+  @Test
   fun `a capture scrolled to its end says so, so scrolled-away content is not judged missing`() {
     val end = HandoffInputs.describeCapture(192, 192, "END")!!
     assertTrue("END" in end && "out of view" in end, end)

@@ -112,12 +112,13 @@ public class GuidelineResultCache(private val directory: File) {
      * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
      * how evidence is attached), so results from an older engine are not reused.
      */
-    public const val REQUEST_FORMAT: Int = 2
+    public const val REQUEST_FORMAT: Int = 3
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, every picture's bytes and
-     * settings, its accessibility nodes and its source, the full content of [guidelines] (rules and
-     * frames, not only the version a catalog may forget to bump), [model] and [REQUEST_FORMAT].
+     * settings, its accessibility nodes and measured checks and its source, the full content of
+     * [guidelines] (rules and frames, not only the version a catalog may forget to bump), [model]
+     * and [REQUEST_FORMAT].
      */
     public fun inputsKey(
       subject: PreviewSubject,
@@ -148,8 +149,12 @@ public class GuidelineResultCache(private val directory: File) {
       }
       subject.nodes.forEach { node ->
         part(
-          "${node.id}|${node.role}|${node.label}|${node.left},${node.top},${node.right},${node.bottom}"
+          "${node.id}|${node.role}|${node.label}|${node.left},${node.top},${node.right},${node.bottom}" +
+            "|${node.states.joinToString(",")}"
         )
+      }
+      subject.checks.forEach { check ->
+        part("${check.type}|${check.level}|${check.element}|${check.bounds}|${check.message}")
       }
       part(subject.source)
       return digest.digest().joinToString("") { "%02x".format(it) }

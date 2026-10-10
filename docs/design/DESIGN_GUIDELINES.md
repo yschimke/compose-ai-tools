@@ -131,6 +131,23 @@ make the walk read past it.
 The picture description also states the capture's scroll mode in Gradle mode, as handoff mode
 already did: at the END of a scroll, the time text has scrolled away rather than gone missing.
 
+## Scrolling and measured checks
+
+A finding like "the footer is cut off" means nothing until the model knows whether the container
+scrolls. Each subject's accessibility nodes carry their `states` (`scrollable`, `clickable`, …) and
+the viewport's pixel size, and a node extending past the viewport is marked `off:bottom` (or
+`top`, `left`, `right`). When the renderer wrote a long screenshot beside a scrolled capture
+(`<render>_SCROLL_long.png`), it goes along as a second picture, staged into the handoff too. The
+system prompt says content cut along a scrollable axis is scrolled away, not clipped.
+
+Where the a11y pipeline ran, the Accessibility Test Framework results in `accessibility.json` are
+listed per subject as measured checks, and the prompt says they decide the touch-target and
+contrast rules over the model's estimate from the picture. Without the a11y pipeline (`only:
+compose`) a subject has neither nodes nor checks, and the prompt asks for a region for every
+visible failure instead, so it can still be marked. The scroll *range* and *position*
+(`verticalScrollAxisRange`, `CollectionInfo`) are not in the accessibility data the daemon
+produces; only the `scrollable` state is.
+
 ## Hosting the results
 
 - **Bundles carry them.** When `build/compose-previews/guidelines.json` exists, `BundlePreviewTask`
@@ -150,9 +167,13 @@ already did: at the END of a scroll, the time text has scrolled away rather than
 
 ## Next steps
 
-1. **Annotated images in the PR comment.** The `apply` pipeline (below) writes
-   `<render>.guidelines.png` but does not push them yet; `guidelines-report.py` embeds them once
-   they are pushed to a branch and `--image-repo`/`--image-ref` name that commit.
+1. **Done: annotated images in the PR comment.** The publish phase pushes one picture per preview
+   with findings to `compose-preview/guidelines/pr` in `artifact-repository` and embeds it pinned
+   to that commit: the render with its findings marked when one names a node or a region on it,
+   otherwise the render itself, captioned "Nothing marked". `guidelines-report.py --stage-images`
+   chooses and copies those pictures, so the comment and the push cannot disagree. A preview two
+   modules both discover (a desktop module re-rendering a multiplatform module's previews) is
+   staged once, in the module holding its source, and reported once.
 2. **Done: preview-diff pipeline** — see the `apply` action's `guidelines` input: the render phase
    stages changed previews (`guidelines-stage.py`: renders, source, nodes, rules) into the handoff;
    the phase holding `openrouter-key` runs handoff mode and posts `<!-- guidelines-report -->`.
