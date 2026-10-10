@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.41.0](https://github.com/yschimke/compose-ai-tools/compare/v2.40.0...v2.41.0) (2026-10-10)
+
+
+### Features
+
+* **guidelines:** incremental guideline results on catalog publishes ([#5764](https://github.com/yschimke/compose-ai-tools/issues/5764)) ([3c80d87](https://github.com/yschimke/compose-ai-tools/commit/3c80d873846f35666c3c4de40c03fea47c2e41dc))
+* **guidelines:** offer staged scroll captures as follow-up evidence ([#5768](https://github.com/yschimke/compose-ai-tools/issues/5768)) ([f015700](https://github.com/yschimke/compose-ai-tools/commit/f015700760876a5296ca5b5c361220100ec271d4))
+
+
+### Bug Fixes
+
+* **guidelines:** keep the request ABI and cache on the staged capture ([#5771](https://github.com/yschimke/compose-ai-tools/issues/5771)) ([f72f27a](https://github.com/yschimke/compose-ai-tools/commit/f72f27ac9c47b72ce43a0c19e9ca2b81c098a920))
+
 ## [2.40.0](https://github.com/yschimke/compose-ai-tools/compare/v2.39.2...v2.40.0) (2026-10-10)
 
 
