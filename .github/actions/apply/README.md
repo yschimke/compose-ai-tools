@@ -791,6 +791,7 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
 | `guidelines-surface` | `''` | Judge every checked preview as `component`, `screen` or `widget` instead of what discovery recorded; for a plugin that predates the widget signal. |
 | `guidelines-profile` | `''` | With `guidelines-surface`, the Remote Compose profile every checked preview targets (`wear-widgets`, …). |
+| `guidelines-checker` | `vision` | EXPERIMENTAL. `jev` answers the rules with Jev, text only (source, accessibility nodes, measured checks); visual rules and any rule Jev cannot tell are reported unchecked ("needs the picture"), and the comment says so. Needs a CLI with `--checker`. |
 
 In the split (fork-safe) workflow, the render job stages each changed preview's render, source,
 accessibility nodes and the catalog's rules into the handoff (`_guidelines/`); pass

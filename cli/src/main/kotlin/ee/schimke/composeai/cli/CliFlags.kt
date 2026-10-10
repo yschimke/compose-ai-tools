@@ -39,6 +39,8 @@ internal object CliFlags {
       "--provider-sort",
       "--preferred-max-latency",
       "--preferred-min-throughput",
+      "--checker",
+      "--compare-with",
       "--guidelines",
       "--surface",
       "--profile",

@@ -321,6 +321,135 @@ first drops the previews' old entries from `accessibility.json`, so a failed fet
 rather than an older render's nodes, and `--permutations` ids are fetched as their declared
 preview with the permutation's overrides.
 
+## Experimental: the text-only Jev checker (`--checker jev`)
+
+Opt-in and experimental; the default (`--checker vision`, the `guidelines-checker` input's
+`vision`) is unchanged. Most rules are structural — wear-m3-catalog's file has 22 `structure`
+rules to 2 `visual` — and their evidence is text: the source (with its wrapper's), the accessibility
+nodes (role, label, bounds, `scrollable`, `off:` edges) and the ATF results. `--checker jev` asks
+those of Jev instead of the vision model, which on a 12-screen × 24-rule batch wrote verdicts
+serially past the request timeout.
+
+**What the decisions API offers** (OpenRouter
+[Jev hub](https://openrouter.ai/docs/guides/community/jev),
+[tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial),
+[`POST /api/alpha/decisions` reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-questions-and-answers-request);
+TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesafe.ai/api),
+[Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)):
+
+- one `state` (text: a string, object or array) and any number of independent `questions`, keyed
+  by ids the caller chooses, all answered in parallel against that state and unable to see each
+  other's answers;
+- question types `noul` (probability of yes), `choice` (one of up to 255 options, with a
+  probability per option and a `confidence`) and `score`;
+- **no text back**: no reason, no explanation, no citation — only the typed answers;
+- 32k tokens for the state plus the longest question, 64k for the state plus every question;
+- billed on input tokens only, reported as `usage.cost` with `id`, `model` (the dated snapshot)
+  and `provider`;
+- rate limits of about 100k tokens and 80 requests a second (adjusted dynamically), a 429 with
+  `retry-after` past them;
+- known weak spots: literal reading, arithmetic and numeric comparison, and a lean toward a
+  Choice's first option.
+
+**Minimal first, then asked for.** Round 0 shows Jev, per subject, a compact source excerpt (the
+preview's body, and only the signature line of each wrapper it calls), the ~30-token accessibility
+summary line, and a one-line list of the computed facts (below). Each structural rule is one
+`choice` question keyed `r1`, `r2`, … whose instructions carry the rule's check, its guidance and
+the facts that bear on it, decisive ones first. Options: `cannot_tell`, then one `needs:<kind>` per
+evidence kind the subject could still be shown, then `not_applicable`, `fail`, `pass`:
+
+| Option | Served in the next round |
+| --- | --- |
+| `needs:a11y` | the full node list (`id \| role \| label \| bounds \| states`, with `off:` edges) and the ATF results, through the host's `a11y` evidence (one prefetch for every subject that asked) |
+| `needs:source` | the whole source, wrapper bodies included |
+| `needs:facts` | every computed fact, not only the rule's |
+
+`scroll-capture` and `render` are pictures, so they are never offered. A follow-up round re-asks
+only the rules that asked, up to `--rounds` (3 by default under `--checker jev`, and in the apply
+action). `cannot_tell` while evidence is still on offer counts as asking for all of it, so a rule
+becomes unchecked ("needs the picture") only after the last round, when nothing more is offered.
+`cannot_tell` is listed first because Jev leans toward a Choice's first option, so that lean errs
+toward unchecked. A subject whose questions would not fit 64k is asked in several requests.
+Subjects are asked four at a time in a fixed pool in `JevChecker`; the vision path's batching and
+concurrency are untouched. Every request counts against the same `--max-cost`: under a cap, no
+request starts before the first has come back with a price. Failed requests are retried as
+`GuidelineRetry` says.
+
+Accessibility data the host already holds (a handoff's staged `accessibility.json`, anything it
+can `summary` without fetching) feeds the facts and the summary line in round 0, but the node list
+waits to be asked for. Data the host would have to render for (the live CLI) waits for
+`needs:a11y`. Fetching everything up front is kept as an internal option
+(`JevChecker.a11yUpFront`), off by default, for comparing the two designs.
+
+**Computed facts** (`GuidelineFacts`, its own unit with its own tests; nothing in it is specific to
+Jev, so the vision path could use it too). They are computed deterministically, with no model,
+and written in words and whole numbers, since Jev is weak with arithmetic and hex:
+
+- **from the nodes and the render's size:** each control's size in dp and its shortfall from 48dp;
+  a node past a screen edge, either cut off or (inside a scrolling container) scrolled away; a
+  labelled node whose edge midpoint falls outside a round Wear screen; overlapping controls; text
+  running past its container; and whether each scrolling container can scroll further;
+- **from ATF:** contrast as `2.33:1, needs 4.50:1`, and touch targets as `measured 18dp, needs 48dp`;
+- **from the source** (regular expressions, comments skipped):
+  - literal `7.sp`;
+  - `Color(0x…)`, named in words ("very dark grey");
+  - `Modifier.size/width/height(…dp)`;
+  - button calls by kind (two filled `Button`s is flagged);
+  - `MaterialTheme.typography` / `colorScheme` reads;
+  - hard-coded strings against `stringResource`;
+  - `contentDescription = null`;
+  - `maxLines` and `TextOverflow`.
+
+**Rule shapes** (`JevRuleShapes.SHAPES`) are a small data table matched against a rule's id and
+check text. Each entry names the fact kinds that bear on the rule and what a `fail` looks like for
+it ("a touch-target fact shows a control smaller than 48dp, or ATF reports a TouchTargetSizeCheck
+error"), and the matched text goes into the question's `fail` criterion. A new kind of rule is
+taught by adding an entry. The planted defects these target: 24dp and 18dp buttons, two filled
+buttons, 7sp text and hex colours, low contrast, fixed sizes, text cut at the end of a list,
+round-edge clipping, and eight lines overflowing a 108dp widget.
+
+**What it records.** Each verdict is recorded at the chosen option's probability. Jev returns no
+text, so the reason is the decisive fact the question was shown: "Jev (text-only, round 1): add
+(Button 'Add') is 24×24dp: 24dp short of the 48dp minimum touch target (p 0.88)." `nodeIds` come
+from a second Choice over the node ids in play (those the rule's facts name, plus every node once
+`a11y` is served), or else from the decisive fact's node. The served model, provider, cost and
+generation id are recorded as in any record. An answer to a question the request did not ask is
+dropped and counted, as #5784 does for verdicts. The result also carries a `jev` trace: rounds,
+requests, latency and cost, and for each rule its round, choice, probability, the fact kinds it
+was handed and the evidence it asked for. These are left unchecked, never passed, with the reason
+"needs the picture; the jev checker is text-only":
+
+- every `visual` rule: never asked;
+- every rule still `cannot_tell`, or answered below p 0.5, after the last round;
+- every rule that asked for evidence the host could not supply;
+- set-scoped rules: not asked at all, since the checker judges each preview alone. The run's
+  problems say so.
+
+**Kept apart.** Results are cached under `GuidelineRunOptions.cacheModel`
+(`checker:jev@<format>/typesafe/jev-1.13`), so a vision verdict never answers a jev run or the
+reverse. The vision key is unchanged, so `REQUEST_FORMAT` is not bumped. The report's
+`guidelines.json` carries `"checker": "jev"` (absent for vision). The PR comment says "Checked by
+Jev (text-only, experimental)" and counts the rule verdicts it left unchecked instead of listing
+them under every preview. In jev mode `--model` names the decisions model (`typesafe/jev-1.13`
+unless given).
+
+**Evaluating it.** `--compare-with <guidelines.json>` sets this run's verdicts against another
+run's, per (preview, rule): agree, disagree, decided on one side only, neither. The output has:
+
+- the jev run's totals: requests, cost, mean and max latency, and how many previews took each
+  number of rounds;
+- a line per rule: its counts, agreement where both decided, which fact kinds Jev was handed (in
+  how many of its previews), mean rounds, the evidence it asked for, and its share of the cost;
+- every disagreement.
+
+For example, against a vision run's report of the same handoff:
+
+```
+compose-preview guidelines --checker jev --compare-with vision/guidelines.json \
+  --previews-json <module>/previews.json --a11y-json <module>/accessibility.json \
+  --source-root <module>/src --guidelines <module>/ui-builder.guidelines.json
+```
+
 ## Handoff mode (CI)
 
 No Gradle, no daemon:

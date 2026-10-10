@@ -75,6 +75,11 @@ MAX_OVER_LIMIT_LISTED = 200
 MAX_NAME_CHARS = 120
 
 
+# The EXPERIMENTAL text-only checker, as the comment names it.
+JEV_LABEL = "Jev (text-only, experimental)"
+JEV_UNCHECKED_REASON = "need the picture; the jev checker is text-only"
+
+
 def load(module_dir: Path) -> tuple[dict, dict] | None:
     result = module_dir / "guidelines.json"
     rules_file = module_dir / "ui-builder.guidelines.json"
@@ -374,6 +379,11 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     total_checked = total_findings = images = from_cache = 0
     total_cost = 0.0
     models: set[str] = set()
+    # The EXPERIMENTAL text-only checker (`--checker jev`): rules it could not judge without the
+    # picture, counted for the header rather than listed under every preview.
+    jev_modules = 0
+    text_only_unchecked = 0
+    text_only_previews: set[str] = set()
     seen: set[str] = set()
     # What was handed to the check and never judged, by why: a request that failed or the cost cap
     # (`pending`), no rule applying (`noRules`, by reason), or a module the check wrote nothing for;
@@ -393,6 +403,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                     tier.no_results.append(preview_id)
             continue
         report, rules = loaded
+        text_only = report.get("checker") == "jev"
+        jev_modules += text_only
         tier.failed_requests += int(report.get("failedRequests") or 0)
         for problem in report.get("problems") or []:
             if quoted(problem) not in problems:
@@ -431,7 +443,10 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 models.add(record["servedModel"])
             found = failures(record)
             unchecked = result.get("unchecked", [])
-            if not found and not unchecked:
+            if text_only and unchecked:
+                text_only_unchecked += len(unchecked)
+                text_only_previews.add(preview_id)
+            if not found and (not unchecked or text_only):
                 continue
             total_findings += len(found)
             lines = [f"#### `{preview_id.rsplit('.', 1)[-1]}`", f"<sub>`{preview_id}`</sub>", ""]
@@ -480,7 +495,9 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                     f"{verdict.get('reason', '').strip()}{guide_text}"
                 )
             if unchecked:
-                lines.append(f"- ❔ Unchecked (needs evidence this run could not get): "
+                why = (JEV_UNCHECKED_REASON if text_only
+                       else "needs evidence this run could not get")
+                lines.append(f"- ❔ Unchecked ({why}): "
                              f"{', '.join(f'`{u}`' for u in unchecked)}")
             sections.append("\n".join(lines) + "\n")
     mine, by_rules = tiers[None], tiers[RULES_TIER]
@@ -490,6 +507,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     if total_checked == 0 and not_checked == 0 and not over:
         return None
     model_text = ", ".join(sorted(models)) or "the configured model"
+    if jev_modules:
+        model_text = JEV_LABEL + (f" ({model_text})" if models else "")
     header = [MARKER, "### Design guidelines", ""]
     if total_checked == 0 and not_checked:
         # Nothing was judged: say so, never a pass.
@@ -525,6 +544,13 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             f"{cached}.",
             "",
         ]
+        if text_only_unchecked:
+            header += [
+                f"❔ **{text_only_unchecked} rule verdict(s) on {len(text_only_previews)} "
+                f"preview(s) were NOT checked**: they {JEV_UNCHECKED_REASON}. They are "
+                "unchecked, not passed.",
+                "",
+            ]
     if total_checked == 0 and mine.missed():
         header.append(f"**{mine.missed()} of this PR's changed preview(s) were NOT checked:**")
         header += mine.missed_lines(mine.failed_requests)
@@ -578,8 +604,12 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             header.append(f"… and {len(problems) - MAX_PROBLEMS} more")
         header += ["```", ""]
     header += [
-        "<sub>Findings are advice from a model judging the render, its source and its "
-        "accessibility nodes; each links the guide it comes from.</sub>",
+        ("<sub>Findings are advice from Jev, an experimental text-only check judging the source, "
+         "the accessibility nodes and the measured checks, never the render; each links the guide "
+         "it comes from.</sub>")
+        if jev_modules else
+        ("<sub>Findings are advice from a model judging the render, its source and its "
+         "accessibility nodes; each links the guide it comes from.</sub>"),
         "",
     ]
     if not sections and total_checked:

@@ -144,14 +144,54 @@ public data class GuidelineRunOptions(
   public fun withRetry(retry: GuidelineRetry): GuidelineRunOptions =
     copy().also {
       it.retry = retry
+      it.checker = checker
       it.concurrency = concurrency
     }
+
+  /**
+   * Which model answers the rules: [GuidelineChecker.VISION] (the default) or the EXPERIMENTAL
+   * text-only [GuidelineChecker.JEV]. A body property, so the constructor and `copy` keep their
+   * ABI: set it with [withChecker], and note that `copy` resets it to the default.
+   */
+  public var checker: GuidelineChecker = GuidelineChecker.VISION
+    private set
+
+  /** These options, answered by [checker]. */
+  public fun withChecker(checker: GuidelineChecker): GuidelineRunOptions =
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency
+      it.checker = checker
+    }
+
+  /**
+   * The model that answers: [model], except that the jev checker asked with the vision default left
+   * in place asks [JevTriage.MODEL].
+   */
+  public val answeringModel: String
+    get() =
+      if (checker == GuidelineChecker.JEV && model == OpenRouterClient.DEFAULT_MODEL)
+        JevTriage.MODEL
+      else model
+
+  /**
+   * The model identity a result is cached under ([GuidelineResultCache.get]): [model] for the
+   * vision checker, as before, and one naming the checker for any other, so a vision verdict and a
+   * Jev verdict never answer for one another.
+   */
+  public val cacheModel: String
+    get() =
+      when (checker) {
+        GuidelineChecker.VISION -> model
+        else -> "checker:${checker.id}@${JevChecker.FORMAT}/$answeringModel"
+      }
 
   /** These options, with up to [concurrency] requests in flight at once. */
   public fun withConcurrency(concurrency: Int): GuidelineRunOptions =
     copy().also {
       it.retry = retry
       it.concurrency = concurrency.coerceAtLeast(1)
+      it.checker = checker
     }
 
   public companion object {
@@ -215,6 +255,12 @@ public class GuidelineEngine(
     guidelines: CatalogGuidelinesV1,
     subjects: List<PreviewSubject>,
   ): GuidelineRunResult {
+    // EXPERIMENTAL, opt-in: a separate path, so the vision run below is unchanged by it.
+    if (options.checker == GuidelineChecker.JEV) {
+      return JevChecker(model, host, cache, options, clock)
+        .also { it.sleep = sleep }
+        .run(guidelines, subjects)
+    }
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()
     var spent = 0.0

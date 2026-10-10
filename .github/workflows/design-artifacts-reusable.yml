@@ -599,6 +599,16 @@ on:
         required: false
         type: string
         default: '1.00'
+      guidelines-checker:
+        description: >-
+          EXPERIMENTAL. Which model answers the guidelines check: `vision` (the default) or `jev`,
+          Jev deciding each structural rule from the preview's source, accessibility nodes and
+          measured checks only, starting from a minimal excerpt and asking for more over up to three
+          follow-up rounds. Visual rules are published unchecked, and its results are cached apart
+          from the vision model's. Needs a CLI with `--checker`.
+        required: false
+        type: string
+        default: 'vision'
       guidelines-concurrency:
         description: >-
           How many guidelines model requests may be in flight at once (the CLI's `--concurrency`);
@@ -3956,6 +3966,7 @@ jobs:
         env:
           COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.upstream-repository == '' && secrets.openrouter_key || '' }}
           MAX_COST: ${{ inputs.guidelines-max-cost }}
+          GUIDELINES_CHECKER: ${{ inputs.guidelines-checker }}
           CONCURRENCY: ${{ inputs.guidelines-concurrency }}
         run: |
           set -euo pipefail
@@ -3980,6 +3991,12 @@ jobs:
           if [ -n "${INPUT_MODULE:-}" ]; then args+=(--module "$INPUT_MODULE"); fi
           # The same flavour the bundle renders below, or the check judges different previews.
           if [ -n "${INPUT_VARIANT:-}" ]; then args+=(--variant "$INPUT_VARIANT"); fi
+          # EXPERIMENTAL text-only checker, only when asked for: the default passes nothing.
+          case "${GUIDELINES_CHECKER:-}" in
+            ''|vision) ;;
+            jev) args+=(--checker jev) ;;
+            *) echo "::warning title=Guidelines checker::guidelines-checker must be vision or jev; using vision." ;;
+          esac
           if ! run compose-preview "${args[@]}"; then
             echo "::warning title=Guidelines incomplete::compose-preview guidelines did not finish; the bundle carries whatever results it wrote."
           fi

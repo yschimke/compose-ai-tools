@@ -204,6 +204,11 @@ private fun printFullUsage() {
                        120), --no-stream, --provider-sort price|throughput|latency,
                        --preferred-max-latency <s>, --preferred-min-throughput <tok/s>,
                        --no-triage, --annotate, --guidelines <file|url>,
+                       --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
+                       decides structural rules from text only, starting minimal and
+                       asking for a11y/source/facts over --rounds (default 3), and
+                       leaves rules needing the picture unchecked),
+                       --compare-with <guidelines.json> (verdicts vs another run's),
                        --surface / --profile (default: each preview's manifest entry),
                        --previews-json / --renders-dir / --a11y-json /
                        --source-root (no Gradle), --json, --fail-on. Exits 1 on findings

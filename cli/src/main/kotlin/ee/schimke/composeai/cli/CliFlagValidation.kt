@@ -192,6 +192,8 @@ internal object CliFlagValidation {
             "--provider-sort",
             "--preferred-max-latency",
             "--preferred-min-throughput",
+            "--checker",
+            "--compare-with",
             "--no-triage",
             "--annotate",
             "--guidelines",

@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.guidelines.CatalogGuidelinesLoader
 import ee.schimke.composeai.guidelines.GuidelineAnnotator
 import ee.schimke.composeai.guidelines.GuidelineBudget
+import ee.schimke.composeai.guidelines.GuidelineChecker
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineModel
@@ -53,7 +54,11 @@ import kotlinx.serialization.json.Json
 class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
   private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
-  private val rounds: Int = args.flagValue("--rounds")?.toIntOrNull() ?: 1
+  private val roundsFlag: Int? = args.flagValue("--rounds")?.toIntOrNull()
+  /** Follow-up rounds: 1 for the vision model, 3 for the jev checker, which starts minimal. */
+  private val rounds: Int
+    get() = roundsFlag ?: if (checker == GuidelineChecker.JEV) JEV_ROUNDS else 1
+
   /**
    * How long one model request may take, start to end, in seconds: a vision request over a dozen
    * screens can take minutes to answer. A request that runs past it is abandoned, and the engine
@@ -92,8 +97,59 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val rendersDir: String? = args.flagValue("--renders-dir")
   private val a11yJson: String? = args.flagValue("--a11y-json")
   private val sourceRoot: String? = args.flagValue("--source-root")
+  /**
+   * `--checker vision|jev`: which model answers the rules. `jev` is EXPERIMENTAL — Jev decides the
+   * structural rules from text only (source, accessibility nodes, measured checks) and leaves every
+   * rule that needs the picture unchecked. Null when the value is not one of those.
+   */
+  private val checkerFlag: String? = args.flagValue("--checker")
+  private val checker: GuidelineChecker? =
+    if (checkerFlag == null) GuidelineChecker.VISION else GuidelineChecker.parse(checkerFlag)
+  /**
+   * `--compare-with <guidelines.json>`: another run's report to set this run's verdicts against.
+   */
+  private val compareWith: String? = args.flagValue("--compare-with")
+  private var comparedTo: List<ModuleGuidelines>? = null
+
+  /** The run's options, but for where the rules came from. */
+  private fun runOptions(rulesSource: String): GuidelineRunOptions =
+    GuidelineRunOptions(
+        model = model,
+        budget = GuidelineBudget(),
+        maxRounds = rounds,
+        triage = triage,
+        maxCostUsd = maxCost,
+        rulesSource = rulesSource,
+        ranBy = System.getenv("USER")?.let { "cli:$it" },
+      )
+      .withConcurrency(concurrency)
+      .withChecker(checker ?: GuidelineChecker.VISION)
+
+  /** The model a report names: the one that answers under this checker. */
+  private val reportModel: String
+    get() = runOptions("").answeringModel
+
+  /** What a report records of the checker: nothing for the default, so its output is unchanged. */
+  private val reportChecker: String?
+    get() = checker?.takeIf { it != GuidelineChecker.VISION }?.id
 
   override fun run() {
+    if (checker == null) {
+      System.err.println(
+        "guidelines: unknown --checker $checkerFlag (expected vision, or the " + "experimental jev)"
+      )
+      exitProcess(2)
+    }
+    // Read before the run: a handoff run writes its report beside the renders, which may be the
+    // very file it is asked to compare with.
+    compareWith?.let { path ->
+      comparedTo =
+        GuidelinesComparison.load(File(path))
+          ?: run {
+            System.err.println("guidelines: --compare-with $path is not a guidelines.json report")
+            exitProcess(2)
+          }
+    }
     val key = System.getenv(KEY_ENV)?.trim()?.takeIf { it.isNotEmpty() }
     if (key == null) {
       System.err.println(
@@ -221,24 +277,26 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         .forEach { result ->
           subjects
             .firstOrNull { it.previewId == result.previewId }
-            ?.let { cache.remove(it, guidelines, model) }
+            ?.let { cache.remove(it, guidelines, runOptions("").cacheModel) }
         }
       // A run over the whole catalog leaves the cache holding only its verdicts, so one carried
       // between CI runs does not grow with every render that ever changed.
       if (!narrowed && subjects.size == moduleResults.size) {
         cache.prune(subjects.map { it.previewId }.toSet())
       }
-      val moduleReport = ModuleGuidelines.of(module, guidelines.catalog, model, run)
+      val moduleReport =
+        ModuleGuidelines.of(module, guidelines.catalog, reportModel, run, reportChecker)
       writeGuidelinesReport(buildDir, moduleReport, narrowed)
       // Outlines the nodes a finding names, fetched in any round; without them, regions only.
       if (annotate) annotateAll(run.results, subjects, host.knownNodes(), renders)
       reports += moduleReport
       failed = failed || tripped(run.results, guidelines)
       incomplete = incomplete || incomplete(module, run)
-      if (!jsonOutput) GuidelinesReportRenderer.print(module, guidelines, run)
+      if (!jsonOutput) GuidelinesReportRenderer.print(module, guidelines, run, checker)
     }
     if (jsonOutput)
       println(REPORT_JSON.encodeToString(ListSerializer(ModuleGuidelines.serializer()), reports))
+    compare(reports)
     exitProcess(
       when {
         failOn != null && failOn !in setOf("warning", "warnings", "info", "none") -> {
@@ -316,17 +374,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         model = client,
         host = host,
         cache = cache,
-        options =
-          GuidelineRunOptions(
-              model = model,
-              budget = GuidelineBudget(),
-              maxRounds = rounds,
-              triage = triage,
-              maxCostUsd = maxCost,
-              rulesSource = rulesSource,
-              ranBy = System.getenv("USER")?.let { "cli:$it" },
-            )
-            .withConcurrency(concurrency),
+        options = runOptions(rulesSource),
       )
       .also { if (guidelines.rules.isEmpty()) System.err.println("guidelines: no rules to ask") }
 
@@ -368,7 +416,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     val run =
       engine(client, GuidelineResultCache(outDir.resolve("guidelines")), guidelines, location)
         .run(guidelines, inputs.subjects)
-    val report = ModuleGuidelines.of("handoff", guidelines.catalog, model, run)
+    val report = ModuleGuidelines.of("handoff", guidelines.catalog, reportModel, run, reportChecker)
     outDir
       .resolve("guidelines.json")
       .writeText(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
@@ -376,12 +424,34 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       annotateAll(run.results, inputs.subjects, inputs.nodes, inputs.renders)
     }
     if (jsonOutput) println(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
-    else GuidelinesReportRenderer.print("handoff", guidelines, run)
+    else GuidelinesReportRenderer.print("handoff", guidelines, run, checker)
+    compare(listOf(report))
     return guidelinesExitCode(
       incomplete = incomplete("handoff", run),
       failed = tripped(run.results, guidelines),
       buildOk = true,
     )
+  }
+
+  /**
+   * With `--compare-with`, prints [reports]' verdicts set against that file's, per preview and
+   * rule: on stdout, or stderr when stdout carries `--json`. Reads only the two reports.
+   */
+  private fun compare(reports: List<ModuleGuidelines>) {
+    val path = compareWith ?: return
+    val other = comparedTo ?: return
+    val out = if (jsonOutput) System.err else System.out
+    val comparison =
+      GuidelinesComparison.compare(
+        reports.flatMap { it.results },
+        other.flatMap { it.results },
+      )
+    fun label(list: List<ModuleGuidelines>) =
+      list
+        .map { (it.checker ?: GuidelineChecker.VISION.id) + " " + it.model }
+        .distinct()
+        .joinToString()
+    out.print(GuidelinesComparison.render(comparison, label(reports), "${label(other)} ($path)"))
   }
 
   /**
@@ -508,6 +578,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
 
   companion object {
     const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
+    /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */
+    private const val JEV_ROUNDS = 3
     private const val KIND_DEVICE = "device"
     internal val REPORT_JSON = Json {
       ignoreUnknownKeys = true
@@ -542,9 +614,20 @@ data class ModuleGuidelines(
    * belongs to no result's record, so summing the records under-counts. Null in older files.
    */
   val costUsd: Double? = null,
+  /**
+   * The checker that answered when it was not the default vision model: `jev` for the EXPERIMENTAL
+   * text-only checker. Null (and absent from the file) for a vision run.
+   */
+  val checker: String? = null,
 ) {
   companion object {
-    fun of(module: String, catalog: String, model: String, run: GuidelineRunResult) =
+    fun of(
+      module: String,
+      catalog: String,
+      model: String,
+      run: GuidelineRunResult,
+      checker: String? = null,
+    ) =
       ModuleGuidelines(
         module,
         catalog,
@@ -554,6 +637,7 @@ data class ModuleGuidelines(
         failedRequests = run.failedRequests,
         problems = run.problems,
         costUsd = run.costUsd,
+        checker = checker,
       )
   }
 }
@@ -564,9 +648,20 @@ internal fun AccessibilityNode.toPreviewNode(index: Int): PreviewNode? =
 
 /** Prints a run's findings, a line per broken rule with its guide and the nodes it names. */
 internal object GuidelinesReportRenderer {
-  fun print(module: String, guidelines: CatalogGuidelinesV1, run: GuidelineRunResult) {
+  fun print(
+    module: String,
+    guidelines: CatalogGuidelinesV1,
+    run: GuidelineRunResult,
+    checker: GuidelineChecker? = GuidelineChecker.VISION,
+  ) {
     val byId = guidelines.rules.associateBy { it.id }
     val ruleless = run.results.count { it.noRules != null }
+    if (checker == GuidelineChecker.JEV) {
+      println(
+        "$module: checked by Jev (text-only, experimental): rules that need the picture are " +
+          "left unchecked"
+      )
+    }
     println(
       "$module: ${run.results.size - ruleless} preview(s) checked against `${guidelines.catalog}` " +
         "guidelines v${guidelines.version} — ${run.requests} request(s), " +

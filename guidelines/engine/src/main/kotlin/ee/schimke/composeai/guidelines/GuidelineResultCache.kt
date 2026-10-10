@@ -45,7 +45,16 @@ public data class PreviewGuidelineResult(
   internal fun withBodyOf(other: PreviewGuidelineResult): PreviewGuidelineResult = also {
     it.noRules = other.noRules
     it.implicitPasses = other.implicitPasses
+    it.jev = other.jev
   }
+
+  /**
+   * How the EXPERIMENTAL jev checker reached this result — rounds, requests, spend, latency, and
+   * per rule the facts it was handed and the evidence it asked for — for comparing it against a
+   * vision run. Null for any other checker. A body property, like [noRules].
+   */
+  public var jev: JevSubjectTrace? = null
+    internal set
 }
 
 /**
