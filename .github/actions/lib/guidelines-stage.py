@@ -26,8 +26,23 @@ multiplatform module's previews) is staged once, in the module holding its sourc
 The visual diff alone misses what the check now reads beyond pixels: an edit that adds a content
 description or replaces a hard-coded colour can leave the render identical. ``--changed-files``
 (the PR's changed paths, one per line, relative to the repository root) also selects every
-preview whose ``sourceFile`` changed, and every preview of a module whose guidelines file changed
-(the rules being judged changed, so every verdict may).
+preview whose ``sourceFile`` changed.
+
+A PR that changes a module's guidelines file (its own edit, or one a rebase brought in) changes
+what every verdict of that module is judged against, but those previews are not the PR's: checking
+all of them spends the budget before the previews the PR did change. So they are a second tier,
+staged apart and bounded:
+
+    <out>/<module-key>/                  previews whose render or source the PR changed
+    <out>/<module-key>.rules-changed/    up to MAX_RULES_ONLY previews (across all modules) selected
+                                         only because the rules changed, with
+                                         ``"guidelinesSelection": "rules-changed"`` in previews.json
+    <out>/_rules_only.json               {"staged": n, "deferred": m}: how many such previews were
+                                         staged, and how many were left for the catalog publish,
+                                         which re-checks every preview against the new rules
+
+The publish job checks every changed tier before any rules-changed one
+(``guidelines-budget.py --order``), so a capped run spends the budget on the PR's own previews.
 
     guidelines-stage.py --changed _changed_previews.json --out _guidelines [--root .]
                         [--guidelines-file path] [--changed-files _pr_changed_files.txt]
@@ -49,6 +64,13 @@ MAX_LONG_BYTES = 2 * 1024 * 1024
 SKIP_DIRS = {"node_modules", ".git", ".gradle"}
 # Source scans also skip build outputs, which hold generated copies rather than the module's code.
 SOURCE_SKIP_DIRS = SKIP_DIRS | {"build"}
+# The second tier: previews selected only because the rules changed. Bounded across all modules;
+# the rest are left to the catalog publish, whose cache re-checks every preview under new rules.
+MAX_RULES_ONLY = 24
+RULES_TIER_SUFFIX = ".rules-changed"
+RULES_TIER = "rules-changed"
+SELECTION_KEY = "guidelinesSelection"
+RULES_ONLY_FILE = "_rules_only.json"
 
 # Calls that may name a module composable: a capitalised name followed by `(` or `{`.
 CALL = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\s*[({]")
@@ -156,13 +178,12 @@ def select(
     module_dir: Path,
     root: Path,
     all_of_module: bool,
-) -> list[dict]:
-    """The previews to check: changed renders, changed source files, or every one when the rules
-    changed."""
-    if all_of_module:
-        return list(previews)
+) -> tuple[list[dict], list[dict]]:
+    """The previews to check, in two tiers: those whose render or source file the PR changed, and,
+    when the rules changed, every other preview of the module."""
     module = repo_relative(module_dir, root)
-    picked = []
+    picked: list[dict] = []
+    rules_only: list[dict] = []
     for preview in previews:
         source = preview.get("sourceFile")
         source_changed = (
@@ -172,7 +193,9 @@ def select(
         )
         if preview.get("id") in changed or source_changed:
             picked.append(preview)
-    return picked
+        elif all_of_module:
+            rules_only.append(preview)
+    return picked, rules_only
 
 
 def long_render(preview: dict, previews_dir: Path) -> Path | None:
@@ -230,16 +253,98 @@ def owners(candidates: list[tuple[Path, Path, dict, list[dict]]]) -> dict[str, P
     return {preview_id: module_dir for preview_id, (_score, module_dir) in best.items()}
 
 
+def stage_module(
+    previews_dir: Path,
+    module_dir: Path,
+    manifest: dict,
+    selected: list[dict],
+    rules: Path,
+    target: Path,
+    selection: str | None,
+    root: Path,
+) -> int:
+    """Stages [selected] (one module's previews of one tier) under [target]. Returns how many."""
+    (target / "renders").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(rules, target / GUIDELINES_FILE)
+
+    kept = []
+    staged_sources: list[Path] = []
+    for preview in selected:
+        captures = []
+        long = long_render(preview, previews_dir)
+        for capture in preview.get("captures", []):
+            output = capture.get("renderOutput")
+            if not output or not safe_relative(output):
+                continue
+            source_png = previews_dir / output
+            if not source_png.is_file():
+                continue
+            name = Path(output).name
+            shutil.copyfile(source_png, target / "renders" / name)
+            captures.append({**capture, "renderOutput": f"renders/{name}"})
+            # The whole scrolling content: a follow-up round can ask for it, so content
+            # scrolled out of view is not read as clipped. Staged as `<render>_SCROLL_long.png`
+            # beside the render, which is where the check looks for it.
+            if long is not None and len(captures) == 1:
+                shutil.copyfile(long, target / "renders" / (Path(name).stem + LONG_SUFFIX))
+        if not captures and long is not None:
+            # A LONG-only preview: the long screenshot is its only render, so it is the capture.
+            shutil.copyfile(long, target / "renders" / long.name)
+            captures.append({"renderOutput": f"renders/{long.name}", "scroll": {"mode": "LONG"}})
+        if not captures:
+            continue
+        if has_source(preview, module_dir):
+            source_file = preview["sourceFile"]
+            dest = target / "src" / source_file
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(module_dir / source_file, dest)
+            if module_dir / source_file not in staged_sources:
+                staged_sources.append(module_dir / source_file)
+        kept.append({**preview, "captures": captures})
+    stage_callees(module_dir, staged_sources, target)
+    staged_manifest = {**manifest, "previews": kept}
+    staged_manifest.pop(SELECTION_KEY, None)
+    if selection:
+        staged_manifest[SELECTION_KEY] = selection
+    (target / "previews.json").write_text(
+        json.dumps(staged_manifest, indent=2) + "\n", encoding="utf-8"
+    )
+
+    a11y = previews_dir / "accessibility.json"
+    if a11y.is_file():
+        try:
+            report = json.loads(a11y.read_text(encoding="utf-8"))
+            ids = {p["id"] for p in kept}
+            report["entries"] = [
+                e for e in report.get("entries", []) if e.get("previewId") in ids
+            ]
+            (target / "accessibility.json").write_text(
+                json.dumps(report, indent=2) + "\n", encoding="utf-8"
+            )
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            pass
+    elif kept:
+        # Without nodes a finding can name none; it can still point at a region of the render.
+        print(
+            f"guidelines-stage: no accessibility nodes for {module_key(module_dir, root)} "
+            "(the a11y pipeline did not run); findings can be marked by region only.",
+            file=sys.stderr,
+        )
+    return len(kept)
+
+
 def stage(
     root: Path,
     changed: set[str],
     out: Path,
     guidelines_file: Path | None,
     changed_files: set[str] | None = None,
+    max_rules_only: int = MAX_RULES_ONLY,
 ) -> int:
     changed_files = changed_files or set()
     staged = 0
     candidates: list[tuple[Path, Path, dict, list[dict]]] = []
+    rules_only: dict[Path, list[dict]] = {}
     for manifest_path in find_manifests(root):
         previews_dir = manifest_path.parent
         module_dir = previews_dir.parent.parent
@@ -247,7 +352,7 @@ def stage(
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        selected = select(
+        selected, by_rules = select(
             manifest.get("previews", []),
             changed,
             changed_files,
@@ -255,83 +360,55 @@ def stage(
             root,
             rules_changed(module_dir, root, guidelines_file, changed_files),
         )
-        if not selected:
+        if not selected and not by_rules:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
         if not rules.is_file():
             continue
-        candidates.append((previews_dir, module_dir, manifest, selected))
+        candidates.append((previews_dir, module_dir, manifest, selected + by_rules))
+        rules_only[previews_dir] = by_rules
 
     owner = owners(candidates)
+    # The PR's own previews first, then what the rules change selected, within its bound.
+    rules_left = max(0, max_rules_only)
+    rules_staged = rules_deferred = 0
     for previews_dir, module_dir, manifest, selected in candidates:
         selected = [p for p in selected if owner.get(p.get("id")) == module_dir]
-        if not selected:
+        by_rules_ids = {id(p) for p in rules_only[previews_dir]}
+        tier_changed = [p for p in selected if id(p) not in by_rules_ids]
+        if not tier_changed:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
         target = out / module_key(module_dir, root)
-        (target / "renders").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(rules, target / GUIDELINES_FILE)
-
-        kept = []
-        staged_sources: list[Path] = []
-        for preview in selected:
-            captures = []
-            long = long_render(preview, previews_dir)
-            for capture in preview.get("captures", []):
-                output = capture.get("renderOutput")
-                if not output or not safe_relative(output):
-                    continue
-                source_png = previews_dir / output
-                if not source_png.is_file():
-                    continue
-                name = Path(output).name
-                shutil.copyfile(source_png, target / "renders" / name)
-                captures.append({**capture, "renderOutput": f"renders/{name}"})
-                # The whole scrolling content: a follow-up round can ask for it, so content
-                # scrolled out of view is not read as clipped. Staged as `<render>_SCROLL_long.png`
-                # beside the render, which is where the check looks for it.
-                if long is not None and len(captures) == 1:
-                    shutil.copyfile(long, target / "renders" / (Path(name).stem + LONG_SUFFIX))
-            if not captures and long is not None:
-                # A LONG-only preview: the long screenshot is its only render, so it is the capture.
-                shutil.copyfile(long, target / "renders" / long.name)
-                captures.append({"renderOutput": f"renders/{long.name}", "scroll": {"mode": "LONG"}})
-            if not captures:
-                continue
-            if has_source(preview, module_dir):
-                source_file = preview["sourceFile"]
-                dest = target / "src" / source_file
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(module_dir / source_file, dest)
-                if module_dir / source_file not in staged_sources:
-                    staged_sources.append(module_dir / source_file)
-            kept.append({**preview, "captures": captures})
-            staged += 1
-        stage_callees(module_dir, staged_sources, target)
-        (target / "previews.json").write_text(
-            json.dumps({**manifest, "previews": kept}, indent=2) + "\n", encoding="utf-8"
+        staged += stage_module(
+            previews_dir, module_dir, manifest, tier_changed, rules, target, None, root
         )
-
-        a11y = previews_dir / "accessibility.json"
-        if a11y.is_file():
-            try:
-                report = json.loads(a11y.read_text(encoding="utf-8"))
-                ids = {p["id"] for p in kept}
-                report["entries"] = [
-                    e for e in report.get("entries", []) if e.get("previewId") in ids
-                ]
-                (target / "accessibility.json").write_text(
-                    json.dumps(report, indent=2) + "\n", encoding="utf-8"
-                )
-            except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                pass
-        elif kept:
-            # Without nodes a finding can name none; it can still point at a region of the render.
-            print(
-                f"guidelines-stage: no accessibility nodes for {module_key(module_dir, root)} "
-                "(the a11y pipeline did not run); findings can be marked by region only.",
-                file=sys.stderr,
-            )
+    for previews_dir, module_dir, manifest, selected in candidates:
+        by_rules_ids = {id(p) for p in rules_only[previews_dir]}
+        tier_rules = [
+            p for p in selected
+            if id(p) in by_rules_ids and owner.get(p.get("id")) == module_dir
+        ]
+        if not tier_rules:
+            continue
+        taken, left_over = tier_rules[:rules_left], tier_rules[rules_left:]
+        rules_left -= len(taken)
+        rules_deferred += len(left_over)
+        if not taken:
+            continue
+        rules = guidelines_file or previews_dir / GUIDELINES_FILE
+        target = out / (module_key(module_dir, root) + RULES_TIER_SUFFIX)
+        count = stage_module(
+            previews_dir, module_dir, manifest, taken, rules, target, RULES_TIER, root
+        )
+        rules_staged += count
+        staged += count
+    if rules_staged or rules_deferred:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / RULES_ONLY_FILE).write_text(
+            json.dumps({"staged": rules_staged, "deferred": rules_deferred}) + "\n",
+            encoding="utf-8",
+        )
     return staged
 
 

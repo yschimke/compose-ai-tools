@@ -40,6 +40,9 @@ public interface GuidelineEvidenceHost {
   }
 }
 
+/** A request whose reply has no usable verdict is asked once more, budget permitting. */
+private const val MAX_ATTEMPTS = 2
+
 /** How a run behaves. */
 public data class GuidelineRunOptions(
   val model: String = OpenRouterClient.DEFAULT_MODEL,
@@ -48,7 +51,10 @@ public data class GuidelineRunOptions(
   val maxRounds: Int = 1,
   val triage: Boolean = true,
   val triageThreshold: Double = 0.5,
-  /** Stop asking once this many dollars are spent; what is left is reported unchecked. */
+  /**
+   * Do not start a request expected to take the spend past this many dollars (one costing what the
+   * dearest request of the run so far did); what is left is reported unchecked.
+   */
   val maxCostUsd: Double? = null,
   /** Where the rules came from, linked from each request's provenance. */
   val rulesSource: String = CatalogGuidelinesV1.FILE_NAME,
@@ -96,6 +102,21 @@ public class GuidelineEngine(
     var spent = 0.0
     var requests = 0
     var failedRequests = 0
+    // The dearest request so far: what the next one is expected to cost, so the cap is not crossed
+    // by a request started just under it. Before the first answer there is nothing to go on.
+    var dearest = 0.0
+    var capped = 0
+    var retried = 0
+    // Verdicts dropped because they answer a question nobody asked: rule ids the request never
+    // listed for that subject (by id, counted), and subjects outside the request.
+    val invented = linkedMapOf<String, Int>()
+    val strays = mutableListOf<String>()
+
+    /** Whether one more request, expected to cost what the dearest so far did, fits the cap. */
+    fun affordable(): Boolean {
+      val cap = options.maxCostUsd ?: return true
+      return spent < cap && spent + dearest <= cap
+    }
 
     // A subject no rule applies to costs no request: asked about nothing, a model can only answer
     // nothing, which reads as an unreadable reply at best and a clean pass at worst.
@@ -125,9 +146,9 @@ public class GuidelineEngine(
       PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
         PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
     for (batch0 in batches) {
-      if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
+      if (!affordable()) {
         batch0.subjects.forEach { results += unchecked(guidelines, it) }
-        problems += "the cost cap was reached; ${batch0.subjects.size} previews were not checked"
+        capped += batch0.subjects.size
         continue
       }
       // Triage: fetch the evidence Jev expects to matter before the vision model sees the batch.
@@ -153,6 +174,8 @@ public class GuidelineEngine(
       val verdicts = mutableMapOf<String, MutableMap<String, GuidelineVerdictV1>>()
       val served = mutableListOf<GuidelineServed>()
       val setVerdicts = mutableListOf<GuidelineVerdictV1>()
+      // Everything this batch's requests cost, replies that could not be used included.
+      var batchSpent = 0.0
 
       fun ask(target: GuidelineBatch, round: Int, onlyRules: Map<String, Set<String>>?): Boolean {
         val request =
@@ -165,40 +188,82 @@ public class GuidelineEngine(
             onlyRules,
             target.subjects.associate { it.previewId to host.available(it.previewId) },
           )
-        val response = runCatching {
-          model.complete(request, options.model)
-        }
-          .getOrElse {
-            problems += "request failed: ${it.message}"
-            failedRequests++
-            return false
-          }
-        requests++
-        if (response.status !in 200..299) {
-          problems += "the model answered ${response.status}: ${response.body.take(200)}"
-          failedRequests++
-          return false
-        }
+        val (perSubject, setRules) =
+          PreviewGuidelineRequests.askedRules(guidelines, target, round, onlyRules)
+        val askedOf = perSubject.mapValues { (_, rules) -> rules.map { it.id }.toSet() }
+        val askedOnce = setRules.map { it.id }.toSet()
         val order = request.pictures.map { (it.subjectId ?: "") to it.kind }
-        val reply =
-          GuidelineResponse.parse(response.body, target, order).getOrElse {
-            problems += "unreadable reply: ${it.message}"
+        var attempt = 0
+        var kept: List<GuidelineVerdictV1>
+        var answer: GuidelineReply
+        while (true) {
+          attempt++
+          val response = runCatching {
+            model.complete(request, options.model)
+          }
+            .getOrElse {
+              problems += "request failed: ${it.message}"
+              failedRequests++
+              return false
+            }
+          requests++
+          if (response.status !in 200..299) {
+            problems += "the model answered ${response.status}: ${response.body.take(200)}"
             failedRequests++
             return false
           }
-        spent += reply.served.costUsd ?: 0.0
-        served += reply.served
+          // Paid for whether or not the answer can be used.
+          val cost = GuidelineResponse.cost(response.body) ?: 0.0
+          spent += cost
+          batchSpent += cost
+          dearest = maxOf(dearest, cost)
+          val parsed = GuidelineResponse.parse(response.body, target, order)
+          val reply = parsed.getOrNull()
+          val problem: String
+          if (reply != null) {
+            strays += reply.strays
+            // Only a verdict on a rule this request listed for that subject (or for the set) is an
+            // answer; anything else is a rule the model made up and has no guide to link.
+            val (valid, dropped) =
+              reply.verdicts.partition { verdict ->
+                val subjectId = verdict.subjectId
+                if (subjectId == null) verdict.ruleId in askedOnce
+                else verdict.ruleId in askedOf[subjectId].orEmpty()
+              }
+            dropped.forEach { invented.merge(it.ruleId, 1, Int::plus) }
+            if (valid.isNotEmpty()) {
+              kept = valid
+              answer = reply
+              break
+            }
+            problem =
+              "the reply answered no rule it was asked (it named " +
+                dropped.map { it.ruleId }.distinct().take(8).joinToString() +
+                ")"
+          } else {
+            problem = "unreadable reply: ${parsed.exceptionOrNull()?.message}"
+          }
+          // One more try, if it fits the budget: a reply with nothing usable is usually a bad
+          // draw, not a bad question.
+          if (attempt >= MAX_ATTEMPTS || !affordable()) {
+            problems += problem
+            failedRequests++
+            return false
+          }
+          retried++
+        }
+        served += answer.served
         // A region lives with the subject whose picture it is drawn on: a verdict about one
         // preview may point at another's picture, and nested only in the first it would be
         // filtered out of both previews' overlays. Moved after every verdict is in, so a later
         // verdict for the owner cannot overwrite it.
         val inBatch = target.subjects.map { it.previewId }.toSet()
-        reply.verdicts.forEach { verdict ->
+        kept.forEach { verdict ->
           val subjectId = verdict.subjectId
           if (subjectId == null) setVerdicts += verdict
           else verdicts.getOrPut(subjectId) { mutableMapOf() }[verdict.ruleId] = verdict
         }
-        reply.verdicts.forEach { reported ->
+        kept.forEach { reported ->
           val from = reported.subjectId ?: return@forEach
           if (reported.verdict != GuidelineVerdictV1.FAIL) return@forEach
           reported.regions
@@ -271,7 +336,7 @@ public class GuidelineEngine(
             }
             .filterValues { it.isNotEmpty() }
         if (undecided.isEmpty() || host.available.isEmpty()) break
-        if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
+        if (!affordable()) {
           interrupted = undecided.keys
           break
         }
@@ -289,8 +354,7 @@ public class GuidelineEngine(
         current = gathered
       }
 
-      val batchCost = served.sumOf { it.costUsd ?: 0.0 }
-      val share = if (batch.subjects.isEmpty()) 0.0 else batchCost / batch.subjects.size
+      val share = if (batch.subjects.isEmpty()) 0.0 else batchSpent / batch.subjects.size
       val last = served.lastOrNull()
       batch.subjects.forEach { subject ->
         val asked =
@@ -319,8 +383,34 @@ public class GuidelineEngine(
           cache?.put(result, arrived, guidelines, options.model)
       }
     }
+    if (capped > 0) {
+      problems +=
+        "the cost cap (\$${money(options.maxCostUsd ?: 0.0)}) was reached; $capped previews were " +
+          "not checked (\$${money(spent)} spent; the next request was expected to cost about " +
+          "\$${money(dearest)})"
+    }
+    if (invented.isNotEmpty()) {
+      problems +=
+        "${invented.values.sum()} verdict(s) named a rule their request did not ask and were " +
+          "dropped: " +
+          invented.entries
+            .sortedByDescending { it.value }
+            .take(12)
+            .joinToString { (id, n) -> if (n > 1) "$id ×$n" else id } +
+          (if (invented.size > 12) " and ${invented.size - 12} more" else "")
+    }
+    if (strays.isNotEmpty()) {
+      problems +=
+        "${strays.size} verdict(s) named a subject outside their request and were dropped: " +
+          strays.take(8).joinToString()
+    }
+    if (retried > 0) {
+      problems += "$retried request(s) were asked again after a reply with no usable verdict"
+    }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests)
   }
+
+  private fun money(value: Double): String = String.format(java.util.Locale.ROOT, "%.4f", value)
 
   /** [batch] with the evidence in [needs] fetched from the host and attached to its subjects. */
   private fun withEvidence(

@@ -124,6 +124,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineReply {
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineReply;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineServed;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineReply;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getServed ()Lee/schimke/composeai/guidelines/GuidelineServed;
+	public final fun getStrays ()Ljava/util/List;
 	public final fun getVerdicts ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

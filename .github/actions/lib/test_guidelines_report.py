@@ -261,7 +261,7 @@ class ReportTest(unittest.TestCase):
         assert body is not None
         self.assertIn("**Not checked.**", body)
         self.assertIn("this is not a pass", body)
-        self.assertIn("1 preview(s) were NOT checked", body)
+        self.assertIn("1 of this PR's changed preview(s) were NOT checked", body)
         self.assertIn("1 request(s) failed", body)
         self.assertIn("`Widget`", body)
         self.assertIn("unreadable reply: the reply held no verdicts", body)
@@ -303,7 +303,9 @@ class ReportTest(unittest.TestCase):
         body = gr.build(self.tmp, _args())
         assert body is not None
         self.assertIn("1 changed preview(s) checked", body)
-        self.assertIn("1 preview(s) were NOT checked", body)
+        # The PR's own unchecked previews lead the comment, ahead of what was checked.
+        self.assertTrue(body.index("❌ **1 of this PR's 2 changed preview(s) were NOT checked**")
+                        < body.index("1 changed preview(s) checked"))
         self.assertIn("No findings in the 1 preview(s) that were checked.", body)
         self.assertNotIn("✅", body)
 
@@ -314,6 +316,50 @@ class ReportTest(unittest.TestCase):
         self.assertIn("**Not checked.**", body)
         self.assertIn("the check wrote no results", body)
         self.assertIn("`Stop`", body)
+
+    def _rules_tier(self, results: list[dict], cost: float | None = None) -> Path:
+        module = self.tmp / "catalog.rules-changed"
+        module.mkdir()
+        (module / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
+        (module / "previews.json").write_text(json.dumps({
+            "guidelinesSelection": "rules-changed",
+            "previews": [{"id": r["previewId"], "captures": []} for r in results]}))
+        report = {"module": "handoff", "catalog": "wear-m3", "model": "m", "results": results}
+        if cost is not None:
+            report["costUsd"] = cost
+        (module / "guidelines.json").write_text(json.dumps(report))
+        return module
+
+    def test_the_prs_own_unchecked_previews_lead_and_the_rules_tier_is_apart(self) -> None:
+        # wear-m3-catalog#760: a rules change rebased in selected every preview, the budget ran
+        # out on those, and the planted WearList previews were never judged.
+        mine = _result("x.WearListKt.WearList", [])
+        mine["pending"] = True
+        self._write({"module": "handoff", "catalog": "wear-m3", "model": "m",
+                     "results": [mine], "requests": 0, "failedRequests": 0,
+                     "problems": ["the cost cap ($0.2500) was reached; 1 previews were not checked"]})
+        other = _result("x.CardKt.Card", [{"ruleId": "wear.touch-target-48dp", "verdict": "pass",
+                                          "confidence": 0.9, "nodeIds": [], "reason": ""}])
+        late = _result("x.ChipKt.Chip", [])
+        late["pending"] = True
+        self._rules_tier([other, late])
+        (self.tmp / "_rules_only.json").write_text(json.dumps({"staged": 2, "deferred": 900}))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        lead = body.index("❌ **1 of this PR's 1 changed preview(s) were NOT checked**")
+        self.assertLess(lead, body.index("1 preview(s) checked against"))
+        self.assertIn("`WearList`", body.split("1 preview(s) checked against", 1)[0])
+        self.assertIn("(0 changed by this PR, 1 because the guidelines changed)", body)
+        self.assertIn("1 preview(s) selected only because the guidelines changed were NOT "
+                      "checked", body)
+        self.assertIn("900 more were left for the catalog publish", body)
+
+    def test_the_run_level_cost_counts_replies_that_could_not_be_used(self) -> None:
+        self._rules_tier([_result("x.CardKt.Card", [])], cost=0.05)
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        # 0.0034 × 2 in the PR's module's records, and the rules tier's run total of 0.05.
+        self.assertIn("$0.0568", body)
 
     def test_a_problem_line_cannot_break_out_of_its_block(self) -> None:
         pending = _result("x.WidgetKt.Widget", [])
@@ -454,6 +500,34 @@ class StageTest(unittest.TestCase):
         out = root / "_guidelines"
         staged = gs.stage(root, set(), out, None, {"catalog/ui-builder.guidelines.json"})
         self.assertEqual(staged, 2)
+        manifest = json.loads((out / "catalog.rules-changed" / "previews.json").read_text())
+        self.assertEqual(manifest["guidelinesSelection"], "rules-changed")
+        self.assertFalse((out / "catalog").exists())
+
+    def test_previews_the_rules_change_selected_are_a_bounded_second_tier(self) -> None:
+        root = self._two_previews()
+        previews = root / "catalog" / "build" / "compose-previews"
+        manifest = json.loads((previews / "previews.json").read_text())
+        for name in ("A", "B", "C"):
+            (previews / "renders" / f"{name}.png").write_bytes(b"png")
+            manifest["previews"].append(
+                {"id": f"x.{name}", "captures": [{"renderOutput": f"renders/{name}.png"}]})
+        (previews / "previews.json").write_text(json.dumps(manifest))
+        out = root / "_guidelines"
+
+        staged = gs.stage(root, {"x.Go"}, out, None,
+                          {"catalog/ui-builder.guidelines.json"}, max_rules_only=2)
+
+        self.assertEqual(staged, 3)
+        mine = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in mine["previews"]], ["x.Go"])
+        self.assertNotIn("guidelinesSelection", mine)
+        rules = json.loads((out / "catalog.rules-changed" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in rules["previews"]], ["x.Stop", "x.A"])
+        self.assertEqual(json.loads((out / "_rules_only.json").read_text()),
+                         {"staged": 2, "deferred": 2})
+        # The publish job checks the PR's previews before the rules tier, whatever the names.
+        self.assertEqual([p.name for p in gb.order(out)], ["catalog", "catalog.rules-changed"])
 
     def test_unrelated_changes_stage_nothing(self) -> None:
         root = self._two_previews()
@@ -516,6 +590,30 @@ class BudgetTest(unittest.TestCase):
         (root / "c").mkdir()
         (root / "c" / "guidelines.json").write_text(json.dumps({"results": {"x": 1}}))
         self.assertAlmostEqual(gb.remaining(root, 0.25), 0.24)
+
+    def test_the_run_total_counts_replies_no_result_carries(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._module(root, "a", [0.01])
+        report = json.loads((root / "a" / "guidelines.json").read_text())
+        report["costUsd"] = 0.2
+        (root / "a" / "guidelines.json").write_text(json.dumps(report))
+        self.assertAlmostEqual(gb.remaining(root, 0.25), 0.05)
+        # Never below what the records add up to, whatever the file says its total was.
+        report["costUsd"] = -1
+        (root / "a" / "guidelines.json").write_text(json.dumps(report))
+        self.assertAlmostEqual(gb.remaining(root, 0.25), 0.24)
+
+    def test_the_prs_own_modules_come_before_the_rules_tier(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        for name, selection in (("a.rules-changed", "rules-changed"), ("b", None),
+                                ("z", "something-else")):
+            module = root / name
+            module.mkdir(parents=True, exist_ok=True)
+            manifest = {"previews": []}
+            if selection:
+                manifest["guidelinesSelection"] = selection
+            (module / "previews.json").write_text(json.dumps(manifest))
+        self.assertEqual([p.name for p in gb.order(root)], ["b", "z", "a.rules-changed"])
 
     def test_nothing_spent_yet(self) -> None:
         root = Path(tempfile.mkdtemp())

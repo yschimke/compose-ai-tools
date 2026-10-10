@@ -1771,7 +1771,10 @@ runs:
           fi
         fi
         checked=0
-        for module_dir in _guidelines/*/; do
+        # Every module's PR-changed previews before any previews staged only because the rules
+        # changed (`<module>.rules-changed/`), so a capped run spends the budget on the PR's own.
+        mapfile -t module_dirs < <(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --order)
+        for module_dir in "${module_dirs[@]}"; do
           [ -f "$module_dir/previews.json" ] || continue
           if [ "$checked" -ge "$max_modules" ]; then
             echo "::warning::compose-preview/apply: the handoff staged more than $max_modules guideline modules; the rest are not checked."

@@ -124,6 +124,12 @@ picture.
 3. **Rounds 1..n** (`--rounds`, default 1). Only those subjects, only those rules, with the evidence
    gathered. A rule still undecided is reported **unchecked**, never passed.
 
+Every request lists each subject's own rule ids and says no other id is valid, and the engine holds
+the reply to that: a verdict whose `ruleId` was not asked of its subject (or of the set), or whose
+`subjectId` is outside the request, is dropped and counted in the run's `problems` — a model that
+invents `clipping` or `R5` produces no finding without a guide. A reply left with no usable verdict
+is asked once more, budget permitting, and is otherwise a failed request.
+
 In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y-hierarchy`, `source` and
 `render`: a render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn
 through the module's render daemon, one short session per follow-up render — they are few, so that
@@ -152,7 +158,9 @@ Each result is cached under `build/compose-previews/guidelines/` by everything i
 on (`GuidelineResultCache.inputsKey`: preview id, surface, profile, every picture's bytes, nodes,
 source, the rules' full content, model): an unchanged preview is not asked again, so a re-run after a
 small change pays only for what changed. `--changed-only` narrows to previews whose capture changed;
-`--max-cost` stops asking once spent, reporting the rest `pending` — and the run asks first about
+`--max-cost` stops asking before a request expected to cross it (one costing as much as the
+dearest request so far), reporting the rest `pending`; a reply that could not be used still counts
+against it — and the run asks first about
 previews the cache has never held a result for, before those whose earlier verdict went stale. A
 run over the whole module prunes the cache to the verdicts it read or wrote.
 
@@ -280,6 +288,11 @@ many previews were checked this run, answered from the cache, and left pending.
 2. **Done: preview-diff pipeline** — see the `apply` action's `guidelines` input: the render phase
    stages changed previews (`guidelines-stage.py`: renders, source, nodes, rules) into the handoff;
    the phase holding `openrouter-key` runs handoff mode and posts `<!-- guidelines-report -->`.
+   A PR that changes the guidelines file (a rebase can bring one in) selects the module's other
+   previews too, but only as a second tier: at most 24 of them, staged as `<module>.rules-changed/`
+   and checked after every module's PR-changed previews, with the rest left to the catalog publish,
+   which re-checks every preview against new rules. The comment leads with any of the PR's own
+   previews that were not checked.
 3. **MCP tools** in compose-preview-server: `check_preview_guidelines` (engine over the live daemon,
    which can fetch every evidence kind) and a keyless `preview_guidelines_prompt`, consuming this
    module's published coordinate.

@@ -139,7 +139,10 @@ public object PreviewGuidelineRequests {
       "sizes and padding, hard-coded colours and text sizes, missing content descriptions, which " +
       "component or variant is used — and the pictures for what is drawn. Judge EACH subject " +
       "separately against every rule listed for it: " +
-      "verdict `pass` when the rule's yes/no `check` is answered yes, `fail` when it is no, " +
+      "one verdict per listed rule, its `ruleId` copied exactly from that subject's list; never " +
+      "invent a rule id, rename one, or report a problem under a rule that is not listed for " +
+      "that subject (a verdict for any other id is discarded). " +
+      "Verdict `pass` when the rule's yes/no `check` is answered yes, `fail` when it is no, " +
       "`not_applicable` when the rule does not apply to that subject. When you cannot decide " +
       "from what is given but more evidence would decide it, answer `needs_evidence` and list " +
       "what you need in `needs` (only kinds listed as available) instead of guessing. Judge only " +
@@ -257,15 +260,7 @@ public object PreviewGuidelineRequests {
     subjectEvidence: Map<String, List<String>>,
   ): GuidelineRequestV1 {
     val anyPicture = batch.subjects.any { it.pictures.isNotEmpty() }
-    val perSubject: Map<String, List<GuidelineRuleV1>> =
-      batch.subjects.associate { subject ->
-        val rules =
-          guidelines.subjectRules(subject.surface, subject.profile, subject.pictures.isNotEmpty())
-        subject.previewId to
-          (onlyRules?.get(subject.previewId)?.let { keep -> rules.filter { it.id in keep } }
-            ?: rules)
-      }
-    val setRules = if (round == 0) guidelines.setRules(anyPicture) else emptyList()
+    val (perSubject, setRules) = askedRules(guidelines, batch, round, onlyRules)
     val asked = (perSubject.values.flatten() + setRules).distinctBy { it.id }
     val allForSurface = guidelines.subjectRules(batch.surface) + guidelines.setRules()
 
@@ -399,21 +394,22 @@ public object PreviewGuidelineRequests {
           append("Source:\n```kotlin\n").append(source.take(MAX_SOURCE_CHARS).trimEnd())
           append("\n```\n")
         }
+        // Every subject names its own rule ids, so a reply can be held to exactly those.
         val rules = perSubject.getValue(subject.previewId)
-        if (onlyRules != null) {
-          append("Rules for ").append(alias).append(": ")
-          append(rules.joinToString { it.id }).append('\n')
-        }
+        append("Rules for ").append(alias).append(": ")
+        append(rules.joinToString { it.id }.ifEmpty { "none" }).append('\n')
       }
       val shared = perSubject.values.flatten().distinctBy { it.id }
-      append("\nRules (each subject is judged against those that apply to it")
-      if (onlyRules != null) append(", as listed above")
-      append("):\n")
+      append("\nRules (each subject is judged against those listed for it above):\n")
       shared.forEach { appendRule(it) }
       if (setRules.isNotEmpty()) {
         append("\nRules judged ONCE across all subjects (subjectId null):\n")
         setRules.forEach { appendRule(it) }
       }
+      append("\nThe only valid ruleIds are the ones listed here, spelled exactly as listed: ")
+      append((shared + setRules).distinctBy { it.id }.joinToString { it.id })
+      append(". A verdict for any other ruleId, or for a rule not listed for its subject, is ")
+      append("discarded.\n")
     }
 
     return GuidelineRequestV1.Builder(
@@ -461,6 +457,30 @@ public object PreviewGuidelineRequests {
           )
       }
       .build()
+  }
+
+  /**
+   * The rules [request] asks of [batch]: per subject (by preview id), and those judged once across
+   * the set. A verdict naming any other rule, or a subject outside the batch, answers a question
+   * nobody asked; the engine drops it.
+   */
+  internal fun askedRules(
+    guidelines: CatalogGuidelinesV1,
+    batch: GuidelineBatch,
+    round: Int,
+    onlyRules: Map<String, Set<String>>?,
+  ): Pair<Map<String, List<GuidelineRuleV1>>, List<GuidelineRuleV1>> {
+    val perSubject =
+      batch.subjects.associate { subject ->
+        val rules =
+          guidelines.subjectRules(subject.surface, subject.profile, subject.pictures.isNotEmpty())
+        subject.previewId to
+          (onlyRules?.get(subject.previewId)?.let { keep -> rules.filter { it.id in keep } }
+            ?: rules)
+      }
+    val anyPicture = batch.subjects.any { it.pictures.isNotEmpty() }
+    val setRules = if (round == 0) guidelines.setRules(anyPicture) else emptyList()
+    return perSubject to setRules
   }
 
   /**
