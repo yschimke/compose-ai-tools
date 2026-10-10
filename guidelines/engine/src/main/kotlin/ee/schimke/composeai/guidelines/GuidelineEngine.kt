@@ -419,11 +419,11 @@ public class GuidelineEngine(
     reason: String,
   ): PreviewGuidelineResult =
     PreviewGuidelineResult(
-      previewId = subject.previewId,
-      renderHash = subject.renderHash,
-      record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
-      noRules = reason,
-    )
+        previewId = subject.previewId,
+        renderHash = subject.renderHash,
+        record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
+      )
+      .also { it.noRules = reason }
 
   private fun unchecked(
     guidelines: CatalogGuidelinesV1,
