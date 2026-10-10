@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.44.0](https://github.com/yschimke/compose-ai-tools/compare/v2.43.0...v2.44.0) (2026-10-10)
+
+
+### Features
+
+* **discovery:** choose each component's overload by what its builder policy covers, never a deprecated one ([#5811](https://github.com/yschimke/compose-ai-tools/issues/5811)) ([dc30c76](https://github.com/yschimke/compose-ai-tools/commit/dc30c762e68b531d66b24f558fd8e27adfe47a36))
+* **guidelines:** an experimental text-only Jev checker behind --checker jev ([#5804](https://github.com/yschimke/compose-ai-tools/issues/5804)) ([d5d512b](https://github.com/yschimke/compose-ai-tools/commit/d5d512b5ad419f84ca66d9ab16f56a3cd8a5b63c))
+
+
+### Bug Fixes
+
+* **guidelines:** jev host calls on one thread, rate-limit pause before waking waiters, one checker per report ([#5810](https://github.com/yschimke/compose-ai-tools/issues/5810)) ([8fdb40d](https://github.com/yschimke/compose-ai-tools/commit/8fdb40db5321901b853127328e194aed1f49d559))
+
 ## [2.43.0](https://github.com/yschimke/compose-ai-tools/compare/v2.42.0...v2.43.0) (2026-10-10)
 
 
