@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.39.2](https://github.com/yschimke/compose-ai-tools/compare/v2.39.1...v2.39.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **guidelines:** review findings from [#5739](https://github.com/yschimke/compose-ai-tools/issues/5739), [#5740](https://github.com/yschimke/compose-ai-tools/issues/5740) and [#5744](https://github.com/yschimke/compose-ai-tools/issues/5744) ([#5753](https://github.com/yschimke/compose-ai-tools/issues/5753)) ([40a8be6](https://github.com/yschimke/compose-ai-tools/commit/40a8be613fbfe1aa0063725db0938ab0682ee19f))
+
 ## [2.39.1](https://github.com/yschimke/compose-ai-tools/compare/v2.39.0...v2.39.1) (2026-10-10)
 
 
