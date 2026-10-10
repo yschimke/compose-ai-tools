@@ -144,10 +144,31 @@ fun catalogStillMatchesTheApp() {
 }
 ```
 
-`discoverOrReadCurrentComponentRecord()` is the application's build-specific reader, not another
-library API. The record must come from the current compiled source. Run this test after discovery,
-and regenerate the pair in the same build. It complements compilation by checking the published
-signature contract and required-parameter coverage.
+JVM export applications can discover a deliberately selected set of compiled top-level Kotlin
+callables with the public metadata-only helper:
+
+```kotlin
+val freshRecord = TypedAdapterDiscovery.discover(
+  module = ":brand-components",
+  variant = "desktop",
+  callables = listOf(TypedAdapterDiscovery.Callable("com.acme.ButtonKt", "BrandButton")),
+)
+```
+
+It scans the export process's runtime classpath, or an explicit `classpath` of compiled outputs.
+Missing or overloaded entry points and unknown metadata are refused. It preserves source names
+(including `@JvmName` mappings), defaults, slots and visibility without loading or invoking app
+classes. Use an ordinary top-level export wrapper for member or receiver APIs. The record must
+come from the current compiled source. Run this test after discovery and regenerate the pair in
+the same build. It complements compilation by checking the published signature contract and
+required-parameter coverage.
+
+Real integration examples live in the opt-in `ui-builder-catalog` modules in
+[meshcore-mobile](https://github.com/yschimke/meshcore-mobile) and
+[homeassistant-remotecompose](https://github.com/yschimke/homeassistant-remotecompose).
+Their validation scripts check the artifact pair in a separate builder process and compare the
+real native component with its registered adapter. Native-only metadata does not promise browser
+execution; shipping a compatible renderer is still required.
 
 The repository's `TypedAdapterCompileTest` compiles a separate consumer against the real API, then
 independently breaks a property name, property type, codec, callback payload and SDK method.
