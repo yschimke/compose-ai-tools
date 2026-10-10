@@ -800,6 +800,14 @@ class CommentTest(unittest.TestCase):
             ))
         self.assertIn("across 1 preview(s) this PR changed.", buf.getvalue())
 
+    def test_changed_previews_none_left_is_a_clean_report(self):
+        # A later push that no longer changes any preview still writes a body,
+        # so the sticky comment from an earlier push is updated, not left stale.
+        body = self._run_comment([], changed_previews=True)
+        self.assertTrue(body.startswith("<!-- a11y-report -->"))
+        self.assertIn("This PR no longer changes any preview", body)
+        self.assertIn(ar.CLEAN_MARKER, body)
+
     def test_changed_previews_all_clean_is_marked_clean(self):
         # A clean body is still written, so an earlier sticky comment that
         # listed findings can be updated; the marker tells the action not to

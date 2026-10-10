@@ -77,6 +77,17 @@ if [ "$MODE" != "baseline" ] && [ "${A11Y_SCOPE_OVERRIDE:-auto}" != "full" ]; th
       ;;
     0)
       echo "a11y pipeline: this PR changed no previews; nothing to check."
+      # An earlier push may have posted findings for previews this PR no
+      # longer changes (or has deleted). Leave a clean report for the comment
+      # step, which updates an existing sticky comment with it and posts
+      # nothing new; no renders are pushed for it.
+      mkdir -p _a11y_renders
+      printf '{"entries": [], "scope": "changed-previews"}\n' > _a11y_renders/findings.json
+      python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
+        _a11y_renders/findings.json \
+        --repo "$REPO" \
+        --head-ref "$A11Y_PR_BRANCH" \
+        > _a11y_comment.md
       echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
       exit 0
       ;;

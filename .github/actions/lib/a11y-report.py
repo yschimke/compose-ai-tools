@@ -859,6 +859,18 @@ def cmd_comment(args: argparse.Namespace) -> int:
         sys.stdout.write("\n".join(lines).rstrip() + "\n")
         return 0
 
+    if scoped and not entries and not resolved:
+        # The PR changes no preview any more (an earlier push did): say so, so
+        # a sticky comment listing that push's findings is not left behind.
+        lines.extend([
+            "This PR no longer changes any preview, so none was checked.",
+            "",
+            CLEAN_MARKER,
+            "",
+        ])
+        sys.stdout.write("\n".join(lines).rstrip() + "\n")
+        return 0
+
     scope_text = "this PR changed" if scoped else ""
     lines.extend([
         f"{err} error(s) · {warn} warning(s) · {info} info "
