@@ -752,8 +752,8 @@ mode over them. A single-job run does both.
 The publish job treats the handoff as the PR's output, not its own: it restores only the entries
 the render phase stages, checks at most 20 module directories, spends one `guidelines-max-cost`
 budget across all of them, and installs the CLI this action was released with (a literal
-`cli-version` is honoured; `auto`, `catalog` and `pin` are not, since the last two would read
-workspace files the handoff could supply), refusing a release it cannot verify by sha256. At the default model a screen costs about
+`cli-version` is honoured; `auto`, `latest`, `catalog` and `pin` are not, since `latest` floats
+and the last two would read workspace files the handoff could supply), refusing a release it cannot verify by sha256. At the default model a screen costs about
 $0.003–0.007, and previews are judged in batches. See
 [docs/design/DESIGN_GUIDELINES.md](../../../docs/design/DESIGN_GUIDELINES.md).
 
