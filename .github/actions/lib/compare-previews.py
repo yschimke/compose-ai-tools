@@ -2216,6 +2216,47 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diff_fraction(prior_png: Path | None, current_png: Path) -> float | None:
+    """The fraction (0..1) of ``current_png``'s pixels that differ from ``prior_png``'s, or None
+    when it cannot be measured (no prior on disk, no Pillow, an undecodable file).
+
+    A size change counts as wholly changed. A cheap exact count rather than pixelmatch: it only
+    ranks the changes [cmd_copy_changed] already decided are real, so anti-aliasing noise does not
+    matter here. Animated renders are measured on their first frame.
+    """
+    if prior_png is None or not prior_png.is_file() or not current_png.is_file():
+        return None
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        return None
+    try:
+        with Image.open(prior_png) as prior, Image.open(current_png) as current:
+            if prior.size != current.size:
+                return 1.0
+            total = current.width * current.height
+            if total == 0:
+                return None
+            delta = ImageChops.difference(prior.convert("RGBA"), current.convert("RGBA"))
+            # Any channel differing marks the pixel: the max over the bands, then non-zero.
+            bands = delta.split()
+            mask = bands[0]
+            for band in bands[1:]:
+                mask = ImageChops.lighter(mask, band)
+            changed = total - mask.histogram()[0]
+            return round(changed / total, 6)
+    except Exception:
+        return None
+
+
+def _max_diff(a: float | None, b: float | None) -> float | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return max(a, b)
+
+
 # ---------------------------------------------------------------------------
 # copy-changed mode
 # ---------------------------------------------------------------------------
@@ -2255,11 +2296,33 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
             _write_display_copy(dest)
             copied += 1
             # Deduped on (module, previewId): a preview's captures fan out into
-            # several rows, and they all picture the same design node.
+            # several rows, and they all picture the same design node. `diff` is
+            # how much of the render changed (the largest over its captures), so
+            # a capped design-guidelines check can ask about the biggest changes
+            # first; a new preview counts as wholly changed.
             ident = (info["module"], info["previewId"])
+            prior = (
+                baseline_renders / info["module"] / baselines[key]["renderBasename"]
+                if baseline_renders is not None
+                and not is_new
+                and baselines[key].get("renderBasename")
+                else None
+            )
+            diff = 1.0 if is_new else _diff_fraction(prior, png)
             if ident not in seen_ids:
                 seen_ids.add(ident)
-                changed_ids.append({"previewId": info["previewId"], "module": info["module"]})
+                changed_ids.append(
+                    {
+                        "previewId": info["previewId"],
+                        "module": info["module"],
+                        "new": is_new,
+                        "diff": diff,
+                    }
+                )
+            else:
+                for entry in changed_ids:
+                    if (entry["module"], entry["previewId"]) == ident:
+                        entry["diff"] = _max_diff(entry.get("diff"), diff)
 
     if getattr(args, "changed_ids", None):
         Path(args.changed_ids).write_text(json.dumps(changed_ids, indent=2) + "\n")
