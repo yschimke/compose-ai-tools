@@ -53,6 +53,10 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
   private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
   private val rounds: Int = args.flagValue("--rounds")?.toIntOrNull() ?: 1
+  /**
+   * Handoff mode's follow-up evidence: the captures the render job staged (see [HandoffInputs]).
+   */
+  private var handoffHost: GuidelineEvidenceHost? = null
   private val triage: Boolean = "--no-triage" !in args
   private val annotate: Boolean = "--annotate" in args
   private val guidelinesLocation: String? = args.flagValue("--guidelines")
@@ -185,7 +189,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     buildDir: File,
     guidelines: CatalogGuidelinesV1,
     rulesSource: String,
-    host: GuidelineEvidenceHost = GuidelineEvidenceHost.None,
+    host: GuidelineEvidenceHost = handoffHost ?: GuidelineEvidenceHost.None,
   ): GuidelineEngine =
     GuidelineEngine(
         model = client,
@@ -210,8 +214,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
    * module's real `previews.json`, whose captures name each render and whose `sourceFile` and
    * `bodyLine` give each preview's source under `--source-root` (the module directory).
    * `--a11y-json` (the a11y pipeline's `accessibility.json`) gives each preview's nodes, so
-   * findings cite node ids and `--annotate` can outline them. A follow-up round can ask for nothing
-   * more: the host lists no fetchable evidence.
+   * findings cite node ids and `--annotate` can outline them. A follow-up round (`--rounds`) can
+   * ask only for the captures the render job staged beside a render ([HandoffEvidenceHost]):
+   * nothing is rendered here.
    */
   private fun runHandoff(client: OpenRouterClient): Int {
     val location = guidelinesLocation
@@ -235,6 +240,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         sourceRoot = sourceRoot?.let(::File),
         surfaceOverride = surfaceOverride,
       )
+    handoffHost = inputs.host
     val outDir = File(rendersDir ?: previewsJson?.let { File(it).absoluteFile.parent } ?: ".")
     val run = engine(client, outDir, guidelines, location).run(guidelines, inputs.subjects)
     val report = ModuleGuidelines("handoff", guidelines.catalog, model, run.results)
@@ -302,12 +308,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
                 result.captures.firstOrNull()?.scroll?.mode,
               ),
           )
-        ) +
-          HandoffInputs.longPicture(
-            png,
-            result.params.widthDp ?: 0,
-            result.params.heightDp ?: 0,
-          ),
+        ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
       source = source,
     )

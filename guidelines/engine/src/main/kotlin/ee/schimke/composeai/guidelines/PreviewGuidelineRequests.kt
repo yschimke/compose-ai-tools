@@ -152,8 +152,11 @@ public object PreviewGuidelineRequests {
       "number and a rough box as fractions (0 to 1) of that picture, so it can be marked on the " +
       "render. Scrolling is not clipping: content cut at the viewport edge ALONG the axis of a " +
       "scrollable container (a node with state `scrollable`, or a picture captured mid-scroll) " +
-      "is scrolled out of view; a long screenshot, when attached, shows that content. Only " +
-      "content cut across that axis, by the screen shape, or inside its own bounds is clipped. " +
+      "is scrolled out of view. Only content cut across that axis, by the screen shape, or " +
+      "inside its own bounds is clipped. When `scroll-capture` may be asked for a subject (its " +
+      "long screenshot: the whole scrolling content, already rendered) and you cannot tell " +
+      "scrolled-away content from clipped content, answer `needs_evidence` asking for it " +
+      "rather than guess. " +
       "When measured accessibility checks are listed for a subject, they decide the rules they " +
       "measure (touch target size, contrast) over your estimate from the picture; cite the " +
       "node or region they name. `confidence` is your " +
@@ -231,6 +234,7 @@ public object PreviewGuidelineRequests {
     evidenceAvailable: List<String>,
     round: Int = 0,
     onlyRules: Map<String, Set<String>>? = null,
+    subjectEvidence: Map<String, List<String>> = emptyMap(),
   ): GuidelineRequestV1 {
     val anyPicture = batch.subjects.any { it.pictures.isNotEmpty() }
     val perSubject: Map<String, List<GuidelineRuleV1>> =
@@ -316,6 +320,12 @@ public object PreviewGuidelineRequests {
         val alias = batch.aliases.getValue(subject.previewId)
         append("\n### ").append(alias).append(": ").append(subject.label).append('\n')
         pictureLines[alias]?.forEach { append(it).append('\n') } ?: append("No picture attached.\n")
+        subjectEvidence[subject.previewId]
+          ?.takeIf { it.toSet() != evidenceAvailable.toSet() }
+          ?.let { kinds ->
+            append("Evidence that may be asked for ").append(alias).append(": ")
+            append(kinds.ifEmpty { listOf("none") }.joinToString()).append('\n')
+          }
         if (subject.nodes.isNotEmpty()) {
           val viewport = subject.pictures.firstOrNull()?.let { pngSize(it.png) }
           viewport?.let { (w, h) ->
@@ -471,9 +481,8 @@ public object PreviewGuidelineRequests {
                   putJsonObject("kind") {
                     put("type", "string")
                     putJsonArray("enum") {
-                      listOf("a11y-hierarchy", "semantics", "source", "render").forEach {
-                        add(JsonPrimitive(it))
-                      }
+                      listOf("a11y-hierarchy", "semantics", "source", "render", KIND_SCROLL_CAPTURE)
+                        .forEach { add(JsonPrimitive(it)) }
                     }
                   }
                   putJsonObject("theme") { nullable("string") }
@@ -574,4 +583,12 @@ public object PreviewGuidelineRequests {
   public const val MAX_SOURCE_CHARS: Int = 8_000
 
   public const val SOURCE_MEDIA_TYPE: String = "text/x-kotlin"
+
+  /**
+   * An evidence kind beside the protocol's: the long screenshot of a preview's whole scrolling
+   * content, already rendered beside its capture. A host offers it only for previews that have one
+   * ([GuidelineEvidenceHost.available]) and serves it from [GuidelineEvidenceHost.render], so a
+   * host holding no build (a CI publish job) never renders anything to answer it.
+   */
+  public const val KIND_SCROLL_CAPTURE: String = "scroll-capture"
 }

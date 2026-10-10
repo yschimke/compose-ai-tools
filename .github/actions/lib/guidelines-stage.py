@@ -9,8 +9,9 @@ preview (``_changed_previews.json`` from ``compare-previews.py copy-changed``), 
     <out>/<module-key>/previews.json             the module manifest, narrowed to those previews,
                                                  with each capture's render rewritten into renders/
     <out>/<module-key>/renders/<name>.png        their renders (and <name>_SCROLL_long.png, the
-                                                 long screenshot of a scrolled capture, when the
-                                                 renderer wrote one)
+                                                 preview's `render/scroll/long` data product, when
+                                                 the renderer wrote one; a LONG-only preview's long
+                                                 screenshot is its capture)
     <out>/<module-key>/src/<sourceFile>          their source files (the CLI extracts each function),
                                                  and the module files declaring the composables those
                                                  files call, so a wrapper defined elsewhere in the
@@ -43,6 +44,7 @@ from pathlib import Path
 
 GUIDELINES_FILE = "ui-builder.guidelines.json"
 LONG_SUFFIX = "_SCROLL_long.png"
+LONG_KIND = "render/scroll/long"
 MAX_LONG_BYTES = 2 * 1024 * 1024
 SKIP_DIRS = {"node_modules", ".git", ".gradle"}
 # Source scans also skip build outputs, which hold generated copies rather than the module's code.
@@ -173,6 +175,32 @@ def select(
     return picked
 
 
+def long_render(preview: dict, previews_dir: Path) -> Path | None:
+    """The preview's long screenshot (the `render/scroll/long` data product, which the renderer
+    writes under `data/render-scroll-long/`), or the legacy `<render>_SCROLL_long.png` beside its
+    first capture. None when there is none, or it is a link or too large to send."""
+    candidates: list[Path] = []
+    for product in preview.get("dataProducts") or []:
+        output = product.get("output") if isinstance(product, dict) else None
+        if product.get("kind") == LONG_KIND and isinstance(output, str) and safe_relative(output):
+            candidates.append(previews_dir / output)
+    for capture in preview.get("captures", []):
+        output = capture.get("renderOutput")
+        if isinstance(output, str) and safe_relative(output):
+            render = previews_dir / output
+            candidates.append(render.with_name(render.stem + LONG_SUFFIX))
+            break
+    for path in candidates:
+        if (
+            path.name.endswith(".png")
+            and path.is_file()
+            and not path.is_symlink()
+            and path.stat().st_size <= MAX_LONG_BYTES
+        ):
+            return path
+    return None
+
+
 def has_source(preview: dict, module_dir: Path) -> bool:
     """Whether the preview's source is inside its module, so it can be staged with it."""
     source = preview.get("sourceFile")
@@ -248,6 +276,7 @@ def stage(
         staged_sources: list[Path] = []
         for preview in selected:
             captures = []
+            long = long_render(preview, previews_dir)
             for capture in preview.get("captures", []):
                 output = capture.get("renderOutput")
                 if not output or not safe_relative(output):
@@ -257,12 +286,16 @@ def stage(
                     continue
                 name = Path(output).name
                 shutil.copyfile(source_png, target / "renders" / name)
-                # The whole scrolling content beside a scrolled capture: the check sends it, so
-                # content scrolled out of view is not read as clipped.
-                long = source_png.with_name(source_png.stem + LONG_SUFFIX)
-                if long.is_file() and not long.is_symlink() and long.stat().st_size <= MAX_LONG_BYTES:
-                    shutil.copyfile(long, target / "renders" / long.name)
                 captures.append({**capture, "renderOutput": f"renders/{name}"})
+                # The whole scrolling content: a follow-up round can ask for it, so content
+                # scrolled out of view is not read as clipped. Staged as `<render>_SCROLL_long.png`
+                # beside the render, which is where the check looks for it.
+                if long is not None and len(captures) == 1:
+                    shutil.copyfile(long, target / "renders" / (Path(name).stem + LONG_SUFFIX))
+            if not captures and long is not None:
+                # A LONG-only preview: the long screenshot is its only render, so it is the capture.
+                shutil.copyfile(long, target / "renders" / long.name)
+                captures.append({"renderOutput": f"renders/{long.name}", "scroll": {"mode": "LONG"}})
             if not captures:
                 continue
             if has_source(preview, module_dir):

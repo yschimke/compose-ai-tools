@@ -243,6 +243,42 @@ class StageTest(unittest.TestCase):
         ]}))
         return root
 
+    def test_the_long_scroll_data_product_is_staged_beside_the_render(self) -> None:
+        # Where the renderer writes it: `data/render-scroll-long/`, named by the data product.
+        root = self._two_previews()
+        previews = root / "catalog" / "build" / "compose-previews"
+        (previews / "data" / "render-scroll-long").mkdir(parents=True)
+        (previews / "data" / "render-scroll-long" / "Stop-1_SCROLL_long.png").write_bytes(b"long")
+        (previews / "data" / "render-scroll-long" / "Wide-3_SCROLL_long.png").write_bytes(b"wide")
+        manifest = json.loads((previews / "previews.json").read_text())
+        manifest["previews"][0]["dataProducts"] = [
+            {"kind": "render/scroll/long",
+             "output": "data/render-scroll-long/Stop-1_SCROLL_long.png"}]
+        manifest["previews"].append(
+            {"id": "x.Wide", "dataProducts": [
+                {"kind": "render/scroll/long",
+                 "output": "data/render-scroll-long/Wide-3_SCROLL_long.png"}], "captures": []})
+        (previews / "previews.json").write_text(json.dumps(manifest))
+        out = root / "_guidelines"
+        self.assertEqual(gs.stage(root, {"x.Stop", "x.Wide"}, out, None), 2)
+        renders = out / "catalog" / "renders"
+        self.assertEqual((renders / "Stop-1_SCROLL_long.png").read_bytes(), b"long")
+        staged = json.loads((out / "catalog" / "previews.json").read_text())
+        wide = next(p for p in staged["previews"] if p["id"] == "x.Wide")
+        self.assertEqual(wide["captures"], [
+            {"renderOutput": "renders/Wide-3_SCROLL_long.png", "scroll": {"mode": "LONG"}}])
+
+    def test_a_long_data_product_escaping_the_build_dir_is_ignored(self) -> None:
+        root = self._two_previews()
+        previews = root / "catalog" / "build" / "compose-previews"
+        manifest = json.loads((previews / "previews.json").read_text())
+        manifest["previews"][0]["dataProducts"] = [
+            {"kind": "render/scroll/long", "output": "../../src/Stop.kt"}]
+        (previews / "previews.json").write_text(json.dumps(manifest))
+        out = root / "_guidelines"
+        gs.stage(root, {"x.Stop"}, out, None)
+        self.assertFalse((out / "catalog" / "renders" / "Stop-1_SCROLL_long.png").exists())
+
     def test_a_preview_two_modules_discover_is_staged_once_where_its_source_is(self) -> None:
         # PR #760 in wear-m3-catalog: `:catalog-desktop` re-renders `:catalog`'s previews, with a
         # `sourceFile` reaching into `../catalog/`, so it was checked twice — once without source.

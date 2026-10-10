@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.PreviewCheck
+import ee.schimke.composeai.guidelines.PreviewGuidelineRequests
 import ee.schimke.composeai.guidelines.PreviewNode
 import ee.schimke.composeai.guidelines.PreviewSubject
 import ee.schimke.composeai.guidelines.SubjectPicture
@@ -27,7 +28,17 @@ internal data class HandoffInputs(
   val subjects: List<PreviewSubject>,
   val nodes: Map<String, List<AccessibilityNode>>,
   val renders: Map<String, File?>,
+  /** Each preview's size in dp, for the pictures a follow-up round attaches. */
+  val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
 ) {
+  /**
+   * What a follow-up round may ask for in handoff mode: only captures the render job already made
+   * and staged beside each render (the long screenshot of its scrolling content). The job holding
+   * the key never builds or renders, so nothing else is fetchable.
+   */
+  val host: GuidelineEvidenceHost
+    get() = HandoffEvidenceHost(renders, sizes)
+
   companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
 
@@ -127,7 +138,7 @@ internal data class HandoffInputs(
                 entry.heightDp,
                 description = describeCapture(entry.widthDp, entry.heightDp, entry.scrollMode),
               )
-            ) + longPicture(png, entry.widthDp, entry.heightDp),
+            ),
           nodes =
             nodes[entry.id].orEmpty().mapIndexedNotNull { index, node ->
               node.toPreviewNode(index)
@@ -136,7 +147,12 @@ internal data class HandoffInputs(
           checks = checks[entry.id].orEmpty(),
         )
       }
-      return HandoffInputs(subjects, nodes, entries.associate { it.id to it.render })
+      return HandoffInputs(
+        subjects,
+        nodes,
+        entries.associate { it.id to it.render },
+        entries.associate { it.id to (it.widthDp to it.heightDp) },
+      )
     }
 
     fun readNodes(file: File?): Map<String, List<AccessibilityNode>> {
@@ -181,23 +197,26 @@ internal data class HandoffInputs(
     private const val MAX_LONG_BYTES: Long = 2L * 1024 * 1024
 
     /**
-     * The long screenshot beside [render] (`<name>_SCROLL_long.png`), as a second picture, so a
-     * model can tell content scrolled out of the viewport from content that is clipped. Empty when
-     * there is none, or it is too large to send.
+     * The long screenshot beside [render] (`<name>_SCROLL_long.png`), or null when there is none,
+     * it is a link, or it is too large to send. It lies beside the render, so it is confined to the
+     * same staged directory.
      */
-    internal fun longPicture(render: File, widthDp: Int, heightDp: Int): List<SubjectPicture> {
-      val long = render.resolveSibling(render.nameWithoutExtension + LONG_SUFFIX)
-      if (!long.isFile || long.length() > MAX_LONG_BYTES) return emptyList()
-      return listOf(
-        SubjectPicture(
-          "long",
-          long.readBytes(),
-          widthDp,
-          heightDp,
-          description = describeCapture(widthDp, heightDp, "LONG"),
-        )
+    internal fun longCapture(render: File): File? =
+      render.resolveSibling(render.nameWithoutExtension + LONG_SUFFIX).takeIf {
+        it.isFile &&
+          !java.nio.file.Files.isSymbolicLink(it.toPath()) &&
+          it.length() <= MAX_LONG_BYTES
+      }
+
+    /** [file], a long screenshot, as the picture a scroll-capture need is answered with. */
+    internal fun longPicture(file: File, widthDp: Int, heightDp: Int): SubjectPicture =
+      SubjectPicture(
+        PreviewGuidelineRequests.KIND_SCROLL_CAPTURE,
+        file.readBytes(),
+        widthDp,
+        heightDp,
+        description = describeCapture(widthDp, heightDp, "LONG"),
       )
-    }
 
     /**
      * How the picture was captured, so the model does not read a scrolled frame as the first one:
@@ -250,6 +269,33 @@ internal data class HandoffInputs(
     val heightDp: Int = 0,
     val scrollMode: String? = null,
   )
+}
+
+/**
+ * Handoff mode's evidence: a preview's long screenshot, when the render job staged one beside its
+ * render, served from that file in a follow-up round. Offered only for previews that have one.
+ */
+internal class HandoffEvidenceHost(
+  renders: Map<String, File?>,
+  private val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
+) : GuidelineEvidenceHost {
+  private val captures: Map<String, File> =
+    renders
+      .mapNotNull { (id, render) -> render?.let(HandoffInputs::longCapture)?.let { id to it } }
+      .toMap()
+
+  override val available: List<String> =
+    if (captures.isEmpty()) emptyList() else listOf(PreviewGuidelineRequests.KIND_SCROLL_CAPTURE)
+
+  override fun available(previewId: String): List<String> =
+    if (previewId in captures) available else emptyList()
+
+  override fun render(previewId: String, need: GuidelineEvidenceNeedV1): SubjectPicture? {
+    if (need.kind != PreviewGuidelineRequests.KIND_SCROLL_CAPTURE) return null
+    val file = captures[previewId] ?: return null
+    val (width, height) = sizes[previewId] ?: (0 to 0)
+    return HandoffInputs.longPicture(file, width, height)
+  }
 }
 
 /**
