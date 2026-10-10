@@ -137,6 +137,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       // The same surface and profile a handoff run reads off the manifest, so a preview is asked
       // the same rules however it is checked.
       val kinds = HandoffInputs.readKinds(buildDir.resolve("previews.json"))
+      val discoveredModule = discovered.firstOrNull { it.first.gradlePath == module }
       val subjects = moduleResults.mapNotNull { result ->
         subjectFor(
           result,
@@ -145,6 +146,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           sources(result.id),
           kinds[result.id],
           HandoffInputs.longCaptureOf(infos[result.id], renders[result.id], buildDir),
+          a11y = discoveredModule != null,
         )
       }
       // What a follow-up round may ask for: sources, renders at other settings through the
@@ -156,9 +158,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           nodes = emptyMap(),
           sources = sources,
           a11yFetch =
-            discovered
-              .firstOrNull { it.first.gradlePath == module }
-              ?.let { found -> { ids -> fetchA11y(found.first, found.second, ids, buildDir) } },
+            discoveredModule?.let { found ->
+              { ids -> fetchA11y(found.first, found.second, ids, buildDir) }
+            },
         )
       val cache = GuidelineResultCache(buildDir.resolve("guidelines"))
       val run =
@@ -210,24 +212,41 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     buildDir: File,
   ): A11yEvidence {
     val wanted = ids.toSet()
-    val previews =
-      manifest.previews
-        .filter { it.id in wanted && it.includeInA11y }
-        .map { RequestedPreview(previewId = it.id, entryId = it.id) }
+    // Subjects carry the ids a consumer sees, `Foo_dark` under `--permutations`; the daemon is
+    // addressed by the declared `Foo` with the permutation's overrides, as `a11y` itself does.
+    val consumerIds = mutableListOf<String>()
+    val previews = mutableListOf<RequestedPreview>()
+    for (preview in manifest.previews) {
+      if (!preview.includeInA11y) continue
+      for (expanded in PreviewPermutationsCli.expand(listOf(preview), permutations)) {
+        consumerIds += expanded.id
+        if (expanded.id !in wanted) continue
+        previews +=
+          RequestedPreview(
+            previewId = preview.id,
+            entryId = expanded.id,
+            overrides = PreviewPermutationsCli.overridesFor(preview, expanded),
+          )
+      }
+    }
     if (previews.isEmpty()) return A11yEvidence()
+    val report = buildDir.resolve("accessibility.json")
+    val fetched = previews.map { it.entryId }.toSet()
+    // A narrowed fetch merges into the report and keeps a preview's previous entry when its fetch
+    // fails; that entry may be of an older render. Dropping the asked-for entries first means what
+    // is read back is what this fetch produced, or nothing.
+    dropA11yEntries(report, fetched)
     produceAdditionalDataProducts(
       listOf(
         DataProductRequest(
           module = module,
           manifest = manifest,
           previews = previews,
-          consumerPreviewIds = manifest.previews.map { it.id },
-          narrowed = previews.size < manifest.previews.size,
+          consumerPreviewIds = consumerIds,
+          narrowed = previews.size < consumerIds.size,
         )
       )
     )
-    val report = buildDir.resolve("accessibility.json")
-    val fetched = previews.map { it.entryId }.toSet()
     return A11yEvidence(
       nodes = readNodes(report).filterKeys { it in fetched },
       checks = HandoffInputs.readChecks(report).filterKeys { it in fetched },
@@ -338,6 +357,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     source: String?,
     kind: GuidelineSubjectKind?,
     longCapture: File? = null,
+    a11y: Boolean = false,
   ): PreviewSubject? {
     png ?: return null
     val bytes = png.readBytes()
@@ -353,7 +373,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       profile = profileOverride ?: kind?.profile,
       // The identity a handoff run gives the same render ([HandoffInputs.renderHash]), so a PR's
       // check can be answered from this run's cache when nothing about the preview changed.
-      renderHash = HandoffInputs.renderHash(result.sha256 ?: sha256(bytes), longCapture),
+      renderHash = HandoffInputs.renderHash(result.sha256 ?: sha256(bytes), longCapture, a11y),
       pictures =
         listOf(
           SubjectPicture(

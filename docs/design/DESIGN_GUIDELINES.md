@@ -204,9 +204,13 @@ the first request: the CLI's full mode did that for the whole catalog on every r
 publish's check paid one ATF render per preview whether any rule needed it). The MCP server and the
 VS Code extension do not implement a host yet (see *Next steps*); they should follow the same shape.
 
-The data is derived from the same render, so it is not part of the cache identity: a result is
-reused across runs that staged it and runs that did not, in a PR's handoff and in the catalog
-publish alike.
+The data is derived from the same render, so its bytes are not part of the cache identity, but
+whether it could be asked for is (`+a11y` on the render hash): a verdict reached without it (no a11y
+pipeline, a daemon that failed) never answers a run that has it. A PR's handoff with staged data and
+the catalog publish (which can always fetch it) key the same preview the same way. A live fetch
+first drops the previews' old entries from `accessibility.json`, so a failed fetch serves nothing
+rather than an older render's nodes, and `--permutations` ids are fetched as their declared
+preview with the permutation's overrides.
 
 ## Handoff mode (CI)
 

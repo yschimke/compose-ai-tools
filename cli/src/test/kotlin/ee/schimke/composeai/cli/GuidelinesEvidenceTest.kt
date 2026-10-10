@@ -284,6 +284,36 @@ class GuidelinesEvidenceTest {
   }
 
   @Test
+  fun `a fetch's own entries are dropped first, so a failed fetch cannot serve an older render's`() {
+    val report =
+      Files.createTempFile("accessibility", ".json").toFile().apply {
+        writeText(
+          """{"module":"catalog","partial":true,"entries":[
+            {"previewId":"A","findings":[],"nodes":[]},{"previewId":"B","findings":[],"nodes":[]}]}"""
+        )
+      }
+    dropA11yEntries(report, setOf("A"))
+    val text = report.readText()
+    assertTrue(!text.contains("\"A\"") && text.contains("\"B\"") && text.contains("partial"), text)
+  }
+
+  @Test
+  fun `whether a11y evidence is available is part of a render's identity`() {
+    val dir = Files.createTempDirectory("guidelines-identity").toFile()
+    dir.resolve("A.png").writeBytes(png())
+    val without = HandoffInputs.read(null, dir, null, null, null).subjects.single().renderHash
+    val a11y =
+      dir.resolve("accessibility.json").apply {
+        writeText(
+          """{"module":"m","entries":[{"previewId":"A","findings":[],"nodes":[
+            {"label":"","ref":"r","states":[],"merged":false,"boundsInScreen":"0,0,4,4"}]}]}"""
+        )
+      }
+    val with = HandoffInputs.read(null, dir, a11y, null, null).subjects.single().renderHash
+    assertTrue(with != without && with == without + "+a11y", "$without -> $with")
+  }
+
+  @Test
   fun `a live host stops offering accessibility data once a fetch produces none`() {
     val host =
       CliEvidenceHost(
