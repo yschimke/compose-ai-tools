@@ -92,6 +92,9 @@ internal object UiBuilderGuidelinesFile {
   /** The largest rule pack read; the same bound as the `:design-guidelines` engine's. */
   const val MAX_PACK_BYTES: Int = 1024 * 1024
 
+  /** At most this many includes per file; the same bound as the `:design-guidelines` engine's. */
+  const val MAX_INCLUDES: Int = 8
+
   /** The outcome of [flatten]: the text to publish, and why it could not be flattened, if not. */
   data class Flattened(val text: String, val problem: String? = null)
 
@@ -102,8 +105,9 @@ internal object UiBuilderGuidelinesFile {
    * (`GuidelinesIncludes`): a pack rule naming `platforms` is carried only into a catalog whose
    * `platform` it lists, an `exclude`d id or one the catalog defines itself is left out, an
    * include's `profiles` narrows the carried rules naming none, and a pack's frames are added where
-   * the catalog does not already ask for the same one. A file with no includes comes back
-   * byte-for-byte.
+   * the catalog does not already ask for the same one. At most [MAX_INCLUDES] includes, and a
+   * pack's rules must pass the same checks as the catalog's own ([problems]). A file with no
+   * includes comes back byte-for-byte.
    *
    * When a pack cannot be read or does not match its pin, [text] comes back as written, includes
    * and all, with the reason: a reader that resolves includes (the CLI) still can, and the publish
@@ -113,6 +117,7 @@ internal object UiBuilderGuidelinesFile {
     val root = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
     val includes = root?.get("includes") as? JsonArray ?: return Flattened(text)
     if (includes.isEmpty()) return Flattened(text)
+    if (includes.size > MAX_INCLUDES) return Flattened(text, "more than $MAX_INCLUDES includes")
     val platform = root.string("platform")
     val rules = (root["rules"] as? JsonArray).orEmpty().toMutableList()
     val ids = rules.mapNotNullTo(mutableSetOf()) { (it as? JsonObject)?.string("id") }
@@ -123,16 +128,19 @@ internal object UiBuilderGuidelinesFile {
         return Flattened(text, it)
       }
       val url = include!!.string("url")!!
+      val pin = include.string("sha256")!!
       val bytes =
-        try {
-          fetch(url)
-        } catch (e: Exception) {
-          return Flattened(text, "$url could not be read: ${e.message ?: e.javaClass.simpleName}")
-        }
+        packs["$url $pin"]
+          ?: try {
+            fetch(url)
+          } catch (e: Exception) {
+            return Flattened(text, "$url could not be read: ${e.message ?: e.javaClass.simpleName}")
+          }
       val actual = sha256(bytes)
-      if (actual != include.string("sha256")) {
+      if (actual != pin) {
         return Flattened(text, "$url does not match its pin (sha256 $actual)")
       }
+      packs["$url $pin"] = bytes
       val pack =
         runCatching { Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)) as? JsonObject }
           .getOrNull() ?: return Flattened(text, "$url is not a JSON object")
@@ -140,6 +148,13 @@ internal object UiBuilderGuidelinesFile {
       if ((pack["includes"] as? JsonArray)?.isNotEmpty() == true) {
         return Flattened(text, "$url includes others; packs may not nest")
       }
+      // The loader refuses a merged file with one malformed rule, so a pack's rules are held to the
+      // catalog's own checks before they are merged into it.
+      problems(bytes.toString(Charsets.UTF_8), pack.string("catalog").orEmpty())
+        .firstOrNull()
+        ?.let {
+          return Flattened(text, "$url: $it")
+        }
       val exclude = include.strings("exclude")
       val profiles = include.strings("profiles")
       for (rule in (pack["rules"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()) {
@@ -172,27 +187,27 @@ internal object UiBuilderGuidelinesFile {
 
   private val PRETTY = Json { prettyPrint = true }
 
-  /** Packs already read in this daemon, by URL and pin, so discovery and bundling fetch once. */
+  /**
+   * Packs already read and verified in this daemon, keyed by URL and pin together, so discovery and
+   * bundling fetch once and a changed pin is never answered from an earlier pack's bytes.
+   */
   private val packs = ConcurrentHashMap<String, ByteArray>()
 
   private val http: OkHttpClient by lazy {
     OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
   }
 
-  private fun fetchPack(url: String): ByteArray =
-    packs[url]
-      ?: run {
-        require(url.startsWith("https://")) { "not an https URL" }
-        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-          if (!response.isSuccessful) throw IOException("answered ${response.code}")
-          val source = response.body.source()
-          if (source.request(MAX_PACK_BYTES + 1L)) {
-            throw IOException("larger than $MAX_PACK_BYTES bytes")
-          }
-          source.buffer.readByteArray()
-        }
+  private fun fetchPack(url: String): ByteArray {
+    require(url.startsWith("https://")) { "not an https URL" }
+    return http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+      if (!response.isSuccessful) throw IOException("answered ${response.code}")
+      val source = response.body.source()
+      if (source.request(MAX_PACK_BYTES + 1L)) {
+        throw IOException("larger than $MAX_PACK_BYTES bytes")
       }
-        .also { packs[url] = it }
+      source.buffer.readByteArray()
+    }
+  }
 
   private fun sha256(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

@@ -187,4 +187,15 @@ class GuidelinesIncludesTest {
     assertThat(loaded.problem).isNull()
     assertThat(loaded.guidelines!!.rules).hasSize(2)
   }
+
+  @Test
+  fun `more includes than the bound refuse the file`() {
+    val many =
+      (1..GuidelinesIncludes.MAX_INCLUDES + 1).joinToString(",") {
+        """{"url": "$packUrl", "sha256": "$pin"}"""
+      }
+    val loaded = CatalogGuidelinesLoader.parse(catalog(many), null, fetch)
+    assertThat(loaded.problem).contains("more than")
+    assertThat(fetched).isEmpty()
+  }
 }
