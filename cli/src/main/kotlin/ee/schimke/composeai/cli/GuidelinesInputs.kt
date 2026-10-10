@@ -128,7 +128,12 @@ internal data class HandoffInputs(
           surface =
             surfaceOverride
               ?: if (entry.screen) GuidelineSurfaces.SCREEN else GuidelineSurfaces.COMPONENT,
-          renderHash = sha256(bytes),
+          // The long screenshot is served later, from the host, so the subject's pictures do not
+          // carry it; its bytes join the identity the result is cached under, or a changed (or
+          // newly staged) capture would be answered from a verdict that never saw it.
+          renderHash =
+            sha256(bytes) +
+              (entry.render?.let(::longCapture)?.let { "+scroll:" + sha256(it.readBytes()) } ?: ""),
           pictures =
             listOf(
               SubjectPicture(

@@ -234,7 +234,22 @@ public object PreviewGuidelineRequests {
     evidenceAvailable: List<String>,
     round: Int = 0,
     onlyRules: Map<String, Set<String>>? = null,
-    subjectEvidence: Map<String, List<String>> = emptyMap(),
+  ): GuidelineRequestV1 =
+    request(guidelines, batch, rulesSource, evidenceAvailable, round, onlyRules, emptyMap())
+
+  /**
+   * [request], also saying per subject what may be asked for it where that differs from
+   * [evidenceAvailable] ([subjectEvidence], by preview id): an already-rendered capture only some
+   * previews have.
+   */
+  public fun request(
+    guidelines: CatalogGuidelinesV1,
+    batch: GuidelineBatch,
+    rulesSource: String,
+    evidenceAvailable: List<String>,
+    round: Int,
+    onlyRules: Map<String, Set<String>>?,
+    subjectEvidence: Map<String, List<String>>,
   ): GuidelineRequestV1 {
     val anyPicture = batch.subjects.any { it.pictures.isNotEmpty() }
     val perSubject: Map<String, List<GuidelineRuleV1>> =
