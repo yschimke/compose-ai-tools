@@ -10,7 +10,10 @@ import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.imageio.ImageTypeSpecifier
+import javax.imageio.metadata.IIOMetadataNode
 import kotlin.math.roundToInt
 
 /**
@@ -60,7 +63,45 @@ public object GuidelineAnnotator {
     } finally {
       g.dispose()
     }
-    return ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
+    return write(image)
+  }
+
+  /**
+   * The PNG `tEXt` keyword naming the overlay's format, so a reader can tell numbered badges from
+   * the rule-id labels older CLIs drew: `guidelines-report.py` numbers its findings only when the
+   * picture says [FORMAT].
+   */
+  internal const val FORMAT_KEY: String = "compose-preview-guidelines-overlay"
+
+  /** Badges numbered in the report's order; bump when the numbering contract changes. */
+  internal const val FORMAT: String = "numbered-v1"
+
+  private fun write(image: BufferedImage): ByteArray {
+    val out = ByteArrayOutputStream()
+    val writer = ImageIO.getImageWritersByFormatName("png").next()
+    try {
+      val param = writer.defaultWriteParam
+      val metadata =
+        writer.getDefaultImageMetadata(ImageTypeSpecifier.createFromRenderedImage(image), param)
+      val format = "javax_imageio_png_1.0"
+      val entry =
+        IIOMetadataNode("tEXtEntry").apply {
+          setAttribute("keyword", FORMAT_KEY)
+          setAttribute("value", FORMAT)
+        }
+      val root =
+        IIOMetadataNode(format).apply {
+          appendChild(IIOMetadataNode("tEXt").apply { appendChild(entry) })
+        }
+      metadata.mergeTree(format, root)
+      ImageIO.createImageOutputStream(out).use { stream ->
+        writer.output = stream
+        writer.write(null, IIOImage(image, null, metadata), param)
+      }
+    } finally {
+      writer.dispose()
+    }
+    return out.toByteArray()
   }
 
   /** One thing drawn on the picture: a node's bounds or a region, numbered by its finding. */

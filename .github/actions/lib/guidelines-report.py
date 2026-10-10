@@ -41,6 +41,10 @@ IMAGE_WIDTH = 320
 MAX_IMAGES = 40
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# The PNG tEXt entry `GuidelineAnnotator` writes on an overlay with numbered badges. An overlay from
+# an older CLI (the action can install one) has rule-id labels instead, so its findings get no
+# numbers rather than numbers the picture does not show.
+OVERLAY_FORMAT = (b"compose-preview-guidelines-overlay", b"numbered-v1")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -150,6 +154,30 @@ def picture(module_dir: Path, render: str | None, marked: int) -> str | None:
     return None
 
 
+def numbered_overlay(path: Path) -> bool:
+    """Whether the PNG at ``path`` declares the numbered-badge overlay format: a ``tEXt`` chunk
+    before the image data, as the annotator writes it."""
+    try:
+        with path.open("rb") as f:
+            if f.read(len(PNG_SIGNATURE)) != PNG_SIGNATURE:
+                return False
+            for _ in range(64):
+                header = f.read(8)
+                if len(header) < 8:
+                    return False
+                length = int.from_bytes(header[:4], "big")
+                kind = header[4:]
+                if kind in (b"IDAT", b"IEND") or length > 1 << 16:
+                    return False
+                data = f.read(length)
+                f.read(4)  # CRC
+                if kind == b"tEXt" and tuple(data.split(b"\0", 1)) == OVERLAY_FORMAT:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def render_names(module_dir: Path) -> dict:
     manifest = module_dir / "previews.json"
     names = {}
@@ -214,10 +242,11 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                     shutil.copyfile(module_dir / "renders" / shown, dest / shown)
                 url = image_url(args, module_dir.name, shown)
                 if url:
-                    numbered = shown.endswith(".guidelines.png")
+                    annotated = shown.endswith(".guidelines.png")
+                    numbered = annotated and numbered_overlay(module_dir / "renders" / shown)
                     caption = (
                         f"{marked} finding location(s) marked on the render."
-                        if numbered
+                        if annotated
                         else "Nothing marked: no finding names a node or region on this render."
                     )
                     lines += [

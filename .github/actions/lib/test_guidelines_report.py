@@ -72,6 +72,18 @@ def _args(**kw) -> argparse.Namespace:
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
+def _chunk(kind: bytes, data: bytes) -> bytes:
+    import zlib
+    return (len(data).to_bytes(4, "big") + kind + data
+            + zlib.crc32(kind + data).to_bytes(4, "big"))
+
+
+# An overlay as GuidelineAnnotator writes it: IHDR, then the format's tEXt entry, then the image.
+NUMBERED_PNG = (b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", b"\x00" * 13)
+                + _chunk(b"tEXt", b"compose-preview-guidelines-overlay\0numbered-v1")
+                + _chunk(b"IDAT", b"") + _chunk(b"IEND", b""))
+
+
 class ReportTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
@@ -110,12 +122,13 @@ class ReportTest(unittest.TestCase):
         self.assertIn("$0.0068", body)
         self.assertNotIn("<img", body)
 
-    def _renders(self, annotated: bool = True, nodes: list[dict] | None = None) -> None:
+    def _renders(self, annotated: bool = True, nodes: list[dict] | None = None,
+                 overlay: bytes = NUMBERED_PNG) -> None:
         renders = self.tmp / "catalog" / "renders"
         renders.mkdir(exist_ok=True)
         (renders / "Stop-1.png").write_bytes(PNG)
         if annotated:
-            (renders / "Stop-1.guidelines.png").write_bytes(PNG)
+            (renders / "Stop-1.guidelines.png").write_bytes(overlay)
         if nodes is not None:
             (self.tmp / "catalog" / "accessibility.json").write_text(json.dumps({"entries": [
                 {"previewId": "x.StopKt.Stop", "nodes": nodes}]}))
@@ -168,6 +181,15 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(listed[0].startswith("- **1** ⚠️ **wear.touch-target-48dp**"), listed[0])
         self.assertTrue(listed[1].startswith("- ⚠️ **wear.layout.no-clipping**"), listed[1])
         self.assertTrue(listed[2].startswith("- **2** ℹ️ **wear.button.emphasis**"), listed[2])
+
+    def test_an_overlay_from_an_older_cli_gets_no_numbers(self) -> None:
+        # An older CLI's overlay has rule-id labels and no format entry: shown, but not numbered.
+        self._renders(nodes=[{"ref": "stop", "boundsInScreen": "0,0,10,10"}], overlay=PNG)
+        body = gr.build(self.tmp, _args(image_repo="org/repo", image_ref="0123abc"))
+        assert body is not None
+        self.assertIn("Stop-1.guidelines.png", body)
+        self.assertIn("1 finding location(s) marked", body)
+        self.assertIn("- ⚠️ **wear.touch-target-48dp** on `stop`", body)
 
     def test_no_numbers_without_the_picture_they_refer_to(self) -> None:
         # Marks exist, but no image location was given, so no picture is embedded.
