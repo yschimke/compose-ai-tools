@@ -3146,8 +3146,54 @@ class ChangedIdsHandoffTest(unittest.TestCase):
 
         self.assertEqual(
             json.loads(ids.read_text()),
-            [{"previewId": "Red", "module": "app"}],
+            # The second capture has no baseline of its own, so it is new: the whole render changed.
+            [{"previewId": "Red", "module": "app", "new": False, "diff": 1.0}],
         )
+
+    def test_records_how_much_of_each_render_changed(self):
+        """`diff` ranks the changes for a capped design-guidelines check: the share of pixels that
+        differ from the baseline render, 1.0 for a new preview."""
+        from types import SimpleNamespace
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+
+        renders = self.tmp / "baseline-renders" / "app"
+        renders.mkdir(parents=True)
+        Image.new("RGBA", (10, 10), (0, 0, 0, 255)).save(renders / "Half.png")
+        current = Image.new("RGBA", (10, 10), (0, 0, 0, 255))
+        for x in range(5):
+            for y in range(10):
+                current.putpixel((x, y), (255, 0, 0, 255))
+        half = self.tmp / "Half.png"
+        current.save(half)
+        fresh = self.tmp / "Fresh.png"
+        current.save(fresh)
+        cli = self.tmp / "cli.json"
+        cli.write_text(json.dumps({"previews": [
+            _entry(id="Half", function="HalfFn", sha="h2", png=str(half)),
+            _entry(id="Fresh", function="FreshFn", sha="f", png=str(fresh)),
+        ]}))
+        baselines = self.tmp / "baselines.json"
+        baselines.write_text(json.dumps({
+            "app/Half": {"sha256": "h1", "functionName": "HalfFn", "renderBasename": "Half.png"},
+        }))
+        ids = self.tmp / "changed.json"
+
+        cp.cmd_copy_changed(SimpleNamespace(
+            cli_json=str(cli),
+            baselines=str(baselines),
+            baseline_renders=str(self.tmp / "baseline-renders"),
+            output_dir=str(self.tmp / "out"),
+            changed_ids=str(ids),
+        ))
+
+        by_id = {e["previewId"]: e for e in json.loads(ids.read_text())}
+        self.assertEqual(by_id["Half"]["diff"], 0.5)
+        self.assertFalse(by_id["Half"]["new"])
+        self.assertEqual(by_id["Fresh"]["diff"], 1.0)
+        self.assertTrue(by_id["Fresh"]["new"])
 
 
 class BaselineSkewNoteTest(unittest.TestCase):

@@ -12,6 +12,9 @@ import ee.schimke.composeai.guidelines.SubjectPicture
 import ee.schimke.composeai.guidelines.failures
 import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1
+import ee.schimke.composeai.previewdata.Capture
+import ee.schimke.composeai.previewdata.PreviewDataProduct
+import ee.schimke.composeai.previewdata.PreviewInfo
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -228,6 +231,76 @@ class GuidelinesEvidenceTest {
     assertEquals("TouchTargetSizeCheck", subject.checks.single().type)
     assertEquals("4,4,28,28", subject.checks.single().bounds)
   }
+
+  @Test
+  fun `a gradle run files a render under the identity a handoff run gives the staged copy`() {
+    // The catalog publish (Gradle mode) saves results a PR's check (handoff mode) reads, so the
+    // same render, long screenshot included, must hash the same in both.
+    val module = Files.createTempDirectory("guidelines-identity").toFile()
+    val buildDir = module.resolve("build/compose-previews").apply { mkdirs() }
+    val render = buildDir.resolve("renders/List-1.png").apply { parentFile.mkdirs() }
+    render.writeBytes(png())
+    val long = buildDir.resolve("data/render-scroll-long/List-1_SCROLL_long.png")
+    long.parentFile.mkdirs()
+    long.writeBytes(png() + byteArrayOf(7))
+    buildDir.resolve("renders/Plain-2.png").writeBytes(png() + byteArrayOf(1))
+    val info =
+      PreviewInfo(
+        id = "x.List",
+        functionName = "List",
+        className = "x.ListKt",
+        captures = listOf(Capture(renderOutput = "renders/List-1.png")),
+        dataProducts =
+          listOf(
+            PreviewDataProduct(
+              kind = HandoffInputs.LONG_KIND,
+              output = "data/render-scroll-long/List-1_SCROLL_long.png",
+            )
+          ),
+      )
+    val plain =
+      PreviewInfo(
+        id = "x.Plain",
+        functionName = "Plain",
+        className = "x.PlainKt",
+        captures = listOf(Capture(renderOutput = "renders/Plain-2.png")),
+      )
+    fun gradle(info: PreviewInfo, file: java.io.File): String =
+      HandoffInputs.renderHash(
+        sha256(file.readBytes()),
+        HandoffInputs.longCaptureOf(info, file, buildDir),
+      )
+
+    // What guidelines-stage.py stages: each render, and the long screenshot beside it.
+    val staged = Files.createTempDirectory("guidelines-identity-staged").toFile()
+    staged.resolve("renders").mkdirs()
+    render.copyTo(staged.resolve("renders/List-1.png"))
+    long.copyTo(staged.resolve("renders/List-1_SCROLL_long.png"))
+    buildDir.resolve("renders/Plain-2.png").copyTo(staged.resolve("renders/Plain-2.png"))
+    staged
+      .resolve("previews.json")
+      .writeText(
+        """
+        {"previews": [
+          {"id": "x.List", "captures": [{"renderOutput": "renders/List-1.png"}]},
+          {"id": "x.Plain", "captures": [{"renderOutput": "renders/Plain-2.png"}]}
+        ]}
+        """
+      )
+    val handoff =
+      HandoffInputs.read(staged.resolve("previews.json"), null, null, null, null)
+        .subjects
+        .associate { it.previewId to it.renderHash }
+
+    assertEquals(handoff["x.List"], gradle(info, render))
+    assertTrue(handoff["x.List"]!!.contains("+scroll:"))
+    assertEquals(handoff["x.Plain"], gradle(plain, buildDir.resolve("renders/Plain-2.png")))
+  }
+
+  private fun sha256(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+      "%02x".format(it)
+    }
 
   @Test
   fun `a handoff with no extra captures offers no evidence, as before`() {
