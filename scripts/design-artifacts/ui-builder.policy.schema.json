@@ -534,6 +534,93 @@
         "roles": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "designTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The design-system values a design may re-skin — a theme colour, a list's spacing, an icon's size — and every property each one writes. Copied verbatim into the published ui-builder.json as `statusSemantics.designTokens`, which the UI builder's Theme panel reads (compose-ui-builder `DesignTokens.from`). A token is applied by writing its value into every property it binds; `theme` bindings land only on the design's theme host (the top-level node of that component), `components` bindings on every node of it.",
+      "properties": {
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Stable and dotted, `color.primary` or `space.list`; the group is everything before the dot. Unique."
+              },
+              "label": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "color",
+                  "number"
+                ]
+              },
+              "default": {
+                "description": "The catalog's own value, or null for the design system's own (an unset property)."
+              },
+              "minimum": {
+                "type": "number"
+              },
+              "maximum": {
+                "type": "number"
+              },
+              "integer": {
+                "type": "boolean"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "theme": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "component",
+                    "property"
+                  ],
+                  "properties": {
+                    "component": {
+                      "type": "string"
+                    },
+                    "property": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "components": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "component",
+                    "property"
+                  ],
+                  "properties": {
+                    "component": {
+                      "type": "string"
+                    },
+                    "property": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "assetRegistry": {
       "type": "object",
       "additionalProperties": false,
