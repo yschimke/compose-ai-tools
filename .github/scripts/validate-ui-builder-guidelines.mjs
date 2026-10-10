@@ -26,7 +26,53 @@ if (!file) {
 }
 
 const SCHEMA = 'compose-ui-builder/catalog-guidelines/v1';
+// The engine's and the Gradle plugin's bounds (GuidelinesIncludes, UiBuilderGuidelinesFile).
+const MAX_INCLUDES = 8;
+const MAX_PACK_BYTES = 1024 * 1024;
 const problems = [];
+
+// The checks every rule must pass, in the catalog's own file and in every pack it includes: the
+// loader refuses a merged file with one bad rule, so a bad pack rule must fail here, not there.
+const checkRules = (rules, where) => {
+  if (!Array.isArray(rules)) return problems.push(`${where}\`rules\` is not a list`);
+  rules.forEach((rule, index) => {
+    const name = (rule && typeof rule.id === 'string' && rule.id) || `#${index}`;
+    if (!rule || typeof rule !== 'object') {
+      return problems.push(`${where}rule ${name} is not an object`);
+    }
+    for (const field of ['id', 'kind', 'severity', 'guidance', 'check', 'source']) {
+      if (typeof rule[field] !== 'string' || !rule[field].trim()) {
+        problems.push(`${where}rule ${name} has no \`${field}\``);
+      }
+    }
+    if (typeof rule.check === 'string' && !rule.check.includes('?')) {
+      problems.push(`${where}rule ${name}'s \`check\` is not a question`);
+    }
+    if (typeof rule.source === 'string' && !rule.source.startsWith('https://')) {
+      problems.push(`${where}rule ${name}'s \`source\` is not an https URL`);
+    }
+  });
+};
+
+// The body of [response], refusing it as soon as it passes MAX_PACK_BYTES rather than after
+// buffering all of it.
+const readCapped = async (response) => {
+  const chunks = [];
+  let size = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MAX_PACK_BYTES) {
+      await reader.cancel();
+      throw new Error(`larger than ${MAX_PACK_BYTES} bytes`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+};
+
 let root;
 try {
   root = JSON.parse(readFileSync(file, 'utf8'));
@@ -41,26 +87,15 @@ if (root !== undefined && (root === null || typeof root !== 'object' || Array.is
     problems.push(`\`catalog\` is \`${root.catalog ?? 'missing'}\`, not \`${catalogId}\``);
   }
   if (!Number.isInteger(root.version)) problems.push('`version` is not an integer');
-  if (!Array.isArray(root.rules)) problems.push('`rules` is not a list');
-  (Array.isArray(root.rules) ? root.rules : []).forEach((rule, index) => {
-    const name = (rule && typeof rule.id === 'string' && rule.id) || `#${index}`;
-    if (!rule || typeof rule !== 'object') return problems.push(`rule ${name} is not an object`);
-    for (const field of ['id', 'kind', 'severity', 'guidance', 'check', 'source']) {
-      if (typeof rule[field] !== 'string' || !rule[field].trim()) {
-        problems.push(`rule ${name} has no \`${field}\``);
-      }
-    }
-    if (typeof rule.check === 'string' && !rule.check.includes('?')) {
-      problems.push(`rule ${name}'s \`check\` is not a question`);
-    }
-    if (typeof rule.source === 'string' && !rule.source.startsWith('https://')) {
-      problems.push(`rule ${name}'s \`source\` is not an https URL`);
-    }
-  });
+  checkRules(root.rules, '');
   if (root.includes !== undefined && !Array.isArray(root.includes)) {
     problems.push('`includes` is not a list');
   }
-  for (const [index, include] of (Array.isArray(root.includes) ? root.includes : []).entries()) {
+  const includes = Array.isArray(root.includes) ? root.includes : [];
+  if (includes.length > MAX_INCLUDES) {
+    problems.push(`more than ${MAX_INCLUDES} includes`);
+  }
+  for (const [index, include] of includes.slice(0, MAX_INCLUDES).entries()) {
     const url = include && typeof include.url === 'string' ? include.url : undefined;
     if (!url || !url.startsWith('https://')) {
       problems.push(`include #${index}'s \`url\` is not an https URL`);
@@ -73,18 +108,21 @@ if (root !== undefined && (root === null || typeof root !== 'object' || Array.is
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!response.ok) throw new Error(`answered ${response.status}`);
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > 1024 * 1024) throw new Error('larger than 1 MiB');
+      const bytes = await readCapped(response);
       const actual = createHash('sha256').update(bytes).digest('hex');
       if (actual !== include.sha256) {
         problems.push(`include ${url} does not match its pin (sha256 ${actual})`);
         continue;
       }
       const pack = JSON.parse(bytes.toString('utf8'));
-      if (pack.schema !== SCHEMA) problems.push(`include ${url} is not a guidelines pack`);
+      if (!pack || typeof pack !== 'object' || pack.schema !== SCHEMA) {
+        problems.push(`include ${url} is not a guidelines pack`);
+        continue;
+      }
       if (Array.isArray(pack.includes) && pack.includes.length) {
         problems.push(`include ${url} includes others; packs may not nest`);
       }
+      checkRules(pack.rules, `include ${url}: `);
     } catch (e) {
       problems.push(`include ${url} could not be read (${e.message})`);
     }
