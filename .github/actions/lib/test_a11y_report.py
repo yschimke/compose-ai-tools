@@ -742,6 +742,7 @@ class CommentTest(unittest.TestCase):
         status=None,
         baseline_status=None,
         unchecked_previews=None,
+        changed_previews=False,
     ):
         findings_path = self.tmp / "findings.json"
         current_payload: dict = {"entries": current_entries}
@@ -766,8 +767,55 @@ class CommentTest(unittest.TestCase):
                 repo="org/repo",
                 head_ref="abc123",
                 baseline=str(baseline_path) if baseline_path else None,
+                changed_previews=changed_previews,
             ))
         return buf.getvalue()
+
+    def test_changed_previews_without_a_baseline_reports_their_findings(self):
+        # The apply action's PR default: only the previews the PR changed were
+        # checked, and there is no a11y baseline to diff against. The comment is
+        # about those previews, and the clean ones are rostered as clean.
+        bad = self._entry(findings=[_finding(level="ERROR")])
+        ok = self._entry(function="Good", preview_id="x.Good")
+        body = self._run_comment([bad, ok], changed_previews=True)
+        self.assertIn("across 2 preview(s) this PR changed.", body)
+        self.assertIn("ERROR", body)
+        self.assertIn("<summary>No findings (1 preview(s))</summary>", body)
+        self.assertNotIn("Unchanged", body)
+        self.assertNotIn(ar.CLEAN_MARKER, body)
+
+    def test_scope_recorded_in_findings_words_the_comment(self):
+        # The publish job re-renders the body from findings.json alone, so the
+        # scope travels in the file rather than as a flag it never sees.
+        findings_path = self.tmp / "findings.json"
+        findings_path.write_text(json.dumps({
+            "entries": [self._entry(findings=[_finding(level="ERROR")])],
+            "scope": ar.CHANGED_PREVIEWS_SCOPE,
+        }))
+        import argparse, io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ar.cmd_comment(argparse.Namespace(
+                findings=str(findings_path), repo="org/repo", head_ref="abc", baseline=None,
+            ))
+        self.assertIn("across 1 preview(s) this PR changed.", buf.getvalue())
+
+    def test_changed_previews_all_clean_is_marked_clean(self):
+        # A clean body is still written, so an earlier sticky comment that
+        # listed findings can be updated; the marker tells the action not to
+        # post it as a new comment.
+        body = self._run_comment(
+            [self._entry(findings=[], function="Good", preview_id="x.Good")],
+            changed_previews=True,
+        )
+        self.assertIn("No accessibility findings on the previews this PR changed.", body)
+        self.assertIn(ar.CLEAN_MARKER, body)
+
+    def test_changed_previews_with_a_baseline_still_goes_silent_when_unchanged(self):
+        # `a11y-baseline: true` keeps the diff, scoped to the checked previews.
+        entry = self._entry(findings=[_finding(level="ERROR")])
+        body = self._run_comment([entry], baseline_entries=[entry], changed_previews=True)
+        self.assertEqual(body, "")
 
     def test_comment_carries_marker(self):
         body = self._run_comment([self._entry(findings=[_finding(level="ERROR")])])

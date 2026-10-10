@@ -30,6 +30,22 @@
 #   A11Y_BASELINE_BRANCH  — long-lived a11y baseline branch
 #   A11Y_PR_BRANCH        — per-PR a11y branch (comment mode)
 #   PR_NUMBER             — PR number (comment mode)
+#   A11Y_BASELINE         — `true` keeps an a11y baseline: baseline mode checks every
+#                           preview and pushes A11Y_BASELINE_BRANCH, and comment mode
+#                           diffs the PR's previews against it. Anything else (the
+#                           default) skips baseline mode and reports the PR's previews
+#                           on their own.
+#   A11Y_SCOPE_OVERRIDE   — `full` checks every preview of the affected modules on a PR
+#                           too (the action's `scope: full`, a manual full rerun).
+#
+# What a PR checks
+# ----------------
+# Only the previews the PR changed: those the compose pipeline's visual diff found new or
+# changed (`_changed_previews.json`) and those whose source file the PR changed
+# (`_pr_changed_files.txt`), selected by `a11y-scope.py` and handed to the CLI as `--id-file`.
+# ATF runs once per preview, serially, so checking a whole catalog on a PR costs an hour where
+# the PR changed a dozen previews. When this job ran no compose pipeline there is no visual diff
+# to scope by, and every preview of the affected modules is checked, as before.
 set -e
 : "${BASELINE_REMOTE:=origin}"
 
@@ -37,6 +53,38 @@ if [ "${SKIP_SCOPED_A11Y:-false}" = true ]; then
   echo "a11y pipeline: affected modules do not include the configured a11y modules; skipping."
   echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
   exit 0
+fi
+
+# A baseline push checks every preview, and only a repository that asked for an a11y baseline
+# reads one: without it, the whole-catalog run would be paid on every push to main for a branch
+# nothing compares against.
+if [ "$MODE" = "baseline" ] && [ "${A11Y_BASELINE:-false}" != "true" ]; then
+  echo "a11y pipeline: no a11y baseline requested (a11y-baseline: false); skipping the baseline run."
+  echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+  exit 0
+fi
+
+scoped_to_pr=false
+rm -f _a11y_preview_ids.txt
+if [ "$MODE" != "baseline" ] && [ "${A11Y_SCOPE_OVERRIDE:-auto}" != "full" ]; then
+  selected=$(python3 "$ACTION_PATH/a11y-scope.py" \
+    --changed _changed_previews.json \
+    --changed-files _pr_changed_files.txt \
+    --out _a11y_preview_ids.txt) || selected=full
+  case "$selected" in
+    full)
+      echo "::notice::compose-preview/apply: a11y has no visual diff to scope by (the compose pipeline did not run in this job); checking every preview of the affected modules."
+      ;;
+    0)
+      echo "a11y pipeline: this PR changed no previews; nothing to check."
+      echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+      exit 0
+      ;;
+    *)
+      echo "a11y pipeline: checking the ${selected} preview(s) this PR changed."
+      scoped_to_pr=true
+      ;;
+  esac
 fi
 
 # Comma-split + trim helper. Empty input → empty array.
@@ -57,6 +105,9 @@ mapfile -t ALLOW_MODULES < <(split_csv "${A11Y_MODULES:-}")
 mapfile -t SKIP_MODULES < <(split_csv "${A11Y_SKIP_MODULES:-}")
 
 cli_args=(a11y --progress)
+if [ "$scoped_to_pr" = true ]; then
+  cli_args+=(--id-file "$GITHUB_WORKSPACE/_a11y_preview_ids.txt")
+fi
 if [ "${#ALLOW_MODULES[@]}" -gt 0 ]; then
   for m in "${ALLOW_MODULES[@]}"; do
     cli_args+=(--module ":${m}")
@@ -123,6 +174,7 @@ is_skipped() {
 # build dirs to `copy-annotated`. The CLI already ran across the full
 # allowlist, so skip just controls what shows up in the report.
 copy_args=(copy-annotated --output-dir _a11y_renders)
+[ "$scoped_to_pr" = true ] && copy_args+=(--changed-previews)
 kept=0
 for entry in "${discovered[@]}"; do
   module_path="${entry%%|*}"
@@ -131,12 +183,20 @@ for entry in "${discovered[@]}"; do
     echo "a11y pipeline: skipping module ${module_path} (skip list)."
     continue
   fi
+  # A module the CLI never checked has a manifest (the compose pipeline wrote
+  # it) but no accessibility.json; reporting its previews would list every
+  # one as clean. On a PR-scoped run that is every module the PR's previews
+  # are not in.
+  if [ ! -f "${module_dir}/build/compose-previews/accessibility.json" ]; then
+    echo "a11y pipeline: ${module_path} was not checked this run; leaving it out of the report."
+    continue
+  fi
   copy_args+=(--build-dir "${module_dir}/build/compose-previews")
   kept=$((kept + 1))
 done
 
 if [ "$kept" -eq 0 ]; then
-  echo "a11y pipeline: all discovered modules were skip-listed; nothing to report."
+  echo "a11y pipeline: no checked module left to report (skip-listed or not checked)."
   echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
   exit 0
 fi
@@ -154,24 +214,34 @@ if [ "$MODE" = "baseline" ]; then
   echo "$A11Y_BASELINE_BRANCH" > _a11y_renders/_push_branch
   echo "1" > _a11y_renders/_skip_if_unchanged
 else
-  # comment mode — compare vs baseline, stay silent when unchanged.
-  if git ls-remote --exit-code "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH" >/dev/null 2>&1; then
-    git fetch "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH"
-    git show "${BASELINE_REMOTE}/${A11Y_BASELINE_BRANCH}:findings.json" \
-      > _a11y_baseline_findings.json 2>/dev/null \
-      || echo '{"entries":[]}' > _a11y_baseline_findings.json
-  else
-    echo '{"entries":[]}' > _a11y_baseline_findings.json
-  fi
+  # comment mode. With an a11y baseline, compare against it and stay silent
+  # when unchanged; without one (the default), report the checked previews.
+  comment_args=()
+  if [ "${A11Y_BASELINE:-false}" = "true" ]; then
+    if git ls-remote --exit-code "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH" >/dev/null 2>&1; then
+      git fetch "$BASELINE_REMOTE" "$A11Y_BASELINE_BRANCH"
+      git show "${BASELINE_REMOTE}/${A11Y_BASELINE_BRANCH}:findings.json" \
+        > _a11y_baseline_findings.json 2>/dev/null \
+        || echo '{"entries":[]}' > _a11y_baseline_findings.json
+    else
+      echo '{"entries":[]}' > _a11y_baseline_findings.json
+    fi
 
-  # A scoped PR compares only the affected modules. Without filtering, every
-  # out-of-scope baseline preview looks resolved merely because it was not
-  # rendered in this job.
-  if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != full ]; then
-    python3 "$ACTION_PATH/filter-findings-scope.py" \
-      _a11y_baseline_findings.json \
-      --current _a11y_renders/findings.json \
-      --modules "$SCOPE_MODULES"
+    # A scoped PR compares only what it checked: the affected modules, and on
+    # a per-preview run only those previews. Without filtering, every baseline
+    # preview this job never looked at reads as resolved.
+    filter_args=()
+    if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != full ]; then
+      filter_args+=(--modules "$SCOPE_MODULES")
+    fi
+    [ "$scoped_to_pr" = true ] && filter_args+=(--previews _a11y_preview_ids.txt)
+    if [ "${#filter_args[@]}" -gt 0 ]; then
+      python3 "$ACTION_PATH/filter-findings-scope.py" \
+        _a11y_baseline_findings.json \
+        --current _a11y_renders/findings.json \
+        "${filter_args[@]}"
+    fi
+    comment_args+=(--baseline _a11y_baseline_findings.json)
   fi
 
   # Provisional --head-ref; rewritten post-push with the actual SHA.
@@ -179,10 +249,14 @@ else
     _a11y_renders/findings.json \
     --repo "$REPO" \
     --head-ref "$A11Y_PR_BRANCH" \
-    --baseline _a11y_baseline_findings.json \
+    "${comment_args[@]}" \
     > _a11y_comment.md
 
-  if [ -s _a11y_comment.md ]; then
+  if [ -s _a11y_comment.md ] && grep -qF '<!-- a11y-report:clean -->' _a11y_comment.md; then
+    # Nothing to picture: the comment step only updates an existing sticky
+    # comment with this body, so no renders are pushed for it.
+    echo "a11y pipeline: no findings on the checked previews."
+  elif [ -s _a11y_comment.md ]; then
     python3 "$ACTION_PATH/../lib/a11y-report.py" readme \
       _a11y_renders/findings.json \
       --repo "$REPO" \

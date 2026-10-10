@@ -85,6 +85,17 @@ inputs:
       Use `a11y-skip-modules` to exclude specific modules from the
       auto-detected set.
     default: ''
+  a11y-baseline:
+    description: >
+      Keep an accessibility baseline. `false` (default): a push to the
+      development branch runs no a11y pipeline at all, and a PR's a11y
+      comment reports the previews the PR changed on their own. `true`: a
+      push checks EVERY preview (ATF runs once per preview, serially, so on
+      a large catalog this is the slowest pipeline by far) and pushes
+      `compose-preview/a11y/main`, and a PR's comment diffs its changed
+      previews against that, staying silent when they match. Either way a
+      PR checks only the previews it changed.
+    default: 'false'
   a11y-skip-modules:
     description: >
       Comma-separated Gradle module denylist for the a11y pipeline.
@@ -945,6 +956,30 @@ runs:
           composeai-fonts-${{ runner.os }}-${{ github.job }}-
           composeai-fonts-${{ runner.os }}-
 
+    # The PR's changed paths, so the a11y pipeline also checks a preview whose
+    # source changed without moving a pixel (a content description, a role).
+    # Best effort: without them it checks the previews the visual diff found.
+    - name: List the PR's changed files
+      if: steps.resolve.outputs.phase != 'publish' && steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -uo pipefail
+        : > _pr_changed_files.txt
+        pr="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        [ -n "$pr" ] || exit 0
+        if ! [[ "$pr" =~ ^[0-9]+$ ]]; then
+          echo "::warning::compose-preview/apply: pr-number is not a number; a11y checks the visual diff only."
+          exit 0
+        fi
+        gh api --paginate "repos/$REPO/pulls/$pr/files" --jq '.[].filename' \
+          > _pr_changed_files.txt 2>/dev/null \
+          || { echo "a11y: could not list the PR's changed files; checking the visual diff only."; : > _pr_changed_files.txt; }
+
     - name: Run pipelines
       id: pipelines
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip')
@@ -969,6 +1004,8 @@ runs:
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         A11Y_MODULES: ${{ inputs.a11y-module }}
         A11Y_SKIP_MODULES: ${{ inputs.a11y-skip-modules }}
+        A11Y_BASELINE: ${{ inputs.a11y-baseline }}
+        A11Y_SCOPE_OVERRIDE: ${{ inputs.scope }}
         NOTIFY_MODULES: ${{ inputs.notifications-module }}
         NOTIFY_SKIP_MODULES: ${{ inputs.notifications-skip-modules }}
         MISSING_RENDERS: ${{ inputs.missing-renders }}
@@ -1741,11 +1778,23 @@ runs:
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
+        COMMENT_ON_EMPTY_DIFF: ${{ inputs.comment-on-empty-diff }}
       run: |
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- a11y-report -->"
         export BODY_FILE="_a11y_comment.md"
+        # A report with no findings updates a sticky comment that listed some
+        # (so it does not go stale) but is not posted as a new one.
+        if grep -qF '<!-- a11y-report:clean -->' _a11y_comment.md \
+           && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ]; then
+          existing=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -z "$existing" ]; then
+            echo "No a11y findings on the checked previews and no existing comment — skipping."
+            exit 0
+          fi
+        fi
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     # A handoff can plant a ready-made comment; only the Check step below may

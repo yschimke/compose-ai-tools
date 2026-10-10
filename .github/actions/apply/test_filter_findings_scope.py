@@ -30,6 +30,18 @@ class FilterFindingsScopeTest(unittest.TestCase):
         current = {"status": None, "entries": []}
         self.assertIsNone(mod.filter_payload(payload, set(), current)["status"])
 
+    def test_keeps_only_the_checked_previews(self):
+        payload = {
+            "entries": [
+                {"module": "catalog", "previewId": "BasicDialog"},
+                {"module": "catalog", "previewId": "Button"},
+            ]
+        }
+        self.assertEqual(
+            mod.filter_payload(payload, None, None, {"BasicDialog"})["entries"],
+            [{"module": "catalog", "previewId": "BasicDialog"}],
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

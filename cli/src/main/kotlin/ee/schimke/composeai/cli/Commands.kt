@@ -197,6 +197,38 @@ abstract class Command(
   val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
 
   /**
+   * `--id-file <path>` — an exact set of declared preview ids, one per line, as `previews.json`
+   * lists them. The set-shaped twin of `--id`, for a caller that already knows which previews it
+   * wants: the `apply` action's a11y pipeline hands over the previews a pull request changed, so a
+   * PR touching 13 of a catalog's 4,139 previews runs ATF on those 13 rather than on the module.
+   *
+   * It **intersects** with the other selectors, as they do with each other, and narrows the Gradle
+   * render through the same `composePreview.idFilter` path ([PreviewRenderScope]). A
+   * `@PreviewParameter` row id is not a declared id and selects nothing. `bundle pack` reads the
+   * same flag and file format ([PackPreviewIdExclusions.idFileFromArgs]).
+   *
+   * A missing, unreadable or empty file is an error rather than an empty selection: falling back to
+   * "no selector" would act on every preview and look like success.
+   */
+  val idFileIds: Set<String>? by lazy {
+    val path =
+      args.flagValuesAll("--id-file").lastOrNull()?.trim()?.takeIf(String::isNotEmpty)
+        ?: return@lazy null
+    val ids = runCatching {
+      readIdFile(File(path))
+    }
+      .getOrElse {
+        System.err.println("compose-preview: --id-file: ${it.message}")
+        exitProcess(2)
+      }
+    ids
+  }
+
+  /** Whether any preview selector was passed. */
+  internal val hasPreviewRequest: Boolean
+    get() = exactId != null || filter != null || previewRef != null || idFileIds != null
+
+  /**
    * Whether this command can turn a `@PreviewParameter` fan-out into addressable **row ids**, and
    * so wants module selection to keep previews whose (unknowable) rows might satisfy the request —
    * issue #3786's conservative lane, see [previewMatchesRequestIncludingRows].
@@ -676,13 +708,14 @@ abstract class Command(
     discoveryManifests: List<Pair<PreviewModule, PreviewManifest>>,
     discoverySucceeded: Boolean,
   ): PreviewRenderScope.Scope {
-    if (exactId == null && filter == null && previewRef == null) return PreviewRenderScope.FULL
+    if (!hasPreviewRequest) return PreviewRenderScope.FULL
     if (renderModules.isEmpty()) return PreviewRenderScope.FULL
     val flag =
       when {
         exactId != null -> "--id"
         filter != null -> "--filter"
-        else -> "--preview"
+        previewRef != null -> "--preview"
+        else -> "--id-file"
       }
     if (!discoverySucceeded) {
       System.err.println(
@@ -700,6 +733,7 @@ abstract class Command(
         previewRef = previewRef,
         permutations = permutations,
         rowAware = rowAwareSelection,
+        ids = idFileIds,
       )
     scope.note?.let { System.err.println("compose-preview: $flag $it; rendering the full module.") }
     if (verbose && scope.narrowed) {
@@ -940,7 +974,13 @@ abstract class Command(
    * *not* applied here, so it can be evaluated against the rows the request actually selected.
    */
   protected fun selectRequested(all: List<PreviewResult>): List<PreviewResult> =
-    selectRequestedResults(all, exactId = exactId, filter = filter, previewRef = previewRef)
+    selectRequestedResults(
+      all,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      ids = idFileIds,
+    )
 
   /**
    * @param results rows to emit (after `--id`/`--filter`/`--changed-only`)
@@ -998,6 +1038,7 @@ abstract class Command(
       previewRef = previewRef,
       className = preview.className,
       functionName = preview.functionName,
+      ids = idFileIds,
     )
 
   /**
@@ -1006,7 +1047,13 @@ abstract class Command(
    * [PreviewResult] overloads whenever the row is in hand.
    */
   protected fun matchesRequest(id: String): Boolean =
-    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
+    previewIdMatchesRequest(
+      id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      ids = idFileIds,
+    )
 
   /**
    * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every id when there is
@@ -1045,6 +1092,7 @@ abstract class Command(
       previewRef = previewRef,
       discoverySucceeded = discoverySucceeded,
       rowAware = rowAwareSelection,
+      ids = idFileIds,
     )
 
   private fun stateFile(module: PreviewModule): File =
@@ -1352,6 +1400,26 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 
 /**
+ * The ids an `--id-file` lists: one per line, trimmed, blank lines dropped, in file order. Throws
+ * when the file cannot be read or lists none — an empty selection must never widen to every
+ * preview.
+ */
+internal fun readIdFile(file: File): Set<String> {
+  val lines =
+    try {
+      file.readLines()
+    } catch (e: java.io.IOException) {
+      throw IllegalStateException("cannot read '${file.path}': ${e.message}", e)
+    }
+  val ids = lines.map(String::trim).filter(String::isNotEmpty).toCollection(linkedSetOf())
+  check(ids.isNotEmpty()) {
+    "'${file.path}' lists no preview ids. Refusing to fall back to every preview; omit the flag " +
+      "instead."
+  }
+  return ids
+}
+
+/**
  * Does one preview satisfy this invocation's selection request?
  *
  * The three selectors are independent predicates and **intersect** (all of the ones that were
@@ -1359,6 +1427,9 @@ internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
  * - `--id <exact>` — the id, exactly, case-sensitively.
  * - `--filter <substring>` — a case-insensitive substring of the id.
  * - `--preview <ref>` — a loose *preview reference*; see [previewMatchesReference].
+ * - `--id-file <path>` ([ids]) — the id is one of a set, exactly. Not part of `serve`'s selector
+ *   table below: `serve` does not take the flag, so the two sides still agree on every request
+ *   either can express.
  *
  * [className] / [functionName] are optional because some call sites only hold an id (they come from
  * a manifest or a [PreviewResult] where the metadata is available, or from an already-resolved id
@@ -1380,7 +1451,9 @@ internal fun previewIdMatchesRequest(
   previewRef: String? = null,
   className: String? = null,
   functionName: String? = null,
+  ids: Set<String>? = null,
 ): Boolean {
+  if (ids != null && id !in ids) return false
   if (exactId != null && id != exactId) return false
   if (filter != null && !id.contains(filter, ignoreCase = true)) return false
   if (
@@ -1465,8 +1538,9 @@ internal fun selectRequestedResults(
   exactId: String?,
   filter: String?,
   previewRef: String? = null,
+  ids: Set<String>? = null,
 ): List<PreviewResult> {
-  if (exactId == null && filter == null && previewRef == null) return results
+  if (exactId == null && filter == null && previewRef == null && ids == null) return results
   val exactIdExists = resultsDeclareExactId(results, exactId)
   return results.mapNotNull { result ->
     if (
@@ -1477,11 +1551,13 @@ internal fun selectRequestedResults(
         previewRef = previewRef,
         className = result.className,
         functionName = result.functionName,
+        ids = ids,
       )
     ) {
       return@mapNotNull result
     }
-    if (exactIdExists) return@mapNotNull null
+    // `--id-file` names declared previews only, so it has no row lane.
+    if (exactIdExists || ids != null) return@mapNotNull null
     val rows =
       result.captures.filter { capture ->
         capture.parameterRowId?.let {
@@ -1546,6 +1622,7 @@ internal fun previewMatchesRequestIncludingRows(
   previewRef: String? = null,
   exactIdExists: Boolean,
   rowAware: Boolean = true,
+  ids: Set<String>? = null,
 ): Boolean {
   if (
     previewIdMatchesRequest(
@@ -1555,11 +1632,14 @@ internal fun previewMatchesRequestIncludingRows(
       previewRef = previewRef,
       className = preview.className,
       functionName = preview.functionName,
+      ids = ids,
     )
   ) {
     return true
   }
   if (!rowAware) return false
+  // `--id-file` lists declared ids: a preview it does not name has no row it could name either.
+  if (ids != null) return false
   if (exactIdExists) return false
   if (preview.params.previewParameterProviderClassName.isNullOrBlank()) return false
   // `--id` is exact by contract, so it pins the candidate row id outright: it must be spelled
@@ -1634,11 +1714,12 @@ internal fun modulesMatchingPreviewRequest(
   previewRef: String? = null,
   discoverySucceeded: Boolean = true,
   rowAware: Boolean = true,
+  ids: Set<String>? = null,
 ): List<PreviewModule> {
   // The render task depends on discovery and is the authoritative retry. Do not let missing or
   // stale discovery manifests suppress that retry after the separate optimization pass fails.
   if (!discoverySucceeded) return modules
-  if (exactId == null && filter == null && previewRef == null) return modules
+  if (exactId == null && filter == null && previewRef == null && ids == null) return modules
   // Row-aware (issue #3786): a module whose only match is `Foo_PARAM_1` must survive, because the
   // row ids don't exist until `serve` reads the rendered fan-out back off disk — long after this
   // narrowing ran. Resolved across ALL manifests first so an `--id` that names a real preview never
@@ -1655,6 +1736,7 @@ internal fun modulesMatchingPreviewRequest(
             previewRef = previewRef,
             exactIdExists = exactIdExists,
             rowAware = rowAware,
+            ids = ids,
           )
         }
       }
