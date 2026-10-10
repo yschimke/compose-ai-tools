@@ -769,7 +769,7 @@ runs:
     - name: Install CLI from source
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v2.39.2 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v2.40.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
 
     # `cli-version: 'none'` is the third install state — install is skipped
     # entirely. Compose / resources pipelines must then run with
@@ -779,7 +779,7 @@ runs:
       id: install-release
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v2.39.2 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v2.40.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}
@@ -1707,9 +1707,9 @@ runs:
     - name: Install CLI for the design-guidelines check
       if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && hashFiles('_guidelines/**/previews.json') != '')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v2.39.2 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v2.40.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
-        version: ${{ contains(fromJSON('["auto","source","none","catalog","pin","latest",""]'), inputs.cli-version) && '2.39.2' || inputs.cli-version }} # x-release-please-version
+        version: ${{ contains(fromJSON('["auto","source","none","catalog","pin","latest",""]'), inputs.cli-version) && '2.40.0' || inputs.cli-version }} # x-release-please-version
         require-digest: 'true'
 
     - name: Check design guidelines
