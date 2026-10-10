@@ -118,7 +118,29 @@ public data class GuidelineBudget(
    * request, goes in without it (truncated where a part fits) rather than losing a picture.
    */
   val maxSourceChars: Int = 32_000,
-)
+  /**
+   * How many verdicts one reply may be asked for: each subject's rules, summed. This bounds the
+   * reply rather than the request, and the reply is what takes the time — twelve Wear screens asked
+   * 24 rules each is 288 verdicts, a reply that ran past the 300 s request timeout twice while
+   * three components in their own request answered in seconds. At the default a screen batch of
+   * that catalog holds five.
+   */
+  val maxVerdicts: Int = DEFAULT_MAX_VERDICTS,
+) {
+  /** The budget before [maxVerdicts]: binary compatibility for callers built against it. */
+  @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
+  public constructor(
+    maxPictures: Int,
+    maxInputTokens: Int,
+    maxSubjects: Int,
+    maxSourceChars: Int,
+  ) : this(maxPictures, maxInputTokens, maxSubjects, maxSourceChars, DEFAULT_MAX_VERDICTS)
+
+  public companion object {
+    /** [maxVerdicts] unless told otherwise. */
+    public const val DEFAULT_MAX_VERDICTS: Int = 120
+  }
+}
 
 /** A batch: subjects sharing a surface, so they share one rule list. */
 public data class GuidelineBatch(
@@ -181,7 +203,8 @@ public object PreviewGuidelineRequests {
 
   /**
    * Splits [subjects] into batches by surface, each within [budget]. A subject's text is estimated
-   * at four characters a token and a picture at [PICTURE_TOKENS].
+   * at four characters a token and a picture at [PICTURE_TOKENS]; its verdicts are the rules it is
+   * asked ([GuidelineBudget.maxVerdicts]).
    */
   public fun batches(
     guidelines: CatalogGuidelinesV1,
@@ -199,6 +222,7 @@ public object PreviewGuidelineRequests {
         var pictures = 0
         var tokens = rulesTokens + SYSTEM_PROMPT.length / 4
         var sourceChars = 0
+        var verdicts = 0
         val fixedTokens = rulesTokens + SYSTEM_PROMPT.length / 4
         for (original in group) {
           var subject = original
@@ -212,17 +236,21 @@ public object PreviewGuidelineRequests {
           }
           val subjectTokens = estimateTokens(subject)
           val subjectPictures = subject.pictures.size
+          val subjectVerdicts =
+            guidelines.subjectRules(surface, subject.profile, subject.pictures.isNotEmpty()).size
           val full =
             current.isNotEmpty() &&
               (current.size >= budget.maxSubjects ||
                 pictures + subjectPictures > budget.maxPictures ||
-                tokens + subjectTokens > budget.maxInputTokens)
+                tokens + subjectTokens > budget.maxInputTokens ||
+                verdicts + subjectVerdicts > budget.maxVerdicts)
           if (full) {
             out += GuidelineBatch(surface, current)
             current = mutableListOf()
             pictures = 0
             tokens = fixedTokens
             sourceChars = 0
+            verdicts = 0
           }
           // The batch's source allowance: past it, a subject keeps what is left, or none.
           subject.source?.let { source ->
@@ -233,6 +261,7 @@ public object PreviewGuidelineRequests {
           sourceChars += subject.source?.length ?: 0
           current += subject
           pictures += subjectPictures
+          verdicts += subjectVerdicts
           tokens += estimateTokens(subject)
         }
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)

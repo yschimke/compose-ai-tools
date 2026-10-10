@@ -415,12 +415,14 @@ class GuidelineEngineTest {
 
   @Test
   fun `a request that fails is counted, and its previews are unchecked rather than passed`() {
-    val model = FakeModel().apply { status = 503 }
+    // 401: nothing a retry or a smaller request would change, so it is asked once.
+    val model = FakeModel().apply { status = 401 }
     val run =
       GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
         .run(guidelines, listOf(subject("a"), subject("b")))
+    assertThat(model.requests).hasSize(1)
     assertThat(run.failedRequests).isEqualTo(1)
-    assertThat(run.problems.single()).contains("503")
+    assertThat(run.problems.single()).contains("401")
     assertThat(run.results.map { it.unchecked.isNotEmpty() }).containsExactly(true, true)
   }
 

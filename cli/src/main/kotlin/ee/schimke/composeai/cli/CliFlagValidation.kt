@@ -185,6 +185,7 @@ internal object CliFlagValidation {
             "--model",
             "--max-cost",
             "--rounds",
+            "--request-timeout",
             "--no-triage",
             "--annotate",
             "--guidelines",

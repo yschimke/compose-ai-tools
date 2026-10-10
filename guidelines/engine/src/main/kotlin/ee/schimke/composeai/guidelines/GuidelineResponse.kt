@@ -138,6 +138,45 @@ public object GuidelineResponse {
     .getOrNull()
     ?.takeIf { it.isFinite() && it > 0.0 }
 
+  /**
+   * The error OpenRouter sent in place of a completion, in a 2xx [body]: a top-level `error`, or a
+   * choice that ended `finish_reason: "error"` with its own. OpenRouter answers 200 before a slow
+   * model has finished, to keep the connection open, so a provider that fails or times out after
+   * that can only say so in the body. Null when [body] is not such an error.
+   */
+  internal fun failure(body: String): FailedRequest? {
+    val completion =
+      runCatching { GUIDELINES_JSON.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+    val choice = (completion["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
+    val error =
+      completion["error"] as? JsonObject
+        ?: (choice?.get("error") as? JsonObject)?.takeIf {
+          choice?.text("finish_reason") == "error" || choice?.get("message") == null
+        }
+        ?: return null
+    val code = (error["code"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+    val message = error.text("message").orEmpty()
+    val provider = (error["metadata"] as? JsonObject)?.text("provider_name")
+    val timeout = message.contains("timeout", true) || message.contains("timed out", true)
+    val kind =
+      when {
+        code == 429 -> FailureKind.RATE_LIMITED
+        code == 413 -> FailureKind.TOO_LARGE
+        code == 408 || (code != null && code in 500..599) -> FailureKind.TRANSIENT
+        timeout || provider != null -> FailureKind.TRANSIENT
+        else -> FailureKind.FATAL
+      }
+    return FailedRequest(
+      "the model answered with an error in place of a completion" +
+        listOfNotNull(code?.let { "code $it" }, provider?.let { "from $it" })
+          .joinToString(", ")
+          .let { if (it.isEmpty()) "" else " ($it)" } +
+        ": " +
+        message.ifEmpty { body }.take(200),
+      kind,
+    )
+  }
+
   /** The served model, provider, cost, id and routing in a completion body. */
   public fun served(completion: JsonObject): GuidelineServed {
     val model = completion.text("model")

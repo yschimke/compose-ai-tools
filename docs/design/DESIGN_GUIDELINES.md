@@ -129,8 +129,11 @@ and re-pin `sha256` when moving to a newer tag.
 ## Batching
 
 Not one call per preview. Subjects of one surface share a request, up to a budget (default 12
-pictures, ~60k input tokens, 16 subjects): the rules are sent once, and `set` rules see the whole
-batch. Each subject carries its render (tagged with its subject id) and optionally its source;
+pictures, ~60k input tokens, 16 subjects, 120 verdicts): the rules are sent once, and `set` rules
+see the whole batch. The verdict cap — each subject's rules, summed — bounds the *reply*, which is
+what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply that ran past
+the request timeout twice, while the request itself came to about 25k input tokens by the batcher's
+estimate, well inside the token budget. At 120 a screen batch of that catalog holds five. Each subject carries its render (tagged with its subject id) and optionally its source;
 its accessibility data is evidence it is asked for (see *Accessibility evidence*). The model names the subject (`s1`, …) in every
 verdict and cites node ids, which map back to bounds for overlays; a visual problem no single node
 holds comes back as a region (a fraction box on a numbered picture).
@@ -161,6 +164,34 @@ the reply to that: a verdict whose `ruleId` was not asked of its subject (or of 
 `subjectId` is outside the request, is dropped and counted in the run's `problems` — a model that
 invents `clipping` or `R5` produces no finding without a guide. A reply left with no usable verdict
 is asked once more, budget permitting, and is otherwise a failed request.
+
+## Failed requests
+
+`OpenRouterClient` makes each call once; `GuidelineEngine` decides what to do when one fails
+(`GuidelineRunOptions.retry`, a `GuidelineRetry`):
+
+- **No answer.** A request the transport gave up on comes back as `ModelResponse.NO_ANSWER` (0)
+  with what gave up on it — `no complete answer within the 300 s request timeout` for OkHttp's
+  call timeout, a read or connect timeout, or a failed connection. OkHttp's own message for all
+  three is `timeout`, which is all the old `the model answered 0: {"error":{"message":"timeout"}}`
+  said. OpenRouter keeps a slow completion's connection open with whitespace, so the call timeout,
+  not the read timeout, is what fires; `--request-timeout <seconds>` (default 300) sets it.
+- **Asked again.** No answer, 408, 429, 5xx, an error OpenRouter sent in place of a completion
+  (a 200 whose body is an `error`, or a choice ending `finish_reason: "error"`) and a reply with no
+  usable verdict are asked again, up to two tries, after a backoff (2 s, doubling, at most 60 s) or
+  the server's `Retry-After` — one asking for longer than that is not waited for. 401, 402 and other
+  4xx are not.
+- **Split.** A batch that still fails is split in half and each half asked, down to single
+  subjects, so one slow batch cannot leave every preview in it unchecked. A timeout on a batch of
+  several subjects is split at once rather than asked again, since the same request would take as
+  long again; a 413 is split without a retry; a 429 is never split.
+- **Bounded.** Each retry and each half is a request under `--max-cost`: none is started that the
+  cap cannot afford, a failed reply's cost counts, and a request abandoned without an answer —
+  which may still have been billed — counts at what the dearest request cost. Past eight failed
+  tries in a run, nothing more is retried or split.
+- **Reported once.** A problem is recorded for each request that finally failed (with how many
+  tries it took), plus one line each for the retries and the splits — never one per attempt.
+  `failedRequests` counts only final failures, so a run whose splits all succeeded is complete.
 
 In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y`, `source` and `render`: a
 render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn through the
