@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.42.0](https://github.com/yschimke/compose-ai-tools/compare/v2.41.0...v2.42.0) (2026-10-10)
+
+
+### Features
+
+* add typed UI builder catalog authoring ([#5776](https://github.com/yschimke/compose-ai-tools/issues/5776)) ([732610d](https://github.com/yschimke/compose-ai-tools/commit/732610d1b759263ce923ceda42d0d2c1a3160336))
+* **guidelines:** shared rule packs through `includes`, and a general pack ([#5777](https://github.com/yschimke/compose-ai-tools/issues/5777)) ([3fab59e](https://github.com/yschimke/compose-ai-tools/commit/3fab59e456209cb05973925b3014122a6582da04))
+
+
+### Bug Fixes
+
+* **guidelines:** classify widget previews as widgets and never report an unchecked run as a pass ([#5778](https://github.com/yschimke/compose-ai-tools/issues/5778)) ([f6c7eb6](https://github.com/yschimke/compose-ai-tools/commit/f6c7eb6b59d2900ed44427ac416a76214c38cee1))
+* **guidelines:** clipping at either end of a scroll is still clipping ([#5772](https://github.com/yschimke/compose-ai-tools/issues/5772)) ([58895fe](https://github.com/yschimke/compose-ai-tools/commit/58895fe3c93ba7cfe0d88942a80c57ea08b40445))
+* **guidelines:** hold included packs to the same checks and bounds everywhere ([#5781](https://github.com/yschimke/compose-ai-tools/issues/5781)) ([a0e2263](https://github.com/yschimke/compose-ai-tools/commit/a0e2263ac3cc7ae2f2cd5c62b5561a1f84259a54))
+* **guidelines:** number findings only on an overlay that declares numbered badges ([#5780](https://github.com/yschimke/compose-ai-tools/issues/5780)) ([1e1c0c0](https://github.com/yschimke/compose-ai-tools/commit/1e1c0c0120f27d4507e742f4b80bc3fe5e158a94))
+* **guidelines:** numbered outline markers instead of filled boxes on overlays ([#5773](https://github.com/yschimke/compose-ai-tools/issues/5773)) ([ee394d4](https://github.com/yschimke/compose-ai-tools/commit/ee394d49948bb7268d5af2ab3fea75ebbf8cc98b))
+* verify UID audit downloads and restrict paid runs ([#5783](https://github.com/yschimke/compose-ai-tools/issues/5783)) ([eeb325c](https://github.com/yschimke/compose-ai-tools/commit/eeb325c65524810a75c4a5e9049c8f10a5be0caf))
+
 ## [2.41.0](https://github.com/yschimke/compose-ai-tools/compare/v2.40.0...v2.41.0) (2026-10-10)
 
 
