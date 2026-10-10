@@ -87,6 +87,14 @@ def variant_label(device: str | None) -> str:
 #: — change in lockstep with the Kotlin constant.
 ATF_UNAVAILABLE: str = "atf-unavailable"
 
+# Ends a comment body with no findings and nothing resolved. The apply action
+# PATCHes an existing sticky comment with such a body (so an earlier report of
+# findings does not go stale) but does not post a new one.
+CLEAN_MARKER: str = "<!-- a11y-report:clean -->"
+
+# `findings.json`'s `scope` when the run checked only the previews a PR changed.
+CHANGED_PREVIEWS_SCOPE: str = "changed-previews"
+
 
 def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
     """Return ``(manifest, a11y_by_id, status, partial)`` for one module.
@@ -415,6 +423,10 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
         summary_payload["status"] = combined_status
     # Omitted entirely on a full run, so a normal report diffs cleanly against
     # the baseline exactly as before.
+    # A PR run that checked only the previews the PR changed says so, so the
+    # comment (re-rendered in another job, from this file) is worded for it.
+    if getattr(args, "changed_previews", False):
+        summary_payload["scope"] = CHANGED_PREVIEWS_SCOPE
     if unchecked_previews:
         summary_payload["uncheckedPreviews"] = sorted(
             unchecked_previews, key=lambda e: (e["module"], e["previewId"])
@@ -770,6 +782,16 @@ def cmd_comment(args: argparse.Namespace) -> int:
         and e.get("findings")
     ]
 
+    # `--changed-previews`: the run checked only the previews this PR changed
+    # (the apply action's default on a PR), so the comment is about those and
+    # no baseline is needed. Without one, every checked preview with findings
+    # gets its block and the clean ones are rostered as such, not as
+    # "unchanged" — there is nothing they could have been unchanged from.
+    scoped = (
+        bool(getattr(args, "changed_previews", False))
+        or payload.get("scope") == CHANGED_PREVIEWS_SCOPE
+    )
+
     # Stay silent when a baseline was available and nothing a reviewer cares
     # about moved — no changed previews, none resolved, and the same top-level
     # status. The workflow runs on every PR; a "no findings" comment on PRs
@@ -837,15 +859,24 @@ def cmd_comment(args: argparse.Namespace) -> int:
         sys.stdout.write("\n".join(lines).rstrip() + "\n")
         return 0
 
+    scope_text = "this PR changed" if scoped else ""
     lines.extend([
         f"{err} error(s) · {warn} warning(s) · {info} info "
-        f"across {len(entries)} preview(s).",
+        f"across {len(entries)} preview(s){' ' + scope_text if scope_text else ''}.",
         "",
     ])
 
     if findings_count == 0:
-        lines.append("No accessibility findings.")
+        lines.append(
+            "No accessibility findings on the previews this PR changed."
+            if scoped else "No accessibility findings."
+        )
         lines.append("")
+        if not resolved:
+            # Lets the action tell a clean report apart: it updates an
+            # existing sticky comment with it, but does not post a new one.
+            lines.append(CLEAN_MARKER)
+            lines.append("")
 
     # Changed / new previews, grouped by module — these get the full block.
     changed_by_module: dict[str, list[dict]] = {}
@@ -868,8 +899,9 @@ def cmd_comment(args: argparse.Namespace) -> int:
         # Collapse everything that didn't change into a names-only roster so
         # reviewers can still confirm the tool covered the full preview set
         # without scrolling past 100+ unchanged tables.
+        label = "Unchanged" if baseline_loaded or not scoped else "No findings"
         lines.append("<details>")
-        lines.append(f"<summary>Unchanged ({len(unchanged)} preview(s))</summary>")
+        lines.append(f"<summary>{label} ({len(unchanged)} preview(s))</summary>")
         lines.append("")
         for entry in sorted(unchanged, key=lambda e: (e["module"], e["functionName"])):
             lines.append(f"- `{entry['functionName']}`")
@@ -903,6 +935,11 @@ def main() -> int:
              "module the a11y CLI rendered into one findings.json.",
     )
     cp.add_argument("--output-dir", required=True)
+    cp.add_argument(
+        "--changed-previews", action="store_true",
+        help="The run checked only the previews this PR changed; recorded in "
+             "findings.json as `scope` so the comment says so.",
+    )
 
     rd = sub.add_parser("readme", help="Render findings.json to README.md")
     rd.add_argument("findings", help="Path to findings.json")
@@ -925,6 +962,13 @@ def main() -> int:
         help="Optional baseline findings.json (from compose-preview/a11y/main). "
              "When set, the comment subcommand emits empty stdout if findings "
              "haven't changed vs the baseline — the action takes that as 'skip'.",
+    )
+
+    cm.add_argument(
+        "--changed-previews", action="store_true",
+        help="The findings cover only the previews this PR changed (the apply "
+             "action's PR scope): say so, and roster clean previews as clean "
+             "rather than unchanged when there is no baseline.",
     )
 
     args = ap.parse_args()

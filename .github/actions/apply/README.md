@@ -136,6 +136,45 @@ removed. (`only: a11y` alone silently drops the notifications pipeline, since
 deliberately render no notification previews.) The two jobs use disjoint
 baseline branches and sticky-comment markers, so they never collide.
 
+A separate a11y job has no visual diff to scope its PR runs by, so it checks
+every preview of the affected modules (see below) — give it
+`a11y-baseline: 'true'` so its comment diffs against a baseline rather than
+listing every finding in the module. A catalog that wants a cheap a11y check on
+PRs keeps a11y in the compose job instead (`only: compose,a11y`).
+
+## Accessibility on pull requests
+
+**On a PR, the a11y pipeline checks only the previews the PR changed.** ATF
+runs once per preview, serially; checking a whole catalog on every PR is not a
+cost to tune but a misconfiguration (one catalog spent 3,779s checking 4,139
+previews for a PR that changed a single dialog's 13). The set is the same one
+the design-guidelines check uses:
+
+- every preview the compose pipeline's visual diff found new or changed
+  (`_changed_previews.json`), and
+- every preview whose source file the PR changed (`pulls/<n>/files`), since an
+  edit to a content description or a role can leave the render identical.
+
+`a11y-scope.py` resolves that set after the compose pipeline has run and hands
+it to `compose-preview a11y --id-file`, which narrows the Gradle render and the
+ATF fetch to exactly those ids. A PR that changed no preview skips the a11y run.
+Pipelines run compose before a11y, so `only: compose,a11y` (or the default, all
+pipelines) in one job gets this with no configuration. Without the compose
+pipeline in the same job there is no visual diff, and the run falls back to
+every preview of the affected modules; so does `scope: full`.
+
+The sticky `<!-- a11y-report -->` comment is about those previews: their
+findings, each with its annotated render, and the clean ones rostered by name.
+A report with no findings updates an existing a11y comment (so a fixed finding
+does not stay listed) but is never posted as a new one.
+
+**Baselines are opt-in.** By default (`a11y-baseline: false`) a push to the
+development branch runs no a11y pipeline at all: nothing reads an a11y baseline,
+and producing one means checking every preview. Set `a11y-baseline: 'true'` to
+keep `compose-preview/a11y/main` — the push then checks the whole catalog — and
+to have each PR's comment diff its changed previews against it, staying silent
+when they match.
+
 ## Fork PRs
 
 The basic usage above works for PRs raised from a branch in the repository
@@ -541,9 +580,11 @@ and `scope: full` forces it per invocation.
 Semantics of a scoped run:
 
 - Only the **compose** pipeline renders scoped (per-module
-  `compose-preview show --module`, envelopes merged). The resources / a11y /
+  `compose-preview show --module`, envelopes merged). The resources and
   notifications pipelines treat a partial scope as a full run; only the
-  "nothing render-affecting changed" case skips them.
+  "nothing render-affecting changed" case skips them. The a11y pipeline narrows
+  further than any module scope: to the previews the PR changed (see
+  [Accessibility on pull requests](#accessibility-on-pull-requests)).
 - The PR comment carries a `Change-scoped run: …` note, and baseline entries
   for out-of-scope modules are treated as **unchanged**, never "Removed" —
   they simply weren't rendered. Removals *inside* scoped modules are still

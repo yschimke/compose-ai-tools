@@ -304,7 +304,11 @@ private fun printFullUsage() {
                            Bar` records Bar. `history --preview` is a different flag again: an
                            exact
                            preview-id filter over archived entries.
-      --json               Emit JSON (show, list, a11y, devices)
+      --id-file <path>     a11y / guidelines: the previews to check, one exact id per line
+                           (a set-shaped --id; intersects with the other selectors and
+                           narrows the render the same way). An empty or unreadable file is
+                           an error, never "every preview".
+      --json              Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy a single matched preview to this path (render; the PNG, or the

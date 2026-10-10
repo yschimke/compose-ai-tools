@@ -72,8 +72,9 @@ internal object PreviewRenderScope {
   val FULL: Scope = Scope()
 
   /**
-   * Resolve [exactId] / [filter] / [previewRef] against the discovery [manifests] of the modules
-   * about to render. The three selectors intersect — see [previewIdMatchesRequest].
+   * Resolve [exactId] / [filter] / [previewRef] / [ids] (`--id-file`) against the discovery
+   * [manifests] of the modules about to render. The selectors intersect — see
+   * [previewIdMatchesRequest].
    *
    * [permutations] is the active `--permutations` list: the CLI matches a request against the
    * *expanded* ids a user sees in `show` output (`Foo_dark`), but forwards the *unexpanded* id
@@ -94,8 +95,9 @@ internal object PreviewRenderScope {
     permutations: List<String> = emptyList(),
     rowAware: Boolean = true,
     filesDir: java.io.File? = null,
+    ids: Set<String>? = null,
   ): Scope {
-    if (exactId == null && filter == null && previewRef == null) return FULL
+    if (exactId == null && filter == null && previewRef == null && ids == null) return FULL
     if (manifests.isEmpty()) return FULL
 
     val selected = linkedSetOf<String>()
@@ -120,6 +122,7 @@ internal object PreviewRenderScope {
             previewRef = previewRef,
             exactIdExists = exactIdExists,
             rowAware = rowAware,
+            ids = ids,
           )
         if (
           !mayOwnRequestedRow &&
@@ -131,6 +134,7 @@ internal object PreviewRenderScope {
                 previewRef = previewRef,
                 className = preview.className,
                 functionName = preview.functionName,
+                ids = ids,
               )
             }
         )

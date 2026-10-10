@@ -36,7 +36,9 @@ internal object CliFlagValidation {
       "--no-auto-inject",
     )
 
-  private val reportFlags = commandBase + setOf("--json", "--fail-on")
+  // `--id-file` selects for the report commands (the `apply` action's a11y pipeline hands its
+  // changed previews this way); `bundle pack` reads it too, with its own allowlist below.
+  private val reportFlags = commandBase + setOf("--json", "--fail-on", "--id-file")
 
   /**
    * Every flag the server's `serve` command documents, shared by the commands that launch it.

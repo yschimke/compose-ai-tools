@@ -275,4 +275,70 @@ class PreviewRenderScopeTest {
     assertEquals(emptyList(), scope.gradleArgs)
     assertNull(scope.renderedIds)
   }
+
+  @Test
+  fun `an id file narrows to exactly its declared ids, across modules`() {
+    val app = module("app")
+    val wear = module("wear")
+    val scope =
+      PreviewRenderScope.forRequest(
+        manifests =
+          listOf(
+            manifest(app, "BasicDialog", "BasicDialog_Dark", "HomePreview"),
+            manifest(wear, "TilePreview", "ComplicationPreview"),
+          ),
+        exactId = null,
+        filter = null,
+        ids = setOf("BasicDialog", "TilePreview", "NotDeclared"),
+      )
+
+    // Exact and anchored: `BasicDialog` must not drag `BasicDialog_Dark` in, and an id no module
+    // declares selects nothing.
+    assertEquals(listOf("-PcomposePreview.idFilter==BasicDialog,=TilePreview"), scope.gradleArgs)
+    assertEquals(setOf("BasicDialog", "TilePreview"), scope.renderedIds)
+  }
+
+  @Test
+  fun `an id file intersects with the other selectors`() {
+    val app = module("app")
+    val scope =
+      PreviewRenderScope.forRequest(
+        manifests = listOf(manifest(app, "BasicDialog", "AlertDialog", "HomePreview")),
+        exactId = null,
+        filter = "alert",
+        ids = setOf("BasicDialog", "AlertDialog"),
+      )
+
+    assertEquals(listOf("-PcomposePreview.idFilter==AlertDialog"), scope.gradleArgs)
+  }
+
+  @Test
+  fun `modules an id file does not name are not rendered`() {
+    val app = module("app")
+    val wear = module("wear")
+    val manifests = listOf(manifest(app, "BasicDialog"), manifest(wear, "TilePreview"))
+
+    val kept =
+      modulesMatchingPreviewRequest(
+        listOf(app, wear),
+        manifests,
+        exactId = null,
+        filter = null,
+        ids = setOf("BasicDialog"),
+      )
+
+    assertEquals(listOf(app), kept)
+  }
+
+  @Test
+  fun `an id file is read one id per line and refuses to be empty`() {
+    val dir = createTempDir()
+    val file = dir.resolve("ids.txt").apply { writeText("  BasicDialog \n\nTilePreview\n") }
+    assertEquals(setOf("BasicDialog", "TilePreview"), readIdFile(file))
+
+    val empty = dir.resolve("empty.txt").apply { writeText("\n  \n") }
+    val failure = runCatching { readIdFile(empty) }.exceptionOrNull()
+    assertTrue(failure is IllegalStateException, "an empty id file must not mean every preview")
+    assertTrue(runCatching { readIdFile(dir.resolve("missing.txt")) }.isFailure)
+  }
 }

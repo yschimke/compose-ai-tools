@@ -164,6 +164,12 @@ jobs:
           # stamp the misleading global "ATF data unavailable" banner.
           a11y-module: ''
           a11y-skip-modules: ''
+          # This job runs no compose pipeline, so a PR has no visual diff to scope the a11y
+          # run by and checks every sample preview of the affected modules against the
+          # `compose-preview/a11y/main` baseline, which pushes to main keep. A consumer
+          # running `only: compose,a11y` in one job needs neither: its PRs check only the
+          # previews they changed.
+          a11y-baseline: 'true'
           notifications-module: 'samples:android'
           timeout: '1800'
 
