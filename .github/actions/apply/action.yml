@@ -287,6 +287,14 @@ inputs:
       Stop the guidelines check once this many US dollars are spent; previews
       left are reported unchecked.
     default: '0.25'
+  guidelines-concurrency:
+    description: >
+      How many guidelines model requests may be in flight at once (the CLI's
+      `--concurrency`); `1` asks one batch at a time. The cost cap holds
+      across them: a request starts only when what is spent plus what the
+      requests in flight are expected to cost leaves room for it. Ignored by a
+      CLI without the flag.
+    default: '4'
   guidelines-max-previews:
     description: >
       The most previews one PR sends to the guidelines check, across every
@@ -1854,6 +1862,7 @@ runs:
         COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.openrouter-key }}
         MAX_COST: ${{ inputs.guidelines-max-cost }}
         MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
+        CONCURRENCY: ${{ inputs.guidelines-concurrency }}
         CACHE_KEY: ${{ inputs.guidelines-cache-key }}
         GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
         GUIDELINES_PROFILE: ${{ inputs.guidelines-profile }}
@@ -1870,6 +1879,19 @@ runs:
         if ! command -v compose-preview >/dev/null; then
           echo "::warning::compose-preview/apply: no CLI with the guidelines command; skipping."
           exit 0
+        fi
+        # Requests in flight at once. Passed only to a CLI that knows the flag: an older one would
+        # read its value as a positional argument.
+        concurrency_args=()
+        if [[ "$CONCURRENCY" =~ ^[1-9][0-9]?$ ]]; then
+          # Captured first: `grep -q` exits at the first match, and under pipefail the CLI's
+          # SIGPIPE would read as no match.
+          cli_help=$(compose-preview help 2>&1 || true)
+          if grep -q -- '--concurrency' <<<"$cli_help"; then
+            concurrency_args=(--concurrency "$CONCURRENCY")
+          fi
+        else
+          echo "::warning::compose-preview/apply: guidelines-concurrency must be a whole number from 1 to 99; using the CLI's default."
         fi
         # The module directories come from the handoff, which the PR's own build
         # wrote, so neither their number nor any results already in them are
@@ -1935,6 +1957,7 @@ runs:
             --source-root "$module_dir/src" \
             --guidelines "$module_dir/ui-builder.guidelines.json" \
             --max-cost "$remaining" --annotate --rounds 2 "${kind_args[@]}" \
+            "${concurrency_args[@]+"${concurrency_args[@]}"}" \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
         # Stages exactly the pictures the comment will embed (the render with its findings marked,

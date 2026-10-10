@@ -201,15 +201,22 @@ public object GuidelineResponse {
         ?: return null
     val code = (error["code"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
     val message = error.text("message").orEmpty()
-    val provider = (error["metadata"] as? JsonObject)?.text("provider_name")
-    val timeout = message.contains("timeout", true) || message.contains("timed out", true)
+    val metadata = error["metadata"] as? JsonObject
+    val provider = metadata?.text("provider_name")
+    val errorType = metadata?.text("error_type")
     val kind =
       when {
-        code == 429 -> FailureKind.RATE_LIMITED
+        code == 429 || errorType == "rate_limit_exceeded" -> FailureKind.RATE_LIMITED
+        code == 503 -> FailureKind.RATE_LIMITED
+        code == 402 && metadata?.text("limit_source") == IN_FLIGHT_BUDGET ->
+          FailureKind.RATE_LIMITED
         code == 413 -> FailureKind.TOO_LARGE
-        code == 408 || (code != null && code in 500..599) -> FailureKind.TRANSIENT
-        timeout || provider != null -> FailureKind.TRANSIENT
-        else -> FailureKind.FATAL
+        // OpenRouter answers these with their status rather than in a 200's body; said here, they
+        // still mean the key, the balance or the request, which no retry changes.
+        code == 400 || code == 401 || code == 402 || code == 403 || code == 404 -> FailureKind.FATAL
+        // 408, 5xx, a provider's own error (its name or a string code such as `server_error`),
+        // a timeout: an error in place of a completion is the provider's, and may pass.
+        else -> FailureKind.TRANSIENT
       }
     return FailedRequest(
       "the model answered with an error in place of a completion" +

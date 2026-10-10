@@ -6,6 +6,8 @@ import ee.schimke.composeai.guidelines.protocol.GuidelineRecordV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRuleV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineSubjectV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * What a host can fetch when a model asks for more than the first pass gave it: the CLI over its
@@ -89,7 +91,11 @@ public data class GuidelineRetry(
   val split: Boolean = true,
   /**
    * How many failed tries the whole run may follow with a retry or a split. Past it, each request
-   * is asked once: when the provider is down, retrying every batch only makes the run slower.
+   * is asked once: when the provider is down, retrying every batch only makes the run slower. With
+   * several requests in flight ([GuidelineRunOptions.concurrency]) the allowance goes to failures
+   * in the order they come back, so which batches it still covers once a provider is failing
+   * depends on timing, as which requests fail does; with one request at a time it is the queue's
+   * order, as before.
    */
   val maxFailedAttempts: Int = 8,
 )
@@ -118,9 +124,44 @@ public data class GuidelineRunOptions(
   public var retry: GuidelineRetry = GuidelineRetry()
     private set
 
+  /**
+   * How many model requests may be in flight at once; 1 asks one batch at a time. Each batch's
+   * triage, request, retries, halves and follow-up rounds are asked by one worker, so this many
+   * batches progress together. The cost cap still holds: a request starts only once what is spent
+   * plus what the requests in flight are expected to cost leaves room for it, and until the first
+   * reply says what one costs, a capped run asks one at a time. A rate limit (429, 503, or
+   * OpenRouter's in-flight budget) pauses every worker for the wait it asked.
+   *
+   * [GuidelineModel.complete] and [GuidelineModel.decide] are called from several threads when this
+   * is above 1; the [GuidelineEvidenceHost] never is.
+   *
+   * A body property like [retry]: set it with [withConcurrency].
+   */
+  public var concurrency: Int = DEFAULT_CONCURRENCY
+    private set
+
   /** These options, retrying as [retry] says. */
   public fun withRetry(retry: GuidelineRetry): GuidelineRunOptions =
-    copy().also { it.retry = retry }
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency
+    }
+
+  /** These options, with up to [concurrency] requests in flight at once. */
+  public fun withConcurrency(concurrency: Int): GuidelineRunOptions =
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency.coerceAtLeast(1)
+    }
+
+  public companion object {
+    /**
+     * [concurrency] unless told otherwise. Four: a 24-rule screen catalog's batches come back in
+     * about the time of one, and well under OpenRouter's in-flight budget for a funded key; paid
+     * models have no request-rate cap there (free `:free` variants allow 20 a minute).
+     */
+    public const val DEFAULT_CONCURRENCY: Int = 4
+  }
 }
 
 /** A whole run: one result per subject, what it cost, and what went wrong on the way. */
@@ -158,6 +199,18 @@ public class GuidelineEngine(
   /** How a retry waits; tests replace it. */
   internal var sleep: (Long) -> Unit = { Thread.sleep(it) }
 
+  /** The monotonic clock, in milliseconds, a run-wide pause is measured on; tests replace it. */
+  internal var now: () -> Long = { System.nanoTime() / 1_000_000 }
+
+  /** Held while the [host] is asked anything: a host need not be safe to call concurrently. */
+  private val hostLock = Any()
+
+  /**
+   * Checks [subjects] against [guidelines]. Up to [GuidelineRunOptions.concurrency] requests are in
+   * flight at once, each batch's triage, request, retries and follow-up rounds on one worker; the
+   * result does not depend on which finished first. Results come back in the order the batches were
+   * formed, and the problems in that order too.
+   */
   public fun run(
     guidelines: CatalogGuidelinesV1,
     subjects: List<PreviewSubject>,
@@ -181,7 +234,6 @@ public class GuidelineEngine(
     var unpriced = 0.0
     var abandoned = 0
     // Batches split after their request kept failing, as "<n> previews (<why>)".
-    val splits = mutableListOf<String>()
     // Verdicts dropped because they answer a question nobody asked: rule ids the request never
     // listed for that subject (by id, counted), and subjects outside the request.
     val invented = linkedMapOf<String, Int>()
@@ -189,17 +241,96 @@ public class GuidelineEngine(
     // whose set-wide rules it left so.
     var unstated = 0
     var setUnstated = 0
-    val strays = mutableListOf<String>()
+    val strays = sortedMapOf<String, MutableList<String>>()
 
-    /** Whether one more request, expected to cost what the dearest so far did, fits the cap. */
-    fun affordable(): Boolean {
-      val cap = options.maxCostUsd ?: return true
-      val committed = spent + unpriced
-      return committed < cap && committed + dearest <= cap
+    // Everything above and below that workers share is read and written holding [lock].
+    val lock = ReentrantLock()
+    val changed = lock.newCondition()
+    // The cap's expected cost of the requests in flight, how many there are, and how many have
+    // come back: what is reserved is what each was expected to cost when it started.
+    var reserved = 0.0
+    var inFlight = 0
+    var settledRequests = 0
+    // No request starts before this (on [now]): a 429, a 503 or OpenRouter's in-flight budget
+    // asked the whole run to wait, not only the request that met it.
+    var pausedUntil = 0L
+    // Per batch, keyed by its place in the queue ("00003", its halves "00003.0" and "00003.1"),
+    // so the problems read in queue order whichever request finished first.
+    val failures = sortedMapOf<String, MutableList<String>>()
+    val splitsByKey = sortedMapOf<String, String>()
+    val inventedByKey = sortedMapOf<String, LinkedHashMap<String, Int>>()
+    val batchResults = mutableMapOf<String, PreviewGuidelineResult>()
+    var active = 0
+    var crashed: Throwable? = null
+
+    /** The run-wide allowance for retries and splits: whether a failed try may be followed up. */
+    fun mayRecover(): Boolean = lock.withLock { failedAttempts <= options.retry.maxFailedAttempts }
+
+    /**
+     * Whether one more request fits the cap, expected to cost what the dearest so far did, on top
+     * of what is spent and what the requests in flight are expected to cost. Holding [lock].
+     */
+    fun fitsLocked(): Fit {
+      val cap = options.maxCostUsd ?: return Fit.YES
+      val committed = spent + unpriced + reserved
+      return when {
+        // Before any request has come back there is nothing to expect a cost from: one at a
+        // time, so concurrent starts cannot jointly cross the cap.
+        settledRequests == 0 && inFlight > 0 -> Fit.WAIT
+        committed < cap && committed + dearest <= cap -> Fit.YES
+        // A request in flight may come back cheaper than reserved and leave room.
+        inFlight > 0 -> Fit.WAIT
+        else -> Fit.NO
+      }
     }
 
-    /** Whether the run may still follow a failed try with a retry or a split. */
-    fun mayRecover(): Boolean = failedAttempts <= options.retry.maxFailedAttempts
+    /** Reserves [dearest] for a request about to start. Holding [lock]. */
+    fun reserveLocked(): Reservation {
+      val amount = if (options.maxCostUsd == null) 0.0 else dearest
+      reserved += amount
+      inFlight++
+      return Reservation(amount)
+    }
+
+    /** A reservation for one more request, waiting for room; null when the cap has none. */
+    fun reserve(): Reservation? = lock.withLock {
+      while (true) {
+        when (fitsLocked()) {
+          Fit.YES -> return@withLock reserveLocked()
+          Fit.WAIT -> changed.await()
+          Fit.NO -> return@withLock null
+        }
+      }
+      @Suppress("UNREACHABLE_CODE") null
+    }
+
+    /** Settles [reservation] with what its request [cost]; [unanswered] when none came back. */
+    fun settle(reservation: Reservation, cost: Double, unanswered: Boolean) = lock.withLock {
+      reserved -= reservation.amount
+      inFlight--
+      settledRequests++
+      spent += cost
+      dearest = maxOf(dearest, cost)
+      // Abandoned without an answer: it may still have been billed, so it counts against the
+      // cap at what the dearest request cost, though not reported as spent.
+      if (unanswered && cost == 0.0) {
+        abandoned++
+        unpriced += dearest
+      }
+      changed.signalAll()
+    }
+
+    /**
+     * Waits out the run-wide pause, if one is set, until it has passed: another rate limit may
+     * extend it while this worker sleeps.
+     */
+    fun pause() {
+      while (true) {
+        val wait = lock.withLock { pausedUntil - now() }
+        if (wait <= 0) return
+        sleep(wait)
+      }
+    }
 
     // A subject no rule applies to costs no request: asked about nothing, a model can only answer
     // nothing, which reads as an unreadable reply at best and a clean pass at worst.
@@ -228,25 +359,64 @@ public class GuidelineEngine(
     // A queue, not a list: a batch whose request keeps failing comes back as its two halves, asked
     // next, already triaged.
     val queue = ArrayDeque<QueuedBatch>()
-    (PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
-        PreviewGuidelineRequests.batches(guidelines, stale, options.budget))
-      .forEach { queue.addLast(QueuedBatch(it, triaged = false)) }
-    while (queue.isNotEmpty()) {
-      val (batch0, triaged) = queue.removeFirst()
-      if (!affordable()) {
-        batch0.subjects.forEach { results += unchecked(guidelines, it) }
-        capped += batch0.subjects.size
-        continue
+    val formed =
+      PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
+        PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
+    formed.forEachIndexed { index, batch ->
+      queue.addLast(QueuedBatch(batch, triaged = false, key = "%06d".format(index)))
+    }
+    // Where each batched subject's result goes: the order the batches were formed in.
+    val batchedOrder = formed.flatMap { batch -> batch.subjects.map { it.previewId } }
+
+    /** [batch]'s subjects, unchecked: not asked, or their request failed. Holding [lock]. */
+    fun uncheckedLocked(batch: GuidelineBatch) {
+      batch.subjects.forEach { batchResults[it.previewId] = unchecked(guidelines, it) }
+    }
+
+    /**
+     * The next batch to ask, with the reservation its first request starts under: always the head
+     * of the queue, so a capped run asks a prefix of it, as one request at a time would. Null when
+     * nothing is left, or a worker failed.
+     */
+    fun next(): Pair<QueuedBatch, Reservation>? = lock.withLock {
+      while (true) {
+        if (crashed != null) return@withLock null
+        if (queue.isEmpty()) {
+          if (active == 0) return@withLock null
+          // A batch still being asked may come back as two halves.
+          changed.await()
+          continue
+        }
+        when (fitsLocked()) {
+          Fit.YES -> {
+            active++
+            return@withLock queue.removeFirst() to reserveLocked()
+          }
+          Fit.WAIT -> changed.await()
+          Fit.NO -> {
+            val skipped = queue.removeFirst()
+            uncheckedLocked(skipped.batch)
+            capped += skipped.batch.subjects.size
+            changed.signalAll()
+          }
+        }
       }
+      @Suppress("UNREACHABLE_CODE") null
+    }
+
+    /** Asks [task]'s batch, its first request under [first]: triage, retries, splits, rounds. */
+    fun process(task: QueuedBatch, first: Reservation) {
+      val batch0 = task.batch
+      val triaged = task.triaged
       // Triage: fetch the evidence Jev expects to matter before the vision model sees the batch.
       var batch = batch0
-      if (!triaged && options.triage && host.available.isNotEmpty()) {
+      if (!triaged && options.triage && synchronized(hostLock) { host.available }.isNotEmpty()) {
         val rulesSummary =
           guidelines.subjectRules(batch.surface).joinToString("\n") { "${it.id}: ${it.check}" }
         // Only offer what this host can supply: a decision for a render the host cannot draw
         // would cost a question and fetch nothing.
-        val offers =
-          JevTriage.DEFAULT_OFFERS.filter { servedKind(it.need.kind, host.available) != null }
+        val offered = synchronized(hostLock) { host.available }
+        val offers = JevTriage.DEFAULT_OFFERS.filter { servedKind(it.need.kind, offered) != null }
         val reply =
           offers
             .takeIf { it.isNotEmpty() }
@@ -255,7 +425,7 @@ public class GuidelineEngine(
         if (reply != null && reply.status in 200..299) {
           val wants =
             JevTriage.wanted(reply.body, batch, offers, threshold = options.triageThreshold)
-          if (wants.isNotEmpty()) batch = withEvidence(batch, wants)
+          if (wants.isNotEmpty()) batch = synchronized(hostLock) { withEvidence(batch, wants) }
         }
       }
 
@@ -270,30 +440,36 @@ public class GuidelineEngine(
       // Everything this batch's requests cost, replies that could not be used included.
       var batchSpent = 0.0
 
-      /** Asks [target]: null when its verdicts are in, or why it finally failed. */
+      /**
+       * Asks [target], its first try under [reservation]: null when its verdicts are in, or why it
+       * finally failed.
+       */
       fun ask(
         target: GuidelineBatch,
         round: Int,
         onlyRules: Map<String, Set<String>>?,
+        reservation: Reservation,
       ): FailedRequest? {
         val request =
-          PreviewGuidelineRequests.request(
-            guidelines,
-            target,
-            options.rulesSource,
-            target.subjects.flatMap { host.available(it.previewId) }.distinct(),
-            round,
-            onlyRules,
-            target.subjects.associate { it.previewId to host.available(it.previewId) },
-            // The summary stands in for accessibility data not yet attached; once a round has
-            // brought the nodes and checks, they speak for themselves.
-            target.subjects
-              .filter { it.nodes.isEmpty() && it.checks.isEmpty() }
-              .mapNotNull { subject ->
-                host.summary(subject.previewId)?.let { subject.previewId to it }
-              }
-              .toMap(),
-          )
+          synchronized(hostLock) {
+            PreviewGuidelineRequests.request(
+              guidelines,
+              target,
+              options.rulesSource,
+              target.subjects.flatMap { host.available(it.previewId) }.distinct(),
+              round,
+              onlyRules,
+              target.subjects.associate { it.previewId to host.available(it.previewId) },
+              // The summary stands in for accessibility data not yet attached; once a round has
+              // brought the nodes and checks, they speak for themselves.
+              target.subjects
+                .filter { it.nodes.isEmpty() && it.checks.isEmpty() }
+                .mapNotNull { subject ->
+                  host.summary(subject.previewId)?.let { subject.previewId to it }
+                }
+                .toMap(),
+            )
+          }
         val (perSubject, setRules) =
           PreviewGuidelineRequests.askedRules(guidelines, target, round, onlyRules)
         val askedOf = perSubject.mapValues { (_, rules) -> rules.map { it.id }.toSet() }
@@ -302,21 +478,23 @@ public class GuidelineEngine(
         var attempt = 0
         var kept: List<GuidelineVerdictV1>
         var answer: GuidelineReply
+        var held = reservation
         while (true) {
           attempt++
+          pause()
           val response = runCatching {
             model.complete(request, options.model)
           }
             .getOrElse {
+              settle(held, 0.0, unanswered = false)
               return FailedRequest("request failed: ${it.message}", FailureKind.FATAL)
             }
-          requests++
           // Paid for whether or not the answer can be used; an error in place of a completion can
           // carry a cost too.
           val cost = GuidelineResponse.cost(response.body) ?: 0.0
-          spent += cost
+          lock.withLock { requests++ }
+          settle(held, cost, unanswered = response.status == ModelResponse.NO_ANSWER)
           batchSpent += cost
-          dearest = maxOf(dearest, cost)
           val failure: FailedRequest =
             if (response.status in 200..299) {
               val error = GuidelineResponse.failure(response.body)
@@ -326,7 +504,7 @@ public class GuidelineEngine(
                 val parsed = GuidelineResponse.parse(response.body, target, order)
                 val reply = parsed.getOrNull()
                 if (reply != null) {
-                  strays += reply.strays
+                  lock.withLock { strays.getOrPut(task.key) { mutableListOf() } += reply.strays }
                   // Only a verdict on a rule this request listed for that subject (or for the
                   // set) is an answer; anything else is a rule the model made up and has no guide
                   // to link.
@@ -336,7 +514,10 @@ public class GuidelineEngine(
                       if (subjectId == null) verdict.ruleId in askedOnce
                       else verdict.ruleId in askedOf[subjectId].orEmpty()
                     }
-                  dropped.forEach { invented.merge(it.ruleId, 1, Int::plus) }
+                  lock.withLock {
+                    val mine = inventedByKey.getOrPut(task.key) { linkedMapOf() }
+                    dropped.forEach { mine.merge(it.ruleId, 1, Int::plus) }
+                  }
                   // A reply listing no finding but stating that everything else passes is the
                   // common, cheap answer, not an empty one.
                   if (valid.isNotEmpty() || reply.othersPass.isNotEmpty()) {
@@ -360,11 +541,7 @@ public class GuidelineEngine(
             } else {
               FailedRequest.of(response)
             }
-          failedAttempts++
-          if (response.status == ModelResponse.NO_ANSWER && cost == 0.0) {
-            abandoned++
-            unpriced += dearest
-          }
+          lock.withLock { failedAttempts++ }
           val tries = if (attempt > 1) " (after $attempt tries)" else ""
           val wait =
             response.retryAfterMillis
@@ -384,17 +561,30 @@ public class GuidelineEngine(
               !mayRecover() -> "; not asked again: the run's failures used up its retries"
               wait > options.retry.maxDelayMillis ->
                 "; not asked again: the server asked for a ${wait / 1000} s wait"
-              !affordable() -> "; not asked again: the cost cap left no room"
               else -> null
             }
           if (stop != null) return failure.copy(problem = failure.problem + tries + stop)
-          if (failure.kind == FailureKind.UNUSABLE) {
+          val noRoom =
+            failure.copy(
+              problem = failure.problem + tries + "; not asked again: the cost cap left no room"
+            )
+          // Not waited for when the cap has no room for it whatever comes back.
+          if (lock.withLock { fitsLocked() } == Fit.NO) return noRoom
+          when (failure.kind) {
             // A reply with nothing usable is usually a bad draw, not a bad question: ask at once.
-            retried++
-          } else {
-            retriedTransient++
-            sleep(wait)
+            FailureKind.UNUSABLE -> lock.withLock { retried++ }
+            // A rate limit is the account's, not this request's: every request waits it out.
+            FailureKind.RATE_LIMITED ->
+              lock.withLock {
+                retriedTransient++
+                pausedUntil = maxOf(pausedUntil, now() + wait)
+              }
+            else -> {
+              lock.withLock { retriedTransient++ }
+              sleep(wait)
+            }
           }
+          held = reserve() ?: return noRoom
         }
         served += answer.served
         // A region lives with the subject whose picture it is drawn on: a verdict about one
@@ -492,21 +682,30 @@ public class GuidelineEngine(
         return null
       }
 
-      val failure = ask(batch, 0, null)
+      val failure = ask(batch, 0, null, first)
       if (failure != null) {
         if (failure.splittable && batch.subjects.size > 1 && options.retry.split && mayRecover()) {
           // One slow or failing batch must not sink every preview in it: ask its halves, next.
           // Each is a request of its own under the cap, checked as it comes off the queue.
           val half = (batch.subjects.size + 1) / 2
-          queue.addFirst(QueuedBatch(batch.copy(subjects = batch.subjects.drop(half)), true))
-          queue.addFirst(QueuedBatch(batch.copy(subjects = batch.subjects.take(half)), true))
-          splits += "${batch.subjects.size} previews (${failure.problem.take(120)})"
-          continue
+          lock.withLock {
+            queue.addFirst(
+              QueuedBatch(batch.copy(subjects = batch.subjects.drop(half)), true, task.key + ".1")
+            )
+            queue.addFirst(
+              QueuedBatch(batch.copy(subjects = batch.subjects.take(half)), true, task.key + ".0")
+            )
+            splitsByKey[task.key] = "${batch.subjects.size} previews (${failure.problem.take(120)})"
+            changed.signalAll()
+          }
+          return
         }
-        problems += failure.problem
-        failedRequests++
-        batch.subjects.forEach { results += unchecked(guidelines, it) }
-        continue
+        lock.withLock {
+          failures.getOrPut(task.key) { mutableListOf() } += failure.problem
+          failedRequests++
+          uncheckedLocked(batch)
+        }
+        return
       }
 
       // Evidence rounds: re-ask only the subjects and rules the model could not decide.
@@ -524,23 +723,32 @@ public class GuidelineEngine(
                 }
             }
             .filterValues { it.isNotEmpty() }
-        if (undecided.isEmpty() || host.available.isEmpty()) break
-        if (!affordable()) {
+        if (undecided.isEmpty() || synchronized(hostLock) { host.available }.isEmpty()) break
+        // A follow-up is a request like any other: it waits its turn under the cap.
+        val slot = reserve()
+        if (slot == null) {
           interrupted = undecided.keys
           break
         }
         val needs = undecided.mapValues { (_, list) -> list.flatMap { it.needs }.distinct() }
-        val gathered = withEvidence(current, needs)
+        val gathered = synchronized(hostLock) { withEvidence(current, needs) }
         val followUp =
           GuidelineBatch(
             gathered.surface,
             gathered.subjects.filter { it.previewId in undecided },
           )
         val followUpFailure =
-          ask(followUp, round, undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() })
+          ask(
+            followUp,
+            round,
+            undecided.mapValues { (_, l) -> l.map { it.ruleId }.toSet() },
+            slot,
+          )
         if (followUpFailure != null) {
-          problems += followUpFailure.problem
-          failedRequests++
+          lock.withLock {
+            failures.getOrPut(task.key) { mutableListOf() } += followUpFailure.problem
+            failedRequests++
+          }
           interrupted = undecided.keys
           break
         }
@@ -559,8 +767,10 @@ public class GuidelineEngine(
             setVerdicts.none { it.ruleId == id && it.verdict != GuidelineVerdictV1.NEEDS_EVIDENCE }
           }
       val setUncovered = setUnchecked.isNotEmpty()
-      if (setUncovered) setUnstated++
-      unstated += uncovered.size
+      lock.withLock {
+        if (setUncovered) setUnstated++
+        unstated += uncovered.size
+      }
       val share = if (batch.subjects.isEmpty()) 0.0 else batchSpent / batch.subjects.size
       val last = served.lastOrNull()
       batch.subjects.forEach { subject ->
@@ -587,7 +797,7 @@ public class GuidelineEngine(
                   .filter { it in implicit[subject.previewId].orEmpty() || it in setImplicit }
                   .filter { id -> mine.any { it.ruleId == id && it.verdict == PASS } }
             }
-        results += result
+        lock.withLock { batchResults[subject.previewId] = result }
         // Keyed on the subject as the caller handed it in: batching may truncate its source to fit
         // the budget, and triage and follow-up rounds attach evidence, none of which the next
         // run's lookup (over the caller's subject) will have.
@@ -599,9 +809,49 @@ public class GuidelineEngine(
             !(subject.previewId in uncovered && unchecked.isNotEmpty()) &&
             !setUncovered
         )
-          cache?.put(result, arrived, guidelines, options.model)
+          cache?.let { synchronized(it) { it.put(result, arrived, guidelines, options.model) } }
       }
     }
+
+    /** One worker: batches off the queue until none is left. */
+    fun work() {
+      while (true) {
+        val (task, first) = next() ?: return
+        try {
+          process(task, first)
+        } catch (e: Throwable) {
+          lock.withLock { if (crashed == null) crashed = e }
+          throw e
+        } finally {
+          lock.withLock {
+            active--
+            changed.signalAll()
+          }
+        }
+      }
+    }
+
+    val workers = options.concurrency.coerceAtLeast(1).coerceAtMost(formed.size.coerceAtLeast(1))
+    if (workers == 1) {
+      work()
+    } else {
+      val threads =
+        (1..workers).map { n ->
+          Thread({ runCatching { work() } }, "guidelines-request-$n").apply {
+            isDaemon = true
+            start()
+          }
+        }
+      threads.forEach { it.join() }
+      crashed?.let { throw it }
+    }
+    results += batchedOrder.mapNotNull { batchResults[it] }
+    failures.values.forEach { problems += it }
+    val splits = splitsByKey.values.toList()
+    inventedByKey.values.forEach { mine ->
+      mine.forEach { (id, n) -> invented.merge(id, n, Int::plus) }
+    }
+
     if (capped > 0) {
       problems +=
         "the cost cap (\$${money(options.maxCostUsd ?: 0.0)}) was reached; $capped previews were " +
@@ -628,10 +878,11 @@ public class GuidelineEngine(
         "$setUnstated batch(es) got a reply that decided none of the rules judged once across " +
           "the batch; their previews are not cached, so the next run asks again"
     }
-    if (strays.isNotEmpty()) {
+    val strayed = strays.values.flatten()
+    if (strayed.isNotEmpty()) {
       problems +=
-        "${strays.size} verdict(s) named a subject outside their request and were dropped: " +
-          strays.take(8).joinToString()
+        "${strayed.size} verdict(s) named a subject outside their request and were dropped: " +
+          strayed.take(8).joinToString()
     }
     if (retried > 0) {
       problems += "$retried request(s) were asked again after a reply with no usable verdict"
@@ -820,13 +1071,27 @@ public const val IMPLICIT_PASS_REASON: String =
   "Passed implicitly: not among the reply's findings, which stated every other rule passes."
 
 /** A batch waiting to be asked; [triaged] once Jev has already been asked about its subjects. */
-private data class QueuedBatch(val batch: GuidelineBatch, val triaged: Boolean)
+private data class QueuedBatch(val batch: GuidelineBatch, val triaged: Boolean, val key: String)
+
+/** What a request in flight was expected to cost when it started, held against the cap. */
+private class Reservation(val amount: Double)
+
+/** Whether one more request fits the cost cap now, may once a request in flight is back, or not. */
+private enum class Fit {
+  YES,
+  WAIT,
+  NO,
+}
 
 /** Why a request did not come back as verdicts, and what may still be done about it. */
 internal enum class FailureKind {
   /** It may pass: no answer, 408, 5xx, a provider error. Asked again, then split. */
   TRANSIENT,
-  /** 429: asked again after the wait it named; asking about fewer subjects would not help. */
+  /**
+   * 429, 503 (no provider can take it now) or 402 from OpenRouter's in-flight budget: asked again
+   * after the wait it named, which every request of the run waits out; asking about fewer subjects
+   * would not help.
+   */
   RATE_LIMITED,
   /** Our own timeout abandoned it: split at once when it has several subjects. */
   TIMEOUT,
@@ -834,9 +1099,15 @@ internal enum class FailureKind {
   TOO_LARGE,
   /** A reply with no usable verdict. Asked again at once, then split. */
   UNUSABLE,
-  /** Nothing to retry: an invalid key, no credit, a malformed request. */
+  /** Nothing to retry: an invalid key (401), no credit (402), forbidden (403), a bad request. */
   FATAL,
 }
+
+/** Whether an OpenRouter error [body] names its in-flight budget as the limit it hit. */
+internal fun inFlightBudget(body: String): Boolean = body.contains(IN_FLIGHT_BUDGET)
+
+/** `error.metadata.limit_source` when a 402 is the key's requests in flight, not its balance. */
+internal const val IN_FLIGHT_BUDGET: String = "openrouter_in_flight_budget"
 
 /** A request that failed, in the words the run's problems use. */
 internal data class FailedRequest(val problem: String, val kind: FailureKind) {
@@ -854,12 +1125,16 @@ internal data class FailedRequest(val problem: String, val kind: FailureKind) {
           if (response.timedOut) FailureKind.TIMEOUT else FailureKind.TRANSIENT,
         )
       }
+      // OpenRouter's errors (openrouter.ai/docs/api-reference/errors): 408, 429, 502 and 503 may
+      // pass; a 402 is retryable only when it is the in-flight budget, the estimated cost of the
+      // key's requests running at once, rather than the balance or a key limit.
       val kind =
-        when (status) {
-          408 -> FailureKind.TRANSIENT
-          413 -> FailureKind.TOO_LARGE
-          429 -> FailureKind.RATE_LIMITED
-          in 500..599 -> FailureKind.TRANSIENT
+        when {
+          status == 408 -> FailureKind.TRANSIENT
+          status == 413 -> FailureKind.TOO_LARGE
+          status == 429 || status == 503 -> FailureKind.RATE_LIMITED
+          status == 402 && inFlightBudget(response.body) -> FailureKind.RATE_LIMITED
+          status in 500..599 -> FailureKind.TRANSIENT
           else -> FailureKind.FATAL
         }
       return FailedRequest("the model answered $status: ${response.body.take(200)}", kind)

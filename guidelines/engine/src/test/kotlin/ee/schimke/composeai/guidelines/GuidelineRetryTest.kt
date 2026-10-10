@@ -102,7 +102,18 @@ class GuidelineRetryTest {
     model: GuidelineModel,
     options: GuidelineRunOptions,
     sleeps: MutableList<Long>,
-  ) = GuidelineEngine(model, options = options).apply { sleep = { sleeps += it } }
+  ) =
+    GuidelineEngine(model, options = options).apply {
+      // A clock that moves only when the engine waits, so a run-wide pause is waited exactly.
+      var t = 0L
+      now = { synchronized(sleeps) { t } }
+      sleep = {
+        synchronized(sleeps) {
+          sleeps += it
+          t += it
+        }
+      }
+    }
 
   @Test
   fun `a request that timed out is asked again and its answer used`() {
@@ -323,6 +334,32 @@ class GuidelineRetryTest {
     assertThat(kind(413)).isEqualTo(FailureKind.TOO_LARGE)
     assertThat(kind(400)).isEqualTo(FailureKind.FATAL)
     assertThat(kind(402)).isEqualTo(FailureKind.FATAL)
+    // OpenRouter's errors page: 503 (no provider can take it now) carries a Retry-After, and so
+    // does a 402 that is the in-flight budget rather than the balance.
+    assertThat(kind(503)).isEqualTo(FailureKind.RATE_LIMITED)
+    assertThat(kind(502)).isEqualTo(FailureKind.TRANSIENT)
+    assertThat(kind(401)).isEqualTo(FailureKind.FATAL)
+    assertThat(kind(403)).isEqualTo(FailureKind.FATAL)
+    val inFlight =
+      """{"error":{"code":402,"message":"Too much in flight",""" +
+        """"metadata":{"limit_source":"openrouter_in_flight_budget"}}}"""
+    assertThat(FailedRequest.of(ModelResponse(402, inFlight)).kind)
+      .isEqualTo(FailureKind.RATE_LIMITED)
+    val credits =
+      """{"error":{"code":402,"message":"Insufficient credits",""" +
+        """"metadata":{"limit_source":"openrouter_credits"}}}"""
+    assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.FATAL)
+    // Said in a 200's body instead: the same reading.
+    assertThat(GuidelineResponse.failure(inFlight)!!.kind).isEqualTo(FailureKind.RATE_LIMITED)
+    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.FATAL)
+    assertThat(
+        GuidelineResponse.failure(
+            """{"error":{"code":"server_error","message":"Provider disconnected unexpectedly"},""" +
+              """"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}"""
+          )!!
+          .kind
+      )
+      .isEqualTo(FailureKind.TRANSIENT)
     assertThat(FailedRequest.of(timeout).kind).isEqualTo(FailureKind.TIMEOUT)
     assertThat(FailedRequest.of(ModelResponse.noAnswer("reset")).kind)
       .isEqualTo(FailureKind.TRANSIENT)

@@ -195,6 +195,8 @@ public final class ee/schimke/composeai/guidelines/GuidelineRetry {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineRunOptions$Companion;
+	public static final field DEFAULT_CONCURRENCY I
 	public fun <init> ()V
 	public fun <init> (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -210,6 +212,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunOptions;Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBudget ()Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public final fun getConcurrency ()I
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
@@ -220,7 +223,11 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getTriageThreshold ()D
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineRunOptions$Companion {
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
@@ -355,11 +362,22 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke
 	public synthetic fun <init> (Ljava/lang/String;Lokhttp3/OkHttpClient;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public final fun getIdleTimeout ()Ljava/time/Duration;
+	public final fun getPreferredMaxLatencySeconds ()Ljava/lang/Double;
+	public final fun getPreferredMinThroughput ()Ljava/lang/Double;
+	public final fun getProviderSort ()Ljava/lang/String;
 	public final fun getRelaxedParameters ()Z
+	public final fun getStream ()Z
+	public final fun setIdleTimeout (Ljava/time/Duration;)V
+	public final fun setPreferredMaxLatencySeconds (Ljava/lang/Double;)V
+	public final fun setPreferredMinThroughput (Ljava/lang/Double;)V
+	public final fun setProviderSort (Ljava/lang/String;)V
+	public final fun setStream (Z)V
 }
 
 public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 	public final fun chatBody (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public final fun getDEFAULT_IDLE_TIMEOUT ()Ljava/time/Duration;
 	public final fun getDEFAULT_REQUEST_TIMEOUT ()Ljava/time/Duration;
 	public final fun httpClient (Ljava/time/Duration;)Lokhttp3/OkHttpClient;
 	public static synthetic fun httpClient$default (Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;Ljava/time/Duration;ILjava/lang/Object;)Lokhttp3/OkHttpClient;
