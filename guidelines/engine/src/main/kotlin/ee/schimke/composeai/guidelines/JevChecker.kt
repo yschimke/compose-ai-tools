@@ -253,14 +253,21 @@ internal class JevChecker(
         val last = round == maxRounds
         // What each subject is offered and shown is read from the host here, on this thread: the
         // host is never called from several threads at once.
-        val asks = active.associateWith { state ->
-          (if (last) emptyList() else state.offered()) to state.view()
-        }
+        // A host that throws for one preview fails that subject alone, as a worker's error does.
+        val asks =
+          active
+            .mapNotNull { state ->
+              runCatching { (if (last) emptyList() else state.offered()) to state.view() }
+                .onFailure { state.failure = "the jev checker failed: ${it.message}" }
+                .getOrNull()
+                ?.let { state to it }
+            }
+            .toMap()
         // Under a cap, never-checked subjects are asked as a wave before any stale one may
         // contend for what the cap has left, so a capped run widens coverage first.
         val waves =
-          if (options.maxCostUsd == null) listOf(active)
-          else active.partition { !it.stale }.toList().filter { it.isNotEmpty() }
+          if (options.maxCostUsd == null) listOf(asks.keys.toList())
+          else asks.keys.partition { !it.stale }.toList().filter { it.isNotEmpty() }
         waves.forEach { wave ->
           wave
             .map { state ->
@@ -411,13 +418,33 @@ internal class JevChecker(
       val wanted =
         states
           .filter {
-            servedKind(PreviewGuidelineRequests.KIND_A11Y, host.available(it.subject.previewId)) !=
-              null
+            runCatching {
+                servedKind(
+                  PreviewGuidelineRequests.KIND_A11Y,
+                  host.available(it.subject.previewId),
+                ) != null
+              }
+              .getOrDefault(false)
           }
           .associate { it.subject.previewId to listOf(A11Y_NEED) }
-      if (wanted.isNotEmpty()) host.prefetch(wanted)
+      if (wanted.isNotEmpty()) runCatching { host.prefetch(wanted) }
     }
-    states.forEach { state ->
+    states.forEach { state -> guarded(state) { prepare(state, platform) } }
+  }
+
+  /**
+   * Runs [block] for [state], failing that subject alone when the host throws: one preview's
+   * missing evidence must not abort the run.
+   */
+  private fun guarded(state: Asked, block: () -> Unit) {
+    runCatching(block).onFailure {
+      state.failure = "the evidence host failed: ${it.message}"
+      if (state.rounds > 0) state.interrupted = true
+    }
+  }
+
+  private fun prepare(state: Asked, platform: String) {
+    run {
       val id = state.subject.previewId
       val offered = servedKind(PreviewGuidelineRequests.KIND_A11Y, host.available(id)) != null
       if (state.subject.nodes.isNotEmpty() || state.subject.checks.isNotEmpty()) {
@@ -447,8 +474,12 @@ internal class JevChecker(
       active
         .filter { state -> state.wants.values.any { KIND_A11Y in it } && !state.a11yInHand }
         .associate { it.subject.previewId to listOf(A11Y_NEED) }
-    if (prefetch.isNotEmpty()) host.prefetch(prefetch)
-    active.forEach { state ->
+    if (prefetch.isNotEmpty()) runCatching { host.prefetch(prefetch) }
+    active.forEach { state -> guarded(state) { serve(state, platform) } }
+  }
+
+  private fun serve(state: Asked, platform: String) {
+    run {
       val asked = state.wants.values.flatten().toSet()
       var servedSomething = false
       if (KIND_A11Y in asked && !state.a11yFull) {

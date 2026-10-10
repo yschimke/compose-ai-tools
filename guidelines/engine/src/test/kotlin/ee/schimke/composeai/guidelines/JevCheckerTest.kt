@@ -556,6 +556,23 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a host that throws for one preview fails that preview alone`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+        override fun available(previewId: String): List<String> =
+          if (previewId == "bad") error("no data for $previewId") else available
+      }
+    val model = FakeDecisions()
+    val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
+    assertThat(run.results.single { it.previewId == "good" }.pending).isFalse()
+    assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
+    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(model.bodies.map { name(it) }).containsExactly("good")
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(
