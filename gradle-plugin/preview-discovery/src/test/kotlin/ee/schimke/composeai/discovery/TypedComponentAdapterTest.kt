@@ -20,7 +20,12 @@ class TypedComponentAdapterTest {
   }
 
   private fun parameter(name: String, type: String, fqn: String? = null) =
-    TargetParameter.Builder(name, type).also { it.typeFqn = fqn }.build()
+    TargetParameter.Builder(name, type)
+      .also {
+        it.typeFqn = fqn
+        if (fqn?.startsWith("kotlin.Function") == true) it.lambdaReturnTypeFqn = "kotlin.Unit"
+      }
+      .build()
 
   private fun component(name: String = "BrandButton") =
     ComponentRecord.Builder(
@@ -43,11 +48,13 @@ class TypedComponentAdapterTest {
   private fun generate(
     adapter: TypedComponentAdapter<*> = ButtonAdapter(component()),
     discovered: List<ComponentRecord> = listOf(component(), component("PrivateComponent")),
+    policy: UiBuilderPolicyFile =
+      UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "mobile").build(),
   ) =
     TypedAdapterCatalog.generate(
       ComponentRecordFile.Builder(":app", "desktop", discovered).build(),
       UiBuilderCatalogs.CoverSheet("acme", "Acme app"),
-      UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "mobile").build(),
+      policy,
       listOf(adapter),
     )
 
@@ -105,6 +112,140 @@ class TypedComponentAdapterTest {
         )
       )
       .isEqualTo(generated.catalog)
+  }
+
+  @Test
+  fun `screen root builtins survive while authored component overrides are refused`() {
+    val root = UiBuilderBuiltin.Builder(role = "screen-root").build()
+    val policy =
+      UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear")
+        .also { it.builtins = mapOf("wear-m3/screen-scaffold" to root) }
+        .build()
+    val generated = generate(policy = policy)
+    assertThat(generated.catalog.statusSemantics.builtins)
+      .containsEntry("wear-m3/screen-scaffold", root)
+    assertThat(generated.record.components).hasSize(1)
+    assertThrows(IllegalArgumentException::class.java) {
+      generate(
+        policy =
+          policy
+            .newBuilder()
+            .also {
+              it.components = mapOf("acme/button" to UiBuilderAuthoredComponent.Builder().build())
+            }
+            .build()
+      )
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      generate(
+        policy = policy.newBuilder().also { it.builtins = mapOf("acme/button" to root) }.build()
+      )
+    }
+  }
+
+  private data class CountProps(val count: Int, val onCountChange: (Int) -> Unit)
+
+  @Test
+  fun `integer properties advertise literals only until state supports integer constraints`() {
+    val record =
+      component()
+        .newBuilder()
+        .also { it.parameters = listOf(parameter("count", "Int", "kotlin.Int")) }
+        .build()
+    val adapter =
+      object : TypedComponentAdapter<CountProps>("acme/count", record) {
+        val count = property(CountProps::count, AdapterValueCodecs.Int, 3)
+      }
+    val generated = generate(adapter, listOf(record))
+    assertThat(adapter.count.bindable).isFalse()
+    assertThat(
+        generated.catalog.statusSemantics.components
+          .getValue("acme/count")
+          .propertyCapabilities!!
+          .single()
+          .jsonObject["jsonType"]
+      )
+      .isEqualTo(JsonPrimitive("integer"))
+    assertThat(generated.record.components.single().builder!!.stateCallbacks).isEmpty()
+    assertThrows(IllegalArgumentException::class.java) {
+      object : TypedComponentAdapter<CountProps>("acme/count", record) {
+        val count = property(CountProps::count, AdapterValueCodecs.Int, 3, bindable = true)
+      }
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      object : TypedComponentAdapter<CountProps>("acme/count", record) {
+        val count = property(CountProps::count, AdapterValueCodecs.Int, 3)
+        val change = stateChange(CountProps::onCountChange, count)
+      }
+    }
+  }
+
+  private data class EventProps(
+    val onDismiss: () -> Unit,
+    val dismiss: () -> Unit,
+    val on: () -> Unit,
+  )
+
+  @Test
+  fun `blank and colliding wire event names are rejected`() {
+    assertThrows(IllegalArgumentException::class.java) {
+      object : TypedComponentAdapter<EventProps>("acme/events", component()) {
+        val first = event(EventProps::onDismiss)
+        val second = event(EventProps::dismiss)
+      }
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      object : TypedComponentAdapter<EventProps>("acme/events", component()) {
+        val blank = event(EventProps::on)
+      }
+    }
+  }
+
+  @Test
+  fun `callback validation requires structural metadata and preserves qualified tokens`() {
+    val original = component()
+    val adapter = ButtonAdapter(original)
+    for (bad in
+      listOf(
+        parameter("onClick", "() -> kotlin.kotlin.Unit", "kotlin.Function0"),
+        parameter("onClick", "() -> kotlinx.Unit", "kotlin.Function0"),
+        parameter("onClick", "() -> Unit", "acme.Function0"),
+        parameter("onClick", "() -> Unit", "kotlin.Function0")
+          .newBuilder()
+          .also { it.lambdaReturnTypeFqn = "acme.Unit" }
+          .build(),
+        parameter("onClick", "() -> Unit", "kotlin.Function0")
+          .newBuilder()
+          .also { it.composableSlot = true }
+          .build(),
+        parameter("onClick", "() -> Unit", "kotlin.Function0")
+          .newBuilder()
+          .also { it.nullable = true }
+          .build(),
+      )) {
+      val changed =
+        original
+          .newBuilder()
+          .also { b ->
+            b.parameters = original.parameters.map { if (it.name == "onClick") bad else it }
+          }
+          .build()
+      assertThat(adapter.validateAgainst(changed))
+        .contains("acme/button: onClick is not a () -> Unit callback")
+    }
+    val qualified =
+      original
+        .newBuilder()
+        .also { b ->
+          b.parameters =
+            original.parameters.map {
+              if (it.name == "onClick")
+                parameter("onClick", "() -> kotlin.Unit", "kotlin.Function0")
+              else it
+            }
+        }
+        .build()
+    assertThat(adapter.validateAgainst(qualified)).isEmpty()
   }
 
   @Test

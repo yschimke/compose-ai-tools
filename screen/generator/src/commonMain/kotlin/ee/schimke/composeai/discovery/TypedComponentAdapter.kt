@@ -15,6 +15,10 @@ interface AdapterValueCodec<T> {
   val jsonType: String
   val kotlinType: String
 
+  /** Null when the host state schema cannot express this codec's accepted values. */
+  val stateType: String?
+    get() = jsonType.takeIf { it in STATE_TYPES }
+
   fun encode(value: T): JsonElement
 
   fun decode(value: JsonElement): T
@@ -129,6 +133,7 @@ internal constructor(
 open class TypedComponentAdapter<P>(val id: String, val component: ComponentRecord) {
   private var frozen = false
   private val declaredNames = mutableSetOf<String>()
+  private val declaredEventNames = mutableSetOf<String>()
   private val declaredProperties = mutableListOf<AdapterProperty<P, *>>()
   private val declaredSlots = mutableListOf<AdapterSlot<P>>()
   private val declaredEvents = mutableListOf<AdapterEvent<P>>()
@@ -157,8 +162,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     codec: AdapterValueCodec<T>,
     default: T,
     name: String = reference.name,
-    bindable: Boolean = true,
+    bindable: Boolean = codec.stateType != null,
   ): AdapterProperty<P, T> {
+    require(!bindable || codec.stateType in STATE_TYPES) {
+      "$id.$name: codec ${codec.jsonType} has no supported state type; use a literal property"
+    }
     declare(name)
     // Fail early for custom codecs that cannot represent their own default.
     require(codec.decode(codec.encode(default)) == default) {
@@ -174,8 +182,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   }
 
   protected fun event(reference: KProperty1<P, () -> Unit>): AdapterEvent<P> {
-    declare(reference.name)
     val eventName = reference.name.removePrefix("on").replaceFirstChar { it.lowercase() }
+    require(eventName.isNotBlank() && eventName !in declaredEventNames) {
+      "$id: duplicate or blank event name $eventName"
+    }
+    declare(reference.name)
+    declaredEventNames.add(eventName)
     return AdapterEvent(this, reference.name, eventName).also(declaredEvents::add)
   }
 
@@ -184,6 +196,9 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     property: AdapterProperty<P, T>,
   ): AdapterStateChange<P, T> {
     require(property.owner === this) { "state property belongs to another adapter" }
+    require(property.bindable && property.codec.stateType in STATE_TYPES) {
+      "$id.${property.name}: state callback requires a bindable property with a supported state type"
+    }
     declare(reference.name)
     return AdapterStateChange(this, reference.name, property).also(declaredChanges::add)
   }
@@ -216,20 +231,37 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$id: ${slot.name} is not a composable slot")
     }
     for (event in declaredEvents) {
-      if (parameters[event.name]?.type?.replace("kotlin.", "")?.replace(" ", "") != "()->Unit")
+      if (!matchesCallback(parameters[event.name], null))
         add("$id: ${event.name} is not a () -> Unit callback")
     }
     for (change in declaredChanges) {
       val type = change.property.codec.kotlinType.substringAfterLast('.')
-      if (
-        parameters[change.name]?.type?.replace("kotlin.", "")?.replace(" ", "") != "($type)->Unit"
-      )
+      if (!matchesCallback(parameters[change.name], change.property.codec.kotlinType))
         add("$id: ${change.name} is not a ($type) -> Unit callback")
     }
     for (parameter in record.parameters) {
       if (!parameter.hasDefault && parameter.name !in declaredNames)
         add("$id: required parameter ${parameter.name} is not adapted")
     }
+  }
+
+  // Callback input classifiers are not qualified in the current discovery contract. Check exact
+  // tokens (never erase arbitrary package substrings), structural function/receiver flags and the
+  // qualified return classifier. The real compiled component call remains the input-type proof.
+  private fun matchesCallback(parameter: TargetParameter?, input: String?): Boolean {
+    if (
+      parameter == null ||
+        parameter.nullable ||
+        parameter.composableSlot ||
+        parameter.scopeDslReceiver != null ||
+        parameter.lambdaReturnTypeFqn != "kotlin.Unit"
+    )
+      return false
+    val arity = if (input == null) 0 else 1
+    if (parameter.typeFqn != "kotlin.Function$arity") return false
+    val inputs = if (input == null) listOf("") else listOf(input, input.substringAfterLast('.'))
+    val spelling = parameter.type.filterNot { it.isWhitespace() }
+    return inputs.any { spelling == "($it)->Unit" || spelling == "($it)->kotlin.Unit" }
   }
 
   /** Freeze and validate before either catalog generation or runtime registration. */
@@ -247,7 +279,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     builder.stateCallbacks = declaredChanges.map { change ->
       BuilderPair.Builder(
           change.name,
-          "${change.property.name}:${change.property.codec.jsonType.let { if (it == "integer") "number" else it }}",
+          "${change.property.name}:${requireNotNull(change.property.codec.stateType)}",
         )
         .build()
     }
@@ -312,7 +344,7 @@ object TypedAdapterCatalog {
     ) {
       "duplicate discovered component records"
     }
-    require(policy.components.isEmpty() && policy.builtins.isEmpty()) {
+    require(policy.components.isEmpty()) {
       "typed catalog owns its component inventory; do not merge another component inventory"
     }
     val byId = discovered.components.associateBy { it.canonicalId }

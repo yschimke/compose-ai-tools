@@ -30,7 +30,12 @@ wire identity, while `ButtonProps::label` is a source reference that fails compi
 or changed to an incompatible type. `name = "caption"` can map a model property onto a differently
 named API parameter; signature validation checks the mapped name.
 
-The renderer bridge in compose-ui-builder accepts this same definition:
+The renderer bridge in compose-ui-builder accepts this same definition. It decodes all declared
+properties before calling the component renderer. An invalid authored value produces a diagnostic
+on that node, leaving sibling components renderable; correcting the value renders the component
+again. It does not catch exceptions thrown by arbitrary composable code.
+
+The registration call is:
 
 ```kotlin
 val adapters = canvasAdapterRegistry {
@@ -48,6 +53,19 @@ That is a normal composable call compiled against the component's real library. 
 changed callback types and removed methods fail compilation there. The JSON adapter id is taken from
 the definition, so a second registry string cannot drift from the catalog.
 
+`event()` validates the callback and supplies a runtime dispatch name (`onDismiss` becomes
+`dismiss`). Blank names and collisions between declared events are refused. The existing catalog
+wire format has no general event-capability field, so these names are not advertised to an external
+editor, nor does the declaration provide general callback source-export lowering. State callbacks
+are published because the existing format explicitly supports their hoisting contract. General
+externally discoverable events need a coordinated protocol/editor/export change before promotion.
+
+Callback validation checks function arity, non-nullability, the absence of composable/DSL receiver
+flags, the qualified Unit return classifier and exact type tokens. Discovery's current callback
+input spelling uses simple names; it cannot distinguish a domain `Boolean` from `kotlin.Boolean`
+there. The compiled renderer call is the authoritative input-type check. Missing structural callback
+metadata is refused; regenerate older records with current discovery.
+
 `stateChange(Props::onCheckedChange, checked)` checks the callback payload against the property's
 codec at compile time. The bridge delegates write-back and event execution to the existing SDK.
 `slot("content")` creates a handle used by `Slot(adapter.content)` and by the generated slot
@@ -57,8 +75,11 @@ Compose in the renderer; lazy DSL slots and callback payload slots are outside t
 
 The supplied codecs are String, Boolean and Int. A codec is invariant in its value type, converts
 both directions, and identifies the exact Kotlin classifier it accepts. Defaults must round trip.
-Malformed supplied values are errors rather than silently replaced defaults. Properties advertise
-state binding by default; `bindable = false` removes that alternative.
+Malformed supplied values are errors rather than silently replaced defaults. String and Boolean
+properties advertise state binding by default; `bindable = false` removes that alternative. Int
+properties are literal-only: the existing state schema supports `number` but cannot constrain it to
+an Int. Explicitly enabling Int binding or attaching a state callback to it is refused at declaration
+rather than accepting fractional state that later fails decoding.
 
 ## Generate and publish
 
@@ -77,6 +98,9 @@ It refuses missing/stale records, unknown signatures, mismatched property classi
 required parameters, invalid callbacks/slots, duplicate component identities and generator
 diagnostics. It does not silently combine another component inventory with the typed one.
 Registration and generation freeze declarations so late additions cannot split the two outputs.
+Policy `builtins` remain available for structural components such as a screen root. Policy
+`components` must be empty; typed declarations own the discovered-component inventory. The existing
+generator still rejects builtin IDs that collide with typed component IDs.
 
 The exporter writes both standard artifacts into a staging directory and moves that complete
 directory into place. Use a task-owned generation directory, deleting only that task's previous
@@ -103,7 +127,10 @@ Source export continues to use the discovered callable and mappings. Opaque rend
 converted into Kotlin source. Use a discoverable export wrapper where the canvas call needs special
 logic, and compile generated source against a separate consumer classpath before promising export
 fidelity. Generated insertion defaults keep new designs explicit; hand-authored designs omitting
-properties need their own render/export parity check.
+properties need their own render/export parity check. Kotlin metadata records whether a parameter
+has a default, not its evaluated expression; the adapter default is an explicit catalog authoring
+choice and is not compared with the composable default. Keep those defaults shared in app code or
+test omitted-property rendering against exported-source behavior.
 
 ## Additional validation in an app
 
