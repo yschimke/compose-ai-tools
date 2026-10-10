@@ -9,7 +9,10 @@ the guide, then who checked it and what it cost.
 Each preview with findings shows one picture: the render with its findings marked
 (``<render>.guidelines.png``, which ``compose-preview guidelines --annotate`` writes) when a finding
 names a node or a region on it, otherwise the render itself, captioned as having nothing marked.
-A preview two module directories both hold is reported once.
+The annotator outlines each mark and puts a numbered badge beside it, numbering the findings that
+have a mark in the order they are listed here; the list carries the same numbers, so the picture
+needs no text of its own. The picture links to its full-size file. A preview two module directories
+both hold is reported once.
 
 Images are embedded only from a GitHub-hosted, commit-pinned location (``--image-repo`` and
 ``--image-ref``, with the pictures pushed under ``--image-prefix/<module>/``), as the a11y comment
@@ -32,7 +35,8 @@ from pathlib import Path
 
 MARKER = "<!-- guidelines-report -->"
 MIN_CONFIDENCE = 0.5
-IMAGE_WIDTH = 200
+# Wide enough that the annotator's badges (7.5% of the picture's width) read at ~24px.
+IMAGE_WIDTH = 320
 # The pictures come from the PR's render job; bound what one comment pushes and embeds.
 MAX_IMAGES = 40
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
@@ -92,21 +96,38 @@ def node_ids(module_dir: Path) -> dict[str, set[str]]:
     return ids
 
 
-def marks(found: list[dict], preview_id: str, nodes: set[str]) -> int:
-    """How many things the annotator draws for these findings: each node it names that the render
+def finding_marks(verdict: dict, preview_id: str, nodes: set[str]) -> int:
+    """How many things the annotator draws for one finding: each node it names that the render
     has, and each region on this preview's picture."""
-    count = 0
-    for verdict in found:
-        count += sum(1 for n in verdict.get("nodeIds") or [] if n in nodes)
-        for region in verdict.get("regions") or []:
-            # A region on another picture (the long screenshot) is not drawn on the render.
-            if (
-                isinstance(region, dict)
-                and region.get("subjectId") in (None, preview_id)
-                and region.get("pictureKind") in (None, "device")
-            ):
-                count += 1
+    count = sum(1 for n in verdict.get("nodeIds") or [] if n in nodes)
+    for region in verdict.get("regions") or []:
+        # A region on another picture (the long screenshot) is not drawn on the render.
+        if (
+            isinstance(region, dict)
+            and region.get("subjectId") in (None, preview_id)
+            and region.get("pictureKind") in (None, "device")
+        ):
+            count += 1
     return count
+
+
+def marks(found: list[dict], preview_id: str, nodes: set[str]) -> int:
+    """How many things the annotator draws for these findings."""
+    return sum(finding_marks(v, preview_id, nodes) for v in found)
+
+
+def badge_numbers(found: list[dict], preview_id: str, nodes: set[str]) -> list[int | None]:
+    """The number on each finding's badges, as `GuidelineAnnotator` assigns them: findings in the
+    order listed, counting only those with something drawn; None for a finding with no mark."""
+    numbers: list[int | None] = []
+    next_number = 1
+    for verdict in found:
+        if finding_marks(verdict, preview_id, nodes):
+            numbers.append(next_number)
+            next_number += 1
+        else:
+            numbers.append(None)
+    return numbers
 
 
 def picture(module_dir: Path, render: str | None, marked: int) -> str | None:
@@ -180,8 +201,10 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 continue
             total_findings += len(found)
             lines = [f"#### `{preview_id.rsplit('.', 1)[-1]}`", f"<sub>`{preview_id}`</sub>", ""]
-            marked = marks(found, preview_id, nodes.get(preview_id, set()))
+            preview_nodes = nodes.get(preview_id, set())
+            marked = marks(found, preview_id, preview_nodes)
             shown = picture(module_dir, names.get(preview_id), marked) if found else None
+            numbered = False
             if shown and images < MAX_IMAGES:
                 images += 1
                 if stage_dir is not None:
@@ -191,13 +214,23 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                     shutil.copyfile(module_dir / "renders" / shown, dest / shown)
                 url = image_url(args, module_dir.name, shown)
                 if url:
+                    numbered = shown.endswith(".guidelines.png")
                     caption = (
                         f"{marked} finding location(s) marked on the render."
-                        if shown.endswith(".guidelines.png")
+                        if numbered
                         else "Nothing marked: no finding names a node or region on this render."
                     )
-                    lines += [f'<img src="{url}" width="{IMAGE_WIDTH}" />', "", f"<sub>{caption}</sub>", ""]
-            for verdict in found:
+                    lines += [
+                        f'<a href="{url}"><img src="{url}" width="{IMAGE_WIDTH}" /></a>',
+                        "",
+                        f"<sub>{caption}</sub>",
+                        "",
+                    ]
+            # Numbers only when the numbered picture is the one shown; otherwise they point nowhere.
+            numbers = (
+                badge_numbers(found, preview_id, preview_nodes) if numbered else [None] * len(found)
+            )
+            for verdict, number in zip(found, numbers):
                 rule = rules.get(verdict.get("ruleId"), {})
                 severity = rule.get("severity", "warning")
                 icon = "⚠️" if severity == "warning" else "ℹ️"
@@ -206,8 +239,9 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 guide = rule.get("source")
                 guide_text = f" ([guide]({guide}))" if guide and guide.startswith("https://") else ""
                 confidence = int(float(verdict.get("confidence", 0)) * 100)
+                badge = f"**{number}** " if number is not None else ""
                 lines.append(
-                    f"- {icon} **{verdict.get('ruleId')}**{node_text} ({confidence}%): "
+                    f"- {badge}{icon} **{verdict.get('ruleId')}**{node_text} ({confidence}%): "
                     f"{verdict.get('reason', '').strip()}{guide_text}"
                 )
             if unchecked:
