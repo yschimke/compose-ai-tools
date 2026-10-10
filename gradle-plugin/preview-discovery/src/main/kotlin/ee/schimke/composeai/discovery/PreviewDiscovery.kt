@@ -529,6 +529,30 @@ object PreviewDiscovery {
     return PREVIEW_RELEVANT_TOKENS.any { it in lowered }
   }
 
+  /**
+   * Whether [jar] holds a class one of the catalog's `componentLibraryPrefixes` names: a package
+   * entry (ending in `.`) or one exact JVM owner class, as [PreviewTargetInference]
+   * .isComponentLibraryOwner matches them. A configured library's coordinate need not carry any of
+   * [PREVIEW_RELEVANT_TOKENS] (`com.acme:design-system`), and without its jar on the scan classpath
+   * its owners never resolve, so the catalog would silently get no component targets. Reads only
+   * the jar's central directory, and only when prefixes are configured.
+   */
+  internal fun holdsComponentLibrary(jar: File, prefixes: List<String>): Boolean {
+    if (prefixes.isEmpty()) return false
+    val packages = prefixes.filter { it.endsWith('.') }.map { it.replace('.', '/') }
+    val classes =
+      prefixes.filterNot { it.endsWith('.') }.map { it.replace('.', '/') + ".class" }.toSet()
+    return runCatching {
+        java.util.zip.ZipFile(jar).use { zip ->
+          zip.entries().asSequence().any { entry ->
+            val name = entry.name
+            name.endsWith(".class") && (name in classes || packages.any { name.startsWith(it) })
+          }
+        }
+      }
+      .getOrDefault(false)
+  }
+
   fun discover(input: Input): Outcome {
     val warnings = mutableListOf<String>()
     val infoMessages = mutableListOf<String>()
@@ -557,7 +581,9 @@ object PreviewDiscovery {
       input.dependencyJars.filter { file ->
         file.exists() &&
           file.name.lowercase().endsWith(".jar") &&
-          isPreviewRelevant(input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath)
+          (isPreviewRelevant(
+            input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath
+          ) || holdsComponentLibrary(file, input.componentLibraryPrefixes))
       }
     // Project jars BEFORE dependency jars so a class present in both (the
     // module's own output shadowing a stale dependency copy) is attributed by
