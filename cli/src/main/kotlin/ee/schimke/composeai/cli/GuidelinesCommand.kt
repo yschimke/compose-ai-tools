@@ -172,6 +172,15 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             host,
           )
           .run(guidelines, subjects)
+      // A verdict kept under `+a11y` while the a11y fetch was failing was reached without that
+      // evidence: forget it, so a run with a working daemon asks again.
+      run.results
+        .filter { !it.fromCache && host.a11yMissing(it.previewId) }
+        .forEach { result ->
+          subjects
+            .firstOrNull { it.previewId == result.previewId }
+            ?.let { cache.remove(it, guidelines, model) }
+        }
       // A run over the whole catalog leaves the cache holding only its verdicts, so one carried
       // between CI runs does not grow with every render that ever changed.
       if (!narrowed && subjects.size == moduleResults.size) {

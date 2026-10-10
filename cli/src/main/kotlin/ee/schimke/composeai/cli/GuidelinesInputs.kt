@@ -444,6 +444,14 @@ internal class CliEvidenceHost(
    */
   private var a11yUnavailable = false
 
+  /**
+   * Whether [previewId]'s identity promised accessibility evidence (`+a11y`) that this run could
+   * not produce: a fetch for it came back empty, or fetching stopped working. A result kept for it
+   * is forgotten after the run, so a run with a working daemon asks again.
+   */
+  fun a11yMissing(previewId: String): Boolean =
+    a11yFetch != null && (a11yUnavailable || previewId in attempted) && !hasData(previewId)
+
   override fun available(previewId: String): List<String> =
     if ((a11yUnavailable || previewId in attempted) && !hasData(previewId))
       available - PreviewGuidelineRequests.KIND_A11Y
