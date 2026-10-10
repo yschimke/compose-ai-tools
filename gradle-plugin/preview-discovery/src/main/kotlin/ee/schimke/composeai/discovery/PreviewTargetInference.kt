@@ -322,6 +322,39 @@ object PreviewTargetInference {
         hasContextReceivers = signature.hasContextReceivers,
         requiredOptIns = signature.requiredOptIns,
         androidxOptIns = signature.androidxOptIns,
+        deprecated = ComposableSignature.isDeprecated(candidate.method),
+        overloads = overloadsOf(candidate, scanResult),
+      )
+    }
+  }
+
+  /**
+   * Every overload of [candidate]'s function as a [TargetOverload], or empty when it has only one.
+   *
+   * An overload whose metadata cannot be read is left out rather than guessed at: the selection
+   * that consumes these prints calls from them, and a signature nobody read is not one to print.
+   */
+  private fun overloadsOf(
+    candidate: ResolvedCandidate,
+    scanResult: ScanResult,
+  ): List<TargetOverload> {
+    if (candidate.overloads.size < 2) return emptyList()
+    return candidate.overloads.mapNotNull { method ->
+      val descriptor = method.typeDescriptorStr ?: return@mapNotNull null
+      val signature =
+        ComposableSignature.signatureOf(candidate.classInfo, method, scanResult)
+          ?: return@mapNotNull null
+      TargetOverload(
+        jvmName = method.name,
+        descriptor = descriptor,
+        parameters = signature.parameters,
+        receiver = signature.receiver,
+        callableFromAnotherFile = signature.callableFromAnotherFile,
+        hasTypeParameters = signature.hasTypeParameters,
+        hasContextReceivers = signature.hasContextReceivers,
+        requiredOptIns = signature.requiredOptIns,
+        androidxOptIns = signature.androidxOptIns,
+        deprecated = ComposableSignature.isDeprecated(method),
       )
     }
   }
@@ -858,6 +891,8 @@ object PreviewTargetInference {
     val ownerFqn: String,
     val method: MethodInfo,
     val classInfo: ClassInfo,
+    /** Every `@Composable` overload of the same name on the owner, declaration order. */
+    val overloads: List<MethodInfo> = listOf(method),
   )
 
   /**
@@ -955,7 +990,14 @@ object PreviewTargetInference {
     ) {
       return null
     }
-    return ResolvedCandidate(call.ownerFqn, composable, classInfo)
+    val overloads = candidateMethods.filter {
+      it.hasAnnotation(COMPOSABLE_FQN) &&
+        !it.hasAnnotation(PREVIEW_FQN) &&
+        !it.hasAnnotation(DESKTOP_PREVIEW_FQN) &&
+        !it.hasAnnotation(CMP_PREVIEW_FQN) &&
+        !it.hasAnnotation(TILE_PREVIEW_FQN)
+    }
+    return ResolvedCandidate(call.ownerFqn, composable, classInfo, overloads)
   }
 
   private data class ScoredCandidate(

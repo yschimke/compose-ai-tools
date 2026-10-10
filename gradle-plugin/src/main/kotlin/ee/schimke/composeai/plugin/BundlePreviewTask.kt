@@ -712,7 +712,13 @@ abstract class BundlePreviewTask : DefaultTask() {
         manifest.copy(previews = bundlePreviews)
       }
     // Generated before the zip so the designs it advertises can be looked up and carried with it.
-    val fullRecord = ComponentRecords.from(manifest)
+    // Each component's overload is chosen against the builder policy when there is one — the
+    // overload it describes, never a deprecated one — and both artifacts publish that choice.
+    val overloadNames = overloadNames(manifest.module)
+    val fullSelection =
+      overloadNames?.let { ComponentRecords.select(manifest, it) }
+        ?: ComponentRecords.Selection(ComponentRecords.from(manifest))
+    val fullRecord = fullSelection.record
     // ONE carried record, used by both artifacts.
     //
     // The argument below — policy is a component-wide fact declared by whichever preview happens to
@@ -738,25 +744,27 @@ abstract class BundlePreviewTask : DefaultTask() {
     // ids and `traits` / `malformed` are not ids at all, so those five lists are the whole set and
     // these two are the only ones to map.)
     val carriedRecord =
-      ComponentRecords.from(filteredManifest).let { carried ->
-        val policyByComponent =
-          fullRecord.components.associate {
-            it.canonicalId to remapPolicyPreviewIds(it.builder, bundleIds)
-          }
-        carried
-          .newBuilder()
-          .also { b3 ->
-            b3.components =
-              carried.components.map {
-                it
-                  .newBuilder()
-                  .also { b -> b.builder = policyByComponent[it.canonicalId] ?: it.builder }
-                  .build()
-              }
-          }
-          .build()
-      }
-    val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord)
+      (overloadNames?.let { ComponentRecords.select(filteredManifest, it).record }
+          ?: ComponentRecords.from(filteredManifest))
+        .let { carried ->
+          val policyByComponent =
+            fullRecord.components.associate {
+              it.canonicalId to remapPolicyPreviewIds(it.builder, bundleIds)
+            }
+          carried
+            .newBuilder()
+            .also { b3 ->
+              b3.components =
+                carried.components.map {
+                  it
+                    .newBuilder()
+                    .also { b -> b.builder = policyByComponent[it.canonicalId] ?: it.builder }
+                    .build()
+                }
+            }
+            .build()
+        }
+    val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord, fullSelection.diagnostics)
     val zipBytes =
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
@@ -2032,7 +2040,34 @@ abstract class BundlePreviewTask : DefaultTask() {
     return usable.associate { (path, file) -> path to file.readBytes() }
   }
 
-  private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
+  /**
+   * The authored names each component's policy supplies, for [ComponentRecords.select], or null
+   * when the module authors no readable builder policy. Read from the same policy and cover-sheet
+   * pair [uiBuilderJsonFor] uses, so the overload chosen is the one that catalog describes.
+   */
+  private fun overloadNames(module: String): ((ComponentRecord) -> Set<String>)? {
+    val authored = authoredPair() ?: return null
+    val lenient = Json { ignoreUnknownKeys = true }
+    val policy =
+      runCatching { lenient.decodeFromString<UiBuilderPolicyFile>(authored.policy.readText()) }
+        .getOrNull() ?: return null
+    val spec =
+      authored.spec?.let {
+        runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
+      }
+    val cover =
+      UiBuilderCatalogs.CoverSheet(
+        system = spec?.system ?: policy.catalogId ?: module.trimStart(':'),
+        title = spec?.title ?: policy.catalogId ?: module,
+      )
+    return UiBuilderCatalogs.authoredNames(cover, policy)
+  }
+
+  private fun uiBuilderJsonFor(
+    full: ComponentRecordFile,
+    carried: ComponentRecordFile,
+    overloadDiagnostics: List<UiBuilderDiagnostic> = emptyList(),
+  ): String? {
     val carriedIds = carried.components.map { it.canonicalId }.toSet()
     // Components from `full`, orphans from `carried`, and the asymmetry is deliberate. A component
     // keeps its whole record — every binding, every catalog id — because bundling one of its
@@ -2076,7 +2111,13 @@ abstract class BundlePreviewTask : DefaultTask() {
         system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
         title = spec?.title ?: policy.catalogId ?: record.module,
       )
-    val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return null
+    val catalog =
+      UiBuilderCatalogs.generate(
+        record,
+        cover,
+        policy,
+        overloadDiagnostics.filter { it.subject in carriedIds },
+      ) ?: return null
     return JSON.encodeToString(UiBuilderCatalogFile.serializer(), catalog)
   }
 

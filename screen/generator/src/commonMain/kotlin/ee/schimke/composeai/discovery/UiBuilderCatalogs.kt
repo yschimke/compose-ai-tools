@@ -104,9 +104,11 @@ object UiBuilderCatalogs {
     record: ComponentRecordFile,
     cover: CoverSheet,
     policy: UiBuilderPolicyFile?,
+    /** Findings made before generation — [OverloadSelection]'s — published with the rest. */
+    extraDiagnostics: List<UiBuilderDiagnostic> = emptyList(),
   ): UiBuilderCatalogFile? {
     if (policy == null) return null
-    val diagnostics = mutableListOf<UiBuilderDiagnostic>()
+    val diagnostics = extraDiagnostics.toMutableList()
     if (policy.schema != UI_BUILDER_POLICY_SCHEMA) {
       diagnostics +=
         UiBuilderDiagnostic.Builder(
@@ -481,6 +483,48 @@ object UiBuilderCatalogs {
 
   /** And the platform word's, from the same schema. */
   private val PLATFORM_WORD = Regex("^[a-z0-9][a-z0-9-]*$")
+
+  /**
+   * The parameter names [policy] authors for a component, for choosing which overload its record
+   * speaks for ([OverloadSelection]): its `propertyCapabilities` and `slotCapabilities` names, and
+   * the names a sticker's `@BuilderComponent` state callbacks, starters and slots use.
+   *
+   * Joined exactly as [generate] joins them — the authored `record` first, then the derived builder
+   * id — so the overload chosen is the one the published policy will describe. A name naming no
+   * parameter of any overload is a builder-only property and covers nothing.
+   */
+  fun authoredNames(
+    cover: CoverSheet,
+    policy: UiBuilderPolicyFile,
+  ): (ComponentRecord) -> Set<String> {
+    val catalogId = policy.catalogId?.takeIf { it.isNotBlank() } ?: cover.system
+    val idPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() } ?: "$catalogId/"
+    val byRecord =
+      policy.components.values
+        .filter { !it.record.isNullOrBlank() }
+        .groupBy { it.record!! }
+        .mapValues { it.value.first() }
+    return { component ->
+      val builder = component.builder ?: BuilderPolicy.Builder().build()
+      val authored =
+        byRecord[component.canonicalId]
+          ?: policy.components[builderIdFor(idPrefix, component, builder)]?.takeIf {
+            it.record.isNullOrBlank() || it.record == component.canonicalId
+          }
+      val names = mutableSetOf<String>()
+      fun nameOf(capability: kotlinx.serialization.json.JsonElement) =
+        ((capability as? JsonObject)?.get("name") as? JsonPrimitive)?.content
+      authored?.propertyCapabilities?.mapNotNullTo(names, ::nameOf)
+      authored?.slotCapabilities?.mapNotNullTo(names, ::nameOf)
+      builder.stateCallbacks.forEach {
+        names += it.key
+        names += it.value
+      }
+      builder.starter.forEach { names += it.key }
+      builder.slots.forEach { names += it.key }
+      names
+    }
+  }
 
   internal fun builderIdFor(
     prefix: String,

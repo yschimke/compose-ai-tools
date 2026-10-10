@@ -23,7 +23,50 @@ object ComponentRecords {
    * preview-id order, so the file is byte-reproducible across runs — a data product that reorders
    * itself between builds is a diff nobody can read.
    */
-  fun from(manifest: PreviewManifest): ComponentRecordFile {
+  fun from(manifest: PreviewManifest): ComponentRecordFile = select(manifest) { emptySet() }.record
+
+  /** A record, and what choosing its components' overloads had to say about it. */
+  data class Selection(
+    val record: ComponentRecordFile,
+    val diagnostics: List<UiBuilderDiagnostic> = emptyList(),
+  )
+
+  /**
+   * [from], with each component's overload chosen against the names [supplied] says a builder
+   * policy authors for it (see [OverloadSelection]). [supplied] receives the policy-free record, so
+   * a caller can join it to a policy by canonical id or derived builder id.
+   */
+  fun select(
+    manifest: PreviewManifest,
+    supplied: (ComponentRecord) -> Set<String>,
+  ): Selection {
+    val diagnostics = mutableListOf<UiBuilderDiagnostic>()
+    val components =
+      collectAll(manifest).values.map { component ->
+        val names = supplied(component.toRecord(emptySet()).first)
+        val (record, diagnostic) = component.toRecord(names)
+        diagnostic?.let(diagnostics::add)
+        record
+      }
+    return Selection(
+      ComponentRecordFile.Builder(
+          module = manifest.module,
+          variant = manifest.variant,
+          components = components.sortedBy { it.canonicalId },
+        )
+        .also { b -> b.builderOrphans = collectOrphans(manifest) }
+        .build(),
+      diagnostics.sortedBy { it.subject },
+    )
+  }
+
+  private fun collectOrphans(manifest: PreviewManifest): List<BuilderOrphan> {
+    val orphans = mutableListOf<BuilderOrphan>()
+    for (preview in manifest.previews) builderSubject(preview, manifest.module, orphans)
+    return orphans.sortedBy { it.previewId }
+  }
+
+  private fun collectAll(manifest: PreviewManifest): Map<String, MutableComponent> {
     val byId = linkedMapOf<String, MutableComponent>()
     val orphans = mutableListOf<BuilderOrphan>()
     for (preview in manifest.previews) {
@@ -38,13 +81,7 @@ object ComponentRecords {
       )
       collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId, subject)
     }
-    return ComponentRecordFile.Builder(
-        module = manifest.module,
-        variant = manifest.variant,
-        components = byId.values.map { it.toRecord() }.sortedBy { it.canonicalId },
-      )
-      .also { b -> b.builderOrphans = orphans.sortedBy { it.previewId } }
-      .build()
+    return byId
   }
 
   private fun collect(
@@ -99,6 +136,8 @@ object ComponentRecords {
       target.descriptor?.let { d ->
         existing.overloads.getOrPut(d) { OverloadSeen(target) }.previews += preview.id
       }
+      // Every overload the owner declares, in declaration order, whichever preview reported it.
+      for (overload in target.overloads) existing.known.putIfAbsent(overload.descriptor, overload)
       if (existing.jvmName != target.jvmName) {
         existing.jvmName = null
         existing.overloadsCollided = true
@@ -327,6 +366,9 @@ object ComponentRecords {
      */
     val overloads: MutableMap<String, OverloadSeen> = linkedMapOf()
 
+    /** Every overload the owner declares under this name, by descriptor, declaration order. */
+    val known: MutableMap<String, TargetOverload> = linkedMapOf()
+
     var receiver: String? = symbol.receiver
 
     var bindings: List<ComponentBinding> = emptyList()
@@ -400,7 +442,90 @@ object ComponentRecords {
       overloadsCollided = false
     }
 
-    fun toRecord(): ComponentRecord {
+    /**
+     * The record this component publishes when a policy supplies [supplied], and the selection's
+     * diagnostic if it had one. Several known overloads go through [OverloadSelection]; a single
+     * deprecated one is refused there too; otherwise the merged signature stands as before.
+     */
+    fun toRecord(supplied: Set<String>): Pair<ComponentRecord, UiBuilderDiagnostic?> {
+      val alternatives = alternatives()
+      if (alternatives.isEmpty()) return build() to null
+      val choice = OverloadSelection.choose(alternatives, supplied)
+      return choice.record to choice.diagnostic
+    }
+
+    private fun alternatives(): List<OverloadAlternative> {
+      if (known.size >= 2) {
+        return known.values.mapIndexed { index, overload ->
+          OverloadAlternative(
+            record = build(overload),
+            previewCount = overloads[overload.descriptor]?.previews?.size ?: 0,
+            declarationIndex = index,
+            deprecated = overload.deprecated,
+          )
+        }
+      }
+      // One overload, and the call that reached it is deprecated: still a choice, of nothing.
+      val called = overloads.values.singleOrNull()?.target
+      if (called != null && called.deprecated && !overloadsCollided) {
+        val count = overloads.values.single().previews.size
+        return listOf(OverloadAlternative(build(), count, 0, deprecated = true))
+      }
+      return emptyList()
+    }
+
+    /** [build] with [overload]'s signature in place of the merged one, which is left as it was. */
+    private fun build(overload: TargetOverload): ComponentRecord {
+      val saved =
+        listOf<Any?>(
+          descriptor,
+          jvmName,
+          parameters,
+          receiver,
+          signatureKnown,
+          callableFromAnotherFile,
+          hasTypeParameters,
+          hasContextReceivers,
+          requiredOptIns,
+          androidxOptIns,
+          overloadsCollided,
+        )
+      try {
+        return buildWith(overload)
+      } finally {
+        @Suppress("UNCHECKED_CAST")
+        run {
+          descriptor = saved[0] as String?
+          jvmName = saved[1] as String?
+          parameters = saved[2] as List<TargetParameter>
+          receiver = saved[3] as String?
+          signatureKnown = saved[4] as Boolean
+          callableFromAnotherFile = saved[5] as Boolean
+          hasTypeParameters = saved[6] as Boolean
+          hasContextReceivers = saved[7] as Boolean
+          requiredOptIns = saved[8] as List<String>
+          androidxOptIns = saved[9] as List<String>
+          overloadsCollided = saved[10] as Boolean
+        }
+      }
+    }
+
+    private fun buildWith(overload: TargetOverload): ComponentRecord {
+      descriptor = overload.descriptor
+      jvmName = overload.jvmName
+      parameters = overload.parameters
+      receiver = overload.receiver
+      signatureKnown = true
+      callableFromAnotherFile = overload.callableFromAnotherFile
+      hasTypeParameters = overload.hasTypeParameters
+      hasContextReceivers = overload.hasContextReceivers
+      requiredOptIns = overload.requiredOptIns
+      androidxOptIns = overload.androidxOptIns
+      overloadsCollided = false
+      return build()
+    }
+
+    private fun build(): ComponentRecord {
       adoptMajorityOverload()
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
       val record =
