@@ -67,6 +67,15 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  testImplementation(
+    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
+  )
+}
+
+// Compile external consumers, including deliberately broken references, against this module's
+// real output and dependencies rather than a stubbed copy of the typed API.
+tasks.named<Test>("test") {
+  systemProperty("typedAdapterCompileClasspath", sourceSets["test"].runtimeClasspath.asPath)
 }
 
 composeAiMavenPublishing {
