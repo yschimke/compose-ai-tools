@@ -133,7 +133,10 @@ pictures, ~60k input tokens, 16 subjects, 120 verdicts): the rules are sent once
 see the whole batch. The verdict cap — each subject's rules, summed — bounds the *reply*, which is
 what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply that ran past
 the request timeout twice, while the request itself came to about 25k input tokens by the batcher's
-estimate, well inside the token budget. At 120 a screen batch of that catalog holds five. Each subject carries its render (tagged with its subject id) and optionally its source;
+estimate, well inside the token budget. At 120 a screen batch of that catalog holds five. (A re-run failed the same twelve-screen
+request the same way while the component request passed both times: it was the request's size, not
+a blip, and asking it again would not have helped.) A picture counts 1,200 tokens, or its pixels
+over 750 when that is more — a tall scroll capture or a tablet screen. Each subject carries its render (tagged with its subject id) and optionally its source;
 its accessibility data is evidence it is asked for (see *Accessibility evidence*). The model names the subject (`s1`, …) in every
 verdict and cites node ids, which map back to bounds for overlays; a visual problem no single node
 holds comes back as a region (a fraction box on a numbered picture).

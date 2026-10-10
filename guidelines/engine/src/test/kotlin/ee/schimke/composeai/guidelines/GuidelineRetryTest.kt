@@ -368,6 +368,32 @@ class GuidelineRetryTest {
   }
 
   @Test
+  fun `a picture is counted by its pixels once it costs more than the floor`() {
+    fun png(width: Int, height: Int): ByteArray =
+      java.io
+        .ByteArrayOutputStream()
+        .also {
+          javax.imageio.ImageIO.write(
+            java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB),
+            "png",
+            it,
+          )
+        }
+        .toByteArray()
+    // A Wear screen, and its scroll capture, cost the floor; a 1080x4000 capture costs its pixels.
+    assertThat(
+        PreviewGuidelineRequests.pictureTokens(SubjectPicture("device", png(454, 454), 227, 227))
+      )
+      .isEqualTo(PreviewGuidelineRequests.PICTURE_TOKENS)
+    assertThat(
+        PreviewGuidelineRequests.pictureTokens(SubjectPicture("scroll", png(1080, 4000), 411, 1523))
+      )
+      .isEqualTo(1080 * 4000 / 750)
+    assertThat(PreviewGuidelineRequests.pictureTokens(SubjectPicture("x", byteArrayOf(1), 1, 1)))
+      .isEqualTo(PreviewGuidelineRequests.PICTURE_TOKENS)
+  }
+
+  @Test
   fun `a batch holds no more verdicts than the budget allows`() {
     // A screen is asked three rules here: two screens fill six, the third starts a new batch.
     val screens = (1..5).map { subject("s$it", GuidelineSurfaces.SCREEN) }

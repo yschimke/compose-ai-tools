@@ -203,7 +203,7 @@ public object PreviewGuidelineRequests {
 
   /**
    * Splits [subjects] into batches by surface, each within [budget]. A subject's text is estimated
-   * at four characters a token and a picture at [PICTURE_TOKENS]; its verdicts are the rules it is
+   * at four characters a token and a picture at [pictureTokens]; its verdicts are the rules it is
    * asked ([GuidelineBudget.maxVerdicts]).
    */
   public fun batches(
@@ -681,7 +681,7 @@ public object PreviewGuidelineRequests {
   }
 
   private fun estimateTokens(subject: PreviewSubject): Int =
-    subject.pictures.size * PICTURE_TOKENS +
+    subject.pictures.sumOf { pictureTokens(it) } +
       subject.nodes.take(MAX_NODES).size * 20 +
       subject.checks.take(MAX_CHECKS).size * 60 +
       (subject.source?.length?.coerceAtMost(MAX_SOURCE_CHARS) ?: 0) / 4 +
@@ -699,8 +699,25 @@ public object PreviewGuidelineRequests {
     }
   }
 
-  /** A rough input-token cost of one attached picture. */
+  /** A rough input-token cost of one attached picture: the least any picture is counted at. */
   public const val PICTURE_TOKENS: Int = 1_200
+
+  /**
+   * [picture]'s estimated input tokens: [PICTURE_TOKENS], or a pixel count over 750 (how vision
+   * models commonly bill an image) for a picture big enough to cost more — a tall scroll capture or
+   * a tablet screen. Its size is read from the PNG's header; a picture that is not a PNG counts at
+   * [PICTURE_TOKENS].
+   */
+  internal fun pictureTokens(picture: SubjectPicture): Int {
+    val png = picture.png
+    if (png.size < 24 || png[12] != 'I'.code.toByte() || png[15] != 'R'.code.toByte()) {
+      return PICTURE_TOKENS
+    }
+    fun int(at: Int): Long =
+      (0 until 4).fold(0L) { acc, i -> (acc shl 8) or (png[at + i].toLong() and 0xFF) }
+    val pixels = int(16) * int(20)
+    return maxOf(PICTURE_TOKENS.toLong(), (pixels / 750).coerceAtMost(100_000)).toInt()
+  }
 
   private const val MAX_NODES = 80
 
