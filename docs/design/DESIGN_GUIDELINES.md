@@ -139,8 +139,9 @@ the viewport's pixel size, and a node extending past the viewport is marked `off
 `top`, `left`, `right`). The system prompt says content cut along a scrollable axis is scrolled
 away, not clipped. That text evidence goes up front; pictures do not.
 
-When the renderer wrote a long screenshot beside a scrolled capture (`<render>_SCROLL_long.png`),
-the render phase stages it beside the render in the handoff, and handoff mode offers it as
+When the renderer wrote a long screenshot (the preview's `render/scroll/long` data product, under
+`data/render-scroll-long/`), the render phase stages it beside the render in the handoff as
+`<render>_SCROLL_long.png` (a LONG-only preview, which has no other capture, is judged on it), and handoff mode offers it as
 requestable evidence: kind `scroll-capture` (`PreviewGuidelineRequests.KIND_SCROLL_CAPTURE`), listed
 in `evidenceAvailable` only for previews that have one (`GuidelineEvidenceHost.available(id)`). A
 `needs_evidence` verdict asking for it is answered in a follow-up round from the staged file
