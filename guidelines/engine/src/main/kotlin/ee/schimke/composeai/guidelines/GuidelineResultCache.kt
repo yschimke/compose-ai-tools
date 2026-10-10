@@ -160,7 +160,7 @@ public class GuidelineResultCache(private val directory: File) {
      * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
      * how evidence is attached), so results from an older engine are not reused.
      */
-    public const val REQUEST_FORMAT: Int = 3
+    public const val REQUEST_FORMAT: Int = 4
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, every picture's bytes and

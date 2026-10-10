@@ -465,6 +465,9 @@ class GuidelineEngineTest {
     assertThat(request.userText)
       .contains("- TouchTargetSizeCheck | ERROR | Button | 4,4,28,28 | This item's height is 24dp.")
     assertThat(request.systemPrompt).contains("Scrolling is not clipping")
+    assertThat(request.systemPrompt)
+      .contains("only while the container can still scroll towards it")
+    assertThat(request.systemPrompt).contains("the last item cut at the end edge")
     assertThat(request.systemPrompt).contains("measured accessibility checks")
   }
 
