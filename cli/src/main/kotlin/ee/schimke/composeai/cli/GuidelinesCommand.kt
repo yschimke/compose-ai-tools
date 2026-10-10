@@ -45,7 +45,9 @@ import kotlinx.serialization.json.Json
  * `--previews-json` / `--renders-dir` run the same engine over handoff renders with no Gradle,
  * which is what a CI publish job holds.
  *
- * The OpenRouter key is read from `COMPOSE_PREVIEW_OPENROUTER_KEY`, never from the command line.
+ * The OpenRouter key is read from `COMPOSE_PREVIEW_OPENROUTER_KEY`, never from the command line. It
+ * never reaches the project's build: `GradleConnection` withholds it from the environment the
+ * Tooling API hands the Gradle daemon, and render daemons start from an allowlisted environment.
  */
 class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL

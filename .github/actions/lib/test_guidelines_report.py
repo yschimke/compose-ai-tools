@@ -28,6 +28,7 @@ def _load(name: str, file: str):
 
 gr = _load("guidelines_report", "guidelines-report.py")
 gs = _load("guidelines_stage", "guidelines-stage.py")
+gb = _load("guidelines_budget", "guidelines-budget.py")
 
 RULES = {
     "schema": "compose-ui-builder/catalog-guidelines/v1",
@@ -220,6 +221,40 @@ class StageTest(unittest.TestCase):
         self.assertFalse(gs.safe_relative("../x"))
         self.assertFalse(gs.safe_relative("/etc/passwd"))
         self.assertTrue(gs.safe_relative("src/main/A.kt"))
+
+
+class BudgetTest(unittest.TestCase):
+    """`guidelines-max-cost` is one budget across every staged module, not one per directory."""
+
+    def _module(self, root: Path, name: str, costs: list[object]) -> None:
+        module = root / name
+        module.mkdir(parents=True)
+        results = [{"previewId": f"p{i}", "record": {"costUsd": c}} for i, c in enumerate(costs)]
+        (module / "guidelines.json").write_text(json.dumps({"results": results}))
+
+    def test_spend_is_summed_across_modules(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._module(root, "a", [0.05, 0.05])
+        self._module(root, "b", [0.1])
+        self.assertAlmostEqual(gb.remaining(root, 0.25), 0.05)
+
+    def test_never_below_zero(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._module(root, "a", [0.3])
+        self.assertEqual(gb.remaining(root, 0.25), 0.0)
+
+    def test_no_file_can_raise_the_budget(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._module(root, "a", [-5, "nan", "inf", None, "x", 0.01])
+        (root / "b").mkdir()
+        (root / "b" / "guidelines.json").write_text("not json")
+        (root / "c").mkdir()
+        (root / "c" / "guidelines.json").write_text(json.dumps({"results": {"x": 1}}))
+        self.assertAlmostEqual(gb.remaining(root, 0.25), 0.24)
+
+    def test_nothing_spent_yet(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.assertEqual(gb.remaining(root / "missing", 0.25), 0.25)
 
 
 if __name__ == "__main__":

@@ -498,6 +498,22 @@ runs:
           # The staged current renders are addressed in place; everything else
           # is read from the workspace root.
           case "$base" in current|current-resources) continue ;; esac
+          # Only the names the render phase stages (see "Stage fork-safe
+          # handoff") come back. Anything else was put there by the PR's build,
+          # and copying it would let a fork plant any workspace file this job
+          # later reads — `gradle.properties`, `gradle/`, `.github/`, a
+          # ready-made `_guidelines_comment.md` — beside the OpenRouter key.
+          case "$base" in
+            _baselines|_base_sha|_baseline_skew.json|_pr_renders|_figma_refs.json|\
+            _previews.json|_resources.json|_resource_baselines|_resource_base_sha|\
+            _pr_resource_renders|_a11y_renders|_a11y_comment.md|_notification_renders|\
+            _notification_comment.md|_notification_baseline_findings.json|_guidelines|\
+            _pipelines|_scope_modules|_pr_number|_ab_config) ;;
+            *)
+              echo "::warning::Ignored an unexpected handoff entry '$base'; the render phase never stages it."
+              continue
+              ;;
+          esac
           # Replace rather than merge: `cp -a dir existing-dir` would nest the
           # staged tree one level deeper instead of overwriting it.
           rm -rf "${GITHUB_WORKSPACE:?}/$base"
@@ -1661,16 +1677,35 @@ runs:
         export BODY_FILE="_a11y_comment.md"
         bash "$ACTION_PATH/lib/post-comment.sh"
 
+    # A handoff can plant a ready-made comment; only the Check step below may
+    # write one. Runs whether or not the check does, so a skipped check never
+    # leaves a staged file for the Upsert step to post under the bot's name.
+    - name: Clear stale guidelines comment
+      if: steps.resolve.outputs.phase != 'render' && inputs.guidelines == 'true'
+      shell: bash
+      run: rm -f _guidelines_comment.md _guidelines_resolved.md
+
     # The CLI is only installed in the render phase; the publish job, which
     # holds the key, installs it here when there is something to check.
+    #
+    # The version is the one this action was released with (release-please
+    # rewrites both the ref and the literal below), not `latest`: a new release
+    # must not run beside the key in every consumer on its next PR. `catalog`
+    # and `pin` read files in the workspace, which here may have come from the
+    # PR's handoff, so they get the released version too; only a literal the
+    # caller wrote reaches the install, and it is validated there. The digest
+    # check fails closed in this job.
+    #
+    # The nested ref stays a tag: release-please rewrites the version text on
+    # `x-release-please-version` lines and cannot compute the release commit's
+    # own SHA, so a SHA pin would keep invoking the previous release's helper.
     - name: Install CLI for the design-guidelines check
       if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && hashFiles('_guidelines/**/previews.json') != '')
       # The released action intentionally composes the matching released helper.
       uses: yschimke/compose-ai-tools/.github/actions/install@v2.39.2 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
-        version: ${{ (inputs.cli-version == 'auto' || inputs.cli-version == 'source' || inputs.cli-version == 'none') && 'latest' || inputs.cli-version }}
-        catalog-path: ${{ inputs.catalog-path }}
-        catalog-key: ${{ inputs.catalog-key }}
+        version: ${{ contains(fromJSON('["auto","source","none","catalog","pin",""]'), inputs.cli-version) && '2.39.2' || inputs.cli-version }} # x-release-please-version
+        require-digest: 'true'
 
     - name: Check design guidelines
       if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
@@ -1689,8 +1724,27 @@ runs:
           echo "::warning::compose-preview/apply: no CLI with the guidelines command; skipping."
           exit 0
         fi
+        # The module directories come from the handoff, which the PR's own build
+        # wrote, so neither their number nor any results already in them are
+        # trusted: `guidelines-max-cost` is ONE budget for the whole check, not
+        # one per directory a fork chooses to stage.
+        max_modules=20
+        rm -f _guidelines/*/guidelines.json
+        checked=0
         for module_dir in _guidelines/*/; do
           [ -f "$module_dir/previews.json" ] || continue
+          if [ "$checked" -ge "$max_modules" ]; then
+            echo "::warning::compose-preview/apply: the handoff staged more than $max_modules guideline modules; the rest are not checked."
+            break
+          fi
+          # What is left once the modules already checked are paid for; the
+          # results they wrote are this run's own (stale ones were removed above).
+          remaining=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --max-cost "$MAX_COST")
+          if [ "$(printf '%s' "$remaining" | tr -d '0.')" = "" ]; then
+            echo "::warning::compose-preview/apply: guidelines-max-cost (\$$MAX_COST) is spent; $module_dir and any later modules are not checked."
+            break
+          fi
+          checked=$((checked + 1))
           # Handoff mode: no Gradle. Findings cite the staged accessibility nodes;
           # --annotate writes <render>.guidelines.png beside each render.
           compose-preview guidelines \
@@ -1698,7 +1752,7 @@ runs:
             --a11y-json "$module_dir/accessibility.json" \
             --source-root "$module_dir/src" \
             --guidelines "$module_dir/ui-builder.guidelines.json" \
-            --max-cost "$MAX_COST" --annotate \
+            --max-cost "$remaining" --annotate \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md

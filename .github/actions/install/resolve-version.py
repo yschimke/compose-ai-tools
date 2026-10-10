@@ -347,16 +347,29 @@ def pin_version() -> str:
     )
 
 
+# What a compose-ai-tools release version looks like. Every mode's answer is checked against it
+# before it reaches the download URL: `pin` and `catalog` read files in the workspace, which in a
+# publish job can be restored from a handoff the PR's own build wrote, and a literal is whatever
+# the caller passed. Anything else is refused rather than interpolated into a path.
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$")
+
+
+def checked(version: str | None, source: str) -> str:
+    if version is None or not VERSION_RE.fullmatch(version):
+        fail(f"{source} resolved to {version!r}, which is not a release version (expected X.Y.Z).")
+    return version
+
+
 def main() -> None:
     inp = (os.environ.get("INPUT_VERSION") or "latest").strip()
     if inp == "latest":
-        print(latest_version())
+        print(checked(latest_version(), "version=latest"))
     elif inp == "pin":
-        print(pin_version())
+        print(checked(pin_version(), "version=pin"))
     elif inp == "catalog":
-        print(catalog_version())
+        print(checked(catalog_version(), "version=catalog"))
     else:
-        print(inp.lstrip("v"))
+        print(checked(inp.lstrip("v"), "the literal version"))
 
 
 if __name__ == "__main__":

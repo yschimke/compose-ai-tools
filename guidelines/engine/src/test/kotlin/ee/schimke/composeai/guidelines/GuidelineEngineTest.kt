@@ -88,6 +88,26 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a file that is not guidelines is refused without quoting it`() {
+    val secret = "sk-or-v1-not-a-real-key"
+    val dotenv = Files.createTempFile("guidelines", ".env").toFile()
+    try {
+      dotenv.writeText("COMPOSE_PREVIEW_OPENROUTER_KEY=$secret\n")
+      val loaded = CatalogGuidelinesLoader.load(dotenv.path)
+      assertThat(loaded.guidelines).isNull()
+      assertThat(loaded.problem).doesNotContain(secret)
+      assertThat(loaded.problem).doesNotContain("OPENROUTER")
+      assertThat(loaded.problem).contains("malformed JSON at offset")
+    } finally {
+      dotenv.delete()
+    }
+    // Valid JSON, wrong shape: the reason names the schema's fields, not the file's values.
+    val wrongShape = CatalogGuidelinesLoader.parse("""{"token": "$secret"}""")
+    assertThat(wrongShape.problem).doesNotContain(secret)
+    assertThat(wrongShape.problem).contains("missing")
+  }
+
+  @Test
   fun `batches respect the picture budget and never mix surfaces`() {
     val subjects = (1..5).map { subject("c$it") } + subject("screen1", GuidelineSurfaces.SCREEN)
     val batches =
