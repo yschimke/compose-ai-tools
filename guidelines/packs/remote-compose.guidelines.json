@@ -1,0 +1,65 @@
+{
+  "schema": "compose-ui-builder/catalog-guidelines/v1",
+  "catalog": "remote-compose",
+  "platform": "any",
+  "version": 1,
+  "about": "Guidance common to every Remote Compose surface (Wear widgets, launcher widgets, androidx players): what a RemoteDocument can carry, declarative actions and state, deferred units, text sizing, accessibility, themed colours and profiles. No text-entry rules: a remote document has no text input. Quotes developer.android.com (the Remote Compose reference and the Wear widgets guides, which are the only prose guidance published for it).",
+  "rules": [
+    {
+      "id": "remote-compose.document.remote-composables-only",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Content marked with RemoteComposable will be recorded into a Remote Compose document during the recording phase. This document can then be transmitted and played back by a Remote Compose Player, potentially on a different device or process.",
+      "check": "Judge from the source. Is everything inside the remote document built from Remote Compose composables and RemoteModifier (RemoteBox, RemoteColumn, RemoteText, RemoteImage and the like), with no standard Compose composable, Modifier chain or CompositionLocal read inside a @RemoteComposable, none of which a player can play back? Answer not_applicable when there is no Kotlin source (a design document).",
+      "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/layout/RemoteComposable"
+    },
+    {
+      "id": "remote-compose.actions.declarative",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Standard Compose lambdas cannot be run remotely; instead, provide serializable Declarative Actions (like ValueChange or PendingIntentAction). Combine these with declarative state (e.g., rememberMutableRemoteInt) to support instant UI updates without app round-trips.",
+      "check": "Is every tap handled by a Remote Compose action through RemoteModifier.clickable — valueChange on remote state, pendingIntentAction, hostAction, or a combinedAction of them — rather than a Kotlin lambda (onClick = { … }) that cannot run in the player? Answer not_applicable when nothing is tappable.",
+      "source": "https://developer.android.com/training/wearables/widgets/migration"
+    },
+    {
+      "id": "remote-compose.units.deferred",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "prefer deferred layout resolution using RemoteDp (e.g., 10.rdp) over the standard Dp. This ensures the system renderer correctly calculates pixel values at display time.",
+      "check": "Judge from the source. Are sizes and spacing given in remote units (.rdp, and .rsp for text) so the player resolves them on the device that shows the document, rather than in Dp or pixels fixed where the document was created? Answer not_applicable when the source sets no size.",
+      "source": "https://developer.android.com/training/wearables/widgets/migration"
+    },
+    {
+      "id": "remote-compose.text.fits-at-any-scale",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Note that density-dependent values like fontSize, style#letterSpacing, and style#lineHeight are converted to pixels using RemoteDensity from the environment where the RemoteText is being created, not the remote environment where it will be displayed. This means these values are fixed at creation time based on the local density.",
+      "check": "Does text that must fit a fixed-size container stay whole if it renders larger than at creation — a maxLines with an overflow, or a RemoteFitBox offering a shorter alternative — rather than a single size that only fits at the creation-time font scale? A large-font render is not attached yet, so decide from the source and the picture; if neither shows it, answer needs_evidence. Answer not_applicable when there is no text in a fixed-size container.",
+      "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/layout/RemoteText.composable"
+    },
+    {
+      "id": "remote-compose.a11y.image-description",
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "contentDescription … the Text used by accessibility services to describe what this image represents.",
+      "check": "Does every image or icon that is the only content of a tappable element carry a contentDescription (or RemoteModifier.semantics with one) naming the action, while an image beside a visible text label carries none, so the label is not announced twice? Answer not_applicable when there are no images or icons.",
+      "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/layout/RemoteImage.composable"
+    },
+    {
+      "id": "remote-compose.theme.themed-colours",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Creates a themed RemoteColor that resolves to different Android system colors in light and dark mode.",
+      "check": "Do the document's colours come from the theme or from themed remote colours (RemoteColor.createThemedRemoteColor, or the catalog's colour roles), rather than fixed ARGB values that ignore the host's light, dark or dynamic colours? Images and brand artwork are exempt. Answer not_applicable when the document sets no colour.",
+      "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/state/package-summary"
+    },
+    {
+      "id": "remote-compose.profile.supported-operations",
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "The writing profile that determines supported operations. Defaults to RcPlatformProfiles.ANDROIDX.",
+      "check": "Does the document use only what its target profile's players support — no experimental operation unless it targets a +experimental profile — rather than a feature a released host would not render? Decide from the source and the design's profile; answer needs_evidence when neither is given.",
+      "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/capture/package-summary"
+    }
+  ]
+}

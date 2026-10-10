@@ -4,7 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class GuidelinesIncludesTest {
-  private val packUrl = "https://raw.githubusercontent.com/o/r/v1/general.guidelines.json"
+  private val packUrl = "https://raw.githubusercontent.com/o/r/v1/compose-ui.guidelines.json"
 
   private val pack =
     """
@@ -71,14 +71,14 @@ class GuidelinesIncludesTest {
     assertThat(loaded.problem).isNull()
     assertThat(guidelines.rules.map { it.id })
       .containsExactly(
-        "wear.own",
-        "general.overridden",
         "general.everywhere",
         "general.wear-only",
+        "general.overridden",
         "general.v7",
+        "wear.own",
       )
       .inOrder()
-    // The catalog's own rule of the same id wins.
+    // The catalog's own rule of the same id wins, where the pack's stood.
     assertThat(guidelines.rules.single { it.id == "general.overridden" }.guidance)
       .isEqualTo("catalog")
     // The catalog's device frame is kept once; the pack's unrolled frame is added.
@@ -86,6 +86,36 @@ class GuidelinesIncludesTest {
     assertThat(guidelines.version).isEqualTo(4)
     assertThat(guidelines.platform).isEqualTo("wear")
     assertThat(fetched).containsExactly(packUrl)
+  }
+
+  @Test
+  fun `a later pack overrides an earlier one by id, and the catalog overrides both`() {
+    val formFactorUrl = "https://raw.githubusercontent.com/o/r/v1/wear-compose.guidelines.json"
+    val formFactor =
+      """
+      {"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "wear-compose",
+       "platform": "wear", "version": 1, "rules": [
+        {"id": "general.everywhere", "kind": "structure", "severity": "warning",
+         "guidance": "wear", "check": "wear version?", "source": "https://developer.android.com/w"},
+        {"id": "general.overridden", "kind": "structure", "severity": "warning",
+         "guidance": "wear", "check": "wear version?", "source": "https://developer.android.com/w"}
+      ]}
+      """
+        .trimIndent()
+        .toByteArray()
+    val includes =
+      """{"url": "$packUrl", "sha256": "$pin"},
+         {"url": "$formFactorUrl", "sha256": "${GuidelinesIncludes.sha256(formFactor)}"}"""
+    val guidelines =
+      CatalogGuidelinesLoader.parse(catalog(includes), null) { url ->
+          if (url == formFactorUrl) formFactor else fetch(url)
+        }
+        .guidelines!!
+    val byId = guidelines.rules.associateBy { it.id }
+    assertThat(byId.getValue("general.everywhere").guidance).isEqualTo("wear")
+    assertThat(byId.getValue("general.overridden").guidance).isEqualTo("catalog")
+    assertThat(guidelines.rules.map { it.id }).containsNoDuplicates()
+    assertThat(guidelines.rules.first().id).isEqualTo("general.everywhere")
   }
 
   @Test

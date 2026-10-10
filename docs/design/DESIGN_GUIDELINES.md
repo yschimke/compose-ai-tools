@@ -54,13 +54,18 @@ check. Per subject:
 
 ## Shared rule packs (`includes`)
 
-A catalog file can take in a shared pack instead of copying general guidance into every catalog:
+A catalog file layers shared packs under its own rules instead of copying general guidance into
+every catalog:
 
 ```json
 "includes": [
   {
-    "url": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/<tag>/guidelines/packs/general.guidelines.json",
+    "url": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/<tag>/guidelines/packs/compose-ui.guidelines.json",
     "sha256": "<sha256 of the pack's bytes, lowercase hex>"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/<tag>/guidelines/packs/wear-compose.guidelines.json",
+    "sha256": "<sha256>"
   }
 ]
 ```
@@ -70,30 +75,56 @@ An include is `https` only and pinned by `sha256`, so it names one exact pack; o
 `GuidelinesIncludes` (engine) and `UiBuilderGuidelinesFile.flatten` (Gradle plugin), which must
 agree:
 
+- **packs are layers**, in include order, with the catalog's own rules as the last layer: a rule
+  replaces one of the same id from an earlier layer, where it stood, so a form-factor pack
+  overrides a general one and the catalog overrides both;
 - a pack rule naming `platforms` is carried only into a catalog whose `platform` it lists
-  (`mobile`, `foundation`, `wear`, `glasses`, `remote-compose`); none means every platform;
-- a rule the catalog defines itself, by id, replaces the pack's;
+  (`mobile`, `foundation`, `wear`, `glasses`, `launcher`, `remote-compose`); none means every one;
+- an include's `exclude`d ids are left out of that include;
 - a pack's frames are added where the catalog does not already ask for the same one;
-- a pack may not include another, is at most 1 MiB, and a file has at most 8 includes.
+- a pack may not include another, is at most 1 MiB, its rules pass the same checks as a
+  catalog's own, and a file has at most 8 includes.
 
 **Published flat.** Discovery (`DiscoverPreviewsTask`) and bundling resolve the includes and write
-`build/compose-previews/ui-builder.guidelines.json` with the pack merged in and no `includes` left,
-so compose-preview-server (which reads that file from the delivery branch, and from a local
-module's `build/compose-previews/`) and the browser editor need no change. If a pack cannot be read
-the file is published as written, with a warning; the publish workflow's
-`validate-ui-builder-guidelines.mjs` fetches every include and checks its pin before rendering, so
-a bad pin fails the publish rather than shipping a catalog without the pack's rules. The CLI's
-loader resolves includes itself (`--guidelines` pointing at an unflattened file), and refuses the
-whole file when one does not resolve: a check asked of part of the rules must not read as the whole
-check.
+`build/compose-previews/ui-builder.guidelines.json` with the packs merged in and no `includes`
+left, so compose-preview-server (which reads that file from the delivery branch, and from a local
+module's `build/compose-previews/`) and the browser editor need no change. If a pack cannot be
+read the file is published as written, with a warning; the publish workflow's
+`validate-ui-builder-guidelines.mjs` fetches every include, checks its pin and its rules before
+rendering, so a bad pin fails the publish rather than shipping a catalog without the pack's rules.
+The CLI's loader resolves includes itself (`--guidelines` pointing at an unflattened file), and
+refuses the whole file when one does not resolve: a check asked of part of the rules must not read
+as the whole check.
 
-[`guidelines/packs/general.guidelines.json`](../../guidelines/packs/general.guidelines.json) is
-the general pack: credentials, forms, accessibility semantics, text, theming and actions, each rule
-quoting developer.android.com and linking it. Wear catalogs take Wear-specific input and sign-in
-rules (remote input, Credential Manager / OAuth / Data Layer, hand-off to the phone) in place of
-the phone's form rules; Remote Compose catalogs take none of the text-entry rules.
-`GeneralGuidelinesPackTest` validates it. Include it by a release tag, and re-pin `sha256` when
-moving to a newer tag.
+### The packs
+
+Under [`guidelines/packs/`](../../guidelines/packs/). Every `guidance` is quoted word for word
+from developer.android.com and every rule links its page. Material-specific guidance stays in
+each catalog's own file (m3-catalog's phone M3 rules, wear-m3-catalog's Wear M3 rules).
+
+| Pack | What it carries |
+| --- | --- |
+| `compose-ui` | Compose UI on every form factor, not Material: accessibility semantics, text (truncation, font scale, string resources, RTL), theme tokens, measured touch targets and contrast, credentials and text entry, loading and error states, destructive actions. |
+| `wear-compose` | Wear OS Compose, not Material: replaces `compose-ui`'s `compose.sign-in.credential-manager` and `compose.input.keyboard-options` with the Wear versions (Credential Manager / OAuth with `RemoteAuthClient` / Data Layer, remote input through `RemoteInputIntentHelper`), and adds minimal typing, sign-in options, no sign-in wall, rotary scrolling and proportional margins. |
+| `remote-compose` | Any Remote Compose surface: remote composables only, declarative actions and state, deferred units, text sizing, image descriptions, themed colours, profile operations. No text entry. |
+| `launcher-widgets` | Home-screen widgets: one glanceable use case, edge to edge, system corner radius, sizing and breakpoints, touch targets, contrast, type, empty states. Widget surfaces only. |
+| `wear-widgets` | Wear OS widgets: drawn whole in the Samsung and Pixel Watch containers, background on the widget document, fixed heights and no nested scrolling, focused and predictable actions, colour roles and type. Widget surfaces on the `wear-widgets` profile. |
+
+Which catalog includes which, in order:
+
+| Catalog | `includes` |
+| --- | --- |
+| m3-catalog (`mobile`) | `compose-ui` |
+| wear-m3-catalog (`wear`) | `compose-ui`, `wear-compose` |
+| glimmer-catalog (`glasses`) | `compose-ui` (its touch-target rule names no `glasses`, so it is not carried) |
+| remote-m3-catalog `remote-catalog` (Wear widgets) | `remote-compose`, `wear-widgets` |
+| remote-m3-catalog `widget-catalog` (launcher widgets) | `remote-compose`, `launcher-widgets` |
+
+`GuidelinesPacksTest` validates them: shape, https sources, known platforms, surfaces and profiles,
+ids unique across packs except the overrides a later layer declares, no text-entry rule in the
+remote and widget packs, and the matrix above. With `GUIDELINES_VERIFY_QUOTES=1` it also fetches
+every source page and checks each guidance appears on it verbatim. Include packs by a release tag,
+and re-pin `sha256` when moving to a newer tag.
 
 ## Batching
 

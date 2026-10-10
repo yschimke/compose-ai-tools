@@ -1,0 +1,207 @@
+{
+  "schema": "compose-ui-builder/catalog-guidelines/v1",
+  "catalog": "launcher-widgets",
+  "platform": "any",
+  "version": 1,
+  "about": "Launcher (home-screen) widget guidance from developer.android.com's widget design, quality and Glance pages: one glanceable use case, filling the grid cell edge to edge, the system corner radius, sizing and breakpoints, touch targets, contrast, type and empty states. Widget surfaces only; no text-entry rules.",
+  "rules": [
+    {
+      "id": "launcher.purpose.single-use-case",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Choose a single primary use case to highlight in your widget.",
+      "check": "Does the widget serve one primary use case (one piece of information, one collection or one set of related controls), rather than combining unrelated features such as a weather readout, a to-do list and a music player in one widget?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets"
+    },
+    {
+      "id": "launcher.purpose.glanceable-snack",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "Focus on small portions of glanceable information on your widget. Expand on the information in your app. … You might say the widget is the information \"snack\" while the app is the \"meal.\"",
+      "check": "In every picture, does the widget read as an at-a-glance summary that hands off to the app for detail, rather than a miniature app with its own tabs, navigation bar, forms, settings or long passages of content?",
+      "source": "https://developer.android.com/develop/ui/views/appwidgets/overview"
+    },
+    {
+      "id": "launcher.gestures.tap-and-vertical-swipe",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "The only gestures available for widgets are touch and vertical swipe.",
+      "check": "Is every interaction in the design a tap (or a vertical scroll of a list), with no horizontal pager or carousel, drag handle, slider, long-press-only action or text input field?",
+      "source": "https://developer.android.com/develop/ui/views/appwidgets/overview"
+    },
+    {
+      "id": "launcher.layout.fills-bounds",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "All rectangular widgets MUST hit all four edges of the bounds of the grid.",
+      "check": "In every picture, does the widget's background fill the whole widget area out to all four edges, with no transparent band, inset card or floating box inside an empty frame? A deliberately custom-shaped widget passes if it touches at least two opposing edges.",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.layout.no-outer-padding",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Your widget should go seamlessly edge-to-edge.",
+      "check": "Is the background set on the widget's root or on a node that fills it (fillMaxSize), with any padding applied inside that background rather than as an outer margin, fixed width or fixed height that leaves a gap around it?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/sizing"
+    },
+    {
+      "id": "launcher.shape.system-corner-radius",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "For rectangular widgets, use the system corner radius property. This property creates consistency across different devices and helps prevent widget content from being clipped.",
+      "check": "Is the outer corner radius of the widget left to the launcher's system radius, with no hard-coded rounded clip or rounded background shape of a custom size on the root or its full-size child? Answer not_applicable when the widget is a deliberate non-rectangular expressive shape.",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/style"
+    },
+    {
+      "id": "launcher.shape.content-clear-of-corners",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "Specifies the corner radius of the widget background container (never larger than 28 dp). … To prevent content clipping, calculate a proportional radius for your inner content based on the system background outline: systemRadiusValue - widgetPadding",
+      "check": "In every picture, are text, icons and buttons kept clear of the rounded outer corners, and do rounded inner surfaces near a corner follow the outer curve (a radius no larger than the outer radius minus their inset), so nothing is clipped by or collides with the corner?",
+      "source": "https://developer.android.com/develop/ui/compose/glance/create-app-widget"
+    },
+    {
+      "id": "launcher.content.not-cropped",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "Widget UI isn't functional or content is cropped.",
+      "check": "In every picture, is all content fully visible and usable: no text cut off at an edge or mid-line, no control partly outside the widget, and no overlapping elements?",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.sizing.minimum-offers-value",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "The minimum size of your widget should still offer value and meet touch target requirements (48x48).",
+      "check": "In the smallest picture (for example 2×1), does the widget still show its key information or primary action, legibly and with any button still large enough to tap, rather than an unreadable shrunken version of the larger layout?",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.sizing.breakpoints",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "Implement breakpoints to trigger these changes, ensuring your widget maintains visual appeal and functionality at any size. Breakpoints also offer the flexibility to conditionally include or exclude supplemental content, optimizing space utilization based on the widget's dimensions.",
+      "check": "Comparing the smallest and the largest pictures, does the layout adapt, adding supplemental content (more items, an image, extra actions or detail) at the larger size and dropping it at the smaller size, rather than showing one layout simply scaled or stretched?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/sizing"
+    },
+    {
+      "id": "launcher.sizing.no-blank-space",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "Widget aligns properly to other home screen elements on the vertical or horizontal axis, and doesn't occupy unnecessary space. … Max size should be set if resizing the widget only adds blank space.",
+      "check": "In the largest picture (for example 4×2), is the extra space put to use by content or a re-arranged layout, rather than left as large empty areas around a small cluster of content?",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.sizing.prioritise-actions",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "When resizing, less commonly used options can be hidden in favor of more common actions.",
+      "check": "If the widget offers several buttons, does the smallest picture keep the most important action(s) and hide the less common ones, rather than squeezing every button in? Answer not_applicable when the widget has at most one button.",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/layouts"
+    },
+    {
+      "id": "launcher.actions.touch-target-48dp",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "Provide touch targets at 48x48 dp.",
+      "check": "Is every clickable node (including icon buttons and list rows) at least 48dp in both width and height, with no size, width or height modifier shrinking a click target below 48dp?",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.color.contrast",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "warning",
+      "guidance": "Widget text and icon buttons have insufficient color contrast ratios to meet accessibility requirements. … Ensure sufficient color contrast.",
+      "check": "In every picture, does all text and every icon stand out clearly against what is behind it (roughly 4.5:1 for text, 3:1 for icons), with no light-on-light, dark-on-dark or text over a busy image without a scrim?",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    },
+    {
+      "id": "launcher.type.hierarchy",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "Utilize font sizes and weights to establish a clear hierarchy, guiding the user's eye to the most important elements. Pay attention to line spacing and letter spacing (kerning) to improve readability, especially for smaller text displays within the restricted space of a widget.",
+      "check": "In every picture, is the most important item (the headline value, title or status) visibly larger or heavier than the supporting text, so the eye lands on it first, rather than all text set at one size and weight?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/style"
+    },
+    {
+      "id": "launcher.type.min-size",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "warning",
+      "guidance": "To allow users to adjust the font size, specify font size in scalable pixels (sp) … Don't make the body size any smaller than 12 sp.",
+      "check": "Is every text size taken from the theme's type scale or given in sp, with no text smaller than 12sp?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/foundations/accessibility"
+    },
+    {
+      "id": "launcher.type.concise-text",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "Text layouts are ideal for displaying concise information.",
+      "check": "In every picture, is the text limited to short titles, values, labels and one- or two-line descriptions, with no paragraphs of body copy packed into the widget?",
+      "source": "https://developer.android.com/design/ui/mobile/guides/widgets/layouts"
+    },
+    {
+      "id": "launcher.states.empty-zero",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "visual",
+      "severity": "info",
+      "guidance": "Zero and empty states are intentional and show the value of the widget and/or provide a call to action when the widget is installed but the user isn't yet logged in.",
+      "check": "If the design shows an empty, zero or signed-out state, does it explain what the widget will show or offer a clear call to action (for example 'Sign in' or 'Add a task'), rather than a blank area or a bare 'No data'? Answer not_applicable when the design only shows populated content.",
+      "source": "https://developer.android.com/docs/quality-guidelines/widget-quality"
+    }
+  ]
+}
