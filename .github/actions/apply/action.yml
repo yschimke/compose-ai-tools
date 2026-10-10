@@ -259,7 +259,11 @@ inputs:
       comment. The render phase stages each changed preview's render, source,
       accessibility nodes and the catalog's rules into the handoff; the check
       itself runs where `openrouter-key` is set (the publish phase, or a
-      single-job run). Off by default: it spends the key's budget.
+      single-job run). Each preview with findings shows its render with them
+      marked, pushed to `compose-preview/guidelines/pr` in `artifact-repository`.
+      Accessibility nodes and measured checks come from the a11y pipeline, so
+      `only: compose` leaves findings to be marked by region. Off by default:
+      it spends the key's budget.
     default: 'false'
   openrouter-key:
     description: >
@@ -1731,6 +1735,10 @@ runs:
         # one per directory a fork chooses to stage.
         max_modules=20
         rm -f _guidelines/*/guidelines.json
+        # Nor any annotated picture: only this run's --annotate may write one, or a fork could
+        # stage a picture the comment would then show as this check's markings.
+        rm -f _guidelines/*/renders/*.guidelines.png
+        rm -rf _guidelines_images
         checked=0
         for module_dir in _guidelines/*/; do
           [ -f "$module_dir/previews.json" ] || continue
@@ -1756,7 +1764,48 @@ runs:
             --max-cost "$remaining" --annotate \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
-        python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md
+        # Stages exactly the pictures the comment will embed (the render with its findings marked,
+        # or the render itself when nothing is), for the push below; the comment is re-rendered
+        # with that push's SHA, since only GitHub-hosted, commit-pinned images survive in a PR.
+        python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
+          --stage-images _guidelines_images
+
+    # The pictures are built in this job from the check's own output, never restored from the
+    # handoff, so the push metadata is written here from literals, like the other PR-render pushes.
+    - name: Push guidelines PR images
+      id: push-guidelines
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') != '' && hashFiles('_guidelines_images/**/*.png') != '')
+      shell: bash
+      env:
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        export MSG="compose-preview: PR guidelines images"
+        export TARGET_BRANCH="compose-preview/guidelines/pr"
+        export SKIP_IF_UNCHANGED=0
+        export SHA_OUTPUT_FILE="$GITHUB_WORKSPACE/_guidelines_head_sha"
+        cd _guidelines_images
+        if bash "$ACTION_PATH/lib/push-branch.sh"; then
+          echo "head_sha=$(cat "$SHA_OUTPUT_FILE" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+        else
+          # The findings are still worth posting without their pictures.
+          echo "::warning::compose-preview/apply: could not push the guidelines images; the comment has none."
+          echo "head_sha=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Re-render guidelines comment with pushed images
+      if: steps.push-guidelines.outputs.head_sha != ''
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        HEAD_SHA: ${{ steps.push-guidelines.outputs.head_sha }}
+      run: |
+        set -euo pipefail
+        python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
+          --image-repo "$REPO" --image-ref "$HEAD_SHA" --image-prefix guidelines
 
     - name: Upsert guidelines PR comment
       if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') != '')

@@ -352,6 +352,51 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `the prompt says which nodes scroll, which run past the viewport, and what ATF measured`() {
+    val list = PreviewNode("list", null, "", 0, 0, 40, 90, states = listOf("scrollable"))
+    val footer = PreviewNode("footer", "TextView", "Remove first", 2, 30, 55, 38)
+    val batch =
+      GuidelineBatch(
+        "component",
+        listOf(
+          subject("a")
+            .copy(
+              nodes = listOf(list, footer),
+              checks =
+                listOf(
+                  PreviewCheck(
+                    "TouchTargetSizeCheck",
+                    "ERROR",
+                    "This item's height is 24dp.",
+                    "Button",
+                    "4,4,28,28",
+                  )
+                ),
+            )
+        ),
+      )
+    val request = PreviewGuidelineRequests.request(guidelines, batch, "src", emptyList())
+    assertThat(request.userText).contains("Viewport (its first picture): 40×40 px")
+    assertThat(request.userText).contains("- list | - |  | 0,0,40,90 | scrollable off:bottom")
+    assertThat(request.userText)
+      .contains("- footer | TextView | Remove first | 2,30,55,38 | off:right")
+    assertThat(request.userText)
+      .contains("- TouchTargetSizeCheck | ERROR | Button | 4,4,28,28 | This item's height is 24dp.")
+    assertThat(request.systemPrompt).contains("Scrolling is not clipping")
+    assertThat(request.systemPrompt).contains("measured accessibility checks")
+  }
+
+  @Test
+  fun `a measured check or a node's states change the cache key`() {
+    val base = subject("a").copy(nodes = listOf(PreviewNode("n", null, "", 0, 0, 1, 1)))
+    fun key(s: PreviewSubject) = GuidelineResultCache.inputsKey(s, guidelines, "m")
+    val scrolling =
+      base.copy(nodes = listOf(PreviewNode("n", null, "", 0, 0, 1, 1, listOf("scrollable"))))
+    val measured = base.copy(checks = listOf(PreviewCheck("TextContrastCheck", "WARNING", "low")))
+    assertThat(setOf(key(base), key(scrolling), key(measured))).hasSize(3)
+  }
+
+  @Test
   fun `the cache misses when the source, the surface or the rules' text change`() {
     val dir = Files.createTempDirectory("guidelines-cache-inputs").toFile()
     val model = FakeModel()

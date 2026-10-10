@@ -118,7 +118,7 @@ The annotation library has no negotiation surface — the plugin's discovery tas
 
 ### 2.9 GH actions + branch conventions (surface 9)
 
-**Stability:** action `inputs:`, their default values, and the default branch names (`compose-preview/main`, `compose-preview/pr`, `compose-preview/resources/main`, `compose-preview/resources/pr`, `compose-preview/a11y/main`, `compose-preview/a11y/pr`).
+**Stability:** action `inputs:`, their default values, and the default branch names (`compose-preview/main`, `compose-preview/pr`, `compose-preview/resources/main`, `compose-preview/resources/pr`, `compose-preview/a11y/main`, `compose-preview/a11y/pr`, `compose-preview/guidelines/pr`).
 
 **Negotiation:** none. Consumers pin actions by SHA digest and pin the CLI via `version=catalog`.
 

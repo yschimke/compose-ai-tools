@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
+import ee.schimke.composeai.guidelines.PreviewCheck
 import ee.schimke.composeai.guidelines.PreviewNode
 import ee.schimke.composeai.guidelines.PreviewSubject
 import ee.schimke.composeai.guidelines.SubjectPicture
@@ -44,6 +45,7 @@ internal data class HandoffInputs(
       surfaceOverride: String?,
     ): HandoffInputs {
       val nodes = readNodes(a11yJson)
+      val checks = readChecks(a11yJson)
       val parsed =
         previewsJson?.let { runCatching { JSON.parseToJsonElement(it.readText()) } }?.getOrNull()
       val manifestPreviews = ((parsed as? JsonObject)?.get("previews") as? JsonArray)
@@ -83,7 +85,9 @@ internal data class HandoffInputs(
             }
           rendersDir
             ?.listFiles { file ->
-              file.extension == "png" && !file.name.endsWith(".guidelines.png")
+              file.extension == "png" &&
+                !file.name.endsWith(".guidelines.png") &&
+                !file.name.endsWith(LONG_SUFFIX)
             }
             .orEmpty()
             .sortedBy { it.name }
@@ -123,12 +127,13 @@ internal data class HandoffInputs(
                 entry.heightDp,
                 description = describeCapture(entry.widthDp, entry.heightDp, entry.scrollMode),
               )
-            ),
+            ) + longPicture(png, entry.widthDp, entry.heightDp),
           nodes =
             nodes[entry.id].orEmpty().mapIndexedNotNull { index, node ->
               node.toPreviewNode(index)
             },
           source = source,
+          checks = checks[entry.id].orEmpty(),
         )
       }
       return HandoffInputs(subjects, nodes, entries.associate { it.id to it.render })
@@ -142,6 +147,56 @@ internal data class HandoffInputs(
             .associate { it.previewId to it.nodes }
         }
         .getOrDefault(emptyMap())
+    }
+
+    /**
+     * Each preview's Accessibility Test Framework results from an `accessibility.json`, as
+     * [PreviewCheck]s: measured evidence for the touch-target and contrast rules.
+     */
+    fun readChecks(file: File?): Map<String, List<PreviewCheck>> {
+      if (file == null || !file.isFile) return emptyMap()
+      return runCatching {
+          JSON.decodeFromString(AccessibilityReport.serializer(), file.readText())
+            .entries
+            .associate { entry ->
+              entry.previewId to
+                entry.findings.map {
+                  PreviewCheck(
+                    type = it.type,
+                    level = it.level,
+                    message = it.message,
+                    element = it.viewDescription,
+                    bounds = it.boundsInScreen,
+                  )
+                }
+            }
+        }
+        .getOrDefault(emptyMap())
+    }
+
+    /** The sidecar the renderer writes beside a scrolled capture: the whole scrolling content. */
+    internal const val LONG_SUFFIX: String = "_SCROLL_long.png"
+
+    /** Past this a long screenshot is left out rather than crowd the request. */
+    private const val MAX_LONG_BYTES: Long = 2L * 1024 * 1024
+
+    /**
+     * The long screenshot beside [render] (`<name>_SCROLL_long.png`), as a second picture, so a
+     * model can tell content scrolled out of the viewport from content that is clipped. Empty when
+     * there is none, or it is too large to send.
+     */
+    internal fun longPicture(render: File, widthDp: Int, heightDp: Int): List<SubjectPicture> {
+      val long = render.resolveSibling(render.nameWithoutExtension + LONG_SUFFIX)
+      if (!long.isFile || long.length() > MAX_LONG_BYTES) return emptyList()
+      return listOf(
+        SubjectPicture(
+          "long",
+          long.readBytes(),
+          widthDp,
+          heightDp,
+          description = describeCapture(widthDp, heightDp, "LONG"),
+        )
+      )
     }
 
     /**

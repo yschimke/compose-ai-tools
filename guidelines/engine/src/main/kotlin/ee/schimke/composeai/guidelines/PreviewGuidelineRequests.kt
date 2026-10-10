@@ -21,6 +21,8 @@ import kotlinx.serialization.json.putJsonObject
 /**
  * A node of a rendered preview a model can point at, from its accessibility hierarchy: [id] is what
  * a verdict's `nodeIds` names, and the bounds (pixels of the render) are what a host draws.
+ * [states] are the hierarchy's own (`clickable`, `scrollable`, …): a `scrollable` node tells the
+ * model that content past the viewport along it is scrolled away, not clipped.
  */
 public data class PreviewNode(
   val id: String,
@@ -30,6 +32,7 @@ public data class PreviewNode(
   val top: Int,
   val right: Int,
   val bottom: Int,
+  val states: List<String> = emptyList(),
 ) {
   public companion object {
     /** `left,top,right,bottom`, as the accessibility hierarchy writes `boundsInScreen`. */
@@ -38,13 +41,29 @@ public data class PreviewNode(
       bounds: String,
       role: String? = null,
       label: String = "",
+      states: List<String> = emptyList(),
     ): PreviewNode? {
       val parts = bounds.split(',').mapNotNull { it.trim().toIntOrNull() }
       if (parts.size != 4) return null
-      return PreviewNode(id, role, label, parts[0], parts[1], parts[2], parts[3])
+      return PreviewNode(id, role, label, parts[0], parts[1], parts[2], parts[3], states)
     }
   }
 }
+
+/**
+ * A measured accessibility check on a preview — an Accessibility Test Framework result from the
+ * same render the nodes come from: [type] is the check (`TouchTargetSizeCheck`,
+ * `TextContrastCheck`, …), [level] its outcome (`ERROR`, `WARNING`, `INFO`), [bounds] the
+ * `left,top,right,bottom` pixels of the element it is about. Deterministic evidence: a rule about
+ * touch targets or contrast is decided by it rather than by the model's estimate from the picture.
+ */
+public data class PreviewCheck(
+  val type: String,
+  val level: String,
+  val message: String,
+  val element: String? = null,
+  val bounds: String? = null,
+)
 
 /** A picture of a subject: its render, or one drawn later at other settings. */
 public data class SubjectPicture(
@@ -84,6 +103,8 @@ public data class PreviewSubject(
   val source: String? = null,
   /** The Remote Compose profile it targets (`launcher-widgets-v7`, …), when known. */
   val profile: String? = null,
+  /** Measured accessibility checks on the render ([PreviewCheck]); empty when none ran. */
+  val checks: List<PreviewCheck> = emptyList(),
 )
 
 /** How big one request may grow before the next batch starts. */
@@ -126,8 +147,16 @@ public object PreviewGuidelineRequests {
       "the subject clearly breaks the rule. Every verdict names its `subjectId` (e.g. `s1`); a " +
       "verdict for a rule judged once across all subjects has `subjectId` null. `nodeIds` cite " +
       "node ids from that subject's accessibility nodes for a `fail` (empty when none fits). " +
-      "When a problem is visible but no single node holds it, add a `regions` entry: the picture " +
-      "number and a rough box as fractions (0 to 1) of that picture. `confidence` is your " +
+      "When a problem is visible but no single node holds it, or the subject has no " +
+      "accessibility nodes, add a `regions` entry for every visible `fail`: the picture " +
+      "number and a rough box as fractions (0 to 1) of that picture, so it can be marked on the " +
+      "render. Scrolling is not clipping: content cut at the viewport edge ALONG the axis of a " +
+      "scrollable container (a node with state `scrollable`, or a picture captured mid-scroll) " +
+      "is scrolled out of view; a long screenshot, when attached, shows that content. Only " +
+      "content cut across that axis, by the screen shape, or inside its own bounds is clipped. " +
+      "When measured accessibility checks are listed for a subject, they decide the rules they " +
+      "measure (touch target size, contrast) over your estimate from the picture; cite the " +
+      "node or region they name. `confidence` is your " +
       "probability (0 to 1) that the verdict is right. `reason` is one short sentence a designer " +
       "can act on. Reply with JSON only, held to the response schema."
 
@@ -288,15 +317,42 @@ public object PreviewGuidelineRequests {
         append("\n### ").append(alias).append(": ").append(subject.label).append('\n')
         pictureLines[alias]?.forEach { append(it).append('\n') } ?: append("No picture attached.\n")
         if (subject.nodes.isNotEmpty()) {
-          append("Accessibility nodes (id | role | label | bounds left,top,right,bottom px):\n")
+          val viewport = subject.pictures.firstOrNull()?.let { pngSize(it.png) }
+          viewport?.let { (w, h) ->
+            append("Viewport (its first picture): ").append(w).append('×').append(h).append(" px. ")
+            append("`off:` lists the edges a node extends past it.\n")
+          }
+          append(
+            "Accessibility nodes (id | role | label | bounds left,top,right,bottom px | states):\n"
+          )
           subject.nodes.take(MAX_NODES).forEach { node ->
             append("- ").append(node.id).append(" | ").append(node.role ?: "-").append(" | ")
             append(node.label.take(60)).append(" | ")
             append(node.left).append(',').append(node.top).append(',')
-            append(node.right).append(',').append(node.bottom).append('\n')
+            append(node.right).append(',').append(node.bottom).append(" | ")
+            val off = viewport?.let { (w, h) -> offEdges(node, w, h) }.orEmpty()
+            val states =
+              node.states +
+                off
+                  .takeIf { it.isNotEmpty() }
+                  ?.let { listOf("off:" + it.joinToString("+")) }
+                  .orEmpty()
+            append(states.joinToString(" ").ifEmpty { "-" }).append('\n')
           }
           if (subject.nodes.size > MAX_NODES) {
             append("- … ").append(subject.nodes.size - MAX_NODES).append(" more nodes\n")
+          }
+        }
+        if (subject.checks.isNotEmpty()) {
+          append("Measured accessibility checks (Accessibility Test Framework, on this render; ")
+          append("type | level | element | bounds px | message):\n")
+          subject.checks.take(MAX_CHECKS).forEach { check ->
+            append("- ").append(check.type).append(" | ").append(check.level).append(" | ")
+            append(check.element?.take(60) ?: "-").append(" | ").append(check.bounds ?: "-")
+            append(" | ").append(check.message.take(240)).append('\n')
+          }
+          if (subject.checks.size > MAX_CHECKS) {
+            append("- … ").append(subject.checks.size - MAX_CHECKS).append(" more checks\n")
           }
         }
         subject.source?.let { source ->
@@ -472,6 +528,7 @@ public object PreviewGuidelineRequests {
   private fun estimateTokens(subject: PreviewSubject): Int =
     subject.pictures.size * PICTURE_TOKENS +
       subject.nodes.take(MAX_NODES).size * 20 +
+      subject.checks.take(MAX_CHECKS).size * 60 +
       (subject.source?.length?.coerceAtMost(MAX_SOURCE_CHARS) ?: 0) / 4 +
       subject.label.length / 4 +
       40
@@ -491,6 +548,27 @@ public object PreviewGuidelineRequests {
   public const val PICTURE_TOKENS: Int = 1_200
 
   private const val MAX_NODES = 80
+
+  private const val MAX_CHECKS = 40
+
+  /** A PNG's pixel size from its IHDR chunk, or null when [png] is not one. */
+  internal fun pngSize(png: ByteArray): Pair<Int, Int>? {
+    if (png.size < 24 || png[1] != 'P'.code.toByte() || png[12] != 'I'.code.toByte()) return null
+    fun int(at: Int) =
+      ((png[at].toInt() and 0xff) shl 24) or
+        ((png[at + 1].toInt() and 0xff) shl 16) or
+        ((png[at + 2].toInt() and 0xff) shl 8) or
+        (png[at + 3].toInt() and 0xff)
+    return (int(16) to int(20)).takeIf { (w, h) -> w > 0 && h > 0 }
+  }
+
+  /** The edges of a [width]×[height] viewport [node] extends past. */
+  internal fun offEdges(node: PreviewNode, width: Int, height: Int): List<String> = buildList {
+    if (node.top < 0) add("top")
+    if (node.bottom > height) add("bottom")
+    if (node.left < 0) add("left")
+    if (node.right > width) add("right")
+  }
 
   /** The most source one subject carries, in characters. */
   public const val MAX_SOURCE_CHARS: Int = 8_000

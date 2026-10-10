@@ -181,6 +181,7 @@ The default branches are part of the public contract:
 - `compose-preview/main`, `compose-preview/pr`
 - `compose-preview/resources/main`, `compose-preview/resources/pr`
 - `compose-preview/a11y/main`, `compose-preview/a11y/pr`
+- `compose-preview/guidelines/pr`
 
 These names are **frozen forever**. PR comments published by the comment action embed permanent commit URLs on these branches; renaming them retroactively breaks every linked image in every closed PR.
 

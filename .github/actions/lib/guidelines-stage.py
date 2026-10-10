@@ -8,7 +8,9 @@ preview (``_changed_previews.json`` from ``compare-previews.py copy-changed``), 
 
     <out>/<module-key>/previews.json             the module manifest, narrowed to those previews,
                                                  with each capture's render rewritten into renders/
-    <out>/<module-key>/renders/<name>.png        their renders
+    <out>/<module-key>/renders/<name>.png        their renders (and <name>_SCROLL_long.png, the
+                                                 long screenshot of a scrolled capture, when the
+                                                 renderer wrote one)
     <out>/<module-key>/src/<sourceFile>          their source files (the CLI extracts each function),
                                                  and the module files declaring the composables those
                                                  files call, so a wrapper defined elsewhere in the
@@ -17,7 +19,8 @@ preview (``_changed_previews.json`` from ``compare-previews.py copy-changed``), 
     <out>/<module-key>/ui-builder.guidelines.json the catalog's guidelines
 
 A module without a guidelines file (``--guidelines-file`` overrides) stages nothing: there are no
-rules to ask. Source is data the model reads, never executed, so staging it from a fork is safe.
+rules to ask. A preview id two modules both discovered (a desktop module re-rendering a
+multiplatform module's previews) is staged once, in the module holding its source (``owners``). Source is data the model reads, never executed, so staging it from a fork is safe.
 
 The visual diff alone misses what the check now reads beyond pixels: an edit that adds a content
 description or replaces a hard-coded colour can leave the render identical. ``--changed-files``
@@ -39,6 +42,8 @@ import sys
 from pathlib import Path
 
 GUIDELINES_FILE = "ui-builder.guidelines.json"
+LONG_SUFFIX = "_SCROLL_long.png"
+MAX_LONG_BYTES = 2 * 1024 * 1024
 SKIP_DIRS = {"node_modules", ".git", ".gradle"}
 # Source scans also skip build outputs, which hold generated copies rather than the module's code.
 SOURCE_SKIP_DIRS = SKIP_DIRS | {"build"}
@@ -168,6 +173,35 @@ def select(
     return picked
 
 
+def has_source(preview: dict, module_dir: Path) -> bool:
+    """Whether the preview's source is inside its module, so it can be staged with it."""
+    source = preview.get("sourceFile")
+    return bool(source) and safe_relative(source) and (module_dir / source).is_file()
+
+
+def owners(candidates: list[tuple[Path, Path, dict, list[dict]]]) -> dict[str, Path]:
+    """The one module each preview id is checked in.
+
+    The same composable can be discovered by more than one module: a desktop module re-rendering a
+    multiplatform module's previews has the same ids, its own renders, and a `sourceFile` reaching
+    into the other module (`../catalog/src/...`), which is never staged. Checking both asks the
+    model twice and lists the preview twice, once judged without its source. The module that holds
+    the source wins, then the one with accessibility nodes (findings can then name them), then the
+    first in path order.
+    """
+    best: dict[str, tuple[tuple[int, int], Path]] = {}
+    for previews_dir, module_dir, _manifest, selected in candidates:
+        has_nodes = (previews_dir / "accessibility.json").is_file()
+        for preview in selected:
+            preview_id = preview.get("id")
+            if not preview_id:
+                continue
+            score = (int(has_source(preview, module_dir)), int(has_nodes))
+            if preview_id not in best or score > best[preview_id][0]:
+                best[preview_id] = (score, module_dir)
+    return {preview_id: module_dir for preview_id, (_score, module_dir) in best.items()}
+
+
 def stage(
     root: Path,
     changed: set[str],
@@ -177,6 +211,7 @@ def stage(
 ) -> int:
     changed_files = changed_files or set()
     staged = 0
+    candidates: list[tuple[Path, Path, dict, list[dict]]] = []
     for manifest_path in find_manifests(root):
         previews_dir = manifest_path.parent
         module_dir = previews_dir.parent.parent
@@ -197,6 +232,14 @@ def stage(
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
         if not rules.is_file():
             continue
+        candidates.append((previews_dir, module_dir, manifest, selected))
+
+    owner = owners(candidates)
+    for previews_dir, module_dir, manifest, selected in candidates:
+        selected = [p for p in selected if owner.get(p.get("id")) == module_dir]
+        if not selected:
+            continue
+        rules = guidelines_file or previews_dir / GUIDELINES_FILE
         target = out / module_key(module_dir, root)
         (target / "renders").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(rules, target / GUIDELINES_FILE)
@@ -214,11 +257,16 @@ def stage(
                     continue
                 name = Path(output).name
                 shutil.copyfile(source_png, target / "renders" / name)
+                # The whole scrolling content beside a scrolled capture: the check sends it, so
+                # content scrolled out of view is not read as clipped.
+                long = source_png.with_name(source_png.stem + LONG_SUFFIX)
+                if long.is_file() and not long.is_symlink() and long.stat().st_size <= MAX_LONG_BYTES:
+                    shutil.copyfile(long, target / "renders" / long.name)
                 captures.append({**capture, "renderOutput": f"renders/{name}"})
             if not captures:
                 continue
-            source_file = preview.get("sourceFile")
-            if source_file and safe_relative(source_file) and (module_dir / source_file).is_file():
+            if has_source(preview, module_dir):
+                source_file = preview["sourceFile"]
                 dest = target / "src" / source_file
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(module_dir / source_file, dest)
@@ -244,6 +292,13 @@ def stage(
                 )
             except (OSError, json.JSONDecodeError, KeyError, TypeError):
                 pass
+        elif kept:
+            # Without nodes a finding can name none; it can still point at a region of the render.
+            print(
+                f"guidelines-stage: no accessibility nodes for {module_key(module_dir, root)} "
+                "(the a11y pipeline did not run); findings can be marked by region only.",
+                file=sys.stderr,
+            )
     return staged
 
 

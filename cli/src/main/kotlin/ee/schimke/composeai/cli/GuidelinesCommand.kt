@@ -120,6 +120,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         continue
       }
       val nodes = readNodes(buildDir.resolve("accessibility.json"))
+      val checks = HandoffInputs.readChecks(buildDir.resolve("accessibility.json"))
       val renders = moduleResults.associate { it.id to renderFile(it, projectDir) }
       val manifest = manifests.firstOrNull { it.first.gradlePath == module }
       val infos = manifest?.second?.previews.orEmpty().associateBy { it.id }
@@ -132,6 +133,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       }
       val subjects = moduleResults.mapNotNull { result ->
         subjectFor(result, renders[result.id], nodes[result.id], sources(result.id))
+          ?.copy(checks = checks[result.id].orEmpty())
       }
       // What a follow-up round may ask for: this run's nodes and sources, and renders at other
       // settings through the module's render daemon.
@@ -300,7 +302,12 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
                 result.captures.firstOrNull()?.scroll?.mode,
               ),
           )
-        ),
+        ) +
+          HandoffInputs.longPicture(
+            png,
+            result.params.widthDp ?: 0,
+            result.params.heightDp ?: 0,
+          ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
       source = source,
     )
@@ -348,7 +355,17 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       val picture = subject.pictures.firstOrNull() ?: return@forEach
       val previewNodes =
         nodes[result.previewId].orEmpty().mapIndexedNotNull { i, n -> n.toPreviewNode(i) }
-      val out = GuidelineAnnotator.annotate(picture.png, previewNodes, failures, result.previewId)
+      // Only the regions drawn on this picture: one on the long screenshot is in its coordinates.
+      val onPicture = failures.map { verdict ->
+        verdict
+          .newBuilder()
+          .apply {
+            regions =
+              verdict.regions.filter { it.pictureKind == null || it.pictureKind == picture.kind }
+          }
+          .build()
+      }
+      val out = GuidelineAnnotator.annotate(picture.png, previewNodes, onPicture, result.previewId)
       val render = renders[result.previewId] ?: return@forEach
       render.resolveSibling(render.nameWithoutExtension + ".guidelines.png").writeBytes(out)
     }
@@ -398,7 +415,7 @@ data class ModuleGuidelines(
 
 /** The node a finding may cite, from an accessibility node: its stable ref, else its position. */
 internal fun AccessibilityNode.toPreviewNode(index: Int): PreviewNode? =
-  PreviewNode.parseBounds(ref ?: "n$index", boundsInScreen, role, label)
+  PreviewNode.parseBounds(ref ?: "n$index", boundsInScreen, role, label, states)
 
 /** Prints a run's findings, a line per broken rule with its guide and the nodes it names. */
 internal object GuidelinesReportRenderer {
