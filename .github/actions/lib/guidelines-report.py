@@ -251,6 +251,7 @@ class Tier:
 
     def __init__(self) -> None:
         self.checked = 0
+        self.failed_requests = 0
         self.pending: list[str] = []
         self.no_rules: dict[str, list[str]] = {}
         self.no_results: list[str] = []
@@ -313,7 +314,6 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     # (`pending`), no rule applying (`noRules`, by reason), or a module the check wrote nothing for;
     # per tier, since a PR-changed preview left unchecked matters more than a rules-changed one.
     tiers = {None: Tier(), RULES_TIER: Tier()}
-    failed_requests = 0
     problems: list[str] = []
     for module_dir in modules:
         if not SAFE_NAME.match(module_dir.name):
@@ -328,7 +328,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                     tier.no_results.append(preview_id)
             continue
         report, rules = loaded
-        failed_requests += int(report.get("failedRequests") or 0)
+        tier.failed_requests += int(report.get("failedRequests") or 0)
         for problem in report.get("problems") or []:
             if quoted(problem) not in problems:
                 problems.append(quoted(problem))
@@ -435,7 +435,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         header += [
             f"❌ **{mine.missed()} of this PR's {mine.checked + mine.not_checked()} changed "
             "preview(s) were NOT checked**, so this is not a pass for them:",
-            *mine.missed_lines(failed_requests),
+            *mine.missed_lines(mine.failed_requests),
             "",
         ]
     if total_checked:
@@ -453,7 +453,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         ]
     if total_checked == 0 and mine.missed():
         header.append(f"**{mine.missed()} of this PR's changed preview(s) were NOT checked:**")
-        header += mine.missed_lines(failed_requests)
+        header += mine.missed_lines(mine.failed_requests)
         header.append("")
     if mine.no_rules:
         header.append(f"**{sum(len(v) for v in mine.no_rules.values())} changed preview(s) were "
@@ -465,15 +465,15 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             f"{by_rules.not_checked()} preview(s) selected only because the guidelines changed "
             "were NOT checked:"
         )
-        header += by_rules.missed_lines(0 if mine.missed() else failed_requests)
+        header += by_rules.missed_lines(by_rules.failed_requests)
         header += by_rules.no_rule_lines()
         header.append("")
     if rules_deferred:
         header += [
             f"<sub>This PR changes the guidelines, so every preview of the module is judged against "
-            f"new rules: {rules_staged} were checked here after the PR's own, and {rules_deferred} "
-            "more were left for the catalog publish, which re-checks every preview against the "
-            "new rules.</sub>",
+            f"new rules: {rules_staged} were staged here behind the PR's own ({by_rules.checked} "
+            f"of them checked), and {rules_deferred} more were left for the catalog publish, which "
+            "re-checks every preview against the new rules.</sub>",
             "",
         ]
     if problems:

@@ -353,6 +353,26 @@ class ReportTest(unittest.TestCase):
         self.assertIn("1 preview(s) selected only because the guidelines changed were NOT "
                       "checked", body)
         self.assertIn("900 more were left for the catalog publish", body)
+        self.assertIn("2 were staged here behind the PR's own (1 of them checked)", body)
+
+    def test_failed_requests_are_reported_with_the_tier_they_hit(self) -> None:
+        ok = _result("x.OkKt.Ok", [{"ruleId": "wear.touch-target-48dp", "verdict": "pass",
+                                    "confidence": 0.9, "nodeIds": [], "reason": ""}])
+        mine = _result("x.WearListKt.WearList", [])
+        mine["pending"] = True
+        self._write({"module": "handoff", "catalog": "wear-m3", "model": "m",
+                     "results": [ok, mine], "failedRequests": 1})
+        late = _result("x.ChipKt.Chip", [])
+        late["pending"] = True
+        module = self._rules_tier([late])
+        report = json.loads((module / "guidelines.json").read_text())
+        report["failedRequests"] = 3
+        (module / "guidelines.json").write_text(json.dumps(report))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        mine_part, rules_part = body.split("selected only because the guidelines changed", 1)
+        self.assertIn("(1 request(s) failed): `WearList`", mine_part)
+        self.assertIn("(3 request(s) failed): `Chip`", rules_part)
 
     def test_the_run_level_cost_counts_replies_that_could_not_be_used(self) -> None:
         self._rules_tier([_result("x.CardKt.Card", [])], cost=0.05)
@@ -528,6 +548,23 @@ class StageTest(unittest.TestCase):
                          {"staged": 2, "deferred": 2})
         # The publish job checks the PR's previews before the rules tier, whatever the names.
         self.assertEqual([p.name for p in gb.order(out)], ["catalog", "catalog.rules-changed"])
+
+    def test_a_rules_tier_never_lands_on_a_real_module_named_like_one(self) -> None:
+        root = self._two_previews()
+        other = root / "catalog.rules-changed" / "build" / "compose-previews"
+        (other / "renders").mkdir(parents=True)
+        (other / "renders" / "Real-1.png").write_bytes(b"png")
+        (other / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
+        (other / "previews.json").write_text(json.dumps({"previews": [
+            {"id": "y.Real", "captures": [{"renderOutput": "renders/Real-1.png"}]}]}))
+        out = root / "_guidelines"
+        gs.stage(root, {"y.Real"}, out, None, {"catalog/ui-builder.guidelines.json"})
+        real = json.loads((out / "catalog.rules-changed" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in real["previews"]], ["y.Real"])
+        self.assertNotIn("guidelinesSelection", real)
+        tier = json.loads((out / "catalog.rules-changed-2" / "previews.json").read_text())
+        self.assertEqual(tier["guidelinesSelection"], "rules-changed")
+        self.assertEqual(sorted(p["id"] for p in tier["previews"]), ["x.Go", "x.Stop"])
 
     def test_unrelated_changes_stage_nothing(self) -> None:
         root = self._two_previews()

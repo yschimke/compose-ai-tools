@@ -369,6 +369,9 @@ def stage(
         rules_only[previews_dir] = by_rules
 
     owner = owners(candidates)
+    # Every directory a module's own tier may use, so a rules tier never lands on one: a real module
+    # can be keyed `catalog.rules-changed` as well.
+    used = {module_key(module_dir, root) for _, module_dir, _, _ in candidates}
     # The PR's own previews first, then what the rules change selected, within its bound.
     rules_left = max(0, max_rules_only)
     rules_staged = rules_deferred = 0
@@ -397,7 +400,13 @@ def stage(
         if not taken:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
-        target = out / (module_key(module_dir, root) + RULES_TIER_SUFFIX)
+        name = module_key(module_dir, root) + RULES_TIER_SUFFIX
+        suffix = 2
+        while name in used:
+            name = f"{module_key(module_dir, root)}{RULES_TIER_SUFFIX}-{suffix}"
+            suffix += 1
+        used.add(name)
+        target = out / name
         count = stage_module(
             previews_dir, module_dir, manifest, taken, rules, target, RULES_TIER, root
         )
