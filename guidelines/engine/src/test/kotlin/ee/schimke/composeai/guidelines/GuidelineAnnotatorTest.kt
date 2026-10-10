@@ -116,6 +116,20 @@ class GuidelineAnnotatorTest {
   }
 
   @Test
+  fun `the overlay says it carries numbered badges`() {
+    val out =
+      GuidelineAnnotator.annotate(
+        png(100, 100, Color.GRAY),
+        emptyList(),
+        listOf(fail("clip", regions = listOf(region(0.2, 0.2, 0.5, 0.5)))),
+      )
+    val text = String(out, Charsets.ISO_8859_1)
+    assertThat(text)
+      .contains("tEXt${GuidelineAnnotator.FORMAT_KEY}\u0000${GuidelineAnnotator.FORMAT}")
+    assertThat(ImageIO.read(out.inputStream()).width).isEqualTo(100)
+  }
+
+  @Test
   fun `an unreadable picture is returned unchanged`() {
     val junk = byteArrayOf(1, 2, 3)
     assertThat(GuidelineAnnotator.annotate(junk, emptyList(), listOf(fail("x")))).isEqualTo(junk)
