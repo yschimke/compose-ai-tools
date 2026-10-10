@@ -156,6 +156,29 @@ class GuidelineFactsTest {
   }
 
   @Test
+  fun `commented-out code is not a fact, whether a block, nested, or trailing`() {
+    val source =
+      """
+      @Preview @Composable fun Ok() = Column {
+        /* Button(onClick = {}) { Text("old") }
+           /* nested: Text("x", fontSize = 7.sp) */
+           Modifier.size(24.dp) */
+        Text("Hi") // was Color(0xFF222222) and fontSize = 9.sp
+        Text("http://example.com // not a comment")
+      }
+      """
+        .trimIndent()
+    val facts = GuidelineFacts.fromSource(source)
+    assertThat(kinds(facts, GuidelineFacts.BUTTONS)).isEmpty()
+    assertThat(kinds(facts, GuidelineFacts.FONT_SIZE)).isEmpty()
+    assertThat(kinds(facts, GuidelineFacts.COLOUR)).isEmpty()
+    assertThat(kinds(facts, GuidelineFacts.FIXED_SIZE)).isEmpty()
+    assertThat(GuidelineFacts.withoutComments(source))
+      .contains("http://example.com // not a comment")
+    assertThat(GuidelineFacts.withoutComments(source).lines()).hasSize(source.lines().size)
+  }
+
+  @Test
   fun `colours are named, since a decision model reads words better than hex`() {
     assertThat(GuidelineFacts.describeColour("FF222222")).isEqualTo("very dark grey")
     assertThat(GuidelineFacts.describeColour("FFFFFFFF")).isEqualTo("very light grey")

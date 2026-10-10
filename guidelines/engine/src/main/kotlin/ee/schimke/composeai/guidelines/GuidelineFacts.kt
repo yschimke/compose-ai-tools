@@ -397,7 +397,7 @@ public object GuidelineFacts {
 
   internal fun fromSource(source: String): List<GuidelineFact> {
     // Comments say what the code once did; facts are about what it does.
-    val code = source.lines().filterNot { it.trimStart().startsWith("//") }.joinToString("\n")
+    val code = withoutComments(source)
     val facts = mutableListOf<GuidelineFact>()
     FONT_SIZE_LITERAL.findAll(code)
       .map { it.value.replace(" ", "") }
@@ -504,6 +504,59 @@ public object GuidelineFacts {
         )
     }
     return facts
+  }
+
+  /**
+   * [source] with its comments blanked: line comments, trailing ones included, and block comments,
+   * which nest in Kotlin. String literals are kept as they are, so a `//` inside one is not a
+   * comment. Newlines survive, so the code keeps its lines.
+   */
+  internal fun withoutComments(source: String): String {
+    val out = StringBuilder(source.length)
+    var i = 0
+    var depth = 0
+    var inString = false
+    while (i < source.length) {
+      val c = source[i]
+      val next = source.getOrNull(i + 1)
+      when {
+        depth > 0 -> {
+          when {
+            c == '/' && next == '*' -> {
+              depth++
+              i++
+            }
+            c == '*' && next == '/' -> {
+              depth--
+              i++
+            }
+            c == '\n' -> out.append(c)
+          }
+        }
+        inString -> {
+          out.append(c)
+          if (c == '\\' && next != null) {
+            out.append(next)
+            i++
+          } else if (c == '"') inString = false
+        }
+        c == '"' -> {
+          inString = true
+          out.append(c)
+        }
+        c == '/' && next == '/' -> {
+          while (i < source.length && source[i] != '\n') i++
+          continue
+        }
+        c == '/' && next == '*' -> {
+          depth = 1
+          i++
+        }
+        else -> out.append(c)
+      }
+      i++
+    }
+    return out.toString()
   }
 
   /** A colour's hex in words: lightness and hue, since a decision model reads names better. */

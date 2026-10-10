@@ -476,12 +476,17 @@ internal class JevChecker(
     val offered = if (last) emptyList() else state.offered()
     val view = state.view()
     val stillOpen = mutableListOf<GuidelineRuleV1>()
+    val chunks = JevRuleRequests.chunks(guidelines, view, state.open, offered)
+    var asking = 0
     fun stop(capped: Boolean = false, failure: String? = null) {
       if (capped) state.capped = true
       if (failure != null) state.failure = failure
       if (round > 0) state.interrupted = true
+      // What earlier chunks settled stands; only this chunk and those after it stay open.
+      state.open = stillOpen + chunks.drop(asking).flatten()
     }
-    for (chunk in JevRuleRequests.chunks(guidelines, view, state.open, offered)) {
+    for ((index, chunk) in chunks.withIndex()) {
+      asking = index
       // Built before the reservation: nothing between reserving and settling may throw, or the
       // requests waiting on the first one's price would wait for ever.
       val body = JevRuleRequests.body(guidelines, view, chunk, jevModel, offered)
@@ -529,13 +534,12 @@ internal class JevChecker(
             failure.kind != FailureKind.TOO_LARGE &&
             attempt < options.retry.maxAttempts &&
             wait <= options.retry.maxDelayMillis &&
-            ledger.mayRetry()
+            ledger.tryRetry()
         if (!retry) {
           return stop(
             failure = failure.problem + if (attempt > 1) " (after $attempt tries)" else ""
           )
         }
-        ledger.retry()
         when (failure.kind) {
           FailureKind.UNUSABLE -> {}
           // The server's wait applies to the key, so every request in flight honours it.
@@ -689,9 +693,11 @@ internal class JevChecker(
     /** Waits out a pause [pauseAll] set, if one is still running. */
     fun awaitPause(sleep: (Long) -> Unit)
 
-    fun mayRetry(): Boolean
-
-    fun retry()
+    /**
+     * Claims one of the run's retries, or false when they are used up: one atomic step, so workers
+     * failing together cannot all take the last one.
+     */
+    fun tryRetry(): Boolean
 
     fun invent(n: Int)
   }
@@ -773,13 +779,11 @@ internal class JevChecker(
 
     override fun invent(n: Int) = lock.withLock { invented += n }
 
-    override fun mayRetry(): Boolean = lock.withLock { failed < maxFailed }
-
-    override fun retry() {
-      lock.withLock {
-        failed++
-        retried++
-      }
+    override fun tryRetry(): Boolean = lock.withLock {
+      if (failed >= maxFailed) return false
+      failed++
+      retried++
+      true
     }
   }
 

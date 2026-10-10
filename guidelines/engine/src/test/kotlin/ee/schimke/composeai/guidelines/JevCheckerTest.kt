@@ -399,6 +399,41 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a subject split into chunks keeps the verdicts of a chunk asked before the cap`() {
+    // Thirty rules with long guidance: more than one request's worth of questions.
+    val long = "x".repeat(8_000)
+    val many =
+      CatalogGuidelinesLoader.parse(
+          """
+          {"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "wear-m3",
+           "platform": "wear", "version": 1, "rules": [""" +
+            (1..30).joinToString(",") { i ->
+              """{"id": "rule$i", "kind": "structure", "severity": "info", "guidance": "$long",
+                  "check": "check $i?", "source": "https://developer.android.com/r$i"}"""
+            } +
+            "]}"
+        )
+        .guidelines!!
+    val model = FakeDecisions()
+    val checker =
+      JevChecker(
+        model,
+        GuidelineEvidenceHost.None,
+        null,
+        GuidelineRunOptions(triage = false, maxCostUsd = 0.00003).withChecker(GuidelineChecker.JEV),
+        System::currentTimeMillis,
+      )
+    val result = checker.run(many, listOf(subject("a"))).results.single()
+    assertThat(model.bodies).hasSize(1)
+    val asked = questions(model.bodies.single()).keys.count { !isNode(it) }
+    assertThat(asked).isLessThan(30)
+    val passed = result.record.verdicts.count { it.verdict == GuidelineVerdictV1.PASS }
+    assertThat(passed).isEqualTo(asked)
+    assertThat(result.unchecked).hasSize(30 - asked)
+    assertThat(result.pending).isFalse()
+  }
+
+  @Test
   fun `a rate limit pauses every worker for the wait the server asked`() {
     val waits = Collections.synchronizedList(mutableListOf<Long>())
     var calls = 0
