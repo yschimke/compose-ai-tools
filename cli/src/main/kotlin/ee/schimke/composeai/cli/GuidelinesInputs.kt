@@ -11,6 +11,7 @@ import ee.schimke.composeai.guidelines.SubjectPicture
 import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
 import ee.schimke.composeai.previewdata.AccessibilityNode
 import ee.schimke.composeai.previewdata.AccessibilityReport
+import ee.schimke.composeai.previewdata.PreviewInfo
 import ee.schimke.composeai.render.matrix.MatrixCell
 import java.io.File
 import java.security.MessageDigest
@@ -136,9 +137,7 @@ internal data class HandoffInputs(
           // The long screenshot is served later, from the host, so the subject's pictures do not
           // carry it; its bytes join the identity the result is cached under, or a changed (or
           // newly staged) capture would be answered from a verdict that never saw it.
-          renderHash =
-            sha256(bytes) +
-              (entry.render?.let(::longCapture)?.let { "+scroll:" + sha256(it.readBytes()) } ?: ""),
+          renderHash = renderHash(sha256(bytes), entry.render?.let(::longCapture)),
           pictures =
             listOf(
               SubjectPicture(
@@ -216,6 +215,38 @@ internal data class HandoffInputs(
             }
         }
         .getOrDefault(emptyMap())
+    }
+
+    /**
+     * A render's identity in the result cache: its bytes' hash, plus its long screenshot's when it
+     * has one. A Gradle run and a handoff run compute it the same way for the same files, so a PR
+     * check (handoff) can be answered from a catalog publish's cache (Gradle).
+     */
+    internal fun renderHash(renderSha256: String, long: File?): String =
+      renderSha256 + (long?.let { "+scroll:" + sha256(it.readBytes()) } ?: "")
+
+    /** The `render/scroll/long` data product's kind, as the manifest names it. */
+    internal const val LONG_KIND: String = "render/scroll/long"
+
+    /**
+     * In a Gradle run, the long screenshot the render job would stage for [preview] (the apply
+     * action's `guidelines-stage.py`): its `render/scroll/long` data product under [buildDir]
+     * (`build/compose-previews`), else `<render>_SCROLL_long.png` beside [render]; null when there
+     * is none, or it is a link or too large to send.
+     */
+    internal fun longCaptureOf(preview: PreviewInfo?, render: File?, buildDir: File): File? {
+      val products =
+        preview
+          ?.dataProducts
+          .orEmpty()
+          .filter { it.kind == LONG_KIND && it.output.endsWith(".png") }
+          .mapNotNull { within(buildDir, it.output) }
+      val sibling = render?.resolveSibling(render.nameWithoutExtension + LONG_SUFFIX)
+      return (products + listOfNotNull(sibling)).firstOrNull {
+        it.isFile &&
+          !java.nio.file.Files.isSymbolicLink(it.toPath()) &&
+          it.length() <= MAX_LONG_BYTES
+      }
     }
 
     /** The sidecar the renderer writes beside a scrolled capture: the whole scrolling content. */

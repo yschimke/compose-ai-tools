@@ -147,6 +147,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             nodes[result.id],
             sources(result.id),
             kinds[result.id],
+            HandoffInputs.longCaptureOf(infos[result.id], renders[result.id], buildDir),
           )
           ?.copy(checks = checks[result.id].orEmpty())
       }
@@ -298,6 +299,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     nodes: List<AccessibilityNode>?,
     source: String?,
     kind: GuidelineSubjectKind?,
+    longCapture: File? = null,
   ): PreviewSubject? {
     png ?: return null
     val bytes = png.readBytes()
@@ -311,7 +313,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           ?: if (result.params.device != null) GuidelineSurfaces.SCREEN
           else GuidelineSurfaces.COMPONENT,
       profile = profileOverride ?: kind?.profile,
-      renderHash = result.sha256 ?: sha256(bytes),
+      // The identity a handoff run gives the same render ([HandoffInputs.renderHash]), so a PR's
+      // check can be answered from this run's cache when nothing about the preview changed.
+      renderHash = HandoffInputs.renderHash(result.sha256 ?: sha256(bytes), longCapture),
       pictures =
         listOf(
           SubjectPicture(

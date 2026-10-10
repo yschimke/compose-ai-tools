@@ -2,7 +2,7 @@
   "schema": "compose-ui-builder/catalog-guidelines/v1",
   "catalog": "wear-widgets",
   "platform": "any",
-  "version": 1,
+  "version": 2,
   "about": "Wear OS widget guidance (Remote Compose widgets in the Wear carousel): drawn whole in the Samsung and Pixel Watch containers, background on the widget document, fixed container heights with no nested scrolling, focused and predictable actions, 48dp targets, colour roles and type. Derived from remote-m3-catalog's remote-catalog rules, with each guidance trimmed to text developer.android.com publishes. Widget surfaces on the wear-widgets profile only; no text-entry rules.",
   "rules": [
     {
@@ -267,6 +267,48 @@
       "guidance": "contentDescriptions define the text that Talkback uses to describe any content that does not have a textual representation.",
       "check": "Does every icon that is the whole content of a control (an icon button, or a button with no text label) set a non-empty contentDescription, and does every icon beside a visible text label leave contentDescription empty so the label is not announced twice? Answer not_applicable when the design contains no icons.",
       "source": "https://developer.android.com/training/wearables/accessibility",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.focused",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Tiles should seek to refrain from using more than one interactive component to trigger a specific action, and instead attempt to simplify the overall layout into fewer containers.",
+      "check": "Does the widget focus on one task, with no two controls doing the same thing?",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/tiles/bestpractices",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.widgets.containers-have-actions",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "To ensure users can anticipate what each component within a Tile will do, we don't recommend using containers for decorative or structural purposes to avoid taps that don't do anything.",
+      "check": "Does every container that looks like a button (filled, rounded and button-shaped) have an action or click binding? Treat an empty or placeholder click handler as an action.",
+      "source": "https://developer.android.com/design/ui/wear/guides/surfaces/tiles/bestpractices",
+      "profiles": [
+        "wear-widgets"
+      ]
+    },
+    {
+      "id": "wear.type.titles-not-in-controls",
+      "surfaces": [
+        "widget"
+      ],
+      "kind": "structure",
+      "severity": "info",
+      "guidance": "Titles are smaller than Displays. They are typically reserved for medium-emphasis text that is shorter in length and not recommended for interactive components, rather page headings or sub headings.",
+      "check": "Does text inside buttons and cards use label or body styles, with title styles kept for headings outside controls? Answer not_applicable when no text style is set inside a control.",
+      "source": "https://developer.android.com/design/ui/wear/guides/styles/typography/apply",
       "profiles": [
         "wear-widgets"
       ]

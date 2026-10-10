@@ -104,6 +104,9 @@ internal data class ComposableSignatureInfo(
 
 internal object ComposableSignature {
 
+  /** Read file-facade kind from bytes; annotation scanners may substitute Metadata defaults. */
+  fun isTopLevel(classInfo: ClassInfo): Boolean = readClassMetadata(classInfo)?.kind in setOf(2, 5)
+
   /**
    * The value parameters of [method] on [classInfo], or empty when they can't be recovered.
    * [method] is matched inside the class metadata by its JVM name + descriptor, so overloads don't
