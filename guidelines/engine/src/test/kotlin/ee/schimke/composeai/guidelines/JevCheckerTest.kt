@@ -399,6 +399,27 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a failure with no cost does not price the pool for the requests waiting on it`() {
+    // The first reply is a 503 with no usage: the next requests must still go one at a time
+    // until a priced reply, so the cap is not crossed by requests reserved at zero.
+    val model = FakeDecisions(status = { call -> if (call == 1) 503 else 200 })
+    val checker =
+      JevChecker(
+        model,
+        GuidelineEvidenceHost.None,
+        null,
+        GuidelineRunOptions(triage = false, maxCostUsd = 0.00003).withChecker(GuidelineChecker.JEV),
+        System::currentTimeMillis,
+      )
+    checker.sleep = {}
+    checker.parallelism = 4
+    val run = checker.run(guidelines, (1..8).map { subject("c$it") })
+    // The failed one, its retry (priced at 0.00002), and nothing more under a 0.00003 cap.
+    assertThat(model.bodies).hasSize(2)
+    assertThat(run.costUsd).isAtMost(0.00003)
+  }
+
+  @Test
   fun `a subject split into chunks keeps the verdicts of a chunk asked before the cap`() {
     // Thirty rules with long guidance: more than one request's worth of questions.
     val long = "x".repeat(8_000)

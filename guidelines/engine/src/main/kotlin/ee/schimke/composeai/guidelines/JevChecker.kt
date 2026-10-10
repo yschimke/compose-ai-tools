@@ -728,7 +728,7 @@ internal class JevChecker(
     private var started = 0
     private var failed = 0
 
-    /** Whether a request has come back, so [dearest] is a price rather than a guess of zero. */
+    /** Whether a reply has named its cost, so [dearest] is a price rather than a guess of zero. */
     private var priced = false
     private val lock = ReentrantLock()
     private val settled = lock.newCondition()
@@ -768,10 +768,11 @@ internal class JevChecker(
     override fun settle(reservation: Double, cost: Double, counted: Boolean) = lock.withLock {
       inFlight = (inFlight - reservation).coerceAtLeast(0.0)
       started--
-      if (counted) {
-        requests++
-        priced = true
-      }
+      if (counted) requests++
+      // Only a reply that named a cost prices the pool: a 429 or 5xx with none would leave
+      // [dearest] at zero and let every waiting worker reserve nothing. Until one does, requests
+      // under a cap go one at a time.
+      if (cost > 0.0) priced = true
       spent += cost
       dearest = maxOf(dearest, cost)
       settled.signalAll()
