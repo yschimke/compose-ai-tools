@@ -427,9 +427,27 @@ internal class JevChecker(
               .getOrDefault(false)
           }
           .associate { it.subject.previewId to listOf(A11Y_NEED) }
-      if (wanted.isNotEmpty()) runCatching { host.prefetch(wanted) }
+      if (wanted.isNotEmpty()) prefetch(wanted, states)
     }
-    states.forEach { state -> guarded(state) { prepare(state, platform) } }
+    states
+      .filter { it.failure == null }
+      .forEach { state -> guarded(state) { prepare(state, platform) } }
+  }
+
+  /**
+   * One host prefetch for [needs]; when it throws, every subject it was for fails with it, rather
+   * than going on to be judged without the evidence it was fetching.
+   */
+  private fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>, states: List<Asked>) {
+    runCatching { host.prefetch(needs) }
+      .onFailure { e ->
+        states
+          .filter { it.subject.previewId in needs }
+          .forEach { state ->
+            state.failure = "the evidence host's fetch failed: ${e.message}"
+            if (state.rounds > 0) state.interrupted = true
+          }
+      }
   }
 
   /**
@@ -474,8 +492,10 @@ internal class JevChecker(
       active
         .filter { state -> state.wants.values.any { KIND_A11Y in it } && !state.a11yInHand }
         .associate { it.subject.previewId to listOf(A11Y_NEED) }
-    if (prefetch.isNotEmpty()) runCatching { host.prefetch(prefetch) }
-    active.forEach { state -> guarded(state) { serve(state, platform) } }
+    if (prefetch.isNotEmpty()) prefetch(prefetch, active)
+    active
+      .filter { it.failure == null }
+      .forEach { state -> guarded(state) { serve(state, platform) } }
   }
 
   private fun serve(state: Asked, platform: String) {
