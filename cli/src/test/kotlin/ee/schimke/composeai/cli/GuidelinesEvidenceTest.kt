@@ -215,6 +215,15 @@ class GuidelinesEvidenceTest {
     assertEquals(192, long.widthDp)
     assertTrue(long.description!!.contains("long screenshot"))
     assertEquals(null, inputs.host.render("x.Other", need))
+    // A changed long screenshot is a different judgement: it is part of the cached identity.
+    val before = subject.renderHash
+    renders.resolve("List-1_SCROLL_long.png").writeBytes(png() + byteArrayOf(0))
+    val after =
+      HandoffInputs.read(dir.resolve("previews.json"), null, a11y, null, null)
+        .subjects
+        .single()
+        .renderHash
+    assertTrue(before != after, "$before == $after")
     assertEquals(listOf("scrollable"), subject.nodes.single().states)
     assertEquals("TouchTargetSizeCheck", subject.checks.single().type)
     assertEquals("4,4,28,28", subject.checks.single().bounds)
