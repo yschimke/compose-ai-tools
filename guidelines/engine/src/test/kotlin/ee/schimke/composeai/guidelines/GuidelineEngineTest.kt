@@ -397,6 +397,72 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a capped run checks previews never checked before ahead of stale ones`() {
+    val dir = Files.createTempDirectory("guidelines-cache-order").toFile()
+    val model = FakeModel()
+    val pass =
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    repeat(2) { model.replies += pass }
+    fun engine(cap: Double? = null) =
+      GuidelineEngine(
+        model,
+        cache = GuidelineResultCache(dir),
+        options =
+          GuidelineRunOptions(
+            triage = false,
+            budget = GuidelineBudget(maxSubjects = 1),
+            maxCostUsd = cap,
+          ),
+      )
+    engine().run(guidelines, listOf(subject("a")))
+    assertThat(GuidelineResultCache(dir).checked("a")).isTrue()
+    assertThat(GuidelineResultCache(dir).checked("b")).isFalse()
+
+    // "a" re-rendered, "b" is new; the cap admits one request.
+    val capped =
+      engine(cap = 0.0005).run(guidelines, listOf(subject("a", hash = "h-a2"), subject("b")))
+
+    assertThat(model.requests).hasSize(2)
+    assertThat(capped.results.single { !it.pending }.previewId).isEqualTo("b")
+    assertThat(capped.results.single { it.pending }.previewId).isEqualTo("a")
+    dir.deleteRecursively()
+  }
+
+  @Test
+  fun `pruning keeps only the results a run read or wrote`() {
+    val dir = Files.createTempDirectory("guidelines-cache-prune").toFile()
+    val model = FakeModel()
+    repeat(2) {
+      model.replies +=
+        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+    }
+    val options = GuidelineRunOptions(triage = false)
+    GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+      .run(guidelines, listOf(subject("a"), subject("gone")))
+    fun results() = dir.walk().filter { it.isFile && it.extension == "json" }.count()
+    assertThat(results()).isEqualTo(2)
+
+    val cache = GuidelineResultCache(dir)
+    val second =
+      GuidelineEngine(model, cache = cache, options = options).run(guidelines, listOf(subject("a")))
+    assertThat(second.results.single().fromCache).isTrue()
+    cache.prune(setOf("a"))
+
+    assertThat(results()).isEqualTo(1)
+    assertThat(GuidelineResultCache(dir).checked("a")).isTrue()
+    assertThat(GuidelineResultCache(dir).checked("gone")).isFalse()
+    assertThat(
+        GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+          .run(guidelines, listOf(subject("a")))
+          .results
+          .single()
+          .fromCache
+      )
+      .isTrue()
+    dir.deleteRecursively()
+  }
+
+  @Test
   fun `the cache misses when the source, the surface or the rules' text change`() {
     val dir = Files.createTempDirectory("guidelines-cache-inputs").toFile()
     val model = FakeModel()

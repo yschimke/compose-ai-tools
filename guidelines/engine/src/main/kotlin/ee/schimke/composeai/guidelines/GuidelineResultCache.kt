@@ -15,6 +15,11 @@ public data class PreviewGuidelineResult(
   /** Rules still `needs_evidence` after the last round: unchecked, not passed. */
   val unchecked: List<String> = emptyList(),
   val fromCache: Boolean = false,
+  /**
+   * Not asked this run — the cost cap was reached or its request failed — so every rule is
+   * unchecked. Never cached; the next run asks again.
+   */
+  val pending: Boolean = false,
 )
 
 /**
@@ -32,8 +37,46 @@ public class GuidelineResultCache(private val directory: File) {
     model: String,
   ): PreviewGuidelineResult? {
     subject.renderHash ?: return null
-    return read(File(directory, path(inputsKey(subject, guidelines, model))))
+    val key = inputsKey(subject, guidelines, model)
+    return read(File(directory, path(key)))?.also { touched += key }
   }
+
+  /**
+   * Whether a result for [previewId] was ever kept here, under any inputs. A capped run asks for
+   * previews never checked before ahead of those whose earlier verdict went stale.
+   */
+  public fun checked(previewId: String): Boolean = marker(previewId).isFile
+
+  /**
+   * Deletes every result neither read nor written through this instance, and the markers of
+   * previews not in [previewIds]: what is left is the current catalog's verdicts, so a cache
+   * carried between CI runs does not grow with every render that ever changed. Call it only after a
+   * run over the whole catalog.
+   */
+  public fun prune(previewIds: Set<String>) {
+    directory
+      .listFiles()
+      .orEmpty()
+      .filter { it.isDirectory && it.name.length == 2 }
+      .forEach { shard ->
+        shard
+          .listFiles()
+          .orEmpty()
+          .filter { it.name.removeSuffix(".json") !in touched }
+          .forEach { it.delete() }
+        if (shard.listFiles().isNullOrEmpty()) shard.delete()
+      }
+    val keep = previewIds.map { sha256(it) }.toSet()
+    File(directory, CHECKED_DIR)
+      .listFiles()
+      .orEmpty()
+      .filter { it.name !in keep }
+      .forEach { it.delete() }
+  }
+
+  private val touched = mutableSetOf<String>()
+
+  private fun marker(previewId: String): File = File(directory, "$CHECKED_DIR/${sha256(previewId)}")
 
   /** Keeps [result], judged on [subject] against [guidelines] by [model]. */
   public fun put(
@@ -43,7 +86,10 @@ public class GuidelineResultCache(private val directory: File) {
     model: String,
   ) {
     subject.renderHash ?: return
-    write(File(directory, path(inputsKey(subject, guidelines, model))), result)
+    val key = inputsKey(subject, guidelines, model)
+    write(File(directory, path(key)), result)
+    touched += key
+    marker(subject.previewId).apply { parentFile.mkdirs() }.writeText("")
   }
 
   @Deprecated(
@@ -108,6 +154,8 @@ public class GuidelineResultCache(private val directory: File) {
   private fun path(key: String): String = "${key.take(2)}/$key.json"
 
   public companion object {
+    private const val CHECKED_DIR = "checked"
+
     /**
      * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
      * how evidence is attached), so results from an older engine are not reused.

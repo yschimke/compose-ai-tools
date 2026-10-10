@@ -3905,13 +3905,35 @@ jobs:
             composeai-fonts-${{ runner.os }}-${{ inputs.system }}-
             composeai-fonts-${{ runner.os }}-
 
+      # The engine's result cache, carried from this catalog's last publish, so a run asks the
+      # model only about previews whose render, source, nodes or rules changed — and a capped run
+      # spends its budget on previews never checked before. Keyed per run because Actions caches
+      # are immutable (a re-run of the same commit could not save its progress under the sha
+      # alone); the restore-keys prefix picks up the newest save for this catalog. The CLI prunes
+      # it to the current catalog's verdicts after a full run, so it does not grow with every
+      # render that ever changed.
+      #
+      # Single-job pipeline only, like the check itself: the check needs this job's Gradle build
+      # and render daemon, and a sharded publish renders in `render-shard` jobs and merges bundles
+      # in one that has neither — checking there would mean rendering the catalog a second time.
+      - name: Restore guideline results cache
+        if: ${{ inputs.guidelines && inputs.render-shards < 2 && inputs.upstream-repository == '' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.RENDER_DIR }}/**/build/compose-previews/guidelines
+          key: guidelines-${{ inputs.system }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            guidelines-${{ inputs.system }}-
+
       - name: Check design guidelines
         # Off unless `guidelines: true` and the `openrouter_key` secret are both set. Writes each
-        # module's `build/compose-previews/guidelines.json`, which `bundle pack` below carries into
-        # the bundle (compose-ai-tools' `BundlePreviewTask.guidelineResultsFiles`). Advisory, so it
-        # never fails the publish; a cost cap stops it, leaving the rest unchecked.
+        # module's `build/compose-previews/guidelines.json` — every preview's result, cached ones
+        # included — which `bundle pack` below carries into the bundle (compose-ai-tools'
+        # `BundlePreviewTask.guidelineResultsFiles`). Advisory, so it never fails the publish; a
+        # cost cap stops it, leaving the rest pending for the next publish.
         # Never in import mode: this runs the imported project's Gradle build, which must not hold
         # the key (the same reason BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN is withheld there).
+        id: guidelines
         if: ${{ inputs.guidelines && inputs.render-shards < 2 && inputs.upstream-repository == '' }}
         continue-on-error: true
         working-directory: ${{ env.RENDER_DIR }}
@@ -3936,6 +3958,29 @@ jobs:
           if ! run compose-preview "${args[@]}"; then
             echo "::warning title=Guidelines incomplete::compose-preview guidelines did not finish; the bundle carries whatever results it wrote."
           fi
+          # Coverage: checked by the model this run, answered from the cache, and pending (not
+          # reached before the cost cap, or in a failed request) — the next publish asks those first.
+          mapfile -d '' reports < <(find . -path '*/build/compose-previews/guidelines.json' -not -path '*/node_modules/*' -print0)
+          if [ "${#reports[@]}" -gt 0 ]; then
+            {
+              echo "### Design guidelines"
+              echo
+              echo "| Module | Checked | Cached | Pending |"
+              echo "| --- | ---: | ---: | ---: |"
+              for report in "${reports[@]}"; do
+                jq -r '"| `\(.module)` | \([.results[] | select((.fromCache // false | not) and (.pending // false | not))] | length) | \([.results[] | select(.fromCache == true)] | length) | \([.results[] | select(.pending == true)] | length) |"' "$report" || true
+              done
+              echo
+              echo "Pending previews are checked first on the next publish; raise \`guidelines-max-cost\` to converge in fewer publishes."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Save guideline results cache
+        if: ${{ always() && (steps.guidelines.outcome == 'success' || steps.guidelines.outcome == 'failure') }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.RENDER_DIR }}/**/build/compose-previews/guidelines
+          key: guidelines-${{ inputs.system }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Render catalog bundle
         # Sharded runs render in `render-shard` and merge below instead.

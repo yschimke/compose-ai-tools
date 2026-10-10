@@ -91,10 +91,13 @@ make the publish job read a runner file and send it to a model.
 
 ## Caching and cost
 
-Each result is cached under `build/compose-previews/guidelines/` by (preview id, render sha256,
-rules version, model): an unchanged render is not asked again, so a re-run after a small change pays
-only for what changed. `--changed-only` narrows to previews whose capture changed; `--max-cost`
-stops asking once spent, reporting the rest unchecked.
+Each result is cached under `build/compose-previews/guidelines/` by everything its verdict depends
+on (`GuidelineResultCache.inputsKey`: preview id, surface, profile, every picture's bytes, nodes,
+source, the rules' full content, model): an unchanged preview is not asked again, so a re-run after a
+small change pays only for what changed. `--changed-only` narrows to previews whose capture changed;
+`--max-cost` stops asking once spent, reporting the rest `pending` — and the run asks first about
+previews the cache has never held a result for, before those whose earlier verdict went stale. A
+run over the whole module prunes the cache to the verdicts it read or wrote.
 
 At the default model (`deepseek/deepseek-v4.1-flash`, called directly) a screen costs roughly
 $0.003–0.007; batching shares the rules and system prompt across subjects, so a component batch
@@ -164,6 +167,35 @@ produces; only the `scrollable` state is.
   step runs `compose-preview guidelines` before `bundle pack`, so the published bundle carries the
   results; without the secret, or with a CLI older than 2.38.0, it is skipped with a warning, and it
   never fails the publish.
+
+## Publishing results
+
+A catalog publish (`design-artifacts-reusable.yml`, single-job pipeline) carries the engine cache
+between runs: `actions/cache` restores `<module>/build/compose-previews/guidelines/` under
+`guidelines-<system>-…` before "Check design guidelines" and saves it afterwards, whether or not the
+check finished. Every publish therefore carries the **whole** catalog's results in
+`guidelines.json` — this run's answers plus every cached one — and the step summary reports how
+many previews were checked this run, answered from the cache, and left pending.
+
+- **First run versus incremental.** The first publish of a catalog asks about every preview, at
+  roughly $0.003–0.007 a screen and less per component (batches share the rules and prompt). Under
+  the default `guidelines-max-cost` of `1.00` that is a few hundred previews; a bigger catalog stops
+  at the cap with the rest pending. After that a publish pays only for previews whose render,
+  source, nodes or rules changed — usually cents — and a rule edit re-asks every preview it applies
+  to, since the rules' content is part of the key.
+- **Convergence.** A capped run spends its budget on previews never checked before, so coverage
+  grows by about a cap's worth each publish until every preview has a result; only then do stale
+  previews (re-rendered since their last verdict) compete for it. A preview pending after a cap
+  carries no verdicts, not its stale ones — an old render's findings would be about pixels the
+  catalog no longer draws. Raise `guidelines-max-cost` for one publish to converge at once.
+- **Cache scope.** Actions caches are per-branch with fallback to the default branch, so a publish
+  from `main` warms every branch's first run, and a branch's own saves stay on that branch. Each save
+  is keyed by commit and run (caches are immutable), and a restore takes the newest save for the
+  catalog.
+- **Sharded publishes do not check.** With `render-shards` of 2 or more the catalog renders in
+  `render-shard` jobs and only bundles reach the merge job, which has no Gradle build or render
+  daemon to fetch evidence from. Checking there would mean rendering the catalog again, so the step
+  and its cache stay on the single-job path.
 
 ## Next steps
 

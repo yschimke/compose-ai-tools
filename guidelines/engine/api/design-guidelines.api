@@ -134,8 +134,10 @@ public final class ee/schimke/composeai/guidelines/GuidelineResultCache {
 	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineResultCache$Companion;
 	public static final field REQUEST_FORMAT I
 	public fun <init> (Ljava/io/File;)V
+	public final fun checked (Ljava/lang/String;)Z
 	public final fun get (Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
 	public final fun get (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public final fun prune (Ljava/util/Set;)V
 	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;ILjava/lang/String;)V
 	public final fun put (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Lee/schimke/composeai/guidelines/PreviewSubject;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;)V
 }
@@ -308,17 +310,19 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 
 public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult {
 	public static final field Companion Lee/schimke/composeai/guidelines/PreviewGuidelineResult$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Z)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public final fun component4 ()Ljava/util/List;
 	public final fun component5 ()Z
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;Z)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
-	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZZ)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/PreviewGuidelineResult;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;Ljava/util/List;ZZILjava/lang/Object;)Lee/schimke/composeai/guidelines/PreviewGuidelineResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFromCache ()Z
+	public final fun getPending ()Z
 	public final fun getPreviewId ()Ljava/lang/String;
 	public final fun getRecord ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public final fun getRenderHash ()Ljava/lang/String;

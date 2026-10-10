@@ -63,7 +63,8 @@ public data class GuidelineRunResult(
 /**
  * Checks rendered previews against a catalog's guidelines.
  *
- * Previews whose render is unchanged are answered from [cache]. The rest go in batches
+ * Previews whose render is unchanged are answered from [cache]. The rest go in batches, those the
+ * cache has never seen ahead of those it holds a stale verdict for
  * ([PreviewGuidelineRequests.batches]); before each batch an optional Jev triage decides which
  * extra evidence (a dark or large-font render, accessibility nodes) each subject needs, and the
  * [host] fetches only that. After round 0, rules the model answered `needs_evidence` are re-asked
@@ -93,7 +94,14 @@ public class GuidelineEngine(
       hit == null
     }
 
-    for (batch0 in PreviewGuidelineRequests.batches(guidelines, pending, options.budget)) {
+    // Previews never checked go first, so a capped run spends its budget widening coverage before
+    // re-asking previews whose earlier verdict went stale. Batched apart: batching groups by
+    // surface, which would otherwise interleave the two.
+    val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
+    val batches =
+      PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
+        PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
+    for (batch0 in batches) {
       if (options.maxCostUsd != null && spent >= options.maxCostUsd) {
         batch0.subjects.forEach { results += unchecked(guidelines, it) }
         problems += "the cost cap was reached; ${batch0.subjects.size} previews were not checked"
@@ -373,6 +381,7 @@ public class GuidelineEngine(
       renderHash = subject.renderHash,
       record = record(guidelines, subject, asked, emptyList(), null, 0.0),
       unchecked = asked.map { it.id },
+      pending = true,
     )
   }
 }

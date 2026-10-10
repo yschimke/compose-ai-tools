@@ -144,16 +144,22 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           nodes = nodes,
           sources = sources,
         )
+      val cache = GuidelineResultCache(buildDir.resolve("guidelines"))
       val run =
         engine(
             client,
-            buildDir,
+            cache,
             guidelines,
             guidelinesLocation ?: "${buildDir.path}/" + CatalogGuidelinesV1.FILE_NAME,
             host,
           )
           .run(guidelines, subjects)
-      writeReport(
+      // A run over the whole catalog leaves the cache holding only its verdicts, so one carried
+      // between CI runs does not grow with every render that ever changed.
+      if (!narrowed && subjects.size == moduleResults.size) {
+        cache.prune(subjects.map { it.previewId }.toSet())
+      }
+      writeGuidelinesReport(
         buildDir,
         ModuleGuidelines(module, guidelines.catalog, model, run.results),
         narrowed,
@@ -177,12 +183,10 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     )
   }
 
-  /**
-   * The engine over [client], caching under [buildDir], fetching follow-up evidence from [host].
-   */
+  /** The engine over [client], caching in [cache], fetching follow-up evidence from [host]. */
   private fun engine(
     client: GuidelineModel,
-    buildDir: File,
+    cache: GuidelineResultCache,
     guidelines: CatalogGuidelinesV1,
     rulesSource: String,
     host: GuidelineEvidenceHost = GuidelineEvidenceHost.None,
@@ -190,7 +194,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     GuidelineEngine(
         model = client,
         host = host,
-        cache = GuidelineResultCache(buildDir.resolve("guidelines")),
+        cache = cache,
         options =
           GuidelineRunOptions(
             model = model,
@@ -236,7 +240,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         surfaceOverride = surfaceOverride,
       )
     val outDir = File(rendersDir ?: previewsJson?.let { File(it).absoluteFile.parent } ?: ".")
-    val run = engine(client, outDir, guidelines, location).run(guidelines, inputs.subjects)
+    val run =
+      engine(client, GuidelineResultCache(outDir.resolve("guidelines")), guidelines, location)
+        .run(guidelines, inputs.subjects)
     val report = ModuleGuidelines("handoff", guidelines.catalog, model, run.results)
     outDir
       .resolve("guidelines.json")
@@ -323,24 +329,6 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       .getOrDefault(emptyMap())
   }
 
-  private fun writeReport(buildDir: File, report: ModuleGuidelines, narrowed: Boolean) {
-    val file = buildDir.resolve("guidelines.json")
-    val merged =
-      if (narrowed && file.isFile) {
-        val previous = runCatching {
-          REPORT_JSON.decodeFromString(ModuleGuidelines.serializer(), file.readText())
-        }
-          .getOrNull()
-        val kept =
-          previous?.results.orEmpty().filter { old ->
-            report.results.none { it.previewId == old.previewId }
-          }
-        report.copy(results = kept + report.results)
-      } else report
-    file.parentFile.mkdirs()
-    file.writeText(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), merged))
-  }
-
   /** Writes `<render>.guidelines.png` beside each render with findings. */
   private fun annotateAll(
     results: List<PreviewGuidelineResult>,
@@ -393,7 +381,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   companion object {
     const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
     private const val KIND_DEVICE = "device"
-    private val REPORT_JSON = Json {
+    internal val REPORT_JSON = Json {
       ignoreUnknownKeys = true
       explicitNulls = false
       prettyPrint = true
@@ -426,7 +414,8 @@ internal object GuidelinesReportRenderer {
         "guidelines v${guidelines.version} — ${run.requests} request(s), " +
         "$" +
         "%.4f".format(run.costUsd) +
-        (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "")
+        (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
+        (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "")
     )
     run.results.forEach { result ->
       val failures = result.failures()
@@ -468,3 +457,31 @@ internal fun guidelinesExitCode(incomplete: Boolean, failed: Boolean, buildOk: B
     buildOk -> 0
     else -> 2
   }
+
+/**
+ * Writes [report] to `guidelines.json` under [buildDir]: every result the run returned, cached ones
+ * included, so a publish carries the whole catalog and not only what this run asked about. A
+ * [narrowed] run keeps the previous file's results for the previews it did not cover.
+ */
+internal fun writeGuidelinesReport(buildDir: File, report: ModuleGuidelines, narrowed: Boolean) {
+  val file = buildDir.resolve("guidelines.json")
+  val merged =
+    if (narrowed && file.isFile) {
+      val previous = runCatching {
+        GuidelinesCommand.REPORT_JSON.decodeFromString(
+          ModuleGuidelines.serializer(),
+          file.readText(),
+        )
+      }
+        .getOrNull()
+      val kept =
+        previous?.results.orEmpty().filter { old ->
+          report.results.none { it.previewId == old.previewId }
+        }
+      report.copy(results = kept + report.results)
+    } else report
+  file.parentFile.mkdirs()
+  file.writeText(
+    GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), merged)
+  )
+}
