@@ -140,7 +140,13 @@ internal data class HandoffInputs(
           // The long screenshot is served later, from the host, so the subject's pictures do not
           // carry it; its bytes join the identity the result is cached under, or a changed (or
           // newly staged) capture would be answered from a verdict that never saw it.
-          renderHash = renderHash(sha256(bytes), entry.render?.let(::longCapture)),
+          renderHash =
+            renderHash(
+              sha256(bytes),
+              entry.render?.let(::longCapture),
+              a11y =
+                nodes[entry.id].orEmpty().isNotEmpty() || checks[entry.id].orEmpty().isNotEmpty(),
+            ),
           pictures =
             listOf(
               SubjectPicture(
@@ -224,8 +230,13 @@ internal data class HandoffInputs(
      * has one. A Gradle run and a handoff run compute it the same way for the same files, so a PR
      * check (handoff) can be answered from a catalog publish's cache (Gradle).
      */
-    internal fun renderHash(renderSha256: String, long: File?): String =
-      renderSha256 + (long?.let { "+scroll:" + sha256(it.readBytes()) } ?: "")
+    internal fun renderHash(renderSha256: String, long: File?, a11y: Boolean = false): String =
+      renderSha256 +
+        (long?.let { "+scroll:" + sha256(it.readBytes()) } ?: "") +
+        // Whether accessibility evidence could be asked for: a verdict reached without it (no
+        // a11y pipeline, a daemon that failed) must not answer a run that has it. The data itself
+        // is derived from the render, so its availability, not its bytes, is what differs.
+        (if (a11y) "+a11y" else "")
 
     /** The `render/scroll/long` data product's kind, as the manifest names it. */
     internal const val LONG_KIND: String = "render/scroll/long"
@@ -529,4 +540,21 @@ internal class CliEvidenceHost(
       }
     }
   }
+}
+
+/**
+ * [report] (an `accessibility.json`) without the entries of [ids], every other field kept. Run
+ * before a narrowed fetch of [ids]: the fetch keeps a preview's previous entry when its own fetch
+ * fails, and that entry may be of an older render. Leaves an unreadable file alone.
+ */
+internal fun dropA11yEntries(report: File, ids: Set<String>) {
+  if (!report.isFile || ids.isEmpty()) return
+  val root =
+    runCatching { Json.parseToJsonElement(report.readText()) }.getOrNull() as? JsonObject ?: return
+  val entries = root["entries"] as? JsonArray ?: return
+  val kept = entries.filterNot { entry ->
+    ((entry as? JsonObject)?.get("previewId") as? JsonPrimitive)?.contentOrNull in ids
+  }
+  if (kept.size == entries.size) return
+  report.writeText(JsonObject(root + ("entries" to JsonArray(kept))).toString())
 }
