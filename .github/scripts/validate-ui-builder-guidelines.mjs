@@ -119,7 +119,17 @@ if (root !== undefined && (root === null || typeof root !== 'object' || Array.is
         problems.push(`include ${url} is not a guidelines pack`);
         continue;
       }
-      if (Array.isArray(pack.includes) && pack.includes.length) {
+      // The rest of the shape the Gradle flattener holds a pack to (UiBuilderGuidelinesFile
+      // .problems): a pack it refuses would publish the catalog unflattened.
+      if (typeof pack.catalog !== 'string' || !pack.catalog.trim()) {
+        problems.push(`include ${url} has no \`catalog\``);
+      }
+      if (!Number.isInteger(pack.version)) {
+        problems.push(`include ${url}'s \`version\` is not an integer`);
+      }
+      if (pack.includes !== undefined && !Array.isArray(pack.includes)) {
+        problems.push(`include ${url}'s \`includes\` is not a list`);
+      } else if (Array.isArray(pack.includes) && pack.includes.length) {
         problems.push(`include ${url} includes others; packs may not nest`);
       }
       checkRules(pack.rules, `include ${url}: `);
