@@ -31,10 +31,24 @@ From the module's `build/compose-previews/ui-builder.guidelines.json` (copied th
 when the catalog commits one, #5733), or `--guidelines <file-or-url>`. A catalog with none has no
 check. Per subject:
 
-- **Surface.** A preview with a `device` is a `screen`; anything else is a `component` (a button
-  sticker, a card). `--surface` overrides. A rule naming surfaces is asked only of those; a rule
-  naming none is asked of every subject.
-- **Profile.** A rule naming Remote Compose profiles is asked only of a subject targeting one.
+- **Surface.** Read off the preview's `previews.json` entry by `GuidelineSurfaces.of`, the same in
+  a live run, a handoff run and anything else consuming the engine. A preview discovery records a
+  `widget` for is a `widget`: a Glance Wear widget (drawn through `WearWidgetPreview` /
+  `CapturingWearWidgetPreview`, or fed a `androidx.glance.wear` `@PreviewParameter` provider) or a
+  launcher widget (a Glance app widget, a `@LauncherWidgetPreview` / `@LauncherWidgetResize`
+  capture). Otherwise a preview with a `device` is a `screen` and anything else a `component` (a
+  button sticker, a card). `--surface` overrides for every preview. A rule naming surfaces is asked
+  only of those; a rule naming none is asked of every subject.
+- **Profile.** A rule naming Remote Compose profiles is asked only of a subject targeting one. A
+  Wear widget targets `wear-widgets` (from the manifest's `widget.profile`); `--profile`
+  overrides. A launcher widget's profile is chosen at runtime, so discovery leaves it unset.
+- **Nothing to ask.** A subject no subject- or set-scoped rule applies to is sent nowhere: its
+  result carries `noRules` (why) and the run a problem line, rather than a request whose empty
+  reply reads as unreadable at best and a clean pass at worst.
+- **Frames.** A catalog's `frames` (a widget in each launcher's host container, a list unrolled, a
+  fixed size) are pictures a host that renders designs can draw. A preview run has only each
+  preview's own capture, so the prompt names the frames that were not rendered and tells the model
+  to judge a rule pointing at one on the pictures it has.
 - **Scope.** `subject` rules are asked per subject; `set` rules once per batch, across all of it.
 - **Pictures.** Visual rules are left out of a subject with no picture.
 
@@ -113,8 +127,11 @@ publish phase on fork PRs; see Next steps).
 ## Output
 
 - `build/compose-previews/guidelines.json` — one `ModuleGuidelines` per module: each preview's
-  `GuidelineRecordV1` (verdicts, served model, cost), its regions and its unchecked rules. A narrowed
-  run merges into what is there.
+  `GuidelineRecordV1` (verdicts, served model, cost), its regions and its unchecked rules, `pending`
+  when it was never asked (a failed request, the cost cap) and `noRules` when nothing applied; and
+  the run's `requests`, `failedRequests` and `problems`, so a reader can tell a run that judged
+  nothing from a clean pass. A narrowed run merges into what is there. The PR comment lists every
+  preview that was not checked, and why, and never says "No findings" when nothing was judged.
 - `--annotate` writes `<render>.guidelines.png` beside each render with findings: outlines (solid for
   nodes from the accessibility bounds, dashed for regions) drawn just outside what they mark and
   never filled over it, each with a numbered badge. Findings are numbered in the order they are

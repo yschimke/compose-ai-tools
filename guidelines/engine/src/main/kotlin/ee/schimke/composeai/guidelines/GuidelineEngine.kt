@@ -97,7 +97,21 @@ public class GuidelineEngine(
     var requests = 0
     var failedRequests = 0
 
-    val pending = subjects.filter { subject ->
+    // A subject no rule applies to costs no request: asked about nothing, a model can only answer
+    // nothing, which reads as an unreadable reply at best and a clean pass at worst.
+    val askable = subjects.filter { subject ->
+      val reason = guidelines.noRulesFor(subject) ?: return@filter true
+      results += noRules(guidelines, subject, reason)
+      false
+    }
+    results
+      .filter { it.noRules != null }
+      .groupBy { it.noRules!! }
+      .forEach { (reason, skipped) ->
+        problems += "${skipped.size} preview(s) were not checked: $reason"
+      }
+
+    val pending = askable.filter { subject ->
       val hit = cache?.get(subject, guidelines, options.model)
       if (hit != null) results += hit
       hit == null
@@ -397,6 +411,19 @@ public class GuidelineEngine(
         routing = served?.routing
       }
       .build()
+
+  /** [subject]'s result when no rule applies to it: nothing asked, nothing unchecked. */
+  private fun noRules(
+    guidelines: CatalogGuidelinesV1,
+    subject: PreviewSubject,
+    reason: String,
+  ): PreviewGuidelineResult =
+    PreviewGuidelineResult(
+      previewId = subject.previewId,
+      renderHash = subject.renderHash,
+      record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
+      noRules = reason,
+    )
 
   private fun unchecked(
     guidelines: CatalogGuidelinesV1,

@@ -187,6 +187,7 @@ internal object CliFlagValidation {
             "--annotate",
             "--guidelines",
             "--surface",
+            "--profile",
             "--previews-json",
             "--renders-dir",
             "--a11y-json",

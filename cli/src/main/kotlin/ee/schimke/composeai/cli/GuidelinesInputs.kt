@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
+import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.PreviewCheck
 import ee.schimke.composeai.guidelines.PreviewGuidelineRequests
@@ -47,6 +48,10 @@ internal data class HandoffInputs(
      * PNGs in [rendersDir], or a module's `previews.json`, whose captures name each render
      * (resolved beside the file, then by name in [rendersDir]) and whose `sourceFile`/`bodyLine`
      * give each preview's source under [sourceRoot]. [a11yJson] is an `accessibility.json`.
+     *
+     * Each preview's surface and profile come from its manifest entry ([GuidelineSurfaces.of]);
+     * [surfaceOverride] and [profileOverride] replace them for every preview, for a manifest that
+     * predates the signal or a flat id list, which has none.
      */
     fun read(
       previewsJson: File?,
@@ -54,6 +59,7 @@ internal data class HandoffInputs(
       a11yJson: File?,
       sourceRoot: File?,
       surfaceOverride: String?,
+      profileOverride: String? = null,
     ): HandoffInputs {
       val nodes = readNodes(a11yJson)
       val checks = readChecks(a11yJson)
@@ -83,7 +89,7 @@ internal data class HandoffInputs(
               render = render,
               sourceFile = preview.text("sourceFile"),
               bodyLine = (preview["bodyLine"] as? JsonPrimitive)?.intOrNull,
-              screen = params?.text("device") != null,
+              kind = GuidelineSurfaces.of(preview),
               scrollMode = scrollMode,
               widthDp = (params?.get("widthDp") as? JsonPrimitive)?.intOrNull ?: 0,
               heightDp = (params?.get("heightDp") as? JsonPrimitive)?.intOrNull ?: 0,
@@ -125,9 +131,8 @@ internal data class HandoffInputs(
         PreviewSubject(
           previewId = entry.id,
           label = entry.label,
-          surface =
-            surfaceOverride
-              ?: if (entry.screen) GuidelineSurfaces.SCREEN else GuidelineSurfaces.COMPONENT,
+          surface = surfaceOverride ?: entry.kind.surface,
+          profile = profileOverride ?: entry.kind.profile,
           // The long screenshot is served later, from the host, so the subject's pictures do not
           // carry it; its bytes join the identity the result is cached under, or a changed (or
           // newly staged) capture would be answered from a verdict that never saw it.
@@ -158,6 +163,24 @@ internal data class HandoffInputs(
         entries.associate { it.id to it.render },
         entries.associate { it.id to (it.widthDp to it.heightDp) },
       )
+    }
+
+    /**
+     * Each preview's surface and profile ([GuidelineSurfaces.of]) by id, from a module's
+     * `previews.json`; empty when it cannot be read.
+     */
+    fun readKinds(previewsJson: File?): Map<String, GuidelineSubjectKind> {
+      if (previewsJson == null || !previewsJson.isFile) return emptyMap()
+      val parsed =
+        runCatching { JSON.parseToJsonElement(previewsJson.readText()) }.getOrNull() as? JsonObject
+      return (parsed?.get("previews") as? JsonArray)
+        .orEmpty()
+        .mapNotNull { element ->
+          val preview = element as? JsonObject ?: return@mapNotNull null
+          val id = preview.text("id") ?: return@mapNotNull null
+          id to GuidelineSurfaces.of(preview)
+        }
+        .toMap()
     }
 
     fun readNodes(file: File?): Map<String, List<AccessibilityNode>> {
@@ -269,7 +292,7 @@ internal data class HandoffInputs(
     val render: File?,
     val sourceFile: String? = null,
     val bodyLine: Int? = null,
-    val screen: Boolean = false,
+    val kind: GuidelineSubjectKind = GuidelineSubjectKind(GuidelineSurfaces.COMPONENT),
     val widthDp: Int = 0,
     val heightDp: Int = 0,
     val scrollMode: String? = null,

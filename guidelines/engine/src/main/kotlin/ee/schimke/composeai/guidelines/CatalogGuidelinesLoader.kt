@@ -5,6 +5,10 @@ import ee.schimke.composeai.guidelines.protocol.GuidelineRuleV1
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -102,6 +106,73 @@ public object GuidelineSurfaces {
    * asked of one.
    */
   public const val COMPONENT: String = "component"
+
+  /**
+   * The profile a Wear widget's rules name: the `WEAR_WIDGETS` Remote Compose platform profile a
+   * Glance Wear widget document is recorded under, in the guidelines' own spelling (the UI
+   * builder's `RemoteProfileTargetV1`).
+   */
+  public const val WEAR_WIDGETS_PROFILE: String = "wear-widgets"
+
+  /**
+   * What a `previews.json` entry is to the guidelines: the surface its rules are chosen by, and the
+   * profile it targets when the manifest says. One answer for every host — the CLI's live and
+   * handoff runs, the MCP server — so a preview is judged against the same rules wherever it is
+   * checked.
+   *
+   * A widget is what discovery records under `widget` (a Glance Wear widget preview, a launcher
+   * widget), and, for a manifest written before discovery recorded that, what the manifest itself
+   * shows: a Glance app-widget preview, a launcher-widget capture, or a `@PreviewParameter`
+   * provider from `androidx.glance.wear`. Otherwise a preview naming a device is a [SCREEN] and one
+   * without is a [COMPONENT].
+   */
+  public fun of(preview: JsonObject): GuidelineSubjectKind {
+    val params = preview["params"] as? JsonObject
+    (preview["widget"] as? JsonObject)?.let { widget ->
+      return GuidelineSubjectKind(WIDGET, widget.text("profile"))
+    }
+    val launcherCapture =
+      (preview["captures"] as? JsonArray).orEmpty().any {
+        (it as? JsonObject)?.get("launcherWidget") is JsonObject
+      }
+    if (params?.text("kind") == GLANCE_APPWIDGET_KIND || launcherCapture) {
+      return GuidelineSubjectKind(WIDGET)
+    }
+    if (params?.text("previewParameterProviderClassName")?.startsWith(GLANCE_WEAR_PREFIX) == true) {
+      return GuidelineSubjectKind(WIDGET, WEAR_WIDGETS_PROFILE)
+    }
+    return GuidelineSubjectKind(if (params?.text("device") != null) SCREEN else COMPONENT)
+  }
+
+  private const val GLANCE_APPWIDGET_KIND = "GLANCE_APPWIDGET"
+  private const val GLANCE_WEAR_PREFIX = "androidx.glance.wear."
+
+  private fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
+}
+
+/**
+ * What a preview is to the guidelines ([GuidelineSurfaces.of]): its [surface], and the Remote
+ * Compose [profile] it targets when known — a profile-specific rule is asked only of a subject
+ * naming that profile.
+ */
+public data class GuidelineSubjectKind(val surface: String, val profile: String? = null)
+
+/**
+ * Why [subject] is asked nothing, or null when some rule applies to it: no subject-scoped or
+ * set-scoped rule of [this] names its surface and profile. Such a subject costs no request; its
+ * result says so rather than reading as a pass.
+ */
+public fun CatalogGuidelinesV1.noRulesFor(subject: PreviewSubject): String? {
+  val hasPicture = subject.pictures.isNotEmpty()
+  if (subjectRules(subject.surface, subject.profile, hasPicture).isNotEmpty()) return null
+  val set =
+    setRules(hasPicture).filter {
+      it.appliesToSurface(subject.surface) && it.appliesToProfile(subject.profile)
+    }
+  if (set.isNotEmpty()) return null
+  return "no rule in the `$catalog` guidelines applies to surface `${subject.surface}`" +
+    (subject.profile?.let { ", profile `$it`" } ?: " with no profile") +
+    (if (hasPicture) "" else " without a picture")
 }
 
 /**

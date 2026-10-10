@@ -222,7 +222,24 @@ object PreviewTargetInference {
      * componentLibraryPrefixes }` extension. See [isComponentLibraryOwner].
      */
     extraLibraryPrefixes: List<String> = emptyList(),
-  ): List<PreviewTarget> {
+  ): List<PreviewTarget> =
+    inferComponents(
+      renderedCalls(previewClassInfo, previewMethod, scanResult, projectClassFqns),
+      scanResult,
+      extraLibraryPrefixes,
+    )
+
+  /**
+   * Every call a preview renders through: its body, the compose-singleton lambdas it passes, and
+   * the project composables those reach (to [PROJECT_COMPOSABLE_MAX_DEPTH]). Empty when the
+   * bytecode cannot be read. One walk serves [inferComponents] and [drawsWearWidget].
+   */
+  internal fun renderedCalls(
+    previewClassInfo: ClassInfo,
+    previewMethod: MethodInfo,
+    scanResult: ScanResult,
+    projectClassFqns: Set<String>,
+  ): List<Invocation> {
     val directCalls =
       try {
         extractCalls(previewClassInfo, previewMethod)
@@ -230,10 +247,34 @@ object PreviewTargetInference {
         return emptyList()
       }
     val lambdaCalls = extractComposeSingletonLambdaCalls(directCalls, scanResult, projectClassFqns)
-    val calls =
-      directCalls +
-        lambdaCalls +
-        extractProjectComposableCalls(directCalls + lambdaCalls, scanResult, projectClassFqns)
+    return directCalls +
+      lambdaCalls +
+      extractProjectComposableCalls(directCalls + lambdaCalls, scanResult, projectClassFqns)
+  }
+
+  /**
+   * Whether [calls] draw a Glance Wear widget through a widget-preview entry point: upstream's
+   * `androidx.glance.wear.tooling.preview.WearWidgetPreview`, or compose-ai-tools'
+   * `CapturingWearWidgetPreview`, which wraps it to keep the encoded document. Either one renders
+   * its content inside the Wear widget host's container, under the `WEAR_WIDGETS` profile, so the
+   * preview is a widget whatever its canvas says.
+   */
+  internal fun drawsWearWidget(calls: List<Invocation>): Boolean = calls.any { call ->
+    (call.ownerFqn == CAPTURING_WEAR_WIDGET_PREVIEW_OWNER &&
+      call.methodName.startsWith("CapturingWearWidgetPreview")) ||
+      (call.ownerFqn.startsWith(GLANCE_WEAR_TOOLING_PREVIEW_PACKAGE) &&
+        call.methodName.startsWith("WearWidgetPreview"))
+  }
+
+  private const val CAPTURING_WEAR_WIDGET_PREVIEW_OWNER =
+    "ee.schimke.composeai.wear.preview.CapturingWearWidgetPreviewKt"
+  private const val GLANCE_WEAR_TOOLING_PREVIEW_PACKAGE = "androidx.glance.wear.tooling.preview."
+
+  internal fun inferComponents(
+    calls: List<Invocation>,
+    scanResult: ScanResult,
+    extraLibraryPrefixes: List<String>,
+  ): List<PreviewTarget> {
     val candidates =
       calls
         .asSequence()

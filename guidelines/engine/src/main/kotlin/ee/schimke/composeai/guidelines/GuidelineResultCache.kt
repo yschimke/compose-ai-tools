@@ -20,7 +20,22 @@ public data class PreviewGuidelineResult(
    * unchecked. Never cached; the next run asks again.
    */
   val pending: Boolean = false,
-)
+  /**
+   * Why it was asked nothing: no rule of the catalog's applies to its surface and profile
+   * ([noRulesFor]). Such a result is neither a pass nor a finding — nothing was judged.
+   */
+  val noRules: String? = null,
+) {
+  /** Binary-compatible constructor for callers compiled before [noRules]. */
+  public constructor(
+    previewId: String,
+    renderHash: String?,
+    record: GuidelineRecordV1,
+    unchecked: List<String>,
+    fromCache: Boolean,
+    pending: Boolean,
+  ) : this(previewId, renderHash, record, unchecked, fromCache, pending, null)
+}
 
 /**
  * Results kept under [directory] (`build/compose-previews/guidelines/`), keyed by everything a

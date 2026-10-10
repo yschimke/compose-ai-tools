@@ -693,6 +693,130 @@ class GuidelineEngineTest {
     assertThat(a.failures().single { it.ruleId == "v7" }.regions).hasSize(1)
   }
 
+  /** remote-m3's shape: every rule is a Wear widget rule, and the catalog draws host frames. */
+  private val widgetOnly: CatalogGuidelinesV1 =
+    CatalogGuidelinesLoader.parse(
+        """
+        {
+          "schema": "compose-ui-builder/catalog-guidelines/v1",
+          "catalog": "remote-m3", "platform": "wear", "version": 1,
+          "frames": [
+            {"kind": "widget-host", "surface": "widget", "hostShape": "round", "label": "Samsung"},
+            {"kind": "widget-host", "surface": "widget", "hostShape": "squircle",
+             "label": "Pixel Watch"}
+          ],
+          "rules": [
+            {"id": "wear.layout.no-clipping", "kind": "visual", "severity": "warning",
+             "guidance": "g", "check": "whole?", "source": "https://developer.android.com/w",
+             "surfaces": ["widget"], "profiles": ["wear-widgets"]}
+          ]
+        }
+        """
+      )
+      .guidelines!!
+
+  @Test
+  fun `a subject no rule applies to costs no request and says why`() {
+    // remote-m3-catalog#72: five previews judged as components against widget-only rules were
+    // sent as one request asking nothing; the empty reply came back "unreadable" and the PR
+    // comment read "No findings".
+    val model = FakeModel()
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(widgetOnly, listOf(subject("a"), subject("b")))
+
+    assertThat(model.requests).isEmpty()
+    assertThat(run.requests).isEqualTo(0)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.map { it.noRules }.distinct())
+      .containsExactly(
+        "no rule in the `remote-m3` guidelines applies to surface `component` with no profile"
+      )
+    assertThat(run.results.none { it.pending }).isTrue()
+    assertThat(run.problems.single()).startsWith("2 preview(s) were not checked: no rule")
+  }
+
+  @Test
+  fun `a widget targeting the rules' profile is asked them, and only it is`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[{"subjectId":"s1","ruleId":"wear.layout.no-clipping","verdict":"fail",
+        "confidence":0.9,"nodeIds":[],"reason":"Text cut.","needs":[],"regions":[]}]}"""
+    val widget =
+      subject("w", GuidelineSurfaces.WIDGET).copy(profile = GuidelineSurfaces.WEAR_WIDGETS_PROFILE)
+    val run =
+      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+        .run(widgetOnly, listOf(widget, subject("c")))
+
+    assertThat(model.requests).hasSize(1)
+    assertThat(model.requests.single().subjects.map { it.id }).containsExactly("w")
+    assertThat(run.results.single { it.previewId == "w" }.failures().single().ruleId)
+      .isEqualTo("wear.layout.no-clipping")
+    assertThat(run.results.single { it.previewId == "c" }.noRules).isNotNull()
+  }
+
+  @Test
+  fun `host frames no subject has a picture of are named as not rendered`() {
+    val widget =
+      subject("w", GuidelineSurfaces.WIDGET).copy(profile = GuidelineSurfaces.WEAR_WIDGETS_PROFILE)
+    val request =
+      PreviewGuidelineRequests.request(
+        widgetOnly,
+        GuidelineBatch(GuidelineSurfaces.WIDGET, listOf(widget)),
+        "rules.json",
+        emptyList(),
+      )
+    assertThat(request.userText)
+      .contains(
+        "Not rendered here: the catalog's Samsung (round widget-host), Pixel Watch (squircle " +
+          "widget-host) picture(s)."
+      )
+    assertThat(request.userText).contains("never cite a picture that is not attached")
+    // A component batch is not told about widget frames.
+    val component =
+      PreviewGuidelineRequests.request(
+        widgetOnly,
+        GuidelineBatch(GuidelineSurfaces.COMPONENT, listOf(subject("c"))),
+        "rules.json",
+        emptyList(),
+      )
+    assertThat(component.userText).doesNotContain("Not rendered here")
+  }
+
+  @Test
+  fun `a manifest entry says what surface and profile a preview is`() {
+    fun of(json: String) =
+      GuidelineSurfaces.of(kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject)
+
+    // remote-m3-catalog#72's widget sticker, as discovery now records it.
+    assertThat(
+        of(
+          """{"id":"w","params":{"device":null,"widthDp":216,"heightDp":124},
+             "widget":{"host":"wear","profile":"wear-widgets"}}"""
+        )
+      )
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET, "wear-widgets"))
+    // The same sticker from a plugin that predates the field is, as far as anything can tell, a
+    // component: that is what the override is for.
+    assertThat(of("""{"id":"w","params":{"device":null,"widthDp":216,"heightDp":124}}"""))
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.COMPONENT))
+    assertThat(of("""{"id":"s","params":{"device":"id:wearos_small_round"}}"""))
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.SCREEN))
+    assertThat(of("""{"id":"g","params":{"kind":"GLANCE_APPWIDGET"}}"""))
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET))
+    assertThat(
+        of("""{"id":"l","params":{},"captures":[{"launcherWidget":{"width":2,"height":1}}]}""")
+      )
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET))
+    assertThat(
+        of(
+          """{"id":"p","params":{"previewParameterProviderClassName":
+             "androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams"}}"""
+        )
+      )
+      .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET, "wear-widgets"))
+  }
+
   private inner class FakeModel : GuidelineModel {
     val replies = ArrayDeque<String>()
     /** Each reply's cost, in order; 0.001 once these run out. */

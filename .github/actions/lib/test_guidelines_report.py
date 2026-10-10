@@ -222,6 +222,90 @@ class ReportTest(unittest.TestCase):
         empty = Path(tempfile.mkdtemp())
         self.assertIsNone(gr.build(empty, _args()))
 
+    def _write(self, report: dict) -> None:
+        (self.tmp / "catalog" / "guidelines.json").write_text(json.dumps(report))
+
+    def test_a_failed_request_is_not_checked_rather_than_a_pass(self) -> None:
+        # remote-m3-catalog#72: every request failed, so every result came back pending and asked
+        # nothing; the comment used to read "0 finding(s) ... No findings".
+        pending = _result("x.WidgetKt.Widget", [])
+        pending["pending"] = True
+        self._write({
+            "module": "handoff", "catalog": "remote-m3", "model": "m", "results": [pending],
+            "requests": 1, "failedRequests": 1,
+            "problems": ["unreadable reply: the reply held no verdicts"],
+        })
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("**Not checked.**", body)
+        self.assertIn("this is not a pass", body)
+        self.assertIn("1 preview(s) were NOT checked", body)
+        self.assertIn("1 request(s) failed", body)
+        self.assertIn("`Widget`", body)
+        self.assertIn("unreadable reply: the reply held no verdicts", body)
+        self.assertNotIn("No findings", body)
+        self.assertNotIn("✅", body)
+
+    def test_a_pending_result_from_an_older_cli_is_not_checked(self) -> None:
+        # An older CLI records no run status; the pending results alone must say it.
+        pending = _result("x.WidgetKt.Widget", [])
+        pending["pending"] = True
+        self._write({"module": "handoff", "catalog": "remote-m3", "model": "m",
+                     "results": [pending]})
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("**Not checked.**", body)
+        self.assertNotIn("No findings", body)
+
+    def test_no_rule_applying_is_reported_with_its_reason(self) -> None:
+        skipped = _result("x.ButtonKt.Button", [])
+        skipped["noRules"] = ("no rule in the `remote-m3` guidelines applies to surface "
+                              "`component` with no profile")
+        self._write({"module": "handoff", "catalog": "remote-m3", "model": "m",
+                     "results": [skipped], "requests": 0, "failedRequests": 0,
+                     "problems": ["1 preview(s) were not checked: " + skipped["noRules"]]})
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("**Not checked.**", body)
+        self.assertIn("applies to surface 'component' with no profile", body)
+        self.assertNotIn("No findings", body)
+
+    def test_a_partly_failed_run_says_which_previews_were_not_checked(self) -> None:
+        ok = _result("x.OkKt.Ok", [{"ruleId": "wear.touch-target-48dp", "verdict": "pass",
+                                    "confidence": 0.9, "nodeIds": [], "reason": ""}])
+        failed = _result("x.StopKt.Stop", [])
+        failed["pending"] = True
+        self._write({"module": "handoff", "catalog": "wear-m3", "model": "m",
+                     "results": [ok, failed], "requests": 2, "failedRequests": 1,
+                     "problems": ["the model answered 429: busy"]})
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("1 changed preview(s) checked", body)
+        self.assertIn("1 preview(s) were NOT checked", body)
+        self.assertIn("No findings in the 1 preview(s) that were checked.", body)
+        self.assertNotIn("✅", body)
+
+    def test_a_module_the_check_wrote_nothing_for_is_not_checked(self) -> None:
+        (self.tmp / "catalog" / "guidelines.json").unlink()
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("**Not checked.**", body)
+        self.assertIn("the check wrote no results", body)
+        self.assertIn("`Stop`", body)
+
+    def test_a_problem_line_cannot_break_out_of_its_block(self) -> None:
+        pending = _result("x.WidgetKt.Widget", [])
+        pending["pending"] = True
+        self._write({"module": "handoff", "catalog": "wear-m3", "model": "m",
+                     "results": [pending], "failedRequests": 1,
+                     "problems": ["unreadable reply: ```\n@someone <img src=x>" + "y" * 900]})
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        block = body.split("```text\n", 1)[1].split("\n```", 1)[0]
+        self.assertNotIn("`", block)
+        self.assertNotIn("\n", block)
+        self.assertLessEqual(len(block), gr.MAX_PROBLEM_CHARS + 1)
+
 
 class StageTest(unittest.TestCase):
     def test_stages_changed_previews_with_renders_source_nodes_and_rules(self) -> None:

@@ -14,6 +14,10 @@ have a mark in the order they are listed here; the list carries the same numbers
 needs no text of its own. The picture links to its full-size file. A preview two module directories
 both hold is reported once.
 
+A run that judged nothing is never reported as a pass: previews whose request failed (or hit the
+cost cap), previews no rule applies to (``noRules``) and modules the check wrote no results for are
+listed as NOT checked, with the engine's problem lines quoted.
+
 Images are embedded only from a GitHub-hosted, commit-pinned location (``--image-repo`` and
 ``--image-ref``, with the pictures pushed under ``--image-prefix/<module>/``), as the a11y comment
 does: other hosts are stripped from PR bodies. ``--stage-images <dir>`` copies exactly the pictures
@@ -22,7 +26,7 @@ once to stage, once with the pushed commit's SHA.
 
     guidelines-report.py --dir _guidelines --out _guidelines_comment.md [--stage-images <dir>]
                          [--image-repo org/name --image-ref <sha> --image-prefix guidelines]
-Writes nothing (and exits 0) when no module produced results.
+Writes nothing (and exits 0) when no module was staged.
 """
 from __future__ import annotations
 
@@ -42,6 +46,9 @@ MAX_IMAGES = 40
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# The engine's own problem lines, quoted so a failed or empty run says why.
+MAX_PROBLEMS = 10
+MAX_PROBLEM_CHARS = 300
 
 
 def load(module_dir: Path) -> tuple[dict, dict] | None:
@@ -166,6 +173,33 @@ def render_names(module_dir: Path) -> dict:
     return names
 
 
+def staged_ids(module_dir: Path) -> list[str]:
+    """The preview ids a module's staged `previews.json` lists: what the check was handed."""
+    try:
+        data = json.loads((module_dir / "previews.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    previews = data.get("previews") if isinstance(data, dict) else None
+    return [
+        str(p["id"]) for p in previews if isinstance(p, dict) and p.get("id")
+    ] if isinstance(previews, list) else []
+
+
+def short(preview_id: str) -> str:
+    return f"`{preview_id.rsplit('.', 1)[-1]}`"
+
+
+def names(ids: list[str], limit: int = 8) -> str:
+    shown = ", ".join(short(i) for i in ids[:limit])
+    return shown + (f" and {len(ids) - limit} more" if len(ids) > limit else "")
+
+
+def quoted(problem: str) -> str:
+    """One engine problem line, safe inside a fenced block: it can carry a model's reply."""
+    text = " ".join(str(problem).split()).replace("`", "'")
+    return text[:MAX_PROBLEM_CHARS] + ("…" if len(text) > MAX_PROBLEM_CHARS else "")
+
+
 def build(dir_: Path, args: argparse.Namespace) -> str | None:
     modules = sorted(p for p in dir_.iterdir() if p.is_dir()) if dir_.is_dir() else []
     stage_dir = Path(args.stage_images) if getattr(args, "stage_images", None) else None
@@ -174,14 +208,30 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     total_cost = 0.0
     models: set[str] = set()
     seen: set[str] = set()
+    # What was handed to the check and never judged, by why: a request that failed or the cost cap
+    # (`pending`), no rule applying (`noRules`, by reason), or a module the check wrote nothing for.
+    pending: list[str] = []
+    no_rules: dict[str, list[str]] = {}
+    no_results: list[str] = []
+    failed_requests = 0
+    problems: list[str] = []
     for module_dir in modules:
         if not SAFE_NAME.match(module_dir.name):
             continue
         loaded = load(module_dir)
         if loaded is None:
+            # Staged but no readable results: the check failed, or never reached this module.
+            for preview_id in staged_ids(module_dir):
+                if preview_id not in seen:
+                    seen.add(preview_id)
+                    no_results.append(preview_id)
             continue
         report, rules = loaded
-        names = render_names(module_dir)
+        failed_requests += int(report.get("failedRequests") or 0)
+        for problem in report.get("problems") or []:
+            if quoted(problem) not in problems:
+                problems.append(quoted(problem))
+        names_by_id = render_names(module_dir)
         nodes = node_ids(module_dir)
         results = report.get("results", [])
         for result in results:
@@ -192,6 +242,12 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             if preview_id in seen:
                 continue
             seen.add(preview_id)
+            if result.get("noRules"):
+                no_rules.setdefault(str(result["noRules"]), []).append(preview_id)
+                continue
+            if result.get("pending"):
+                pending.append(preview_id)
+                continue
             total_checked += 1
             if record.get("servedModel"):
                 models.add(record["servedModel"])
@@ -203,7 +259,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             lines = [f"#### `{preview_id.rsplit('.', 1)[-1]}`", f"<sub>`{preview_id}`</sub>", ""]
             preview_nodes = nodes.get(preview_id, set())
             marked = marks(found, preview_id, preview_nodes)
-            shown = picture(module_dir, names.get(preview_id), marked) if found else None
+            shown = picture(module_dir, names_by_id.get(preview_id), marked) if found else None
             numbered = False
             if shown and images < MAX_IMAGES:
                 images += 1
@@ -248,22 +304,56 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 lines.append(f"- ❔ Unchecked (needs evidence this run could not get): "
                              f"{', '.join(f'`{u}`' for u in unchecked)}")
             sections.append("\n".join(lines) + "\n")
-    if total_checked == 0:
+    not_checked = len(pending) + sum(len(v) for v in no_rules.values()) + len(no_results)
+    if total_checked == 0 and not_checked == 0:
         return None
     model_text = ", ".join(sorted(models)) or "the configured model"
-    header = [
-        MARKER,
-        "### Design guidelines",
-        "",
-        f"{total_checked} changed preview(s) checked against their catalog's design guidelines; "
-        f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}.",
-        "",
+    header = [MARKER, "### Design guidelines", ""]
+    if total_checked:
+        header += [
+            f"{total_checked} changed preview(s) checked against their catalog's design guidelines; "
+            f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}.",
+            "",
+        ]
+    else:
+        # Nothing was judged: say so, never a pass.
+        header += [
+            f"❌ **Not checked.** None of the {not_checked} changed preview(s) was judged against "
+            f"its catalog's design guidelines, so this is not a pass. ${total_cost:.4f} spent.",
+            "",
+        ]
+    if not_checked:
+        header.append(f"**{not_checked} preview(s) were NOT checked:**")
+        if pending:
+            header.append(
+                f"- {len(pending)} because their model request failed or the cost cap was reached"
+                + (f" ({failed_requests} request(s) failed)" if failed_requests else "")
+                + f": {names(pending)}"
+            )
+        for reason, ids in no_rules.items():
+            header.append(f"- {len(ids)} because {quoted(reason)}: {names(ids)}")
+        if no_results:
+            header.append(
+                f"- {len(no_results)} because the check wrote no results for them (it failed "
+                f"before answering, or the budget ran out first): {names(no_results)}"
+            )
+        header.append("")
+    if problems:
+        header += ["Problems the check reported:", "", "```text"]
+        header += problems[:MAX_PROBLEMS]
+        if len(problems) > MAX_PROBLEMS:
+            header.append(f"… and {len(problems) - MAX_PROBLEMS} more")
+        header += ["```", ""]
+    header += [
         "<sub>Findings are advice from a model judging the render, its source and its "
         "accessibility nodes; each links the guide it comes from.</sub>",
         "",
     ]
-    if not sections:
-        header.append("No findings. ✅")
+    if not sections and total_checked:
+        header.append(
+            "No findings. ✅" if not not_checked
+            else f"No findings in the {total_checked} preview(s) that were checked."
+        )
     return "\n".join(header + sections).rstrip() + "\n"
 
 

@@ -9,6 +9,7 @@ import ee.schimke.composeai.guidelines.GuidelineModel
 import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
+import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.OpenRouterClient
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
@@ -61,6 +62,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val annotate: Boolean = "--annotate" in args
   private val guidelinesLocation: String? = args.flagValue("--guidelines")
   private val surfaceOverride: String? = args.flagValue("--surface")
+  private val profileOverride: String? = args.flagValue("--profile")
   private val previewsJson: String? = args.flagValue("--previews-json")
   private val rendersDir: String? = args.flagValue("--renders-dir")
   private val a11yJson: String? = args.flagValue("--a11y-json")
@@ -135,8 +137,17 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           PreviewSourceReader.readWithCallees(projectDir.resolve(file), line)
         }
       }
+      // The same surface and profile a handoff run reads off the manifest, so a preview is asked
+      // the same rules however it is checked.
+      val kinds = HandoffInputs.readKinds(buildDir.resolve("previews.json"))
       val subjects = moduleResults.mapNotNull { result ->
-        subjectFor(result, renders[result.id], nodes[result.id], sources(result.id))
+        subjectFor(
+            result,
+            renders[result.id],
+            nodes[result.id],
+            sources(result.id),
+            kinds[result.id],
+          )
           ?.copy(checks = checks[result.id].orEmpty())
       }
       // What a follow-up round may ask for: this run's nodes and sources, and renders at other
@@ -163,13 +174,10 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       if (!narrowed && subjects.size == moduleResults.size) {
         cache.prune(subjects.map { it.previewId }.toSet())
       }
-      writeGuidelinesReport(
-        buildDir,
-        ModuleGuidelines(module, guidelines.catalog, model, run.results),
-        narrowed,
-      )
+      val moduleReport = ModuleGuidelines.of(module, guidelines.catalog, model, run)
+      writeGuidelinesReport(buildDir, moduleReport, narrowed)
       if (annotate) annotateAll(run.results, subjects, nodes, renders)
-      reports += ModuleGuidelines(module, guidelines.catalog, model, run.results)
+      reports += moduleReport
       failed = failed || tripped(run.results, guidelines)
       incomplete = incomplete || incomplete(module, run)
       if (!jsonOutput) GuidelinesReportRenderer.print(module, guidelines, run)
@@ -243,13 +251,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         a11yJson = a11yJson?.let(::File),
         sourceRoot = sourceRoot?.let(::File),
         surfaceOverride = surfaceOverride,
+        profileOverride = profileOverride,
       )
     handoffHost = inputs.host
     val outDir = File(rendersDir ?: previewsJson?.let { File(it).absoluteFile.parent } ?: ".")
     val run =
       engine(client, GuidelineResultCache(outDir.resolve("guidelines")), guidelines, location)
         .run(guidelines, inputs.subjects)
-    val report = ModuleGuidelines("handoff", guidelines.catalog, model, run.results)
+    val report = ModuleGuidelines.of("handoff", guidelines.catalog, model, run)
     outDir
       .resolve("guidelines.json")
       .writeText(REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), report))
@@ -288,16 +297,20 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     png: File?,
     nodes: List<AccessibilityNode>?,
     source: String?,
+    kind: GuidelineSubjectKind?,
   ): PreviewSubject? {
     png ?: return null
     val bytes = png.readBytes()
     return PreviewSubject(
       previewId = result.id,
       label = result.functionName,
+      // The manifest entry's own answer; a preview it does not list is classified as before.
       surface =
         surfaceOverride
+          ?: kind?.surface
           ?: if (result.params.device != null) GuidelineSurfaces.SCREEN
           else GuidelineSurfaces.COMPONENT,
+      profile = profileOverride ?: kind?.profile,
       renderHash = result.sha256 ?: sha256(bytes),
       pictures =
         listOf(
@@ -393,14 +406,37 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   }
 }
 
-/** One module's results, as `build/compose-previews/guidelines.json` holds them. */
+/**
+ * One module's results, as `build/compose-previews/guidelines.json` holds them, with what the run
+ * that wrote them could not do: [failedRequests] requests that came back as no verdicts, and the
+ * engine's [problems] in its own words. A reader must not take a file whose previews were never
+ * judged — every request failed, or no rule applied ([PreviewGuidelineResult.noRules]) — for a
+ * clean pass; these say which it was. [requests] is null in a file written before they were
+ * recorded.
+ */
 @Serializable
 data class ModuleGuidelines(
   val module: String,
   val catalog: String,
   val model: String,
   val results: List<PreviewGuidelineResult>,
-)
+  val requests: Int? = null,
+  val failedRequests: Int = 0,
+  val problems: List<String> = emptyList(),
+) {
+  companion object {
+    fun of(module: String, catalog: String, model: String, run: GuidelineRunResult) =
+      ModuleGuidelines(
+        module,
+        catalog,
+        model,
+        run.results,
+        requests = run.requests,
+        failedRequests = run.failedRequests,
+        problems = run.problems,
+      )
+  }
+}
 
 /** The node a finding may cite, from an accessibility node: its stable ref, else its position. */
 internal fun AccessibilityNode.toPreviewNode(index: Int): PreviewNode? =
@@ -410,13 +446,15 @@ internal fun AccessibilityNode.toPreviewNode(index: Int): PreviewNode? =
 internal object GuidelinesReportRenderer {
   fun print(module: String, guidelines: CatalogGuidelinesV1, run: GuidelineRunResult) {
     val byId = guidelines.rules.associateBy { it.id }
+    val ruleless = run.results.count { it.noRules != null }
     println(
-      "$module: ${run.results.size} preview(s) checked against `${guidelines.catalog}` " +
+      "$module: ${run.results.size - ruleless} preview(s) checked against `${guidelines.catalog}` " +
         "guidelines v${guidelines.version} — ${run.requests} request(s), " +
         "$" +
         "%.4f".format(run.costUsd) +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
-        (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "")
+        (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
+        (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "")
     )
     run.results.forEach { result ->
       val failures = result.failures()

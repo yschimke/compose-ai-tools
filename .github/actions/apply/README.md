@@ -743,6 +743,8 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | `openrouter-key` | `''` | OpenRouter key. Empty skips the check with a notice. |
 | `guidelines-max-cost` | `0.25` | Dollars to spend at most across every module of the run; what is left is reported unchecked. |
 | `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
+| `guidelines-surface` | `''` | Judge every checked preview as `component`, `screen` or `widget` instead of what discovery recorded; for a plugin that predates the widget signal. |
+| `guidelines-profile` | `''` | With `guidelines-surface`, the Remote Compose profile every checked preview targets (`wear-widgets`, …). |
 
 In the split (fork-safe) workflow, the render job stages each changed preview's render, source,
 accessibility nodes and the catalog's rules into the handoff (`_guidelines/`); pass
