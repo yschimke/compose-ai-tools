@@ -1,0 +1,31 @@
+name: UID workflow tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/uid-design-audit-reusable.yml'
+      - '.github/workflows/uid-workflow-tests.yml'
+      - '.github/scripts/test_uid_audit_workflow.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/uid-design-audit-reusable.yml'
+      - '.github/workflows/uid-workflow-tests.yml'
+      - '.github/scripts/test_uid_audit_workflow.py'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - run: python .github/scripts/test_uid_audit_workflow.py -v

@@ -23,7 +23,11 @@ jobs:
 ```
 
 The caller must land on the app's default branch before `workflow_run` can run.
-The shared workflow accepts only successful `workflow_run` events. It checks out
+The shared workflow accepts only successful `workflow_run` events whose
+`head_repository.full_name` matches the caller repository. Fork PRs and missing
+head-repository metadata are skipped before allocating the credentialed job.
+This limits automatic spending to repository-controlled heads; the $0.25 limit
+is per invocation, not a daily quota. It checks out
 that repository's **default branch**, never the PR revision. Its staging script,
 capture plan and guidelines therefore come from trusted default-branch code.
 The previous run's artifact is treated as data: only the bounded PNGs admitted by
@@ -38,7 +42,8 @@ to `adaptive-uid-design-audit`. The build/render/compare workflow lives in
 [design-parity](https://github.com/yschimke/design-parity/blob/main/docs/UID_PARITY_CI.md).
 
 The engine remains pinned to CLI 2.40.0 and its matching installation action and
-prompt source. It uses the same `OPENROUTER_API_KEY` name as remote-m3-catalog,
+prompt source. Installation requires the release's SHA-256 digest and fails
+closed if it cannot verify the download. It uses the same `OPENROUTER_API_KEY` name as remote-m3-catalog,
 mapped only on the model step to `COMPOSE_PREVIEW_OPENROUTER_KEY`, with the
 existing $0.25 limit and `--surface screen --annotate`. Missing keys and engine
 errors are incomplete audits, not a clean result. The output artifact retains
@@ -53,3 +58,16 @@ Before changing the shared workflow, run `actionlint` on it and on the consumer
 caller examples. Pin callers to immutable reviewed commits. For first adoption,
 land the shared workflow before merging the caller; a provider branch commit can
 be used to validate a consumer PR before landing.
+
+Set `enabled: false` to opt out of the audit; the key can then be omitted. With
+`enabled: true` (the default), configuring this caller means requesting a real
+audit: a missing key or engine error fails rather than reporting clean evidence.
+The deterministic parity workflow needs no model key and runs independently.
+Audit artifacts overwrite the same name on reruns. When auditing several pilots
+in one workflow, give each call a distinct `audit-artifact` and select its matching
+`evidence-artifact`.
+
+PR-generated images can contain text that steers the model's critique even after
+image validation. Treat the response as untrusted, advisory feedback. It must not
+be used as an authorization signal, an automatic merge gate, or instructions for
+executing commands or changing repository state.
