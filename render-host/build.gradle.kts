@@ -71,6 +71,9 @@ dependencies {
   // `ServeHost.parityIssues()` exposes the shape published by catalogs. The wire contract is
   // contracts'; this module owns only validation and storage behaviour.
   api(libs.composeai.parity.issues.protocol)
+  // `ServeHost.guidelineResultFor()` exposes a catalog's published design-guideline results in the
+  // contracts' shape; this module only validates and loads them (ServeGuidelineResultsStore).
+  api(libs.composeai.design.guidelines.protocol)
   // Both reached by FULLY-QUALIFIED name rather than an import, so they are easy to miss when
   // reading the sources for what this module needs: `ServePreview.overrides` is declared as
   // `List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration>`. A public signature,

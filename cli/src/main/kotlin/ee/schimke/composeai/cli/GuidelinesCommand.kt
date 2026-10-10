@@ -124,7 +124,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         infos[id]?.let { info ->
           val file = info.sourceFile ?: return@let null
           val line = info.bodyLine ?: return@let null
-          PreviewSourceReader.read(projectDir.resolve(file), line)
+          PreviewSourceReader.readWithCallees(projectDir.resolve(file), line)
         }
       }
       val subjects = moduleResults.mapNotNull { result ->
@@ -273,6 +273,13 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             bytes,
             result.params.widthDp ?: 0,
             result.params.heightDp ?: 0,
+            // As in handoff mode: a capture scrolled to its END has scrolled the time text away.
+            description =
+              HandoffInputs.describeCapture(
+                result.params.widthDp ?: 0,
+                result.params.heightDp ?: 0,
+                result.captures.firstOrNull()?.scroll?.mode,
+              ),
           )
         ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },

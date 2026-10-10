@@ -3612,6 +3612,24 @@ public final class ee/schimke/composeai/cli/serve/ServeFigmaSvgKt {
 	public static final fun webModeSvg (Ljava/lang/String;)Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/cli/serve/ServeGuidelineResults {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public final fun forPreview (Ljava/lang/String;)Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
+	public final fun getCatalog ()Ljava/lang/String;
+	public final fun getModel ()Ljava/lang/String;
+	public final fun getRecords ()Ljava/util/Map;
+}
+
+public final class ee/schimke/composeai/cli/serve/ServeGuidelineResultsStore {
+	public static final field FILE Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/ServeGuidelineResultsStore;
+	public static final field MAX_PREVIEWS I
+	public final fun load (Ljava/io/File;Lokio/FileSystem;)Lee/schimke/composeai/cli/serve/ServeGuidelineResults;
+	public static synthetic fun load$default (Lee/schimke/composeai/cli/serve/ServeGuidelineResultsStore;Ljava/io/File;Lokio/FileSystem;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/ServeGuidelineResults;
+	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeGuidelineResults;
+	public final fun sanitize (Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;)Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
+}
+
 public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/lang/AutoCloseable {
 	public abstract fun activeStreamCount ()I
 	public fun annotationsForPreview (Ljava/lang/String;)Ljava/util/List;
@@ -3651,6 +3669,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public abstract fun getPreviews ()Ljava/util/List;
 	public fun getRemoteComposePlayerSelectable ()Z
 	public fun getThemeRenderBurstCapacity ()I
+	public fun guidelineResultFor (Ljava/lang/String;)Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public fun hasA11yOverlayFor (Ljava/lang/String;)Z
 	public fun hasDesignAnnotationsFor (Ljava/lang/String;)Z
 	public fun hasPublishedTypographyFor (Ljava/lang/String;)Z
@@ -3732,6 +3751,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun getLiveOnlyPreviewIds (Lee/schimke/composeai/cli/serve/ServeHost;)Ljava/util/Set;
 	public static fun getRemoteComposePlayerSelectable (Lee/schimke/composeai/cli/serve/ServeHost;)Z
 	public static fun getThemeRenderBurstCapacity (Lee/schimke/composeai/cli/serve/ServeHost;)I
+	public static fun guidelineResultFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public static fun hasA11yOverlayFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun hasDesignAnnotationsFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun hasPublishedTypographyFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
@@ -4153,6 +4173,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public fun getPreviews ()Ljava/util/List;
 	public fun getRemoteComposePlayerSelectable ()Z
 	public fun getThemeRenderBurstCapacity ()I
+	public fun guidelineResultFor (Ljava/lang/String;)Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public fun hasA11yOverlayFor (Ljava/lang/String;)Z
 	public fun hasDesignAnnotationsFor (Ljava/lang/String;)Z
 	public fun hasPublishedTypographyFor (Ljava/lang/String;)Z
