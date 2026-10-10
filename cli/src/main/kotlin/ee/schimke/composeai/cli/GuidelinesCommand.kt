@@ -34,13 +34,13 @@ import kotlinx.serialization.json.Json
  * `compose-preview guidelines` — checks rendered previews against their catalog's design guidelines
  * (`ui-builder.guidelines.json`) with a model through OpenRouter.
  *
- * It renders like every report command, then runs the `a11y` fetch [A11yCommand] already drives,
- * because each preview's accessibility nodes are what a finding points at; then it hands the
- * renders, their sha256 and their nodes to the `:design-guidelines` engine, which batches them,
- * asks the model, fetches what a follow-up round asks for ([CliEvidenceHost]: nodes, source, and
- * renders at other settings through the module's render daemon), and caches each result by render
- * hash under `build/compose-previews/guidelines/`. The results land in
- * `build/compose-previews/guidelines.json`. Each preview's source goes to the model with its
+ * It renders like every report command, then hands the renders, their sha256 and their source to
+ * the `:design-guidelines` engine, which batches them, asks the model, fetches what a follow-up
+ * round asks for ([CliEvidenceHost]: a preview's accessibility data through the same daemon fetch
+ * [A11yCommand] drives, renders at other settings through the module's render daemon), and caches
+ * each result by render hash under `build/compose-previews/guidelines/`. Accessibility data is
+ * fetched for the previews whose rules ask for it, not for every preview up front. The results land
+ * in `build/compose-previews/guidelines.json`. Each preview's source goes to the model with its
  * render, so rules about code are judged on the code.
  *
  * `--previews-json` / `--renders-dir` run the same engine over handoff renders with no Gradle,
@@ -86,10 +86,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         gradleArguments = gradleArgsWithForce(),
         scopeToPreviewRequest = true,
       )
-    // The accessibility nodes every finding points at: the same daemon fetch `a11y` runs.
-    produceAdditionalDataProducts(
-      dataProductRequests(PreviewResultBuilder.readAllManifests(raw.modules))
-    )
+    // Accessibility data is not fetched here for every preview: the engine asks the host for it
+    // (`a11y` evidence) for the previews whose rules need it, through the same daemon fetch.
+    val discovered = PreviewResultBuilder.readAllManifests(raw.modules)
     val manifests = readAllManifests(raw.modules)
     if (manifests.isEmpty()) {
       println("No previews discovered.")
@@ -125,8 +124,6 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         }
         continue
       }
-      val nodes = readNodes(buildDir.resolve("accessibility.json"))
-      val checks = HandoffInputs.readChecks(buildDir.resolve("accessibility.json"))
       val renders = moduleResults.associate { it.id to renderFile(it, projectDir) }
       val manifest = manifests.firstOrNull { it.first.gradlePath == module }
       val infos = manifest?.second?.previews.orEmpty().associateBy { it.id }
@@ -142,23 +139,26 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       val kinds = HandoffInputs.readKinds(buildDir.resolve("previews.json"))
       val subjects = moduleResults.mapNotNull { result ->
         subjectFor(
-            result,
-            renders[result.id],
-            nodes[result.id],
-            sources(result.id),
-            kinds[result.id],
-            HandoffInputs.longCaptureOf(infos[result.id], renders[result.id], buildDir),
-          )
-          ?.copy(checks = checks[result.id].orEmpty())
+          result,
+          renders[result.id],
+          null,
+          sources(result.id),
+          kinds[result.id],
+          HandoffInputs.longCaptureOf(infos[result.id], renders[result.id], buildDir),
+        )
       }
-      // What a follow-up round may ask for: this run's nodes and sources, and renders at other
-      // settings through the module's render daemon.
+      // What a follow-up round may ask for: sources, renders at other settings through the
+      // module's render daemon, and accessibility data fetched for the previews that ask.
       val host =
         CliEvidenceHost(
           projectDir = projectDir,
           moduleName = manifest?.second?.module ?: module,
-          nodes = nodes,
+          nodes = emptyMap(),
           sources = sources,
+          a11yFetch =
+            discovered
+              .firstOrNull { it.first.gradlePath == module }
+              ?.let { found -> { ids -> fetchA11y(found.first, found.second, ids, buildDir) } },
         )
       val cache = GuidelineResultCache(buildDir.resolve("guidelines"))
       val run =
@@ -177,7 +177,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       }
       val moduleReport = ModuleGuidelines.of(module, guidelines.catalog, model, run)
       writeGuidelinesReport(buildDir, moduleReport, narrowed)
-      if (annotate) annotateAll(run.results, subjects, nodes, renders)
+      // Outlines the nodes a finding names, fetched in any round; without them, regions only.
+      if (annotate) annotateAll(run.results, subjects, host.knownNodes(), renders)
       reports += moduleReport
       failed = failed || tripped(run.results, guidelines)
       incomplete = incomplete || incomplete(module, run)
@@ -193,6 +194,43 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         }
         else -> guidelinesExitCode(incomplete, failed, raw.buildOk)
       }
+    )
+  }
+
+  /**
+   * [ids]' accessibility data (nodes and ATF checks), fetched through the render daemon as the
+   * `a11y` command does, narrowed to those previews; the module's `accessibility.json` is merged,
+   * not replaced. Only what this fetch produced is returned: an entry from an earlier run may be of
+   * an older render.
+   */
+  private fun fetchA11y(
+    module: ee.schimke.composeai.previewdata.PreviewModule,
+    manifest: ee.schimke.composeai.previewdata.PreviewManifest,
+    ids: List<String>,
+    buildDir: File,
+  ): A11yEvidence {
+    val wanted = ids.toSet()
+    val previews =
+      manifest.previews
+        .filter { it.id in wanted && it.includeInA11y }
+        .map { RequestedPreview(previewId = it.id, entryId = it.id) }
+    if (previews.isEmpty()) return A11yEvidence()
+    produceAdditionalDataProducts(
+      listOf(
+        DataProductRequest(
+          module = module,
+          manifest = manifest,
+          previews = previews,
+          consumerPreviewIds = manifest.previews.map { it.id },
+          narrowed = previews.size < manifest.previews.size,
+        )
+      )
+    )
+    val report = buildDir.resolve("accessibility.json")
+    val fetched = previews.map { it.entryId }.toSet()
+    return A11yEvidence(
+      nodes = readNodes(report).filterKeys { it in fetched },
+      checks = HandoffInputs.readChecks(report).filterKeys { it in fetched },
     )
   }
 

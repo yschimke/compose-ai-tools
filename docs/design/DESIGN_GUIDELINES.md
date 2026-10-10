@@ -130,15 +130,15 @@ and re-pin `sha256` when moving to a newer tag.
 
 Not one call per preview. Subjects of one surface share a request, up to a budget (default 12
 pictures, ~60k input tokens, 16 subjects): the rules are sent once, and `set` rules see the whole
-batch. Each subject carries its render (tagged with its subject id), its accessibility nodes (id,
-role, label, bounds), and optionally its source. The model names the subject (`s1`, …) in every
+batch. Each subject carries its render (tagged with its subject id) and optionally its source;
+its accessibility data is evidence it is asked for (see *Accessibility evidence*). The model names the subject (`s1`, …) in every
 verdict and cites node ids, which map back to bounds for overlays; a visual problem no single node
 holds comes back as a region (a fraction box on a numbered picture).
 
 ## Evidence loop
 
-The first pass carries what is cheap: one render, the nodes the `a11y` pass already produced, and
-the preview's **source** — the `@Preview` function from `previews.json`'s `bodyLine` to the end of
+The first pass carries what is cheap: one render, a one-line summary of the accessibility data the
+host holds, and the preview's **source** — the `@Preview` function from `previews.json`'s `bodyLine` to the end of
 its body (`PreviewSourceReader`, capped at 200 lines / 8k chars), sent as a `source` evidence item
 and in the prompt. Pictures alone miss code-level problems: on a live run the XPeng screen's render
 judged clean, while its fixed 36dp tap targets, two filled buttons, hard-coded type and colours
@@ -148,10 +148,11 @@ picture.
 
 1. **Triage** (optional, `--no-triage` to skip). Jev (`typesafe/jev-1.13`, text only, typed
    probabilities, ~$0.0003) is asked per subject whether a dark-theme render, a large-font render or
-   its accessibility nodes would be needed; the host fetches only what it wants above 0.5.
+   its accessibility data would be needed; the host fetches only what it wants above 0.5.
 2. **Round 0.** The batch is judged. A rule the model cannot decide is answered `needs_evidence`
-   with what it needs (`a11y-hierarchy`, `semantics`, `source`, or a `render` with theme, font scale
-   or device) — limited to the kinds the request lists as available.
+   with what it needs (`a11y`, `source`, `scroll-capture`, or a `render` with theme, font scale
+   or device) — limited to the kinds the request lists as available. The protocol's
+   `a11y-hierarchy` / `semantics` are served as `a11y` by a host offering it.
 3. **Rounds 1..n** (`--rounds`, default 1). Only those subjects, only those rules, with the evidence
    gathered. A rule still undecided is reported **unchecked**, never passed.
 
@@ -161,12 +162,51 @@ the reply to that: a verdict whose `ruleId` was not asked of its subject (or of 
 invents `clipping` or `R5` produces no finding without a guide. A reply left with no usable verdict
 is asked once more, budget permitting, and is otherwise a failed request.
 
-In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y-hierarchy`, `source` and
-`render`: a render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn
-through the module's render daemon, one short session per follow-up render — they are few, so that
-is simpler than a session held for the run. A layout-direction-only need has no cell and is left
-undecided. Triage runs. In handoff mode the host supplies nothing more, so the request lists no
-fetchable evidence and the model is not invited to ask.
+In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y`, `source` and `render`: a
+render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn through the
+module's render daemon, one short session per follow-up render — they are few, so that is simpler
+than a session held for the run. A layout-direction-only need has no cell and is left undecided.
+An `a11y` need is fetched through the `a11y` command's daemon fetch, narrowed to the previews a
+round asks about (one fetch per round, through `GuidelineEvidenceHost.prefetch`). Triage runs. In
+handoff mode the host serves only what the render job staged: `a11y` and `scroll-capture`.
+
+## Accessibility evidence
+
+A preview's accessibility data — its nodes (id, role, label, bounds, states such as `scrollable`,
+`clickable`, `heading`) and the Accessibility Test Framework's measured checks on its render — is
+evidence kind `a11y` (`PreviewGuidelineRequests.KIND_A11Y`), offered where the host has it and
+served in a follow-up round, not sent with every subject. Most rules are judged from the picture
+and the source; the ones that turn on touch-target size, contrast, content descriptions, traversal
+order or headings, or a `fail` that should cite its node, are where the system prompt tells the
+model to ask for it rather than estimate.
+
+Up front each subject gets one line instead, from `GuidelineEvidenceHost.summary`:
+
+```
+Accessibility: 12 node(s), 1 scrollable; ATF: 2 ERROR TouchTargetSizeCheck. Ask for `a11y` for the nodes and checks.
+```
+
+About 30 tokens, against roughly 20 per node and 60 per check for the data (the request caps a
+subject at 80 nodes and 40 checks, so up to ~4,000 tokens; a typical screen's 20 nodes and a
+couple of checks is ~500). It is worth its place because it decides whether asking would help: a
+clean ATF result settles the touch-target and contrast rules without a second round, and the
+scrollable count is what tells content scrolled out of view from content clipped. The summary is
+shown only while the data is not attached, and only by a host that holds it: a host that would have
+to render to summarise (the live CLI before its first fetch) shows none.
+
+Overlays still outline nodes. A verdict names node ids only after an `a11y` round; the annotator
+draws from the nodes the host holds (in handoff mode the staged `accessibility.json`, in a live run
+every node fetched), not from what the subject carried, so those findings are outlined. A finding
+from a model that never asked is marked by its region, as before.
+
+Hosts that can render fetch it on request for the preview that asks, not for every preview before
+the first request: the CLI's full mode did that for the whole catalog on every run (the catalog
+publish's check paid one ATF render per preview whether any rule needed it). The MCP server and the
+VS Code extension do not implement a host yet (see *Next steps*); they should follow the same shape.
+
+The data is derived from the same render, so it is not part of the cache identity: a result is
+reused across runs that staged it and runs that did not, in a PR's handoff and in the catalog
+publish alike.
 
 ## Handoff mode (CI)
 
@@ -186,8 +226,9 @@ make the publish job read a runner file and send it to a model.
 ## Caching and cost
 
 Each result is cached under `build/compose-previews/guidelines/` by everything its verdict depends
-on (`GuidelineResultCache.inputsKey`: preview id, surface, profile, every picture's bytes, nodes,
-source, the rules' full content, model): an unchanged preview is not asked again, so a re-run after a
+on (`GuidelineResultCache.inputsKey`: preview id, surface, profile, every picture's bytes, the
+nodes and checks the subject carries (none, now that they are evidence), source, the rules' full
+content, model): an unchanged preview is not asked again, so a re-run after a
 small change pays only for what changed. `--changed-only` narrows to previews whose capture changed;
 `--max-cost` stops asking before a request expected to cross it (one costing as much as the
 dearest request so far), reporting the rest `pending`; a reply that could not be used still counts
@@ -241,7 +282,8 @@ A finding like "the footer is cut off" means nothing until the model knows wheth
 scrolls. Each subject's accessibility nodes carry their `states` (`scrollable`, `clickable`, …) and
 the viewport's pixel size, and a node extending past the viewport is marked `off:bottom` (or
 `top`, `left`, `right`). The system prompt says content cut along a scrollable axis is scrolled
-away, not clipped. That text evidence goes up front; pictures do not.
+away, not clipped. The nodes arrive with `a11y` evidence; up front the summary line says how many
+nodes scroll.
 
 When the renderer wrote a long screenshot (the preview's `render/scroll/long` data product, under
 `data/render-scroll-long/`), the render phase stages it beside the render in the handoff as
@@ -254,8 +296,10 @@ extra capture offers what it did before — nothing. The `apply` action runs `--
 round counts against the one `guidelines-max-cost` budget.
 
 Where the a11y pipeline ran, the Accessibility Test Framework results in `accessibility.json` are
-listed per subject as measured checks, and the prompt says they decide the touch-target and
-contrast rules over the model's estimate from the picture. Without the a11y pipeline (`only:
+served with the nodes as `a11y` evidence and listed per subject as measured checks, and the prompt
+says they decide the touch-target and contrast rules over the model's estimate from the picture.
+On a PR the a11y pipeline checks exactly the previews the PR changed — the set this check stages —
+so every staged preview has its data. Without the a11y pipeline (`only:
 compose`) a subject has neither nodes nor checks, and the prompt asks for a region for every
 visible failure instead, so it can still be marked. The scroll *range* and *position*
 (`verticalScrollAxisRange`, `CollectionInfo`) are not in the accessibility data the daemon
@@ -342,7 +386,7 @@ A PR's check (the `apply` action, `guidelines: true`) is bounded and incremental
   (and `guidelines-cache-path` if the publish has a `working-directory`), the check restores the
   catalog publish's result cache with `actions/cache/restore` — restore only, a PR run never saves
   — and copies it into each staged module (`guidelines-budget.py --seed-cache`). A preview whose
-  render, source, nodes, rules and model are what the default branch already checked is answered
+  render, source, rules and model are what the default branch already checked is answered
   from it at no cost; the comment counts those. Typical hit: a PR editing one function in a file
   stages every preview of that file, and only the edited one is asked. The publish phase of a split
   workflow runs on `workflow_run`, in the default branch's cache scope, so it reads the caches the

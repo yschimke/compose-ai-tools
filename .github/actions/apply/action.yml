@@ -1924,10 +1924,11 @@ runs:
             break
           fi
           checked=$((checked + 1))
-          # Handoff mode: no Gradle. Findings cite the staged accessibility nodes;
-          # --annotate writes <render>.guidelines.png beside each render. Follow-up rounds can
-          # only be served the captures the render job staged (a long screenshot); nothing is
-          # rendered here. Every round counts against the one budget above.
+          # Handoff mode: no Gradle. --annotate writes <render>.guidelines.png beside each render.
+          # Follow-up rounds can only be served what the render job staged — a long screenshot,
+          # and the accessibility nodes and ATF results (`a11y`, asked for by the rules that need
+          # them, then cited by node); nothing is rendered here. Every round counts against the
+          # one budget above.
           compose-preview guidelines \
             --previews-json "$module_dir/previews.json" \
             --a11y-json "$module_dir/accessibility.json" \

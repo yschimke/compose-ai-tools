@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.guidelines.CatalogGuidelinesLoader
+import ee.schimke.composeai.guidelines.GuidelineAnnotator
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineModel
 import ee.schimke.composeai.guidelines.GuidelineResultCache
@@ -155,24 +156,154 @@ class GuidelinesEvidenceTest {
     assertEquals("x.StopKt.StopButton", subject.previewId)
     assertEquals(GuidelineSurfaces.SCREEN, subject.surface)
     assertTrue(subject.source!!.contains("Modifier.size(36.dp)"), subject.source)
-    assertEquals(listOf("stop"), subject.nodes.map { it.id })
+    // Accessibility data is not sent with the subject: it is offered as `a11y` evidence.
+    assertTrue(subject.nodes.isEmpty())
+    assertEquals(listOf("a11y"), inputs.host.available("x.StopKt.StopButton"))
 
-    val model = FakeModel()
+    // Round 0 asks for it; round 1 fails the rule on the node it now has.
+    val model =
+      FakeModel(
+        reply(verdict = "needs_evidence", nodeIds = "", needs = "a11y"),
+        reply(verdict = "fail", nodeIds = "\"stop\"", needs = null),
+      )
     val run =
-      GuidelineEngine(model, options = GuidelineRunOptions(triage = false))
+      GuidelineEngine(
+          model,
+          inputs.host,
+          options = GuidelineRunOptions(triage = false, maxRounds = 2),
+        )
         .run(guidelines(), inputs.subjects)
 
-    val request = model.requests.single()
-    assertTrue(request.sourceAttached)
-    assertEquals(
-      setOf(GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY, GuidelineEvidenceNeedV1.KIND_SOURCE),
-      request.evidence.map { it.kind }.toSet(),
+    val (first, second) = model.requests
+    assertTrue(first.sourceAttached)
+    assertEquals(listOf(GuidelineEvidenceNeedV1.KIND_SOURCE), first.evidence.map { it.kind })
+    assertTrue("a11y" in first.evidenceAvailable)
+    assertTrue(
+      first.userText.contains("Accessibility: 1 node(s), none scrollable; ATF: no findings."),
+      first.userText,
     )
-    assertEquals(listOf("stop"), run.results.single().failures().single().nodeIds)
+    assertTrue(
+      GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY in second.evidence.map { it.kind },
+      second.evidence.map { it.kind }.toString(),
+    )
+    assertTrue(second.userText.contains("- stop | Button | Stop"), second.userText)
+    assertTrue(!second.userText.contains("Accessibility: "), "no summary once the data is there")
+    val failure = run.results.single().failures().single()
+    assertEquals(listOf("stop"), failure.nodeIds)
+
+    // The overlay outlines the node the finding names, though the subject never carried it.
+    val picture = png(100)
+    val staged =
+      inputs.nodes.getValue("x.StopKt.StopButton").mapIndexedNotNull { i, n -> n.toPreviewNode(i) }
+    assertTrue(
+      !pixels(GuidelineAnnotator.annotate(picture, staged, listOf(failure)))
+        .contentEquals(pixels(GuidelineAnnotator.annotate(picture, emptyList(), listOf(failure))))
+    )
   }
 
   @Test
-  fun `handoff offers the staged long screenshot as evidence and sends the ATF results`() {
+  fun `the handoff a11y summary names scrolling containers and the checks that reported`() {
+    val dir = Files.createTempDirectory("guidelines-handoff-summary").toFile()
+    dir.resolve("A.png").writeBytes(png())
+    dir.resolve("B.png").writeBytes(png())
+    val a11y =
+      dir.resolve("accessibility.json").apply {
+        writeText(
+          """
+          {"module": "catalog", "entries": [
+            {"previewId": "A", "findings": [
+              {"level": "ERROR", "type": "TouchTargetSizeCheck", "message": "24dp tall."},
+              {"level": "INFO", "type": "TextContrastCheck", "message": "ok"}
+            ], "nodes": [
+              {"label": "", "ref": "list", "states": ["scrollable"], "merged": false,
+               "boundsInScreen": "0,0,40,90"}
+            ]},
+            {"previewId": "B", "findings": [], "nodes": []}
+          ]}
+          """
+        )
+      }
+    val host = HandoffInputs.read(null, dir, a11y, null, null).host
+
+    assertEquals(
+      "1 node(s), 1 scrollable; ATF: 1 ERROR TouchTargetSizeCheck. " +
+        "Ask for `a11y` for the nodes and checks.",
+      host.summary("A"),
+    )
+    // An entry with neither nodes nor checks is a fetch that produced nothing: nothing to offer.
+    assertEquals(emptyList<String>(), host.available("B"))
+    assertNull(host.summary("B"))
+    assertNull(host.nodes("B"))
+    assertEquals(
+      listOf("TouchTargetSizeCheck", "TextContrastCheck"),
+      host.checks("A")!!.map { it.type },
+    )
+  }
+
+  @Test
+  fun `a live host fetches accessibility data once, for the previews a round asks about`() {
+    val calls = mutableListOf<List<String>>()
+    val host =
+      CliEvidenceHost(
+        projectDir = Files.createTempDirectory("guidelines-live").toFile(),
+        moduleName = "catalog",
+        nodes = emptyMap(),
+        sources = { null },
+        a11yFetch = { ids ->
+          calls += ids
+          A11yEvidence(
+            nodes =
+              ids.associateWith {
+                listOf(
+                  ee.schimke.composeai.previewdata.AccessibilityNode(
+                    label = "Stop",
+                    role = "Button",
+                    states = emptyList(),
+                    merged = true,
+                    boundsInScreen = "0,0,10,10",
+                    ref = "stop",
+                  )
+                )
+              }
+          )
+        },
+      )
+    assertTrue("a11y" in host.available)
+    // Nothing in hand yet, and summarising would cost a fetch.
+    assertNull(host.summary("A"))
+    assertTrue(calls.isEmpty())
+
+    val need = GuidelineEvidenceNeedV1.Builder("a11y").build()
+    host.prefetch(mapOf("A" to listOf(need), "B" to listOf(need)))
+    assertEquals(listOf("stop"), host.nodes("A")!!.map { it.id })
+    assertEquals(listOf("stop"), host.nodes("B")!!.map { it.id })
+    assertEquals(emptyList(), host.checks("A"))
+    assertEquals(listOf(listOf("A", "B")), calls)
+    assertTrue(host.summary("A")!!.startsWith("1 node(s)"))
+    assertEquals(setOf("A", "B"), host.knownNodes().keys)
+  }
+
+  @Test
+  fun `a live host stops offering accessibility data once a fetch produces none`() {
+    val host =
+      CliEvidenceHost(
+        projectDir = Files.createTempDirectory("guidelines-live-none").toFile(),
+        moduleName = "desktop",
+        nodes = emptyMap(),
+        sources = { null },
+        a11yFetch = { A11yEvidence() },
+      )
+    assertTrue("a11y" in host.available("A"))
+    assertNull(host.nodes("A"))
+    assertTrue("a11y" !in host.available("A"))
+    assertTrue(
+      "a11y" !in host.available("B"),
+      "nothing came back, so later previews are not offered it",
+    )
+  }
+
+  @Test
+  fun `handoff offers the staged long screenshot and the ATF results as evidence`() {
     val dir = Files.createTempDirectory("guidelines-handoff-long").toFile()
     val renders = dir.resolve("renders").apply { mkdirs() }
     renders.resolve("List-1.png").writeBytes(png())
@@ -210,7 +341,7 @@ class GuidelinesEvidenceTest {
 
     // The long screenshot is not sent up front: it is offered, and served from the staged file.
     assertEquals(listOf("device"), subject.pictures.map { it.kind })
-    assertEquals(listOf("scroll-capture"), inputs.host.available("x.List"))
+    assertEquals(listOf("scroll-capture", "a11y"), inputs.host.available("x.List"))
     assertEquals(emptyList<String>(), inputs.host.available("x.Other"))
     val need = GuidelineEvidenceNeedV1.Builder("scroll-capture").build()
     val long = inputs.host.render("x.List", need)!!
@@ -227,9 +358,12 @@ class GuidelinesEvidenceTest {
         .single()
         .renderHash
     assertTrue(before != after, "$before == $after")
-    assertEquals(listOf("scrollable"), subject.nodes.single().states)
-    assertEquals("TouchTargetSizeCheck", subject.checks.single().type)
-    assertEquals("4,4,28,28", subject.checks.single().bounds)
+    // The nodes and ATF results are served as `a11y` evidence, not sent with the subject.
+    assertTrue(subject.nodes.isEmpty() && subject.checks.isEmpty())
+    assertEquals(listOf("scrollable"), inputs.host.nodes("x.List")!!.single().states)
+    val check = inputs.host.checks("x.List")!!.single()
+    assertEquals("TouchTargetSizeCheck", check.type)
+    assertEquals("4,4,28,28", check.bounds)
   }
 
   @Test
@@ -377,20 +511,36 @@ class GuidelinesEvidenceTest {
       )
       .guidelines!!
 
-  private fun png(): ByteArray =
+  private fun png(size: Int = 8): ByteArray =
     ByteArrayOutputStream()
-      .also { ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB), "png", it) }
+      .also { ImageIO.write(BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB), "png", it) }
       .toByteArray()
 
-  private class FakeModel : GuidelineModel {
+  private fun pixels(png: ByteArray): IntArray {
+    val image = ImageIO.read(java.io.ByteArrayInputStream(png))
+    return image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+  }
+
+  /** A reply judging rule `touch` of `s1`, asking for [needs] when it is non-null. */
+  private fun reply(verdict: String, nodeIds: String, needs: String?): String =
+    """{"verdicts":[{"subjectId":"s1","ruleId":"touch","verdict":"$verdict","confidence":0.9,""" +
+      """"nodeIds":[$nodeIds],"reason":"The icon button is fixed at 36dp.","needs":[""" +
+      (needs?.let {
+        """{"kind":"$it","theme":null,"fontScale":null,"device":null,"reason":"tap targets"}"""
+      } ?: "") +
+      """],"regions":[]}]}"""
+
+  private class FakeModel(vararg replies: String) : GuidelineModel {
     val requests = mutableListOf<GuidelineRequestV1>()
+    private val replies = ArrayDeque(replies.toList())
 
     override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
       requests += request
       val content =
-        """{"verdicts":[{"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,""" +
-          """"nodeIds":["stop"],"reason":"The icon button is fixed at 36dp.","needs":[],""" +
-          """"regions":[]}]}"""
+        replies.removeFirstOrNull()
+          ?: ("""{"verdicts":[{"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,""" +
+            """"nodeIds":["stop"],"reason":"The icon button is fixed at 36dp.","needs":[],""" +
+            """"regions":[]}]}""")
       val body = buildJsonObject {
         put("id", "gen-1")
         put("model", "deepseek/deepseek-v4.1-flash")

@@ -165,6 +165,14 @@ public object PreviewGuidelineRequests {
       "long screenshot: the whole scrolling content, already rendered) and you cannot tell " +
       "scrolled-away content from clipped content, answer `needs_evidence` asking for it " +
       "rather than guess. " +
+      "Accessibility data may be evidence you ask for rather than something given: when `a11y` " +
+      "may be asked for a subject, an `Accessibility:` line under it summarises what it holds. " +
+      "`a11y` is that subject's accessibility nodes (id, role, label, bounds, states such as " +
+      "`clickable`, `scrollable`, `heading`) and the Accessibility Test Framework's measured " +
+      "checks on its render (touch target size, contrast, missing labels). Answer " +
+      "`needs_evidence` asking for `a11y` when a rule turns on touch target size, contrast, " +
+      "content descriptions, traversal order or headings and the summary does not settle it, or " +
+      "when a `fail` should cite the node it is about; do not estimate those from the picture. " +
       "When measured accessibility checks are listed for a subject, they decide the rules they " +
       "measure (touch target size, contrast) over your estimate from the picture; cite the " +
       "node or region they name. `confidence` is your " +
@@ -258,6 +266,33 @@ public object PreviewGuidelineRequests {
     round: Int,
     onlyRules: Map<String, Set<String>>?,
     subjectEvidence: Map<String, List<String>>,
+  ): GuidelineRequestV1 =
+    request(
+      guidelines,
+      batch,
+      rulesSource,
+      evidenceAvailable,
+      round,
+      onlyRules,
+      subjectEvidence,
+      emptyMap(),
+    )
+
+  /**
+   * [request], also showing under each subject the host's one-line summary of evidence it may be
+   * asked for ([subjectSummaries], by preview id; [GuidelineEvidenceHost.summary]): for
+   * accessibility data not attached up front, how many nodes, whether one scrolls, which checks
+   * reported — a few dozen tokens standing in for the hundreds the data itself would cost.
+   */
+  public fun request(
+    guidelines: CatalogGuidelinesV1,
+    batch: GuidelineBatch,
+    rulesSource: String,
+    evidenceAvailable: List<String>,
+    round: Int,
+    onlyRules: Map<String, Set<String>>?,
+    subjectEvidence: Map<String, List<String>>,
+    subjectSummaries: Map<String, String>,
   ): GuidelineRequestV1 {
     val anyPicture = batch.subjects.any { it.pictures.isNotEmpty() }
     val (perSubject, setRules) = askedRules(guidelines, batch, round, onlyRules)
@@ -351,6 +386,9 @@ public object PreviewGuidelineRequests {
             append("Evidence that may be asked for ").append(alias).append(": ")
             append(kinds.ifEmpty { listOf("none") }.joinToString()).append('\n')
           }
+        subjectSummaries[subject.previewId]?.let { summary ->
+          append("Accessibility: ").append(summary.take(MAX_SUMMARY_CHARS)).append('\n')
+        }
         if (subject.nodes.isNotEmpty()) {
           val viewport = subject.pictures.firstOrNull()?.let { pngSize(it.png) }
           viewport?.let { (w, h) ->
@@ -553,7 +591,14 @@ public object PreviewGuidelineRequests {
                   putJsonObject("kind") {
                     put("type", "string")
                     putJsonArray("enum") {
-                      listOf("a11y-hierarchy", "semantics", "source", "render", KIND_SCROLL_CAPTURE)
+                      listOf(
+                          "a11y-hierarchy",
+                          "semantics",
+                          "source",
+                          "render",
+                          KIND_SCROLL_CAPTURE,
+                          KIND_A11Y,
+                        )
                         .forEach { add(JsonPrimitive(it)) }
                     }
                   }
@@ -663,4 +708,45 @@ public object PreviewGuidelineRequests {
    * host holding no build (a CI publish job) never renders anything to answer it.
    */
   public const val KIND_SCROLL_CAPTURE: String = "scroll-capture"
+
+  /**
+   * An evidence kind beside the protocol's: a preview's accessibility data — its nodes with bounds,
+   * roles, labels and states (`scrollable`, `clickable`, …) and the Accessibility Test Framework's
+   * measured checks on its render ([PreviewCheck]). Not sent with every subject: a host offers it
+   * where it has it (or can make it) and serves it in a follow-up round through
+   * [GuidelineEvidenceHost.nodes] and [GuidelineEvidenceHost.checks], showing only its
+   * [GuidelineEvidenceHost.summary] up front. A need for the protocol's `a11y-hierarchy` or
+   * `semantics` is served as this kind by a host offering it.
+   */
+  public const val KIND_A11Y: String = "a11y"
+
+  /** The most of a host's evidence summary one subject shows. */
+  internal const val MAX_SUMMARY_CHARS: Int = 240
+
+  /**
+   * The summary a host holding [nodes] and [checks] shows for them up front: counts, the scrolling
+   * containers (whose edges are scrolled, not clipped) and which checks reported at which level.
+   * About 30 tokens, against roughly 20 per node and 60 per check for the data itself.
+   */
+  public fun a11ySummary(nodes: List<PreviewNode>, checks: List<PreviewCheck>): String =
+    buildString {
+      append(nodes.size).append(" node(s)")
+      val scrollable = nodes.count { "scrollable" in it.states }
+      append(", ")
+      append(if (scrollable == 0) "none scrollable" else "$scrollable scrollable")
+      val reported = checks.filter { it.level.uppercase() != "INFO" }
+      append("; ATF: ")
+      if (reported.isEmpty()) {
+        append(if (checks.isEmpty()) "no findings" else "no errors or warnings")
+      } else {
+        append(
+          reported
+            .groupBy { it.level.uppercase() to it.type }
+            .entries
+            .sortedWith(compareBy({ it.key.first }, { it.key.second }))
+            .joinToString { (key, list) -> "${list.size} ${key.first} ${key.second}" }
+        )
+      }
+      append(". Ask for `").append(KIND_A11Y).append("` for the nodes and checks.")
+    }
 }

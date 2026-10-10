@@ -2896,16 +2896,23 @@ open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
    * task itself failed; the caller falls through to "no findings" rather than blocking the user.
    */
   private fun runDaemonStartTasks(modules: List<PreviewModule>): Boolean {
+    // Once per module per run: `guidelines` fetches accessibility data round by round, and the
+    // descriptor the first start wrote is still the build's.
+    val pending = modules.filter { it.gradlePath !in daemonStarted }
+    if (pending.isEmpty()) return true
     var ok = true
     withGradle(silenceStdout = jsonOutput) { gradle ->
-      val tasks = modules.map { ":${it.gradlePath}:composePreviewDaemonStart" }.toTypedArray()
+      val tasks = pending.map { ":${it.gradlePath}:composePreviewDaemonStart" }.toTypedArray()
       ok =
         withGradleStdout(jsonOutput) {
           runGradle(gradle, *tasks, arguments = gradleArgsWithForce())
         }
     }
+    if (ok) daemonStarted += pending.map { it.gradlePath }
     return ok
   }
+
+  private val daemonStarted = mutableSetOf<String>()
 }
 
 // `sha256` / `previewSha256` / `gifBookendFrameSha256` carved out to `:gradle-preview-driver`

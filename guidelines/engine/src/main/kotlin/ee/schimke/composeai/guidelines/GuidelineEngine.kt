@@ -26,6 +26,28 @@ public interface GuidelineEvidenceHost {
   public fun nodes(previewId: String): List<PreviewNode>? = null
 
   /**
+   * [previewId]'s measured accessibility checks (ATF results on its render), or null when the host
+   * cannot get them. Served with [nodes] for a [PreviewGuidelineRequests.KIND_A11Y] need.
+   */
+  public fun checks(previewId: String): List<PreviewCheck>? = null
+
+  /**
+   * One line the request shows up front about evidence [previewId] may be asked for, so the model
+   * knows whether asking would help: for accessibility data, how many nodes, whether one scrolls,
+   * which checks reported. Null when the host has nothing to say without fetching it; a host that
+   * would have to render to answer returns null rather than render.
+   */
+  public fun summary(previewId: String): String? = null
+
+  /**
+   * Called once before a round's evidence is gathered, with each subject's needs (only kinds the
+   * host advertised for it), so a host that produces evidence by rendering — the CLI fetching
+   * accessibility data through a render daemon — can produce all of it in one pass rather than one
+   * session per preview. The per-preview calls ([nodes], [checks], [render], [source]) follow.
+   */
+  public fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) {}
+
+  /**
    * [previewId] rendered as [need] asks (theme, font scale, device), or the already-rendered
    * capture a [PreviewGuidelineRequests.KIND_SCROLL_CAPTURE] need asks for, or null.
    */
@@ -158,7 +180,8 @@ public class GuidelineEngine(
           guidelines.subjectRules(batch.surface).joinToString("\n") { "${it.id}: ${it.check}" }
         // Only offer what this host can supply: a decision for a render the host cannot draw
         // would cost a question and fetch nothing.
-        val offers = JevTriage.DEFAULT_OFFERS.filter { it.need.kind in host.available }
+        val offers =
+          JevTriage.DEFAULT_OFFERS.filter { servedKind(it.need.kind, host.available) != null }
         val reply =
           offers
             .takeIf { it.isNotEmpty() }
@@ -187,6 +210,14 @@ public class GuidelineEngine(
             round,
             onlyRules,
             target.subjects.associate { it.previewId to host.available(it.previewId) },
+            // The summary stands in for accessibility data not yet attached; once a round has
+            // brought the nodes and checks, they speak for themselves.
+            target.subjects
+              .filter { it.nodes.isEmpty() && it.checks.isEmpty() }
+              .mapNotNull { subject ->
+                host.summary(subject.previewId)?.let { subject.previewId to it }
+              }
+              .toMap(),
           )
         val (perSubject, setRules) =
           PreviewGuidelineRequests.askedRules(guidelines, target, round, onlyRules)
@@ -416,55 +447,73 @@ public class GuidelineEngine(
   private fun withEvidence(
     batch: GuidelineBatch,
     needs: Map<String, List<GuidelineEvidenceNeedV1>>,
-  ): GuidelineBatch =
-    batch.copy(
+  ): GuidelineBatch {
+    // Never ask the host for a kind it did not advertise, whoever asked for it: Jev's triage or
+    // the model's own `needs_evidence`. A need for the protocol's `a11y-hierarchy` / `semantics`
+    // is served as `a11y` by a host offering that instead.
+    val served =
+      batch.subjects
+        .associate { subject ->
+          val offered = host.available(subject.previewId)
+          subject.previewId to
+            needs[subject.previewId].orEmpty().mapNotNull { need ->
+              val kind = servedKind(need.kind, offered) ?: return@mapNotNull null
+              if (kind == need.kind) need else need.newBuilder().apply { this.kind = kind }.build()
+            }
+        }
+        .filterValues { it.isNotEmpty() }
+    if (served.isNotEmpty()) host.prefetch(served)
+    return batch.copy(
       subjects =
         batch.subjects.map { subject ->
-          val wanted = needs[subject.previewId] ?: return@map subject
+          val wanted = served[subject.previewId] ?: return@map subject
           var updated = subject
-          // Never ask the host for a kind it did not advertise, whoever asked for it: Jev's
-          // triage or the model's own `needs_evidence`.
-          wanted
-            .filter { it.kind in host.available(subject.previewId) }
-            .forEach { need ->
-              when (need.kind) {
-                GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
-                GuidelineEvidenceNeedV1.KIND_SEMANTICS ->
-                  if (updated.nodes.isEmpty()) {
-                    host.nodes(subject.previewId)?.let { updated = updated.copy(nodes = it) }
+          wanted.forEach { need ->
+            when (need.kind) {
+              GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
+              GuidelineEvidenceNeedV1.KIND_SEMANTICS ->
+                if (updated.nodes.isEmpty()) {
+                  host.nodes(subject.previewId)?.let { updated = updated.copy(nodes = it) }
+                }
+              PreviewGuidelineRequests.KIND_A11Y -> {
+                if (updated.nodes.isEmpty()) {
+                  host.nodes(subject.previewId)?.let { updated = updated.copy(nodes = it) }
+                }
+                if (updated.checks.isEmpty()) {
+                  host.checks(subject.previewId)?.let { updated = updated.copy(checks = it) }
+                }
+              }
+              GuidelineEvidenceNeedV1.KIND_SOURCE ->
+                if (updated.source == null) {
+                  host.source(subject.previewId)?.let { updated = updated.copy(source = it) }
+                }
+              PreviewGuidelineRequests.KIND_SCROLL_CAPTURE ->
+                if (
+                  updated.pictures.none { it.kind == PreviewGuidelineRequests.KIND_SCROLL_CAPTURE }
+                ) {
+                  host.render(subject.previewId, need)?.let {
+                    updated = updated.copy(pictures = updated.pictures + it)
                   }
-                GuidelineEvidenceNeedV1.KIND_SOURCE ->
-                  if (updated.source == null) {
-                    host.source(subject.previewId)?.let { updated = updated.copy(source = it) }
+                }
+              GuidelineEvidenceNeedV1.KIND_RENDER -> {
+                val already =
+                  updated.pictures.any {
+                    it.theme == need.theme &&
+                      it.fontScale == need.fontScale &&
+                      it.device == need.device
                   }
-                PreviewGuidelineRequests.KIND_SCROLL_CAPTURE ->
-                  if (
-                    updated.pictures.none {
-                      it.kind == PreviewGuidelineRequests.KIND_SCROLL_CAPTURE
-                    }
-                  ) {
-                    host.render(subject.previewId, need)?.let {
-                      updated = updated.copy(pictures = updated.pictures + it)
-                    }
-                  }
-                GuidelineEvidenceNeedV1.KIND_RENDER -> {
-                  val already =
-                    updated.pictures.any {
-                      it.theme == need.theme &&
-                        it.fontScale == need.fontScale &&
-                        it.device == need.device
-                    }
-                  if (!already) {
-                    host.render(subject.previewId, need)?.let {
-                      updated = updated.copy(pictures = updated.pictures + it)
-                    }
+                if (!already) {
+                  host.render(subject.previewId, need)?.let {
+                    updated = updated.copy(pictures = updated.pictures + it)
                   }
                 }
               }
             }
+          }
           updated
         }
     )
+  }
 
   private fun record(
     guidelines: CatalogGuidelinesV1,
@@ -528,6 +577,24 @@ public class GuidelineEngine(
       unchecked = asked.map { it.id },
       pending = true,
     )
+  }
+}
+
+/**
+ * The kind [offered] serves a need for [kind] as: [kind] itself; `a11y` for the protocol's
+ * `a11y-hierarchy` / `semantics` (both are the nodes, and `a11y` carries them with the measured
+ * checks); `a11y-hierarchy` for `a11y` from a host offering only the nodes; or null when it is not
+ * served.
+ */
+internal fun servedKind(kind: String, offered: List<String>): String? {
+  val nodeKinds =
+    setOf(GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY, GuidelineEvidenceNeedV1.KIND_SEMANTICS)
+  return when {
+    kind in offered -> kind
+    kind in nodeKinds && PreviewGuidelineRequests.KIND_A11Y in offered ->
+      PreviewGuidelineRequests.KIND_A11Y
+    kind == PreviewGuidelineRequests.KIND_A11Y -> nodeKinds.firstOrNull { it in offered }
+    else -> null
   }
 }
 

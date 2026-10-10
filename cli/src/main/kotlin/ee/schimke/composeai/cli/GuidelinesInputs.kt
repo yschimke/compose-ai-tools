@@ -32,14 +32,17 @@ internal data class HandoffInputs(
   val renders: Map<String, File?>,
   /** Each preview's size in dp, for the pictures a follow-up round attaches. */
   val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
+  /** Each preview's measured accessibility checks, served with its [nodes] as `a11y` evidence. */
+  val checks: Map<String, List<PreviewCheck>> = emptyMap(),
 ) {
   /**
-   * What a follow-up round may ask for in handoff mode: only captures the render job already made
-   * and staged beside each render (the long screenshot of its scrolling content). The job holding
-   * the key never builds or renders, so nothing else is fetchable.
+   * What a follow-up round may ask for in handoff mode: only what the render job already made and
+   * staged — the long screenshot of a preview's scrolling content, and its accessibility data
+   * (nodes and ATF checks, `a11y`). The job holding the key never builds or renders, so nothing
+   * else is fetchable.
    */
   val host: GuidelineEvidenceHost
-    get() = HandoffEvidenceHost(renders, sizes)
+    get() = HandoffEvidenceHost(renders, sizes, nodes, checks)
 
   companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
@@ -148,12 +151,10 @@ internal data class HandoffInputs(
                 description = describeCapture(entry.widthDp, entry.heightDp, entry.scrollMode),
               )
             ),
-          nodes =
-            nodes[entry.id].orEmpty().mapIndexedNotNull { index, node ->
-              node.toPreviewNode(index)
-            },
+          // Accessibility data is evidence the model asks for (`a11y`), served from the host,
+          // not sent with every subject; the request shows only the host's one-line summary.
+          // It is derived from the same render, so it does not join the cache identity.
           source = source,
-          checks = checks[entry.id].orEmpty(),
         )
       }
       return HandoffInputs(
@@ -161,6 +162,7 @@ internal data class HandoffInputs(
         nodes,
         entries.associate { it.id to it.render },
         entries.associate { it.id to (it.widthDp to it.heightDp) },
+        checks,
       )
     }
 
@@ -337,17 +339,44 @@ internal data class HandoffInputs(
 internal class HandoffEvidenceHost(
   renders: Map<String, File?>,
   private val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
+  nodes: Map<String, List<AccessibilityNode>> = emptyMap(),
+  private val checks: Map<String, List<PreviewCheck>> = emptyMap(),
 ) : GuidelineEvidenceHost {
   private val captures: Map<String, File> =
     renders
       .mapNotNull { (id, render) -> render?.let(HandoffInputs::longCapture)?.let { id to it } }
       .toMap()
 
+  /**
+   * The previews with accessibility data to serve. An entry with neither nodes nor checks is a
+   * fetch that produced nothing (the daemon files one per attempted preview), not a clean preview.
+   */
+  private val a11y: Map<String, List<PreviewNode>> =
+    (nodes.keys + checks.keys)
+      .filter { id -> nodes[id].orEmpty().isNotEmpty() || checks[id].orEmpty().isNotEmpty() }
+      .associateWith { id ->
+        nodes[id].orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) }
+      }
+
   override val available: List<String> =
-    if (captures.isEmpty()) emptyList() else listOf(PreviewGuidelineRequests.KIND_SCROLL_CAPTURE)
+    listOfNotNull(
+      PreviewGuidelineRequests.KIND_SCROLL_CAPTURE.takeIf { captures.isNotEmpty() },
+      PreviewGuidelineRequests.KIND_A11Y.takeIf { a11y.isNotEmpty() },
+    )
 
   override fun available(previewId: String): List<String> =
-    if (previewId in captures) available else emptyList()
+    listOfNotNull(
+      PreviewGuidelineRequests.KIND_SCROLL_CAPTURE.takeIf { previewId in captures },
+      PreviewGuidelineRequests.KIND_A11Y.takeIf { previewId in a11y },
+    )
+
+  override fun nodes(previewId: String): List<PreviewNode>? = a11y[previewId]
+
+  override fun checks(previewId: String): List<PreviewCheck>? =
+    if (previewId in a11y) checks[previewId].orEmpty() else null
+
+  override fun summary(previewId: String): String? =
+    a11y[previewId]?.let { PreviewGuidelineRequests.a11ySummary(it, checks[previewId].orEmpty()) }
 
   override fun render(previewId: String, need: GuidelineEvidenceNeedV1): SubjectPicture? {
     if (need.kind != PreviewGuidelineRequests.KIND_SCROLL_CAPTURE) return null
@@ -357,11 +386,25 @@ internal class HandoffEvidenceHost(
   }
 }
 
+/** A preview's accessibility data as a live run fetched it: nodes and ATF checks, by preview id. */
+internal data class A11yEvidence(
+  val nodes: Map<String, List<AccessibilityNode>> = emptyMap(),
+  val checks: Map<String, List<PreviewCheck>> = emptyMap(),
+)
+
 /**
- * What a live CLI run can fetch when the model asks for more: the nodes and source it already read,
- * and a render at other settings (theme, font scale, device, locale) through the module's render
- * daemon. Each render opens a short session ([MatrixRenderFetcher]); follow-up renders are few, so
- * that is cheaper to keep simple than a session held for the whole run.
+ * What a live CLI run can fetch when the model asks for more: the source it already read, a render
+ * at other settings (theme, font scale, device, locale) through the module's render daemon, and a
+ * preview's accessibility data (`a11y`: nodes and ATF checks).
+ *
+ * Accessibility data is fetched on request, for the previews that ask, through [a11yFetch] (the
+ * `a11y` command's daemon fetch narrowed to those ids) — not for every preview before the first
+ * request, which on a catalog costs one ATF render per preview whether or not any rule needed it.
+ * [GuidelineEvidenceHost.prefetch] hands it every preview a round asks about at once, so a round
+ * costs one fetch, not one per preview. [nodes] are nodes already in hand, served without a fetch.
+ *
+ * Each render opens a short session ([MatrixRenderFetcher]); follow-up renders are few, so that is
+ * cheaper to keep simple than a session held for the whole run.
  */
 internal class CliEvidenceHost(
   private val projectDir: File,
@@ -370,16 +413,79 @@ internal class CliEvidenceHost(
   private val sources: (String) -> String?,
   private val fetcher: MatrixRenderFetcher =
     MatrixRenderFetcher(onLog = { System.err.println("[guidelines render] $it") }),
+  private val a11yFetch: ((List<String>) -> A11yEvidence)? = null,
 ) : GuidelineEvidenceHost {
+  private val fetchedNodes = mutableMapOf<String, List<AccessibilityNode>>()
+  private val fetchedChecks = mutableMapOf<String, List<PreviewCheck>>()
+  private val attempted = mutableSetOf<String>()
+
   override val available: List<String> =
-    listOf(
-      GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY,
+    listOfNotNull(
+      PreviewGuidelineRequests.KIND_A11Y.takeIf { a11yFetch != null || nodes.isNotEmpty() },
       GuidelineEvidenceNeedV1.KIND_SOURCE,
       GuidelineEvidenceNeedV1.KIND_RENDER,
     )
 
-  override fun nodes(previewId: String): List<PreviewNode>? =
-    nodes[previewId]?.mapIndexedNotNull { index, node -> node.toPreviewNode(index) }
+  /**
+   * Once a fetch has produced nothing at all (a desktop module, whose daemon has no ATF; a daemon
+   * that would not start), `a11y` is no longer offered, so later rounds and batches do not ask for
+   * what cannot come. A preview fetched without data is not offered it again either.
+   */
+  private var a11yUnavailable = false
+
+  override fun available(previewId: String): List<String> =
+    if ((a11yUnavailable || previewId in attempted) && !hasData(previewId))
+      available - PreviewGuidelineRequests.KIND_A11Y
+    else available
+
+  override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) {
+    fetchA11y(
+      needs.filterValues { list -> list.any { it.kind == PreviewGuidelineRequests.KIND_A11Y } }.keys
+    )
+  }
+
+  private fun fetchA11y(ids: Collection<String>) {
+    val fetch = a11yFetch ?: return
+    val wanted = ids.filter { it !in attempted && it !in nodes }
+    if (wanted.isEmpty()) return
+    attempted += wanted
+    val got = runCatching { fetch(wanted) }.getOrElse { A11yEvidence() }
+    wanted.forEach { id ->
+      got.nodes[id]?.let { fetchedNodes[id] = it }
+      got.checks[id]?.let { fetchedChecks[id] = it }
+    }
+    if (wanted.none(::hasData)) a11yUnavailable = true
+  }
+
+  /** Every accessibility node this run holds, fetched ones included: what an overlay outlines. */
+  fun knownNodes(): Map<String, List<AccessibilityNode>> = nodes + fetchedNodes
+
+  private fun hasData(previewId: String): Boolean =
+    (nodes[previewId] ?: fetchedNodes[previewId]).orEmpty().isNotEmpty() ||
+      fetchedChecks[previewId].orEmpty().isNotEmpty()
+
+  override fun nodes(previewId: String): List<PreviewNode>? {
+    fetchA11y(listOf(previewId))
+    if (!hasData(previewId)) return null
+    return (nodes[previewId] ?: fetchedNodes[previewId]).orEmpty().mapIndexedNotNull { index, node
+      ->
+      node.toPreviewNode(index)
+    }
+  }
+
+  override fun checks(previewId: String): List<PreviewCheck>? {
+    fetchA11y(listOf(previewId))
+    return if (hasData(previewId)) fetchedChecks[previewId].orEmpty() else null
+  }
+
+  /** Only what is already in hand: summarising a preview not yet fetched would cost the fetch. */
+  override fun summary(previewId: String): String? =
+    if (hasData(previewId))
+      PreviewGuidelineRequests.a11ySummary(
+        nodes(previewId).orEmpty(),
+        fetchedChecks[previewId].orEmpty(),
+      )
+    else null
 
   override fun source(previewId: String): String? = sources(previewId)
 
