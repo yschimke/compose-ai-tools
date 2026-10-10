@@ -49,7 +49,7 @@ jobs:
       # Android modules also need the SDK — add android-actions/setup-android@v3
       # (and a Gradle cache) here, or factor java+SDK+cache into a local
       # `./.github/actions/setup` composite as the reference workflows do.
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.42.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.43.0
 ```
 <!-- x-release-please-end -->
 
@@ -103,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup           # your java + SDK + cache composite
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.42.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.43.0
         with:
           only: compose,resources
           # `warn` keeps CI green when a handful of previews render nothing;
@@ -116,7 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.42.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.43.0
         with:
           # a11y renders first, then notifications stages the captures it
           # leaves behind — so the two must share a job (see below). Drop
@@ -783,6 +783,7 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | `guidelines` | `false` | Turn the check on. |
 | `openrouter-key` | `''` | OpenRouter key. Empty skips the check with a notice. |
 | `guidelines-max-cost` | `0.25` | Dollars to spend at most across every module of the run; what is left is reported unchecked. |
+| `guidelines-concurrency` | `4` | Guidelines model requests in flight at once (`--concurrency`); `1` asks one batch at a time. The cost cap holds across them. Ignored by a CLI without the flag. |
 | `guidelines-max-previews` | `30` | The most previews one PR sends to the check, across modules. Ranked (changed renders before source-only selections, new and most-changed first, one render per function before its other sizes and `_VARIANT_` cells); the rest are listed as not checked, "over this PR's limit of N". `0` lifts it. |
 | `guidelines-rules-sweep` | `false` | When the PR changes a guidelines file, also check up to 24 of the module's other previews. Off: the comment says so — that the catalog publish re-checks them when `guidelines-cache-key` is set, else that they were not re-checked. |
 | `guidelines-cache-key` | `''` | The catalog publish's result cache prefix (`guidelines-<system>-`). Restored read-only, so previews unchanged from the default branch are answered from it at no cost. |

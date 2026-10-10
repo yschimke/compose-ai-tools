@@ -128,14 +128,49 @@ and re-pin `sha256` when moving to a newer tag.
 
 ## Batching
 
-Not one call per preview. Subjects of one surface share a request, up to a budget (default 12
-pictures, ~60k input tokens, 16 subjects, 120 verdicts): the rules are sent once, and `set` rules
-see the whole batch. The verdict cap — each subject's rules, summed — bounds the *reply*, which is
-what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply that ran past
-the request timeout twice, while the request itself came to about 25k input tokens by the batcher's
-estimate, well inside the token budget. At 120 a screen batch of that catalog holds five. (A re-run failed the same twelve-screen
-request the same way while the component request passed both times: it was the request's size, not
-a blip, and asking it again would not have helped.) A picture counts 1,200 tokens, or its pixels
+Not one call per preview. Subjects of one surface share a request, up to a budget fixed before
+anything is asked (default 12 pictures, ~60k input tokens, 16 subjects, 144 verdicts asked and an
+expected reply of 3,000 tokens): the rules are sent once, and `set` rules see the whole batch. A
+batch is bounded on both sides, because the reply is what takes the time — input is read in one
+pass, output written a token at a time at roughly 70 tokens/s for a flash model. Twelve Wear
+screens asked 24 rules each was 288 verdicts written out, about 20k output tokens, a reply that
+ran past the 300 s request timeout twice while the request itself came to about 25k input tokens
+by the batcher's estimate, well inside the token budget. (A re-run failed the same twelve-screen
+request the same way while the component request passed both times: it was the request's size,
+not a blip, and asking it again would not have helped.)
+
+**Replies list only what does not pass.** Since `REQUEST_FORMAT` 8 a reply holds a `verdicts`
+entry for each `fail` and `needs_evidence` (and a `not_applicable` only where a pass would
+mislead), plus one `others` statement per subject — and one with `subjectId` null for the `set`
+rules — saying every rule it did not list is `pass` (or `unchecked`):
+
+```json
+{"verdicts": [{"subjectId": "s2", "ruleId": "wear.touch-target", "verdict": "fail",
+               "confidence": 0.8, "nodeIds": [], "reason": "The chips are 40dp tall.",
+               "needs": [], "regions": [{"picture": 2, "x": 0.1, "y": 0.4, "width": 0.8,
+               "height": 0.2, "label": null}]}],
+ "others": [{"subjectId": "s1", "verdict": "pass", "confidence": 0.9},
+            {"subjectId": "s2", "verdict": "pass", "confidence": 0.85},
+            {"subjectId": null, "verdict": "pass", "confidence": 0.9}]}
+```
+
+The engine records the listed verdicts and expands each `pass` statement into a pass verdict for
+every rule that subject was asked and the reply did not list — never for a rule it was not asked —
+whose `reason` is `IMPLICIT_PASS_REASON`; `PreviewGuidelineResult.implicitPasses` names them, so a
+record still carries a verdict per rule. A subject with neither a verdict nor a `pass` statement
+for a rule leaves that rule **unchecked**, never passed, says so in `problems`, and is not cached.
+The twelve-screen request's reply drops from ~9.1k to ~1.3k tokens on the bench in
+`GuidelineFailuresOnlyTest` (three findings a screen).
+
+The two reply bounds: the expected size (`GuidelineBudget.maxReplyTokens`,
+`PreviewGuidelineRequests.expectedReplyTokens`: a 20-token statement plus a quarter of the rules
+listed at 80 tokens each) keeps a batch fast; the worst case (`maxVerdicts`, every rule asked
+listed, ~11.5k tokens) keeps a bad batch under the timeout. Both put six of those screens in a
+batch. Each request is sent with `max_tokens` at that worst case plus 8k for a reasoning model's
+thinking, so a runaway reply is cut rather than held to the timeout, and with
+`provider.require_parameters` so it is routed only to providers honouring the strict schema
+(OpenRouter's structured-outputs guidance); a model none of whose providers do is retried without
+it, once per client, and the run's `problems` say so. A picture counts 1,200 tokens, or its pixels
 over 750 when that is more — a tall scroll capture or a tablet screen. Each subject carries its render (tagged with its subject id) and optionally its source;
 its accessibility data is evidence it is asked for (see *Accessibility evidence*). The model names the subject (`s1`, …) in every
 verdict and cites node ids, which map back to bounds for overlays; a visual problem no single node
@@ -173,28 +208,68 @@ is asked once more, budget permitting, and is otherwise a failed request.
 `OpenRouterClient` makes each call once; `GuidelineEngine` decides what to do when one fails
 (`GuidelineRunOptions.withRetry(GuidelineRetry(…))`):
 
+- **Streamed.** Completions are requested with `stream: true` and assembled from their deltas
+  (`StreamAssembler`; `usage` and its cost come in the final chunk). OpenRouter keeps a connection
+  alive with `: OPENROUTER PROCESSING` comments, so no read timeout ever fired on a slow request,
+  and per its streaming docs "for non-streaming requests or unsupported providers, the model will
+  continue processing and you will be billed for the complete response" — every non-streamed
+  request abandoned at the timeout was paid for in full. A stream that sends no token (keep-alives
+  do not count) for `--idle-timeout` (default 120 s) is cancelled, which stops the provider and its
+  bill where the provider supports it, and is a timeout like any other. `--no-stream` restores
+  one request, one answer.
 - **No answer.** A request the transport gave up on comes back as `ModelResponse.NO_ANSWER` (0)
-  with what gave up on it — `no complete answer within the 300 s request timeout` for OkHttp's
-  call timeout, a read or connect timeout, or a failed connection. OkHttp's own message for all
-  three is `timeout`, which is all the old `the model answered 0: {"error":{"message":"timeout"}}`
-  said. OpenRouter keeps a slow completion's connection open with whitespace, so the call timeout,
-  not the read timeout, is what fires; `--request-timeout <seconds>` (default 300) sets it.
-- **Asked again.** No answer, 408, 429, 5xx, an error OpenRouter sent in place of a completion
-  (a 200 whose body is an `error`, or a choice ending `finish_reason: "error"`) and a reply with no
-  usable verdict are asked again, up to two tries, after a backoff (2 s, doubling, at most 60 s) or
-  the server's `Retry-After` — one asking for longer than that is not waited for. 401, 402 and other
-  4xx are not.
+  with what gave up on it — the idle timeout, `no complete answer within the 300 s request
+  timeout` for OkHttp's call timeout, a read or connect timeout, or a failed connection.
+  `--request-timeout <seconds>` (default 300) caps a whole request, streamed or not.
+- **Asked again.** OpenRouter's [errors](https://openrouter.ai/docs/api-reference/errors) decide
+  it. No answer, 408, 5xx, an error sent in place of a completion (a 200 whose body is an `error`,
+  or a stream ending `finish_reason: "error"`) and a reply with no usable verdict are asked again,
+  up to two tries, after a backoff (2 s, doubling, at most 60 s). 429, 503 and a 402 whose
+  `error.metadata.limit_source` is `openrouter_in_flight_budget` (the estimated cost of the key's
+  requests in flight, relative to its balance) are **rate limits**: the server's `Retry-After` is
+  waited out by every request of the run, not only the one that met it, and they are never split.
+  A wait longer than 60 s is not waited for. 400, 401, 403, 404 and any other 402 (credits, a key
+  or workspace limit) are not asked again.
 - **Split.** A batch that still fails is split in half and each half asked, down to single
   subjects, so one slow batch cannot leave every preview in it unchecked. A timeout on a batch of
   several subjects is split at once rather than asked again, since the same request would take as
   long again; a 413 is split without a retry; a 429 is never split.
 - **Bounded.** Each retry and each half is a request under `--max-cost`: none is started that the
-  cap cannot afford, a failed reply's cost counts, and a request abandoned without an answer —
+  cap cannot afford (see *Concurrency*), a failed reply's cost counts, and a request abandoned without an answer —
   which may still have been billed — counts at what the dearest request cost. Past eight failed
   tries in a run, nothing more is retried or split.
 - **Reported once.** A problem is recorded for each request that finally failed (with how many
   tries it took), plus one line each for the retries and the splits — never one per attempt.
   `failedRequests` counts only final failures, so a run whose splits all succeeded is complete.
+
+## Concurrency
+
+Up to `--concurrency` requests (default 4; `GuidelineRunOptions.withConcurrency`) are in flight
+at once. Each batch — its triage, request, retries, halves and follow-up rounds — is asked by one
+worker, so that many batches progress together; `1` asks one at a time, as before. Paid models
+have no OpenRouter request-rate cap (`:free` variants allow 20 a minute), and four at once stays
+well inside the in-flight budget of a funded key; a 402 from that budget pauses the whole run.
+
+- **The cap holds across them.** Before a request starts, the dearest request so far is reserved
+  against `--max-cost` on top of what is spent and what the requests in flight were expected to
+  cost; it is settled at what the reply cost when it is back. Until the first reply has said what
+  one costs, a capped run asks one at a time. A request that does not fit waits while others are
+  in flight (they may come back cheaper), and the next batch off the queue is the one that waits:
+  a capped run checks a prefix of the queue, exactly as a sequential one would.
+- **Deterministic.** Results come back in the order the batches were formed, and the problems in
+  that order too, whichever request finished first.
+- **The host is never concurrent.** Evidence (`GuidelineEvidenceHost`) is fetched one call at a
+  time; only `GuidelineModel.complete` / `decide` are called from several threads.
+
+`GuidelineConcurrencyTest` measures it on a fake model whose latency is what it writes, at 70
+tokens/s: the twelve-screen check that timed out wrote ~16.5k tokens in three sequential requests
+(~4 min); now it writes ~2.2k tokens in two concurrent ones (~16 s).
+
+**Provider routing for speed** is opt-in: `--provider-sort throughput|latency|price` sends
+OpenRouter's `provider.sort`, which turns off its price-weighted load balancing and tries providers
+in that order (faster, but dearer and less spread out); `--preferred-max-latency <s>` and
+`--preferred-min-throughput <tokens/s>` only move slower providers to the end of the list, never
+excluding one. None is sent by default; the served model and provider are recorded either way.
 
 In a Gradle run the CLI's host (`CliEvidenceHost`) supplies `a11y`, `source` and `render`: a
 render need becomes a `MatrixCell` (theme → `uiMode`, font scale, device, locale) drawn through the

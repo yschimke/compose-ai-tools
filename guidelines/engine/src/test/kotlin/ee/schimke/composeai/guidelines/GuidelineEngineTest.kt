@@ -322,7 +322,7 @@ class GuidelineEngineTest {
       """{"answers":{"s1__dark_theme":{"type":"noul","noul":0.8},"s1__large_font":{"type":"noul","noul":0.1},
           "s1__a11y":{"type":"noul","noul":0.2}}}"""
     model.replies +=
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     val host = FakeHost()
     GuidelineEngine(model, host, options = GuidelineRunOptions(maxRounds = 0))
       .run(guidelines, listOf(subject("a")))
@@ -335,7 +335,7 @@ class GuidelineEngineTest {
     val dir = Files.createTempDirectory("guidelines-cache").toFile()
     val model = FakeModel()
     model.replies +=
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     val options = GuidelineRunOptions(triage = false)
     GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
       .run(guidelines, listOf(subject("a")))
@@ -502,7 +502,7 @@ class GuidelineEngineTest {
   @Test
   fun `the cap is not crossed by a request expected to cost more than is left`() {
     val pass =
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     val model = FakeModel().apply { repeat(4) { replies += pass } }
     val run =
       GuidelineEngine(
@@ -594,7 +594,7 @@ class GuidelineEngineTest {
     val dir = Files.createTempDirectory("guidelines-cache-order").toFile()
     val model = FakeModel()
     val pass =
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     repeat(2) { model.replies += pass }
     fun engine(cap: Double? = null) =
       GuidelineEngine(
@@ -630,7 +630,7 @@ class GuidelineEngineTest {
         {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.3,"nodeIds":[],
          "reason":"","needs":[{"kind":"a11y-hierarchy","theme":null,"fontScale":null,"device":null,"reason":"bounds"}],"regions":[]},
         {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
-      ]}"""
+      ],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s2","verdict":"pass","confidence":0.9}]}"""
     model.replies += undecided
     fun engine(cap: Double?) =
       GuidelineEngine(
@@ -657,7 +657,7 @@ class GuidelineEngineTest {
     val model = FakeModel()
     repeat(2) {
       model.replies +=
-        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9},{"subjectId":"s2","verdict":"pass","confidence":0.9}]}"""
     }
     val options = GuidelineRunOptions(triage = false)
     GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
@@ -691,7 +691,7 @@ class GuidelineEngineTest {
     val model = FakeModel()
     repeat(4) {
       model.replies +=
-        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+        """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9},{"subjectId":"s2","verdict":"pass","confidence":0.9}]}"""
     }
     val options = GuidelineRunOptions(triage = false)
     fun run(subject: PreviewSubject, rules: CatalogGuidelinesV1 = guidelines) =
@@ -766,7 +766,7 @@ class GuidelineEngineTest {
     val dir = Files.createTempDirectory("guidelines-cache-cut").toFile()
     val model = FakeModel()
     model.replies +=
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     val options =
       GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSourceChars = 100))
     val long = listOf(subject("a").copy(source = "x".repeat(600)))
@@ -1046,7 +1046,7 @@ class GuidelineEngineTest {
     val cache = GuidelineResultCache(dir)
     val model = FakeModel()
     model.replies +=
-      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}]}"""
+      """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
     GuidelineEngine(model, cache = cache, options = GuidelineRunOptions(triage = false))
       .run(guidelines, listOf(subject("a")))
     assertThat(cache.get(subject("a"), guidelines, OpenRouterClient.DEFAULT_MODEL)).isNotNull()

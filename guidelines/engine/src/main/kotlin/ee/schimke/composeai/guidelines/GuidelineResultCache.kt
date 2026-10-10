@@ -33,19 +33,28 @@ public data class PreviewGuidelineResult(
     internal set
 
   /**
+   * The rules of [record] that passed because the reply stated that every rule it did not list
+   * passes, rather than by a verdict of their own: a report can say "passed (implicitly)". Their
+   * verdicts are in the record like any other, with [IMPLICIT_PASS_REASON] as their reason. A body
+   * property like [noRules]; empty in a result written before replies listed only findings.
+   */
+  public var implicitPasses: List<String> = emptyList()
+    internal set
+
+  /** This result carrying [other]'s body properties, which `copy` resets. */
+  internal fun withBodyOf(other: PreviewGuidelineResult): PreviewGuidelineResult = also {
+    it.noRules = other.noRules
+    it.implicitPasses = other.implicitPasses
+    it.jev = other.jev
+  }
+
+  /**
    * How the EXPERIMENTAL jev checker reached this result — rounds, requests, spend, latency, and
    * per rule the facts it was handed and the evidence it asked for — for comparing it against a
    * vision run. Null for any other checker. A body property, like [noRules].
    */
   public var jev: JevSubjectTrace? = null
     internal set
-
-  /** A copy carrying the body properties `copy` leaves behind. */
-  internal fun copyWithBody(fromCache: Boolean): PreviewGuidelineResult =
-    copy(fromCache = fromCache).also {
-      it.noRules = noRules
-      it.jev = jev
-    }
 }
 
 /**
@@ -148,10 +157,10 @@ public class GuidelineResultCache(private val directory: File) {
   private fun read(file: File): PreviewGuidelineResult? {
     if (!file.isFile) return null
     return runCatching {
-        GUIDELINES_JSON.decodeFromString(PreviewGuidelineResult.serializer(), file.readText())
-      }
+      GUIDELINES_JSON.decodeFromString(PreviewGuidelineResult.serializer(), file.readText())
+    }
       .getOrNull()
-      ?.copyWithBody(fromCache = true)
+      ?.let { it.copy(fromCache = true).withBodyOf(it) }
   }
 
   @Deprecated(
@@ -168,7 +177,7 @@ public class GuidelineResultCache(private val directory: File) {
     temp.writeText(
       GUIDELINES_JSON.encodeToString(
         PreviewGuidelineResult.serializer(),
-        result.copyWithBody(fromCache = false),
+        result.copy(fromCache = false).withBodyOf(result),
       )
     )
     if (!temp.renameTo(file)) {
@@ -197,9 +206,10 @@ public class GuidelineResultCache(private val directory: File) {
 
     /**
      * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
-     * how evidence is attached), so results from an older engine are not reused.
+     * how evidence is attached, the reply contract), so results from an older engine are not
+     * reused. 8: replies list only what does not pass, plus an `others` statement per subject.
      */
-    public const val REQUEST_FORMAT: Int = 7
+    public const val REQUEST_FORMAT: Int = 8
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, every picture's bytes and

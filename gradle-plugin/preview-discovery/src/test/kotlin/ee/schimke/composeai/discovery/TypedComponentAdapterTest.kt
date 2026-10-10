@@ -88,6 +88,13 @@ class TypedComponentAdapterTest {
     val published = generated.catalog.statusSemantics.components.getValue("acme/button")
     assertThat(published.canvas).isEqualTo("acme/button")
     assertThat(published.record).isEqualTo(generated.record.components.single().canonicalId)
+    assertThat(
+        published.insertContent!!
+          .jsonObject["properties"]!!
+          .jsonObject["enabled"]!!
+          .jsonObject["type"]
+      )
+      .isEqualTo(JsonPrimitive("bool"))
     assertThat(published.propertyCapabilities!!.map { it.jsonObject["name"] })
       .containsExactly(JsonPrimitive("label"), JsonPrimitive("enabled"))
     assertThat(
@@ -157,6 +164,15 @@ class TypedComponentAdapterTest {
         val count = property(CountProps::count, AdapterValueCodecs.Int, 3)
       }
     val generated = generate(adapter, listOf(record))
+    assertThat(
+        generated.catalog.statusSemantics.components
+          .getValue("acme/count")
+          .insertContent!!
+          .jsonObject["properties"]!!
+          .jsonObject["count"]!!
+          .jsonObject["type"]
+      )
+      .isEqualTo(JsonPrimitive("int"))
     assertThat(adapter.count.bindable).isFalse()
     assertThat(
         generated.catalog.statusSemantics.components

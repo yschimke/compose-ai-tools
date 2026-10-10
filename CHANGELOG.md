@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.43.0](https://github.com/yschimke/compose-ai-tools/compare/v2.42.0...v2.43.0) (2026-10-10)
+
+
+### Features
+
+* **apply:** check only a PR's changed previews for accessibility ([#5791](https://github.com/yschimke/compose-ai-tools/issues/5791)) ([f4d3ee5](https://github.com/yschimke/compose-ai-tools/commit/f4d3ee5fd15ea6c7a965feb7bf130188faa4273a))
+* discover compiled entry points for app-owned typed catalogs ([#5786](https://github.com/yschimke/compose-ai-tools/issues/5786)) ([e68f713](https://github.com/yschimke/compose-ai-tools/commit/e68f71325ac551e303b74cad43db55526f516631))
+* **guidelines:** accessibility data is evidence the model asks for ([#5793](https://github.com/yschimke/compose-ai-tools/issues/5793)) ([f3efeee](https://github.com/yschimke/compose-ai-tools/commit/f3efeeeb792a6e19b81747c5cf5e3803d38cb346))
+* **guidelines:** cap the PR check and reuse the catalog publish's results ([#5789](https://github.com/yschimke/compose-ai-tools/issues/5789)) ([5acc9b5](https://github.com/yschimke/compose-ai-tools/commit/5acc9b5561ca06b9c8e71589eb94b69fa14b82a2))
+* **guidelines:** parallel model requests, streamed completions, OpenRouter's error rules ([#5805](https://github.com/yschimke/compose-ai-tools/issues/5805)) ([6b541bf](https://github.com/yschimke/compose-ai-tools/commit/6b541bf7fa9b1aceae85a416dffa74a30803a47a))
+* include UID references in existing app catalogs ([#5792](https://github.com/yschimke/compose-ai-tools/issues/5792)) ([c348cb9](https://github.com/yschimke/compose-ai-tools/commit/c348cb985f57213f44a698ec47e447c76a809280))
+
+
+### Bug Fixes
+
+* **apply:** update a stale a11y comment when a PR stops changing previews ([#5795](https://github.com/yschimke/compose-ai-tools/issues/5795)) ([15ecd78](https://github.com/yschimke/compose-ai-tools/commit/15ecd784bae262de7f5f4e9638d5715178f66d23))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.26.0 ([#5798](https://github.com/yschimke/compose-ai-tools/issues/5798)) ([ddb68af](https://github.com/yschimke/compose-ai-tools/commit/ddb68afad71ffaacba8cfa2d693d3cab9cc70f67))
+* generate standard bool and int adapter literal wrappers ([#5802](https://github.com/yschimke/compose-ai-tools/issues/5802)) ([6f90469](https://github.com/yschimke/compose-ai-tools/commit/6f90469ef047a11d21b7130b62360bf71ea5c98c))
+* **guidelines:** forget a result kept under +a11y when the a11y fetch failed ([#5799](https://github.com/yschimke/compose-ai-tools/issues/5799)) ([77f6b4e](https://github.com/yschimke/compose-ai-tools/commit/77f6b4e441f1d0abe9e484926146c6dd1751e0d3))
+* **guidelines:** key results on a11y availability and fetch only fresh a11y data ([#5797](https://github.com/yschimke/compose-ai-tools/issues/5797)) ([e3c3f0c](https://github.com/yschimke/compose-ai-tools/commit/e3c3f0ca733ca93357d1f823dd01cd391067d175))
+* **guidelines:** restore the three Wear widget rules with their verbatim guidance ([#5788](https://github.com/yschimke/compose-ai-tools/issues/5788)) ([08a554e](https://github.com/yschimke/compose-ai-tools/commit/08a554e937ffea576cc272d80cdb10fe53aee492))
+* **guidelines:** retry a failed model request, and split a batch that keeps failing ([#5800](https://github.com/yschimke/compose-ai-tools/issues/5800)) ([d4c376d](https://github.com/yschimke/compose-ai-tools/commit/d4c376db8a56df2edc4217fa336eed83e5af92ef))
+
 ## [2.42.0](https://github.com/yschimke/compose-ai-tools/compare/v2.41.0...v2.42.0) (2026-10-10)
 
 

@@ -110,8 +110,8 @@ internal class JevChecker(
   /** How a retry waits; tests replace it. */
   var sleep: (Long) -> Unit = { Thread.sleep(it) }
 
-  /** How many subjects are asked at once. */
-  var parallelism: Int = DEFAULT_PARALLELISM
+  /** How many subjects are asked at once: the run's `--concurrency` ([GuidelineRunOptions]). */
+  var parallelism: Int = options.concurrency
 
   /**
    * For comparison only, off by default: fetch and show every subject's full accessibility data
@@ -819,9 +819,6 @@ internal class JevChecker(
 
     /** The least probability a verdict is taken at; below it the rule counts as `cannot_tell`. */
     const val MIN_PROBABILITY: Double = 0.5
-
-    /** Subjects asked at once; Jev's own limits are far above it (80 requests a second). */
-    const val DEFAULT_PARALLELISM: Int = 4
 
     /**
      * Bumped when what the jev checker asks or computes changes its verdicts; part of
