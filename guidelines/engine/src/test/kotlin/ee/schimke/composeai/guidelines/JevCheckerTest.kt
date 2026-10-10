@@ -399,6 +399,35 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a rate limit pauses every worker for the wait the server asked`() {
+    val waits = Collections.synchronizedList(mutableListOf<Long>())
+    var calls = 0
+    val inner = FakeDecisions()
+    val limited =
+      object : GuidelineModel by inner {
+        override fun decide(body: JsonObject): ModelResponse {
+          if (synchronized(this) { calls++ } == 0) {
+            return ModelResponse(429, """{"error":{"message":"rate limited"}}""").also {
+              it.retryAfterMillis = 40
+            }
+          }
+          return inner.decide(body)
+        }
+      }
+    val engine = jev(limited)
+    engine.sleep = {
+      waits += it
+      Thread.sleep(it)
+    }
+    val run = engine.run(guidelines, (1..3).map { subject("c$it") })
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(inner.bodies).hasSize(3)
+    // The pause was waited out, not a per-request backoff.
+    assertThat(waits).isNotEmpty()
+    assertThat(waits.all { it <= 40 }).isTrue()
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(

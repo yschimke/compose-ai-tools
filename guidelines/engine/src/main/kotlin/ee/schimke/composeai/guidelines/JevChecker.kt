@@ -223,7 +223,7 @@ internal class JevChecker(
     val states = (unseen + stale).map { Asked(it, guidelines) }
     prepare(states, guidelines.platform)
 
-    val ledger = Ledger(options.maxCostUsd, options.retry.maxFailedAttempts)
+    val ledger = requestPool ?: Ledger(options.maxCostUsd, options.retry.maxFailedAttempts)
     val maxRounds = options.maxRounds.coerceAtLeast(0)
     val pool =
       Executors.newFixedThreadPool(parallelism.coerceIn(1, MAX_PARALLELISM)) { runnable ->
@@ -470,7 +470,7 @@ internal class JevChecker(
     state: Asked,
     round: Int,
     last: Boolean,
-    ledger: Ledger,
+    ledger: DecisionsPool,
   ) {
     state.rounds = round + 1
     val offered = if (last) emptyList() else state.offered()
@@ -489,6 +489,8 @@ internal class JevChecker(
       var attempt = 0
       while (true) {
         attempt++
+        // A rate limit any worker met holds every worker, not only the one that met it.
+        ledger.awaitPause(sleep)
         val started = System.nanoTime()
         val response = runCatching {
           model.decide(body)
@@ -534,7 +536,12 @@ internal class JevChecker(
           )
         }
         ledger.retry()
-        if (failure.kind != FailureKind.UNUSABLE) sleep(wait)
+        when (failure.kind) {
+          FailureKind.UNUSABLE -> {}
+          // The server's wait applies to the key, so every request in flight honours it.
+          FailureKind.RATE_LIMITED -> ledger.pauseAll(wait)
+          else -> sleep(wait)
+        }
         reservation = ledger.reserve() ?: return stop(capped = true)
       }
     }
@@ -659,21 +666,55 @@ internal class JevChecker(
   private fun money(value: Double): String = String.format(java.util.Locale.ROOT, "%.4f", value)
 
   /**
+   * What the jev checker needs from a run's request pool: cost reservations under the cap, a
+   * run-wide pause on a rate limit, and the retry allowance. [Ledger] is this checker's
+   * own; #5805's concurrency pool (cost reservation and a global `Retry-After` pause for the vision
+   * path) is meant to implement it once it lands, through [requestPool], so both checkers share one
+   * pool and one set of rules.
+   */
+  internal interface DecisionsPool {
+    val spent: Double
+    val requests: Int
+    val invented: Int
+    val retried: Int
+
+    /** A reservation for one more request, or null when the cost cap cannot afford it. */
+    fun reserve(): Double?
+
+    fun settle(reservation: Double, cost: Double, counted: Boolean)
+
+    /** Holds every worker for [millis], as a `Retry-After` on a 429 asks. */
+    fun pauseAll(millis: Long)
+
+    /** Waits out a pause [pauseAll] set, if one is still running. */
+    fun awaitPause(sleep: (Long) -> Unit)
+
+    fun mayRetry(): Boolean
+
+    fun retry()
+
+    fun invent(n: Int)
+  }
+
+  /** A pool to use in place of this checker's own [Ledger]; null uses its own. */
+  var requestPool: DecisionsPool? = null
+
+  /**
    * The run's spend and counters, shared by the subjects asked in parallel. A request is started
    * only when the cap can afford one more costing what the dearest so far did, counting those in
    * flight at that price.
    */
-  private class Ledger(private val cap: Double?, private val maxFailed: Int) {
-    var spent = 0.0
+  private class Ledger(private val cap: Double?, private val maxFailed: Int) : DecisionsPool {
+    override var spent = 0.0
       private set
 
-    var requests = 0
+    override var requests = 0
       private set
 
-    var invented = 0
+    override var invented = 0
       private set
 
-    var retried = 0
+    override var retried = 0
       private set
 
     private var dearest = 0.0
@@ -691,7 +732,21 @@ internal class JevChecker(
      * nothing is started beside the first request until it has come back: before then the price is
      * unknown, and parallel requests reserved at zero could all cross the cap.
      */
-    fun reserve(): Double? = lock.withLock {
+    private var pausedUntil = 0L
+
+    override fun pauseAll(millis: Long) = lock.withLock {
+      pausedUntil = maxOf(pausedUntil, System.currentTimeMillis() + millis)
+    }
+
+    override fun awaitPause(sleep: (Long) -> Unit) {
+      while (true) {
+        val wait = lock.withLock { pausedUntil - System.currentTimeMillis() }
+        if (wait <= 0) return
+        sleep(wait)
+      }
+    }
+
+    override fun reserve(): Double? = lock.withLock {
       if (cap == null) {
         started++
         return 0.0
@@ -704,7 +759,7 @@ internal class JevChecker(
       dearest
     }
 
-    fun settle(reservation: Double, cost: Double, counted: Boolean) = lock.withLock {
+    override fun settle(reservation: Double, cost: Double, counted: Boolean) = lock.withLock {
       inFlight = (inFlight - reservation).coerceAtLeast(0.0)
       started--
       if (counted) {
@@ -716,13 +771,15 @@ internal class JevChecker(
       settled.signalAll()
     }
 
-    fun invent(n: Int) = lock.withLock { invented += n }
+    override fun invent(n: Int) = lock.withLock { invented += n }
 
-    fun mayRetry(): Boolean = lock.withLock { failed < maxFailed }
+    override fun mayRetry(): Boolean = lock.withLock { failed < maxFailed }
 
-    fun retry() = lock.withLock {
-      failed++
-      retried++
+    override fun retry() {
+      lock.withLock {
+        failed++
+        retried++
+      }
     }
   }
 
