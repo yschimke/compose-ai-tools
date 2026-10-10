@@ -114,3 +114,5 @@ not as separate docs — read them next to the code.
   discovery) that the mobile/Wear session-viewer clients build against. The clients themselves now
   live in [yschimke/compose-preview-client](https://github.com/yschimke/compose-preview-client) —
   split out in [#2533](https://github.com/yschimke/compose-ai-tools/issues/2533).
+
+- [Optional UID design audit CI](UID_DESIGN_AUDIT_CI.md): shared, default-branch OpenRouter audit of bounded preview artifacts.

@@ -1,0 +1,55 @@
+# Optional UID design audit workflow
+
+`uid-design-audit-reusable.yml` centralizes the picture-based OpenRouter audit
+used by the Home Assistant and MeshCore adaptive UID pilots. The caller only
+needs its trigger, pilot directory and explicit secret mapping:
+
+```yaml
+name: Adaptive UID design audit
+on:
+  workflow_run:
+    workflows: [Adaptive UID pilot]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    uses: yschimke/compose-ai-tools/.github/workflows/uid-design-audit-reusable.yml@<reviewed-commit-sha>
+    with:
+      pilot-directory: adaptive-uid-pilot
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+```
+
+The caller must land on the app's default branch before `workflow_run` can run.
+The shared workflow accepts only successful `workflow_run` events. It checks out
+that repository's **default branch**, never the PR revision. Its staging script,
+capture plan and guidelines therefore come from trusted default-branch code.
+The previous run's artifact is treated as data: only the bounded PNGs admitted by
+`ci/evidence.py --stage` reach the audit engine. UID files and PR code are not
+executed with the API key.
+
+The caller directory must contain `ci/evidence.py`, `references.json` and
+`ui-builder.guidelines.json`. Keep changes to those files reviewed as trusted
+code. This extraction keeps the existing pilot staging contract and validation.
+`evidence-artifact` defaults to `adaptive-uid-evidence`; `audit-artifact` defaults
+to `adaptive-uid-design-audit`. The build/render/compare workflow lives in
+[design-parity](https://github.com/yschimke/design-parity/blob/main/docs/UID_PARITY_CI.md).
+
+The engine remains pinned to CLI 2.40.0 and its matching installation action and
+prompt source. It uses the same `OPENROUTER_API_KEY` name as remote-m3-catalog,
+mapped only on the model step to `COMPOSE_PREVIEW_OPENROUTER_KEY`, with the
+existing $0.25 limit and `--surface screen --annotate`. Missing keys and engine
+errors are incomplete audits, not a clean result. The output artifact retains
+capture bytes, rules, engine prompt source, run provenance, log, model response
+and annotations. This workflow posts no comments or issues.
+
+This is optional model critique, not the deterministic parity check or a claim
+of measured accessibility coverage. It stays separate from design-parity's
+model-free steady-state engine and is explicitly enabled by each caller.
+
+Before changing the shared workflow, run `actionlint` on it and on the consumer
+caller examples. Pin callers to immutable reviewed commits. For first adoption,
+land the shared workflow before merging the caller; a provider branch commit can
+be used to validate a consumer PR before landing.
