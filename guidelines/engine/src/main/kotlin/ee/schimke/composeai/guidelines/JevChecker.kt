@@ -251,6 +251,11 @@ internal class JevChecker(
         }
         if (active.isEmpty()) break
         val last = round == maxRounds
+        // What each subject is offered and shown is read from the host here, on this thread: the
+        // host is never called from several threads at once.
+        val asks = active.associateWith { state ->
+          (if (last) emptyList() else state.offered()) to state.view()
+        }
         // Under a cap, never-checked subjects are asked as a wave before any stale one may
         // contend for what the cap has left, so a capped run widens coverage first.
         val waves =
@@ -262,7 +267,10 @@ internal class JevChecker(
               pool.submit(
                 Callable {
                   // One subject's error is its own failed request, not the run's.
-                  runCatching { ask(guidelines, state, round, last, ledger) }
+                  runCatching {
+                    val (offered, view) = asks.getValue(state)
+                    ask(guidelines, state, round, offered, view, ledger)
+                  }
                     .onFailure { state.failure = "the jev checker failed: ${it.message}" }
                 }
               )
@@ -491,12 +499,11 @@ internal class JevChecker(
     guidelines: CatalogGuidelinesV1,
     state: Asked,
     round: Int,
-    last: Boolean,
+    offered: List<String>,
+    view: JevRuleRequests.View,
     ledger: DecisionsPool,
   ) {
     state.rounds = round + 1
-    val offered = if (last) emptyList() else state.offered()
-    val view = state.view()
     val stillOpen = mutableListOf<GuidelineRuleV1>()
     val chunks = JevRuleRequests.chunks(guidelines, view, state.open, offered)
     var asking = 0
@@ -530,6 +537,15 @@ internal class JevChecker(
         val spent = GuidelineResponse.cost(response.body) ?: 0.0
         state.cost += spent
         state.requests++
+        val refused = if (response.status in 200..299) null else FailedRequest.of(response)
+        val backoff =
+          response.retryAfterMillis
+            ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
+              options.retry.maxDelayMillis
+            )
+        // A rate limit holds every worker, and is published before this settlement wakes the
+        // workers waiting on it, whether or not this request is asked again.
+        if (refused?.kind == FailureKind.RATE_LIMITED) ledger.pauseAll(backoff)
         ledger.settle(reservation, spent, counted = true)
         val failure: FailedRequest =
           if (response.status in 200..299) {
@@ -545,12 +561,8 @@ internal class JevChecker(
               "the decisions reply answered none of its questions: ${response.body.take(200)}",
               FailureKind.UNUSABLE,
             )
-          } else FailedRequest.of(response)
-        val wait =
-          response.retryAfterMillis
-            ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
-              options.retry.maxDelayMillis
-            )
+          } else refused!!
+        val wait = backoff
         val retry =
           failure.kind != FailureKind.FATAL &&
             failure.kind != FailureKind.TOO_LARGE &&
@@ -564,8 +576,8 @@ internal class JevChecker(
         }
         when (failure.kind) {
           FailureKind.UNUSABLE -> {}
-          // The server's wait applies to the key, so every request in flight honours it.
-          FailureKind.RATE_LIMITED -> ledger.pauseAll(wait)
+          // Already published as a run-wide pause; awaited at the top of the next attempt.
+          FailureKind.RATE_LIMITED -> {}
           else -> sleep(wait)
         }
         reservation = ledger.reserve() ?: return stop(capped = true)
@@ -1190,7 +1202,8 @@ internal object JevRuleRequests {
         }
         putJsonArray("measured_checks") {
           if (subject.checks.isEmpty()) {
-            add(JsonPrimitive("the Accessibility Test Framework reported nothing on this render"))
+            // An empty list may mean ATF never ran: no claim that it measured clean.
+            add(JsonPrimitive("no Accessibility Test Framework results are attached"))
           }
           subject.checks.take(MAX_CHECKS).forEach { check ->
             add(

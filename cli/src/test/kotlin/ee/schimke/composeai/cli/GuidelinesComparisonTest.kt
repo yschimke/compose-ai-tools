@@ -144,6 +144,38 @@ class GuidelinesComparisonTest {
   }
 
   @Test
+  fun `a narrowed run under another checker does not keep the other checker's results`() {
+    val dir = Files.createTempDirectory("guidelines-narrowed").toFile()
+    try {
+      writeGuidelinesReport(dir, ModuleGuidelines("m", "wear-m3", "m", vision), narrowed = false)
+      val other = result("b", mapOf("styles" to (GuidelineVerdictV1.PASS to 0.9)))
+      writeGuidelinesReport(
+        dir,
+        ModuleGuidelines("m", "wear-m3", JevTriage.MODEL, listOf(other), checker = "jev"),
+        narrowed = true,
+      )
+      val written = GuidelinesComparison.load(dir.resolve("guidelines.json"))!!.single()
+      assertEquals("jev", written.checker)
+      assertEquals(listOf("b"), written.results.map { it.previewId })
+      // The same checker still keeps what the narrowed run did not cover.
+      writeGuidelinesReport(
+        dir,
+        ModuleGuidelines("m", "wear-m3", JevTriage.MODEL, jev.take(1), checker = "jev"),
+        narrowed = true,
+      )
+      assertEquals(
+        listOf("a", "b"),
+        GuidelinesComparison.load(dir.resolve("guidelines.json"))!!.single()
+          .results
+          .map { it.previewId }
+          .sorted(),
+      )
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `a report is read as one module or as the list --json prints, and the checker is kept`() {
     val dir = Files.createTempDirectory("guidelines-compare").toFile()
     try {
