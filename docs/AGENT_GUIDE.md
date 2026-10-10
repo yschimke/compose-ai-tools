@@ -326,7 +326,7 @@ single stray file hides every other one. Every module must apply
 
 The normative workflow — open a PR automatically, embed real before/after images
 on UI-affecting PRs, leave injected backticks alone, wire new visual surfaces into
-the preview pipeline, don't auto-merge — is stated once in
+the preview pipeline, merge only when explicitly requested — is stated once in
 [root `AGENTS.md`](../AGENTS.md#pr-workflow). Below is the detail behind it.
 
 - **Finding the existing PR.** Before opening one, check whether the branch already
