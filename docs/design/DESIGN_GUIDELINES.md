@@ -302,10 +302,50 @@ many previews were checked this run, answered from the cache, and left pending.
   from `main` warms every branch's first run, and a branch's own saves stay on that branch. Each save
   is keyed by commit and run (caches are immutable), and a restore takes the newest save for the
   catalog.
+- **One identity in both pipelines.** A result is filed under its `inputsKey`, never under a module
+  or a path, and the render part of it (`renderHash`) is the PNG's sha256 plus, for a scrolling
+  preview, `+scroll:<sha256 of its long screenshot>` — the same in a Gradle run (the publish) and a
+  handoff run (a PR's check), which is what lets a PR read the publish's cache (below). The PR's
+  renders and the publish's are the same bytes for an unchanged preview: same Gradle plugin,
+  renderer and devices, and on wear-m3-catalog all 1148 `:catalog` renders on
+  `compose-preview/main` (the apply action's baselines) hash identically to the catalog publish's.
+  The other inputs line up as long as both sides run the same CLI release (its `REQUEST_FORMAT`),
+  model and rules, and the PR leaves `guidelines-surface`/`guidelines-profile` unset; a preview
+  whose staged callee files hit the stage step's bound, or whose render differs, simply misses and
+  is asked.
 - **Sharded publishes do not check.** With `render-shards` of 2 or more the catalog renders in
   `render-shard` jobs and only bundles reach the merge job, which has no Gradle build or render
   daemon to fetch evidence from. Checking there would mean rendering the catalog again, so the step
   and its cache stay on the single-job path.
+
+## The PR check
+
+A PR's check (the `apply` action, `guidelines: true`) is bounded and incremental:
+
+- **Only the PR's own previews.** The render phase stages previews whose render the PR changed or
+  whose source file it touched. A change to the guidelines file pulls in no other preview: the
+  comment says in one line that the catalog publish on the default branch re-checks them, which
+  its cache makes cheap there. `guidelines-rules-sweep: 'true'` restores the old second tier (at
+  most 24 other previews of the module, staged as `<module>.rules-changed/`).
+- **At most `guidelines-max-previews` (default 30).** Ranked: a changed render before a source-only
+  selection; within those, new previews and the largest render diffs first (`diff`, the share of
+  pixels `compare-previews.py copy-changed` measured as changed). **One render of each preview
+  function goes first**: `WearList_192dp`…`_240dp` or a dozen `_VARIANT_` cells are one design,
+  and its best-ranked render says most of what the siblings would, so 30 slots reach 30 functions
+  instead of three; the siblings follow in rank order while slots remain. Previews past the limit
+  are listed in the comment as NOT checked, "over this PR's limit of N" — never dropped. The job
+  holding the key cuts the handoff to the limit again (`guidelines-budget.py --trim`), since the
+  handoff is the PR's own build's output. `guidelines-max-cost` stays the money cap.
+- **Reuses the default branch's verdicts.** With `guidelines-cache-key: guidelines-<system>-`
+  (and `guidelines-cache-path` if the publish has a `working-directory`), the check restores the
+  catalog publish's result cache with `actions/cache/restore` — restore only, a PR run never saves
+  — and copies it into each staged module (`guidelines-budget.py --seed-cache`). A preview whose
+  render, source, nodes, rules and model are what the default branch already checked is answered
+  from it at no cost; the comment counts those. Typical hit: a PR editing one function in a file
+  stages every preview of that file, and only the edited one is asked. The publish phase of a split
+  workflow runs on `workflow_run`, in the default branch's cache scope, so it reads the caches the
+  default-branch publish saved; a single-job `pull_request` run reads them through its base. Any
+  cache the handoff itself carried is deleted first: a cached verdict is served as a verdict.
 
 ## Next steps
 
@@ -319,11 +359,10 @@ many previews were checked this run, answered from the cache, and left pending.
 2. **Done: preview-diff pipeline** — see the `apply` action's `guidelines` input: the render phase
    stages changed previews (`guidelines-stage.py`: renders, source, nodes, rules) into the handoff;
    the phase holding `openrouter-key` runs handoff mode and posts `<!-- guidelines-report -->`.
-   A PR that changes the guidelines file (a rebase can bring one in) selects the module's other
-   previews too, but only as a second tier: at most 24 of them, staged as `<module>.rules-changed/`
-   and checked after every module's PR-changed previews, with the rest left to the catalog publish,
-   which re-checks every preview against new rules. The comment leads with any of the PR's own
-   previews that were not checked.
+   A PR that changes the guidelines file (a rebase can bring one in) no longer selects the module's
+   other previews unless `guidelines-rules-sweep` asks (see *The PR check*); the catalog publish
+   re-checks every preview against new rules. The comment leads with any of the PR's own previews
+   that were not checked.
 3. **MCP tools** in compose-preview-server: `check_preview_guidelines` (engine over the live daemon,
    which can fetch every evidence kind) and a keyless `preview_guidelines_prompt`, consuming this
    module's published coordinate.

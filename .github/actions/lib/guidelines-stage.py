@@ -28,24 +28,40 @@ description or replaces a hard-coded colour can leave the render identical. ``--
 (the PR's changed paths, one per line, relative to the repository root) also selects every
 preview whose ``sourceFile`` changed.
 
-A PR that changes a module's guidelines file (its own edit, or one a rebase brought in) changes
-what every verdict of that module is judged against, but those previews are not the PR's: checking
-all of them spends the budget before the previews the PR did change. So they are a second tier,
-staged apart and bounded:
+**The PR's own previews, bounded.** ``--max-previews N`` caps how many previews are staged in
+total, across modules and tiers (0: no cap). Within the cap the previews are ranked: a render the
+PR changed before one selected only because its source file changed, a new preview or a bigger
+render diff (``diff`` in ``_changed_previews.json``) first. One representative of each preview
+FUNCTION is taken before a second capture of any: a function fanned out over five screen sizes or
+a dozen ``_VARIANT_`` cells is one design, and its first render says most of what its siblings
+would, so a 30-preview cap reaches 30 functions rather than three. The rest follow in rank order
+while the cap allows. What the cap leaves out is listed, never dropped:
+
+    <out>/_over_limit.json   {"limit": n, "previews": [{"id", "module", "function"}, ...]}
+
+**Rules changes.** A PR that changes a module's guidelines file changes what every verdict of that
+module is judged against, but those previews are not the PR's, and the catalog publish on the
+default branch re-checks every preview against the new rules from its result cache. So by default
+the PR checks only its own previews and records that the rules changed:
+
+    <out>/_rules_changed.json  {"modules": [<module-key>, ...], "sweep": false}
+
+``--rules-sweep`` (the action's ``guidelines-rules-sweep``) restores the old second tier: other
+previews of the module, staged apart, within MAX_RULES_ONLY and what the cap leaves:
 
     <out>/<module-key>/                  previews whose render or source the PR changed
     <out>/<module-key>.rules-changed/    up to MAX_RULES_ONLY previews (across all modules) selected
                                          only because the rules changed, with
                                          ``"guidelinesSelection": "rules-changed"`` in previews.json
     <out>/_rules_only.json               {"staged": n, "deferred": m}: how many such previews were
-                                         staged, and how many were left for the catalog publish,
-                                         which re-checks every preview against the new rules
+                                         staged, and how many were left for the catalog publish
 
 The publish job checks every changed tier before any rules-changed one
 (``guidelines-budget.py --order``), so a capped run spends the budget on the PR's own previews.
 
     guidelines-stage.py --changed _changed_previews.json --out _guidelines [--root .]
                         [--guidelines-file path] [--changed-files _pr_changed_files.txt]
+                        [--max-previews N] [--rules-sweep]
 Prints the number of previews staged.
 """
 from __future__ import annotations
@@ -71,6 +87,10 @@ RULES_TIER_SUFFIX = ".rules-changed"
 RULES_TIER = "rules-changed"
 SELECTION_KEY = "guidelinesSelection"
 RULES_ONLY_FILE = "_rules_only.json"
+RULES_CHANGED_FILE = "_rules_changed.json"
+OVER_LIMIT_FILE = "_over_limit.json"
+# The default cap on previews one PR sends to the check; the action's `guidelines-max-previews`.
+DEFAULT_MAX_PREVIEWS = 30
 
 # Calls that may name a module composable: a capitalised name followed by `(` or `{`.
 CALL = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\s*[({]")
@@ -333,18 +353,69 @@ def stage_module(
     return len(kept)
 
 
+def function_key(module_dir: Path, preview: dict) -> tuple:
+    """What a preview is a render OF: its module, class and function. A multipreview fanned out over
+    screen sizes (`WearList_192dp` … `_240dp`) or `_VARIANT_` cells shares one key."""
+    function = preview.get("functionName")
+    if not function:
+        function = re.sub(r"_VARIANT_.*$", "", str(preview.get("id") or ""))
+    return (str(module_dir), preview.get("className") or "", function)
+
+
+def rank(preview: dict, changed: dict[str, dict]) -> tuple:
+    """Sort key within the PR's own previews: a changed render before a source-only selection, a
+    new preview or a bigger render diff first. An unmeasured diff counts as a whole change."""
+    info = changed.get(preview.get("id"))
+    if info is None:
+        return (1, 0.0)
+    diff = info.get("diff")
+    try:
+        value = 1.0 if info.get("new") or diff is None else float(diff)
+    except (TypeError, ValueError):
+        value = 1.0
+    return (0, -value)
+
+
+def prioritise(
+    entries: list[tuple[Path, Path, dict, dict]], changed: dict[str, dict]
+) -> list[tuple[Path, Path, dict, dict]]:
+    """[entries] (previews_dir, module_dir, manifest, preview) in the order the cap takes them: the
+    best-ranked render of each function first, then every other render, each pass by rank."""
+    ordered = sorted(
+        enumerate(entries),
+        key=lambda item: (rank(item[1][3], changed), str(item[1][1]), item[0]),
+    )
+    firsts: list[tuple[Path, Path, dict, dict]] = []
+    rest: list[tuple[Path, Path, dict, dict]] = []
+    seen: set[tuple] = set()
+    for _index, entry in ordered:
+        key = function_key(entry[1], entry[3])
+        (rest if key in seen else firsts).append(entry)
+        seen.add(key)
+    return firsts + rest
+
+
 def stage(
     root: Path,
-    changed: set[str],
+    changed: set[str] | dict[str, dict],
     out: Path,
     guidelines_file: Path | None,
     changed_files: set[str] | None = None,
     max_rules_only: int = MAX_RULES_ONLY,
+    max_previews: int = 0,
+    rules_sweep: bool = True,
 ) -> int:
+    """Stages the previews to check under [out]; returns how many. [changed] is the visually changed
+    preview ids, or `_changed_previews.json`'s entries by id (with `new` and `diff`, for ranking).
+    [max_previews] caps the total (0: no cap); [rules_sweep] stages the rules-changed tier."""
     changed_files = changed_files or set()
+    changed_info: dict[str, dict] = (
+        dict(changed) if isinstance(changed, dict) else {i: {} for i in changed}
+    )
     staged = 0
     candidates: list[tuple[Path, Path, dict, list[dict]]] = []
     rules_only: dict[Path, list[dict]] = {}
+    rules_modules: list[str] = []
     for manifest_path in find_manifests(root):
         previews_dir = manifest_path.parent
         module_dir = previews_dir.parent.parent
@@ -352,18 +423,21 @@ def stage(
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
+        rules = guidelines_file or previews_dir / GUIDELINES_FILE
+        if not rules.is_file():
+            continue
+        module_rules_changed = rules_changed(module_dir, root, guidelines_file, changed_files)
+        if module_rules_changed:
+            rules_modules.append(module_key(module_dir, root))
         selected, by_rules = select(
             manifest.get("previews", []),
-            changed,
+            set(changed_info),
             changed_files,
             module_dir,
             root,
-            rules_changed(module_dir, root, guidelines_file, changed_files),
+            module_rules_changed and rules_sweep,
         )
         if not selected and not by_rules:
-            continue
-        rules = guidelines_file or previews_dir / GUIDELINES_FILE
-        if not rules.is_file():
             continue
         candidates.append((previews_dir, module_dir, manifest, selected + by_rules))
         rules_only[previews_dir] = by_rules
@@ -372,13 +446,26 @@ def stage(
     # Every directory a module's own tier may use, so a rules tier never lands on one: a real module
     # can be keyed `catalog.rules-changed` as well.
     used = {module_key(module_dir, root) for _, module_dir, _, _ in candidates}
-    # The PR's own previews first, then what the rules change selected, within its bound.
-    rules_left = max(0, max_rules_only)
-    rules_staged = rules_deferred = 0
+
+    # The PR's own previews, across every module, in the order the cap takes them.
+    mine: list[tuple[Path, Path, dict, dict]] = []
     for previews_dir, module_dir, manifest, selected in candidates:
-        selected = [p for p in selected if owner.get(p.get("id")) == module_dir]
         by_rules_ids = {id(p) for p in rules_only[previews_dir]}
-        tier_changed = [p for p in selected if id(p) not in by_rules_ids]
+        mine += [
+            (previews_dir, module_dir, manifest, p)
+            for p in selected
+            if id(p) not in by_rules_ids and owner.get(p.get("id")) == module_dir
+        ]
+    ordered = prioritise(mine, changed_info)
+    taken = ordered[:max_previews] if max_previews > 0 else ordered
+    over = ordered[len(taken):]
+    taken_ids = {id(entry[3]) for entry in taken}
+    for previews_dir, module_dir, manifest, _selected in candidates:
+        # In rank order, so a module's own previews.json lists its most important first too.
+        tier_changed = [
+            entry[3] for entry in ordered
+            if entry[0] == previews_dir and id(entry[3]) in taken_ids
+        ]
         if not tier_changed:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
@@ -386,6 +473,12 @@ def stage(
         staged += stage_module(
             previews_dir, module_dir, manifest, tier_changed, rules, target, None, root
         )
+
+    # The rules tier (opt-in): what the cap has left, and never more than MAX_RULES_ONLY.
+    rules_left = max(0, max_rules_only)
+    if max_previews > 0:
+        rules_left = min(rules_left, max(0, max_previews - len(taken)))
+    rules_staged = rules_deferred = 0
     for previews_dir, module_dir, manifest, selected in candidates:
         by_rules_ids = {id(p) for p in rules_only[previews_dir]}
         tier_rules = [
@@ -394,10 +487,10 @@ def stage(
         ]
         if not tier_rules:
             continue
-        taken, left_over = tier_rules[:rules_left], tier_rules[rules_left:]
-        rules_left -= len(taken)
+        taken_rules, left_over = tier_rules[:rules_left], tier_rules[rules_left:]
+        rules_left -= len(taken_rules)
         rules_deferred += len(left_over)
-        if not taken:
+        if not taken_rules:
             continue
         rules = guidelines_file or previews_dir / GUIDELINES_FILE
         name = module_key(module_dir, root) + RULES_TIER_SUFFIX
@@ -408,7 +501,7 @@ def stage(
         used.add(name)
         target = out / name
         count = stage_module(
-            previews_dir, module_dir, manifest, taken, rules, target, RULES_TIER, root
+            previews_dir, module_dir, manifest, taken_rules, rules, target, RULES_TIER, root
         )
         rules_staged += count
         staged += count
@@ -418,7 +511,45 @@ def stage(
             json.dumps({"staged": rules_staged, "deferred": rules_deferred}) + "\n",
             encoding="utf-8",
         )
+    if rules_modules:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / RULES_CHANGED_FILE).write_text(
+            json.dumps({"modules": rules_modules, "sweep": rules_sweep}) + "\n",
+            encoding="utf-8",
+        )
+    if over:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / OVER_LIMIT_FILE).write_text(
+            json.dumps(
+                {
+                    "limit": max_previews,
+                    "previews": [
+                        {
+                            "id": entry[3].get("id"),
+                            "module": module_key(entry[1], root),
+                            "function": entry[3].get("functionName"),
+                        }
+                        for entry in over
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     return staged
+
+
+def read_changed(path: Path) -> dict[str, dict]:
+    """`_changed_previews.json` by preview id: `[{previewId, module, new?, diff?}]`."""
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+        return {str(e["previewId"]): e for e in entries if isinstance(e, dict)}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        print("guidelines-stage: unreadable changed list", file=sys.stderr)
+        return {}
 
 
 def main() -> int:
@@ -428,16 +559,16 @@ def main() -> int:
     ap.add_argument("--root", default=".")
     ap.add_argument("--guidelines-file")
     ap.add_argument("--changed-files")
+    ap.add_argument(
+        "--max-previews", type=int, default=DEFAULT_MAX_PREVIEWS,
+        help="cap on previews staged in total (0: no cap)",
+    )
+    ap.add_argument(
+        "--rules-sweep", action="store_true",
+        help="when the rules changed, also stage other previews of the module (bounded)",
+    )
     args = ap.parse_args()
-    changed: set[str] = set()
-    changed_path = Path(args.changed)
-    if changed_path.is_file() and changed_path.stat().st_size > 0:
-        try:
-            changed = {
-                e["previewId"] for e in json.loads(changed_path.read_text(encoding="utf-8"))
-            }
-        except (json.JSONDecodeError, KeyError, TypeError):
-            print("guidelines-stage: unreadable changed list", file=sys.stderr)
+    changed = read_changed(Path(args.changed))
     changed_files: set[str] = set()
     if args.changed_files and Path(args.changed_files).is_file():
         changed_files = {
@@ -449,7 +580,17 @@ def main() -> int:
         print(0)
         return 0
     rules = Path(args.guidelines_file) if args.guidelines_file else None
-    print(stage(Path(args.root), changed, Path(args.out), rules, changed_files))
+    print(
+        stage(
+            Path(args.root),
+            changed,
+            Path(args.out),
+            rules,
+            changed_files,
+            max_previews=max(0, args.max_previews),
+            rules_sweep=args.rules_sweep,
+        )
+    )
     return 0
 
 

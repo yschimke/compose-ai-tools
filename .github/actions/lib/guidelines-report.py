@@ -23,6 +23,13 @@ Previews staged only because the PR changed the rules (a ``<module>.rules-change
 and in particular with any of them that were NOT checked, then reports the rules tier apart, with
 how many such previews were left for the catalog publish (``_rules_only.json``).
 
+Previews the PR changed beyond ``guidelines-max-previews`` (``_over_limit.json``, written by the
+stage step and re-cut by ``guidelines-budget.py --trim`` in the job holding the key) are listed as
+NOT checked, "over this PR's limit of N", never left out. A PR that changes the guidelines file
+without ``guidelines-rules-sweep`` (``_rules_changed.json``) gets one line saying the previews it
+did not change are re-checked by the catalog publish. Results answered from the catalog publish's
+result cache (``fromCache``) are counted as such: they cost nothing.
+
 Images are embedded only from a GitHub-hosted, commit-pinned location (``--image-repo`` and
 ``--image-ref``, with the pictures pushed under ``--image-prefix/<module>/``), as the a11y comment
 does: other hosts are stripped from PR bodies. ``--stage-images <dir>`` copies exactly the pictures
@@ -60,6 +67,11 @@ MAX_PROBLEMS = 10
 MAX_PROBLEM_CHARS = 300
 RULES_TIER = "rules-changed"
 RULES_ONLY_FILE = "_rules_only.json"
+RULES_CHANGED_FILE = "_rules_changed.json"
+OVER_LIMIT_FILE = "_over_limit.json"
+# Over-limit previews listed in full (inside a collapsed block) up to this many.
+MAX_OVER_LIMIT_LISTED = 200
+MAX_NAME_CHARS = 120
 
 
 def load(module_dir: Path) -> tuple[dict, dict] | None:
@@ -246,6 +258,44 @@ def rules_only_counts(dir_: Path) -> tuple[int, int]:
     return count("staged"), count("deferred")
 
 
+def over_limit(dir_: Path, trusted_limit: int | None) -> tuple[int | None, list[str]]:
+    """(limit, ids) of the PR's changed previews the cap left unchecked. The limit is the caller's
+    own input when given: the file comes from the handoff."""
+    try:
+        data = json.loads((dir_ / OVER_LIMIT_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return trusted_limit, []
+    if not isinstance(data, dict):
+        return trusted_limit, []
+    previews = data.get("previews")
+    ids = [
+        str(p.get("id")) for p in previews if isinstance(p, dict) and p.get("id")
+    ] if isinstance(previews, list) else []
+    limit = data.get("limit")
+    if trusted_limit is not None:
+        limit = trusted_limit
+    elif not (isinstance(limit, int) and 0 < limit < 1_000_000):
+        limit = None
+    return limit, list(dict.fromkeys(ids))
+
+
+def rules_changed_note(dir_: Path) -> bool:
+    """Whether the stage step recorded a guidelines change it did not sweep: the PR's other
+    previews are left to the catalog publish."""
+    try:
+        data = json.loads((dir_ / RULES_CHANGED_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(data, dict) and bool(data.get("modules")) and data.get("sweep") is not True
+
+
+RULES_CHANGED_LINE = (
+    "<sub>This PR changes the design guidelines. Only the previews it changed are checked here; "
+    "the catalog publish on the default branch re-checks every other preview against the new "
+    "rules.</sub>"
+)
+
+
 class Tier:
     """What one tier (the PR's changed previews, or those the rules change selected) came to."""
 
@@ -286,7 +336,9 @@ class Tier:
 
 
 def short(preview_id: str) -> str:
-    return f"`{preview_id.rsplit('.', 1)[-1]}`"
+    # Ids can come from a fork's handoff: nothing in one may close the code span.
+    name = str(preview_id).rsplit(".", 1)[-1].replace("`", "'")[:MAX_NAME_CHARS]
+    return f"`{name}`"
 
 
 def names(ids: list[str], limit: int = 8) -> str:
@@ -306,7 +358,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     modules.sort(key=lambda p: (selection(p) == RULES_TIER, p.name))
     stage_dir = Path(args.stage_images) if getattr(args, "stage_images", None) else None
     sections: list[str] = []
-    total_checked = total_findings = images = 0
+    total_checked = total_findings = images = from_cache = 0
     total_cost = 0.0
     models: set[str] = set()
     seen: set[str] = set()
@@ -360,6 +412,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                 continue
             total_checked += 1
             tier.checked += 1
+            if result.get("fromCache"):
+                from_cache += 1
             if record.get("servedModel"):
                 models.add(record["servedModel"])
             found = failures(record)
@@ -419,11 +473,12 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     mine, by_rules = tiers[None], tiers[RULES_TIER]
     not_checked = mine.not_checked() + by_rules.not_checked()
     rules_staged, rules_deferred = rules_only_counts(dir_)
-    if total_checked == 0 and not_checked == 0:
+    limit, over = over_limit(dir_, getattr(args, "max_previews", None))
+    if total_checked == 0 and not_checked == 0 and not over:
         return None
     model_text = ", ".join(sorted(models)) or "the configured model"
     header = [MARKER, "### Design guidelines", ""]
-    if total_checked == 0:
+    if total_checked == 0 and not_checked:
         # Nothing was judged: say so, never a pass.
         header += [
             f"❌ **Not checked.** None of the {not_checked} preview(s) was judged against its "
@@ -446,15 +501,40 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             else ""
         )
         noun = "preview(s)" if by_rules.checked else "changed preview(s)"
+        cached = (
+            f" ({from_cache} answered from the catalog publish's results at no cost)"
+            if from_cache
+            else ""
+        )
         header += [
             f"{total_checked} {noun} checked against their catalog's design guidelines{split}; "
-            f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}.",
+            f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}"
+            f"{cached}.",
             "",
         ]
     if total_checked == 0 and mine.missed():
         header.append(f"**{mine.missed()} of this PR's changed preview(s) were NOT checked:**")
         header += mine.missed_lines(mine.failed_requests)
         header.append("")
+    if over:
+        limit_text = f" of {limit}" if limit else ""
+        header += [
+            f"**{len(over)} more changed preview(s) were NOT checked: over this PR's "
+            f"limit{limit_text}** (`guidelines-max-previews`). The biggest changes and one render "
+            f"of each changed function were checked first: {names(over)}",
+            "",
+        ]
+        if len(over) > 8:
+            header += [
+                "<details><summary>Every preview over the limit</summary>",
+                "",
+                ", ".join(short(i) for i in over[:MAX_OVER_LIMIT_LISTED])
+                + (f" and {len(over) - MAX_OVER_LIMIT_LISTED} more"
+                   if len(over) > MAX_OVER_LIMIT_LISTED else ""),
+                "",
+                "</details>",
+                "",
+            ]
     if mine.no_rules:
         header.append(f"**{sum(len(v) for v in mine.no_rules.values())} changed preview(s) were "
                       "NOT checked** because no rule applies to them:")
@@ -476,6 +556,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             "re-checks every preview against the new rules.</sub>",
             "",
         ]
+    if rules_changed_note(dir_):
+        header += [RULES_CHANGED_LINE, ""]
     if problems:
         header += ["Problems the check reported:", "", "```text"]
         header += problems[:MAX_PROBLEMS]
@@ -489,7 +571,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     ]
     if not sections and total_checked:
         header.append(
-            "No findings. ✅" if not not_checked
+            "No findings. ✅" if not not_checked and not over
             else f"No findings in the {total_checked} preview(s) that were checked."
         )
     return "\n".join(header + sections).rstrip() + "\n"
@@ -503,7 +585,17 @@ def main() -> int:
     ap.add_argument("--image-ref")
     ap.add_argument("--image-prefix", default="guidelines")
     ap.add_argument("--stage-images", help="copy the pictures the comment embeds under this dir")
+    ap.add_argument("--max-previews", type=int,
+                    help="the caller's guidelines-max-previews, quoted as the limit")
+    ap.add_argument("--rules-changed-line", action="store_true",
+                    help="print the rules-changed line when the stage step recorded one, and exit")
     args = ap.parse_args()
+    if args.rules_changed_line:
+        if rules_changed_note(Path(args.dir)):
+            print(RULES_CHANGED_LINE)
+        return 0
+    if args.max_previews is not None and args.max_previews <= 0:
+        args.max_previews = None
     body = build(Path(args.dir), args)
     if body is None:
         print("guidelines-report: no results; no comment.", file=sys.stderr)

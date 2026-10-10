@@ -276,6 +276,42 @@ inputs:
       Stop the guidelines check once this many US dollars are spent; previews
       left are reported unchecked.
     default: '0.25'
+  guidelines-max-previews:
+    description: >
+      The most previews one PR sends to the guidelines check, across every
+      module (`guidelines-max-cost` stays the money cap). The PR's own
+      changed previews are ranked — a changed render before a source-only
+      selection, new previews and the biggest render diffs first, and one
+      render of each preview function before a second size or `_VARIANT_`
+      cell of any — and those past the limit are listed in the comment as
+      not checked, "over this PR's limit of N". `0` lifts the limit.
+    default: '30'
+  guidelines-rules-sweep:
+    description: >
+      When `true`, a PR that changes a module's guidelines file also checks
+      up to 24 of that module's OTHER previews, within
+      `guidelines-max-previews`. Off by default: a rules change pulls in no
+      other previews, the comment says so in one line, and the catalog
+      publish on the default branch re-checks them from its result cache.
+    default: 'false'
+  guidelines-cache-key:
+    description: >
+      The catalog publish's guideline result cache, by its key prefix
+      (`guidelines-<system>-`, as `design-artifacts-reusable.yml` saves it
+      with `guidelines: true`). When set, the check restores it read-only
+      (never saves from a PR) and answers every changed preview whose
+      render, source, nodes, rules and model match the default branch's
+      from it, at no cost. Needs the publish phase to run in the default
+      branch's cache scope (a `workflow_run` or `pull_request` job can read
+      the default branch's caches). Empty skips it.
+    default: ''
+  guidelines-cache-path:
+    description: >
+      The `path` the catalog publish saved `guidelines-cache-key` under. It
+      must be the same string — an Actions cache is only found under the
+      path it was saved with. `design-artifacts-reusable.yml` saves
+      `<working-directory or .>/**/build/compose-previews/guidelines`.
+    default: './**/build/compose-previews/guidelines'
   guidelines-file:
     description: >
       Path to a `ui-builder.guidelines.json` to use for every module, instead
@@ -1170,6 +1206,8 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         GUIDELINES_FILE: ${{ inputs.guidelines-file }}
+        MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
+        RULES_SWEEP: ${{ inputs.guidelines-rules-sweep }}
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
@@ -1177,6 +1215,10 @@ runs:
       run: |
         set -euo pipefail
         rm -rf _guidelines
+        if ! [[ "$MAX_PREVIEWS" =~ ^[0-9]{1,6}$ ]]; then
+          echo "::warning::compose-preview/apply: guidelines-max-previews must be a whole number; using 30."
+          MAX_PREVIEWS=30
+        fi
         # The PR's changed paths, so an edit that leaves the render identical (a content
         # description, a hard-coded colour) is still checked. Best effort: without it only
         # visually changed previews are.
@@ -1200,8 +1242,16 @@ runs:
         fi
         args=(--changed _changed_previews.json --out _guidelines --root . --changed-files _pr_changed_files.txt)
         [ -n "$GUIDELINES_FILE" ] && args+=(--guidelines-file "$GUIDELINES_FILE")
+        # The PR's own previews only, best first, within the limit; a rules change sweeps in
+        # others only when asked (the catalog publish re-checks them on the default branch).
+        args+=(--max-previews "$MAX_PREVIEWS")
+        [ "$RULES_SWEEP" = "true" ] && args+=(--rules-sweep)
         staged=$(python3 "$ACTION_PATH/../lib/guidelines-stage.py" "${args[@]}")
         echo "guidelines: staged $staged changed preview(s)."
+        if [ -f _guidelines/_over_limit.json ]; then
+          over=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["previews"]))' _guidelines/_over_limit.json)
+          echo "guidelines: $over more changed preview(s) are over this PR's limit of $MAX_PREVIEWS and are listed as not checked."
+        fi
 
     - name: Stage fork-safe handoff
       if: steps.resolve.outputs.phase == 'render'
@@ -1727,6 +1777,24 @@ runs:
         version: ${{ contains(fromJSON('["auto","source","none","catalog","pin","latest",""]'), inputs.cli-version) && '2.42.0' || inputs.cli-version }} # x-release-please-version
         require-digest: 'true'
 
+    # The catalog publish's guideline results (`design-artifacts-reusable.yml`, `guidelines: true`),
+    # so a changed preview whose render, source, nodes, rules and model are what the default branch
+    # already checked costs nothing. RESTORE only: a PR run never saves a cache, so nothing a PR
+    # stages can reach the default branch's results. Caches saved on the default branch are
+    # readable here, from a `workflow_run` job (which runs in the default branch's scope) and from
+    # a `pull_request` job (whose scope includes its base and the default branch). The restored
+    # files land at the publish's own paths; the check step copies them into the staged modules.
+    - name: Restore catalog guideline results
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && inputs.guidelines-cache-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.guidelines-cache-path }}
+        # Never an exact hit: the newest save under the publish's prefix.
+        key: ${{ inputs.guidelines-cache-key }}pr-check-restore-only
+        restore-keys: |
+          ${{ inputs.guidelines-cache-key }}
+
     - name: Check design guidelines
       if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
       shell: bash
@@ -1734,10 +1802,16 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.openrouter-key }}
         MAX_COST: ${{ inputs.guidelines-max-cost }}
+        MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
+        CACHE_KEY: ${{ inputs.guidelines-cache-key }}
         GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
         GUIDELINES_PROFILE: ${{ inputs.guidelines-profile }}
       run: |
         set -uo pipefail
+        if ! [[ "$MAX_PREVIEWS" =~ ^[0-9]{1,6}$ ]]; then
+          echo "::warning::compose-preview/apply: guidelines-max-previews must be a whole number; using 30."
+          MAX_PREVIEWS=30
+        fi
         if [ -z "${COMPOSE_PREVIEW_OPENROUTER_KEY:-}" ]; then
           echo "::notice::compose-preview/apply: guidelines enabled but no openrouter-key in this phase; skipping the check."
           exit 0
@@ -1756,6 +1830,17 @@ runs:
         # stage a picture the comment would then show as this check's markings.
         rm -f _guidelines/*/renders/*.guidelines.png
         rm -rf _guidelines_images
+        # Nor any cached result: the engine serves a hit as a verdict, so only the catalog
+        # publish's own cache (restored above) may answer.
+        for module_cache in _guidelines/*/guidelines; do rm -rf "$module_cache"; done
+        # `guidelines-max-previews` again, here where it is trusted: the render phase staged at
+        # most that many, best first, but the handoff is the PR's own build's output.
+        cut=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --trim "$MAX_PREVIEWS")
+        [ "${cut:-0}" != "0" ] && echo "::warning::compose-preview/apply: the handoff staged more than guidelines-max-previews ($MAX_PREVIEWS); $cut preview(s) are listed as not checked."
+        if [ -n "$CACHE_KEY" ]; then
+          seeded=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --seed-cache .)
+          echo "guidelines: seeded ${seeded:-0} cached result file(s) from the catalog publish."
+        fi
         # Optional overrides of each preview's surface and profile, from the caller's own inputs.
         kind_args=()
         case "$GUIDELINES_SURFACE" in
@@ -1804,7 +1889,7 @@ runs:
         # or the render itself when nothing is), for the push below; the comment is re-rendered
         # with that push's SHA, since only GitHub-hosted, commit-pinned images survive in a PR.
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
-          --stage-images _guidelines_images
+          --stage-images _guidelines_images --max-previews "$MAX_PREVIEWS"
 
     # The pictures are built in this job from the check's own output, never restored from the
     # handoff, so the push metadata is written here from literals, like the other PR-render pushes.
@@ -1838,10 +1923,13 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         REPO: ${{ inputs.artifact-repository || github.repository }}
         HEAD_SHA: ${{ steps.push-guidelines.outputs.head_sha }}
+        MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
       run: |
         set -euo pipefail
+        [[ "$MAX_PREVIEWS" =~ ^[0-9]{1,6}$ ]] || MAX_PREVIEWS=30
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
-          --image-repo "$REPO" --image-ref "$HEAD_SHA" --image-prefix guidelines
+          --image-repo "$REPO" --image-ref "$HEAD_SHA" --image-prefix guidelines \
+          --max-previews "$MAX_PREVIEWS"
 
     - name: Upsert guidelines PR comment
       if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') != '')
@@ -1880,11 +1968,19 @@ runs:
         export MARKER="<!-- guidelines-report -->"
         export BODY_FILE="_guidelines_resolved.md"
         export UPDATE_ONLY=1
+        # A PR that changes the guidelines and no preview: say once where the rest are checked,
+        # so the PR has a comment even when no earlier revision left one.
+        rules_line=$(python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out /dev/null --rules-changed-line)
+        [ -n "$rules_line" ] && export UPDATE_ONLY=0
         {
           echo "$MARKER"
           echo "## Design guidelines"
           echo
           echo "Nothing in this revision needed a design-guidelines check, so there are no findings. Findings from earlier revisions no longer apply."
+          if [ -n "$rules_line" ]; then
+            echo
+            echo "$rules_line"
+          fi
         } > "$BODY_FILE"
         bash "$ACTION_PATH/lib/post-comment.sh"
 

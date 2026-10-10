@@ -355,6 +355,52 @@ class ReportTest(unittest.TestCase):
         self.assertIn("900 more were left for the catalog publish", body)
         self.assertIn("2 were staged here behind the PR's own (1 of them checked)", body)
 
+    def test_previews_over_the_limit_are_listed_as_not_checked(self) -> None:
+        over = [{"id": f"x.ListKt.WearList_{dp}dp", "module": "catalog", "function": "WearList"}
+                for dp in (192, 204, 216, 225, 240, 250, 260, 270, 280)]
+        (self.tmp / "_over_limit.json").write_text(json.dumps({"limit": 999, "previews": over}))
+        args = _args()
+        args.max_previews = 2
+        body = gr.build(self.tmp, args)
+        assert body is not None
+        # The limit quoted is the caller's own input, not the handoff's.
+        self.assertIn("**9 more changed preview(s) were NOT checked: over this PR's limit of 2**",
+                      body)
+        self.assertIn("`WearList_192dp`", body)
+        self.assertIn("Every preview over the limit", body)
+        self.assertIn("`WearList_280dp`", body.split("Every preview over the limit", 1)[1])
+        self.assertNotIn("No findings. ✅", body)
+
+    def test_over_the_limit_alone_still_comments(self) -> None:
+        (self.tmp / "catalog" / "guidelines.json").unlink()
+        (self.tmp / "catalog" / "previews.json").unlink()
+        (self.tmp / "_over_limit.json").write_text(json.dumps(
+            {"limit": 1, "previews": [{"id": "x.AKt.A`b"}]}))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("over this PR's limit of 1", body)
+        # A fork-supplied id cannot close the code span.
+        self.assertIn("`A'b`", body)
+
+    def test_a_rules_change_says_main_rechecks_the_rest(self) -> None:
+        (self.tmp / "_rules_changed.json").write_text(
+            json.dumps({"modules": ["catalog"], "sweep": False}))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("This PR changes the design guidelines.", body)
+        self.assertIn("re-checks every other preview against the new rules", body)
+        (self.tmp / "_rules_changed.json").write_text(
+            json.dumps({"modules": ["catalog"], "sweep": True}))
+        self.assertNotIn("This PR changes the design guidelines.", gr.build(self.tmp, _args()))
+
+    def test_results_from_the_catalog_cache_are_counted(self) -> None:
+        report = json.loads((self.tmp / "catalog" / "guidelines.json").read_text())
+        report["results"][1]["fromCache"] = True
+        (self.tmp / "catalog" / "guidelines.json").write_text(json.dumps(report))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("(1 answered from the catalog publish's results at no cost)", body)
+
     def test_failed_requests_are_reported_with_the_tier_they_hit(self) -> None:
         ok = _result("x.OkKt.Ok", [{"ruleId": "wear.touch-target-48dp", "verdict": "pass",
                                     "confidence": 0.9, "nodeIds": [], "reason": ""}])
@@ -566,6 +612,112 @@ class StageTest(unittest.TestCase):
         self.assertEqual(tier["guidelinesSelection"], "rules-changed")
         self.assertEqual(sorted(p["id"] for p in tier["previews"]), ["x.Go", "x.Stop"])
 
+    def _fanout(self, ids: list[tuple[str, str]]) -> Path:
+        """One module whose previews are (id, functionName) pairs, each with a render."""
+        root = Path(tempfile.mkdtemp())
+        previews = root / "catalog" / "build" / "compose-previews"
+        (previews / "renders").mkdir(parents=True)
+        (previews / "ui-builder.guidelines.json").write_text(json.dumps(RULES))
+        entries = []
+        for preview_id, function in ids:
+            (previews / "renders" / f"{preview_id}.png").write_bytes(b"png")
+            entries.append({"id": preview_id, "functionName": function, "className": "x.K",
+                            "captures": [{"renderOutput": f"renders/{preview_id}.png"}]})
+        (previews / "previews.json").write_text(json.dumps({"previews": entries}))
+        return root
+
+    def test_a_rules_change_alone_stages_nothing_by_default(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, set(), out, None, {"catalog/ui-builder.guidelines.json"},
+                          rules_sweep=False)
+        self.assertEqual(staged, 0)
+        self.assertFalse((out / "catalog.rules-changed").exists())
+        self.assertEqual(json.loads((out / "_rules_changed.json").read_text()),
+                         {"modules": ["catalog"], "sweep": False})
+
+    def test_a_rules_change_does_not_pull_in_other_previews_by_default(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, {"x.Go"}, out, None, {"catalog/ui-builder.guidelines.json"},
+                          rules_sweep=False)
+        self.assertEqual(staged, 1)
+        mine = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in mine["previews"]], ["x.Go"])
+        self.assertFalse((out / "_rules_only.json").exists())
+
+    def test_the_cli_does_not_sweep_unless_asked(self) -> None:
+        import subprocess
+        import sys
+        root = self._two_previews()
+        changed = root / "_changed.json"
+        changed.write_text("[]")
+        files = root / "_files.txt"
+        files.write_text("catalog/ui-builder.guidelines.json\n")
+        script = str(_HERE / "guidelines-stage.py")
+        base = [sys.executable, script, "--changed", str(changed), "--root", str(root),
+                "--changed-files", str(files)]
+        quiet = subprocess.run(base + ["--out", str(root / "a")], capture_output=True, text=True)
+        self.assertEqual(quiet.stdout.strip(), "0")
+        swept = subprocess.run(base + ["--out", str(root / "b"), "--rules-sweep"],
+                               capture_output=True, text=True)
+        self.assertEqual(swept.stdout.strip(), "2")
+
+    def test_the_cap_takes_the_biggest_changes_and_lists_the_rest(self) -> None:
+        root = self._fanout([("x.A", "A"), ("x.B", "B"), ("x.C", "C"), ("x.D", "D")])
+        out = root / "_guidelines"
+        changed = {
+            "x.A": {"diff": 0.01}, "x.B": {"diff": 0.4}, "x.C": {"new": True, "diff": 1.0},
+            "x.D": {"diff": None},
+        }
+        staged = gs.stage(root, changed, out, None, max_previews=2)
+        self.assertEqual(staged, 2)
+        manifest = json.loads((out / "catalog" / "previews.json").read_text())
+        # A new preview and an unmeasured diff count as whole changes, ahead of the partial ones.
+        self.assertEqual([p["id"] for p in manifest["previews"]], ["x.C", "x.D"])
+        over = json.loads((out / "_over_limit.json").read_text())
+        self.assertEqual(over["limit"], 2)
+        self.assertEqual([p["id"] for p in over["previews"]], ["x.B", "x.A"])
+        self.assertEqual(over["previews"][0]["module"], "catalog")
+
+    def test_a_changed_render_ranks_before_a_source_only_selection(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, {"x.Go": {"diff": 0.001}}, out, None, {"catalog/src/Stop.kt"},
+                          max_previews=1)
+        self.assertEqual(staged, 1)
+        manifest = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in manifest["previews"]], ["x.Go"])
+        over = json.loads((out / "_over_limit.json").read_text())
+        self.assertEqual([p["id"] for p in over["previews"]], ["x.Stop"])
+
+    def test_one_render_of_each_function_comes_before_its_fan_out(self) -> None:
+        sizes = [(f"x.WearList_{dp}dp", "WearList") for dp in (192, 204, 216, 225, 240)]
+        root = self._fanout(sizes + [("x.Card", "Card"),
+                                     ("x.Card_VARIANT_disabled", "Card"), ("x.Chip", "Chip")])
+        out = root / "_guidelines"
+        changed = {preview_id: {"diff": 0.5} for preview_id, _ in sizes}
+        changed.update({"x.Card": {"diff": 0.1}, "x.Card_VARIANT_disabled": {"diff": 0.2},
+                        "x.Chip": {"diff": 0.05}})
+        staged = gs.stage(root, changed, out, None, max_previews=4)
+        self.assertEqual(staged, 4)
+        manifest = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in manifest["previews"]],
+                         ["x.WearList_192dp", "x.Card_VARIANT_disabled", "x.Chip",
+                          "x.WearList_204dp"])
+        over = json.loads((out / "_over_limit.json").read_text())
+        self.assertEqual(len(over["previews"]), 4)
+
+    def test_the_cap_bounds_the_rules_tier_too(self) -> None:
+        root = self._two_previews()
+        out = root / "_guidelines"
+        staged = gs.stage(root, {"x.Go"}, out, None, {"catalog/ui-builder.guidelines.json"},
+                          max_previews=1, rules_sweep=True)
+        self.assertEqual(staged, 1)
+        self.assertFalse((out / "catalog.rules-changed").exists())
+        self.assertEqual(json.loads((out / "_rules_only.json").read_text()),
+                         {"staged": 0, "deferred": 1})
+
     def test_unrelated_changes_stage_nothing(self) -> None:
         root = self._two_previews()
         self.assertEqual(gs.stage(root, set(), root / "_g", None, {"README.md"}), 0)
@@ -651,6 +803,74 @@ class BudgetTest(unittest.TestCase):
                 manifest["guidelinesSelection"] = selection
             (module / "previews.json").write_text(json.dumps(manifest))
         self.assertEqual([p.name for p in gb.order(root)], ["b", "z", "a.rules-changed"])
+
+    def _staged(self, root: Path, name: str, ids: list[str], selection: str | None = None) -> None:
+        module = root / name
+        module.mkdir(parents=True, exist_ok=True)
+        manifest: dict = {"previews": [{"id": i, "functionName": i} for i in ids]}
+        if selection:
+            manifest["guidelinesSelection"] = selection
+        (module / "previews.json").write_text(json.dumps(manifest))
+
+    def test_trim_enforces_the_limit_in_check_order(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._staged(root, "a.rules-changed", ["r1"], "rules-changed")
+        self._staged(root, "b", ["b1", "b2"])
+        self._staged(root, "c", ["c1", "c2"])
+        # A fork's own list survives, under the trusted limit.
+        (root / "_over_limit.json").write_text(json.dumps(
+            {"limit": 500, "previews": [{"id": "z1"}]}))
+        self.assertEqual(gb.trim(root, 3), 2)
+        self.assertEqual([p["id"] for p in json.loads((root / "b" / "previews.json").read_text())
+                          ["previews"]], ["b1", "b2"])
+        self.assertEqual([p["id"] for p in json.loads((root / "c" / "previews.json").read_text())
+                          ["previews"]], ["c1"])
+        self.assertFalse((root / "a.rules-changed" / "previews.json").exists())
+        over = json.loads((root / "_over_limit.json").read_text())
+        self.assertEqual(over["limit"], 3)
+        self.assertEqual([p["id"] for p in over["previews"]], ["z1", "c2", "r1"])
+
+    def test_seed_copies_the_catalog_cache_into_every_staged_module(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        key = "ab" + "0" * 62
+        restored = root / "catalog" / "build" / "compose-previews" / "guidelines"
+        (restored / "ab").mkdir(parents=True)
+        (restored / "ab" / f"{key}.json").write_text("{}")
+        (restored / "ab" / "notes.txt").write_text("x")
+        (restored / "checked").mkdir()
+        (restored / "checked" / ("c" * 64)).write_text("")
+        handoff = root / "_guidelines"
+        self._staged(handoff, "catalog", ["a"])
+        self._staged(handoff, "other", ["b"])
+        # A result the handoff carried in is discarded, not served.
+        forged = handoff / "catalog" / "guidelines" / "cd"
+        forged.mkdir(parents=True)
+        (forged / ("cd" + "1" * 62 + ".json")).write_text("{}")
+        # The handoff's own tree is never a source.
+        inner = handoff / "x" / "build" / "compose-previews" / "guidelines" / "ef"
+        inner.mkdir(parents=True)
+        (inner / ("ef" + "2" * 62 + ".json")).write_text("{}")
+
+        # Nor any other handoff entry (all are top-level `_…` names), nor a linked directory.
+        planted = root / "_pr_renders" / "m" / "build" / "compose-previews" / "guidelines" / "aa"
+        planted.mkdir(parents=True)
+        (planted / ("aa" + "3" * 62 + ".json")).write_text("{}")
+        linked = root / "linked" / "build" / "compose-previews"
+        linked.mkdir(parents=True)
+        (linked / "guidelines").symlink_to(planted.parent)
+
+        self.assertEqual(gb.seed(handoff, root), 2)
+
+        for module in ("catalog", "other"):
+            files = sorted(p.relative_to(handoff / module / "guidelines").as_posix()
+                           for p in (handoff / module / "guidelines").rglob("*") if p.is_file())
+            self.assertEqual(files, [f"ab/{key}.json"])
+
+    def test_trim_zero_cuts_nothing(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self._staged(root, "b", ["b1", "b2"])
+        self.assertEqual(gb.trim(root, 0), 0)
+        self.assertFalse((root / "_over_limit.json").exists())
 
     def test_nothing_spent_yet(self) -> None:
         root = Path(tempfile.mkdtemp())
