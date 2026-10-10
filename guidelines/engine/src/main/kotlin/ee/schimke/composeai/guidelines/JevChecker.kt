@@ -126,6 +126,9 @@ internal class JevChecker(
   private inner class Asked(val arrived: PreviewSubject, guidelines: CatalogGuidelinesV1) {
     /** The cache held an older result for it: asked after every never-checked subject. */
     var stale = false
+
+    /** Its [failure] is a batch fetch's, counted once for the batch rather than per subject. */
+    var fetchFailed = false
     var subject: PreviewSubject = arrived
     val asked: List<GuidelineRuleV1> =
       guidelines.subjectRules(arrived.surface, arrived.profile, arrived.pictures.isNotEmpty())
@@ -198,6 +201,7 @@ internal class JevChecker(
   }
 
   fun run(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelineRunResult {
+    fetchFailures.clear()
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()
 
@@ -304,12 +308,15 @@ internal class JevChecker(
           results += pendingResult(guidelines, state.arrived)
         }
         state.failure != null && !decided -> {
-          failedRequests++
-          problems += "${subject.previewId}: ${state.failure}"
+          // A failed batch fetch is counted once below, not once per preview it was for.
+          if (!state.fetchFailed) {
+            failedRequests++
+            problems += "${subject.previewId}: ${state.failure}"
+          }
           results += pendingResult(guidelines, state.arrived)
         }
         else -> {
-          if (state.failure != null) {
+          if (state.failure != null && !state.fetchFailed) {
             failedRequests++
             problems += "${subject.previewId}: ${state.failure} (in a follow-up round)"
           }
@@ -356,6 +363,8 @@ internal class JevChecker(
       }
     }
 
+    failedRequests += fetchFailures.size
+    problems += fetchFailures
     // Counted over every result, cached ones included: a run answered wholly from the cache still
     // says what the checker could not judge.
     val kinds = guidelines.rules.associate { it.id to it.kind }
@@ -441,12 +450,17 @@ internal class JevChecker(
   private fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>, states: List<Asked>) {
     runCatching { host.prefetch(needs) }
       .onFailure { e ->
-        states
-          .filter { it.subject.previewId in needs }
-          .forEach { state ->
-            state.failure = "the evidence host's fetch failed: ${e.message}"
-            if (state.rounds > 0) state.interrupted = true
-          }
+        val hit = states.filter { it.subject.previewId in needs }
+        hit.forEach { state ->
+          state.failure = "the evidence host's fetch failed: ${e.message}"
+          state.fetchFailed = true
+          if (state.rounds > 0) state.interrupted = true
+        }
+        fetchFailures +=
+          "the evidence host's fetch for ${hit.size} preview(s) failed: ${e.message} (" +
+            hit.take(8).joinToString { it.subject.previewId } +
+            (if (hit.size > 8) " and ${hit.size - 8} more" else "") +
+            ")"
       }
   }
 
@@ -789,6 +803,9 @@ internal class JevChecker(
 
     fun invent(n: Int)
   }
+
+  /** Each failed batch fetch of the run, counted as one failed request. Main thread only. */
+  private val fetchFailures = mutableListOf<String>()
 
   /** A pool to use in place of this checker's own [Ledger]; null uses its own. */
   var requestPool: DecisionsPool? = null

@@ -587,10 +587,12 @@ class JevCheckerTest {
           if (rule == "touch" && !isNode(key)) "needs:a11y" to 0.8 else null
         }
       )
-    val run = jev(model, host).run(guidelines, listOf(subject("a")))
+    val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
+    // One batched fetch failed: one failed request, however many previews it was for.
     assertThat(run.failedRequests).isEqualTo(1)
-    assertThat(run.problems.joinToString("\n")).contains("daemon gone")
-    val result = run.results.single()
+    assertThat(run.problems.joinToString("\n"))
+      .contains("the evidence host's fetch for 2 preview(s) failed: daemon gone (a, b)")
+    val result = run.results.single { it.previewId == "a" }
     // What round 0 decided stands; the rule waiting on the fetch is unchecked, not passed.
     assertThat(result.unchecked).contains("touch")
     assertThat(result.record.verdicts.single { it.ruleId == "described" }.verdict)
