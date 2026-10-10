@@ -52,10 +52,10 @@ public object JevTriage {
   public val A11Y: Offer =
     Offer(
       "a11y",
-      "Would this subject's accessibility nodes (labels, roles, tap-target bounds) be needed to " +
-        "judge its rules?",
-      GuidelineEvidenceNeedV1.Builder(GuidelineEvidenceNeedV1.KIND_A11Y_HIERARCHY)
-        .apply { reason = "triage: labels, roles and tap targets" }
+      "Would this subject's accessibility data (its nodes' labels, roles and tap-target bounds, " +
+        "and the measured touch-target and contrast checks) be needed to judge its rules?",
+      GuidelineEvidenceNeedV1.Builder(PreviewGuidelineRequests.KIND_A11Y)
+        .apply { reason = "triage: labels, roles, tap targets and measured checks" }
         .build(),
     )
 

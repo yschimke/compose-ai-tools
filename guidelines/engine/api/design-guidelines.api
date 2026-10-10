@@ -85,26 +85,35 @@ public final class ee/schimke/composeai/guidelines/GuidelineEngineKt {
 
 public abstract interface class ee/schimke/composeai/guidelines/GuidelineEvidenceHost {
 	public fun available (Ljava/lang/String;)Ljava/util/List;
+	public fun checks (Ljava/lang/String;)Ljava/util/List;
 	public abstract fun getAvailable ()Ljava/util/List;
 	public fun nodes (Ljava/lang/String;)Ljava/util/List;
+	public fun prefetch (Ljava/util/Map;)V
 	public fun render (Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
 	public fun source (Ljava/lang/String;)Ljava/lang/String;
+	public fun summary (Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineEvidenceHost$DefaultImpls {
 	public static fun available (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/util/List;
+	public static fun checks (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/util/List;
 	public static fun nodes (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/util/List;
+	public static fun prefetch (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/util/Map;)V
 	public static fun render (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
 	public static fun source (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/lang/String;
+	public static fun summary (Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineEvidenceHost$None : ee/schimke/composeai/guidelines/GuidelineEvidenceHost {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineEvidenceHost$None;
 	public fun available (Ljava/lang/String;)Ljava/util/List;
+	public fun checks (Ljava/lang/String;)Ljava/util/List;
 	public fun getAvailable ()Ljava/util/List;
 	public fun nodes (Ljava/lang/String;)Ljava/util/List;
+	public fun prefetch (Ljava/util/Map;)V
 	public fun render (Ljava/lang/String;Lee/schimke/composeai/guidelines/protocol/GuidelineEvidenceNeedV1;)Lee/schimke/composeai/guidelines/SubjectPicture;
 	public fun source (Ljava/lang/String;)Ljava/lang/String;
+	public fun summary (Ljava/lang/String;)Ljava/lang/String;
 }
 
 public abstract interface class ee/schimke/composeai/guidelines/GuidelineModel {
@@ -326,16 +335,19 @@ public final class ee/schimke/composeai/guidelines/PreviewCheck {
 
 public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;
+	public static final field KIND_A11Y Ljava/lang/String;
 	public static final field KIND_SCROLL_CAPTURE Ljava/lang/String;
 	public static final field MAX_SOURCE_CHARS I
 	public static final field PICTURE_TOKENS I
 	public static final field SOURCE_MEDIA_TYPE Ljava/lang/String;
 	public static final field SYSTEM_PROMPT Ljava/lang/String;
+	public final fun a11ySummary (Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
 	public final fun batches (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;)Ljava/util/List;
 	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;
 	public final fun getRESPONSE_SCHEMA ()Lkotlinx/serialization/json/JsonObject;
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
+	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 	public static synthetic fun request$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 }
 

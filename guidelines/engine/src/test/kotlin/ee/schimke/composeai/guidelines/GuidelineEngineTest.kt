@@ -947,6 +947,97 @@ class GuidelineEngineTest {
     }
   }
 
+  /** A host holding accessibility data for some previews, as a CI publish job does. */
+  private inner class A11yHost(private val with: Set<String>) : GuidelineEvidenceHost {
+    val prefetched = mutableListOf<Set<String>>()
+    val served = mutableListOf<String>()
+
+    override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+    override fun available(previewId: String) = if (previewId in with) available else emptyList()
+
+    override fun nodes(previewId: String): List<PreviewNode> {
+      served += previewId
+      return listOf(PreviewNode("stop", "Button", "Stop", 1, 1, 10, 10, listOf("clickable")))
+    }
+
+    override fun checks(previewId: String) =
+      listOf(PreviewCheck("TouchTargetSizeCheck", "ERROR", "24dp tall", "Stop", "1,1,10,10"))
+
+    override fun summary(previewId: String) =
+      if (previewId in with)
+        PreviewGuidelineRequests.a11ySummary(nodes(previewId), checks(previewId))
+      else null
+
+    override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) {
+      prefetched += needs.keys
+    }
+  }
+
+  @Test
+  fun `accessibility data is offered with a summary and served, nodes and checks, when asked`() {
+    val model = FakeModel()
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"needs_evidence","confidence":0.4,"nodeIds":[],
+         "reason":"","needs":[{"kind":"a11y","theme":null,"fontScale":null,"device":null,"reason":"tap targets"}],"regions":[]},
+        {"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"touch","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]},
+        {"subjectId":"s2","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}
+      ]}"""
+    model.replies +=
+      """{"verdicts":[
+        {"subjectId":"s1","ruleId":"touch","verdict":"fail","confidence":0.9,"nodeIds":["stop"],"reason":"24dp.","needs":[],"regions":[]}
+      ]}"""
+    val host = A11yHost(with = setOf("a"))
+    val run =
+      GuidelineEngine(model, host, options = GuidelineRunOptions(triage = false, maxRounds = 1))
+        .run(guidelines, listOf(subject("a"), subject("b")))
+
+    val (first, second) = model.requests
+    // Up front: the kind is offered and summarised, the data itself is not attached.
+    assertThat(first.evidenceAvailable).containsExactly("a11y")
+    assertThat(first.evidence).isEmpty()
+    assertThat(first.userText)
+      .contains("Accessibility: 1 node(s), none scrollable; ATF: 1 ERROR TouchTargetSizeCheck.")
+    assertThat(first.userText).contains("Evidence that may be asked for s2: none")
+    assertThat(first.systemPrompt).contains("asking for `a11y` when a rule turns on touch target")
+    // Asked for: one prefetch for the round, then the nodes and the measured checks.
+    assertThat(host.prefetched).containsExactly(setOf("a"))
+    assertThat(second.userText).contains("- stop | Button | Stop")
+    assertThat(second.userText).contains("TouchTargetSizeCheck | ERROR")
+    assertThat(second.userText).doesNotContain("Accessibility: ")
+    assertThat(run.results.single { it.previewId == "a" }.failures().single().nodeIds)
+      .containsExactly("stop")
+  }
+
+  @Test
+  fun `a need for the protocol's node kinds is served as a11y, and a11y as nodes`() {
+    assertThat(servedKind("a11y-hierarchy", listOf("a11y"))).isEqualTo("a11y")
+    assertThat(servedKind("semantics", listOf("a11y", "render"))).isEqualTo("a11y")
+    assertThat(servedKind("a11y", listOf("a11y-hierarchy"))).isEqualTo("a11y-hierarchy")
+    assertThat(servedKind("a11y", listOf("render"))).isNull()
+    assertThat(servedKind("render", listOf("render"))).isEqualTo("render")
+  }
+
+  @Test
+  fun `the a11y summary is a few dozen tokens whatever the data`() {
+    val nodes = (1..80).map { PreviewNode("n$it", "Text", "label $it", 0, it, 10, it + 9) }
+    val checks = (1..40).map { PreviewCheck("TextContrastCheck", "WARNING", "low contrast $it") }
+    val summary = PreviewGuidelineRequests.a11ySummary(nodes, checks)
+    assertThat(summary)
+      .isEqualTo(
+        "80 node(s), none scrollable; ATF: 40 WARNING TextContrastCheck. " +
+          "Ask for `a11y` for the nodes and checks."
+      )
+    // Against ~20 tokens a node and ~60 a check for the data: 80 nodes and 40 checks is ~4,000.
+    assertThat(summary.length / 4).isLessThan(40)
+    assertThat(PreviewGuidelineRequests.a11ySummary(emptyList(), emptyList()))
+      .isEqualTo(
+        "0 node(s), none scrollable; ATF: no findings. Ask for `a11y` for the nodes and checks."
+      )
+  }
+
   private inner class FakeHost(
     override val available: List<String> = listOf("a11y-hierarchy", "render")
   ) : GuidelineEvidenceHost {
