@@ -387,8 +387,14 @@ class ReportTest(unittest.TestCase):
             json.dumps({"modules": ["catalog"], "sweep": False}))
         body = gr.build(self.tmp, _args())
         assert body is not None
+        # Nothing says a catalog publish checks guidelines, so nothing is promised.
         self.assertIn("This PR changes the design guidelines.", body)
-        self.assertIn("re-checks every other preview against the new rules", body)
+        self.assertIn("were not re-checked against the new rules", body)
+        self.assertNotIn("re-checks every other preview", body)
+        args = _args()
+        args.catalog_rechecks = True
+        self.assertIn("re-checks every other preview against the new rules",
+                      gr.build(self.tmp, args))
         (self.tmp / "_rules_changed.json").write_text(
             json.dumps({"modules": ["catalog"], "sweep": True}))
         self.assertNotIn("This PR changes the design guidelines.", gr.build(self.tmp, _args()))
@@ -690,6 +696,17 @@ class StageTest(unittest.TestCase):
         self.assertEqual([p["id"] for p in manifest["previews"]], ["x.Go"])
         over = json.loads((out / "_over_limit.json").read_text())
         self.assertEqual([p["id"] for p in over["previews"]], ["x.Stop"])
+
+    def test_a_preview_with_no_render_takes_no_slot(self) -> None:
+        root = self._fanout([("x.A", "A"), ("x.B", "B"), ("x.C", "C")])
+        (root / "catalog" / "build" / "compose-previews" / "renders" / "x.A.png").unlink()
+        out = root / "_guidelines"
+        staged = gs.stage(root, {"x.A": {"diff": 1.0}, "x.B": {"diff": 0.5}, "x.C": {"diff": 0.1}},
+                          out, None, max_previews=2)
+        self.assertEqual(staged, 2)
+        manifest = json.loads((out / "catalog" / "previews.json").read_text())
+        self.assertEqual([p["id"] for p in manifest["previews"]], ["x.B", "x.C"])
+        self.assertFalse((out / "_over_limit.json").exists())
 
     def test_one_render_of_each_function_comes_before_its_fan_out(self) -> None:
         sizes = [(f"x.WearList_{dp}dp", "WearList") for dp in (192, 204, 216, 225, 240)]

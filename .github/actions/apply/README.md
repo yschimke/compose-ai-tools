@@ -743,7 +743,7 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | `openrouter-key` | `''` | OpenRouter key. Empty skips the check with a notice. |
 | `guidelines-max-cost` | `0.25` | Dollars to spend at most across every module of the run; what is left is reported unchecked. |
 | `guidelines-max-previews` | `30` | The most previews one PR sends to the check, across modules. Ranked (changed renders before source-only selections, new and most-changed first, one render per function before its other sizes and `_VARIANT_` cells); the rest are listed as not checked, "over this PR's limit of N". `0` lifts it. |
-| `guidelines-rules-sweep` | `false` | When the PR changes a guidelines file, also check up to 24 of the module's other previews. Off: the comment says the catalog publish re-checks them. |
+| `guidelines-rules-sweep` | `false` | When the PR changes a guidelines file, also check up to 24 of the module's other previews. Off: the comment says so — that the catalog publish re-checks them when `guidelines-cache-key` is set, else that they were not re-checked. |
 | `guidelines-cache-key` | `''` | The catalog publish's result cache prefix (`guidelines-<system>-`). Restored read-only, so previews unchanged from the default branch are answered from it at no cost. |
 | `guidelines-cache-path` | `./**/build/compose-previews/guidelines` | The `path` that cache was saved under; must match `design-artifacts-reusable.yml`'s (`<working-directory>/**/build/compose-previews/guidelines`). |
 | `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
@@ -758,9 +758,9 @@ mode over them. A single-job run does both. Pass `guidelines-max-previews` and
 `guidelines-cache-key` to the publish job (it re-applies the limit and reads the cache).
 
 Only the PR's own previews are checked: a PR that only edits the guidelines file stages nothing
-and says so in one line, since the catalog publish (`design-artifacts-reusable.yml` with
-`guidelines: true`) re-checks every preview against new rules, paying only for those whose inputs
-changed. With `guidelines-cache-key` set, the check restores that publish's result cache (restore
+and says so in one line. Set `guidelines-cache-key` when a catalog publish (`design-artifacts-reusable.yml` with
+`guidelines: true`, single-job) re-checks every preview against new rules, paying only for those
+whose inputs changed; only then does the line promise it. With `guidelines-cache-key` set, the check restores that publish's result cache (restore
 only — a PR run never saves one), so a staged preview whose render, source, nodes, rules and model
 match the default branch's costs nothing: a split workflow's publish job runs on `workflow_run`,
 in the default branch's cache scope. The publish's CLI and this action's must agree on the

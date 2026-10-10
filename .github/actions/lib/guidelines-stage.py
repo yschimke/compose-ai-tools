@@ -244,6 +244,16 @@ def long_render(preview: dict, previews_dir: Path) -> Path | None:
     return None
 
 
+def stageable(preview: dict, previews_dir: Path) -> bool:
+    """Whether [stage_module] would keep [preview]: it has a render on disk (a capture, or a long
+    screenshot standing in for one). A preview whose render failed takes no slot of the cap."""
+    for capture in preview.get("captures", []):
+        output = capture.get("renderOutput")
+        if output and safe_relative(output) and (previews_dir / output).is_file():
+            return True
+    return long_render(preview, previews_dir) is not None
+
+
 def has_source(preview: dict, module_dir: Path) -> bool:
     """Whether the preview's source is inside its module, so it can be staged with it."""
     source = preview.get("sourceFile")
@@ -454,7 +464,9 @@ def stage(
         mine += [
             (previews_dir, module_dir, manifest, p)
             for p in selected
-            if id(p) not in by_rules_ids and owner.get(p.get("id")) == module_dir
+            if id(p) not in by_rules_ids
+            and owner.get(p.get("id")) == module_dir
+            and stageable(p, previews_dir)
         ]
     ordered = prioritise(mine, changed_info)
     taken = ordered[:max_previews] if max_previews > 0 else ordered
@@ -483,7 +495,9 @@ def stage(
         by_rules_ids = {id(p) for p in rules_only[previews_dir]}
         tier_rules = [
             p for p in selected
-            if id(p) in by_rules_ids and owner.get(p.get("id")) == module_dir
+            if id(p) in by_rules_ids
+            and owner.get(p.get("id")) == module_dir
+            and stageable(p, previews_dir)
         ]
         if not tier_rules:
             continue

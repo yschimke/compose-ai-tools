@@ -291,8 +291,10 @@ inputs:
       When `true`, a PR that changes a module's guidelines file also checks
       up to 24 of that module's OTHER previews, within
       `guidelines-max-previews`. Off by default: a rules change pulls in no
-      other previews, the comment says so in one line, and the catalog
-      publish on the default branch re-checks them from its result cache.
+      other previews and the comment says so in one line: that the catalog
+      publish re-checks them when `guidelines-cache-key` names its cache,
+      else that they were not re-checked (a sharded publish, or one without
+      `guidelines: true`, never checks).
     default: 'false'
   guidelines-cache-key:
     description: >
@@ -1889,7 +1891,8 @@ runs:
         # or the render itself when nothing is), for the push below; the comment is re-rendered
         # with that push's SHA, since only GitHub-hosted, commit-pinned images survive in a PR.
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
-          --stage-images _guidelines_images --max-previews "$MAX_PREVIEWS"
+          --stage-images _guidelines_images --max-previews "$MAX_PREVIEWS" \
+          ${CACHE_KEY:+--catalog-rechecks}
 
     # The pictures are built in this job from the check's own output, never restored from the
     # handoff, so the push metadata is written here from literals, like the other PR-render pushes.
@@ -1924,12 +1927,13 @@ runs:
         REPO: ${{ inputs.artifact-repository || github.repository }}
         HEAD_SHA: ${{ steps.push-guidelines.outputs.head_sha }}
         MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
+        CACHE_KEY: ${{ inputs.guidelines-cache-key }}
       run: |
         set -euo pipefail
         [[ "$MAX_PREVIEWS" =~ ^[0-9]{1,6}$ ]] || MAX_PREVIEWS=30
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
           --image-repo "$REPO" --image-ref "$HEAD_SHA" --image-prefix guidelines \
-          --max-previews "$MAX_PREVIEWS"
+          --max-previews "$MAX_PREVIEWS" ${CACHE_KEY:+--catalog-rechecks}
 
     - name: Upsert guidelines PR comment
       if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') != '')
@@ -1962,6 +1966,7 @@ runs:
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
+        CACHE_KEY: ${{ inputs.guidelines-cache-key }}
       run: |
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -1970,7 +1975,7 @@ runs:
         export UPDATE_ONLY=1
         # A PR that changes the guidelines and no preview: say once where the rest are checked,
         # so the PR has a comment even when no earlier revision left one.
-        rules_line=$(python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out /dev/null --rules-changed-line)
+        rules_line=$(python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out /dev/null --rules-changed-line ${CACHE_KEY:+--catalog-rechecks})
         [ -n "$rules_line" ] && export UPDATE_ONLY=0
         {
           echo "$MARKER"

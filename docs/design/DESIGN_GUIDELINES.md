@@ -324,8 +324,10 @@ A PR's check (the `apply` action, `guidelines: true`) is bounded and incremental
 
 - **Only the PR's own previews.** The render phase stages previews whose render the PR changed or
   whose source file it touched. A change to the guidelines file pulls in no other preview: the
-  comment says in one line that the catalog publish on the default branch re-checks them, which
-  its cache makes cheap there. `guidelines-rules-sweep: 'true'` restores the old second tier (at
+  comment says so in one line — that the catalog publish on the default branch re-checks them
+  (cheaply, from its cache) when `guidelines-cache-key` names that publish's cache, and otherwise
+  that they were not re-checked, since a sharded publish or one without `guidelines: true` never
+  checks. `guidelines-rules-sweep: 'true'` restores the old second tier (at
   most 24 other previews of the module, staged as `<module>.rules-changed/`).
 - **At most `guidelines-max-previews` (default 30).** Ranked: a changed render before a source-only
   selection; within those, new previews and the largest render diffs first (`diff`, the share of

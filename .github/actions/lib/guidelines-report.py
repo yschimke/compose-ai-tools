@@ -27,7 +27,8 @@ Previews the PR changed beyond ``guidelines-max-previews`` (``_over_limit.json``
 stage step and re-cut by ``guidelines-budget.py --trim`` in the job holding the key) are listed as
 NOT checked, "over this PR's limit of N", never left out. A PR that changes the guidelines file
 without ``guidelines-rules-sweep`` (``_rules_changed.json``) gets one line saying the previews it
-did not change are re-checked by the catalog publish. Results answered from the catalog publish's
+did not change are re-checked by the catalog publish (``--catalog-rechecks``, when the caller set
+``guidelines-cache-key``), or, without it, that they were not re-checked and how to have them be. Results answered from the catalog publish's
 result cache (``fromCache``) are counted as such: they cost nothing.
 
 Images are embedded only from a GitHub-hosted, commit-pinned location (``--image-repo`` and
@@ -294,6 +295,18 @@ RULES_CHANGED_LINE = (
     "the catalog publish on the default branch re-checks every other preview against the new "
     "rules.</sub>"
 )
+# Without `guidelines-cache-key` the action cannot tell a catalog publish checks guidelines at all
+# (a sharded publish, or one without `guidelines: true`, never does), so it promises nothing.
+RULES_CHANGED_UNCONFIRMED_LINE = (
+    "<sub>This PR changes the design guidelines. Only the previews it changed are checked here; "
+    "the others were not re-checked against the new rules. A catalog publish with `guidelines: "
+    "true` re-checks them on the default branch, or set `guidelines-rules-sweep: 'true'` to check "
+    "some here.</sub>"
+)
+
+
+def rules_changed_line(catalog_rechecks: bool) -> str:
+    return RULES_CHANGED_LINE if catalog_rechecks else RULES_CHANGED_UNCONFIRMED_LINE
 
 
 class Tier:
@@ -557,7 +570,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             "",
         ]
     if rules_changed_note(dir_):
-        header += [RULES_CHANGED_LINE, ""]
+        header += [rules_changed_line(bool(getattr(args, "catalog_rechecks", False))), ""]
     if problems:
         header += ["Problems the check reported:", "", "```text"]
         header += problems[:MAX_PROBLEMS]
@@ -587,12 +600,14 @@ def main() -> int:
     ap.add_argument("--stage-images", help="copy the pictures the comment embeds under this dir")
     ap.add_argument("--max-previews", type=int,
                     help="the caller's guidelines-max-previews, quoted as the limit")
+    ap.add_argument("--catalog-rechecks", action="store_true",
+                    help="a catalog publish checks guidelines (the caller set guidelines-cache-key)")
     ap.add_argument("--rules-changed-line", action="store_true",
                     help="print the rules-changed line when the stage step recorded one, and exit")
     args = ap.parse_args()
     if args.rules_changed_line:
         if rules_changed_note(Path(args.dir)):
-            print(RULES_CHANGED_LINE)
+            print(rules_changed_line(args.catalog_rechecks))
         return 0
     if args.max_previews is not None and args.max_previews <= 0:
         args.max_previews = None
