@@ -306,8 +306,9 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public final fun batches (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;)Ljava/util/List;
 	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;
 	public final fun getRESPONSE_SCHEMA ()Lkotlinx/serialization/json/JsonObject;
+	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
-	public static synthetic fun request$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
+	public static synthetic fun request$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 }
 
 public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult {
