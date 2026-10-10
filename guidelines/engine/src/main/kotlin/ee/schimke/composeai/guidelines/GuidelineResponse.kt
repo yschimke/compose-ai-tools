@@ -33,6 +33,18 @@ public data class GuidelineReply(
    */
   public var strays: List<String> = emptyList()
     internal set
+
+  /**
+   * The reply's `others` statements: for each subject (by preview id, or [SET] for the rules judged
+   * once across the batch) that the rules it did not list all pass, with the model's confidence. A
+   * subject absent here, or stated `unchecked`, has its unlisted rules left unchecked.
+   */
+  internal var othersPass: Map<String, Double> = emptyMap()
+
+  internal companion object {
+    /** [othersPass]'s key for the rules judged once across the batch. */
+    const val SET: String = ""
+  }
 }
 
 /** Reading a chat completion's answer to a [PreviewGuidelineRequests.request]. */
@@ -48,17 +60,28 @@ public object GuidelineResponse {
     pictureOrder: List<Pair<String, String>>,
   ): Result<GuidelineReply> = runCatching {
     val completion = GUIDELINES_JSON.parseToJsonElement(body).jsonObject
+    val choice = (completion["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
     val content =
-      ((completion["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
+      choice
         ?.get("message")
         ?.let { it as? JsonObject }
         ?.get("content")
         ?.let { (it as? JsonPrimitive)?.contentOrNull }
         ?: error("no message content in the completion")
+    val cut = choice.text("finish_reason") == "length"
     val start = content.indexOf('{')
     val end = content.lastIndexOf('}')
-    require(start >= 0 && end > start) { "no JSON object in: ${content.take(200)}" }
-    val root = GUIDELINES_JSON.parseToJsonElement(content.substring(start, end + 1)).jsonObject
+    require(start >= 0 && end > start) {
+      if (cut) "the reply was cut at its max_tokens before it held any JSON"
+      else "no JSON object in: ${content.take(200)}"
+    }
+    val root = runCatching {
+      GUIDELINES_JSON.parseToJsonElement(content.substring(start, end + 1)).jsonObject
+    }
+      .getOrElse {
+        if (cut) error("the reply was cut at its max_tokens part-way through its JSON")
+        throw it
+      }
     val byAlias = batch.aliases.entries.associate { (id, alias) -> alias to id }
     val verdicts = mutableListOf<GuidelineVerdictV1>()
     val strays = mutableListOf<String>()
@@ -117,13 +140,35 @@ public object GuidelineResponse {
           }
           .build()
     }
-    if (verdicts.isEmpty()) {
+    val othersPass = linkedMapOf<String, Double>()
+    var statements = 0
+    (root["others"] as? JsonArray).orEmpty().forEach { element ->
+      val item = element as? JsonObject ?: return@forEach
+      val alias = item.text("subjectId")
+      val key =
+        if (alias == null) GuidelineReply.SET
+        else
+          byAlias[alias]
+            ?: alias.takeIf { it in batch.aliases }
+            ?: run {
+              strays += "$alias/others"
+              return@forEach
+            }
+      statements++
+      if (item.text("verdict") == PreviewGuidelineRequests.OTHERS_PASS) {
+        othersPass[key] = (item["confidence"] as? JsonPrimitive)?.doubleOrNull ?: 0.0
+      }
+    }
+    if (verdicts.isEmpty() && statements == 0) {
       error(
-        "the reply held no verdicts" +
+        "the reply held no verdicts and no `others` statement" +
           (if (strays.isEmpty()) "" else " for this batch's subjects (it named ${strays.take(5)})")
       )
     }
-    GuidelineReply(verdicts, served(completion)).also { it.strays = strays }
+    GuidelineReply(verdicts, served(completion)).also {
+      it.strays = strays
+      it.othersPass = othersPass
+    }
   }
 
   /**
@@ -156,15 +201,22 @@ public object GuidelineResponse {
         ?: return null
     val code = (error["code"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
     val message = error.text("message").orEmpty()
-    val provider = (error["metadata"] as? JsonObject)?.text("provider_name")
-    val timeout = message.contains("timeout", true) || message.contains("timed out", true)
+    val metadata = error["metadata"] as? JsonObject
+    val provider = metadata?.text("provider_name")
+    val errorType = metadata?.text("error_type")
     val kind =
       when {
-        code == 429 -> FailureKind.RATE_LIMITED
+        code == 429 || errorType == "rate_limit_exceeded" -> FailureKind.RATE_LIMITED
+        code == 503 -> FailureKind.RATE_LIMITED
+        code == 402 && metadata?.text("limit_source") == IN_FLIGHT_BUDGET ->
+          FailureKind.RATE_LIMITED
         code == 413 -> FailureKind.TOO_LARGE
-        code == 408 || (code != null && code in 500..599) -> FailureKind.TRANSIENT
-        timeout || provider != null -> FailureKind.TRANSIENT
-        else -> FailureKind.FATAL
+        // OpenRouter answers these with their status rather than in a 200's body; said here, they
+        // still mean the key, the balance or the request, which no retry changes.
+        code == 400 || code == 401 || code == 402 || code == 403 || code == 404 -> FailureKind.FATAL
+        // 408, 5xx, a provider's own error (its name or a string code such as `server_error`),
+        // a timeout: an error in place of a completion is the provider's, and may pass.
+        else -> FailureKind.TRANSIENT
       }
     return FailedRequest(
       "the model answered with an error in place of a completion" +
@@ -220,5 +272,6 @@ public object GuidelineResponse {
     )
   }
 
-  private fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
+  private fun JsonObject?.text(name: String): String? =
+    (this?.get(name) as? JsonPrimitive)?.contentOrNull
 }

@@ -62,6 +62,24 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val requestTimeoutSeconds: Long? =
     args.flagValue("--request-timeout")?.toLongOrNull()?.takeIf { it > 0 }
   /**
+   * How long a streamed request may go without a token, in seconds, before it is cancelled (keep
+   * alive comments do not count). Cancelling a stream stops the provider's bill where it can.
+   */
+  private val idleTimeoutSeconds: Long? =
+    args.flagValue("--idle-timeout")?.toLongOrNull()?.takeIf { it > 0 }
+  /** How many model requests may be in flight at once; 1 asks one batch at a time. */
+  private val concurrency: Int =
+    args.flagValue("--concurrency")?.toIntOrNull()?.takeIf { it > 0 }
+      ?: GuidelineRunOptions.DEFAULT_CONCURRENCY
+  private val stream: Boolean = "--no-stream" !in args
+  /** OpenRouter's `provider.sort` (`price`, `throughput`, `latency`); none keeps its balancing. */
+  private val providerSort: String? =
+    args.flagValue("--provider-sort")?.takeIf { it in setOf("price", "throughput", "latency") }
+  private val preferredMaxLatency: Double? =
+    args.flagValue("--preferred-max-latency")?.toDoubleOrNull()?.takeIf { it > 0 }
+  private val preferredMinThroughput: Double? =
+    args.flagValue("--preferred-min-throughput")?.toDoubleOrNull()?.takeIf { it > 0 }
+  /**
    * Handoff mode's follow-up evidence: the captures the render job staged (see [HandoffInputs]).
    */
   private var handoffHost: GuidelineEvidenceHost? = null
@@ -86,13 +104,22 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     }
     val client =
       OpenRouterClient(
-        key,
-        http =
-          OpenRouterClient.httpClient(
-            requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-              ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
-          ),
-      )
+          key,
+          http =
+            OpenRouterClient.httpClient(
+              requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+                ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+            ),
+        )
+        .also {
+          it.stream = stream
+          idleTimeoutSeconds?.let { seconds ->
+            it.idleTimeout = java.time.Duration.ofSeconds(seconds)
+          }
+          it.providerSort = providerSort
+          it.preferredMaxLatencySeconds = preferredMaxLatency
+          it.preferredMinThroughput = preferredMinThroughput
+        }
     if (previewsJson != null || rendersDir != null) exitProcess(runHandoff(client))
 
     val raw =
@@ -291,14 +318,15 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         cache = cache,
         options =
           GuidelineRunOptions(
-            model = model,
-            budget = GuidelineBudget(),
-            maxRounds = rounds,
-            triage = triage,
-            maxCostUsd = maxCost,
-            rulesSource = rulesSource,
-            ranBy = System.getenv("USER")?.let { "cli:$it" },
-          ),
+              model = model,
+              budget = GuidelineBudget(),
+              maxRounds = rounds,
+              triage = triage,
+              maxCostUsd = maxCost,
+              rulesSource = rulesSource,
+              ranBy = System.getenv("USER")?.let { "cli:$it" },
+            )
+            .withConcurrency(concurrency),
       )
       .also { if (guidelines.rules.isEmpty()) System.err.println("guidelines: no rules to ask") }
 
@@ -546,7 +574,11 @@ internal object GuidelinesReportRenderer {
         "%.4f".format(run.costUsd) +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
-        (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "")
+        (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
+        (run.results
+          .sumOf { it.implicitPasses.size }
+          .takeIf { it > 0 }
+          ?.let { ", $it rule(s) passed implicitly (not among the reply's findings)" } ?: "")
     )
     run.results.forEach { result ->
       val failures = result.failures()

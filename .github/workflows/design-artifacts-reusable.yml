@@ -599,6 +599,14 @@ on:
         required: false
         type: string
         default: '1.00'
+      guidelines-concurrency:
+        description: >-
+          How many guidelines model requests may be in flight at once (the CLI's `--concurrency`);
+          `1` asks one batch at a time. `guidelines-max-cost` holds across them. Ignored by a CLI
+          without the flag.
+        required: false
+        type: string
+        default: '4'
     secrets:
       artifacts_token:
         description: >-
@@ -3948,6 +3956,7 @@ jobs:
         env:
           COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.upstream-repository == '' && secrets.openrouter_key || '' }}
           MAX_COST: ${{ inputs.guidelines-max-cost }}
+          CONCURRENCY: ${{ inputs.guidelines-concurrency }}
         run: |
           set -euo pipefail
           if [ -z "${COMPOSE_PREVIEW_OPENROUTER_KEY:-}" ]; then
@@ -3960,6 +3969,14 @@ jobs:
           fi
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           args=(guidelines --max-cost "$MAX_COST")
+          # Requests in flight at once, for a CLI that knows the flag (an older one would read its
+          # value as a positional argument).
+          # The help is captured first: `grep -q` exits at the first match, and under pipefail the
+          # CLI's SIGPIPE would read as no match.
+          cli_help=$(compose-preview help 2>&1 || true)
+          if [[ "$CONCURRENCY" =~ ^[1-9][0-9]?$ ]] && grep -q -- '--concurrency' <<<"$cli_help"; then
+            args+=(--concurrency "$CONCURRENCY")
+          fi
           if [ -n "${INPUT_MODULE:-}" ]; then args+=(--module "$INPUT_MODULE"); fi
           # The same flavour the bundle renders below, or the check judges different previews.
           if [ -n "${INPUT_VARIANT:-}" ]; then args+=(--variant "$INPUT_VARIANT"); fi

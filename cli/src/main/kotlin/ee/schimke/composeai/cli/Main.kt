@@ -199,6 +199,10 @@ private fun printFullUsage() {
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
+                       --concurrency <n> (requests in flight, default 4; 1 is one at a
+                       time), --idle-timeout <seconds> (a stream with no token, default
+                       120), --no-stream, --provider-sort price|throughput|latency,
+                       --preferred-max-latency <s>, --preferred-min-throughput <tok/s>,
                        --no-triage, --annotate, --guidelines <file|url>,
                        --surface / --profile (default: each preview's manifest entry),
                        --previews-json / --renders-dir / --a11y-json /
