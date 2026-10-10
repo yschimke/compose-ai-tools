@@ -34,6 +34,8 @@ internal object CliFlags {
       "--max-cost",
       "--rounds",
       "--request-timeout",
+      "--checker",
+      "--compare-with",
       "--guidelines",
       "--surface",
       "--profile",

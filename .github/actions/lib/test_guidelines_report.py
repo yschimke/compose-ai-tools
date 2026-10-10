@@ -122,6 +122,31 @@ class ReportTest(unittest.TestCase):
         self.assertIn("$0.0068", body)
         self.assertNotIn("<img", body)
 
+    def test_jev_checker_is_named_and_its_unchecked_rules_counted(self) -> None:
+        report = self.tmp / "catalog" / "guidelines.json"
+        data = json.loads(report.read_text())
+        data["checker"] = "jev"
+        data["model"] = "typesafe/jev-1.13"
+        for result in data["results"]:
+            result["record"]["servedModel"] = "typesafe/jev-1.13-20260917"
+        # A preview with no finding and only text-only unchecked rules gets no section of its own.
+        data["results"][1]["unchecked"] = ["wear.layout.no-clipping"]
+        report.write_text(json.dumps(data))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("Checked by Jev (text-only, experimental) (typesafe/jev-1.13-20260917)", body)
+        self.assertIn("**2 rule verdict(s) on 2 preview(s) were NOT checked**", body)
+        self.assertIn("need the picture; the jev checker is text-only", body)
+        self.assertIn("unchecked, not passed", body)
+        self.assertIn("never the render", body)
+        self.assertNotIn("#### `Ok`", body)
+
+    def test_a_vision_report_says_nothing_of_jev(self) -> None:
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertNotIn("Jev", body)
+        self.assertIn("needs evidence this run could not get", body)
+
     def _renders(self, annotated: bool = True, nodes: list[dict] | None = None,
                  overlay: bytes = NUMBERED_PNG) -> None:
         renders = self.tmp / "catalog" / "renders"

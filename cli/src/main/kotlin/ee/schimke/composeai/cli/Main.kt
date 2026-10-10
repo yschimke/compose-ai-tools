@@ -200,6 +200,10 @@ private fun printFullUsage() {
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
                        --no-triage, --annotate, --guidelines <file|url>,
+                       --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
+                       decides structural rules from source and a11y text only, and
+                       leaves rules needing the picture unchecked),
+                       --compare-with <guidelines.json> (verdicts vs another run's),
                        --surface / --profile (default: each preview's manifest entry),
                        --previews-json / --renders-dir / --a11y-json /
                        --source-root (no Gradle), --json, --fail-on. Exits 1 on findings

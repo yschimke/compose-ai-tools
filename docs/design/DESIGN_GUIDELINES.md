@@ -246,6 +246,80 @@ first drops the previews' old entries from `accessibility.json`, so a failed fet
 rather than an older render's nodes, and `--permutations` ids are fetched as their declared
 preview with the permutation's overrides.
 
+## Experimental: the text-only Jev checker (`--checker jev`)
+
+Opt-in and experimental; the default (`--checker vision`, the `guidelines-checker` input's
+`vision`) is unchanged. Most rules are structural — wear-m3-catalog's file has 22 `structure`
+rules to 2 `visual` — and their evidence is text: the source (with its wrapper's), the accessibility
+nodes (role, label, bounds, `scrollable`, `off:` edges) and the ATF results. `--checker jev` asks
+those of Jev instead of the vision model, which on a 12-screen × 24-rule batch wrote verdicts
+serially past the request timeout.
+
+**What the decisions API offers** (OpenRouter
+[Jev hub](https://openrouter.ai/docs/guides/community/jev),
+[tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial),
+[`POST /api/alpha/decisions` reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-questions-and-answers-request);
+TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesafe.ai/api),
+[Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)):
+
+- one `state` (text: a string, object or array) and any number of independent `questions`, keyed
+  by ids the caller chooses, all answered in parallel against that state and unable to see each
+  other's answers;
+- question types `noul` (probability of yes), `choice` (one of up to 255 options, with a
+  probability per option and a `confidence`) and `score`;
+- **no text back**: no reason, no explanation, no citation — only the typed answers;
+- 32k tokens for the state plus the longest question, 64k for the state plus every question;
+- billed on input tokens only, reported as `usage.cost` with `id`, `model` (the dated snapshot)
+  and `provider`;
+- rate limits of about 100k tokens and 80 requests a second (adjusted dynamically), a 429 with
+  `retry-after` past them;
+- known weak spots: literal reading, arithmetic and numeric comparison, and a lean toward a
+  Choice's first option.
+
+**How it asks.** One request per subject: the state is that subject's text evidence (source, the
+nodes as `id | role | label | bounds | states` lines with the viewport, the measured checks as
+`type level on element: message`), and each structural rule is one `choice` question keyed `r1`,
+`r2`, … with the rule's check and guidance and the options `cannot_tell`, `not_applicable`,
+`fail`, `pass` — `cannot_tell` first, so the lean toward the first option errs toward unchecked.
+Where the subject has nodes, each rule also gets a `choice` over the node ids (plus `none`), so a
+`fail` can cite the node it is on: the API has no citation, but a choice over the ids is one. A
+subject whose questions would not fit 64k is asked in several requests. Subjects are asked four
+at a time (a fixed pool in `JevChecker`; the vision path's batching and concurrency are
+untouched), each request under the same `--max-cost` (none started that the cap cannot afford,
+counting those in flight at the dearest price) and retried as `GuidelineRetry` says.
+
+**What it records.** A verdict at the chosen option's probability, with a short reason written
+here ("Jev (text-only): follows it (p 0.92)"), `nodeIds` from the node question when it chose a
+node firmly, and the served model, provider, cost and generation id as any record does. An answer
+to a question the request did not ask is dropped and counted, as #5784 does for verdicts.
+Unchecked, never passed, with the reason "needs the picture; the jev checker is text-only":
+
+- every `visual` rule — never asked;
+- every rule Jev answers `cannot_tell`, or answers below p 0.5;
+- set-scoped rules are not asked at all (the checker judges each preview alone), said in the
+  run's problems.
+
+**Evidence up front.** The accessibility data is the main evidence, so in `jev` mode the host's
+`a11y` is prefetched once for every subject being asked (never for one answered from the cache),
+and the source attached where the host offers it.
+
+**Kept apart.** Results are cached under `GuidelineRunOptions.cacheModel`, which names the checker
+(`checker:jev/typesafe/jev-1.13`), so a vision verdict never answers a jev run or the reverse;
+the vision key is unchanged, so no `REQUEST_FORMAT` bump. The report's `guidelines.json` carries
+`"checker": "jev"` (absent for vision), and the PR comment says "Checked by Jev (text-only,
+experimental)" and counts the rule verdicts it left unchecked instead of listing them under every
+preview. `--model` names the decisions model in jev mode (`typesafe/jev-1.13` unless given).
+
+**Evaluating it.** `--compare-with <guidelines.json>` prints this run's verdicts against another
+run's per (preview, rule) — agree, disagree, decided on one side only — with a line per rule and
+every disagreement, e.g. against a vision run's report of the same handoff:
+
+```
+compose-preview guidelines --checker jev --compare-with vision/guidelines.json \
+  --previews-json <module>/previews.json --a11y-json <module>/accessibility.json \
+  --source-root <module>/src --guidelines <module>/ui-builder.guidelines.json
+```
+
 ## Handoff mode (CI)
 
 No Gradle, no daemon:

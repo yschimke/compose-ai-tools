@@ -79,6 +79,20 @@ public final class ee/schimke/composeai/guidelines/GuidelineBudget {
 public final class ee/schimke/composeai/guidelines/GuidelineBudget$Companion {
 }
 
+public final class ee/schimke/composeai/guidelines/GuidelineChecker : java/lang/Enum {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelineChecker$Companion;
+	public static final field JEV Lee/schimke/composeai/guidelines/GuidelineChecker;
+	public static final field VISION Lee/schimke/composeai/guidelines/GuidelineChecker;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getId ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineChecker;
+	public static fun values ()[Lee/schimke/composeai/guidelines/GuidelineChecker;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineChecker$Companion {
+	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineChecker;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineEngine {
 	public fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -205,7 +219,10 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun copy (Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunOptions;Ljava/lang/String;Lee/schimke/composeai/guidelines/GuidelineBudget;IZDLjava/lang/Double;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnsweringModel ()Ljava/lang/String;
 	public final fun getBudget ()Lee/schimke/composeai/guidelines/GuidelineBudget;
+	public final fun getCacheModel ()Ljava/lang/String;
+	public final fun getChecker ()Lee/schimke/composeai/guidelines/GuidelineChecker;
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
@@ -216,6 +233,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getTriageThreshold ()D
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }
 
