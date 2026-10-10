@@ -152,8 +152,13 @@ public object PreviewGuidelineRequests {
       "number and a rough box as fractions (0 to 1) of that picture, so it can be marked on the " +
       "render. Scrolling is not clipping: content cut at the viewport edge ALONG the axis of a " +
       "scrollable container (a node with state `scrollable`, or a picture captured mid-scroll) " +
-      "is scrolled out of view. Only content cut across that axis, by the screen shape, or " +
-      "inside its own bounds is clipped. When `scroll-capture` may be asked for a subject (its " +
+      "is scrolled out of view, but only while the container can still scroll towards it. At " +
+      "either end of the scroll it is clipped: the first item cut at the start edge when the " +
+      "content is scrolled to its start, the last item cut at the end edge when it is scrolled to " +
+      "its end, and anything cut at the start or end of a long screenshot can never be scrolled " +
+      "clear. A round screen's curve slicing the sides of an item near a scrolling edge follows " +
+      "the same rule. Content cut across that axis anywhere else, or inside its own bounds, is " +
+      "clipped. When `scroll-capture` may be asked for a subject (its " +
       "long screenshot: the whole scrolling content, already rendered) and you cannot tell " +
       "scrolled-away content from clipped content, answer `needs_evidence` asking for it " +
       "rather than guess. " +
