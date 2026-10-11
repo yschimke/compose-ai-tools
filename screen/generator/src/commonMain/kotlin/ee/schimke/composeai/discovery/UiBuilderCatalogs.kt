@@ -77,6 +77,11 @@ object UiBuilderCatalogs {
     const val BUILTIN_WASM_STATUS_UNKNOWN = "policy.builtin.wasm.adapterStatus.unknown"
     const val BUILTIN_CODE_EMPTY = "policy.builtin.code.symbol.empty"
     const val STRATEGY_UNKNOWN = "policy.code.strategy.unknown"
+    const val SCOPE_ROLE_UNKNOWN = "policy.code.scope.role.unknown"
+    const val LOCAL_MALFORMED = "policy.code.local.malformed"
+    const val PROJECTION_MALFORMED = "component.exportProjection.malformed"
+    const val PROJECTION_SCOPE_UNATTESTED = "component.exportProjection.scope.unattested"
+    const val PROJECTION_LOCAL_UNDECLARED = "component.exportProjection.local.undeclared"
   }
 
   /**
@@ -328,6 +333,7 @@ object UiBuilderCatalogs {
       menuEntries[builderId] = UiBuilderMenuEntry.Builder(group = group).build()
     }
 
+    validateProjections(policy.code, components, diagnostics)
     return UiBuilderCatalogFile.Builder(
         catalog =
           UiBuilderCatalogIdentity.Builder(
@@ -820,8 +826,137 @@ object UiBuilderCatalogs {
     }
   }
 
+  /**
+   * Every scope and template local a published projection reads, against what [code] declares: a
+   * `ScopeRead` only in a context whose role opens exactly that scope, a `LocalRead` only of a
+   * declared local at its type. Anything else would print `this` or a name the templates never give
+   * it, so it is reported here rather than refused at every export.
+   */
+  private fun validateProjections(
+    code: UiBuilderCode?,
+    components: Map<String, UiBuilderComponentPolicy>,
+    into: MutableList<UiBuilderDiagnostic>,
+  ) {
+    val scopes = code?.scopes.orEmpty()
+    val locals = code?.locals.orEmpty()
+    for ((builderId, component) in components) {
+      val raw = component.exportProjection ?: continue
+      val decoded = ExportProjectionJson.decode(raw)
+      val projection = decoded.getOrNull()
+      if (projection == null) {
+        into +=
+          UiBuilderDiagnostic.Builder(
+              code = Diagnostics.PROJECTION_MALFORMED,
+              subject = builderId,
+              message =
+                "the export projection cannot be read (${decoded.exceptionOrNull()?.message}), " +
+                  "so this component exports as if it had none.",
+            )
+            .build()
+        continue
+      }
+      fun check(value: ScreenValue, role: String?, where: String) {
+        when (value) {
+          is ScreenValue.ScopeRead ->
+            if (role == null || scopes[role] != value.typeFqn) {
+              into +=
+                UiBuilderDiagnostic.Builder(
+                    code = Diagnostics.PROJECTION_SCOPE_UNATTESTED,
+                    subject = "$builderId.$where",
+                    message =
+                      "reads its receiver as ${value.typeFqn}, but " +
+                        when {
+                          role == null -> "outside a role context, where nothing attests one"
+                          scopes[role] == null -> "code.scopes declares no scope for `$role`"
+                          else -> "code.scopes says `$role` opens ${scopes[role]}"
+                        } +
+                        ".",
+                  )
+                  .build()
+            }
+          is ScreenValue.LocalRead ->
+            if (locals[value.name] != value.typeFqn) {
+              into +=
+                UiBuilderDiagnostic.Builder(
+                    code = Diagnostics.PROJECTION_LOCAL_UNDECLARED,
+                    subject = "$builderId.$where",
+                    message =
+                      "reads template local `${value.name}` as ${value.typeFqn}, but " +
+                        (locals[value.name]?.let { "code.locals declares it as $it" }
+                          ?: "code.locals does not declare it") +
+                        ".",
+                  )
+                  .build()
+            }
+          is ScreenValue.Lambda -> check(value.result, role, where)
+          is ScreenValue.Construct -> {
+            value.positional.forEach { check(it, role, where) }
+            value.named.values.forEach { check(it, role, where) }
+          }
+          is ScreenValue.Chain -> {
+            check(value.receiver, role, where)
+            for (link in value.links) {
+              link.positional.forEach { check(it, role, where) }
+              link.named.values.forEach { check(it, role, where) }
+            }
+          }
+          else -> Unit
+        }
+      }
+      fun visit(value: ExportProjection.Value, role: String?, where: String) {
+        when (value) {
+          is ExportProjection.Value.Fixed -> check(value.value, role, where)
+          is ExportProjection.Value.Call ->
+            value.arguments.forEach { (name, argument) -> visit(argument, role, "$where.$name") }
+          is ExportProjection.Value.Property -> Unit
+        }
+      }
+      for (target in projection.targets) {
+        val record = target.record.substringAfterLast('.')
+        target.parameters.forEach { (name, value) -> visit(value, null, "$record.$name") }
+        for ((role, context) in target.contexts) {
+          context.parameters.forEach { (name, value) -> visit(value, role, "$record[$role].$name") }
+          for (link in context.modifier) {
+            val where = "$record[$role].modifier"
+            link.positional.forEach { check(it, role, where) }
+            link.named.values.forEach { check(it, role, where) }
+          }
+        }
+      }
+    }
+  }
+
   private fun validateCode(policy: UiBuilderPolicyFile, into: MutableList<UiBuilderDiagnostic>) {
     val code = policy.code ?: return
+    for (role in code.scopes.keys) {
+      // A scope is opened around a node, so only node roles have one.
+      if (role in UI_BUILDER_STRUCTURAL_ROLES) continue
+      into +=
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.SCOPE_ROLE_UNKNOWN,
+            subject = "code.scopes.$role",
+            message =
+              "no structural role named '$role' opens a scope. Known roles: " +
+                "${UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString()}.",
+          )
+          .build()
+    }
+    for (name in code.locals.keys) {
+      if (
+        name.isNotEmpty() &&
+          (name.first().isLetter() || name.first() == '_') &&
+          name.all { it.isLetterOrDigit() || it == '_' }
+      )
+        continue
+      into +=
+        UiBuilderDiagnostic.Builder(
+            code = Diagnostics.LOCAL_MALFORMED,
+            subject = "code.locals.$name",
+            message =
+              "'$name' is a name templates define and code reads, so it is a Kotlin identifier.",
+          )
+          .build()
+    }
     for (role in code.templates.keys) {
       // `previews` and `file` are whole-file templates, not node roles.
       if (role in UI_BUILDER_STRUCTURAL_ROLES || role == "previews" || role == "file") continue
