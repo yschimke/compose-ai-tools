@@ -294,6 +294,38 @@ internal object ComposableSignature {
 
   private const val COMPOSABLE_ANNOTATION = "androidx.compose.runtime.Composable"
 
+  /**
+   * Every public member function of the Kotlin object [classInfo] named [name] — the overloads of a
+   * `…Defaults` factory such as `ButtonDefaults.filledTonalButtonColors` — as [FactorySignature]s.
+   * Read from `@kotlin.Metadata`, so parameter names, defaults and the declared return type are the
+   * source's, not the JVM's. Empty when the class has no readable metadata or no such function.
+   */
+  fun factorySignatures(classInfo: ClassInfo, name: String): List<FactorySignature> {
+    val metadata = readClassMetadata(classInfo) ?: return emptyList()
+    val kmClass =
+      (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
+        ?: return emptyList()
+    // `Owner.factory(…)` needs no instance only on an object or a companion; a class's member
+    // would be printed as a call that does not compile.
+    if (kmClass.kind != ClassKind.OBJECT && kmClass.kind != ClassKind.COMPANION_OBJECT) {
+      return emptyList()
+    }
+    return kmClass.functions
+      .filter { it.name == name && it.visibility == Visibility.PUBLIC }
+      .mapNotNull { fn ->
+        val returnType =
+          (fn.returnType.classifier as? KmClassifier.Class)
+            ?.name
+            ?.replace('/', '.')
+            ?.replace('$', '.') ?: return@mapNotNull null
+        FactorySignature(
+          callableFqn = "${classInfo.name.replace('$', '.')}.$name",
+          returnTypeFqn = returnType,
+          parameters = fn.valueParameters.map { it.toTargetParameter() },
+        )
+      }
+  }
+
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
     val name = method.name

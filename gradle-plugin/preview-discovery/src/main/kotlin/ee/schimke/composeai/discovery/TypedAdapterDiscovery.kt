@@ -86,4 +86,39 @@ object TypedAdapterDiscovery {
       ComponentRecordFile.Builder(module, variant, components).build()
     }
   }
+
+  /**
+   * The factories a typed definition's export projection calls — `ButtonDefaults` members such as
+   * `filledTonalButtonColors` — with every overload's parameters and return type, so
+   * [TypedComponentAdapter.validateAgainst] can check a `call(…)` by argument name and type rather
+   * than trusting a string. [Callable.owner] is the object's class (`…material3.ButtonDefaults`),
+   * not a file facade. Metadata only: no class is loaded.
+   */
+  fun discoverFactories(
+    factories: List<Callable>,
+    classpath: List<File>? = null,
+  ): List<FactorySignature> {
+    require(factories.isNotEmpty() && factories.distinct().size == factories.size) {
+      "declare distinct factories"
+    }
+    val graph =
+      ClassGraph()
+        .enableClassInfo()
+        .enableMethodInfo()
+        .acceptClasses(*factories.map { it.owner }.distinct().toTypedArray())
+    if (classpath != null) graph.overrideClasspath(classpath)
+    return graph.scan().use { scan ->
+      factories.flatMap { factory ->
+        val owner =
+          requireNotNull(scan.getClassInfo(factory.owner)) {
+            "missing compiled owner ${factory.owner}"
+          }
+        ComposableSignature.factorySignatures(owner, factory.name).also {
+          require(it.isNotEmpty()) {
+            "${factory.owner}.${factory.name}: no public member of an object or companion with readable metadata"
+          }
+        }
+      }
+    }
+  }
 }
