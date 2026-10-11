@@ -362,6 +362,53 @@ public object PreviewGuidelineRequests {
   }
 
   /**
+   * What [subject] is apart from its size: its preview id with the `_<width>dp` its first picture
+   * was rendered at taken out (`WearScaffold_192dp_VARIANT_x` → `WearScaffold_VARIANT_x`). The same
+   * preview at other sizes shares it, while a named variant, a theme or a font scale does not. The
+   * id itself when it names no size.
+   */
+  internal fun sizeless(subject: PreviewSubject): String {
+    val width =
+      subject.pictures.firstOrNull()?.widthDp?.takeIf { it > 0 } ?: return subject.previewId
+    val token = "_${width}dp"
+    return if (token in subject.previewId) subject.previewId.replaceFirst(token, "")
+    else subject.previewId
+  }
+
+  /** The width [subject]'s first picture was rendered at, in dp; 0 when unknown. */
+  internal fun widthDp(subject: PreviewSubject): Int = subject.pictures.firstOrNull()?.widthDp ?: 0
+
+  /**
+   * The width class of [widthDp]: a small round watch (under 225), a large watch or a compact phone
+   * (under 600), a medium window (under 840), or an expanded one.
+   */
+  internal fun sizeClass(widthDp: Int): Int =
+    when {
+      widthDp < 225 -> 0
+      widthDp < 600 -> 1
+      widthDp < 840 -> 2
+      else -> 3
+    }
+
+  /**
+   * One preview's [sizes] in the order a variant limit keeps them: the largest, the smallest, then
+   * inward from both ends. The extremes are where a layout breaks — text wraps or clips on the
+   * smallest, spacing runs out on the largest — and cover most of what lies between them.
+   */
+  internal fun extremesFirst(sizes: List<PreviewSubject>): List<PreviewSubject> {
+    val sorted = sizes.sortedBy { widthDp(it) }
+    val out = ArrayList<PreviewSubject>(sorted.size)
+    var low = 0
+    var high = sorted.lastIndex
+    var largest = true
+    while (low <= high) {
+      out += if (largest) sorted[high--] else sorted[low++]
+      largest = !largest
+    }
+    return out
+  }
+
+  /**
    * What asking [batch] once is expected to cost at [price]: its input as [batches] sizes it (the
    * system prompt, the rules, each subject's pictures, nodes, checks and source) and its expected
    * output (the verdicts [expectedReplyTokens] expects listed, and [expectedReasoningTokens] at

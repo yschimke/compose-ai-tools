@@ -385,6 +385,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getRulesSource ()Ljava/lang/String;
 	public final fun getTriage ()Z
 	public final fun getTriageThreshold ()D
+	public final fun getVariantsPerSizeClass ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
@@ -394,6 +395,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun withPrice (Lee/schimke/composeai/guidelines/GuidelinePrice;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withVariantsPerSizeClass (Z)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineRunOptions$Companion {

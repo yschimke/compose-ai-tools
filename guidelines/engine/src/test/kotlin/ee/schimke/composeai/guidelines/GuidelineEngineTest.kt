@@ -671,25 +671,72 @@ class GuidelineEngineTest {
   }
 
   @Test
-  fun `max variants asks the first variant of each composable and names it for the rest`() {
-    val model = FakeModel().apply { repeat(2) { replies += PASS_ONE } }
-    fun size(dp: Int, composable: String) =
-      subject("${composable}_${dp}dp").copy(label = composable)
-    val options =
-      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
-        .withMaxVariants(1)
-    val subjects = listOf(size(192, "WearList"), size(204, "WearList"), size(192, "WearScaffold"))
-    val run = GuidelineEngine(model, options = options).run(guidelines, subjects)
+  fun `max variants asks the largest size, then the smallest, and never drops a named variant`() {
+    fun sized(id: String, composable: String, dp: Int) =
+      subject(id).copy(label = composable, pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val list = listOf(192, 204, 216, 225, 240).map { sized("WearList_${it}dp", "WearList", it) }
+    val scaffold =
+      listOf(
+        sized("WearScaffold_192dp", "WearScaffold", 192),
+        sized("WearScaffold_204dp", "WearScaffold", 204),
+        // A named variant is content of its own, not another size of WearScaffold_<n>dp.
+        sized("WearScaffold_192dp_VARIANT_no-scroll-indicator", "WearScaffold", 192),
+      )
+    val subjects = list + scaffold
+    fun asked(limit: (GuidelineRunOptions) -> GuidelineRunOptions): List<String> {
+      val model = FakeModel().apply { repeat(subjects.size) { replies += PASS_ONE } }
+      val run =
+        GuidelineEngine(
+            model,
+            options =
+              limit(GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))),
+          )
+          .run(guidelines, subjects)
+      assertThat(run.results.none { it.pending }).isTrue()
+      return run.results.filter { it.variantOf == null }.map { it.previewId }
+    }
 
-    assertThat(model.requests).hasSize(2)
-    val skipped = run.results.single { it.previewId == "WearList_204dp" }
-    assertThat(skipped.variantOf).isEqualTo("WearList_192dp")
-    assertThat(skipped.pending).isFalse()
-    assertThat(run.results.filter { it.variantOf == null }.map { it.previewId })
-      .containsExactly("WearList_192dp", "WearScaffold_192dp")
-    assertThat(GuidelineEngine(FakeModel(), options = options).plan(guidelines, subjects).previews)
-      .isEqualTo(2)
-    // Unset, every variant is asked.
+    assertThat(asked { it.withMaxVariants(1) })
+      .containsExactly(
+        "WearList_240dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+    assertThat(asked { it.withMaxVariants(2) })
+      .containsExactly(
+        "WearList_240dp",
+        "WearList_192dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+    // Width classes: under 225dp, then 225 and over; the largest in each.
+    assertThat(asked { it.withVariantsPerSizeClass(true) })
+      .containsExactly(
+        "WearList_216dp",
+        "WearList_240dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+
+    // A dropped size names the nearest size asked.
+    val model = FakeModel().apply { repeat(subjects.size) { replies += PASS_ONE } }
+    val run =
+      GuidelineEngine(
+          model,
+          options = GuidelineRunOptions(triage = false).withVariantsPerSizeClass(true),
+        )
+        .run(guidelines, subjects)
+    assertThat(run.results.single { it.previewId == "WearList_192dp" }.variantOf)
+      .isEqualTo("WearList_216dp")
+    assertThat(run.results.single { it.previewId == "WearList_225dp" }.variantOf)
+      .isEqualTo("WearList_240dp")
+    assertThat(
+        GuidelineEngine(FakeModel(), options = GuidelineRunOptions().withMaxVariants(1))
+          .plan(guidelines, subjects)
+          .previews
+      )
+      .isEqualTo(3)
     assertThat(GuidelineRunOptions().withMaxVariants(0).maxVariants).isNull()
   }
 

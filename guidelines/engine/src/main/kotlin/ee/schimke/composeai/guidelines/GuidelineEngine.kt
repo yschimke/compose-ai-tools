@@ -210,22 +210,37 @@ public data class GuidelineRunOptions(
     carry().also { it.price = price }
 
   /**
-   * How many variants of each composable ([PreviewGuidelineRequests.family]) are asked, the first
-   * ones given; the rest come back asked nothing, naming the variant asked in their place
-   * ([PreviewGuidelineResult.variantOf]). Null (the default) asks every variant. The vision
-   * checker's only, like [price]. A body property like [retry]: set it with [withMaxVariants].
+   * How many sizes of each preview are asked ([PreviewGuidelineRequests.sizeless]): the largest,
+   * the smallest, then inward ([PreviewGuidelineRequests.extremesFirst]). A named variant, theme or
+   * font scale is a preview of its own, never cut. The rest come back asked nothing, naming the
+   * size asked in their place ([PreviewGuidelineResult.variantOf]). Null (the default) asks every
+   * size. The vision checker's only, like [price]. A body property like [retry]: set it with
+   * [withMaxVariants].
    */
   public var maxVariants: Int? = null
     private set
 
-  /** These options, asking at most [maxVariants] variants of each composable; null asks all. */
+  /** These options, asking at most [maxVariants] sizes of each preview; null asks all. */
   public fun withMaxVariants(maxVariants: Int?): GuidelineRunOptions =
     carry().also { it.maxVariants = maxVariants?.takeIf { n -> n > 0 } }
+
+  /**
+   * Ask one size of each preview per width class ([PreviewGuidelineRequests.sizeClass]), the
+   * largest in it, instead of [maxVariants]' count: a Wear preview at 192, 204, 216, 225 and 240dp
+   * is asked at 216 and 240. A body property like [retry]: set it with [withVariantsPerSizeClass].
+   */
+  public var variantsPerSizeClass: Boolean = false
+    private set
+
+  /** These options, asking one size of each preview per width class when [perSizeClass]. */
+  public fun withVariantsPerSizeClass(perSizeClass: Boolean): GuidelineRunOptions =
+    carry().also { it.variantsPerSizeClass = perSizeClass }
 
   /** A copy carrying every body property, which `copy` would reset. */
   private fun carry(): GuidelineRunOptions =
     copy().also {
       it.maxVariants = maxVariants
+      it.variantsPerSizeClass = variantsPerSizeClass
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
@@ -1179,27 +1194,50 @@ public class GuidelineEngine(
   }
 
   /**
-   * [subjects] cut to [GuidelineRunOptions.maxVariants] of each composable
-   * ([PreviewGuidelineRequests.family]), the first ones given kept, and the rest as results asked
-   * nothing that name the variant asked in their place. A subject no rule applies to counts for
-   * nothing here; [prepare] reports it.
+   * [subjects] cut to the sizes of each preview ([PreviewGuidelineRequests.sizeless]) that
+   * [GuidelineRunOptions.maxVariants] or [GuidelineRunOptions.variantsPerSizeClass] keep, in the
+   * order given; the rest as results asked nothing that name the size asked in their place. A
+   * subject no rule applies to is left to [prepare], which reports it.
    */
   private fun limitVariants(
     guidelines: CatalogGuidelinesV1,
     subjects: List<PreviewSubject>,
   ): Pair<List<PreviewSubject>, List<PreviewGuidelineResult>> {
-    val limit = options.maxVariants ?: return subjects to emptyList()
-    val kept = mutableMapOf<String, MutableList<PreviewSubject>>()
+    val limit = options.maxVariants
+    if (limit == null && !options.variantsPerSizeClass) return subjects to emptyList()
+    val askable = subjects.filter { guidelines.noRulesFor(it) == null }
+    // Per preview, the size kept in each dropped size's place: one of its width class, then the
+    // nearest by width.
+    fun width(subject: PreviewSubject) = PreviewGuidelineRequests.widthDp(subject)
+    fun widthClass(subject: PreviewSubject) = PreviewGuidelineRequests.sizeClass(width(subject))
+    val keptFor = mutableMapOf<String, PreviewSubject>()
+    askable
+      .groupBy { PreviewGuidelineRequests.sizeless(it) }
+      .values
+      .forEach { sizes ->
+        val kept =
+          if (options.variantsPerSizeClass) {
+            sizes.groupBy { widthClass(it) }.values.map { inClass -> inClass.maxBy { width(it) } }
+          } else {
+            PreviewGuidelineRequests.extremesFirst(sizes).take(limit!!)
+          }
+        sizes.forEach { size ->
+          keptFor[size.previewId] =
+            if (size in kept) size
+            else
+              kept.minWith(
+                compareBy<PreviewSubject>(
+                  { widthClass(it) != widthClass(size) },
+                  { Math.abs(width(it) - width(size)) },
+                )
+              )
+        }
+      }
     val asked = mutableListOf<PreviewSubject>()
     val skipped = mutableListOf<PreviewGuidelineResult>()
     subjects.forEach { subject ->
-      if (guidelines.noRulesFor(subject) != null) {
-        asked += subject
-        return@forEach
-      }
-      val family = kept.getOrPut(PreviewGuidelineRequests.family(subject)) { mutableListOf() }
-      if (family.size < limit) {
-        family += subject
+      val instead = keptFor[subject.previewId]
+      if (instead == null || instead === subject) {
         asked += subject
       } else {
         skipped +=
@@ -1208,7 +1246,7 @@ public class GuidelineEngine(
               renderHash = subject.renderHash,
               record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
             )
-            .also { it.variantOf = family.first().previewId }
+            .also { it.variantOf = instead.previewId }
       }
     }
     return asked to skipped
