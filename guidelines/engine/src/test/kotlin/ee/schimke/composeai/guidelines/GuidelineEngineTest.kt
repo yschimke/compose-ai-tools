@@ -579,6 +579,63 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `two classes' previews of one name are different composables`() {
+    fun preview(id: String) = subject(id).copy(label = "Preview")
+    val ordered =
+      PreviewGuidelineRequests.breadthFirst(
+        listOf(
+          preview("a.FooKt.Preview"),
+          preview("a.FooKt.Preview_Dark"),
+          preview("b.BarKt.Preview"),
+        )
+      )
+    assertThat(ordered.map { it.previewId })
+      .containsExactly("a.FooKt.Preview", "b.BarKt.Preview", "a.FooKt.Preview_Dark")
+      .inOrder()
+  }
+
+  @Test
+  fun `a second surface's first variant is not left behind the first surface's second`() {
+    val model = FakeModel().apply { repeat(3) { replies += PASS_ONE } }
+    val run =
+      GuidelineEngine(
+          model,
+          options =
+            GuidelineRunOptions(
+              triage = false,
+              budget = GuidelineBudget(maxSubjects = 1),
+              maxCostUsd = 0.0025,
+            ),
+        )
+        .run(
+          guidelines,
+          listOf(
+            subject("A_1").copy(label = "A"),
+            subject("A_2").copy(label = "A"),
+            subject("B_1", surface = GuidelineSurfaces.SCREEN).copy(label = "B"),
+          ),
+        )
+    assertThat(model.requests).hasSize(2)
+    assertThat(run.results.filter { !it.pending }.map { it.previewId })
+      .containsExactly("A_1", "B_1")
+  }
+
+  @Test
+  fun `a plan predicts nothing for the jev checker`() {
+    val plan =
+      GuidelineEngine(
+          FakeModel(),
+          options =
+            GuidelineRunOptions(triage = false)
+              .withPrice(GuidelinePrice(1.0, 4.0))
+              .withChecker(GuidelineChecker.JEV),
+        )
+        .plan(guidelines, listOf(subject("p1")))
+    assertThat(plan.predictedCostUsd).isNull()
+    assertThat(plan.predictedChecked).isNull()
+  }
+
+  @Test
   fun `a price keeps even the first request inside the cap`() {
     val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
     val options = GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))

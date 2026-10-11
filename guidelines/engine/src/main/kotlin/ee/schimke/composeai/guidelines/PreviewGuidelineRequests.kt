@@ -311,10 +311,11 @@ public object PreviewGuidelineRequests {
    * every composable, then each one's second, and so on, every composable keeping its own order and
    * its place of first appearance. A capped run asks a prefix of what is batched from this, so it
    * checks each composable once before it spends on a second size of any. Subjects whose labels all
-   * differ keep their order.
+   * differ keep their order. A composable is its label qualified by what precedes it in the preview
+   * id ([family]), so two classes' `Preview` functions are not one composable's variants.
    */
   public fun breadthFirst(subjects: List<PreviewSubject>): List<PreviewSubject> {
-    val families = subjects.groupBy { it.label }.values
+    val families = subjects.groupBy { family(it) }.values
     val out = ArrayList<PreviewSubject>(subjects.size)
     var round = 0
     while (out.size < subjects.size) {
@@ -322,6 +323,24 @@ public object PreviewGuidelineRequests {
       round++
     }
     return out
+  }
+
+  /**
+   * The composable [subject] is a variant of: its preview id up to the end of its label, where the
+   * label starts the id or follows a `.` (`com.example.CardKt.Card_Dark` →
+   * `com.example.CardKt.Card`, `WearList_192dp` → `WearList`); the label itself when the id does
+   * not hold it so.
+   */
+  internal fun family(subject: PreviewSubject): String {
+    val id = subject.previewId
+    val label = subject.label
+    if (label.isEmpty()) return id
+    var at = id.indexOf(label)
+    while (at >= 0) {
+      if (at == 0 || id[at - 1] == '.') return id.substring(0, at + label.length)
+      at = id.indexOf(label, at + 1)
+    }
+    return label
   }
 
   /**

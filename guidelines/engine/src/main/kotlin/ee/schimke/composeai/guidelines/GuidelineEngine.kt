@@ -198,7 +198,9 @@ public data class GuidelineRunOptions(
    * ([PreviewGuidelineRequests.predictedCostUsd]): the cap reserves that prediction, scaled by how
    * far the answers so far ran past theirs, and [GuidelineRunResult.predictedCostUsd] reports the
    * whole run's. Null (the default) keeps the cap expecting each request to cost what the dearest
-   * so far did. A body property like [retry]: set it with [withPrice].
+   * so far did. The vision checker's only: the Jev checker keeps its own cap, and
+   * [GuidelineEngine.plan] predicts nothing for it. A body property like [retry]: set it with
+   * [withPrice].
    */
   public var price: GuidelinePrice? = null
     private set
@@ -1132,7 +1134,8 @@ public class GuidelineEngine(
    */
   public fun plan(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelinePlan {
     val prepared = prepare(guidelines, subjects)
-    val price = options.price
+    // Prediction prices the vision checker's batches; the Jev checker asks differently.
+    val price = options.price.takeIf { options.checker == GuidelineChecker.VISION }
     val predictions = price?.let { p ->
       prepared.formed.map { batch ->
         PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, p, options.reasoningEffort)
@@ -1183,18 +1186,24 @@ public class GuidelineEngine(
     }
     // Batched apart, since surface grouping would otherwise interleave them.
     val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
-    val formed =
-      PreviewGuidelineRequests.batches(
-        guidelines,
-        PreviewGuidelineRequests.breadthFirst(unseen),
-        options.budget,
-      ) +
-        PreviewGuidelineRequests.batches(
-          guidelines,
-          PreviewGuidelineRequests.breadthFirst(stale),
-          options.budget,
-        )
+    val formed = breadthBatches(guidelines, unseen) + breadthBatches(guidelines, stale)
     return Prepared(skipped, cached, pending, formed)
+  }
+
+  /**
+   * [subjects] batched breadth first: batches group by surface, so they are put back in the order
+   * of their first subject's place in [PreviewGuidelineRequests.breadthFirst], and a second
+   * surface's first variant is not left behind a first surface's later batches.
+   */
+  private fun breadthBatches(
+    guidelines: CatalogGuidelinesV1,
+    subjects: List<PreviewSubject>,
+  ): List<GuidelineBatch> {
+    val ordered = PreviewGuidelineRequests.breadthFirst(subjects)
+    val rank = ordered.withIndex().associate { (index, subject) -> subject.previewId to index }
+    return PreviewGuidelineRequests.batches(guidelines, ordered, options.budget).sortedBy { batch ->
+      batch.subjects.minOf { rank[it.previewId] ?: Int.MAX_VALUE }
+    }
   }
 
   /** [ruleId] passed by a reply's `others` statement for [subjectId] (null: the set). */

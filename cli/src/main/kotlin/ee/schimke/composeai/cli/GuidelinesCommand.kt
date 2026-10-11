@@ -153,7 +153,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
    * model list cannot be read, and the cap falls back to the dearest request so far.
    */
   private val price: GuidelinePrice? by lazy {
-    if (backend != GuidelinesBackend.OPENROUTER) return@lazy null
+    // The Jev checker caps its own requests, which a price does not predict.
+    if (backend != GuidelinesBackend.OPENROUTER || checker == GuidelineChecker.JEV) return@lazy null
     // Not [reportModel]: that reads [runOptions], which reads this.
     val answering =
       GuidelineRunOptions(model = model).withChecker(checker ?: GuidelineChecker.VISION)
@@ -728,7 +729,10 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
               "; the $" + "%.2f".format(limit) + " cap covers all of them"
             else "; the $" + "%.2f".format(limit) + " cap is expected to reach $reached of them"
           } ?: "")
-      } ?: ", no price to predict a cost with"
+      }
+        ?: if (checker == GuidelineChecker.JEV)
+          " (vision batching; the Jev checker asks per subject and predicts no cost)"
+        else ", no price to predict a cost with"
     println(
       "$module: ${plan.previews} preview(s) to ask in ${plan.requests} request(s)" +
         (plan.cached.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
