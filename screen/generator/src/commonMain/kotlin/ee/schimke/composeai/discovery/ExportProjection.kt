@@ -53,9 +53,12 @@ data class ExportProjection(
    *   `content` is a `wear-m3/text` holding the header's `text`.
    * @property items for a parameter declared through its receiver's DSL rather than composed
    *   (`TransformingLazyColumn`'s `content: TransformingLazyColumnScope.() -> Unit`), the member
-   *   each child is wrapped in (`item`). The child is then the direct child of the `list-item`
-   *   role: its target's `list-item` context applies, and the wrapper's body composes under the
-   *   scope the catalog's `code.scopes["list-item"]` declares.
+   *   each child is wrapped in (`item`).
+   * @property itemRoles for an [items] parameter, the structural role its member opens. The child
+   *   is then the direct child of that role: its target's context for the role applies, and the
+   *   wrapper's body composes under the scope the catalog's `code.scopes[role]` declares. A
+   *   parameter with no role wraps its children without one, so a list target whose rows take no
+   *   context (Wear's `transformation = none`) names none.
    */
   data class Target(
     val record: String,
@@ -67,11 +70,18 @@ data class ExportProjection(
     val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
     val synthesize: Map<String, Synthesis> = emptyMap(),
     val items: Map<String, String> = emptyMap(),
+    val itemRoles: Map<String, String> = emptyMap(),
   ) {
     init {
       for ((parameter, member) in items) {
         require(ComponentSnippets.isIdentifier(member)) {
           "`$parameter`'s item member `$member` is not a Kotlin identifier"
+        }
+      }
+      for ((parameter, role) in itemRoles) {
+        require(parameter in items) { "`$parameter` has an item role but no item member" }
+        require(role in UI_BUILDER_STRUCTURAL_ROLES) {
+          "`$parameter`'s item role `$role` is not one of $UI_BUILDER_STRUCTURAL_ROLES"
         }
       }
       val itemsWritten = items.keys intersect parameters.keys
@@ -589,6 +599,8 @@ data class ExportProjection(
       val synthesized: Map<String, Synthesized> = emptyMap(),
       /** The target's [Target.items]: the member each child of a DSL parameter is wrapped in. */
       val items: Map<String, String> = emptyMap(),
+      /** The target's [Target.itemRoles]: the structural role an [items] member opens. */
+      val itemRoles: Map<String, String> = emptyMap(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
@@ -646,6 +658,7 @@ data class ExportProjection(
         context?.modifier.orEmpty(),
         synthesized,
         target.items,
+        target.itemRoles,
       )
     else Lowered.Refused(reasons)
   }

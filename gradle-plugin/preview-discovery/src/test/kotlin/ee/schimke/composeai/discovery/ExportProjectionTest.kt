@@ -617,6 +617,55 @@ class ExportProjectionTest {
   }
 
   @Test
+  fun `an item member names the role it opens, per target, and round trips`() {
+    val list =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "catalog/List",
+            emptyMap(),
+            items = mapOf("content" to "item"),
+            itemRoles = mapOf("content" to "list-item"),
+          ),
+          ExportProjection.Target(
+            "catalog/List",
+            emptyMap(),
+            variants = setOf("none"),
+            items = mapOf("content" to "item"),
+          ),
+        ),
+        variantProperty = "transformation",
+      )
+    val spec = list.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(spec.itemRoles).containsExactly("content", "list-item")
+    val none =
+      list.lower(mapOf("transformation" to JsonPrimitive("none"))) as ExportProjection.Lowered.Node
+    assertThat(none.items).containsExactly("content", "item")
+    assertThat(none.itemRoles).isEmpty()
+    val json = ExportProjectionJson.encode(list)
+    assertThat(json.toString()).contains("\"itemRoles\":{\"content\":\"list-item\"}")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(list)
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.Target("r", emptyMap(), itemRoles = mapOf("content" to "list-item"))
+        }
+      )
+      .contains("has an item role but no item member")
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            "r",
+            emptyMap(),
+            items = mapOf("content" to "item"),
+            itemRoles = mapOf("content" to "row"),
+          )
+        }
+      )
+      .contains("is not one of")
+  }
+
+  @Test
   fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
     fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
     assertThat(
