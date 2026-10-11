@@ -585,4 +585,31 @@ class ExportProjectionTest {
       .exceptionOrNull()
     assertThat(both?.message).contains("both written and synthesized")
   }
+
+  @Test
+  fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slotPatterns = mapOf("content" to buttonPatterns),
+            synthesize =
+              mapOf("label" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
+          )
+        }
+      )
+      .contains("both filled from a wire slot and synthesized")
+    assertThat(
+        failure {
+          ExportProjection.Matcher.Lines("wear-m3/text", listOf("label", "label"), min = 2)
+        }
+      )
+      .contains("distinct parameters")
+    assertThat(
+        failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), rest = "label") }
+      )
+      .contains("also a line's parameter")
+  }
 }

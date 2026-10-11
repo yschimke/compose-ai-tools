@@ -66,9 +66,17 @@ data class ExportProjection(
       require(synthesizedWritten.isEmpty()) {
         "${synthesizedWritten.sorted()} are both written and synthesized"
       }
-      val synthesizedSlots = synthesize.keys intersect (slots.values + slotPatterns.keys)
+      // Every parameter a wire slot can fill: its rename, or each pattern's destinations and
+      // `otherwise`. A synthesized child there would be a second child for one parameter.
+      val slotFilled =
+        slots.values +
+          slotPatterns.keys +
+          slotPatterns.values.flatMap { patterns ->
+            patterns.patterns.flatMap { it.parameters.keys } + listOfNotNull(patterns.otherwise)
+          }
+      val synthesizedSlots = synthesize.keys intersect slotFilled.toSet()
       require(synthesizedSlots.isEmpty()) {
-        "${synthesizedSlots.sorted()} are both a wire slot and synthesized"
+        "${synthesizedSlots.sorted()} are both filled from a wire slot and synthesized"
       }
       // One patterned slot per target, so a pattern alone decides which overload the call is.
       require(slotPatterns.size <= 1) { "at most one slot is recognised by patterns" }
@@ -77,7 +85,8 @@ data class ExportProjection(
       }
       for (patterns in slotPatterns.values) {
         val clash =
-          patterns.patterns.flatMap { it.parameters.keys }.toSet() intersect parameters.keys
+          (patterns.patterns.flatMap { it.parameters.keys } + listOfNotNull(patterns.otherwise))
+            .toSet() intersect parameters.keys
         require(clash.isEmpty()) { "slot patterns fill ${clash.sorted()}, already written" }
       }
       for ((role, context) in contexts) {
@@ -176,6 +185,9 @@ data class ExportProjection(
     ) : Matcher {
       init {
         require(to.isNotEmpty()) { "lines go to at least one parameter" }
+        // Each line, and the overflow, is its own child; a shared destination would drop one.
+        require(to.size == to.toSet().size) { "lines go to distinct parameters: $to" }
+        require(rest == null || rest !in to) { "`rest` $rest is also a line's parameter" }
         require(min >= 1) { "lines match at least one line" }
         val upper = max ?: if (rest == null) to.size else Int.MAX_VALUE
         require(upper >= min) { "lines match $min..$upper lines" }

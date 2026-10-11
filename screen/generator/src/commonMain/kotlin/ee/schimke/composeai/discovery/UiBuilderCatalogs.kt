@@ -918,6 +918,22 @@ object UiBuilderCatalogs {
           context.parameters.forEach { (name, value) -> visit(value, role, "$record[$role].$name") }
           for (link in context.modifier) {
             val where = "$record[$role].modifier"
+            // A member extension of a scope resolves only where that scope is the receiver.
+            link.receiverScopeFqn?.let { scope ->
+              if (scopes[role] != scope) {
+                into +=
+                  UiBuilderDiagnostic.Builder(
+                      code = Diagnostics.PROJECTION_SCOPE_UNATTESTED,
+                      subject = "$builderId.$where",
+                      message =
+                        "`${link.callableFqn.substringAfterLast('.')}` is a member of $scope, but " +
+                          (scopes[role]?.let { "code.scopes says `$role` opens $it" }
+                            ?: "code.scopes declares no scope for `$role`") +
+                          ".",
+                    )
+                    .build()
+              }
+            }
             link.positional.forEach { check(it, role, where) }
             link.named.values.forEach { check(it, role, where) }
           }
@@ -942,10 +958,11 @@ object UiBuilderCatalogs {
           .build()
     }
     for (name in code.locals.keys) {
+      // The generator's own test, so a catalog it would refuse at every export is reported here.
       if (
-        name.isNotEmpty() &&
-          (name.first().isLetter() || name.first() == '_') &&
-          name.all { it.isLetterOrDigit() || it == '_' }
+        ComponentSnippets.isIdentifier(name) &&
+          !ComponentSnippets.isHardKeyword(name) &&
+          name.any { it != '_' }
       )
         continue
       into +=
@@ -953,7 +970,8 @@ object UiBuilderCatalogs {
             code = Diagnostics.LOCAL_MALFORMED,
             subject = "code.locals.$name",
             message =
-              "'$name' is a name templates define and code reads, so it is a Kotlin identifier.",
+              "'$name' is a name templates define and code reads, so it is a Kotlin identifier " +
+                "and not a keyword.",
           )
           .build()
     }

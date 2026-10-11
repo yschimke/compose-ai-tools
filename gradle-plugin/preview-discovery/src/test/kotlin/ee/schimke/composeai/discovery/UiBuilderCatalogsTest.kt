@@ -1902,6 +1902,50 @@ class UiBuilderCatalogsTest {
       )
   }
 
+  private fun scopedModifier(scope: String) =
+    ExportProjectionJson.encode(
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            ":catalog/androidx.wear.compose.material3.ButtonKt.Button",
+            emptyMap(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    modifier =
+                      listOf(
+                        ChainLink(
+                          "androidx.compose.foundation.lazy.LazyItemScope.animateItem",
+                          receiverScopeFqn = scope,
+                        )
+                      )
+                  )
+              ),
+          )
+        )
+      )
+    )
+
+  @Test
+  fun `a context's scoped modifier link must be a member of the role's declared scope`() {
+    assertThat(projectionDiagnostics(scopedModifier(itemScope), wearCode())).isEmpty()
+    val other = projectionDiagnostics(scopedModifier("app.OtherScope"), wearCode())
+    assertThat(other.map { it.code })
+      .containsExactly(UiBuilderCatalogs.Diagnostics.PROJECTION_SCOPE_UNATTESTED)
+    assertThat(other.single().message).contains("`animateItem` is a member of app.OtherScope")
+  }
+
+  @Test
+  fun `a template local named by a keyword or only underscores is reported`() {
+    val reported =
+      projectionDiagnostics(
+        scopedModifier(itemScope),
+        wearCode().newBuilder().also { it.locals = mapOf("when" to spec, "_" to spec) }.build(),
+      )
+    assertThat(reported.map { it.subject }).containsExactly("code.locals.when", "code.locals._")
+  }
+
   @Test
   fun `a template hole no role supplies is reported against the role`() {
     // `${'$'}{contnet}` is a valid name; only knowing which names the role provides catches it,

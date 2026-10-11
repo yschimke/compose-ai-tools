@@ -248,6 +248,22 @@ object ScreenGenerator {
     }
     val shadowedRoots =
       document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
+    // A template local is a name in scope around every call this file writes, so it shadows a
+    // component called by simple name, or a package root written qualified, just as state would.
+    val shadowingLocals =
+      locals.keys.filter { name ->
+        name in qualifiedRoots ||
+          locals.values.any { it.substringBefore('.') == name } ||
+          components.components.any { it.symbol.name == name }
+      }
+    if (shadowingLocals.isNotEmpty()) {
+      return Result.Refused(
+        shadowingLocals.sorted().map {
+          "template local `$it` has the name of a component or package root this screen writes, " +
+            "and would shadow it"
+        }
+      )
+    }
     val capturedParameters = parameterNames.filter {
       it in qualifiedRoots ||
         it in functionNames ||

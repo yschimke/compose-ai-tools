@@ -1632,6 +1632,18 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `a template local may not shadow a component or a package root the screen writes`() {
+    for (name in listOf("Card", "androidx")) {
+      val refused = generateItem(attested, locals = mapOf("spec" to spec, name to spec))
+      assertThat((refused as ScreenGenerator.Result.Refused).reasons)
+        .contains(
+          "template local `$name` has the name of a component or package root this screen " +
+            "writes, and would shadow it"
+        )
+    }
+  }
+
+  @Test
   fun `a slot item may carry arguments, and takes no parentheses without them`() {
     val keyed = SlotItem("item", lazyListScope, named = mapOf("key" to ScreenValue.Text("row")))
     assertThat(emitted(list(keyed, textNode("a")), catalog(lazyColumn, text)).source)
