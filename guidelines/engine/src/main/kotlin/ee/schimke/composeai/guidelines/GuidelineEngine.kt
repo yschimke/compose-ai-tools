@@ -1149,7 +1149,23 @@ public class GuidelineEngine(
         "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
           "counted \$${money(unpriced)} for them"
     }
-    return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
+    // A variant stands on the size asked in its place: when that one was not answered (capped,
+    // failed or deferred), neither is it, and it is reported missed rather than covered; rules left
+    // unchecked there are unchecked here too.
+    val byId = results.associateBy { it.previewId }
+    val subjectsById = subjects.associateBy { it.previewId }
+    val settled = results.map { result ->
+      val anchorId = result.variantOf ?: return@map result
+      val anchor = byId[anchorId]
+      when {
+        anchor == null || anchor.pending ->
+          subjectsById[result.previewId]?.let { unchecked(guidelines, it) } ?: result
+        anchor.unchecked.isNotEmpty() ->
+          result.copy(unchecked = anchor.unchecked).withBodyOf(result)
+        else -> result
+      }
+    }
+    return GuidelineRunResult(settled, spent, requests, problems, failedRequests).also {
       it.predictedCostUsd = options.price?.let { formed.sumOf { batch -> predict(batch) ?: 0.0 } }
       it.completionTokens = completionTokens
       it.reasoningTokens = reasoningTokens
@@ -1164,7 +1180,11 @@ public class GuidelineEngine(
    * is expected to reach. Reads the [cache]; never calls the model or the [host].
    */
   public fun plan(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelinePlan {
-    val prepared = prepare(guidelines, limitVariants(guidelines, subjects).first)
+    // The Jev checker asks every variant, as its run does.
+    val asked =
+      if (options.checker == GuidelineChecker.VISION) limitVariants(guidelines, subjects).first
+      else subjects
+    val prepared = prepare(guidelines, asked)
     // Prediction prices the vision checker's batches; the Jev checker asks differently.
     val price = options.price.takeIf { options.checker == GuidelineChecker.VISION }
     val predictions = price?.let { p ->

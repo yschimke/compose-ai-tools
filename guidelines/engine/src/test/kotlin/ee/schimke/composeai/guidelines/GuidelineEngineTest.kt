@@ -671,6 +671,40 @@ class GuidelineEngineTest {
   }
 
   @Test
+  fun `a size not asked is missed, not covered, when the size asked in its place was not answered`() {
+    fun sized(id: String, dp: Int) =
+      subject(id).copy(label = "WearList", pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val subjects = listOf(sized("WearList_192dp", 192), sized("WearList_240dp", 240))
+    val model = FakeModel()
+    val run =
+      GuidelineEngine(
+          model,
+          options = GuidelineRunOptions(triage = false, maxCostUsd = 0.0).withMaxVariants(1),
+        )
+        .run(guidelines, subjects)
+    assertThat(model.requests).isEmpty()
+    // The 240dp was capped, so the 192dp that stood on it is pending too, and names no stand-in.
+    assertThat(run.results.map { it.pending }).containsExactly(true, true)
+    assertThat(run.results.map { it.variantOf }).containsExactly(null, null)
+  }
+
+  @Test
+  fun `a plan for the jev checker counts every size, as its run asks them all`() {
+    fun sized(id: String, dp: Int) =
+      subject(id).copy(label = "WearList", pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val plan =
+      GuidelineEngine(
+          FakeModel(),
+          options =
+            GuidelineRunOptions(triage = false)
+              .withChecker(GuidelineChecker.JEV)
+              .withMaxVariants(1),
+        )
+        .plan(guidelines, listOf(sized("WearList_192dp", 192), sized("WearList_240dp", 240)))
+    assertThat(plan.previews).isEqualTo(2)
+  }
+
+  @Test
   fun `max variants asks the largest size, then the smallest, and never drops a named variant`() {
     fun sized(id: String, composable: String, dp: Int) =
       subject(id).copy(label = composable, pictures = listOf(SubjectPicture("device", png, dp, dp)))
