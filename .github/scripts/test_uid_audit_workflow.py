@@ -55,6 +55,41 @@ class AuditWorkflowTest(unittest.TestCase):
             status = json.loads((root / '_uid_audit/audit-status.json').read_text())
             self.assertEqual(status['status'], 'not_run')
 
+    def run_audit_step(self, exit_code, log):
+        """Run the committed audit step against a stand-in CLI that prints [log] and exits [exit_code]."""
+        step = next(s for s in self.job['steps'] if s.get('name') == 'Audit previews with the existing guidelines engine')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / '_uid_audit').mkdir()
+            (root / 'bin').mkdir()
+            cli = root / 'bin/compose-preview'
+            cli.write_text(f"#!/bin/sh\ncat <<'LOG' >&2\n{log}\nLOG\nexit {exit_code}\n")
+            cli.chmod(0o755)
+            env = {**os.environ, 'COMPOSE_PREVIEW_OPENROUTER_KEY': 'test-key',
+                   'GITHUB_STEP_SUMMARY': str(root / 'summary.md'),
+                   'PATH': f"{root / 'bin'}:{os.environ['PATH']}"}
+            result = subprocess.run(['bash', '-e', '-c', step['run']], cwd=root, env=env, capture_output=True, text=True)
+            status = json.loads((root / '_uid_audit/audit-status.json').read_text())
+            return result, status
+
+    def test_credit_refusals_skip_the_audit_with_a_warning(self):
+        for line in ('  problem: the model answered 402: {"error":{"message":"Insufficient credits"}}',
+                     '  problem: the model answered with an error in place of a completion (code 402): Key limit exceeded'):
+            with self.subTest(line=line):
+                result, status = self.run_audit_step(2, f"guidelines: screen: 3 model request(s) failed\n{line}")
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(status['status'], 'skipped')
+                self.assertIn('::warning::UI audit skipped', result.stdout)
+
+    def test_other_incomplete_runs_and_findings_still_fail(self):
+        for code, log in ((2, '  problem: the model answered 500: upstream error'),
+                          (2, 'guidelines: screen: 1 evidence fetch(es) failed'),
+                          (1, 'finding mentions 402 pixels but is a real finding')):
+            with self.subTest(code=code, log=log):
+                result, status = self.run_audit_step(code, log)
+                self.assertEqual(result.returncode, code)
+                self.assertEqual(status, {'exitCode': code})
+
     def test_cli_install_engine_source_and_provenance_name_one_release(self):
         steps = self.job['steps']
         install = next(s for s in steps if s.get('uses', '').startswith('yschimke/compose-ai-tools/.github/actions/install@'))
