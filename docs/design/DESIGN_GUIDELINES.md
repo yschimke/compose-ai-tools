@@ -702,10 +702,12 @@ produces; only the `scrollable` state is.
   text, cleaned ids, regions inside the picture). `ServeHost.guidelineResultFor(previewId)` is the
   host API, `null` by default.
 - **Publishing produces them.** `design-artifacts-reusable.yml` takes `guidelines: true`, the
-  `openrouter_key` secret and `guidelines-max-cost` (default `1.00`). Its "Check design guidelines"
-  step runs `compose-preview guidelines` before `bundle pack`, so the published bundle carries the
-  results; without the secret, or with a CLI older than 2.38.0, it is skipped with a warning, and it
-  never fails the publish.
+  `openrouter_key` secret and `guidelines-max-cost` (default `0.25`). It spends only on the events
+  `guidelines-events` names (default `pull_request`), so a push, schedule or dispatch publish skips
+  the check and ships without guideline results unless the caller lists that event. Its "Check
+  design guidelines" step runs `compose-preview guidelines` before `bundle pack`, so the published
+  bundle carries the results; without the secret, or with a CLI older than 2.38.0, it is skipped
+  with a warning, and it never fails the publish.
 
 ## Publishing results
 

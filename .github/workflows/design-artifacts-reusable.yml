@@ -592,13 +592,23 @@ on:
         required: false
         type: boolean
         default: false
+      guidelines-events:
+        description: >-
+          Comma-separated `github.event_name` values on which the `guidelines` check spends model
+          calls, e.g. `pull_request,workflow_dispatch`. The default, `pull_request`, keeps the check
+          to pull requests, which the apply action's PR comment already covers: a push, schedule or
+          dispatch publish then ships its bundle without guideline results and spends nothing.
+          Add the publish's events here to check those runs too.
+        required: false
+        type: string
+        default: 'pull_request'
       guidelines-max-cost:
         description: >-
           Stop the guidelines check once this many US dollars are spent; previews left are
           published unchecked.
         required: false
         type: string
-        default: '1.00'
+        default: '0.25'
       guidelines-checker:
         description: >-
           EXPERIMENTAL. Which model answers the guidelines check: `vision` (the default) or `jev`,
@@ -3952,8 +3962,29 @@ jobs:
       # Single-job pipeline only, like the check itself: the check needs this job's Gradle build
       # and render daemon, and a sharded publish renders in `render-shard` jobs and merges bundles
       # in one that has neither — checking there would mean rendering the catalog a second time.
-      - name: Restore guideline results cache
+      - name: Decide whether this event runs the guidelines check
+        # `guidelines-events` lists the events that may spend model calls; anything else skips the
+        # check (and its cache) before a key is ever read.
+        id: guidelines-gate
         if: ${{ inputs.guidelines && inputs.render-shards < 2 && inputs.upstream-repository == '' }}
+        env:
+          EVENTS: ${{ inputs.guidelines-events }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          run=false
+          IFS=',' read -ra events <<<"$EVENTS"
+          for e in "${events[@]}"; do
+            e="${e//[[:space:]]/}"
+            if [ -n "$e" ] && [ "$e" = "$EVENT" ]; then run=true; fi
+          done
+          if [ "$run" != true ]; then
+            echo "::notice title=Guidelines skipped::'$EVENT' is not in guidelines-events ($EVENTS); the bundle is published without guideline results."
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Restore guideline results cache
+        if: ${{ steps.guidelines-gate.outputs.run == 'true' }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.RENDER_DIR }}/**/build/compose-previews/guidelines
@@ -3970,7 +4001,7 @@ jobs:
         # Never in import mode: this runs the imported project's Gradle build, which must not hold
         # the key (the same reason BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN is withheld there).
         id: guidelines
-        if: ${{ inputs.guidelines && inputs.render-shards < 2 && inputs.upstream-repository == '' }}
+        if: ${{ steps.guidelines-gate.outputs.run == 'true' }}
         continue-on-error: true
         working-directory: ${{ env.RENDER_DIR }}
         env:
