@@ -37,6 +37,7 @@ internal object CliFlags {
       "--idle-timeout",
       "--concurrency",
       "--provider-sort",
+      "--reasoning-effort",
       "--preferred-max-latency",
       "--preferred-min-throughput",
       "--checker",
