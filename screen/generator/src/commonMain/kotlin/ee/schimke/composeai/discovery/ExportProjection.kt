@@ -38,11 +38,16 @@ data class ExportProjection(
    * One record a node can lower to.
    *
    * @property variants the [variantProperty] values selecting this record; null for the default.
+   * @property slots the record's composable parameter for each wire slot whose name differs (Wear's
+   *   `content` is `Button`'s `label`).
+   * @property events the record's callback parameter for each wire event (`click` is `onClick`).
    */
   data class Target(
     val record: String,
     val parameters: Map<String, Value>,
     val variants: Set<String>? = null,
+    val slots: Map<String, String> = emptyMap(),
+    val events: Map<String, String> = emptyMap(),
   )
 
   /** What one parameter, or one argument of a nested call, is written from. */
@@ -91,9 +96,76 @@ data class ExportProjection(
     data class Enum(val typeFqn: String, val members: Map<String, String>) : Codec
   }
 
+  /**
+   * Every wire property some target reads, [variantProperty] included. A host refuses a node
+   * property outside this set rather than export a design that silently drops it.
+   */
+  val properties: Set<String>
+    get() = buildSet {
+      variantProperty?.let(::add)
+      fun visit(value: Value) {
+        when (value) {
+          is Value.Property -> add(value.name)
+          is Value.Call -> value.arguments.values.forEach(::visit)
+          is Value.Fixed -> Unit
+        }
+      }
+      targets.forEach { it.parameters.values.forEach(::visit) }
+    }
+
+  /**
+   * The parameter of [record] that [property] is written to as itself, through no factory call —
+   * the one place a host may pass a state-bound value through unchanged. Null when none is.
+   */
+  fun directParameter(record: String, property: String): String? =
+    targets
+      .firstOrNull { it.record == record }
+      ?.parameters
+      ?.entries
+      ?.firstOrNull { (_, value) -> value is Value.Property && value.name == property }
+      ?.key
+
+  /**
+   * The qualified owners a lowered node may print — factory owners, enum owners, colour-scheme
+   * roots and the colour type — so a host's expression allowlist can admit exactly these.
+   */
+  val qualifiedOwners: Set<String>
+    get() = buildSet {
+      fun codec(codec: Codec) {
+        when (codec) {
+          is Codec.Color -> {
+            add(codec.schemeRootFqn)
+            add(COLOR)
+          }
+          is Codec.Enum -> codec.members.values.mapTo(this) { it.substringBeforeLast('.') }
+          else -> Unit
+        }
+      }
+      fun visit(value: Value) {
+        when (value) {
+          is Value.Property -> codec(value.codec)
+          is Value.Call -> {
+            add(value.callableFqn.substringBeforeLast('.'))
+            value.arguments.values.forEach(::visit)
+          }
+          is Value.Fixed -> Unit
+        }
+      }
+      targets.forEach { it.parameters.values.forEach(::visit) }
+    }
+
   /** A node lowered onto one record, or every reason it could not be. */
   sealed interface Lowered {
-    data class Node(val record: String, val arguments: Map<String, ScreenValue>) : Lowered
+    /**
+     * The chosen [record] and its [arguments]; [slots] and [events] rename the node's wire slots
+     * and events onto that record's parameters, for the caller that owns child nodes and actions.
+     */
+    data class Node(
+      val record: String,
+      val arguments: Map<String, ScreenValue>,
+      val slots: Map<String, String> = emptyMap(),
+      val events: Map<String, String> = emptyMap(),
+    ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
   }
@@ -111,7 +183,8 @@ data class ExportProjection(
         write(value, properties, "${target.record}.$parameter", reasons)?.let { put(parameter, it) }
       }
     }
-    return if (reasons.isEmpty()) Lowered.Node(target.record, arguments)
+    return if (reasons.isEmpty())
+      Lowered.Node(target.record, arguments, target.slots, target.events)
     else Lowered.Refused(reasons)
   }
 
