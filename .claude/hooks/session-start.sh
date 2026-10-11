@@ -31,19 +31,24 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-# Ensure a JDK 17 toolchain exists before warming Gradle. The build pins
-# `toolchainVersion=17` (gradle/gradle-daemon-jvm.properties), but cloud
-# containers commonly ship only JDK 21, and on the allowlist network policy
-# foojay auto-provisioning is blocked — so `./gradlew` fails with "Unable to
-# download toolchain matching {languageVersion=17}" and *no* Gradle task
-# works until a 17 is placed on disk. scripts/setup-cloud-jdk.sh installs
-# Temurin 17 from Adoptium GitHub, fixes its trust store for the sandbox's
-# MITM proxy CA, and symlinks it into /usr/lib/jvm so Gradle auto-detects it.
-# Best-effort: a failure here must not abort the session (the warm below is
-# also tolerant), and it's skipped entirely when a 17 is already discoverable.
-if ! ls -d /usr/lib/jvm/*17* /opt/jdk17 >/dev/null 2>&1; then
-  if [ -x scripts/setup-cloud-jdk.sh ]; then
-    scripts/setup-cloud-jdk.sh >&2 || \
+# Ensure the JDKs this build needs exist before warming Gradle: the daemon
+# toolchain the repo pins (`toolchainVersion` in
+# gradle/gradle-daemon-jvm.properties) and the 21/25 render JVMs. Cloud
+# containers commonly ship only some of them, and on the allowlist network
+# policy foojay auto-provisioning is blocked — so `./gradlew` fails with
+# "Unable to download toolchain matching {languageVersion=N}" until one is on
+# disk. scripts/setup-cloud-jdk.sh installs Temurin from Adoptium GitHub, fixes
+# its trust store for the sandbox's MITM proxy CA, and symlinks it into
+# /usr/lib/jvm so Gradle auto-detects it. It reuses any JDK already on the box
+# (coo.ee/env's, the image's), and `--check` asks it, without touching the
+# network, whether anything is missing at all. Best-effort: a failure here must
+# not abort the session (the warm below is also tolerant).
+if [ -x scripts/setup-cloud-jdk.sh ]; then
+  if missing="$(scripts/setup-cloud-jdk.sh --check)"; then
+    :
+  else
+    echo "[session-start] JDK majors missing: ${missing}; provisioning" >&2
+    scripts/setup-cloud-jdk.sh >/dev/null || \
       echo "[session-start] setup-cloud-jdk.sh failed; Gradle may not build" >&2
   fi
 fi

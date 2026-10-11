@@ -55,10 +55,16 @@
 #
 # Usage:
 #   scripts/setup-cloud-jdk.sh [PRIMARY_INSTALL_DIR]
+#   scripts/setup-cloud-jdk.sh --check   # print the majors still missing (one
+#                                        # line, space-separated) and exit 1, or
+#                                        # exit 0 when every major is present.
+#                                        # Never downloads or writes anything.
 #
 # Env (override defaults):
-#   CLOUD_JDK_MAJORS  space-separated JDK majors to provision
-#                     (default: "17 21 25"). The FIRST is the "primary" — its
+#   CLOUD_JDK_MAJORS  space-separated JDK majors to provision (default: the
+#                     repo's `toolchainVersion` from
+#                     gradle/gradle-daemon-jvm.properties, else 17, then 21 and
+#                     25). The FIRST is the "primary" — its
 #                     JAVA_HOME is printed on stdout for
 #                     `export JAVA_HOME=$(scripts/setup-cloud-jdk.sh)`.
 #   JDK17_VERSION     pin the primary's Temurin tag (back-compat alias for the
@@ -89,7 +95,19 @@ set -euo pipefail
 
 # The set of majors to provision. First entry is primary (its JAVA_HOME is
 # emitted on stdout and never treated as best-effort).
-read -r -a JDK_MAJORS <<<"${CLOUD_JDK_MAJORS:-17 21 25}"
+# The default primary is the daemon toolchain the repo pins, so bumping
+# `toolchainVersion` needs no edit here; 21 and 25 follow for the render JVMs.
+default_jdk_majors() {
+  local props pinned m majors
+  props="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/gradle/gradle-daemon-jvm.properties"
+  pinned="$(sed -n 's/^toolchainVersion=\([0-9][0-9]*\).*/\1/p' "$props" 2>/dev/null | head -n 1)"
+  majors="${pinned:-17}"
+  for m in 21 25; do
+    [[ " $majors " == *" $m "* ]] || majors+=" $m"
+  done
+  printf '%s' "$majors"
+}
+read -r -a JDK_MAJORS <<<"${CLOUD_JDK_MAJORS:-$(default_jdk_majors)}"
 primary_major="${JDK_MAJORS[0]}"
 
 # Locate the system Java trust store that already trusts the proxy CA.
@@ -484,6 +502,25 @@ install_major() {
   echo "$install_dir"
   return 0
 }
+
+# --check: report, never install. A caller (the SessionStart hook) uses it to
+# skip this script on a box that already has every major, without duplicating
+# the discovery rules — a JRE, or a directory that merely has "17" in its name,
+# is not a JDK.
+if [[ "${1:-}" == --check ]]; then
+  export PRIMARY_INSTALL_DIR="${JDK17_DIR:-}"
+  missing=()
+  for major in "${JDK_MAJORS[@]}"; do
+    if is_jdk_of_major "$(install_dir_for "$major")" "$major" ||
+      discover_jdk_home "$major" >/dev/null; then
+      continue
+    fi
+    missing+=("$major")
+  done
+  (( ${#missing[@]} == 0 )) && exit 0
+  echo "${missing[*]}"
+  exit 1
+fi
 
 # arg 1 overrides the PRIMARY install dir (back-compat with the single-JDK contract).
 export PRIMARY_INSTALL_DIR="${1:-${JDK17_DIR:-}}"
