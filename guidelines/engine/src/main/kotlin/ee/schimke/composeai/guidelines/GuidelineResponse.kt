@@ -21,6 +21,9 @@ public data class GuidelineServed(
   val routing: GuidelineRoutingV1? = null,
 )
 
+/** A completion's output tokens, and how many of them were reasoning. */
+internal data class CompletionTokens(val completion: Int, val reasoning: Int)
+
 /** A model's answer to one batched request, mapped back to preview ids. */
 public data class GuidelineReply(
   /** Each verdict carries the regions it points at ([GuidelineVerdictV1.regions]). */
@@ -40,6 +43,12 @@ public data class GuidelineReply(
    * subject absent here, or stated `unchecked`, has its unlisted rules left unchecked.
    */
   internal var othersPass: Map<String, Double> = emptyMap()
+
+  /**
+   * Whether the reply was cut at its `max_tokens`. Its `others` statements are then not in
+   * [othersPass]: a reply that ran out may have been about to list the very rules they would pass.
+   */
+  internal var truncated: Boolean = false
 
   internal companion object {
     /** [othersPass]'s key for the rules judged once across the batch. */
@@ -142,6 +151,8 @@ public object GuidelineResponse {
     }
     val othersPass = linkedMapOf<String, Double>()
     var statements = 0
+    // A reply cut at max_tokens may have been about to list more findings: its statement that the
+    // rest pass cannot be taken at its word, so the rules it did not list stay unchecked.
     (root["others"] as? JsonArray).orEmpty().forEach { element ->
       val item = element as? JsonObject ?: return@forEach
       val alias = item.text("subjectId")
@@ -155,7 +166,7 @@ public object GuidelineResponse {
               return@forEach
             }
       statements++
-      if (item.text("verdict") == PreviewGuidelineRequests.OTHERS_PASS) {
+      if (!cut && item.text("verdict") == PreviewGuidelineRequests.OTHERS_PASS) {
         othersPass[key] = (item["confidence"] as? JsonPrimitive)?.doubleOrNull ?: 0.0
       }
     }
@@ -168,6 +179,61 @@ public object GuidelineResponse {
     GuidelineReply(verdicts, served(completion)).also {
       it.strays = strays
       it.othersPass = othersPass
+      it.truncated = cut
+    }
+  }
+
+  /**
+   * The completion [body]'s token counts: `usage.completion_tokens` and, of those,
+   * `usage.completion_tokens_details.reasoning_tokens` (billed as output, never shown). Null when
+   * the body names neither.
+   */
+  internal fun tokens(body: String): CompletionTokens? = runCatching {
+    val usage =
+      GUIDELINES_JSON.parseToJsonElement(body).jsonObject["usage"] as? JsonObject
+        ?: return@runCatching null
+    val completion = (usage["completion_tokens"] as? JsonPrimitive)?.intOrNull
+    val reasoning =
+      ((usage["completion_tokens_details"] as? JsonObject)?.get("reasoning_tokens")
+          as? JsonPrimitive)
+        ?.intOrNull
+    if (completion == null && reasoning == null) null
+    else CompletionTokens(completion ?: 0, reasoning ?: 0)
+  }
+    .getOrNull()
+
+  /**
+   * Whether the unreadable completion [body] is a model that spent its token budget reasoning: it
+   * was cut at `max_tokens` (`finish_reason: "length"`) with reasoning tokens counted, and either
+   * nothing visible written or most of the budget gone to the reasoning. As OpenRouter documents
+   * it, "if the limit is small enough that the model spends all of it reasoning, the response
+   * returns finish_reason: 'length' with an empty content, and the reasoning tokens are still
+   * billed". Asking about fewer subjects does not help that (each smaller request reasons as much);
+   * asking with less reasoning does. Null for any other unreadable reply.
+   */
+  internal fun reasoningExhausted(body: String): FailedRequest? {
+    val completion =
+      runCatching { GUIDELINES_JSON.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+    val choice = (completion["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
+    if (choice.text("finish_reason") != "length") return null
+    val tokens = tokens(body) ?: return null
+    if (tokens.reasoning <= 0) return null
+    val content = (choice?.get("message") as? JsonObject).text("content").orEmpty()
+    val visible = (tokens.completion - tokens.reasoning).coerceAtLeast(0)
+    return when {
+      content.isBlank() ->
+        FailedRequest(
+          "the model spent its whole token budget reasoning (${tokens.reasoning} reasoning " +
+            "tokens, billed) and wrote no reply",
+          FailureKind.REASONING_EXHAUSTED,
+        )
+      tokens.reasoning >= visible ->
+        FailedRequest(
+          "the model spent most of its token budget reasoning (${tokens.reasoning} of " +
+            "${tokens.completion} completion tokens) and was cut part-way through its reply",
+          FailureKind.REASONING_EXHAUSTED,
+        )
+      else -> null
     }
   }
 
