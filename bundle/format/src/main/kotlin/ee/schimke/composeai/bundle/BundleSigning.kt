@@ -79,20 +79,14 @@ public object BundleSigning {
       while (true) {
         val entry = zin.nextEntry ?: break
         budget.countEntry()
-<<<<<<< HEAD
         // Drain every entry through the budget, hashed or not: `closeEntry()` would otherwise
         // inflate a skipped entry (a directory or `signatures.json`) with no limit at all.
-=======
->>>>>>> origin/main
         if (!entry.isDirectory && entry.name != SIGNATURES_PATH) {
           val digest = MessageDigest.getInstance("SHA-256")
           budget.drain(zin) { buffer, n -> digest.update(buffer, 0, n) }
           lines.add("${entry.name}:${hex(digest.digest())}")
-<<<<<<< HEAD
         } else {
           budget.drain(zin) { _, _ -> }
-=======
->>>>>>> origin/main
         }
         zin.closeEntry()
       }
@@ -128,11 +122,8 @@ public object BundleSigning {
             out.write(buffer, 0, n)
           }
           bytes = out.toByteArray()
-<<<<<<< HEAD
         } else {
           budget.drain(zin) { _, _ -> }
-=======
->>>>>>> origin/main
         }
         zin.closeEntry()
       }
