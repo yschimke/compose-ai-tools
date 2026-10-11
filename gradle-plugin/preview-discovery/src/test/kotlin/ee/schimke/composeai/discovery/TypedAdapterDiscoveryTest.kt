@@ -78,8 +78,30 @@ class TypedAdapterDiscoveryTest {
       assertThrows(IllegalArgumentException::class.java) {
         TypedAdapterDiscovery.discoverLibrary("lib", "release", listOf(library))
       }
-    assertTrue(refused.message!!, "(onClick, label)" in refused.message!!)
-    assertTrue(refused.message!!, "(onClick, content)" in refused.message!!)
+    assertTrue(refused.message!!, "label: kotlin.String)" in refused.message!!)
+    assertTrue(refused.message!!, "content: kotlin.Int)" in refused.message!!)
+  }
+
+  @Test
+  fun `overloads that differ only in a type are picked by naming it`() {
+    val typed =
+      TypedAdapterDiscovery.LibraryCallable(
+        "ee.schimke.composeai.discovery.TypedAdapterDiscoveryTestKt",
+        "libraryTyped",
+      )
+    assertThrows(IllegalArgumentException::class.java) {
+      TypedAdapterDiscovery.discoverLibrary("lib", "release", listOf(typed))
+    }
+    val record =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(typed.copy(types = mapOf("text" to "kotlin.String"))),
+        )
+        .components
+        .single()
+    assertEquals("kotlin.String", record.parameters.single().typeFqn)
+    assertEquals(2, record.overloads.size)
   }
 
   @Test
@@ -251,3 +273,7 @@ fun libraryOverloaded(onClick: () -> Unit, content: Int): Unit = error("not exec
 @Deprecated("replaced", level = DeprecationLevel.HIDDEN)
 @Suppress("UNUSED_PARAMETER")
 fun libraryOverloaded(onClick: () -> Unit, old: Boolean): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: String): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: CharSequence): Unit = error("not executed")
