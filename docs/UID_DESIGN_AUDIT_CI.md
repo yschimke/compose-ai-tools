@@ -47,8 +47,10 @@ rule copy is required. A changed rule pack needs an explicit pin update.
 to `adaptive-uid-design-audit`. The build/render/compare workflow lives in
 [design-parity](https://github.com/yschimke/design-parity/blob/main/docs/UID_PARITY_CI.md).
 
-The engine remains pinned to CLI 2.40.0 and its matching installation action and
-prompt source. Installation requires the release's SHA-256 digest and fails
+The engine is pinned to CLI 2.45.0 and its matching installation action and
+prompt source. It runs four model requests at a time with low reasoning effort
+(`--concurrency 4 --reasoning-effort low`), passed explicitly so a later CLI
+default cannot change the cost or duration; the job's limit is 20 minutes. Installation requires the release's SHA-256 digest and fails
 closed if it cannot verify the download. It uses the same `OPENROUTER_API_KEY` name as remote-m3-catalog,
 mapped only on the model step to `COMPOSE_PREVIEW_OPENROUTER_KEY`, with the
 existing $0.25 limit and `--surface screen --annotate`. Missing keys and engine

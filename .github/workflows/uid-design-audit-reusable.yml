@@ -52,10 +52,10 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    # CLI 2.40.0 asks one model request at a time: ~14 minutes for 60 captures, so a 100-capture
-    # plan was cancelled at a 15-minute limit. Stay on 2.40.0 until a release carries #5815; 2.43.0
-    # bounds max_tokens without controlling the default model's reasoning.
-    timeout-minutes: 45
+    # CLI 2.45.0 runs model requests in parallel (#5805) and sets the model's reasoning effort
+    # (#5815), so a 100-capture plan no longer needs the 45-minute stopgap 2.40.0's one-at-a-time
+    # requests did.
+    timeout-minutes: 20
     steps:
       # Only trusted default-branch code runs in the job holding the model key.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,15 +87,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: yschimke/compose-ai-tools/.github/actions/install@92a06f2ea364359eb2398ff125f5d88f4f22a75a # v2.40.0
+      - uses: yschimke/compose-ai-tools/.github/actions/install@77e7f8ba122a79a0829006e3574ea6ae32767046 # v2.45.0
         with:
-          version: '2.40.0'
+          version: '2.45.0'
           plugin-readiness-timeout: '0'
           require-digest: 'true'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-ai-tools
-          ref: 92a06f2ea364359eb2398ff125f5d88f4f22a75a
+          ref: 77e7f8ba122a79a0829006e3574ea6ae32767046
           path: _audit_engine
           persist-credentials: false
       - name: Fetch canonical guidelines with verified digest
@@ -127,7 +127,7 @@ jobs:
           SOURCE_RUN: ${{ github.event.workflow_run.id }}
         run: |
           cp _audit_engine/guidelines/engine/src/main/kotlin/ee/schimke/composeai/guidelines/PreviewGuidelineRequests.kt _uid_audit/engine-prompt-source.kt
-          printf 'source_sha=%s\nsource_run=%s\ncli=2.40.0\nprovider=OpenRouter\nmax_cost_usd=0.25\n' "$SOURCE_SHA" "$SOURCE_RUN" > _uid_audit/provenance.txt
+          printf 'source_sha=%s\nsource_run=%s\ncli=2.45.0\nprovider=OpenRouter\nmax_cost_usd=0.25\n' "$SOURCE_SHA" "$SOURCE_RUN" > _uid_audit/provenance.txt
       - name: Audit previews with the existing guidelines engine
         env:
           COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -138,7 +138,7 @@ jobs:
             exit 1
           fi
           set +e
-          compose-preview guidelines --previews-json _uid_audit/previews.json --renders-dir _uid_audit --guidelines _uid_audit/ui-builder.guidelines.json --surface screen --max-cost 0.25 --annotate > _uid_audit/audit.log 2>&1
+          compose-preview guidelines --previews-json _uid_audit/previews.json --renders-dir _uid_audit --guidelines _uid_audit/ui-builder.guidelines.json --surface screen --max-cost 0.25 --concurrency 4 --reasoning-effort low --annotate > _uid_audit/audit.log 2>&1
           result=$?
           printf '{"exitCode":%s}\n' "$result" > _uid_audit/audit-status.json
           cat _uid_audit/audit.log >> "$GITHUB_STEP_SUMMARY"
