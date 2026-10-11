@@ -297,6 +297,11 @@
               "property": { "type": "string", "minLength": 1 },
               "components": { "type": "object", "additionalProperties": { "type": "string" } }
             }
+          },
+          "setProperties": {
+            "type": "object",
+            "description": "The reverse of `variants`: values the old id implied and the successor states as a property, written onto the upgraded node over whatever it held under that name. `m3/outlined-card` becoming `m3/card` with `style` = `outlined` is one, since the id was the only place the old design said it was outlined.",
+            "additionalProperties": { "type": "string" }
           }
         }
       }
