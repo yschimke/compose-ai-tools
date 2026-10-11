@@ -330,6 +330,29 @@ class TypedRealRecordAdapterTest {
       .contains("property enabled is not exported")
   }
 
+  inner class RefusingAdapter(refuseWritten: Boolean = false) :
+    TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+    val enabled = property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+    val content = slot("content", required = true)
+
+    init {
+      val parameters = if (refuseWritten) mapOf("enabled" to from(enabled)) else emptyMap()
+      exportAs(target(button, parameters, slots = SLOTS))
+      exportRefuses(enabled)
+    }
+  }
+
+  @Test
+  fun `a property the export refuses need not be exported, and must not be`() {
+    val refused = RefusingAdapter()
+    assertThat(refused.validateAgainst(button).joinToString("\n")).doesNotContain("enabled")
+    assertThat(refused.projection!!.properties).doesNotContain("enabled")
+    // A new node is not seeded with it, or every inserted component would be refused on export.
+    assertThat(refused.policy().insertContent.toString()).doesNotContain("enabled")
+    assertThat(RefusingAdapter(refuseWritten = true).validateAgainst(button).joinToString("\n"))
+      .contains("property enabled is refused on export but the projection writes it")
+  }
+
   @Test
   fun `a fixed value of the wrong type is reported and its owners are admitted`() {
     val fixed =

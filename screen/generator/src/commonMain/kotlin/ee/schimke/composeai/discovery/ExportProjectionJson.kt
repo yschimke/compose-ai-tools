@@ -70,9 +70,10 @@ import kotlinx.serialization.json.put
  * ```
  *
  * A target's `items`, keyed by a parameter declared through its receiver's DSL, names the member
- * each child is wrapped in:
+ * each child is wrapped in, and its `itemRoles` the structural role that member opens:
  * ```json
- * "items": { "content": "item" }
+ * "items": { "content": "item" },
+ * "itemRoles": { "content": "list-item" }
  * ```
  */
 object ExportProjectionJson {
@@ -113,6 +114,7 @@ object ExportProjectionJson {
               )
             }
             if (target.items.isNotEmpty()) put("items", strings(target.items))
+            if (target.itemRoles.isNotEmpty()) put("itemRoles", strings(target.itemRoles))
           }
         }
       ),
@@ -148,6 +150,7 @@ object ExportProjectionJson {
                 )
               },
             items = target["items"]?.let(::stringMap).orEmpty(),
+            itemRoles = target["itemRoles"]?.let(::stringMap).orEmpty(),
           )
         },
     )
