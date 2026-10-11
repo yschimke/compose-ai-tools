@@ -463,6 +463,86 @@ class TypedRealRecordAdapterTest {
     assertThat(codec.decode(JsonPrimitive(""))).isEqualTo(WireColor.Unset)
   }
 
+  /**
+   * Wear's `Button` as discovery records it: two overloads, the record speaking for the `label` one
+   * (`RowScope.() -> Unit`), with the `content` one (`BoxScope.() -> Unit`) listed beside it.
+   */
+  private fun overloaded(callSite: String = "Button(onClick = {})"): ComponentRecord {
+    val label = button.parameters
+    val content =
+      label.filterNot { it.name == "label" } +
+        parameter("content", "BoxScope.() -> Unit", slot = true)
+    return button
+      .newBuilder()
+      .also { b ->
+        b.symbol = button.symbol.newBuilder().also { it.descriptor = LABEL_DESCRIPTOR }.build()
+        b.overloads =
+          listOf(LABEL_DESCRIPTOR to label, CONTENT_DESCRIPTOR to content).map { (d, p) ->
+            ComponentOverload.Builder()
+              .also {
+                it.descriptor = d
+                it.parameters = p
+              }
+              .build()
+          }
+        b.code = button.code!!.newBuilder().also { it.call = callSite }.build()
+      }
+      .build()
+  }
+
+  private fun contentSlotAdapter(record: ComponentRecord, slotParameter: String) =
+    object : TypedComponentAdapter<ButtonModel>("wear-m3/button", record) {
+      val enabled =
+        property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+      val content = slot("content", required = true)
+
+      init {
+        exportAs(
+          target(
+            record,
+            mapOf("enabled" to from(enabled)),
+            slots = mapOf("content" to slotParameter),
+          )
+        )
+      }
+    }
+
+  @Test
+  fun `a target resolves against the overload whose slots it fills, not only the record's own`() {
+    val record = overloaded()
+    // `content` exists only on the overload the record does not speak for.
+    assertThat(contentSlotAdapter(record, "content").validateAgainst(record)).isEmpty()
+    assertThat(contentSlotAdapter(record, "label").validateAgainst(record)).isEmpty()
+  }
+
+  @Test
+  fun `a target no overload takes names each overload's mismatch`() {
+    val record = overloaded()
+    val problems = contentSlotAdapter(record, "body").validateAgainst(record).joinToString("\n")
+    assertThat(problems).contains("no overload takes this target")
+    assertThat(problems)
+      .contains("$LABEL_DESCRIPTOR: slot content -> body is not a composable slot")
+    assertThat(problems)
+      .contains("$CONTENT_DESCRIPTOR: slot content -> body is not a composable slot")
+  }
+
+  @Test
+  fun `the call site fills an overload's required parameter only where it has that name`() {
+    // The record's own call writes `label`, which the `content` overload has no parameter for, so
+    // printing it there would not compile.
+    val record = overloaded(callSite = "Button(onClick = {}, label = { Text(\"a, b = c\") })")
+    val problems = contentSlotAdapter(record, "content").validateAgainst(record).joinToString("\n")
+    assertThat(problems).contains("$CONTENT_DESCRIPTOR: the call site writes label")
+    assertThat(problems).doesNotContain("writes b")
+  }
+
+  @Test
+  fun `a required parameter neither written nor at the call site is reported per overload`() {
+    val record = overloaded(callSite = "Button()")
+    val problems = contentSlotAdapter(record, "content").validateAgainst(record).joinToString("\n")
+    assertThat(problems).contains("required parameter onClick is not written")
+  }
+
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
 
@@ -486,6 +566,10 @@ class TypedRealRecordAdapterTest {
           ),
         )
       }
+    const val LABEL_DESCRIPTOR =
+      "(Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;)V"
+    const val CONTENT_DESCRIPTOR =
+      "(Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;I)V"
     val SLOTS = mapOf("content" to "label")
     val EVENTS = mapOf("click" to "onClick")
   }
