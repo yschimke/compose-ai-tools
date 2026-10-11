@@ -235,14 +235,17 @@ fun ShaderJuliaPreview() = ShaderCard(JULIA_AGSL)
 // @Composable
 // fun ShaderRaymarchAnimatedPreview() = AnimatedShaderCard(RAYMARCH_AGSL)
 
+// Captured frames stay in memory while the GIF palette is built. At 50ms, these
+// high-colour shader loops intermittently exhaust the render worker heap in PaletteBuilder.
+// Match the splash gallery's 80ms cadence: retain the full two-second loop at 12.5fps.
 @Preview(name = "Shader Gallery — fBm Clouds (animated, AGSL)")
-@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 80, showCurves = false)
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun ShaderFbmAnimatedPreview() = AnimatedShaderCard(FBM_AGSL)
 
 @Preview(name = "Shader Gallery — Julia Set (animated, AGSL)")
-@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 80, showCurves = false)
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun ShaderJuliaAnimatedPreview() = AnimatedShaderCard(JULIA_AGSL)

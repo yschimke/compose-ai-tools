@@ -455,7 +455,7 @@ composeai-preview-daemon = "3.15.2"
 # default instance), so `rc-render-jvm` and the Wasm bundle beside it agree again. Also draw-list
 # sounds, per-frame redraw of clock-driven canvases, StateLayout enter/exit and shared elements
 # matched by their AnimationSpec id.
-rcplayers = "2.4.0"
+rcplayers = "2.5.0"
 
 [libraries]
 

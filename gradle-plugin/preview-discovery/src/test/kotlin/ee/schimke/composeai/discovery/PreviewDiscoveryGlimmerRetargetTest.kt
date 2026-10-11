@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -108,8 +109,8 @@ class PreviewDiscoveryGlimmerRetargetTest {
         .single()
         .params
 
-    assertEquals(DeviceDimensions.DEFAULT_GLASSES.widthDp, out.wrapSandboxWidthDp)
-    assertEquals(DeviceDimensions.DEFAULT_GLASSES.heightDp, out.wrapSandboxHeightDp)
+    assertEquals(PreviewSizing.DEFAULT_GLASSES.widthDp, out.wrapSandboxWidthDp)
+    assertEquals(PreviewSizing.DEFAULT_GLASSES.heightDp, out.wrapSandboxHeightDp)
     // The calibration, not a scale factor: Glimmer sizes UI in visual angle and the ~30 PPD
     // identity holds only at density 1.0.
     assertEquals(1.0f, out.density)

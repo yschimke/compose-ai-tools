@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import io.github.classgraph.AnnotationClassRef
 import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
@@ -375,6 +376,30 @@ object PreviewDiscovery {
     return PREVIEW_RELEVANT_TOKENS.any { it in lowered }
   }
 
+  /**
+   * Whether [jar] holds a class one of the catalog's `componentLibraryPrefixes` names: a package
+   * entry (ending in `.`) or one exact JVM owner class, as [PreviewTargetInference]
+   * .isComponentLibraryOwner matches them. A configured library's coordinate need not carry any of
+   * [PREVIEW_RELEVANT_TOKENS] (`com.acme:design-system`), and without its jar on the scan classpath
+   * its owners never resolve, so the catalog would silently get no component targets. Reads only
+   * the jar's central directory, and only when prefixes are configured.
+   */
+  internal fun holdsComponentLibrary(jar: File, prefixes: List<String>): Boolean {
+    if (prefixes.isEmpty()) return false
+    val packages = prefixes.filter { it.endsWith('.') }.map { it.replace('.', '/') }
+    val classes =
+      prefixes.filterNot { it.endsWith('.') }.map { it.replace('.', '/') + ".class" }.toSet()
+    return runCatching {
+        java.util.zip.ZipFile(jar).use { zip ->
+          zip.entries().asSequence().any { entry ->
+            val name = entry.name
+            name.endsWith(".class") && (name in classes || packages.any { name.startsWith(it) })
+          }
+        }
+      }
+      .getOrDefault(false)
+  }
+
   fun discover(input: Input): Outcome {
     val warnings = mutableListOf<String>()
     val infoMessages = mutableListOf<String>()
@@ -392,7 +417,9 @@ object PreviewDiscovery {
       input.dependencyJars.filter { file ->
         file.exists() &&
           file.name.lowercase().endsWith(".jar") &&
-          isPreviewRelevant(input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath)
+          (isPreviewRelevant(
+            input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath
+          ) || holdsComponentLibrary(file, input.componentLibraryPrefixes))
       }
     // Project jars before dependency jars, so a class present in both is attributed to the project
     // and walked.
@@ -4263,8 +4290,8 @@ object PreviewDiscovery {
 
   /**
    * Measures a Glimmer module's device-less previews against the AI-glasses display
-   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the phone sandbox. Density 1.0
-   * is a calibration, since Glimmer sizes UI in visual angle.
+   * ([PreviewSizing.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the phone sandbox. Density 1.0 is
+   * a calibration, since Glimmer sizes UI in visual angle.
    *
    * Like [retargetWearStickers], this sets the wrap sandbox, not `widthDp` / `heightDp`: pinning
    * the axes leaves small components adrift in a huge frame, while the phone sandbox gives
@@ -4276,7 +4303,7 @@ object PreviewDiscovery {
     previews: List<PreviewInfo>,
   ): List<PreviewInfo> {
     if (!isGlimmer) return previews
-    val glasses = DeviceDimensions.DEFAULT_GLASSES
+    val glasses = PreviewSizing.DEFAULT_GLASSES
     return previews.map { info ->
       val p = info.params
       if (
@@ -4348,7 +4375,7 @@ object PreviewDiscovery {
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
       return PreviewParams(
         kind = PreviewKind.NOTIFICATION,
-        widthDp = DeviceDimensions.SANDBOX_WIDTH_DP,
+        widthDp = PreviewSizing.SANDBOX_WIDTH_DP,
       )
     }
     // Glance's `Preview(widthDp, heightDp)`: the params arrived in 1.1.0-rc01, so read

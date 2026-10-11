@@ -32,6 +32,9 @@ dependencies {
   // Wire types for `components.json` / `ui-builder.*.json`; `api` because the generator's public
   // signatures use them.
   api(libs.composeai.component.catalog.protocol)
+  // The `@Preview(device = ...)` catalog and `spec:` grammar, shared with the CLI and the daemons.
+  // `api`: `PreviewSizing.DEFAULT_GLASSES` is a `DeviceDimensions.DeviceSpec`.
+  api(libs.composeai.daemon.devices)
   // ClassGraph drives `PreviewDiscovery.discover(...)`; same coordinate as the plugin, so only one
   // copy is loaded.
   api(libs.classgraph)

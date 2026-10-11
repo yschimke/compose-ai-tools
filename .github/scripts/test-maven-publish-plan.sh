@@ -242,10 +242,11 @@ check catalog_unused ""
 
 # Source a module compiles through `srcDir` from outside its own directory is the module's: an edit
 # there publishes `beta` (a relative `srcDir`) and `preview-discovery` (a `rootDir.resolve` one in
-# the included build) and nothing else. `screen-model` missed every generator fix from 2.34 to 2.37
+# the included build), which brings the included build's other three coordinates with it — its one
+# root publish task releases all four — and nothing else. `screen-model` missed every generator fix from 2.34 to 2.37
 # for want of this.
 change_shared_source() { sed -i 's/"v1"/"v2"/' shared/src/commonMain/kotlin/Shared.kt; }
-check shared_source "beta preview-discovery"
+check shared_source "beta compose-preview-config compose-preview-plugin daemon-launch-builder preview-discovery"
 
 # A comment-only catalog edit publishes nothing.
 change_catalog_comment() { sed -i 's/# The Kotlin core libraries./# Kotlin./' gradle/libs.versions.toml; }

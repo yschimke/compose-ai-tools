@@ -49,27 +49,9 @@ SURFACES: list[dict] = [
     # "Daemon protocol fixtures" (`docs/daemon/protocol-fixtures/*`) was the first surface here,
     # until the daemon moved to compose-preview-daemon (#5336) and took the goldens with it. The
     # notice for them is that repository's to send.
-    {
-        "name": "Device catalog",
-        # `daemon/devices/**` was here too, until that module moved to
-        # compose-preview-contracts. What is left is this repository's copy — the plugin's — which
-        # is exactly the half a drift test on the other side compares against.
-        "patterns": [
-            "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt",
-        ],
-        "why": (
-            "`DeviceDimensions` — the device table and the `spec:` grammar — is duplicated "
-            "between the plugin and the daemon, and has drifted before (`parent=`, a "
-            "symmetric `orientation=`)."
-        ),
-        "consumers": {
-            CONTRACTS: (
-                "publishes `daemon-devices` and runs `DeviceDimensionsCatalogDriftTest` against "
-                "a checkout of this repository. Its CI compares the two copies on every run, so "
-                "a one-sided change here turns it red."
-            ),
-        },
-    },
+    # "Device catalog" (the plugin's copy of `DeviceDimensions`) was here too, until the plugin
+    # switched to the contracts' published `daemon-devices` and deleted its copy: there is no
+    # second copy left in this repository for `DeviceDimensionsCatalogDriftTest` to compare.
     {
         "name": "Daemon launch descriptor",
         # The `DaemonLaunchDescriptor.kt` pattern was here too, until `daemon/protocol` moved to
