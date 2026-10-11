@@ -645,6 +645,134 @@ class TypedRealRecordAdapterTest {
       .containsExactly("wear-m3/button -> Button in list-item: no parameter modifier")
   }
 
+  /**
+   * Wear's `Button` with both its overloads: the slot one (optional `icon`, required `label`,
+   * optional `secondaryLabel`) and the content one.
+   */
+  private fun slotted(contentOverloads: Int = 1): ComponentRecord {
+    val common =
+      listOf(
+        parameter("onClick", "() -> Unit", "kotlin.Function0", lambda = true),
+        parameter("modifier", "Modifier", "androidx.compose.ui.Modifier", default = true),
+        parameter("enabled", "Boolean", "kotlin.Boolean", default = true),
+      )
+    val slotOverload =
+      common +
+        listOf(
+          parameter("icon", "@Composable BoxScope.() -> Unit", slot = true, default = true),
+          parameter("label", "@Composable RowScope.() -> Unit", slot = true),
+          parameter(
+            "secondaryLabel",
+            "@Composable RowScope.() -> Unit",
+            slot = true,
+            default = true,
+          ),
+        )
+    val contentOverloads =
+      (1..contentOverloads).map { n ->
+        "(content$n)V" to
+          common +
+            listOfNotNull(
+              parameter("content", "@Composable BoxScope.() -> Unit", slot = true),
+              if (n > 1) parameter("extra$n", "Int", "kotlin.Int", default = true) else null,
+            )
+      }
+    return button
+      .newBuilder()
+      .also { b ->
+        b.parameters = slotOverload
+        b.symbol = button.symbol.newBuilder().also { it.descriptor = "(slot)V" }.build()
+        b.overloads =
+          (listOf("(slot)V" to slotOverload) + contentOverloads).map { (d, p) ->
+            ComponentOverload.Builder()
+              .also {
+                it.descriptor = d
+                it.parameters = p
+              }
+              .build()
+          }
+      }
+      .build()
+  }
+
+  private val wearButtonPatterns =
+    ExportProjection.SlotPatterns(
+      listOf(
+        ExportProjection.SlotPattern(
+          listOf(
+            ExportProjection.Matcher.Component("wear-m3/icon", "icon", optional = true),
+            ExportProjection.Matcher.Lines(
+              "wear-m3/text",
+              listOf("label", "secondaryLabel"),
+              max = 2,
+            ),
+          )
+        )
+      ),
+      otherwise = "content",
+    )
+
+  private fun patternedAdapter(
+    record: ComponentRecord,
+    patterns: ExportProjection.SlotPatterns,
+    slot: String = "content",
+  ) =
+    object : TypedComponentAdapter<ButtonModel>("wear-m3/button", record) {
+      val enabled =
+        property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+      val content = slot("content", required = true)
+
+      init {
+        exportAs(
+          target(record, mapOf("enabled" to from(enabled)), slotPatterns = mapOf(slot to patterns))
+        )
+      }
+    }
+
+  @Test
+  fun `each slot pattern, and otherwise, resolves to the overload it fills`() {
+    val record = slotted()
+    assertThat(patternedAdapter(record, wearButtonPatterns).validateAgainst(record)).isEmpty()
+  }
+
+  @Test
+  fun `a pattern no overload takes is reported against the pattern`() {
+    val record = slotted()
+    // An icon alone leaves the slot overload's required label unwritten, and the content
+    // overload has no icon.
+    val iconOnly =
+      ExportProjection.SlotPatterns(
+        listOf(
+          ExportProjection.SlotPattern(
+            listOf(ExportProjection.Matcher.Component("wear-m3/icon", "icon"))
+          )
+        )
+      )
+    val problems = patternedAdapter(record, iconOnly).validateAgainst(record).joinToString("\n")
+    assertThat(problems)
+      .contains("wear-m3/button -> Button [content pattern 1]: no overload takes this target")
+    assertThat(problems).contains("(slot)V: required parameter label is not written")
+    assertThat(problems).contains("(content1)V: slot content -> icon is not a composable slot")
+  }
+
+  @Test
+  fun `a pattern two overloads take equally chooses neither`() {
+    val record = slotted(contentOverloads = 2)
+    val problems = patternedAdapter(record, wearButtonPatterns).validateAgainst(record)
+    assertThat(problems)
+      .containsExactly(
+        "wear-m3/button -> Button [content otherwise]: overloads (content1)V and (content2)V both take it, so it chooses neither"
+      )
+  }
+
+  @Test
+  fun `a slot pattern for a slot the adapter does not declare is reported`() {
+    val record = slotted()
+    val problems =
+      patternedAdapter(record, wearButtonPatterns, slot = "body").validateAgainst(record)
+    assertThat(problems.joinToString("\n")).contains("slot pattern for undeclared slot body")
+  }
+
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
 

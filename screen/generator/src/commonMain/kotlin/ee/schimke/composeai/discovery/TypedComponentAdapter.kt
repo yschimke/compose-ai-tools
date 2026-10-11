@@ -377,7 +377,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   /**
    * A target for [exportAs]: the real [record], selected by [variants] (null for the default), its
    * [parameters] written from declared properties, the wire [slots] / [events] renamed onto its
-   * parameters, and what it writes besides when placed in a structural role ([contexts]).
+   * parameters, what it writes besides when placed in a structural role ([contexts]), and how a
+   * slot's children choose the parameters they fill ([slotPatterns]).
    */
   protected fun target(
     record: ComponentRecord,
@@ -386,10 +387,19 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     slots: Map<String, String> = emptyMap(),
     events: Map<String, String> = emptyMap(),
     contexts: Map<String, ExportProjection.Context> = emptyMap(),
+    slotPatterns: Map<String, ExportProjection.SlotPatterns> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
-      ExportProjection.Target(record.canonicalId, parameters, variants, slots, events, contexts),
+      ExportProjection.Target(
+        record.canonicalId,
+        parameters,
+        variants,
+        slots,
+        events,
+        contexts,
+        slotPatterns,
+      ),
     )
 
   /** A declared property written through its codec, skipped when it equals [omitWhen]. */
@@ -555,49 +565,100 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           target.parameters.mapValues { (name, value) ->
             writtenType(value, properties, "$where.$name", this)
           }
+        val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
+        for ((slot, _) in target.slotPatterns) {
+          if (declaredSlots.none { it.name == slot })
+            add("$where: slot pattern for undeclared slot $slot")
+        }
         // Resolved as Kotlin resolves named arguments: some overload must take every argument the
         // target writes and default the rest. A record without overloads stands for its own one.
-        val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
-        val mismatches = candidates.map { overload ->
-          targetMismatches(
-            target,
-            written,
-            overload?.parameters ?: targetRecord.parameters,
-            targetRecord.code?.call,
-            where,
-          )
-        }
-        addAll(resolution(where, candidates, mismatches))
-        // In a role the context's arguments are written too, so the call must still resolve.
-        for ((role, context) in target.contexts) {
-          val inRole = "$where in $role"
-          val alsoWritten =
-            context.parameters.mapValues { (name, value) ->
-              writtenType(value, properties, "$inRole.$name", this)
-            } + (if (context.modifier.isEmpty()) emptyMap() else mapOf("modifier" to MODIFIER_TYPE))
-          val roleMismatches = candidates.map { overload ->
+        // A patterned slot fills different parameters per pattern, and each fill is its own call.
+        for ((shape, fills) in fillsOf(target)) {
+          val at = if (shape == null) where else "$where [$shape]"
+          // A pattern is how the overload is chosen, so it must choose exactly one.
+          val exactlyOne = shape != null
+          val mismatches = candidates.map { overload ->
             targetMismatches(
               target,
-              written + alsoWritten,
+              written,
+              fills,
               overload?.parameters ?: targetRecord.parameters,
               targetRecord.code?.call,
-              inRole,
+              at,
             )
           }
-          // Only what the role adds: the target's own mismatches are reported once, above.
-          if (mismatches.any { it.isEmpty() })
-            addAll(resolution(inRole, candidates, roleMismatches))
+          addAll(resolution(at, candidates, mismatches, exactlyOne))
+          // In a role the context's arguments are written too, so the call must still resolve.
+          for ((role, context) in target.contexts) {
+            val inRole = "$at in $role"
+            val alsoWritten =
+              context.parameters.mapValues { (name, value) ->
+                writtenType(value, properties, "$inRole.$name", this)
+              } +
+                (if (context.modifier.isEmpty()) emptyMap() else mapOf("modifier" to MODIFIER_TYPE))
+            val roleMismatches = candidates.map { overload ->
+              targetMismatches(
+                target,
+                written + alsoWritten,
+                fills,
+                overload?.parameters ?: targetRecord.parameters,
+                targetRecord.code?.call,
+                inRole,
+              )
+            }
+            // Only what the role adds: the target's own mismatches are reported once, above.
+            if (mismatches.any { it.isEmpty() })
+              addAll(resolution(inRole, candidates, roleMismatches, exactlyOne))
+          }
         }
       }
     }
 
-  /** Nothing when some overload takes the call, else why none does. */
+  /** One composable parameter a wire slot fills: from which slot, and whether on every node. */
+  private data class SlotFill(val slot: String, val parameter: String, val always: Boolean)
+
+  /**
+   * The ways [target] fills its parameters from wire slots, each labelled for messages: one,
+   * unlabelled, when no slot is patterned; otherwise one per pattern of the patterned slot, and its
+   * `otherwise`, each beside the plain renames of the other slots.
+   */
+  private fun fillsOf(target: ExportProjection.Target): List<Pair<String?, List<SlotFill>>> {
+    val plain =
+      declaredSlots
+        .filter { it.name !in target.slotPatterns }
+        .map { SlotFill(it.name, target.slots[it.name] ?: it.name, always = true) }
+    val (slot, patterns) =
+      target.slotPatterns.entries.singleOrNull() ?: return listOf(null to plain)
+    return patterns.patterns.mapIndexed { index, pattern ->
+      "$slot pattern ${index + 1}" to
+        plain + pattern.parameters.map { (parameter, always) -> SlotFill(slot, parameter, always) }
+    } +
+      listOfNotNull(
+        patterns.otherwise?.let { "$slot otherwise" to plain + SlotFill(slot, it, always = true) }
+      )
+  }
+
+  /**
+   * Nothing when some overload takes the call (with [exactlyOne], exactly one), else why not.
+   * Kotlin refuses a call two overloads take equally, so a pattern choosing between them chooses
+   * nothing.
+   */
   private fun resolution(
     where: String,
     candidates: List<ComponentOverload?>,
     mismatches: List<List<String>>,
+    exactlyOne: Boolean = false,
   ): List<String> =
     when {
+      exactlyOne && mismatches.count { it.isEmpty() } > 1 ->
+        listOf(
+          "$where: overloads " +
+            candidates
+              .zip(mismatches)
+              .filter { it.second.isEmpty() }
+              .joinToString(" and ") { "${it.first?.descriptor}" } +
+            " both take it, so it chooses neither"
+        )
       mismatches.any { it.isEmpty() } -> emptyList()
       mismatches.size == 1 -> mismatches.single()
       else ->
@@ -614,6 +675,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   private fun targetMismatches(
     target: ExportProjection.Target,
     written: Map<String, String?>,
+    fills: List<SlotFill>,
     overloadParameters: List<TargetParameter>,
     placeholders: String?,
     where: String,
@@ -628,10 +690,9 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       if (type != null && type != parameter.typeFqn)
         add("$where.$name: writes $type, parameter takes ${parameter.typeFqn}")
     }
-    for (slot in declaredSlots) {
-      val name = target.slots[slot.name] ?: slot.name
-      if (parameters[name]?.composableSlot != true)
-        add("$where: slot ${slot.name} -> $name is not a composable slot")
+    for (fill in fills) {
+      if (parameters[fill.parameter]?.composableSlot != true)
+        add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
     }
     for ((event, name) in target.events) {
       if (declaredEvents.none { it.eventName == event }) add("$where: event $event is not declared")
@@ -642,7 +703,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     // name, whatever the record calls its parameters.
     val covered =
       written.keys +
-        declaredSlots.map { target.slots[it.name] ?: it.name } +
+        fills.filter { it.always }.map { it.parameter } +
         target.events.values +
         declaredChanges.map { it.name }
     // The record's call site is printed with every export, as named arguments, so it fills a

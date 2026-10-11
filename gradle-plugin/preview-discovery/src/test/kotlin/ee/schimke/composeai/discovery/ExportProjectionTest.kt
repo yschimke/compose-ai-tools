@@ -340,4 +340,201 @@ class ExportProjectionTest {
       )
       .contains("both writes `modifier` and appends to it")
   }
+
+  /** A child as a host sees it: its catalog id, and its lines when it is a plain column. */
+  private data class Child(val id: String, val column: List<Child>? = null)
+
+  private fun text(line: String) = Child("wear-m3/text:$line")
+
+  private val icon = Child("wear-m3/icon")
+
+  private fun lines(vararg texts: String) = Child("layout/column", texts.map(::text))
+
+  private val buttonPatterns =
+    ExportProjection.SlotPatterns(
+      listOf(
+        ExportProjection.SlotPattern(
+          listOf(
+            ExportProjection.Matcher.Component("wear-m3/icon", "icon", optional = true),
+            ExportProjection.Matcher.Lines(
+              "wear-m3/text",
+              listOf("label", "secondaryLabel"),
+              max = 2,
+            ),
+          )
+        )
+      ),
+      otherwise = "content",
+    )
+
+  private fun patterned(patterns: ExportProjection.SlotPatterns) =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          button.canonicalId,
+          emptyMap(),
+          slotPatterns = mapOf("content" to patterns),
+        )
+      )
+    )
+
+  private fun assign(patterns: ExportProjection.SlotPatterns, vararg children: Child) =
+    patterned(patterns)
+      .assignSlot(
+        button.canonicalId,
+        "content",
+        children.toList(),
+        componentId = { it.id.substringBefore(':') },
+        plainColumn = { it.column },
+      )
+
+  private fun assigned(patterns: ExportProjection.SlotPatterns, vararg children: Child) =
+    (assign(patterns, *children) as ExportProjection.SlotAssignment.Assigned).parameters
+
+  @Test
+  fun `a slot's children choose the parameters they fill, as Wear's button does`() {
+    assertThat(assigned(buttonPatterns, icon, text("Go")))
+      .containsExactly("icon", listOf(icon), "label", listOf(text("Go")))
+      .inOrder()
+    // A plain column of texts is its lines, and the column itself disappears.
+    assertThat(assigned(buttonPatterns, lines("Go", "Now")))
+      .containsExactly("label", listOf(text("Go")), "secondaryLabel", listOf(text("Now")))
+      .inOrder()
+    // Anything else is the content overload's.
+    val image = Child("wear-m3/image")
+    assertThat(assigned(buttonPatterns, image)).containsExactly("content", listOf(image))
+    assertThat(assigned(buttonPatterns, lines("a", "b", "c"))).containsKey("content")
+    assertThat(assigned(buttonPatterns, icon, text("Go"), text("Again"))).containsKey("content")
+  }
+
+  @Test
+  fun `a column with anything but text is not lines`() {
+    val mixed = Child("layout/column", listOf(text("Go"), icon))
+    assertThat(assigned(buttonPatterns, mixed)).containsExactly("content", listOf(mixed))
+    // And a column the host does not judge plain (null) is not lines either.
+    val styled = Child("layout/column")
+    assertThat(assigned(buttonPatterns, styled)).containsExactly("content", listOf(styled))
+  }
+
+  @Test
+  fun `extra lines go to rest, as a card's trailing content does`() {
+    val card =
+      ExportProjection.SlotPatterns(
+        listOf(
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Lines(
+                "wear-m3/text",
+                listOf("appName", "title"),
+                min = 2,
+                rest = "content",
+              )
+            )
+          )
+        )
+      )
+    assertThat(assigned(card, lines("App", "Title", "Body", "More")))
+      .containsExactly(
+        "appName",
+        listOf(text("App")),
+        "title",
+        listOf(text("Title")),
+        "content",
+        listOf(text("Body"), text("More")),
+      )
+      .inOrder()
+    // Without `otherwise` an unmatched slot refuses the node, naming what it held.
+    val refused = assign(card, text("Only")) as ExportProjection.SlotAssignment.Refused
+    assertThat(refused.reason)
+      .contains("no pattern of `content` matches its children [wear-m3/text]")
+  }
+
+  @Test
+  fun `any takes the remaining children, at least one`() {
+    val leading =
+      ExportProjection.SlotPatterns(
+        listOf(
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
+              ExportProjection.Matcher.Rest("content"),
+            )
+          )
+        )
+      )
+    assertThat(assigned(leading, icon, text("a"), text("b")))
+      .containsExactly("icon", listOf(icon), "content", listOf(text("a"), text("b")))
+    assertThat(assign(leading, icon))
+      .isInstanceOf(ExportProjection.SlotAssignment.Refused::class.java)
+  }
+
+  @Test
+  fun `a slot without patterns is its plain rename`() {
+    val plain =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slots = mapOf("content" to "label"),
+          )
+        )
+      )
+    val result =
+      plain.assignSlot(button.canonicalId, "content", listOf(icon), { it.id }, { it.column })
+    assertThat((result as ExportProjection.SlotAssignment.Assigned).parameters)
+      .containsExactly("label", listOf(icon))
+  }
+
+  @Test
+  fun `slot patterns round trip through the published spelling`() {
+    val projection = patterned(buttonPatterns)
+    val json = ExportProjectionJson.encode(projection)
+    assertThat(json.toString()).contains("\"slotPatterns\":{\"content\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(projection)
+    val refusing = patterned(buttonPatterns.copy(otherwise = null))
+    val refusingJson = ExportProjectionJson.encode(refusing)
+    assertThat(refusingJson.toString()).contains("\"otherwise\":\"refuse\"")
+    assertThat(ExportProjectionJson.decode(refusingJson).getOrThrow()).isEqualTo(refusing)
+  }
+
+  @Test
+  fun `slot patterns are checked when they are built`() {
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Rest("content"),
+              ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
+            )
+          )
+        }
+      )
+      .contains("last matcher")
+    assertThat(
+        failure {
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Component("wear-m3/icon", "label"),
+              ExportProjection.Matcher.Lines("wear-m3/text", listOf("label")),
+            )
+          )
+        }
+      )
+      .contains("each parameter once")
+    assertThat(failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), max = 3) })
+      .contains("need a `rest` parameter")
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slots = mapOf("content" to "label"),
+            slotPatterns = mapOf("content" to buttonPatterns),
+          )
+        }
+      )
+      .contains("renamed and recognised")
+  }
 }

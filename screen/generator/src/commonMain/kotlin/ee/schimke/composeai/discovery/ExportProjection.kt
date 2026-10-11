@@ -44,6 +44,9 @@ data class ExportProjection(
    * @property events the record's callback parameter for each wire event (`click` is `onClick`).
    * @property contexts what this record writes besides [parameters] when its node is placed in a
    *   structural role, keyed by role (`list-item`): the arguments its parent decides.
+   * @property slotPatterns for the one wire slot whose children decide which parameters they fill
+   *   (Wear's `Button` content: an icon, then one or two lines of text), how they are recognised.
+   *   Replaces that slot's [slots] rename.
    */
   data class Target(
     val record: String,
@@ -52,8 +55,19 @@ data class ExportProjection(
     val slots: Map<String, String> = emptyMap(),
     val events: Map<String, String> = emptyMap(),
     val contexts: Map<String, Context> = emptyMap(),
+    val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
   ) {
     init {
+      // One patterned slot per target, so a pattern alone decides which overload the call is.
+      require(slotPatterns.size <= 1) { "at most one slot is recognised by patterns" }
+      for (slot in slotPatterns.keys) {
+        require(slot !in slots) { "slot `$slot` is renamed and recognised by patterns" }
+      }
+      for (patterns in slotPatterns.values) {
+        val clash =
+          patterns.patterns.flatMap { it.parameters.keys }.toSet() intersect parameters.keys
+        require(clash.isEmpty()) { "slot patterns fill ${clash.sorted()}, already written" }
+      }
       for ((role, context) in contexts) {
         require(role in UI_BUILDER_STRUCTURAL_ROLES) {
           "context role `$role` is not one of $UI_BUILDER_STRUCTURAL_ROLES"
@@ -80,6 +94,166 @@ data class ExportProjection(
     val parameters: Map<String, Value> = emptyMap(),
     val modifier: List<ChainLink> = emptyList(),
   )
+
+  /**
+   * How one wire slot's children are recognised: the first of [patterns] that matches assigns them
+   * to parameters, and those parameters pick the overload. [otherwise] is the parameter every child
+   * goes to when none matches, or null to refuse the node with the reason.
+   */
+  data class SlotPatterns(val patterns: List<SlotPattern>, val otherwise: String? = null) {
+    init {
+      require(patterns.isNotEmpty() || otherwise != null) { "slot patterns recognise something" }
+    }
+  }
+
+  /** An ordered list of [match]ers over a slot's children, every child consumed by one of them. */
+  data class SlotPattern(val match: List<Matcher>) {
+    init {
+      require(match.isNotEmpty()) { "a slot pattern has at least one matcher" }
+      val all = match.flatMap { it.parameters.keys }
+      require(all.size == all.toSet().size) { "a slot pattern fills each parameter once: $all" }
+      require(
+        match.count { it is Matcher.Rest } <= 1 &&
+          match.lastOrNull().let { m -> match.none { it is Matcher.Rest } || m is Matcher.Rest }
+      ) {
+        "`any` takes the remaining children, so it is the last matcher"
+      }
+    }
+
+    /** Every parameter this pattern may fill, and whether it fills it whenever it matches. */
+    val parameters: Map<String, Boolean>
+      get() = match.fold(emptyMap()) { acc, matcher -> acc + matcher.parameters }
+  }
+
+  /** The closed matcher vocabulary: data that can be validated, never code. */
+  sealed interface Matcher {
+    /** The parameters filled, each with whether it is filled whenever the matcher matches. */
+    val parameters: Map<String, Boolean>
+
+    /** The next child, a [componentId] node, goes to [to]; with [optional], it may be absent. */
+    data class Component(val componentId: String, val to: String, val optional: Boolean = false) :
+      Matcher {
+      override val parameters: Map<String, Boolean>
+        get() = mapOf(to to !optional)
+    }
+
+    /**
+     * The next child is lines of text: one [textComponent] node, or a column the host judges plain
+     * (no modifiers, default arrangement) holding only [textComponent] nodes, flattened. Line `k`
+     * goes to `to[k]`; [min]..[max] lines match, and lines past [to] go to [rest] when it is set.
+     */
+    data class Lines(
+      val textComponent: String,
+      val to: List<String>,
+      val min: Int = 1,
+      val max: Int? = null,
+      val rest: String? = null,
+    ) : Matcher {
+      init {
+        require(to.isNotEmpty()) { "lines go to at least one parameter" }
+        require(min >= 1) { "lines match at least one line" }
+        val upper = max ?: if (rest == null) to.size else Int.MAX_VALUE
+        require(upper >= min) { "lines match $min..$upper lines" }
+        require(rest != null || upper <= to.size) {
+          "lines past ${to.size} need a `rest` parameter to go to"
+        }
+      }
+
+      /** The most lines this matches. */
+      val upper: Int
+        get() = max ?: if (rest == null) to.size else Int.MAX_VALUE
+
+      override val parameters: Map<String, Boolean>
+        get() =
+          to.mapIndexed { index, name -> name to (index < min) }.toMap() +
+            listOfNotNull(rest).associateWith { false }
+    }
+
+    /** Every remaining child, at least one, goes to [to]. */
+    data class Rest(val to: String) : Matcher {
+      override val parameters: Map<String, Boolean>
+        get() = mapOf(to to true)
+    }
+  }
+
+  /** Which children of a patterned slot go to which parameter, or why none can. */
+  sealed interface SlotAssignment<out C> {
+    data class Assigned<C>(val parameters: Map<String, List<C>>) : SlotAssignment<C>
+
+    data class Refused(val reason: String) : SlotAssignment<Nothing>
+  }
+
+  /**
+   * [record]'s parameters for the children of its wire [slot], by its [Target.slotPatterns], or the
+   * plain rename when the slot has none. [componentId] names a child's catalog component;
+   * [plainColumn] is the host's judgement of a column of lines: its children when the child is a
+   * column with no modifiers and default arrangement, else null.
+   */
+  fun <C> assignSlot(
+    record: String,
+    slot: String,
+    children: List<C>,
+    componentId: (C) -> String,
+    plainColumn: (C) -> List<C>?,
+  ): SlotAssignment<C> {
+    val target =
+      targets.firstOrNull { it.record == record }
+        ?: return SlotAssignment.Refused("$record is not a target of this projection")
+    val patterns =
+      target.slotPatterns[slot]
+        ?: return SlotAssignment.Assigned(mapOf((target.slots[slot] ?: slot) to children))
+    for (pattern in patterns.patterns) {
+      match(pattern, children, componentId, plainColumn)?.let {
+        return SlotAssignment.Assigned(it)
+      }
+    }
+    return patterns.otherwise?.let { SlotAssignment.Assigned(mapOf(it to children)) }
+      ?: SlotAssignment.Refused(
+        "no pattern of `$slot` matches its children " +
+          children.joinToString(", ", "[", "]") { componentId(it) }
+      )
+  }
+
+  private fun <C> match(
+    pattern: SlotPattern,
+    children: List<C>,
+    componentId: (C) -> String,
+    plainColumn: (C) -> List<C>?,
+  ): Map<String, List<C>>? {
+    val assigned = linkedMapOf<String, List<C>>()
+    var next = 0
+    for (matcher in pattern.match) {
+      val child = children.getOrNull(next)
+      when (matcher) {
+        is Matcher.Component ->
+          if (child != null && componentId(child) == matcher.componentId) {
+            assigned[matcher.to] = listOf(child)
+            next++
+          } else if (!matcher.optional) return null
+        is Matcher.Lines -> {
+          child ?: return null
+          val lines =
+            if (componentId(child) == matcher.textComponent) listOf(child)
+            else
+              plainColumn(child)?.takeIf { column ->
+                column.isNotEmpty() && column.all { componentId(it) == matcher.textComponent }
+              } ?: return null
+          if (lines.size < matcher.min || lines.size > matcher.upper) return null
+          lines.take(matcher.to.size).forEachIndexed { k, line ->
+            assigned[matcher.to[k]] = listOf(line)
+          }
+          if (lines.size > matcher.to.size) assigned[matcher.rest!!] = lines.drop(matcher.to.size)
+          next++
+        }
+        is Matcher.Rest -> {
+          if (next >= children.size) return null
+          assigned[matcher.to] = children.drop(next)
+          next = children.size
+        }
+      }
+    }
+    return assigned.takeIf { next == children.size }
+  }
 
   /** What one parameter, or one argument of a nested call, is written from. */
   sealed interface Value {
