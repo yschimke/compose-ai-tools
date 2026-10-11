@@ -550,6 +550,29 @@ class TypedRealRecordAdapterTest {
   }
 
   @Test
+  fun `two other overloads taking a target choose neither, as the generator refuses them`() {
+    val record = overloaded()
+    // A second `content` overload differing only in a defaulted parameter: the record's own
+    // (`label`) overload does not take a `content` slot, and both alternates do.
+    val twin =
+      ComponentOverload.Builder()
+        .also {
+          it.descriptor = "(Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;IZ)V"
+          it.parameters =
+            record.overloads.single { o -> o.descriptor == CONTENT_DESCRIPTOR }.parameters +
+              parameter("dense", "Boolean", "kotlin.Boolean", default = true)
+        }
+        .build()
+    val ambiguous = record.newBuilder().also { it.overloads = record.overloads + twin }.build()
+    assertThat(
+        contentSlotAdapter(ambiguous, "content").validateAgainst(ambiguous).joinToString("\n")
+      )
+      .contains("both take it, so it chooses neither")
+    // The record's own overload wins whenever it applies, whatever else would.
+    assertThat(contentSlotAdapter(ambiguous, "label").validateAgainst(ambiguous)).isEmpty()
+  }
+
+  @Test
   fun `the record's call site belongs to its own overload, not another`() {
     // The generator writes the chosen overload's own call, so `label` at the record's call site is
     // never printed for the `content` overload.

@@ -915,6 +915,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             writtenType(value, properties, "$where.$name", this)
           }
         val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
+        // The overload the record speaks for, which the generator calls whenever it applies.
+        val own = candidates.indexOfFirst {
+          it == null ||
+            it.descriptor == targetRecord.symbol.descriptor ||
+            it.parameters == targetRecord.parameters
+        }
         for ((parameter, synthesis) in target.synthesize) {
           for (property in synthesis.properties.values) {
             if (property !in properties)
@@ -947,7 +953,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               at,
             )
           }
-          addAll(resolution(at, candidates, mismatches, exactlyOne))
+          addAll(resolution(at, candidates, mismatches, own, exactlyOne))
           // In a role the context's arguments are written too, so the call must still resolve.
           for ((role, context) in target.contexts) {
             val inRole = "$at in $role"
@@ -967,7 +973,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             }
             // Only what the role adds: the target's own mismatches are reported once, above.
             if (mismatches.any { it.isEmpty() })
-              addAll(resolution(inRole, candidates, roleMismatches, exactlyOne))
+              addAll(resolution(inRole, candidates, roleMismatches, own, exactlyOne))
           }
         }
       }
@@ -1001,18 +1007,22 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   }
 
   /**
-   * Nothing when some overload takes the call (with [exactlyOne], exactly one), else why not.
-   * Kotlin refuses a call two overloads take equally, so a pattern choosing between them chooses
-   * nothing.
+   * Nothing when the call resolves as the generator resolves it, else why not: the record's [own]
+   * overload when it takes the call, otherwise exactly one other. Kotlin refuses a call two
+   * overloads take equally, and so does the generator, so two alternates taking it choose nothing.
+   * With [exactlyOne] (a slot pattern, which is how the overload is chosen) even the record's own
+   * overload must be the only one.
    */
   private fun resolution(
     where: String,
     candidates: List<ComponentOverload?>,
     mismatches: List<List<String>>,
+    own: Int,
     exactlyOne: Boolean = false,
   ): List<String> =
     when {
-      exactlyOne && mismatches.count { it.isEmpty() } > 1 ->
+      !exactlyOne && own >= 0 && mismatches[own].isEmpty() -> emptyList()
+      mismatches.count { it.isEmpty() } > 1 ->
         listOf(
           "$where: overloads " +
             candidates
