@@ -239,6 +239,42 @@ class TypedAdapterDiscoveryTest {
   }
 
   @Test
+  fun `a factory's return type carries every supertype, transitively`() {
+    val spaced =
+      TypedAdapterDiscovery.discoverFactories(
+          listOf(
+            TypedAdapterDiscovery.Callable(
+              "ee.schimke.composeai.discovery.AdapterFactoryFixture",
+              "spaced",
+            )
+          )
+        )
+        .single()
+    assertEquals(
+      listOf(
+          "AdapterFactoryAxis",
+          "AdapterFactoryBase",
+          "AdapterFactoryHorizontal",
+          "AdapterFactoryVertical",
+        )
+        .map { "ee.schimke.composeai.discovery.$it" }
+        .toSet(),
+      spaced.returnSupertypes,
+    )
+    // A final class with nothing above it but `Any` has none.
+    val colors =
+      TypedAdapterDiscovery.discoverFactories(
+        listOf(
+          TypedAdapterDiscovery.Callable(
+            "ee.schimke.composeai.discovery.AdapterFactoryFixture",
+            "colors",
+          )
+        )
+      )
+    assertTrue(colors.all { it.returnSupertypes.isEmpty() })
+  }
+
+  @Test
   fun `an unknown factory is refused rather than guessed`() {
     assertThrows(IllegalArgumentException::class.java) {
       TypedAdapterDiscovery.discoverFactories(
@@ -295,8 +331,20 @@ class AdapterFactoryColors {
   fun derive(): AdapterFactoryColors = error("not executed")
 }
 
+interface AdapterFactoryAxis
+
+interface AdapterFactoryVertical : AdapterFactoryAxis
+
+interface AdapterFactoryHorizontal : AdapterFactoryAxis
+
+abstract class AdapterFactoryBase
+
+class AdapterFactorySpacing : AdapterFactoryBase(), AdapterFactoryVertical, AdapterFactoryHorizontal
+
 @Suppress("UNUSED_PARAMETER")
 object AdapterFactoryFixture {
+  fun spaced(space: Int): AdapterFactorySpacing = error("not executed")
+
   fun colors(): AdapterFactoryColors = error("not executed")
 
   fun colors(container: Long, content: String = ""): AdapterFactoryColors = error("not executed")

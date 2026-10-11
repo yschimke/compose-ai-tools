@@ -242,18 +242,53 @@ object TypedAdapterDiscovery {
         .enableMethodInfo()
         .acceptClasses(*factories.map { it.owner }.distinct().toTypedArray())
     if (classpath != null) graph.overrideClasspath(classpath)
+    // Overloads of one factory, and factories of one family, share a return type.
+    val ancestry = mutableMapOf<String, Set<String>>()
     return graph.scan().use { scan ->
       factories.flatMap { factory ->
         val owner =
           requireNotNull(scan.getClassInfo(factory.owner)) {
             "missing compiled owner ${factory.owner}"
           }
-        ComposableSignature.factorySignatures(owner, factory.name).also {
-          require(it.isNotEmpty()) {
-            "${factory.owner}.${factory.name}: no public member of an object or companion with readable metadata"
+        ComposableSignature.factorySignatures(owner, factory.name) {
+            ancestry.getOrPut(it) { supertypes(it, classpath) }
+          }
+          .also {
+            require(it.isNotEmpty()) {
+              "${factory.owner}.${factory.name}: no public member of an object or companion with readable metadata"
+            }
+          }
+      }
+    }
+  }
+
+  /**
+   * Every class and interface [jvmName] extends, transitively, as qualified names with nested
+   * classes dotted (`…Arrangement.Vertical`). Read level by level from the compiled classes, so a
+   * supertype outside the classpath ends the walk there. `Any` / `Object` are left out.
+   */
+  private fun supertypes(jvmName: String, classpath: List<File>?): Set<String> {
+    val found = mutableSetOf<String>()
+    var pending = setOf(jvmName)
+    val seen = mutableSetOf(jvmName)
+    while (pending.isNotEmpty()) {
+      val graph = ClassGraph().enableClassInfo().acceptClasses(*pending.toTypedArray())
+      if (classpath != null) graph.overrideClasspath(classpath)
+      val next = mutableSetOf<String>()
+      graph.scan().use { scan ->
+        for (name in pending) {
+          val info = scan.getClassInfo(name) ?: continue
+          val direct =
+            listOfNotNull(info.superclass?.name) + info.interfaces.directOnly().map { it.name }
+          for (parent in direct) {
+            if (parent == "java.lang.Object" || !seen.add(parent)) continue
+            found += parent.replace('$', '.')
+            next += parent
           }
         }
       }
+      pending = next
     }
+    return found
   }
 }

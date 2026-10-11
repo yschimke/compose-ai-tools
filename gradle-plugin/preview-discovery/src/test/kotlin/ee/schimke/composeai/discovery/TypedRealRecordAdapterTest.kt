@@ -69,6 +69,7 @@ class TypedRealRecordAdapterTest {
     val enabled: Boolean,
     val containerColor: WireColor,
     val onClick: () -> Unit,
+    val contentColor: WireColor = WireColor.Unset,
   )
 
   private val wearColor =
@@ -403,42 +404,133 @@ class TypedRealRecordAdapterTest {
       .contains("containerColor takes androidx.compose.ui.graphics.Color, written kotlin.Boolean")
   }
 
-  @Test
-  fun `a required factory parameter filled only by an optional property is reported`() {
+  private fun requiredContainerAdapter(withContent: Boolean): TypedComponentAdapter<ButtonModel> {
     val fqn = "app.ColorsDefaults.colors"
+    val color = { name: String, default: Boolean ->
+      TargetParameter.Builder(name, "Color")
+        .also {
+          it.typeFqn = "androidx.compose.ui.graphics.Color"
+          it.hasDefault = default
+        }
+        .build()
+    }
     val required =
       FactorySignature(
         fqn,
         BUTTON_COLORS,
-        listOf(
-          TargetParameter.Builder("container", "Color")
-            .also { it.typeFqn = "androidx.compose.ui.graphics.Color" }
-            .build()
-        ),
+        listOf(color("container", false), color("content", true)),
       )
     val wearColor = ExportProjection.Codec.Color("androidx.wear.compose.material3.MaterialTheme")
-    val adapter =
-      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
-        val containerColor =
+    return object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+      val containerColor =
+        wireProperty(
+          ButtonModel::containerColor,
+          AdapterValueCodecs.color(wearColor),
+          WireColor.Unset,
+        )
+      val contentColor =
+        if (withContent)
           wireProperty(
-            ButtonModel::containerColor,
+            ButtonModel::contentColor,
             AdapterValueCodecs.color(wearColor),
             WireColor.Unset,
           )
+        else null
+      val content = slot("content", required = true)
+
+      init {
+        val arguments =
+          listOfNotNull(
+            "container" to from(containerColor),
+            contentColor?.let { "content" to from(it) },
+          )
+        exportAs(
+          target(
+            button,
+            mapOf("colors" to call(listOf(required), *arguments.toTypedArray())),
+            slots = SLOTS,
+          )
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `a required factory parameter filled only by an optional property is reported`() {
+    // `content` alone set writes `colors(content = …)` with no `container`.
+    assertThat(
+        requiredContainerAdapter(withContent = true).validateAgainst(button).joinToString("\n")
+      )
+      .contains("required container is written only when its property is set")
+  }
+
+  @Test
+  fun `a call's only argument is written whenever the call is`() {
+    // The call drops out when its one argument does, so `colors(container = …)` always has it.
+    assertThat(requiredContainerAdapter(withContent = false).validateAgainst(button)).isEmpty()
+  }
+
+  @Test
+  fun `a factory's return type is passed where one of its supertypes is taken`() {
+    val vertical = "androidx.compose.foundation.layout.Arrangement.Vertical"
+    val both = "androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical"
+    val record =
+      button
+        .newBuilder()
+        .also { b ->
+          b.parameters =
+            button.parameters +
+              parameter("verticalArrangement", "Arrangement.Vertical", vertical, default = true)
+        }
+        .build()
+    fun adapter(supertypes: Set<String>) =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", record) {
+        val enabled =
+          property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
         val content = slot("content", required = true)
 
         init {
+          val spacedBy =
+            FactorySignature(
+              "androidx.compose.foundation.layout.Arrangement.spacedBy",
+              both,
+              listOf(
+                TargetParameter.Builder("space", "Dp")
+                  .also { it.typeFqn = "androidx.compose.ui.unit.Dp" }
+                  .build()
+              ),
+              returnSupertypes = supertypes,
+            )
           exportAs(
             target(
-              button,
-              mapOf("colors" to call(listOf(required), "container" to from(containerColor))),
+              record,
+              mapOf(
+                "enabled" to from(enabled),
+                "verticalArrangement" to
+                  call(
+                    listOf(spacedBy),
+                    "space" to
+                      ExportProjection.Value.Fixed(
+                        ScreenValue.Chain(
+                          ScreenValue.Whole(4),
+                          listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+                          typeFqn = "androidx.compose.ui.unit.Dp",
+                        )
+                      ),
+                  ),
+              ),
               slots = SLOTS,
             )
           )
         }
       }
-    assertThat(adapter.validateAgainst(button).joinToString("\n"))
-      .contains("required container is written only when its property is set")
+    assertThat(
+        adapter(setOf(vertical, "androidx.compose.foundation.layout.Arrangement.Horizontal"))
+          .validateAgainst(record)
+      )
+      .isEmpty()
+    assertThat(adapter(emptySet()).validateAgainst(record).joinToString("\n"))
+      .contains("writes $both, parameter takes $vertical")
   }
 
   @Test

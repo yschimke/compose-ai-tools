@@ -1027,7 +1027,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$where: no parameter $name")
         continue
       }
-      if (type != null && type != parameter.typeFqn)
+      if (type != null && !assignable(type, parameter.typeFqn))
         add("$where.$name: writes $type, parameter takes ${parameter.typeFqn}")
     }
     for (fill in fills) {
@@ -1128,7 +1128,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               "$where: ${value.callableFqn} returns ${overloads.first().returnTypeFqn}, not ${value.typeFqn}"
           // A property-backed argument (or a nested call of them) drops out when its property is
           // unset; only a fixed one is written on every node, so only it may fill a required slot.
-          val always = value.arguments.filterValues { it is ExportProjection.Value.Fixed }.keys
+          // Except the call's one argument when nothing is fixed: the call itself is written only
+          // when some argument is, so whenever `spacedBy(space = …)` is written, `space` is.
+          val fixed = value.arguments.filterValues { it is ExportProjection.Value.Fixed }.keys
+          val always =
+            if (fixed.isEmpty() && value.arguments.size == 1) value.arguments.keys else fixed
           val mismatches = overloads.map { overloadMismatch(it, written, always) }
           if (mismatches.none { it == null }) {
             problems +=
@@ -1171,6 +1175,16 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
    * name and whose other parameters are all defaulted. A required parameter must be among [always],
    * the arguments written on every node, since lowering omits an unset property's.
    */
+  /**
+   * Whether a value of [type] may be passed where [to] is taken: the same type, or a discovered
+   * factory's return type whose recorded supertypes include it (`Arrangement.spacedBy` returns a
+   * `HorizontalOrVertical`, which is a `Vertical`).
+   */
+  private fun assignable(type: String, to: String?): Boolean =
+    type == to ||
+      (to != null &&
+        projectionFactories.any { it.returnTypeFqn == type && to in it.returnSupertypes })
+
   private fun overloadMismatch(
     overload: FactorySignature,
     written: Map<String, String?>,
@@ -1182,7 +1196,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         val parameter = parameters[name]
         when {
           parameter == null -> add("no parameter $name")
-          type != null && parameter.typeFqn != null && type != parameter.typeFqn ->
+          type != null && parameter.typeFqn != null && !assignable(type, parameter.typeFqn) ->
             add("$name takes ${parameter.typeFqn}, written $type")
         }
       }
