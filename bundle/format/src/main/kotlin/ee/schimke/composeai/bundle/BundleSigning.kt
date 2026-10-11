@@ -219,9 +219,8 @@ public object BundleSigning {
   // --- inflation budget -------------------------------------------------------------------------
 
   /**
-   * Cumulative inflated bytes [canonicalDigest] / [readSignatures] will read from one archive.
-   * Far above any real bundle (whose jars are minimized), and far below what a zip bomb inflates
-   * to.
+   * Cumulative inflated bytes [canonicalDigest] / [readSignatures] will read from one archive. Far
+   * above any real bundle (whose jars are minimized), and far below what a zip bomb inflates to.
    */
   internal const val MAX_UNCOMPRESSED_BYTES: Long = 1L shl 30 // 1 GiB
 
