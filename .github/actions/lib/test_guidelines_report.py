@@ -1051,6 +1051,28 @@ class LedgerTest(unittest.TestCase):
                          {"runs": 1, "usd": 0.11, "skipped": 0, "sha": self.SHA1})
         self.assertIn("asked the model nothing", body)
 
+    def test_the_ledger_sits_under_the_heading_so_truncation_keeps_it(self) -> None:
+        findings = "\n".join(f"finding {i}" for i in range(2000))
+        body = gl.MARKER + "\n### Design guidelines\n\n" + findings + "\n"
+        first = gl.finalize(body, "", self.SHA1, 0.1, True, "")
+        self.assertTrue(first.startswith(gl.MARKER + "\n### Design guidelines\n\n" +
+                                          gl.SECTION_START))
+        # post-comment.sh keeps the head of an over-long body.
+        head = first[:2000]
+        self.assertEqual(gl.ledger(head)["usd"], 0.1)
+        self.assertEqual(gl.gate(head), "skip")
+        # Rewritten again and again: one section, one rule, findings unchanged.
+        again = gl.finalize(first, first.replace("- [ ] Re-check", "- [x] Re-check"), self.SHA2,
+                            0.1, True, "")
+        skipped = gl.skipped(again, "c" * 40, "")
+        for text in (again, skipped):
+            self.assertEqual(text.count(gl.SECTION_START), 1)
+            self.assertEqual(text.count("\n---\n"), 1)
+            self.assertIn("finding 1999", text)
+        # The banner leads, then the ledger, then the findings.
+        self.assertLess(skipped.index(gl.BANNER_END), skipped.index(gl.SECTION_START))
+        self.assertLess(skipped.index(gl.SECTION_END), skipped.index("finding 0"))
+
     def test_a_garbled_ledger_starts_over(self) -> None:
         for data in ('{"runs": -3, "usd": "nan", "sha": "zz"}', "not json", "[1]"):
             body = gl.MARKER + f"\n<!-- guidelines-ledger {data} -->\n"

@@ -812,7 +812,8 @@ in the default branch's cache scope. The publish's CLI and this action's must ag
 request format (the same release line) for its results to match.
 
 **What a PR has spent, and when it is re-checked.** The sticky comment is rewritten on every run,
-so it ends with a ledger the action carries from one body to the next: the PR's total so far
+so under its heading it carries a ledger the action keeps from one body to the next (near the top,
+where truncating an over-long comment cannot cut it off): the PR's total so far
 across its model checks, what this revision spent, and how many pushes were not re-checked (a
 "nothing needed" revision keeps the total too). Each check also saves its results to an Actions
 cache keyed by the PR number (`compose-preview-guidelines-pr-<N>-…`, saved only by the job holding

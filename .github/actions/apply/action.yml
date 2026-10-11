@@ -345,7 +345,7 @@ inputs:
   guidelines-rerun-gate:
     description: >
       When `true` (the default), only a PR's first revision is checked unasked. The sticky
-      `<!-- guidelines-report -->` comment ends with a "Re-check the design guidelines" box; a
+      `<!-- guidelines-report -->` comment carries a "Re-check the design guidelines" box; a
       later push (or a re-run of the workflow) is checked only when someone with write access has
       ticked it, and the box clears once the check has run. An unticked push keeps the earlier
       findings, marked as NOT checked at the new revision. Either way the comment keeps the PR's
@@ -2115,6 +2115,7 @@ runs:
           --sha "$HEAD_SHA" --max-cost "$MAX_COST" --out _guidelines_skipped.md
         echo "::notice::compose-preview/apply: design guidelines NOT re-checked at ${HEAD_SHA:0:7}: tick the box on the guidelines comment to check the next push."
         export MARKER="<!-- guidelines-report -->"
+        export AUTHOR="github-actions[bot]"
         export BODY_FILE="_guidelines_skipped.md"
         export UPDATE_ONLY=1
         bash "$ACTION_PATH/lib/post-comment.sh"
@@ -2175,6 +2176,7 @@ runs:
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- guidelines-report -->"
+        export AUTHOR="github-actions[bot]"
         export BODY_FILE="_guidelines_comment.md"
         # The PR's running total and the re-run box, carried over from the earlier comment.
         python3 "$ACTION_PATH/../lib/guidelines-ledger.py" finalize --body "$BODY_FILE" \
@@ -2204,6 +2206,7 @@ runs:
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- guidelines-report -->"
+        export AUTHOR="github-actions[bot]"
         export BODY_FILE="_guidelines_resolved.md"
         export UPDATE_ONLY=1
         # A PR that changes the guidelines and no preview: say once where the rest are checked,

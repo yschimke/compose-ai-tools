@@ -9,6 +9,7 @@
 #                comment body (e.g. `<!-- preview-diff -->`).
 #   BODY_FILE  — file holding the new comment body. Required.
 #   GH_TOKEN   — gh CLI token (must be set by caller).
+#   AUTHOR     — optional login the sticky comment must belong to.
 #
 # Exits 0 on success. Caller decides whether to invoke (e.g. only on
 # non-empty body) — this script always posts/PATCHes.
@@ -78,7 +79,13 @@ while IFS= read -r stale_id; do
   gh api "repos/${REPO}/issues/comments/${stale_id}" -X DELETE >/dev/null || true
 done < <(list_comments "$PLACEHOLDER_JQ" || true)
 
-MARKER_JQ=".[] | select(.body | startswith(\"${MARKER}\")) | .id"
+# AUTHOR (optional): only that login's comment is the sticky one, so a comment someone else posts
+# with the marker is never taken for it (the guidelines check reads its ledger from the same one).
+if [ -n "${AUTHOR:-}" ]; then
+  MARKER_JQ=".[] | select(.user.login == \"${AUTHOR}\") | select(.body | startswith(\"${MARKER}\")) | .id"
+else
+  MARKER_JQ=".[] | select(.body | startswith(\"${MARKER}\")) | .id"
+fi
 COMMENT_ID=$(list_comments "$MARKER_JQ" | head -1)
 
 # UPDATE_ONLY=1: rewrite the sticky comment if one exists, never start one. For a "resolved" body
