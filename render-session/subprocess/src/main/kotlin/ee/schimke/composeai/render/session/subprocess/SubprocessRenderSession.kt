@@ -85,6 +85,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
       initializeTimeout = config.initializeTimeout,
       maxRenderTime = config.maxRenderTime,
       shutdownTimeout = config.shutdownTimeout,
+      attachDataProducts = config.attachDataProducts,
       factory = factory,
     )
   }
@@ -199,6 +200,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     maxRenderTime: Duration?,
     shutdownTimeout: Duration?,
     factory: DaemonClientFactory,
+    attachDataProducts: List<String>? = null,
   ): RenderSession {
     val spawn =
       try {
@@ -224,6 +226,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
           workspaceRoot = canonicalRoot.absolutePath,
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
+          attachDataProducts = attachDataProducts,
           maxRenderMs = maxRenderTime?.inWholeMilliseconds,
           timeout = initializeTimeout,
         )

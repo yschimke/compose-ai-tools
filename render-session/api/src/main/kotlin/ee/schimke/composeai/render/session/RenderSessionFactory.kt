@@ -74,6 +74,14 @@ public data class RenderSessionConfig(
   val maxRenderTime: Duration? = null,
   /** Total shutdown budget for a subprocess session; null keeps the graceful default. */
   val shutdownTimeout: Duration? = null,
+  /**
+   * Data-product kinds to attach to every render (`initialize.options.attachDataProducts`). Besides
+   * riding `renderFinished.dataProducts` (as paths, for file-backed kinds), the set tells the
+   * daemon what each render must produce, so it can skip on-demand post-capture work nobody asked
+   * for (`compose/figma-svg` today). Kinds the daemon does not know are dropped silently, so older
+   * daemons accept any list. Null keeps the daemon default; backends without a daemon ignore it.
+   */
+  val attachDataProducts: List<String>? = null,
 ) {
   public companion object {
     private fun inferWorkspaceRoot(descriptorPath: File): File =
