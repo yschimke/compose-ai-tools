@@ -69,6 +69,12 @@ import kotlinx.serialization.json.put
  * "synthesize": { "content": { "component": "wear-m3/text", "properties": { "text": "text" } } }
  * ```
  *
+ * A target's `modifier` links are written from property values onto the node's modifier:
+ * ```json
+ * "modifier": [ { "call": "androidx.compose.foundation.layout.size",
+ *                 "arguments": [ { "property": "sizeDp", "codec": { "unit": { "unit": "dp" } } } ] } ]
+ * ```
+ *
  * A target's `items`, keyed by a parameter declared through its receiver's DSL, names the member
  * each child is wrapped in, and its `itemRoles` the structural role that member opens:
  * ```json
@@ -115,6 +121,19 @@ object ExportProjectionJson {
             }
             if (target.items.isNotEmpty()) put("items", strings(target.items))
             if (target.itemRoles.isNotEmpty()) put("itemRoles", strings(target.itemRoles))
+            if (target.modifier.isNotEmpty()) {
+              put(
+                "modifier",
+                JsonArray(
+                  target.modifier.map { link ->
+                    buildJsonObject {
+                      put("call", link.callableFqn)
+                      put("arguments", JsonArray(link.arguments.map(::value)))
+                    }
+                  }
+                ),
+              )
+            }
           }
         }
       ),
@@ -151,6 +170,14 @@ object ExportProjectionJson {
               },
             items = target["items"]?.let(::stringMap).orEmpty(),
             itemRoles = target["itemRoles"]?.let(::stringMap).orEmpty(),
+            modifier =
+              target["modifier"]?.jsonArray.orEmpty().map { raw ->
+                val link = raw.jsonObject
+                ExportProjection.ModifierLink(
+                  link.getValue("call").jsonPrimitive.content,
+                  link.getValue("arguments").jsonArray.map(::readValue),
+                )
+              },
           )
         },
     )

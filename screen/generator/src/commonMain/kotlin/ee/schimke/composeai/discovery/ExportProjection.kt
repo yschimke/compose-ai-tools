@@ -59,6 +59,9 @@ data class ExportProjection(
    *   wrapper's body composes under the scope the catalog's `code.scopes[role]` declares. A
    *   parameter with no role wraps its children without one, so a list target whose rows take no
    *   context (Wear's `transformation = none`) names none.
+   * @property modifier links written from properties onto the node's modifier, wherever it is
+   *   placed: Wear's `wear-m3/icon` writes its `sizeDp` as `Modifier.size(…)`. Each link is written
+   *   when every argument is, skipped when none is, and refused when only some are.
    */
   data class Target(
     val record: String,
@@ -71,6 +74,7 @@ data class ExportProjection(
     val synthesize: Map<String, Synthesis> = emptyMap(),
     val items: Map<String, String> = emptyMap(),
     val itemRoles: Map<String, String> = emptyMap(),
+    val modifier: List<ModifierLink> = emptyList(),
   ) {
     init {
       for ((parameter, member) in items) {
@@ -143,6 +147,17 @@ data class ExportProjection(
     val parameters: Map<String, Value> = emptyMap(),
     val modifier: List<ChainLink> = emptyList(),
   )
+
+  /**
+   * A modifier link whose [arguments] are projection values: `Modifier.size(<sizeDp>.dp)` is
+   * `ModifierLink("androidx.compose.foundation.layout.size", listOf(Property("sizeDp",
+   * Unit("dp"))))`. [callableFqn] is a top-level extension, imported as a [ChainLink] is.
+   */
+  data class ModifierLink(val callableFqn: String, val arguments: List<Value>) {
+    init {
+      require(arguments.isNotEmpty()) { "`$callableFqn`: a modifier link reads at least one value" }
+    }
+  }
 
   /**
    * A child node of [component] synthesized for a composable parameter, its properties copied from
@@ -504,6 +519,7 @@ data class ExportProjection(
     }
     target.parameters.values.forEach(::visit)
     target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+    target.modifier.forEach { it.arguments.forEach(::visit) }
     target.synthesize.values.forEach { addAll(it.properties.values) }
   }
 
@@ -584,6 +600,11 @@ data class ExportProjection(
       }
       for (target in targets) {
         target.parameters.values.forEach(::visit)
+        for (link in target.modifier) {
+          // A top-level extension: the allowlist admits the callable itself.
+          add(link.callableFqn)
+          link.arguments.forEach(::visit)
+        }
         for (context in target.contexts.values) {
           context.parameters.values.forEach(::visit)
           context.modifier.forEach(::link)
@@ -602,7 +623,10 @@ data class ExportProjection(
       val arguments: Map<String, ScreenValue>,
       val slots: Map<String, String> = emptyMap(),
       val events: Map<String, String> = emptyMap(),
-      /** The role context's links, for the caller to append after the node's own modifiers. */
+      /**
+       * The target's own links written from properties, then the role context's, for the caller to
+       * append after the node's authored modifiers.
+       */
       val modifier: List<ChainLink> = emptyList(),
       /**
        * Children to synthesize, by parameter: each a component and its properties as saved (the
@@ -674,6 +698,28 @@ data class ExportProjection(
         }
       }
     }
+    val ownLinks = buildList {
+      for (link in target.modifier) {
+        val written =
+          link.arguments.mapIndexed { index, value ->
+            write(
+              value,
+              properties,
+              "${target.record}.modifier ${link.callableFqn}[$index]",
+              reasons,
+              icons,
+            )
+          }
+        when {
+          written.all { it == null } -> Unit
+          written.any { it == null } ->
+            reasons +=
+              "${target.record}.modifier: `${link.callableFqn}` is written from values only some " +
+                "of which are set"
+          else -> add(ChainLink(link.callableFqn, positional = written.filterNotNull()))
+        }
+      }
+    }
     val synthesized = buildMap {
       for ((parameter, synthesis) in target.synthesize) {
         val copied =
@@ -691,7 +737,7 @@ data class ExportProjection(
         arguments,
         target.slots,
         target.events,
-        context?.modifier.orEmpty(),
+        ownLinks + context?.modifier.orEmpty(),
         synthesized,
         target.items,
         target.itemRoles,

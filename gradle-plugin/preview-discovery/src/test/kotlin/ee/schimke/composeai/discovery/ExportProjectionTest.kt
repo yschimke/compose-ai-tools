@@ -738,6 +738,51 @@ class ExportProjectionTest {
   }
 
   @Test
+  fun `a modifier link is written from properties, skipped unset, refused half set`() {
+    val dp = ExportProjection.Codec.Unit("dp", positive = true)
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "wear/androidx.wear.compose.material3.IconKt.Icon",
+            emptyMap(),
+            modifier =
+              listOf(
+                ExportProjection.ModifierLink(
+                  "androidx.compose.foundation.layout.size",
+                  listOf(ExportProjection.Value.Property("sizeDp", dp)),
+                ),
+                ExportProjection.ModifierLink(
+                  "androidx.compose.foundation.layout.offset",
+                  listOf(
+                    ExportProjection.Value.Property("x", dp),
+                    ExportProjection.Value.Property("y", dp),
+                  ),
+                ),
+              ),
+          )
+        )
+      )
+    val sized =
+      projection.lower(mapOf("sizeDp" to JsonPrimitive(18))) as ExportProjection.Lowered.Node
+    val size = sized.modifier.single()
+    assertThat(size.callableFqn).isEqualTo("androidx.compose.foundation.layout.size")
+    assertThat((size.positional.single() as ScreenValue.Chain).links.single().callableFqn)
+      .isEqualTo("androidx.compose.ui.unit.dp")
+    assertThat((projection.lower(emptyMap()) as ExportProjection.Lowered.Node).modifier).isEmpty()
+    assertThat(
+        (projection.lower(mapOf("x" to JsonPrimitive(2))) as ExportProjection.Lowered.Refused)
+          .reasons
+          .single()
+      )
+      .contains("only some of which are set")
+    assertThat(projection.properties).containsExactly("sizeDp", "x", "y")
+    assertThat(projection.qualifiedOwners).contains("androidx.compose.foundation.layout.size")
+    assertThat(ExportProjectionJson.decode(ExportProjectionJson.encode(projection)).getOrThrow())
+      .isEqualTo(projection)
+  }
+
+  @Test
   fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
     fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
     assertThat(
