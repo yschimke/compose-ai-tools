@@ -176,6 +176,7 @@ internal object CliFlagValidation {
             "--concurrency",
             "--no-stream",
             "--provider-sort",
+            "--reasoning-effort",
             "--preferred-max-latency",
             "--preferred-min-throughput",
             "--checker",

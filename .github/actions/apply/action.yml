@@ -295,6 +295,15 @@ inputs:
       requests in flight are expected to cost leaves room for it. Ignored by a
       CLI without the flag.
     default: '4'
+  guidelines-reasoning-effort:
+    description: >
+      OpenRouter `reasoning.effort` for every guidelines request (the CLI's
+      `--reasoning-effort`): `none`, `minimal`, `low`, `medium`, `high`,
+      `xhigh`, `max`, or `default` to send none and leave the model at its own.
+      Reasoning tokens are billed as output and share `max_tokens` with the
+      reply. Empty keeps the CLI's default (`low`). Ignored by a CLI without
+      the flag.
+    default: ''
   guidelines-max-previews:
     description: >
       The most previews one PR sends to the guidelines check, across every
@@ -1875,6 +1884,7 @@ runs:
         MAX_COST: ${{ inputs.guidelines-max-cost }}
         MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
         CONCURRENCY: ${{ inputs.guidelines-concurrency }}
+        REASONING_EFFORT: ${{ inputs.guidelines-reasoning-effort }}
         CACHE_KEY: ${{ inputs.guidelines-cache-key }}
         GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
         GUIDELINES_PROFILE: ${{ inputs.guidelines-profile }}
@@ -1896,16 +1906,26 @@ runs:
         # Requests in flight at once. Passed only to a CLI that knows the flag: an older one would
         # read its value as a positional argument.
         concurrency_args=()
+        # Captured first: `grep -q` exits at the first match, and under pipefail the CLI's
+        # SIGPIPE would read as no match.
+        cli_help=$(compose-preview help 2>&1 || true)
         if [[ "$CONCURRENCY" =~ ^[1-9][0-9]?$ ]]; then
-          # Captured first: `grep -q` exits at the first match, and under pipefail the CLI's
-          # SIGPIPE would read as no match.
-          cli_help=$(compose-preview help 2>&1 || true)
           if grep -q -- '--concurrency' <<<"$cli_help"; then
             concurrency_args=(--concurrency "$CONCURRENCY")
           fi
         else
           echo "::warning::compose-preview/apply: guidelines-concurrency must be a whole number from 1 to 99; using the CLI's default."
         fi
+        # The reasoning effort, likewise only for a CLI that knows the flag.
+        case "$REASONING_EFFORT" in
+          '') ;;
+          none|minimal|low|medium|high|xhigh|max|default)
+            if grep -q -- '--reasoning-effort' <<<"$cli_help"; then
+              concurrency_args+=(--reasoning-effort "$REASONING_EFFORT")
+            fi
+            ;;
+          *) echo "::warning::compose-preview/apply: guidelines-reasoning-effort must be none, minimal, low, medium, high, xhigh, max or default; using the CLI's default." ;;
+        esac
         # The module directories come from the handoff, which the PR's own build
         # wrote, so neither their number nor any results already in them are
         # trusted: `guidelines-max-cost` is ONE budget for the whole check, not

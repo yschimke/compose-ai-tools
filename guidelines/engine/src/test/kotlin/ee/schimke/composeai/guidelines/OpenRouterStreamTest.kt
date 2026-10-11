@@ -195,28 +195,81 @@ class OpenRouterStreamTest {
   @Test
   fun `no provider honouring the parameters drops the requirement once, for good`() {
     val (server, bodies) =
-      serve { exchange, n ->
-        if (n == 1) {
-          val body =
-            """{"error":{"code":404,"message":"No endpoints found that can handle the """ +
-              """requested parameters."}}"""
-          exchange.responseHeaders.add("Content-Type", "application/json")
-          exchange.sendResponseHeaders(404, body.length.toLong())
-          exchange.responseBody.write(body.toByteArray())
-        } else exchange.sse(events)
-      }
+      serve { exchange, n -> if (n <= 2) exchange.noEndpoints() else exchange.sse(events) }
     try {
       val client = client(server)
       assertThat(client.complete(request, "m").status).isEqualTo(200)
       assertThat(client.relaxedParameters).isTrue()
       client.complete(request, "m")
-      assertThat(bodies).hasSize(3)
+      assertThat(bodies).hasSize(4)
+      // Strict with reasoning, strict without it (the reasoning may be what no provider takes),
+      // then relaxed, for good.
       assertThat(bodies[0]).contains("require_parameters")
-      assertThat(bodies[1]).doesNotContain("require_parameters")
+      assertThat(bodies[0]).contains("\"reasoning\"")
+      assertThat(bodies[1]).contains("require_parameters")
+      assertThat(bodies[1]).doesNotContain("\"reasoning\"")
       assertThat(bodies[2]).doesNotContain("require_parameters")
+      assertThat(bodies[3]).doesNotContain("require_parameters")
     } finally {
       server.stop(0)
     }
+  }
+
+  @Test
+  fun `a model no provider takes reasoning for is asked without it, keeping the strict schema`() {
+    val (server, bodies) =
+      serve { exchange, n -> if (n == 1) exchange.noEndpoints() else exchange.sse(events) }
+    try {
+      val client = client(server)
+      assertThat(client.complete(request, "m").status).isEqualTo(200)
+      assertThat(client.reasoningUnsupported).isTrue()
+      assertThat(client.relaxedParameters).isFalse()
+      client.complete(request, "m")
+      assertThat(bodies).hasSize(3)
+      assertThat(bodies[2]).contains("require_parameters")
+      assertThat(bodies[2]).doesNotContain("\"reasoning\"")
+      // Sized as a request sending no effort is.
+      assertThat(
+          GUIDELINES_JSON.parseToJsonElement(bodies[2]).jsonObject["max_tokens"].toString().toInt()
+        )
+        .isEqualTo(PreviewGuidelineRequests.replyTokenLimit(request, null))
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `the retry without reasoning asks for effort none`() {
+    val (server, bodies) = serve { exchange, _ -> exchange.sse(events) }
+    try {
+      client(server).completeWithoutReasoning(request, "m")
+      val sent = GUIDELINES_JSON.parseToJsonElement(bodies.single()).jsonObject
+      assertThat(sent["reasoning"].toString()).isEqualTo("""{"effort":"none"}""")
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `a streamed reasoning delta is progress, and never part of the reply`() {
+    val stream = StreamAssembler()
+    val thinking =
+      """{"id":"gen-1","model":"m","choices":[{"index":0,"delta":{"content":"",""" +
+        """"reasoning":"others pass? verdicts none {}"},"finish_reason":null}]}"""
+    assertThat(stream.line("data: $thinking")).isTrue()
+    events.forEach { stream.line(it) }
+    val parsed = GuidelineResponse.parse(stream.completion()!!, batch, emptyList()).getOrThrow()
+    assertThat(parsed.othersPass).containsKey("a")
+    assertThat(stream.completion()).doesNotContain("others pass?")
+  }
+
+  private fun HttpExchange.noEndpoints() {
+    val body =
+      """{"error":{"code":404,"message":"No endpoints found that can handle the """ +
+        """requested parameters."}}"""
+    responseHeaders.add("Content-Type", "application/json")
+    sendResponseHeaders(404, body.length.toLong())
+    responseBody.write(body.toByteArray())
   }
 
   @Test

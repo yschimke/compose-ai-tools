@@ -79,7 +79,25 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     args.flagValue("--preferred-max-latency")?.toDoubleOrNull()?.takeIf { it > 0 }
   private val preferredMinThroughput: Double? =
     args.flagValue("--preferred-min-throughput")?.toDoubleOrNull()?.takeIf { it > 0 }
-  /** Handoff mode's follow-up evidence: the captures the render job staged ([HandoffInputs]). */
+  /**
+   * `--reasoning-effort`: OpenRouter's `reasoning.effort` for every request
+   * ([OpenRouterClient.REASONING_EFFORTS]), or `default` to send none and leave the model at its
+   * own. Reasoning is billed as output and shares `max_tokens` with the reply.
+   */
+  private val reasoningEffortFlag: String? = args.flagValue("--reasoning-effort")
+  private val reasoningEffortValid: Boolean =
+    reasoningEffortFlag == null ||
+      reasoningEffortFlag == REASONING_DEFAULT ||
+      reasoningEffortFlag in OpenRouterClient.REASONING_EFFORTS
+  private val reasoningEffort: String? =
+    when (reasoningEffortFlag) {
+      null -> OpenRouterClient.DEFAULT_REASONING_EFFORT
+      REASONING_DEFAULT -> null
+      else -> reasoningEffortFlag
+    }
+  /**
+   * Handoff mode's follow-up evidence: the captures the render job staged (see [HandoffInputs]).
+   */
   private var handoffHost: GuidelineEvidenceHost? = null
   private val triage: Boolean = "--no-triage" !in args
   private val annotate: Boolean = "--annotate" in args
@@ -116,6 +134,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       )
       .withConcurrency(concurrency)
       .withChecker(checker ?: GuidelineChecker.VISION)
+      // The cache's half of the effort the client sends: a verdict at one is not reused at another.
+      .withReasoningEffort(reasoningEffort)
 
   /** The model a report names: the one that answers under this checker. */
   private val reportModel: String
@@ -129,6 +149,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     if (checker == null) {
       System.err.println(
         "guidelines: unknown --checker $checkerFlag (expected vision, or the " + "experimental jev)"
+      )
+      exitProcess(2)
+    }
+    if (!reasoningEffortValid) {
+      System.err.println(
+        "guidelines: unknown --reasoning-effort $reasoningEffortFlag (expected one of " +
+          (OpenRouterClient.REASONING_EFFORTS + REASONING_DEFAULT).joinToString() +
+          ")"
       )
       exitProcess(2)
     }
@@ -167,6 +195,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           it.providerSort = providerSort
           it.preferredMaxLatencySeconds = preferredMaxLatency
           it.preferredMinThroughput = preferredMinThroughput
+          it.reasoningEffort = reasoningEffort
         }
     if (previewsJson != null || rendersDir != null) exitProcess(runHandoff(client))
 
@@ -563,6 +592,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
 
   companion object {
     const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
+    /** The `--reasoning-effort` that sends none: the model reasons as it does by default. */
+    private const val REASONING_DEFAULT = "default"
     /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */
     private const val JEV_ROUNDS = 3
     private const val KIND_DEVICE = "device"
@@ -598,6 +629,13 @@ data class ModuleGuidelines(
    * text-only checker. Null (and absent from the file) for a vision run.
    */
   val checker: String? = null,
+  /**
+   * Of the output tokens the run was billed for, how many were the model's reasoning: what to watch
+   * when tuning `--reasoning-effort`. Null when none were reported, and in older files.
+   */
+  val reasoningTokens: Long? = null,
+  /** The output tokens the run was billed for, reasoning included. Null as [reasoningTokens]. */
+  val completionTokens: Long? = null,
 ) {
   companion object {
     fun of(
@@ -617,6 +655,8 @@ data class ModuleGuidelines(
         problems = run.problems,
         costUsd = run.costUsd,
         checker = checker,
+        reasoningTokens = run.reasoningTokens.takeIf { it > 0 },
+        completionTokens = run.completionTokens.takeIf { it > 0 },
       )
   }
 }
@@ -649,6 +689,9 @@ internal object GuidelinesReportRenderer {
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
         (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
+        (run.reasoningTokens
+          .takeIf { it > 0 }
+          ?.let { ", $it of ${run.completionTokens} output token(s) spent reasoning" } ?: "") +
         (run.results
           .sumOf { it.implicitPasses.size }
           .takeIf { it > 0 }

@@ -187,10 +187,12 @@ public final class ee/schimke/composeai/guidelines/GuidelineFacts {
 
 public abstract interface class ee/schimke/composeai/guidelines/GuidelineModel {
 	public abstract fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineModel$DefaultImpls {
+	public static fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public static fun decide (Lee/schimke/composeai/guidelines/GuidelineModel;Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
 }
 
@@ -278,6 +280,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
 	public final fun getRanBy ()Ljava/lang/String;
+	public final fun getReasoningEffort ()Ljava/lang/String;
 	public final fun getRetry ()Lee/schimke/composeai/guidelines/GuidelineRetry;
 	public final fun getRulesSource ()Ljava/lang/String;
 	public final fun getTriage ()Z
@@ -286,6 +289,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public fun toString ()Ljava/lang/String;
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }
 
@@ -303,9 +307,12 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public final fun copy (Ljava/util/List;DILjava/util/List;I)Lee/schimke/composeai/guidelines/GuidelineRunResult;
 	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineRunResult;Ljava/util/List;DILjava/util/List;IILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompletionTokens ()J
 	public final fun getCostUsd ()D
 	public final fun getFailedRequests ()I
 	public final fun getProblems ()Ljava/util/List;
+	public final fun getReasoningRetries ()I
+	public final fun getReasoningTokens ()J
 	public final fun getRequests ()I
 	public final fun getResults ()Ljava/util/List;
 	public fun hashCode ()I
@@ -496,27 +503,35 @@ public final class ee/schimke/composeai/guidelines/ModelResponse$Companion {
 public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke/composeai/guidelines/GuidelineModel {
 	public static final field Companion Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;
 	public static final field DEFAULT_MODEL Ljava/lang/String;
+	public static final field DEFAULT_REASONING_EFFORT Ljava/lang/String;
+	public static final field REASONING_OFF Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Lokhttp3/OkHttpClient;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Lokhttp3/OkHttpClient;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public final fun getIdleTimeout ()Ljava/time/Duration;
 	public final fun getPreferredMaxLatencySeconds ()Ljava/lang/Double;
 	public final fun getPreferredMinThroughput ()Ljava/lang/Double;
 	public final fun getProviderSort ()Ljava/lang/String;
+	public final fun getReasoningEffort ()Ljava/lang/String;
+	public final fun getReasoningUnsupported ()Z
 	public final fun getRelaxedParameters ()Z
 	public final fun getStream ()Z
 	public final fun setIdleTimeout (Ljava/time/Duration;)V
 	public final fun setPreferredMaxLatencySeconds (Ljava/lang/Double;)V
 	public final fun setPreferredMinThroughput (Ljava/lang/Double;)V
 	public final fun setProviderSort (Ljava/lang/String;)V
+	public final fun setReasoningEffort (Ljava/lang/String;)V
 	public final fun setStream (Z)V
 }
 
 public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 	public final fun chatBody (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public final fun chatBody (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
 	public final fun getDEFAULT_IDLE_TIMEOUT ()Ljava/time/Duration;
 	public final fun getDEFAULT_REQUEST_TIMEOUT ()Ljava/time/Duration;
+	public final fun getREASONING_EFFORTS ()Ljava/util/List;
 	public final fun httpClient (Ljava/time/Duration;)Lokhttp3/OkHttpClient;
 	public static synthetic fun httpClient$default (Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;Ljava/time/Duration;ILjava/lang/Object;)Lokhttp3/OkHttpClient;
 }
@@ -560,7 +575,9 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;
 	public final fun expectedReplyTokens (I)I
 	public final fun getRESPONSE_SCHEMA ()Lkotlinx/serialization/json/JsonObject;
+	public final fun reasoningTokenAllowance (Ljava/lang/String;)I
 	public final fun replyTokenLimit (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;)I
+	public final fun replyTokenLimit (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)I
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;
 	public final fun request (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Ljava/lang/String;Ljava/util/List;ILjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;

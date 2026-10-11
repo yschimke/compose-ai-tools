@@ -197,10 +197,13 @@ public class GuidelineResultCache(private val directory: File) {
     private const val CHECKED_DIR = "checked"
 
     /**
-     * Bumped when the engine's request changes in a way that changes verdicts, so older results
-     * aren't reused. 8: replies list only non-passes plus an `others` statement per subject.
+     * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
+     * how evidence is attached, the reply contract), so results from an older engine are not
+     * reused. 8: replies list only what does not pass, plus an `others` statement per subject. 9:
+     * the reasoning effort is sent (`low` by default) and `max_tokens` sized for it, and a reply
+     * cut at `max_tokens` no longer passes the rules it left out.
      */
-    public const val REQUEST_FORMAT: Int = 8
+    public const val REQUEST_FORMAT: Int = 9
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, pictures, accessibility data
