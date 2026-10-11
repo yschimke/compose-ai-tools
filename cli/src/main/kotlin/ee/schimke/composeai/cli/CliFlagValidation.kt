@@ -31,6 +31,35 @@ internal object CliFlagValidation {
   // its own entry.
   private val reportFlags = commandBase + setOf("--json", "--fail-on", "--id-file")
 
+  /** `guidelines` and `review`: one engine, one set of options; `--backend` picks who judges. */
+  private val guidelinesFlags =
+    reportFlags +
+      setOf(
+        "--backend",
+        "--model",
+        "--max-cost",
+        "--rounds",
+        "--request-timeout",
+        "--idle-timeout",
+        "--concurrency",
+        "--no-stream",
+        "--provider-sort",
+        "--reasoning-effort",
+        "--preferred-max-latency",
+        "--preferred-min-throughput",
+        "--checker",
+        "--compare-with",
+        "--no-triage",
+        "--annotate",
+        "--guidelines",
+        "--surface",
+        "--profile",
+        "--previews-json",
+        "--renders-dir",
+        "--a11y-json",
+        "--source-root",
+      )
+
   /**
    * Every flag the server's `serve` documents, shared by the launchers (the server's `ui` accepts
    * them all too), so new serve flags are added in one place.
@@ -165,32 +194,8 @@ internal object CliFlagValidation {
             "--baseline-dir",
           ),
       "a11y" to reportFlags,
-      "guidelines" to
-        reportFlags +
-          setOf(
-            "--model",
-            "--max-cost",
-            "--rounds",
-            "--request-timeout",
-            "--idle-timeout",
-            "--concurrency",
-            "--no-stream",
-            "--provider-sort",
-            "--reasoning-effort",
-            "--preferred-max-latency",
-            "--preferred-min-throughput",
-            "--checker",
-            "--compare-with",
-            "--no-triage",
-            "--annotate",
-            "--guidelines",
-            "--surface",
-            "--profile",
-            "--previews-json",
-            "--renders-dir",
-            "--a11y-json",
-            "--source-root",
-          ),
+      "guidelines" to guidelinesFlags,
+      "review" to guidelinesFlags,
       "diff-semantics" to setOf("--json", "--fail-on-change", "--help", "-h"),
       "devices" to setOf("--json", "--help", "-h"),
       "extensions" to setOf("--json"),

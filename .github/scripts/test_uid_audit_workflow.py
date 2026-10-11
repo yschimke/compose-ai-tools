@@ -55,6 +55,19 @@ class AuditWorkflowTest(unittest.TestCase):
             status = json.loads((root / '_uid_audit/audit-status.json').read_text())
             self.assertEqual(status['status'], 'not_run')
 
+    def test_cli_install_engine_source_and_provenance_name_one_release(self):
+        steps = self.job['steps']
+        install = next(s for s in steps if s.get('uses', '').startswith('yschimke/compose-ai-tools/.github/actions/install@'))
+        sha = install['uses'].split('@')[1].split()[0]
+        version = install['with']['version']
+        engine = next(s for s in steps if s.get('with', {}).get('path') == '_audit_engine')
+        self.assertEqual(engine['with']['ref'], sha)
+        text = WORKFLOW.read_text()
+        self.assertIn(f'cli={version}\\n', text)
+        # Parallel requests and bounded reasoning keep a 100-capture plan inside the job limit.
+        self.assertIn('--concurrency 4 --reasoning-effort low', text)
+        self.assertLessEqual(self.job['timeout-minutes'], 20)
+
     def test_audit_artifact_can_be_replaced_on_retry(self):
         upload = next(s for s in self.job['steps'] if s.get('uses', '').startswith('actions/upload-artifact@'))
         self.assertIs(upload['with'].get('overwrite'), True)

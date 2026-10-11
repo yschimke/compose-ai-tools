@@ -529,32 +529,19 @@ abstract class BundlePreviewTask : DefaultTask() {
     val fullRecord = fullSelection.record
     // One carried record for both artifacts. Policy is component-wide, declared by whichever
     // preview carries the annotation, so `builder` is merged from the full record — otherwise
-    // selecting a different preview silently reverts to defaults. Everything else stays the
-    // filtered view, so bindings only name previews this bundle contains.
+    // selecting a different preview silently reverts to defaults. Bindings stay the filtered
+    // view, so they only name previews this bundle contains.
     //
     // The merged policy's `declaredBy` / `conflicting` preview ids are remapped through `bundleIds`
-    // for the same invariant; unselected previews are dropped rather than guessed.
+    // for the same invariant; unselected previews are dropped rather than guessed. The chosen
+    // overload also comes from the full record: reselecting over the filtered manifest could pick
+    // a different signature than `ui-builder.json` describes.
     val carriedRecord =
-      (overloadNames?.let { ComponentRecords.select(filteredManifest, it).record }
-          ?: ComponentRecords.from(filteredManifest))
-        .let { carried ->
-          val policyByComponent =
-            fullRecord.components.associate {
-              it.canonicalId to remapPolicyPreviewIds(it.builder, bundleIds)
-            }
-          carried
-            .newBuilder()
-            .also { b3 ->
-              b3.components =
-                carried.components.map {
-                  it
-                    .newBuilder()
-                    .also { b -> b.builder = policyByComponent[it.canonicalId] ?: it.builder }
-                    .build()
-                }
-            }
-            .build()
-        }
+      carriedComponentRecord(
+        full = fullRecord,
+        filtered = ComponentRecords.from(filteredManifest),
+        bundleIds = bundleIds,
+      )
     val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord, fullSelection.diagnostics)
     val zipBytes =
       buildZip(
@@ -1810,6 +1797,36 @@ private val SPATIAL_IMAGE_SUFFIXES = listOf(".png", ".jpg", ".jpeg", ".webp")
  * (`"A B"` and `"A_B"`), which would overwrite entries and duplicate manifest ids. Later collisions
  * get `_<n>`. A repeated raw id maps to the same bundle id.
  */
+/**
+ * The component record a bundle carries: each component as the [full] record chose it (overload,
+ * signature, code, and builder policy remapped through [bundleIds]), with only what names previews
+ * — bindings, component ids and builder orphans — taken from [filtered]. Extracted for testing.
+ */
+internal fun carriedComponentRecord(
+  full: ComponentRecordFile,
+  filtered: ComponentRecordFile,
+  bundleIds: Map<String, String>,
+): ComponentRecordFile {
+  val fullById = full.components.associateBy { it.canonicalId }
+  return filtered
+    .newBuilder()
+    .also { file ->
+      file.components =
+        filtered.components.map { carried ->
+          val chosen = fullById[carried.canonicalId] ?: carried
+          chosen
+            .newBuilder()
+            .also { b ->
+              b.bindings = carried.bindings
+              b.componentIds = carried.componentIds
+              b.builder = remapPolicyPreviewIds(chosen.builder, bundleIds) ?: carried.builder
+            }
+            .build()
+        }
+    }
+    .build()
+}
+
 /**
  * Rewrites [BuilderPolicy.declaredBy] / [BuilderPolicy.conflicting] (preview ids, merged from the
  * full record) into the bundle's id namespace, dropping previews the bundle doesn't carry. The

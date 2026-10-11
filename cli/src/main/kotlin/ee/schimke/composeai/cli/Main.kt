@@ -15,7 +15,12 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
-    "guidelines" to { a -> GuidelinesCommand(a).run() },
+    "guidelines" to
+      { a ->
+        if (a.firstOrNull() == "key") GuidelinesKeyCommand(a.drop(1)).run()
+        else GuidelinesCommand(a).run()
+      },
+    "review" to { a -> GuidelinesCommand(a, review = true).run() },
     "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
     "history" to { a -> HistoryCommand(a).run() },
     "history-manifest" to { a -> HistoryManifestCommand(a).run() },
@@ -185,9 +190,18 @@ private fun printFullUsage() {
                        still writes the recording but exits non-zero (code 2).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
+      review           Review rendered previews against their catalog's design guidelines
+                       with the agent running the command as the model (--backend prompt,
+                       the default): writes each request to build/compose-previews/review/
+                       <id>/request.md with its pictures, reads <id>/reply.json on the next
+                       run, and writes the follow-up when a reply asks for more evidence
+                       (a11y, source, another render). Exits 3 while requests wait for
+                       replies. Same selection flags as render/show; --backend openrouter
+                       and every `guidelines` flag also apply
       guidelines       Check rendered previews against their catalog's design guidelines
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
-                       batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
+                       batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY, else the file
+                       `guidelines key set` stores (`guidelines key status|forget`). Flags: --model,
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
                        --concurrency <n> (requests in flight, default 4; 1 is one at a
                        time), --idle-timeout <seconds> (a stream with no token, default

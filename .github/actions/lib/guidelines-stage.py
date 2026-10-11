@@ -244,6 +244,19 @@ def long_render(preview: dict, previews_dir: Path) -> Path | None:
     return None
 
 
+def long_scroll(preview: dict) -> dict:
+    """The scroll state of the preview's long screenshot, as its `render/scroll/long` data product
+    records it: `{"mode": "LONG"}` plus whatever of `maxScrollPx`, `axis`, `atEnd` and `reachedPx`
+    the manifest holds. A capture stopped by `maxScrollPx` can end mid-scroll, so the check must
+    not read content cut at its bottom edge as clipped; dropping these would hide that."""
+    for product in preview.get("dataProducts") or []:
+        if isinstance(product, dict) and product.get("kind") == LONG_KIND:
+            scroll = product.get("scroll")
+            if isinstance(scroll, dict):
+                return {**scroll, "mode": "LONG"}
+    return {"mode": "LONG"}
+
+
 def stageable(preview: dict, previews_dir: Path) -> bool:
     """Whether [stage_module] would keep [preview]: it has a render on disk (a capture, or a long
     screenshot standing in for one). A preview whose render failed takes no slot of the cap."""
@@ -320,7 +333,10 @@ def stage_module(
         if not captures and long is not None:
             # A LONG-only preview: the long screenshot is its only render, so it is the capture.
             shutil.copyfile(long, target / "renders" / long.name)
-            captures.append({"renderOutput": f"renders/{long.name}", "scroll": {"mode": "LONG"}})
+            # Its scroll state comes along, so one stopped at `maxScrollPx` is described as such.
+            captures.append(
+                {"renderOutput": f"renders/{long.name}", "scroll": long_scroll(preview)}
+            )
         if not captures:
             continue
         if has_source(preview, module_dir):

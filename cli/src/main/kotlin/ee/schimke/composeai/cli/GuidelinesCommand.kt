@@ -1,13 +1,16 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.guidelines.CatalogGuidelinesLoader
+import ee.schimke.composeai.guidelines.DeferredReplyModel
 import ee.schimke.composeai.guidelines.GuidelineAnnotator
 import ee.schimke.composeai.guidelines.GuidelineBudget
 import ee.schimke.composeai.guidelines.GuidelineChecker
+import ee.schimke.composeai.guidelines.GuidelineCredentials
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineModel
 import ee.schimke.composeai.guidelines.GuidelineResultCache
+import ee.schimke.composeai.guidelines.GuidelineRetry
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
 import ee.schimke.composeai.guidelines.GuidelineSubjectKind
@@ -44,11 +47,25 @@ import kotlinx.serialization.json.Json
  * `--previews-json` / `--renders-dir` run the engine over handoff renders with no Gradle (CI
  * publish).
  *
- * The OpenRouter key comes only from `COMPOSE_PREVIEW_OPENROUTER_KEY`, and is withheld from the
- * Gradle daemon's environment and from render daemons.
+ * The OpenRouter key comes from `COMPOSE_PREVIEW_OPENROUTER_KEY`, else from the user's credentials
+ * file (`guidelines key set`, [GuidelineCredentials]); never from the command line. The variable is
+ * withheld from the Gradle daemon's environment and from render daemons.
  */
-class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
-  private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
+class GuidelinesCommand(args: List<String>, private val review: Boolean = false) :
+  A11yCommand(args) {
+  /**
+   * Who judges: `openrouter` (the default for `guidelines`) asks a model with the user's key;
+   * `prompt` (the default for `review`) writes each request out for the agent running the command,
+   * and reads its replies on the next run ([DeferredReplyModel]).
+   */
+  private val backend: String =
+    args.flagValue("--backend") ?: if (review) BACKEND_PROMPT else BACKEND_OPENROUTER
+  private val prompted: Boolean
+    get() = backend == BACKEND_PROMPT
+
+  private val model: String =
+    args.flagValue("--model")
+      ?: if (prompted) DeferredReplyModel.DEFAULT_MODEL else OpenRouterClient.DEFAULT_MODEL
   private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
   private val roundsFlag: Int? = args.flagValue("--rounds")?.toIntOrNull()
   /** Follow-up rounds: 1 for the vision model, 3 for the jev checker, which starts minimal. */
@@ -127,7 +144,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         model = model,
         budget = GuidelineBudget(),
         maxRounds = rounds,
-        triage = triage,
+        // Triage asks OpenRouter's decisions API, which an agent answering requests does not have.
+        triage = triage && !prompted,
         maxCostUsd = maxCost,
         rulesSource = rulesSource,
         ranBy = System.getenv("USER")?.let { "cli:$it" },
@@ -136,6 +154,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       .withChecker(checker ?: GuidelineChecker.VISION)
       // The cache's half of the effort the client sends: a verdict at one is not reused at another.
       .withReasoningEffort(reasoningEffort)
+      // An agent's unreadable reply is its to fix: asking again would read the same file, and
+      // halves would be new requests for it to answer.
+      .let { if (prompted) it.withRetry(GuidelineRetry(maxAttempts = 1, split = false)) else it }
 
   /** The model a report names: the one that answers under this checker. */
   private val reportModel: String
@@ -160,6 +181,21 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       )
       exitProcess(2)
     }
+    val command = if (review) "review" else "guidelines"
+    if (backend !in BACKENDS) {
+      System.err.println(
+        "$command: unknown --backend $backend (expected ${BACKENDS.joinToString()})"
+      )
+      exitProcess(2)
+    }
+    val handoff = previewsJson != null || rendersDir != null
+    if (prompted && (handoff || checker == GuidelineChecker.JEV)) {
+      System.err.println(
+        "$command: --backend $BACKEND_PROMPT runs in a Gradle project with the vision checker; " +
+          "handoff mode and --checker jev need --backend $BACKEND_OPENROUTER"
+      )
+      exitProcess(2)
+    }
     // Read before the run: a handoff run writes its report beside the renders, which may be the
     // very file it is asked to compare with.
     compareWith?.let { path ->
@@ -170,34 +206,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             exitProcess(2)
           }
     }
-    val key = System.getenv(KEY_ENV)?.trim()?.takeIf { it.isNotEmpty() }
-    if (key == null) {
-      System.err.println(
-        "guidelines: set $KEY_ENV to an OpenRouter key (openrouter.ai, Settings, then Keys). " +
-          "The key is read from the environment only, never from the command line."
-      )
-      exitProcess(2)
-    }
-    val client =
-      OpenRouterClient(
-          key,
-          http =
-            OpenRouterClient.httpClient(
-              requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-                ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
-            ),
-        )
-        .also {
-          it.stream = stream
-          idleTimeoutSeconds?.let { seconds ->
-            it.idleTimeout = java.time.Duration.ofSeconds(seconds)
-          }
-          it.providerSort = providerSort
-          it.preferredMaxLatencySeconds = preferredMaxLatency
-          it.preferredMinThroughput = preferredMinThroughput
-          it.reasoningEffort = reasoningEffort
-        }
-    if (previewsJson != null || rendersDir != null) exitProcess(runHandoff(client))
+    val client = if (prompted) null else openRouterClient()
+    if (handoff) exitProcess(runHandoff(client!!))
 
     val raw =
       renderModules(
@@ -220,6 +230,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     val narrowed = results.size < manifests.sumOf { it.second.previews.size }
 
     val reports = mutableListOf<ModuleGuidelines>()
+    val waiting = mutableListOf<File>()
     var failed = false
     var incomplete = false
     for ((module, moduleResults) in results.groupBy { it.module }) {
@@ -282,9 +293,13 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             },
         )
       val cache = GuidelineResultCache(buildDir.resolve("guidelines"))
+      // Prompt mode: requests are written under the module for the agent, answers read back.
+      val deferred =
+        if (prompted) DeferredReplyModel(buildDir.resolve(REVIEW_DIR), model, rerunCommand())
+        else null
       val run =
         engine(
-            client,
+            deferred ?: client!!,
             cache,
             guidelines,
             guidelinesLocation ?: "${buildDir.path}/" + CatalogGuidelinesV1.FILE_NAME,
@@ -313,13 +328,20 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       reports += moduleReport
       failed = failed || tripped(run.results, guidelines)
       incomplete = incomplete || incomplete(module, run)
+      deferred?.let { prompts ->
+        waiting += prompts.waiting
+        // A run over the whole selection keeps only the requests the current previews make.
+        if (!narrowed && subjects.size == moduleResults.size) prompts.prune()
+      }
       if (!jsonOutput) GuidelinesReportRenderer.print(module, guidelines, run, checker)
     }
     if (jsonOutput)
       println(REPORT_JSON.encodeToString(ListSerializer(ModuleGuidelines.serializer()), reports))
     compare(reports)
+    if (waiting.isNotEmpty()) printWaiting(waiting)
     exitProcess(
       when {
+        waiting.isNotEmpty() && !incomplete -> EXIT_WAITING_FOR_REPLIES
         failOn != null && failOn !in setOf("warning", "warnings", "info", "none") -> {
           System.err.println("Unknown --fail-on value: $failOn (expected warning|info|none)")
           EXIT_UNKNOWN_FAIL_ON
@@ -327,6 +349,72 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
         else -> guidelinesExitCode(incomplete, failed, raw.buildOk)
       }
     )
+  }
+
+  /**
+   * Tells whoever ran the command (in prompt mode, an agent) which requests wait for a reply: on
+   * stdout unless it carries `--json`, so the report stays parseable.
+   */
+  private fun printWaiting(waiting: List<File>) {
+    val out = if (jsonOutput) System.err else System.out
+    out.println()
+    out.println(
+      "${waiting.size} review request(s) wait for a reply. For each, read request.md, look at " +
+        "every picture it lists, and write only the JSON reply it asks for to reply.json beside " +
+        "it (a subagent can take one each). Then run `${rerunCommand()}` again: it reads the " +
+        "replies, and asks again where a reply needs more evidence."
+    )
+    waiting.forEach { out.println("  ${it.path}") }
+  }
+
+  /** This command line again, for a request file to name. */
+  private fun rerunCommand(): String =
+    (listOf("compose-preview", if (review) "review" else "guidelines") + args).joinToString(" ") {
+      if (it.matches(Regex("[A-Za-z0-9_./:=@,+%-]+"))) it else "'" + it.replace("'", "'\\''") + "'"
+    }
+
+  /**
+   * The OpenRouter client, with the key from the environment or the credentials file; exits when
+   * there is none, or when a stored key is not trusted for this project.
+   */
+  private fun openRouterClient(): OpenRouterClient {
+    val resolved =
+      GuidelineCredentials.openRouter { System.err.println("guidelines: $it") }
+        ?: run {
+          System.err.println(
+            "guidelines: no OpenRouter key (openrouter.ai, Settings, then Keys). Store one with " +
+              "`compose-preview guidelines key set`, or set $KEY_ENV. It is never read from the " +
+              "command line."
+          )
+          exitProcess(2)
+        }
+    // A stored key is spent only on a project its owner trusted, asked before anything is built.
+    if (resolved.stored) {
+      val handoff = previewsJson != null || rendersDir != null
+      val project =
+        (if (handoff) sourceRoot?.let(::File) else findProjectRoot()) ?: File(".").absoluteFile
+      if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project)) exitProcess(2)
+    }
+    val client =
+      OpenRouterClient(
+          resolved.key,
+          http =
+            OpenRouterClient.httpClient(
+              requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+                ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+            ),
+        )
+        .also {
+          it.stream = stream
+          idleTimeoutSeconds?.let { seconds ->
+            it.idleTimeout = java.time.Duration.ofSeconds(seconds)
+          }
+          it.providerSort = providerSort
+          it.preferredMaxLatencySeconds = preferredMaxLatency
+          it.preferredMinThroughput = preferredMinThroughput
+          it.reasoningEffort = reasoningEffort
+        }
+    return client
   }
 
   /**
@@ -527,11 +615,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             result.params.heightDp ?: 0,
             // As in handoff mode: a capture scrolled to its END has scrolled the time text away.
             description =
-              HandoffInputs.describeCapture(
-                result.params.widthDp ?: 0,
-                result.params.heightDp ?: 0,
-                result.captures.firstOrNull()?.scroll?.mode,
-              ),
+              result.captures.firstOrNull()?.scroll.let { scroll ->
+                HandoffInputs.describeCapture(
+                  result.params.widthDp ?: 0,
+                  result.params.heightDp ?: 0,
+                  scroll?.mode,
+                  scroll?.let { ScrollLimit(it.maxScrollPx, it.atEnd, it.reachedPx, it.axis) },
+                )
+              },
           )
         ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
@@ -599,7 +690,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   }
 
   companion object {
-    const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
+    const val KEY_ENV: String = GuidelineCredentials.ENV
+    const val BACKEND_OPENROUTER: String = "openrouter"
+    const val BACKEND_PROMPT: String = "prompt"
+    val BACKENDS: List<String> = listOf(BACKEND_PROMPT, BACKEND_OPENROUTER)
+    /** Where prompt mode writes requests and reads replies, under `build/compose-previews/`. */
+    const val REVIEW_DIR: String = "review"
+    /** Prompt mode left requests waiting for a reply: nothing failed, the review is not done. */
+    const val EXIT_WAITING_FOR_REPLIES: Int = 3
     /** The `--reasoning-effort` that sends none: the model reasons as it does by default. */
     private const val REASONING_DEFAULT = "default"
     /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */

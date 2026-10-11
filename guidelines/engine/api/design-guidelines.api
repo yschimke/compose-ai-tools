@@ -33,6 +33,24 @@ public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoaderKt {
 	public static synthetic fun subjectRules$default (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
 }
 
+public final class ee/schimke/composeai/guidelines/DeferredReplyModel : ee/schimke/composeai/guidelines/GuidelineModel {
+	public static final field Companion Lee/schimke/composeai/guidelines/DeferredReplyModel$Companion;
+	public static final field DEFAULT_MODEL Ljava/lang/String;
+	public static final field REPLY Ljava/lang/String;
+	public static final field REQUEST Ljava/lang/String;
+	public fun <init> (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public final fun getWaiting ()Ljava/util/List;
+	public final fun prune ()V
+}
+
+public final class ee/schimke/composeai/guidelines/DeferredReplyModel$Companion {
+	public final fun idOf (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;)Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineAnnotator {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineAnnotator;
 	public final fun annotate ([BLjava/util/List;Ljava/util/List;Ljava/lang/String;)[B
@@ -94,6 +112,42 @@ public final class ee/schimke/composeai/guidelines/GuidelineChecker : java/lang/
 
 public final class ee/schimke/composeai/guidelines/GuidelineChecker$Companion {
 	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineChecker;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineCredentials {
+	public static final field ENV Ljava/lang/String;
+	public static final field FILE_ENV Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineCredentials;
+	public static final field OPENROUTER Ljava/lang/String;
+	public static final field SCHEMA_V1 Ljava/lang/String;
+	public final fun defaultFileOrNull (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ljava/io/File;
+	public static synthetic fun defaultFileOrNull$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/io/File;
+	public final fun forget (Ljava/io/File;Ljava/lang/String;)Z
+	public static synthetic fun forget$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;ILjava/lang/Object;)Z
+	public final fun isTrusted (Ljava/io/File;Ljava/io/File;)Z
+	public final fun openRouter (Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public static synthetic fun openRouter$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public final fun store (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun store$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun trust (Ljava/io/File;Ljava/io/File;)V
+	public final fun trustedProjects (Ljava/io/File;)Ljava/util/List;
+	public final fun untrust (Ljava/io/File;Ljava/io/File;)Z
+	public final fun validKey (Ljava/lang/String;)Z
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineCredentials$Resolved {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getMasked ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getStored ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/guidelines/GuidelineEngine {
@@ -309,6 +363,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCompletionTokens ()J
 	public final fun getCostUsd ()D
+	public final fun getDeferredRequests ()I
 	public final fun getFailedEvidence ()I
 	public final fun getFailedRequests ()I
 	public final fun getProblems ()Ljava/util/List;
@@ -477,6 +532,7 @@ public final class ee/schimke/composeai/guidelines/JevTriage$Offer {
 
 public final class ee/schimke/composeai/guidelines/ModelResponse {
 	public static final field Companion Lee/schimke/composeai/guidelines/ModelResponse$Companion;
+	public static final field DEFERRED I
 	public static final field NO_ANSWER I
 	public fun <init> (ILjava/lang/String;)V
 	public final fun component1 ()I
@@ -497,6 +553,7 @@ public final class ee/schimke/composeai/guidelines/ModelResponse {
 }
 
 public final class ee/schimke/composeai/guidelines/ModelResponse$Companion {
+	public final fun deferred (Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public final fun noAnswer (Ljava/lang/String;Z)Lee/schimke/composeai/guidelines/ModelResponse;
 	public static synthetic fun noAnswer$default (Lee/schimke/composeai/guidelines/ModelResponse$Companion;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
 }

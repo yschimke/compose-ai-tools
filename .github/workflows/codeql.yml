@@ -68,7 +68,7 @@ jobs:
 
   analyze:
     needs: changes
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     # The java-kotlin extractor lags the Kotlin release train: this repo builds

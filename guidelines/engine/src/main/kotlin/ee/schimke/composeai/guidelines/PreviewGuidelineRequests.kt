@@ -206,13 +206,15 @@ public object PreviewGuidelineRequests {
       "is scrolled out of view, but only while the container can still scroll towards it. At " +
       "either end of the scroll it is clipped: the first item cut at the start edge when the " +
       "content is scrolled to its start, the last item cut at the end edge when it is scrolled to " +
-      "its end, and anything cut at the start or end of a long screenshot can never be scrolled " +
-      "clear. A round screen's curve slicing the sides of an item near a scrolling edge follows " +
-      "the same rule. Content cut across that axis anywhere else, or inside its own bounds, is " +
-      "clipped. When `scroll-capture` may be asked for a subject (its " +
-      "long screenshot: the whole scrolling content, already rendered) and you cannot tell " +
-      "scrolled-away content from clipped content, answer `needs_evidence` asking for it " +
-      "rather than guess. " +
+      "its end, and anything cut at the start of a long screenshot can never be scrolled clear, " +
+      "nor can anything cut at its end unless the screenshot's description says it STOPPED AT " +
+      "ITS SCROLL LIMIT: then that end edge is mid-scroll, and content cut there scrolls on " +
+      "into view. A round screen's curve slicing the sides of an item near a scrolling edge " +
+      "follows the same rule. Content cut across that axis anywhere else, or inside its own " +
+      "bounds, is clipped. When `scroll-capture` may be asked for a subject (its long " +
+      "screenshot: the scrolling content, already rendered, to its end or its scroll limit) and " +
+      "you cannot tell scrolled-away content from clipped content, answer `needs_evidence` " +
+      "asking for it rather than guess. " +
       "Accessibility data may be evidence you ask for rather than something given: when `a11y` " +
       "may be asked for a subject, an `Accessibility:` line under it summarises what it holds. " +
       "`a11y` is that subject's accessibility nodes (id, role, label, bounds, states such as " +

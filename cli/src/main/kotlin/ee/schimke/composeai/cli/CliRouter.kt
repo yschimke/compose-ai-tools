@@ -26,6 +26,9 @@ internal object CliRouter {
           "extensions",
           // Design-guideline findings from a model, beside `a11y`'s deterministic ones.
           "guidelines",
+          // `guidelines` judged by the agent running it (prompt mode) unless --backend says
+          // otherwise.
+          "review",
           "history",
           // Next to `history` on purpose: different branch and shape (see HistoryManifestCommand).
           "history-manifest",

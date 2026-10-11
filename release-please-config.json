@@ -7,7 +7,6 @@
     ".": {
       "package-name": "compose-ai-tools",
       "include-component-in-tag": false,
-      "release-as": "2.45.0",
       "draft": true,
       "extra-files": [
         ".github/actions/install/README.md",

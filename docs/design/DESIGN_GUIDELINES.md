@@ -476,6 +476,43 @@ compose-preview guidelines --checker jev --compare-with vision/guidelines.json \
   --source-root <module>/src --guidelines <module>/ui-builder.guidelines.json
 ```
 
+## Prompt mode: `compose-preview review`
+
+`review` is `guidelines` with the agent that runs it as the model (`--backend prompt`, its
+default; `--backend openrouter` makes it `guidelines`). It takes the same selection as `render`
+and `show` (`--module`, `--filter`, `--id`, `--changed-only`, `--id-file`, `--permutations`) and
+every `guidelines` option that does not name OpenRouter. No key, no provider, no cost.
+
+`DeferredReplyModel` stands in for the model. It does not call anything: each request the engine
+would send is written under the module, named by a hash of everything a model would be sent
+(pictures included), so the same previews, rules and evidence make the same request on every run:
+
+```
+build/compose-previews/review/<id>/request.md     the system prompt, the request, picture paths, the reply schema
+build/compose-previews/review/<id>/picture-N.png  picture N, as a reply's `regions[].picture` numbers it
+build/compose-previews/review/<id>/reply.json     written by the agent
+```
+
+Without a `reply.json` the model answers `ModelResponse.DEFERRED`: the engine leaves that batch's
+previews pending, neither failed nor retried nor split, and counts it in
+`GuidelineRunResult.deferredRequests`. The command lists the waiting `request.md` files and exits
+**3**. The agent (or one subagent per request, which keeps the pictures out of its own context)
+writes each reply and runs the same command again.
+
+The next run reads each reply through the same checks as a model's: rule ids held to what was
+asked, `others` statements expanded, regions mapped to pictures. A reply answering
+`needs_evidence` starts the evidence loop exactly as it would with OpenRouter: the CLI's host
+fetches the accessibility data (or source, or another render) and the follow-up request is written
+out as a new `<id>`, so the agent never has to know how to get the nodes. Once every rule is
+decided the result is cached under the agent's model name (`agent`, or `--model`) and
+`guidelines.json`, `--annotate` and `--fail-on` behave as for any run. A run over the whole
+selection deletes request directories the current previews no longer make.
+
+Differences from an OpenRouter run: no Jev triage (it is OpenRouter's decisions API); one attempt
+per request and no splitting, since asking again would read the same reply and halves would be new
+requests for the agent; an unreadable reply is a failed request, reported with why, and is fixed by
+rewriting `reply.json`. Handoff mode and `--checker jev` need `--backend openrouter`.
+
 ## Handoff mode (CI)
 
 No Gradle, no daemon:
@@ -511,9 +548,41 @@ cost and the generation id — and, for a routed model, the router's reason and 
 
 ## Keys
 
-`COMPOSE_PREVIEW_OPENROUTER_KEY`, read from the environment only, never from the command line or a
-file the CLI writes. In CI it is a secret available only to the job that calls the model (the
-publish phase on fork PRs; see Next steps).
+`GuidelineCredentials.openRouter` resolves the key, in this order:
+
+1. `COMPOSE_PREVIEW_OPENROUTER_KEY` from the environment. In CI it is a secret available only to
+   the job that calls the model (the publish phase on fork PRs; see Next steps).
+2. The user's credentials file: `$COMPOSE_PREVIEW_CREDENTIALS_FILE` (absolute only: a relative one
+   would put the key in the checkout, so it is not used), else
+   `$XDG_CONFIG_HOME/compose-preview/credentials.json` (default `~/.config/…`, beside
+   `agent-access.json`), shaped `{"schema": "compose-preview-credentials/v1", "keys":
+   {"openrouter": "…"}}`. Keys are per provider, so another backend's key can sit beside
+   OpenRouter's.
+
+The key is never read from the command line. `compose-preview guidelines key set` stores it,
+reading a no-echo prompt or one line of piped stdin (`pbpaste | compose-preview guidelines key
+set`), and writes the file `0600` through a temp file and an atomic rename. `key status` names the
+source in use and only the key's last four characters, and `key forget` removes it. A change (`set`, `forget`, `trust`, `untrust`) refuses a file it cannot read or of
+another schema rather than replace it, so it never discards keys or trusted projects. Reading never
+quotes the file: a malformed one is reported by path only, and one readable by other users is used
+with a warning to `chmod 600` it.
+
+**Trusted projects.** A stored key is used only for a project its owner trusted. The first
+`guidelines` run in a Gradle root (in handoff mode, `--source-root`) asks, before anything is
+built, whether to use the stored key there, since that project's previews and source go to
+OpenRouter on the user's bill. A yes is remembered in the same file as `trustedProjects`
+(canonical paths; a parent directory does not cover the checkouts under it). Without a terminal,
+which is how an agent or a script runs the CLI, the answer is no, and the message names
+`compose-preview guidelines key trust <dir>`: nothing can grant itself the user's key.
+`key untrust <dir>` takes it back and `key status` lists them. A key from
+`COMPOSE_PREVIEW_OPENROUTER_KEY` needs no trust: setting it is that choice.
+
+**What the file does not protect against.** The CLI withholds the environment variable from the
+Gradle daemon and render daemons (`WITHHELD_BUILD_ENVIRONMENT`), because the project being built
+may be a third party's. A build script runs as the same user and can still open the file, as it
+can `agent-access.json`. Someone who builds untrusted projects should keep the key in the
+environment, not stored. Nothing that writes reports, caches or annotated renders ever writes the
+key.
 
 ## Output
 
