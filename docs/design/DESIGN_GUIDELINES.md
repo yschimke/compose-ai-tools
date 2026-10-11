@@ -552,7 +552,8 @@ cost and the generation id — and, for a routed model, the router's reason and 
 
 1. `COMPOSE_PREVIEW_OPENROUTER_KEY` from the environment. In CI it is a secret available only to
    the job that calls the model (the publish phase on fork PRs; see Next steps).
-2. The user's credentials file: `$COMPOSE_PREVIEW_CREDENTIALS_FILE`, else
+2. The user's credentials file: `$COMPOSE_PREVIEW_CREDENTIALS_FILE` (absolute only: a relative one
+   would put the key in the checkout, so it is not used), else
    `$XDG_CONFIG_HOME/compose-preview/credentials.json` (default `~/.config/…`, beside
    `agent-access.json`), shaped `{"schema": "compose-preview-credentials/v1", "keys":
    {"openrouter": "…"}}`. Keys are per provider, so another backend's key can sit beside
@@ -561,7 +562,8 @@ cost and the generation id — and, for a routed model, the router's reason and 
 The key is never read from the command line. `compose-preview guidelines key set` stores it,
 reading a no-echo prompt or one line of piped stdin (`pbpaste | compose-preview guidelines key
 set`), and writes the file `0600` through a temp file and an atomic rename. `key status` names the
-source in use and only the key's last four characters, and `key forget` removes it. Reading never
+source in use and only the key's last four characters, and `key forget` removes it. A change (`set`, `forget`, `trust`, `untrust`) refuses a file it cannot read or of
+another schema rather than replace it, so it never discards keys or trusted projects. Reading never
 quotes the file: a malformed one is reported by path only, and one readable by other users is used
 with a warning to `chmod 600` it.
 

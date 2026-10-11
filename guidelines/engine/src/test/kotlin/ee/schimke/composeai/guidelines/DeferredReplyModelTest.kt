@@ -126,6 +126,7 @@ class DeferredReplyModelTest {
     assertThat(followUp).isNotEqualTo(first)
     assertThat(followUp.readText()).contains("TouchTargetSizeCheck")
     assertThat(second.results.single().unchecked).containsExactly("touch")
+    assertThat(second.results.single().pending).isTrue()
 
     reply(
       followUp,
@@ -192,8 +193,10 @@ class DeferredReplyModelTest {
                   {"subjectId":"s2","verdict":"pass","confidence":0.9}]}""",
     )
     val (second, secondModel) = run(subjects = both)
-    // s1's verdicts are reported, but not cached while its batch waits.
-    assertThat(second.results.single { it.previewId == subject.previewId }.unchecked).isEmpty()
+    // s1's verdicts are reported, but pending and not cached while its batch waits.
+    val waitingOne = second.results.single { it.previewId == subject.previewId }
+    assertThat(waitingOne.unchecked).isEmpty()
+    assertThat(second.results.all { it.pending }).isTrue()
     assertThat(GuidelineResultCache(cacheDir).checked(subject.previewId)).isFalse()
     val followUp = secondModel.waiting.single()
 

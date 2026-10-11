@@ -102,6 +102,9 @@ class GuidelineCredentialsTest {
     env["XDG_CONFIG_HOME"] = "/xdg"
     assertThat(GuidelineCredentials.defaultFileOrNull(prop = { null }) { env[it] })
       .isEqualTo(File("/xdg/compose-preview/credentials.json"))
+    // A relative override would land in the working directory: no file rather than that.
+    env[GuidelineCredentials.FILE_ENV] = "credentials.json"
+    assertThat(GuidelineCredentials.defaultFileOrNull(prop = { null }) { env[it] }).isNull()
     env[GuidelineCredentials.FILE_ENV] = "/elsewhere/keys.json"
     assertThat(GuidelineCredentials.defaultFileOrNull(prop = { null }) { env[it] })
       .isEqualTo(File("/elsewhere/keys.json"))
@@ -130,5 +133,29 @@ class GuidelineCredentialsTest {
   fun `a key from the environment is not a stored one`() {
     assertThat(GuidelineCredentials.Resolved("k", GuidelineCredentials.ENV).stored).isFalse()
     assertThat(GuidelineCredentials.Resolved("k", file.path).stored).isTrue()
+  }
+
+  @Test
+  fun `a file that cannot be read is never overwritten by a change`() {
+    file.parentFile.mkdirs()
+    val broken = """{"keys": {"other": "k-other" """
+    file.writeText(broken)
+    for (change in
+      listOf<() -> Unit>(
+        { GuidelineCredentials.store(file, secret) },
+        { GuidelineCredentials.forget(file) },
+        { GuidelineCredentials.trust(file, dir) },
+        { GuidelineCredentials.untrust(file, dir) },
+      )) {
+      val failure = runCatching(change).exceptionOrNull()
+      assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+      assertThat(failure!!.message).doesNotContain("k-other")
+      assertThat(file.readText()).isEqualTo(broken)
+    }
+    // Another schema is left alone too.
+    val future = """{"schema":"compose-preview-credentials/v2","keys":{"other":"k"}}"""
+    file.writeText(future)
+    assertThat(runCatching { GuidelineCredentials.store(file, secret) }.isFailure).isTrue()
+    assertThat(file.readText()).isEqualTo(future)
   }
 }

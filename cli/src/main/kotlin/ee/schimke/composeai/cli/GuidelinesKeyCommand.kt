@@ -164,9 +164,10 @@ internal class GuidelinesKeyCommand(
 
   private fun noHome(): Int {
     System.err.println(
-      "guidelines key: no user config directory could be determined (XDG_CONFIG_HOME, HOME and " +
-        "user.home are all unset). Set ${GuidelineCredentials.FILE_ENV} to a path you control, " +
-        "or export ${GuidelineCredentials.ENV}."
+      "guidelines key: no place to keep the key: ${GuidelineCredentials.FILE_ENV} must be an " +
+        "absolute path when set, and otherwise XDG_CONFIG_HOME, HOME or user.home must be one. " +
+        "Set ${GuidelineCredentials.FILE_ENV} to an absolute path you control, or export " +
+        "${GuidelineCredentials.ENV}."
     )
     return 1
   }

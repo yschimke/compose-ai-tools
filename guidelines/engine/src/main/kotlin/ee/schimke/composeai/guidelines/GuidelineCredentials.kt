@@ -89,12 +89,12 @@ public object GuidelineCredentials {
   public fun store(file: File, key: String, provider: String = OPENROUTER) {
     val trimmed = key.trim()
     require(validKey(trimmed)) { "a key is one line with no spaces" }
-    write(file, read(file) {}.let { it.copy(keys = it.keys + (provider to trimmed)) })
+    write(file, forChange(file).let { it.copy(keys = it.keys + (provider to trimmed)) })
   }
 
   /** Removes [provider]'s key from [file]; false when there was none. Throws on failure. */
   public fun forget(file: File, provider: String = OPENROUTER): Boolean {
-    val stored = read(file) {}
+    val stored = forChange(file)
     if (provider !in stored.keys) return false
     write(file, stored.copy(keys = stored.keys - provider))
     return true
@@ -114,7 +114,7 @@ public object GuidelineCredentials {
   /** Trusts [project] with the stored key. Throws on failure. */
   public fun trust(file: File, project: File) {
     val path = canonical(project)
-    val stored = read(file) {}
+    val stored = forChange(file)
     if (path in stored.trustedProjects) return
     write(file, stored.copy(trustedProjects = (stored.trustedProjects + path).sorted()))
   }
@@ -122,7 +122,7 @@ public object GuidelineCredentials {
   /** Stops trusting [project]; false when it was not trusted. Throws on failure. */
   public fun untrust(file: File, project: File): Boolean {
     val path = canonical(project)
-    val stored = read(file) {}
+    val stored = forChange(file)
     if (path !in stored.trustedProjects) return false
     write(file, stored.copy(trustedProjects = stored.trustedProjects - path))
     return true
@@ -134,9 +134,10 @@ public object GuidelineCredentials {
   public fun validKey(key: String): Boolean = key.isNotEmpty() && key.none { it.isWhitespace() }
 
   /**
-   * `$COMPOSE_PREVIEW_CREDENTIALS_FILE`, else `$XDG_CONFIG_HOME/compose-preview/credentials.json`,
-   * else under `$HOME/.config`, else under the JVM's `user.home`; null when none is an absolute
-   * path. Never the working directory, which for an agent is a checkout CI archives or commits.
+   * `$COMPOSE_PREVIEW_CREDENTIALS_FILE` when it is absolute (a relative one gives null), else
+   * `$XDG_CONFIG_HOME/compose-preview/credentials.json`, else under `$HOME/.config`, else under the
+   * JVM's `user.home`; null when none is an absolute path. Never the working directory, which for
+   * an agent is a checkout CI archives or commits.
    */
   public fun defaultFileOrNull(
     prop: (String) -> String? = System::getProperty,
@@ -145,7 +146,8 @@ public object GuidelineCredentials {
     env(FILE_ENV)
       ?.takeIf { it.isNotBlank() }
       ?.let {
-        return File(it)
+        // A relative override would put the key in the working directory: no file at all.
+        return absolute(it)?.let(::File)
       }
     val configHome =
       absolute(env("XDG_CONFIG_HOME"))
@@ -179,6 +181,24 @@ public object GuidelineCredentials {
       warn("could not read ${file.path}; it is not a $SCHEMA_V1 file")
       Stored()
     }
+  }
+
+  /**
+   * [file]'s contents to change: empty when there is no file, and an exception rather than an empty
+   * store when it cannot be read or is another schema, so a change never discards what it holds.
+   */
+  private fun forChange(file: File): Stored {
+    if (!file.exists()) return Stored()
+    val stored =
+      try {
+        JSON.decodeFromString(Stored.serializer(), file.readText())
+      } catch (_: Exception) {
+        null
+      }
+    check(stored != null && stored.schema == SCHEMA_V1) {
+      "${file.path} is not a $SCHEMA_V1 file, so it was left as it is; fix or remove it first"
+    }
+    return stored
   }
 
   private fun write(file: File, stored: Stored) {

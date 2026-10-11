@@ -17,7 +17,8 @@ public data class PreviewGuidelineResult(
   val fromCache: Boolean = false,
   /**
    * Not asked this run — the cost cap was reached or its request failed — so every rule is
-   * unchecked. Never cached; the next run asks again.
+   * unchecked; or its batch waits on a deferred reply ([ModelResponse.DEFERRED]), so the verdicts
+   * it has are not final. Never cached; the next run asks again.
    */
   val pending: Boolean = false,
 ) {

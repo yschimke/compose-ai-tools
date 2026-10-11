@@ -852,6 +852,8 @@ public class GuidelineEngine(
       // Subjects whose follow-up was cut short by the cap or a failed request: their undecided
       // rules were never re-asked, so their result is not cached and the next run asks again.
       var interrupted = emptySet<String>()
+      // Set when a follow-up waits on a deferred reply: the whole batch is then still pending.
+      var awaitingReply = false
       for (round in 1..options.maxRounds) {
         val undecided =
           current.subjects
@@ -894,6 +896,7 @@ public class GuidelineEngine(
           }
           interrupted =
             if (followUpFailure.kind == FailureKind.DEFERRED) {
+              awaitingReply = true
               // Replayed from its answers next run, which only works if the next run batches the
               // same previews: none of this batch is cached until all of it is answered.
               batch.subjects.map { it.previewId }.toSet()
@@ -938,6 +941,7 @@ public class GuidelineEngine(
               renderHash = subject.renderHash,
               record = record(guidelines, subject, asked, mine, last, share),
               unchecked = unchecked,
+              pending = awaitingReply,
             )
             .also { result ->
               result.implicitPasses =
