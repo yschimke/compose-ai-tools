@@ -506,6 +506,11 @@ class GuidelinesEvidenceTest {
     val stopped =
       HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit(4000, atEnd = false, 4000))!!
     assertTrue("STOPPED AT ITS SCROLL LIMIT" in stopped && "is mid-scroll" in stopped, stopped)
+    assertTrue("bottom edge" in stopped, stopped)
+    // A horizontal capture stops at its end (right) edge, not its bottom.
+    val sideways =
+      HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit(4000, axis = "HORIZONTAL"))!!
+    assertTrue("end (right) edge may be mid-scroll" in sideways && "bottom" !in sideways, sideways)
     // The prompt reads content cut at a long screenshot's end as clipped only without that line.
     assertTrue(
       "unless the screenshot's description says it STOPPED AT ITS SCROLL LIMIT" in

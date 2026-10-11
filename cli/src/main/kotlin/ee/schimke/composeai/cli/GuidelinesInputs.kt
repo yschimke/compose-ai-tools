@@ -187,6 +187,7 @@ internal data class HandoffInputs(
         maxScrollPx = (scroll["maxScrollPx"] as? JsonPrimitive)?.intOrNull ?: 0,
         atEnd = (scroll["atEnd"] as? JsonPrimitive)?.booleanOrNull ?: false,
         reachedPx = (scroll["reachedPx"] as? JsonPrimitive)?.intOrNull,
+        axis = scroll.text("axis"),
       )
 
     /** The scroll state of [preview]'s `render/scroll/long` data product, or null. */
@@ -324,8 +325,9 @@ internal data class HandoffInputs(
      * How the picture was captured, so the model does not read a scrolled frame as the first one:
      * at the END of a scroll, content that scrolls away with the list (time text, a list header) is
      * out of view, not missing. A LONG capture stopped by its `maxScrollPx` ([limit]) before the
-     * content ended is not the whole content: its bottom edge may be mid-scroll, and the prompt
-     * reads content cut there as clipped only when the description does not say so.
+     * content ended is not the whole content: its end edge (bottom, or right for a horizontal
+     * [ScrollLimit.axis]) may be mid-scroll, and the prompt reads content cut there as clipped only
+     * when the description does not say so.
      */
     internal fun describeCapture(
       widthDp: Int,
@@ -334,6 +336,7 @@ internal data class HandoffInputs(
       limit: ScrollLimit? = null,
     ): String? {
       val size = if (widthDp > 0 && heightDp > 0) " at ${widthDp}×${heightDp}dp" else ""
+      val edge = if (limit?.horizontal == true) "end (right) edge" else "bottom edge"
       return when (scrollMode?.uppercase()) {
         null -> if (size.isEmpty()) null else "device render$size, its first frame"
         "END" ->
@@ -348,13 +351,13 @@ internal data class HandoffInputs(
             limit.reachedPx != null ->
               "a stitched long screenshot$size from the top of the scrolling content, STOPPED " +
                 "AT ITS SCROLL LIMIT (maxScrollPx ${limit.maxScrollPx}, scrolled " +
-                "${limit.reachedPx}px) before the content ended: its bottom edge is mid-scroll, " +
+                "${limit.reachedPx}px) before the content ended: its $edge is mid-scroll, " +
                 "so content cut there scrolls on into view and is not clipped; judge content, " +
                 "not what fits on one screen"
             else ->
               "a stitched long screenshot$size from the top of the scrolling content, STOPPED " +
                 "AT ITS SCROLL LIMIT (maxScrollPx ${limit.maxScrollPx}), which may be before " +
-                "the content ends: its bottom edge may be mid-scroll, so content cut there is " +
+                "the content ends: its $edge may be mid-scroll, so content cut there is " +
                 "not clipped; judge content, not what fits on one screen"
           }
         else -> "device render$size, captured at scroll mode $scrollMode"
@@ -398,14 +401,19 @@ internal data class HandoffInputs(
 
 /**
  * A scrolled capture's limit and outcome: the `@ScrollingPreview` `maxScrollPx` it was capped at
- * (0, none), whether the renderer recorded reaching the content's end ([atEnd]), and how far it
- * scrolled ([reachedPx], null when not reported).
+ * (0, none), whether the renderer recorded reaching the content's end ([atEnd]), how far it
+ * scrolled ([reachedPx], null when not reported), and its [axis] (`VERTICAL` when absent), which
+ * says which edge a capped capture stops at.
  */
 internal data class ScrollLimit(
   val maxScrollPx: Int = 0,
   val atEnd: Boolean = false,
   val reachedPx: Int? = null,
-)
+  val axis: String? = null,
+) {
+  val horizontal: Boolean
+    get() = axis.equals("HORIZONTAL", ignoreCase = true)
+}
 
 /**
  * Handoff mode's evidence: a preview's long screenshot, when the render job staged one beside its

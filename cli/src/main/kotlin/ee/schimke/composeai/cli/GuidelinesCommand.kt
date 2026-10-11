@@ -532,7 +532,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
                   result.params.widthDp ?: 0,
                   result.params.heightDp ?: 0,
                   scroll?.mode,
-                  scroll?.let { ScrollLimit(it.maxScrollPx, it.atEnd, it.reachedPx) },
+                  scroll?.let { ScrollLimit(it.maxScrollPx, it.atEnd, it.reachedPx, it.axis) },
                 )
               },
           )
