@@ -12,6 +12,7 @@ import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
 import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
+import ee.schimke.composeai.guidelines.GuidelineCredentials
 import ee.schimke.composeai.guidelines.OpenRouterClient
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.PreviewNode
@@ -44,8 +45,9 @@ import kotlinx.serialization.json.Json
  * `--previews-json` / `--renders-dir` run the engine over handoff renders with no Gradle (CI
  * publish).
  *
- * The OpenRouter key comes only from `COMPOSE_PREVIEW_OPENROUTER_KEY`, and is withheld from the
- * Gradle daemon's environment and from render daemons.
+ * The OpenRouter key comes from `COMPOSE_PREVIEW_OPENROUTER_KEY`, else from the user's credentials
+ * file (`guidelines key set`, [GuidelineCredentials]); never from the command line. The variable is
+ * withheld from the Gradle daemon's environment and from render daemons.
  */
 class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
@@ -170,14 +172,16 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             exitProcess(2)
           }
     }
-    val key = System.getenv(KEY_ENV)?.trim()?.takeIf { it.isNotEmpty() }
-    if (key == null) {
-      System.err.println(
-        "guidelines: set $KEY_ENV to an OpenRouter key (openrouter.ai, Settings, then Keys). " +
-          "The key is read from the environment only, never from the command line."
-      )
-      exitProcess(2)
-    }
+    val key =
+      GuidelineCredentials.openRouter { System.err.println("guidelines: $it") }?.key
+        ?: run {
+          System.err.println(
+            "guidelines: no OpenRouter key (openrouter.ai, Settings, then Keys). Store one with " +
+              "`compose-preview guidelines key set`, or set $KEY_ENV. It is never read from the " +
+              "command line."
+          )
+          exitProcess(2)
+        }
     val client =
       OpenRouterClient(
           key,
@@ -599,7 +603,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   }
 
   companion object {
-    const val KEY_ENV: String = "COMPOSE_PREVIEW_OPENROUTER_KEY"
+    const val KEY_ENV: String = GuidelineCredentials.ENV
     /** The `--reasoning-effort` that sends none: the model reasons as it does by default. */
     private const val REASONING_DEFAULT = "default"
     /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */

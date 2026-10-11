@@ -15,7 +15,11 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
-    "guidelines" to { a -> GuidelinesCommand(a).run() },
+    "guidelines" to
+      { a ->
+        if (a.firstOrNull() == "key") GuidelinesKeyCommand(a.drop(1)).run()
+        else GuidelinesCommand(a).run()
+      },
     "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
     "history" to { a -> HistoryCommand(a).run() },
     "history-manifest" to { a -> HistoryManifestCommand(a).run() },
@@ -187,7 +191,8 @@ private fun printFullUsage() {
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       guidelines       Check rendered previews against their catalog's design guidelines
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
-                       batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY. Flags: --model,
+                       batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY, else the file
+                       `guidelines key set` stores (`guidelines key status|forget`). Flags: --model,
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
                        --concurrency <n> (requests in flight, default 4; 1 is one at a
                        time), --idle-timeout <seconds> (a stream with no token, default

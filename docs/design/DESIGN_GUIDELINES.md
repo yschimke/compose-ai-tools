@@ -511,9 +511,29 @@ cost and the generation id — and, for a routed model, the router's reason and 
 
 ## Keys
 
-`COMPOSE_PREVIEW_OPENROUTER_KEY`, read from the environment only, never from the command line or a
-file the CLI writes. In CI it is a secret available only to the job that calls the model (the
-publish phase on fork PRs; see Next steps).
+`GuidelineCredentials.openRouter` resolves the key, in this order:
+
+1. `COMPOSE_PREVIEW_OPENROUTER_KEY` from the environment. In CI it is a secret available only to
+   the job that calls the model (the publish phase on fork PRs; see Next steps).
+2. The user's credentials file: `$COMPOSE_PREVIEW_CREDENTIALS_FILE`, else
+   `$XDG_CONFIG_HOME/compose-preview/credentials.json` (default `~/.config/…`, beside
+   `agent-access.json`), shaped `{"schema": "compose-preview-credentials/v1", "keys":
+   {"openrouter": "…"}}`. Keys are per provider, so another backend's key can sit beside
+   OpenRouter's.
+
+The key is never read from the command line. `compose-preview guidelines key set` stores it,
+reading a no-echo prompt or one line of piped stdin (`pbpaste | compose-preview guidelines key
+set`), and writes the file `0600` through a temp file and an atomic rename. `key status` names the
+source in use and only the key's last four characters, and `key forget` removes it. Reading never
+quotes the file: a malformed one is reported by path only, and one readable by other users is used
+with a warning to `chmod 600` it.
+
+**What the file does not protect against.** The CLI withholds the environment variable from the
+Gradle daemon and render daemons (`WITHHELD_BUILD_ENVIRONMENT`), because the project being built
+may be a third party's. A build script runs as the same user and can still open the file, as it
+can `agent-access.json`. Someone who builds untrusted projects should keep the key in the
+environment, not stored. Nothing that writes reports, caches or annotated renders ever writes the
+key.
 
 ## Output
 
