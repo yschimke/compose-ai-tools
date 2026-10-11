@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -294,9 +295,16 @@ data class ExportProjection(
 
   /** What one parameter, or one argument of a nested call, is written from. */
   sealed interface Value {
-    /** A wire property through a codec; absent, empty or equal to [omitWhen] writes nothing. */
+    /**
+     * A wire property through a codec; absent, empty or equal to [omitWhen] writes nothing. A list
+     * or object codec reads the whole stored wrapper and takes no [omitWhen].
+     */
     data class Property(val name: String, val codec: Codec, val omitWhen: JsonPrimitive? = null) :
-      Value
+      Value {
+      init {
+        require(omitWhen == null || !codec.composite) { "`$name`: a $codec has no omitWhen" }
+      }
+    }
 
     /** A fixed value the call always needs, such as `onClick = {}` for a design without one. */
     data class Fixed(val value: ScreenValue) : Value
@@ -314,6 +322,30 @@ data class ExportProjection(
 
   /** How a wire value is read and written as a Kotlin expression. */
   sealed interface Codec {
+    /** Whether this codec reads a `list` / `object` wrapper rather than a scalar's `value`. */
+    val composite: Boolean
+      get() = this is ListOf || this is Object
+
+    /**
+     * The wrapper `type` a value of this codec is stored under by default, as the typed adapters'
+     * own codecs spell it (`AdapterValueCodec.literalType`): what a list element or object field
+     * must state, unless its [ListOf.elementLiteralType] / [Field.literalType] says otherwise.
+     */
+    val literalType: String
+      get() =
+        when (this) {
+          Text,
+          is Color,
+          is Enum,
+          is Token -> "string"
+          Bool -> "bool"
+          Whole -> "int"
+          Fractional32,
+          is Unit -> "number"
+          is ListOf -> "list"
+          is Object -> "object"
+        }
+
     data object Text : Codec
 
     data object Bool : Codec
@@ -358,6 +390,60 @@ data class ExportProjection(
       val typeFqn: String,
       val tokens: Set<String>? = null,
     ) : Codec
+
+    /**
+     * A `{"type": "list", "values": [<wrapper>…]}`, each value through [element], written
+     * `listOf(a, b)`. An empty list is `listOf()`, the parameter's type inferring the element. Each
+     * value must be exactly the wrapper the element's codec reads back: a scalar's `{"type":
+     * [elementLiteralType], "value": …}`, a nested list's or object's own wrapper.
+     */
+    data class ListOf(
+      val element: Codec,
+      val elementLiteralType: String = element.literalType,
+    ) : Codec {
+      init {
+        require(!element.composite || elementLiteralType == element.literalType) {
+          "a nested ${element.literalType} is stored as `${element.literalType}`"
+        }
+      }
+    }
+
+    /**
+     * A `{"type": "object", "fields": {"<name>": <wrapper>}}` of the class [typeFqn], written as a
+     * call to [callableFqn] (its constructor, by default) with every field as a named argument
+     * through its codec, in [fields] order. A field left out writes its [Field.default], or is
+     * refused when it has none; a field the object does not declare is refused. Every field is
+     * written because the callable need not default the parameters the adapter does.
+     */
+    data class Object(
+      val typeFqn: String,
+      val fields: Map<String, Field>,
+      val callableFqn: String = typeFqn,
+    ) : Codec {
+      init {
+        require(fields.isNotEmpty()) { "an object codec writes at least one field" }
+      }
+    }
+
+    /**
+     * One field of an [Object]: its [codec], the wrapper [literalType] it is stored under, and the
+     * stored wrapper of its [default], written when an object leaves the field out. Null makes the
+     * field required.
+     */
+    data class Field(
+      val codec: Codec,
+      val literalType: String = codec.literalType,
+      val default: JsonObject? = null,
+    ) {
+      init {
+        require(!codec.composite || literalType == codec.literalType) {
+          "a nested ${codec.literalType} is stored as `${codec.literalType}`"
+        }
+      }
+
+      val required: Boolean
+        get() = default == null
+    }
   }
 
   /**
@@ -399,16 +485,24 @@ data class ExportProjection(
    */
   val qualifiedOwners: Set<String>
     get() = buildSet {
-      fun codec(codec: Codec) {
-        when (codec) {
+      fun codec(owned: Codec) {
+        when (owned) {
           is Codec.Color -> {
-            add(codec.schemeRootFqn)
+            add(owned.schemeRootFqn)
             add(COLOR)
           }
-          is Codec.Enum -> codec.members.values.mapTo(this) { it.substringBeforeLast('.') }
-          is Codec.Token -> add(codec.rootFqn)
+          is Codec.Enum -> owned.members.values.mapTo(this) { it.substringBeforeLast('.') }
+          is Codec.Token -> add(owned.rootFqn)
           // A top-level extension: the allowlist admits the callable itself.
-          is Codec.Unit -> add("androidx.compose.ui.unit.${codec.unit}")
+          is Codec.Unit -> add("androidx.compose.ui.unit.${owned.unit}")
+          is Codec.ListOf -> {
+            add(LIST_OF.substringBeforeLast('.'))
+            codec(owned.element)
+          }
+          is Codec.Object -> {
+            add(owned.callableFqn.substringBeforeLast('.'))
+            owned.fields.values.forEach { codec(it.codec) }
+          }
           else -> Unit
         }
       }
@@ -546,8 +640,12 @@ data class ExportProjection(
       is Value.Fixed -> value.value
       is Value.Property -> {
         val stated = properties[value.name]
-        val raw = wireValue(stated)
-        if (stated != null && stated !is JsonNull && raw == null) {
+        val raw = if (value.codec.composite) null else wireValue(stated)
+        if (value.codec.composite) {
+          if (stated == null || stated is JsonNull) null
+          else
+            nested(value.codec, value.codec.literalType, stated, "$where <- ${value.name}", reasons)
+        } else if (stated != null && stated !is JsonNull && raw == null) {
           reasons += "$where <- ${value.name}: not a scalar value"
           null
         } else if (raw == null || raw is JsonNull || (raw.isString && raw.content.isEmpty())) null
@@ -564,6 +662,98 @@ data class ExportProjection(
         else ScreenValue.Construct(value.callableFqn, named = arguments, typeFqn = value.typeFqn)
       }
     }
+
+  /**
+   * One stored wrapper inside a list or object (or a list or object property itself), written
+   * through [codec]. Unlike a top-level scalar, a nested value cannot be "unset": an element or
+   * field that would write nothing is refused, since dropping it would change the list or object.
+   */
+  private fun nested(
+    codec: Codec,
+    literalType: String,
+    stored: JsonElement,
+    where: String,
+    reasons: MutableList<String>,
+  ): ScreenValue? {
+    fun refuse(message: String): ScreenValue? {
+      reasons += "$where: $message"
+      return null
+    }
+    return when (codec) {
+      is Codec.ListOf -> {
+        val values =
+          composite(stored, "list", "values") as? JsonArray
+            ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
+        val before = reasons.size
+        val written = values.mapIndexed { index, item ->
+          nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons)
+        }
+        if (reasons.size != before) null
+        else
+          ScreenValue.Construct(
+            LIST_OF,
+            positional = written.filterNotNull(),
+            typeFqn = LIST,
+          )
+      }
+      is Codec.Object -> {
+        val fields =
+          composite(stored, "object", "fields") as? JsonObject
+            ?: return refuse("expected a {\"type\": \"object\", \"fields\": {…}} wrapper")
+        val unknown = fields.keys - codec.fields.keys
+        if (unknown.isNotEmpty()) return refuse("${codec.typeFqn} has no field ${unknown.sorted()}")
+        val before = reasons.size
+        val named = buildMap {
+          for ((name, field) in codec.fields) {
+            // An omitted field writes the default the adapter declared, which the class's own
+            // constructor need not share; one without a default cannot be written at all.
+            val value =
+              fields[name]?.takeUnless { it is JsonNull }
+                ?: field.default
+                ?: run {
+                  reasons += "$where.$name: required field is missing"
+                  null
+                }
+                ?: continue
+            nested(field.codec, field.literalType, value, "$where.$name", reasons)?.let {
+              put(name, it)
+            }
+          }
+        }
+        if (reasons.size != before) null
+        else ScreenValue.Construct(codec.callableFqn, named = named, typeFqn = codec.typeFqn)
+      }
+      else -> {
+        // Exactly what the adapter's codec unwraps: its own literal wrapper, never a bare value or
+        // a wrapper of another type (a top-level property stays as lenient as it always was).
+        val wrapper = stored as? JsonObject
+        val stated = (wrapper?.get("type") as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (wrapper == null || stated != literalType)
+          return refuse(
+            "expected a `$literalType` wrapper, found ${stated?.let { "`$it`" } ?: stored}"
+          )
+        val raw =
+          wrapper["value"] as? JsonPrimitive
+            ?: return refuse("a `$literalType` wrapper has no value")
+        if (raw is JsonNull) return refuse("has no value")
+        // An empty string is the top-level "unset"; nested, only text can mean it literally.
+        if (raw.isString && raw.content.isEmpty() && codec != Codec.Text)
+          return refuse("an empty value cannot be written here")
+        val before = reasons.size
+        encode(codec, raw, where, reasons)
+          ?: if (reasons.size == before) refuse("writes nothing, which a list or object cannot")
+          else null
+      }
+    }
+  }
+
+  /** The [content] of a `{"type": [type], [content]: …}` wrapper, or null when it is not one. */
+  private fun composite(stored: JsonElement, type: String, content: String): JsonElement? {
+    if (stored !is JsonObject) return null
+    val stated = (stored["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (stated != type || stored.keys != setOf("type", content)) return null
+    return stored[content]
+  }
 
   private fun encode(
     codec: Codec,
@@ -619,6 +809,8 @@ data class ExportProjection(
           ?.let {
             ScreenValue.Reference(codec.rootFqn, codec.members + it, typeFqn = codec.typeFqn)
           } ?: refuse("`${raw.content}` is not a token of ${codec.members.joinToString(".")}")
+      is Codec.ListOf,
+      is Codec.Object -> refuse("expected a list or object wrapper, not a scalar")
     }
   }
 
@@ -660,6 +852,8 @@ data class ExportProjection(
   private companion object {
     const val COLOR = "androidx.compose.ui.graphics.Color"
     const val MODIFIER = "modifier"
+    const val LIST = "kotlin.collections.List"
+    const val LIST_OF = "kotlin.collections.listOf"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =
       mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")

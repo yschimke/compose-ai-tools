@@ -73,13 +73,70 @@ metadata; validation checks it names a real composable slot. Slot names are curr
 build/test time, not referenced as Kotlin parameters. Receiver-scoped layout logic remains ordinary
 Compose in the renderer; lazy DSL slots and callback payload slots are outside this initial API.
 
-The supplied codecs are String, Boolean and Int. A codec is invariant in its value type, converts
+The supplied scalar codecs are String, Boolean, Int and Float, plus colour, enum, unit and token
+codecs for catalogs. A codec is invariant in its value type, converts
 both directions, and identifies the exact Kotlin classifier it accepts. Defaults must round trip.
 Malformed supplied values are errors rather than silently replaced defaults. String and Boolean
 properties advertise state binding by default; `bindable = false` removes that alternative. Int
 properties are literal-only: the existing state schema supports `number` but cannot constrain it to
 an Int. Explicitly enabling Int binding or attaching a state callback to it is refused at declaration
 rather than accepting fractional state that later fails decoding.
+
+### List and object properties
+
+`AdapterValueCodecs.list(element)` and `AdapterValueCodecs.obj(typeFqn) { … }` compose any codec,
+scalars, lists and objects alike, to any depth:
+
+```kotlin
+data class Contact(val name: String, val unread: Int)
+
+val ContactCodec: AdapterObjectCodec<Contact> =
+  AdapterValueCodecs.obj("com.example.Contact") {
+    val name = field(Contact::name, AdapterValueCodecs.String)
+    val unread = field(Contact::unread, AdapterValueCodecs.Int, default = 0)
+    construct { Contact(name = it[name], unread = it[unread]) }
+  }
+
+class InboxAdapter(record: ComponentRecord) : TypedComponentAdapter<InboxProps>("acme/inbox", record) {
+  val contacts = property(InboxProps::contacts, AdapterValueCodecs.list(ContactCodec), emptyList())
+}
+```
+
+Field handles are typed by the property reference, so `it[unread]` is an `Int`; a field with a
+`default` may be absent from a stored object, one without is required, and an unknown field is
+refused. Both are literal-only (never bindable). A codec stores a value through `wrap` and reads it
+back through `unwrap`, nesting the document's wrappers rather than raw JSON:
+
+```json
+{"type": "list", "values": [ {"type": "object", "fields": {
+  "name": {"type": "string", "value": "Ada"}, "unread": {"type": "int", "value": 2}}} ]}
+```
+
+A scalar's `wrap` is the `{type, value}` literal `insertContent` has always carried. The property's
+capability publishes `jsonType` `"array"` / `"object"` as a plain string plus a recursive `editor`
+hint, each element or field described by a shape of `jsonType`, `literalType`, optional
+`allowedValues` (an enum or closed token set) and, for a nested list or object, its own `editor`;
+object fields add `name`, `required` and, when declared, the `default` wrapper:
+
+```json
+{"name": "contacts", "jsonType": "array", "required": false,
+ "editor": {"control": "list", "element": {"jsonType": "object", "literalType": "object",
+   "editor": {"control": "object", "objectType": "com.example.Contact", "fields": [
+     {"name": "name", "required": true, "jsonType": "string", "literalType": "string"},
+     {"name": "unread", "required": false, "default": {"type": "int", "value": 0},
+      "jsonType": "integer", "literalType": "int"}]}}}}
+```
+
+Validation compares a list property with the parameter's erased classifier
+(`kotlin.collections.List`; the element type is the property reference's compile-time check) and an
+object property with the class the codec names; nullable parameters are refused as before. Exported
+through `from(property)`, a list is written `listOf(…)` and an object as a named-argument call to its
+class (or the `callableFqn` given to `obj`), recursively. Every field is written: one a stored
+object omits takes the default declared with `field(…, default = …)`, which the export codec carries,
+since the class's constructor need not share it, and an omitted required field is refused. A nested
+scalar must be exactly its codec's literal wrapper, as `unwrap` requires. A host's
+`expressionPackages` must admit `kotlin.collections` and the object's package, which the
+projection's `qualifiedOwners` lists.
 
 ## Generate and publish
 

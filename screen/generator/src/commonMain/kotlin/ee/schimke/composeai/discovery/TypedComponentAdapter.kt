@@ -3,6 +3,7 @@ package ee.schimke.composeai.discovery
 import kotlin.reflect.KProperty1
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -39,6 +40,66 @@ interface AdapterValueCodec<T> {
   fun encode(value: T): JsonElement
 
   fun decode(value: JsonElement): T
+
+  /**
+   * The closed set of wire values this codec accepts, when it has one; published in a nested
+   * [shape] so an editor can offer a picker for an enum inside a list or an object.
+   */
+  val allowedValues: Set<String>?
+    get() = null
+
+  /**
+   * The recursive editor hint for a composite codec ([AdapterValueCodecs.list],
+   * [AdapterValueCodecs.obj]); null for a scalar, which an editor renders from its `jsonType`.
+   *
+   * ```json
+   * { "control": "list",   "element": <shape> }
+   * { "control": "object", "objectType": "<fqn>",
+   *   "fields": [ { "name": "…", "required": true|false, "default"?: <wrapper>, …<shape> } ] }
+   * ```
+   *
+   * See [shape] for `<shape>`; it recurses through nested lists and objects.
+   */
+  val editor: JsonObject?
+    get() = null
+
+  /**
+   * What an editor needs to author one value of this codec, published inside a composite's
+   * [editor]:
+   * ```json
+   * { "jsonType": "string|boolean|integer|number|array|object",
+   *   "literalType": "<the wrapper type, as [literalType]>",
+   *   "allowedValues"?: [ "…" ],
+   *   "editor"?: { …[editor] } }
+   * ```
+   */
+  fun shape(): JsonObject = buildJsonObject {
+    put("jsonType", jsonType)
+    put("literalType", literalType)
+    allowedValues?.let { put("allowedValues", JsonArray(it.sorted().map(::JsonPrimitive))) }
+    editor?.let { put("editor", it) }
+  }
+
+  /**
+   * [value] as the builder document stores it: a scalar is the literal wrapper `{"type":
+   * literalType, "value": encode(value)}`; a list is `{"type": "list", "values": [<wrapper>…]}` and
+   * an object `{"type": "object", "fields": {"<name>": <wrapper>}}`, nesting wrappers, never raw
+   * JSON.
+   */
+  fun wrap(value: T): JsonObject = buildJsonObject {
+    put("type", literalType)
+    put("value", encode(value))
+  }
+
+  /**
+   * The value a literal [wrapper] (as [wrap] writes it) holds. Its `type` must be this codec's
+   * [literalType], as renderers require today; a `state` wrapper is the host's to resolve first.
+   */
+  fun unwrap(wrapper: JsonObject): T {
+    val type = (wrapper["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    require(type == literalType) { "expected a `$literalType` wrapper, found `$type`" }
+    return decode(requireNotNull(wrapper["value"]) { "a `$literalType` wrapper has no value" })
+  }
 }
 
 /**
@@ -139,6 +200,7 @@ object AdapterValueCodecs {
       override val kotlinType = typeFqn
       override val stateType: String? = null
       override val exportCodec = ExportProjection.Codec.Enum(typeFqn, members)
+      override val allowedValues = members.keys
 
       override fun encode(value: String): JsonElement = JsonPrimitive(value)
 
@@ -171,6 +233,7 @@ object AdapterValueCodecs {
       override val kotlinType = export.typeFqn
       override val stateType: String? = null
       override val exportCodec = export
+      override val allowedValues = export.tokens
 
       override fun encode(value: String): JsonElement = JsonPrimitive(value)
 
@@ -182,7 +245,246 @@ object AdapterValueCodecs {
         return value.content
       }
     }
+
+  /**
+   * An ordered list of [element] values, stored as `{"type": "list", "values":
+   * [<element wrapper>…]}` and exported as `listOf(…)`. Literal-only: the state schema has no list
+   * type. [encode] is the `values` array, so [decode] and [encode] stay each other's inverse.
+   */
+  fun <E> list(element: AdapterValueCodec<E>): AdapterValueCodec<List<E>> =
+    object : AdapterValueCodec<List<E>> {
+      override val jsonType = "array"
+      override val kotlinType = LIST_TYPE
+      override val literalType = "list"
+      override val stateType: String? = null
+      override val exportCodec =
+        element.exportCodec?.let { ExportProjection.Codec.ListOf(it, element.literalType) }
+      override val editor: JsonObject = buildJsonObject {
+        put("control", "list")
+        put("element", element.shape())
+      }
+
+      override fun encode(value: List<E>): JsonElement = JsonArray(value.map(element::wrap))
+
+      override fun decode(value: JsonElement): List<E> {
+        require(value is JsonArray) { "expected a list of `${element.literalType}` wrappers" }
+        return value.mapIndexed { index, item ->
+          require(item is JsonObject) { "[$index]: expected a `${element.literalType}` wrapper" }
+          try {
+            element.unwrap(item)
+          } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("[$index]: ${e.message}", e)
+          }
+        }
+      }
+
+      override fun wrap(value: List<E>): JsonObject = buildJsonObject {
+        put("type", literalType)
+        put("values", encode(value))
+      }
+
+      override fun unwrap(wrapper: JsonObject): List<E> {
+        requireWrapper(wrapper, literalType, "values")
+        return decode(wrapper.getValue("values"))
+      }
+    }
+
+  /**
+   * A value of the class [typeFqn], stored as `{"type": "object", "fields": {"<name>": <wrapper>}}`
+   * and exported as a constructor call with named arguments (`Contact(name = "Ada", unread = 2)`),
+   * [callableFqn] being the callable it writes (the class itself by default). [declare] adds each
+   * field, typed by its property reference and codec, and then supplies
+   * [AdapterObjectCodecBuilder.construct], which receives the decoded fields by their handles:
+   * ```kotlin
+   * val ContactCodec: AdapterObjectCodec<Contact> =
+   *   AdapterValueCodecs.obj("com.example.Contact") {
+   *     val name = field(Contact::name, AdapterValueCodecs.String)
+   *     val unread = field(Contact::unread, AdapterValueCodecs.Int, default = 0)
+   *     construct { Contact(name = it[name], unread = it[unread]) }
+   *   }
+   * ```
+   *
+   * A field may use any codec, a list or another object included. A field with a default may be
+   * absent from a stored wrapper; one without is required. Literal-only, like [list].
+   */
+  fun <T> obj(
+    typeFqn: String,
+    callableFqn: String = typeFqn,
+    declare: AdapterObjectCodecBuilder<T>.() -> Unit,
+  ): AdapterObjectCodec<T> = AdapterObjectCodecBuilder<T>(typeFqn).apply(declare).build(callableFqn)
 }
+
+/** One field of an [AdapterObjectCodec]: its wire [name], the property it reads and its codec. */
+class AdapterObjectField<T, F>
+internal constructor(
+  val reference: KProperty1<T, F>,
+  val codec: AdapterValueCodec<F>,
+  private val fallback: (() -> F)?,
+) {
+  /** The wire name, the Kotlin property's own. */
+  val name: String = reference.name
+
+  /** Whether a stored object may leave this field out and take its default. */
+  val hasDefault: Boolean
+    get() = fallback != null
+
+  internal fun wrapOf(value: T): JsonObject = codec.wrap(reference.get(value))
+
+  internal fun read(fields: JsonObject): F {
+    val stored = fields[name]
+    if (stored == null || stored is JsonNull) {
+      val default = fallback ?: throw IllegalArgumentException("missing field `$name`")
+      return default()
+    }
+    require(stored is JsonObject) { "`$name`: expected a `${codec.literalType}` wrapper" }
+    return try {
+      codec.unwrap(stored)
+    } catch (e: IllegalArgumentException) {
+      throw IllegalArgumentException("`$name`: ${e.message}", e)
+    }
+  }
+
+  /** How an export writes this field: its codec, stored type, and default for an omitted one. */
+  internal fun exported(): ExportProjection.Codec.Field? =
+    codec.exportCodec?.let { export ->
+      ExportProjection.Codec.Field(export, codec.literalType, fallback?.let { codec.wrap(it()) })
+    }
+
+  internal fun shape(): JsonObject = buildJsonObject {
+    put("name", name)
+    put("required", fallback == null)
+    fallback?.let { put("default", codec.wrap(it())) }
+    codec.shape().forEach { (key, value) -> put(key, value) }
+  }
+}
+
+/** The decoded fields of one stored object, read by their typed handles. */
+class AdapterObjectValues
+internal constructor(private val values: Map<AdapterObjectField<*, *>, Any?>) {
+  operator fun <F> get(field: AdapterObjectField<*, F>): F {
+    require(field in values) { "field `${field.name}` belongs to another object codec" }
+    // The codec decoded this entry through the field's own codec, so it is an F.
+    @Suppress("UNCHECKED_CAST")
+    return values[field] as F
+  }
+}
+
+/** Declares an [AdapterObjectCodec]'s fields; see [AdapterValueCodecs.obj]. */
+class AdapterObjectCodecBuilder<T> internal constructor(private val typeFqn: String) {
+  private val fields = mutableListOf<AdapterObjectField<T, *>>()
+  private var builds: ((AdapterObjectValues) -> T)? = null
+  private var built = false
+
+  /** A required field: a stored object without it is refused. */
+  fun <F> field(
+    reference: KProperty1<T, F>,
+    codec: AdapterValueCodec<F>,
+  ): AdapterObjectField<T, F> = add(AdapterObjectField(reference, codec, null))
+
+  /** A field a stored object may leave out, decoding to [default]. */
+  fun <F> field(
+    reference: KProperty1<T, F>,
+    codec: AdapterValueCodec<F>,
+    default: F,
+  ): AdapterObjectField<T, F> {
+    val wrapped = codec.wrap(default)
+    require(codec.wrap(codec.unwrap(wrapped)) == wrapped) {
+      "$typeFqn.${reference.name}: default does not round trip"
+    }
+    return add(AdapterObjectField(reference, codec) { default })
+  }
+
+  /** How a decoded object is built from its fields; called once, after every [field]. */
+  fun construct(build: (AdapterObjectValues) -> T) {
+    check(!built && builds == null) { "$typeFqn: construct is declared once" }
+    builds = build
+  }
+
+  private fun <F> add(field: AdapterObjectField<T, F>): AdapterObjectField<T, F> {
+    check(!built && builds == null) { "$typeFqn: declare every field before construct" }
+    require(fields.none { it.name == field.name }) { "$typeFqn: duplicate field ${field.name}" }
+    fields += field
+    return field
+  }
+
+  internal fun build(callable: String): AdapterObjectCodec<T> {
+    check(!built) { "$typeFqn: already built" }
+    require(fields.isNotEmpty()) { "$typeFqn: an object codec declares at least one field" }
+    val construct = checkNotNull(builds) { "$typeFqn: declare construct { … }" }
+    built = true
+    return AdapterObjectCodec(typeFqn, callable, fields.toList(), construct)
+  }
+}
+
+/**
+ * A class-valued codec built by [AdapterValueCodecs.obj]. [encode] is the `fields` object of
+ * wrappers, so [decode] and [encode] stay each other's inverse; [wrap] adds `{"type": "object"}`.
+ * Unknown stored fields are refused rather than dropped.
+ */
+class AdapterObjectCodec<T>
+internal constructor(
+  val typeFqn: String,
+  /** The callable an export writes: the class's constructor, or a factory returning it. */
+  val callableFqn: String,
+  val fields: List<AdapterObjectField<T, *>>,
+  private val construct: (AdapterObjectValues) -> T,
+) : AdapterValueCodec<T> {
+  init {
+    require(typeFqn.contains('.') && callableFqn.contains('.')) {
+      "an object codec names qualified types: $typeFqn, $callableFqn"
+    }
+  }
+
+  override val jsonType = "object"
+  override val kotlinType = typeFqn
+  override val literalType = "object"
+  override val stateType: String? = null
+
+  /** Null unless every field's codec can be exported. */
+  override val exportCodec: ExportProjection.Codec? = run {
+    val exported = fields.map { field -> field.name to (field.exported() ?: return@run null) }
+    ExportProjection.Codec.Object(typeFqn, exported.toMap(), callableFqn)
+  }
+
+  override val editor: JsonObject = buildJsonObject {
+    put("control", "object")
+    put("objectType", typeFqn)
+    put("fields", JsonArray(fields.map { it.shape() }))
+  }
+
+  override fun encode(value: T): JsonElement =
+    JsonObject(fields.associate { it.name to it.wrapOf(value) })
+
+  override fun decode(value: JsonElement): T {
+    require(value is JsonObject) { "expected the fields of a $typeFqn" }
+    val unknown = value.keys - fields.map { it.name }.toSet()
+    require(unknown.isEmpty()) { "$typeFqn has no field ${unknown.sorted()}" }
+    return construct(
+      AdapterObjectValues(fields.associateWith<AdapterObjectField<*, *>, Any?> { it.read(value) })
+    )
+  }
+
+  override fun wrap(value: T): JsonObject = buildJsonObject {
+    put("type", literalType)
+    put("fields", encode(value))
+  }
+
+  override fun unwrap(wrapper: JsonObject): T {
+    requireWrapper(wrapper, literalType, "fields")
+    return decode(wrapper.getValue("fields"))
+  }
+}
+
+/** A composite wrapper is exactly `{"type": [type], [content]: …}`. */
+private fun requireWrapper(wrapper: JsonObject, type: String, content: String) {
+  val stated = (wrapper["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+  require(stated == type) { "expected a `$type` wrapper, found `$stated`" }
+  require(wrapper.keys == setOf("type", content)) {
+    "a `$type` wrapper is {\"type\", \"$content\"}, found ${wrapper.keys.sorted()}"
+  }
+}
+
+private const val LIST_TYPE = "kotlin.collections.List"
 
 /** A colour as a design stores it, before a theme resolves a role. */
 sealed interface WireColor {
@@ -241,6 +543,17 @@ internal constructor(
 ) {
   fun decode(value: JsonElement?): T = if (value == null) default else codec.decode(value)
 
+  /**
+   * The value a stored literal [wrapper] holds (see [AdapterValueCodec.unwrap]), else [default].
+   */
+  fun unwrap(wrapper: JsonObject?): T = if (wrapper == null) default else codec.unwrap(wrapper)
+
+  /**
+   * `{"name", "jsonType", "required": false}`, `jsonType` being `[type, "object"]` when a state
+   * wrapper may stand in for the literal. A list or object property is never bindable: it publishes
+   * `"array"` / `"object"` as a plain string and adds the codec's recursive
+   * [`editor`][AdapterValueCodec.editor].
+   */
   internal fun capability(): JsonElement = buildJsonObject {
     put("name", name)
     put(
@@ -249,6 +562,7 @@ internal constructor(
       else JsonPrimitive(codec.jsonType),
     )
     put("required", false)
+    codec.editor?.let { put("editor", it) }
   }
 }
 
@@ -338,9 +652,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     }
     declare(name)
     // Fail early for custom codecs that cannot represent their own default.
-    require(codec.decode(codec.encode(default)) == default) {
-      "$id.$name: default does not round trip"
-    }
+    require(roundTrips(codec, default)) { "$id.$name: default does not round trip" }
     return AdapterProperty(this, reference, name, codec, default, bindable)
       .also(declaredProperties::add)
   }
@@ -360,11 +672,19 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       "$id.$name: codec ${codec.jsonType} has no supported state type; use a literal property"
     }
     declare(name)
-    require(codec.decode(codec.encode(default)) == default) {
-      "$id.$name: default does not round trip"
-    }
+    require(roundTrips(codec, default)) { "$id.$name: default does not round trip" }
     return AdapterProperty(this, reference, name, codec, default, bindable, wireOnly = true)
       .also(declaredProperties::add)
+  }
+
+  /**
+   * A scalar's default decodes back to itself, as it always has; a list or object's (whose class
+   * need not be a data class) stores the same wrapper once read back.
+   */
+  private fun <T> roundTrips(codec: AdapterValueCodec<T>, default: T): Boolean {
+    if (codec.editor == null) return codec.decode(codec.encode(default)) == default
+    val wrapped = codec.wrap(default)
+    return codec.wrap(codec.unwrap(wrapped)) == wrapped
   }
 
   /** One record this adapter's export may become, with how its parameters are written. */
@@ -819,6 +1139,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               if (codec.unit == "sp") "androidx.compose.ui.unit.TextUnit"
               else "androidx.compose.ui.unit.Dp"
             is ExportProjection.Codec.Token -> codec.typeFqn
+            // The erased classifier, as discovery records a parameter's; the element type is held
+            // by the property reference and the element codec at compile time.
+            is ExportProjection.Codec.ListOf -> LIST_TYPE
+            is ExportProjection.Codec.Object -> codec.typeFqn
           }
       }
     }
@@ -907,13 +1231,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           put(
             "properties",
             JsonObject(
-              declaredProperties.associate { property ->
-                property.name to
-                  buildJsonObject {
-                    put("type", property.codec.literalType)
-                    put("value", defaultValue(property))
-                  }
-              }
+              declaredProperties.associate { property -> property.name to defaultValue(property) }
             ),
           )
         }
@@ -923,8 +1241,9 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       .build()
   }
 
-  private fun <T> defaultValue(property: AdapterProperty<P, T>): JsonElement =
-    property.codec.encode(property.default)
+  /** The stored wrapper of [property]'s default: `{type, value}` for a scalar, as ever. */
+  private fun <T> defaultValue(property: AdapterProperty<P, T>): JsonObject =
+    property.codec.wrap(property.default)
 }
 
 /** The overloads of [callableFqn] among these discovered factories. */
