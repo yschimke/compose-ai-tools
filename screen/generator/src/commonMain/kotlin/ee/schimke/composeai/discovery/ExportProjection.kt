@@ -73,6 +73,8 @@ data class ExportProjection(
           "`$parameter`'s item member `$member` is not a Kotlin identifier"
         }
       }
+      val itemsWritten = items.keys intersect parameters.keys
+      require(itemsWritten.isEmpty()) { "${itemsWritten.sorted()} are both a DSL slot and written" }
       val itemsSynthesized = items.keys intersect synthesize.keys
       require(itemsSynthesized.isEmpty()) {
         "${itemsSynthesized.sorted()} are both a DSL slot and synthesized"

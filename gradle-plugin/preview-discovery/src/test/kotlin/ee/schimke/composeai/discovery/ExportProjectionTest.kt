@@ -603,6 +603,14 @@ class ExportProjectionTest {
       ExportProjection.Target("r", emptyMap(), items = mapOf("content" to "item(key = 1)"))
     }
     assertThat(bad.exceptionOrNull()?.message).contains("is not a Kotlin identifier")
+    val written = runCatching {
+      ExportProjection.Target(
+        "r",
+        mapOf("content" to ExportProjection.Value.Fixed(ScreenValue.Text(""))),
+        items = mapOf("content" to "item"),
+      )
+    }
+    assertThat(written.exceptionOrNull()?.message).contains("both a DSL slot and written")
   }
 
   @Test

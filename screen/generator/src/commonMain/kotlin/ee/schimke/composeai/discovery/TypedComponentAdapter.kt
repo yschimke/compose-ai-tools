@@ -581,6 +581,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           if (declaredSlots.none { it.name == slot })
             add("$where: slot pattern for undeclared slot $slot")
         }
+        // Against every way the target fills its slots: a pattern may route only one shape to the
+        // DSL parameter, and the others leave it unfilled.
+        val everyFill = fillsOf(target).flatMap { (_, fills) -> fills }.map { it.parameter }.toSet()
+        for (parameter in target.items.keys) {
+          if (parameter !in everyFill) add("$where: items for $parameter, which no slot fills")
+        }
         // Resolved as Kotlin resolves named arguments: some overload must take every argument the
         // target writes and default the rest. A record without overloads stands for its own one.
         // A patterned slot fills different parameters per pattern, and each fill is its own call.
@@ -708,17 +714,14 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       val parameter = parameters[fill.parameter]
       // A DSL parameter is filled through its item member, so it is no composable slot itself.
       if (fill.parameter in target.items) {
-        if (parameter?.scopeDslReceiver == null)
+        // Children declared through items return nothing, so only a `Scope.() -> Unit` takes them.
+        if (parameter?.scopeDslReceiver == null || parameter.lambdaReturnTypeFqn != "kotlin.Unit")
           add(
             "$where: slot ${fill.slot} -> ${fill.parameter} wraps its children in " +
-              "`${target.items.getValue(fill.parameter)}`, but is not declared through a DSL"
+              "`${target.items.getValue(fill.parameter)}`, but is not a `Scope.() -> Unit` DSL"
           )
       } else if (parameter?.composableSlot != true)
         add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
-    }
-    for (parameter in target.items.keys) {
-      if (fills.none { it.parameter == parameter })
-        add("$where: items for ${parameter}, which no slot fills")
     }
     for ((event, name) in target.events) {
       if (declaredEvents.none { it.eventName == event }) add("$where: event $event is not declared")
