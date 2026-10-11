@@ -86,11 +86,22 @@ exactly this; leaves inside them are projected records.
    factories (object members) the projections call.
 3. Release.
 
+Status: 1 is compose-preview-contracts#170 (3.29.0). 2 is in: `wireProperty`, `exportAs`,
+`target`/`from`/`call`, the `Float`/`color`/`enumOf` codecs, `WireColor`, projection validation
+in `validateAgainst`, variant records shipped excluded from the shelf, and `ExportProjectionJson`
+for the published spelling. Still to do: `policy()` writing `exportProjection` once this repository
+is on contracts 3.29.0, and discovering `…Defaults` factories so a factory's arguments are checked
+as well as its return type.
+
 **compose-ui-builder**
 
 4. Read published projections: `ScreenDocumentProjection` lowers through a component's projection
    when it has one, before its hard-coded tables; a projection-backed `composeSourceExport` strategy
    lets `wear-m3` leave `wear-compose-screen`. Expression allow-list derived from the catalog.
+   The interpreter half needs `ExportProjection.properties`, `directParameter` and
+   `qualifiedOwners`: a host refuses a property no projection writes, passes a state-bound value
+   only to a parameter it reaches unwrapped, and widens its allow-list only by the owners a
+   projection prints.
 5. Move the typed renderer bridge from `experiments/typed-catalog` into the SDK; release.
 
 **Catalogs** (Wear, then Remote, then Mobile)
