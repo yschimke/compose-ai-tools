@@ -242,6 +242,15 @@ public data class GuidelineRunResult(
   val failedRequests: Int = 0,
 ) {
   /**
+   * Evidence the host failed to supply — a fetch or a host call that threw — for previews that were
+   * waiting on it: not a model request, but the same kind of incompleteness, since those previews'
+   * rules are left unchecked. Counted once per failed fetch, however many previews it was for. A
+   * body property, so the constructor and `copy` keep their ABI.
+   */
+  public var failedEvidence: Int = 0
+    internal set
+
+  /**
    * The output tokens the run's requests were billed for, replies that could not be used included
    * (`usage.completion_tokens`). A body property, so the constructor and `copy` keep their ABI.
    */

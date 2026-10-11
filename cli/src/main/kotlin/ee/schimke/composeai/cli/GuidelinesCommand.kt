@@ -486,11 +486,19 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
    * came back unreadable. Said on stderr, so a caller sees why the command did not exit 0.
    */
   private fun incomplete(module: String, run: GuidelineRunResult): Boolean {
-    if (run.failedRequests == 0) return false
-    System.err.println(
-      "guidelines: $module: ${run.failedRequests} model request(s) failed; the previews in them " +
-        "were not checked."
-    )
+    if (run.failedRequests == 0 && run.failedEvidence == 0) return false
+    if (run.failedRequests > 0) {
+      System.err.println(
+        "guidelines: $module: ${run.failedRequests} model request(s) failed; the previews in " +
+          "them were not checked."
+      )
+    }
+    if (run.failedEvidence > 0) {
+      System.err.println(
+        "guidelines: $module: ${run.failedEvidence} evidence fetch(es) failed; the rules waiting " +
+          "on them were not checked."
+      )
+    }
     return true
   }
 
@@ -648,6 +656,8 @@ data class ModuleGuidelines(
    * text-only checker. Null (and absent from the file) for a vision run.
    */
   val checker: String? = null,
+  /** Evidence fetches that failed ([GuidelineRunResult.failedEvidence]); absent when none did. */
+  val failedEvidence: Int = 0,
   /**
    * Of the output tokens the run was billed for, how many were the model's reasoning: what to watch
    * when tuning `--reasoning-effort`. Null when none were reported, and in older files.
@@ -674,6 +684,7 @@ data class ModuleGuidelines(
         problems = run.problems,
         costUsd = run.costUsd,
         checker = checker,
+        failedEvidence = run.failedEvidence,
         reasoningTokens = run.reasoningTokens.takeIf { it > 0 },
         completionTokens = run.completionTokens.takeIf { it > 0 },
       )

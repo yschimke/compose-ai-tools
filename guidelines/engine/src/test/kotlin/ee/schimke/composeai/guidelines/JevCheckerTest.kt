@@ -568,8 +568,54 @@ class JevCheckerTest {
     val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
     assertThat(run.results.single { it.previewId == "good" }.pending).isFalse()
     assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
-    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
     assertThat(model.bodies.map { name(it) }).containsExactly("good")
+  }
+
+  @Test
+  fun `a fetch that throws fails the previews it was for, not silently`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+        override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) =
+          error("daemon gone")
+      }
+    val model =
+      FakeDecisions(
+        answer = { _, rule, key ->
+          if (rule == "touch" && !isNode(key)) "needs:a11y" to 0.8 else null
+        }
+      )
+    val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
+    // One batched fetch failed: one evidence failure, however many previews it was for, and no
+    // model request is reported failed.
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.problems.joinToString("\n"))
+      .contains("the evidence host's fetch for 2 preview(s) failed: daemon gone (a, b)")
+    val result = run.results.single { it.previewId == "a" }
+    // What round 0 decided stands; the rule waiting on the fetch is unchecked, not passed.
+    assertThat(result.unchecked).contains("touch")
+    assertThat(result.record.verdicts.single { it.ruleId == "described" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
+  }
+
+  @Test
+  fun `a host summary that throws while a round is built is an evidence failure`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = emptyList<String>()
+
+        override fun summary(previewId: String): String? =
+          if (previewId == "bad") error("summary broke") else null
+      }
+    val model = FakeDecisions()
+    val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
   }
 
   @Test

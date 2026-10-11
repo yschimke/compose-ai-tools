@@ -309,6 +309,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCompletionTokens ()J
 	public final fun getCostUsd ()D
+	public final fun getFailedEvidence ()I
 	public final fun getFailedRequests ()I
 	public final fun getProblems ()Ljava/util/List;
 	public final fun getReasoningRetries ()I
