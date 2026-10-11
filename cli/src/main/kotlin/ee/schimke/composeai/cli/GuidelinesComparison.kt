@@ -89,8 +89,10 @@ internal object GuidelinesComparison {
   private const val UNCHECKED = "unchecked"
 
   fun compare(here: List<PreviewGuidelineResult>, there: List<PreviewGuidelineResult>): Comparison {
-    val mine = here.filter { it.noRules == null }.associateBy { it.previewId }
-    val theirs = there.filter { it.noRules == null }.associateBy { it.previewId }
+    val mine =
+      here.filter { it.noRules == null && it.variantOf == null }.associateBy { it.previewId }
+    val theirs =
+      there.filter { it.noRules == null && it.variantOf == null }.associateBy { it.previewId }
     val both = mine.keys.filter { it in theirs }.sorted()
     val rows = both.flatMap { id ->
       val a = mine.getValue(id)

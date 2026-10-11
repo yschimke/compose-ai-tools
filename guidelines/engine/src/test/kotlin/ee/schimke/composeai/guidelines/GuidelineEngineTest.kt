@@ -403,8 +403,12 @@ class GuidelineEngineTest {
 
   @Test
   fun `source is given up before a picture when the batch's source allowance runs out`() {
-    val long = "x".repeat(600)
-    val subjects = listOf(subject("a").copy(source = long), subject("b").copy(source = long))
+    // Two composables' own sources: identical text would be sent once and charged once.
+    val subjects =
+      listOf(
+        subject("a").copy(source = "x".repeat(600)),
+        subject("b").copy(source = "y".repeat(600)),
+      )
     val batches =
       PreviewGuidelineRequests.batches(
         guidelines,
@@ -634,6 +638,141 @@ class GuidelineEngineTest {
         .plan(guidelines, listOf(subject("p1")))
     assertThat(plan.predictedCostUsd).isNull()
     assertThat(plan.predictedChecked).isNull()
+  }
+
+  @Test
+  fun `a composable's source is sent once per request, however many of its variants are in it`() {
+    val source = "@Composable fun WearList() { /* " + "x".repeat(400) + " */ }"
+    fun size(dp: Int) = subject("WearList_${dp}dp").copy(label = "WearList", source = source)
+    // Room for one copy of the source: without sharing, the second variant would be cut to 20.
+    val batch =
+      PreviewGuidelineRequests.batches(
+          guidelines,
+          listOf(size(192), size(204)),
+          GuidelineBudget(maxSourceChars = source.length + 20),
+        )
+        .single()
+    assertThat(batch.subjects.map { it.source }).containsExactly(source, source)
+    val request = PreviewGuidelineRequests.request(guidelines, batch, "src", emptyList())
+    assertThat(request.userText.split("fun WearList()")).hasSize(2)
+    assertThat(request.userText).contains("Source: the same as s1's.")
+
+    val price = GuidelinePrice(1.0, 4.0)
+    val shared = PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, price, null)
+    val distinct =
+      PreviewGuidelineRequests.predictedCostUsd(
+        guidelines,
+        batch.copy(
+          subjects = listOf(batch.subjects[0], batch.subjects[1].copy(source = source + "// b"))
+        ),
+        price,
+        null,
+      )
+    assertThat(shared).isLessThan(distinct)
+  }
+
+  @Test
+  fun `a size not asked is missed, not covered, when the size asked in its place was not answered`() {
+    fun sized(id: String, dp: Int) =
+      subject(id).copy(label = "WearList", pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val subjects = listOf(sized("WearList_192dp", 192), sized("WearList_240dp", 240))
+    val model = FakeModel()
+    val run =
+      GuidelineEngine(
+          model,
+          options = GuidelineRunOptions(triage = false, maxCostUsd = 0.0).withMaxVariants(1),
+        )
+        .run(guidelines, subjects)
+    assertThat(model.requests).isEmpty()
+    // The 240dp was capped, so the 192dp that stood on it is pending too, and names no stand-in.
+    assertThat(run.results.map { it.pending }).containsExactly(true, true)
+    assertThat(run.results.map { it.variantOf }).containsExactly(null, null)
+  }
+
+  @Test
+  fun `a plan for the jev checker counts every size, as its run asks them all`() {
+    fun sized(id: String, dp: Int) =
+      subject(id).copy(label = "WearList", pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val plan =
+      GuidelineEngine(
+          FakeModel(),
+          options =
+            GuidelineRunOptions(triage = false)
+              .withChecker(GuidelineChecker.JEV)
+              .withMaxVariants(1),
+        )
+        .plan(guidelines, listOf(sized("WearList_192dp", 192), sized("WearList_240dp", 240)))
+    assertThat(plan.previews).isEqualTo(2)
+  }
+
+  @Test
+  fun `max variants asks the largest size, then the smallest, and never drops a named variant`() {
+    fun sized(id: String, composable: String, dp: Int) =
+      subject(id).copy(label = composable, pictures = listOf(SubjectPicture("device", png, dp, dp)))
+    val list = listOf(192, 204, 216, 225, 240).map { sized("WearList_${it}dp", "WearList", it) }
+    val scaffold =
+      listOf(
+        sized("WearScaffold_192dp", "WearScaffold", 192),
+        sized("WearScaffold_204dp", "WearScaffold", 204),
+        // A named variant is content of its own, not another size of WearScaffold_<n>dp.
+        sized("WearScaffold_192dp_VARIANT_no-scroll-indicator", "WearScaffold", 192),
+      )
+    val subjects = list + scaffold
+    fun asked(limit: (GuidelineRunOptions) -> GuidelineRunOptions): List<String> {
+      val model = FakeModel().apply { repeat(subjects.size) { replies += PASS_ONE } }
+      val run =
+        GuidelineEngine(
+            model,
+            options =
+              limit(GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))),
+          )
+          .run(guidelines, subjects)
+      assertThat(run.results.none { it.pending }).isTrue()
+      return run.results.filter { it.variantOf == null }.map { it.previewId }
+    }
+
+    assertThat(asked { it.withMaxVariants(1) })
+      .containsExactly(
+        "WearList_240dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+    assertThat(asked { it.withMaxVariants(2) })
+      .containsExactly(
+        "WearList_240dp",
+        "WearList_192dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+    // Width classes: under 225dp, then 225 and over; the largest in each.
+    assertThat(asked { it.withVariantsPerSizeClass(true) })
+      .containsExactly(
+        "WearList_216dp",
+        "WearList_240dp",
+        "WearScaffold_204dp",
+        "WearScaffold_192dp_VARIANT_no-scroll-indicator",
+      )
+
+    // A dropped size names the nearest size asked.
+    val model = FakeModel().apply { repeat(subjects.size) { replies += PASS_ONE } }
+    val run =
+      GuidelineEngine(
+          model,
+          options = GuidelineRunOptions(triage = false).withVariantsPerSizeClass(true),
+        )
+        .run(guidelines, subjects)
+    assertThat(run.results.single { it.previewId == "WearList_192dp" }.variantOf)
+      .isEqualTo("WearList_216dp")
+    assertThat(run.results.single { it.previewId == "WearList_225dp" }.variantOf)
+      .isEqualTo("WearList_240dp")
+    assertThat(
+        GuidelineEngine(FakeModel(), options = GuidelineRunOptions().withMaxVariants(1))
+          .plan(guidelines, subjects)
+          .previews
+      )
+      .isEqualTo(3)
+    assertThat(GuidelineRunOptions().withMaxVariants(0).maxVariants).isNull()
   }
 
   @Test

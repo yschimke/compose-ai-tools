@@ -253,7 +253,12 @@ public object PreviewGuidelineRequests {
         var verdicts = 0
         var replyTokens = 0
         val fixedTokens = rulesTokens + SYSTEM_PROMPT.length / 4
+        // The source already in the current batch, as sent, by what each subject arrived with: a
+        // variant whose composable's source is already there costs none, and [request] shows it
+        // once.
+        val currentSources = mutableMapOf<String, String>()
         for (original in group) {
+          val sourceKey = original.source?.take(MAX_SOURCE_CHARS)
           var subject = original
           // A subject whose source alone would not fit a request keeps only what fits.
           val withoutSource = estimateTokens(subject.copy(source = null))
@@ -263,7 +268,10 @@ public object PreviewGuidelineRequests {
               subject = subject.copy(source = source.take(room.coerceAtLeast(0)).ifEmpty { null })
             }
           }
-          val subjectTokens = estimateTokens(subject)
+          val subjectTokens =
+            if (sourceKey != null && sourceKey in currentSources) {
+              estimateTokens(subject.copy(source = null))
+            } else estimateTokens(subject)
           val subjectPictures = subject.pictures.size
           val subjectVerdicts =
             guidelines.subjectRules(surface, subject.profile, subject.pictures.isNotEmpty()).size
@@ -283,19 +291,29 @@ public object PreviewGuidelineRequests {
             sourceChars = 0
             verdicts = 0
             replyTokens = 0
+            currentSources.clear()
           }
-          // The batch's source allowance: past it, a subject keeps what is left, or none.
-          subject.source?.let { source ->
-            val left = budget.maxSourceChars - sourceChars
-            val kept = source.take(left.coerceAtLeast(0).coerceAtMost(MAX_SOURCE_CHARS))
-            subject = subject.copy(source = kept.ifEmpty { null })
+          val shared = sourceKey?.let { currentSources[it] }
+          if (shared != null) {
+            // The same text as the subject that brought it: sent once, so charged once.
+            subject = subject.copy(source = shared)
+          } else {
+            // The batch's source allowance: past it, a subject keeps what is left, or none.
+            subject.source?.let { source ->
+              val left = budget.maxSourceChars - sourceChars
+              val kept = source.take(left.coerceAtLeast(0).coerceAtMost(MAX_SOURCE_CHARS))
+              subject = subject.copy(source = kept.ifEmpty { null })
+            }
+            sourceChars += subject.source?.length ?: 0
+            if (sourceKey != null) subject.source?.let { currentSources[sourceKey] = it }
           }
-          sourceChars += subject.source?.length ?: 0
           current += subject
           pictures += subjectPictures
           verdicts += subjectVerdicts
           replyTokens += subjectReply
-          tokens += estimateTokens(subject)
+          tokens +=
+            if (shared != null) estimateTokens(subject.copy(source = null))
+            else estimateTokens(subject)
         }
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)
         out
@@ -344,6 +362,53 @@ public object PreviewGuidelineRequests {
   }
 
   /**
+   * What [subject] is apart from its size: its preview id with the `_<width>dp` its first picture
+   * was rendered at taken out (`WearScaffold_192dp_VARIANT_x` → `WearScaffold_VARIANT_x`). The same
+   * preview at other sizes shares it, while a named variant, a theme or a font scale does not. The
+   * id itself when it names no size.
+   */
+  internal fun sizeless(subject: PreviewSubject): String {
+    val width =
+      subject.pictures.firstOrNull()?.widthDp?.takeIf { it > 0 } ?: return subject.previewId
+    val token = "_${width}dp"
+    return if (token in subject.previewId) subject.previewId.replaceFirst(token, "")
+    else subject.previewId
+  }
+
+  /** The width [subject]'s first picture was rendered at, in dp; 0 when unknown. */
+  internal fun widthDp(subject: PreviewSubject): Int = subject.pictures.firstOrNull()?.widthDp ?: 0
+
+  /**
+   * The width class of [widthDp]: a small round watch (under 225), a large watch or a compact phone
+   * (under 600), a medium window (under 840), or an expanded one.
+   */
+  internal fun sizeClass(widthDp: Int): Int =
+    when {
+      widthDp < 225 -> 0
+      widthDp < 600 -> 1
+      widthDp < 840 -> 2
+      else -> 3
+    }
+
+  /**
+   * One preview's [sizes] in the order a variant limit keeps them: the largest, the smallest, then
+   * inward from both ends. The extremes are where a layout breaks — text wraps or clips on the
+   * smallest, spacing runs out on the largest — and cover most of what lies between them.
+   */
+  internal fun extremesFirst(sizes: List<PreviewSubject>): List<PreviewSubject> {
+    val sorted = sizes.sortedBy { widthDp(it) }
+    val out = ArrayList<PreviewSubject>(sorted.size)
+    var low = 0
+    var high = sorted.lastIndex
+    var largest = true
+    while (low <= high) {
+      out += if (largest) sorted[high--] else sorted[low++]
+      largest = !largest
+    }
+    return out
+  }
+
+  /**
    * What asking [batch] once is expected to cost at [price]: its input as [batches] sizes it (the
    * system prompt, the rules, each subject's pictures, nodes, checks and source) and its expected
    * output (the verdicts [expectedReplyTokens] expects listed, and [expectedReasoningTokens] at
@@ -356,10 +421,16 @@ public object PreviewGuidelineRequests {
     price: GuidelinePrice,
     reasoningEffort: String?,
   ): Double {
+    val sources = mutableSetOf<String>()
     val input =
       SYSTEM_PROMPT.length / 4 +
         rulesTokens(guidelines, batch.surface) +
-        batch.subjects.sumOf { estimateTokens(it) }
+        batch.subjects.sumOf { subject ->
+          // A source the request already shows is named, not repeated ([request]).
+          val text = subject.source?.take(MAX_SOURCE_CHARS)?.trimEnd()
+          if (text != null && !sources.add(text)) estimateTokens(subject.copy(source = null))
+          else estimateTokens(subject)
+        }
     val output =
       batch.subjects.sumOf { subject ->
         expectedReplyTokens(
@@ -515,6 +586,7 @@ public object PreviewGuidelineRequests {
           append("name the one you judged; never cite a picture that is not attached.\n")
         }
       append("\nSubjects:\n")
+      val shownSources = mutableMapOf<String, String>()
       batch.subjects.forEach { subject ->
         val alias = batch.aliases.getValue(subject.previewId)
         append("\n### ").append(alias).append(": ").append(subject.label).append('\n')
@@ -568,8 +640,16 @@ public object PreviewGuidelineRequests {
           }
         }
         subject.source?.let { source ->
-          append("Source:\n```kotlin\n").append(source.take(MAX_SOURCE_CHARS).trimEnd())
-          append("\n```\n")
+          val text = source.take(MAX_SOURCE_CHARS).trimEnd()
+          // Variants of one composable share its source: shown once, then named.
+          val first = shownSources[text]
+          if (first != null) {
+            append("Source: the same as ").append(first).append("'s.\n")
+          } else {
+            shownSources[text] = alias
+            append("Source:\n```kotlin\n").append(text)
+            append("\n```\n")
+          }
         }
         // Every subject names its own rule ids, so a reply can be held to exactly those.
         val rules = perSubject.getValue(subject.previewId)

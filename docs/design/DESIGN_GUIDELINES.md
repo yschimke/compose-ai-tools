@@ -594,6 +594,17 @@ variant (device size, scroll capture, named variant) before any composable's sec
 run checks each composable once before spending on a second size of any. A run over the whole
 module prunes the cache to the verdicts it read or wrote.
 
+Two more levers keep a PR's check to a few cents. `--max-variants <n|size-class>` (the `apply`
+action's `guidelines-max-variants`) asks only some sizes of each preview: `n` takes the largest,
+then the smallest, then inward, since the extremes are where a layout breaks; `size-class` takes the
+largest in each width class (under 225dp, 225–599, 600–839, 840+), so a Wear preview at five sizes
+is asked at two. Only sizes are collapsed — a named variant, theme or font scale is a preview of its
+own. The rest come back naming the size asked in their place (`variantOf`) and the PR comment lists
+them apart, neither checked nor missed — unless the size asked in their place went unanswered, when
+they are missed with it. And variants of one composable share its source: a request sends that source
+once and names it for the rest ("Source: the same as s1's"), so it is charged once against the
+batch's source allowance and the prediction.
+
 What a run learns about its model is kept beside the verdicts, in `model-ledger.json`, keyed by the
 cache's model identity (model, reasoning effort, checker), and carried with the cache between CI
 runs. It is per model, because both are the model's: how far its bills ran from the prediction (the

@@ -323,6 +323,8 @@ class Tier:
         self.pending: list[str] = []
         self.no_rules: dict[str, list[str]] = {}
         self.no_results: list[str] = []
+        # Variants not asked because another variant of their composable was (`variantOf`).
+        self.variants: list[str] = []
 
     def not_checked(self) -> int:
         return self.missed() + sum(len(v) for v in self.no_rules.values())
@@ -437,6 +439,9 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             seen.add(preview_id)
             if result.get("noRules"):
                 tier.no_rules.setdefault(str(result["noRules"]), []).append(preview_id)
+                continue
+            if result.get("variantOf"):
+                tier.variants.append(preview_id)
                 continue
             if result.get("pending"):
                 tier.pending.append(preview_id)
@@ -588,6 +593,12 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
                       "NOT checked** because no rule applies to them:")
         header += mine.no_rule_lines()
         header.append("")
+    if mine.variants:
+        header += [
+            f"{len(mine.variants)} more variant(s) of the composables checked above were not asked "
+            f"(`guidelines-max-variants`): {names(mine.variants)}",
+            "",
+        ]
     if by_rules.not_checked():
         header.append(
             f"{by_rules.not_checked()} preview(s) selected only because the guidelines changed "

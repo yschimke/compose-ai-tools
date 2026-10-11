@@ -84,6 +84,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
 
   private val maxCostFlag: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
   /**
+   * `--max-variants <n|size-class>`: ask n sizes of each preview, the largest and smallest first
+   * ([GuidelineRunOptions.maxVariants]), or the largest in each width class
+   * ([GuidelineRunOptions.variantsPerSizeClass]); unset asks every size.
+   */
+  private val maxVariantsFlag: String? = args.flagValue("--max-variants")
+  private val maxVariants: Int? = maxVariantsFlag?.toIntOrNull()?.takeIf { it > 0 }
+  private val variantsPerSizeClass: Boolean = maxVariantsFlag == SIZE_CLASS
+  /**
    * `review` caps a provider run unless told otherwise; `guidelines` keeps its uncapped default.
    */
   private val maxCost: Double?
@@ -208,6 +216,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       // for another that happens to share a --model.
       .withJudge(judge)
       .withPrice(price)
+      .withMaxVariants(maxVariants)
+      .withVariantsPerSizeClass(variantsPerSizeClass)
 
   /** [GuidelineRunOptions.judge] for this run's backend; null for OpenRouter, as before. */
   private val judge: String?
@@ -937,6 +947,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     const val EXIT_WAITING_FOR_REPLIES: Int = 3
     /** The `--reasoning-effort` that sends none: the model reasons as it does by default. */
     private const val REASONING_DEFAULT = "default"
+    /** `--max-variants size-class`: one size of each preview per width class. */
+    private const val SIZE_CLASS = "size-class"
     /** The jev checker's follow-up rounds unless `--rounds` says otherwise. */
     private const val JEV_ROUNDS = 3
     private const val KIND_DEVICE = "device"
@@ -1027,6 +1039,7 @@ internal object GuidelinesReportRenderer {
   ) {
     val byId = guidelines.rules.associateBy { it.id }
     val ruleless = run.results.count { it.noRules != null }
+    val otherVariants = run.results.count { it.variantOf != null }
     if (checker == GuidelineChecker.JEV) {
       println(
         "$module: checked by Jev (text-only, experimental): rules that need the picture are " +
@@ -1034,7 +1047,7 @@ internal object GuidelinesReportRenderer {
       )
     }
     println(
-      "$module: ${run.results.size - ruleless} preview(s) checked against `${guidelines.catalog}` " +
+      "$module: ${run.results.size - ruleless - otherVariants} preview(s) checked against `${guidelines.catalog}` " +
         "guidelines v${guidelines.version} — ${run.requests} request(s), " +
         "$" +
         "%.4f".format(run.costUsd) +
@@ -1042,6 +1055,8 @@ internal object GuidelinesReportRenderer {
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
         (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
+        (otherVariants.takeIf { it > 0 }?.let { ", $it more variant(s) not asked (--max-variants)" }
+          ?: "") +
         (run.reasoningTokens
           .takeIf { it > 0 }
           ?.let { ", $it of ${run.completionTokens} output token(s) spent reasoning" } ?: "") +

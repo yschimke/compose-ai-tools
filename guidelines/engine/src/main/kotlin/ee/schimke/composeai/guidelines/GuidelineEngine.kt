@@ -210,6 +210,33 @@ public data class GuidelineRunOptions(
     carry().also { it.price = price }
 
   /**
+   * How many sizes of each preview are asked ([PreviewGuidelineRequests.sizeless]): the largest,
+   * the smallest, then inward ([PreviewGuidelineRequests.extremesFirst]). A named variant, theme or
+   * font scale is a preview of its own, never cut. The rest come back asked nothing, naming the
+   * size asked in their place ([PreviewGuidelineResult.variantOf]). Null (the default) asks every
+   * size. The vision checker's only, like [price]. A body property like [retry]: set it with
+   * [withMaxVariants].
+   */
+  public var maxVariants: Int? = null
+    private set
+
+  /** These options, asking at most [maxVariants] sizes of each preview; null asks all. */
+  public fun withMaxVariants(maxVariants: Int?): GuidelineRunOptions =
+    carry().also { it.maxVariants = maxVariants?.takeIf { n -> n > 0 } }
+
+  /**
+   * Ask one size of each preview per width class ([PreviewGuidelineRequests.sizeClass]), the
+   * largest in it, instead of [maxVariants]' count: a Wear preview at 192, 204, 216, 225 and 240dp
+   * is asked at 216 and 240. A body property like [retry]: set it with [withVariantsPerSizeClass].
+   */
+  public var variantsPerSizeClass: Boolean = false
+    private set
+
+  /** These options, asking one size of each preview per width class when [perSizeClass]. */
+  public fun withVariantsPerSizeClass(perSizeClass: Boolean): GuidelineRunOptions =
+    carry().also { it.variantsPerSizeClass = perSizeClass }
+
+  /**
    * What the OpenRouter key may still spend ([OpenRouterClient.keyStatus]): the run is capped at
    * [OpenRouterKeyStatus.remainingUsd] as well as [maxCostUsd], whichever is lower, so a key at its
    * limit is asked nothing instead of answering every request 403. Null (the default) asks without
@@ -229,6 +256,8 @@ public data class GuidelineRunOptions(
   /** A copy carrying every body property, which `copy` would reset. */
   private fun carry(): GuidelineRunOptions =
     copy().also {
+      it.maxVariants = maxVariants
+      it.variantsPerSizeClass = variantsPerSizeClass
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
@@ -550,7 +579,9 @@ public class GuidelineEngine(
       }
     }
 
-    val prepared = prepare(guidelines, subjects)
+    val (asked, otherVariants) = limitVariants(guidelines, subjects)
+    results += otherVariants
+    val prepared = prepare(guidelines, asked)
     results += prepared.skipped
     prepared.skipped
       .groupBy { it.noRules!! }
@@ -1219,6 +1250,22 @@ public class GuidelineEngine(
         "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
           "counted \$${money(unpriced)} for them"
     }
+    // A variant stands on the size asked in its place: when that one was not answered (capped,
+    // failed or deferred), neither is it, and it is reported missed rather than covered; rules left
+    // unchecked there are unchecked here too.
+    val byId = results.associateBy { it.previewId }
+    val subjectsById = subjects.associateBy { it.previewId }
+    val settled = results.map { result ->
+      val anchorId = result.variantOf ?: return@map result
+      val anchor = byId[anchorId]
+      when {
+        anchor == null || anchor.pending ->
+          subjectsById[result.previewId]?.let { unchecked(guidelines, it) } ?: result
+        anchor.unchecked.isNotEmpty() ->
+          result.copy(unchecked = anchor.unchecked).withBodyOf(result)
+        else -> result
+      }
+    }
     val observedRatio = (pricedSpent / pricedPredicted).takeIf { pricedPredicted > 0.0 }
     // Only what there is to learn: a priced bill, or how an OpenRouter model's providers answered.
     if (ledger != null && requests > 0 && (observedRatio != null || client != null)) {
@@ -1227,7 +1274,7 @@ public class GuidelineEngine(
         learn(learned, observedRatio, client),
       )
     }
-    return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
+    return GuidelineRunResult(settled, spent, requests, problems, failedRequests).also {
       it.predictedCostUsd =
         options.price?.let {
           formed.sumOf { batch -> predict(batch) ?: 0.0 } * (learnedRatio ?: 1.0)
@@ -1278,7 +1325,11 @@ public class GuidelineEngine(
    * is expected to reach. Reads the [cache]; never calls the model or the [host].
    */
   public fun plan(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelinePlan {
-    val prepared = prepare(guidelines, subjects)
+    // The Jev checker asks every variant, as its run does.
+    val asked =
+      if (options.checker == GuidelineChecker.VISION) limitVariants(guidelines, subjects).first
+      else subjects
+    val prepared = prepare(guidelines, asked)
     // Prediction prices the vision checker's batches; the Jev checker asks differently.
     val price = options.price.takeIf { options.checker == GuidelineChecker.VISION }
     // Scaled as the run's would be, by how far this model's bills ran from prediction before.
@@ -1308,6 +1359,65 @@ public class GuidelineEngine(
       predictedCostUsd = predictions?.sum(),
       predictedChecked = reached,
     )
+  }
+
+  /**
+   * [subjects] cut to the sizes of each preview ([PreviewGuidelineRequests.sizeless]) that
+   * [GuidelineRunOptions.maxVariants] or [GuidelineRunOptions.variantsPerSizeClass] keep, in the
+   * order given; the rest as results asked nothing that name the size asked in their place. A
+   * subject no rule applies to is left to [prepare], which reports it.
+   */
+  private fun limitVariants(
+    guidelines: CatalogGuidelinesV1,
+    subjects: List<PreviewSubject>,
+  ): Pair<List<PreviewSubject>, List<PreviewGuidelineResult>> {
+    val limit = options.maxVariants
+    if (limit == null && !options.variantsPerSizeClass) return subjects to emptyList()
+    val askable = subjects.filter { guidelines.noRulesFor(it) == null }
+    // Per preview, the size kept in each dropped size's place: one of its width class, then the
+    // nearest by width.
+    fun width(subject: PreviewSubject) = PreviewGuidelineRequests.widthDp(subject)
+    fun widthClass(subject: PreviewSubject) = PreviewGuidelineRequests.sizeClass(width(subject))
+    val keptFor = mutableMapOf<String, PreviewSubject>()
+    askable
+      .groupBy { PreviewGuidelineRequests.sizeless(it) }
+      .values
+      .forEach { sizes ->
+        val kept =
+          if (options.variantsPerSizeClass) {
+            sizes.groupBy { widthClass(it) }.values.map { inClass -> inClass.maxBy { width(it) } }
+          } else {
+            PreviewGuidelineRequests.extremesFirst(sizes).take(limit!!)
+          }
+        sizes.forEach { size ->
+          keptFor[size.previewId] =
+            if (size in kept) size
+            else
+              kept.minWith(
+                compareBy<PreviewSubject>(
+                  { widthClass(it) != widthClass(size) },
+                  { Math.abs(width(it) - width(size)) },
+                )
+              )
+        }
+      }
+    val asked = mutableListOf<PreviewSubject>()
+    val skipped = mutableListOf<PreviewGuidelineResult>()
+    subjects.forEach { subject ->
+      val instead = keptFor[subject.previewId]
+      if (instead == null || instead === subject) {
+        asked += subject
+      } else {
+        skipped +=
+          PreviewGuidelineResult(
+              previewId = subject.previewId,
+              renderHash = subject.renderHash,
+              record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
+            )
+            .also { it.variantOf = instead.previewId }
+      }
+    }
+    return asked to skipped
   }
 
   /**

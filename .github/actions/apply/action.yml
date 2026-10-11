@@ -295,6 +295,16 @@ inputs:
       requests in flight are expected to cost leaves room for it. Ignored by a
       CLI without the flag.
     default: '4'
+  guidelines-max-variants:
+    description: >
+      How many sizes of each preview to ask (the CLI's `--max-variants`): `N`
+      asks the largest, then the smallest, then inward; `size-class` asks the
+      largest in each width class (under 225dp, 225-599, 600-839, 840+), so a
+      Wear preview at five sizes is asked at two. Named variants, themes and
+      font scales are always asked. The rest are reported as covered by the
+      size asked, not as unchecked. Empty (the default) asks every size.
+      Ignored by a CLI without the flag.
+    default: ''
   guidelines-reasoning-effort:
     description: >
       OpenRouter `reasoning.effort` for every guidelines request (the CLI's
@@ -1953,6 +1963,7 @@ runs:
         MAX_COST: ${{ inputs.guidelines-max-cost }}
         MAX_PREVIEWS: ${{ inputs.guidelines-max-previews }}
         CONCURRENCY: ${{ inputs.guidelines-concurrency }}
+        MAX_VARIANTS: ${{ inputs.guidelines-max-variants }}
         REASONING_EFFORT: ${{ inputs.guidelines-reasoning-effort }}
         CACHE_KEY: ${{ inputs.guidelines-cache-key }}
         GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
@@ -1995,6 +2006,16 @@ runs:
             ;;
           *) echo "::warning::compose-preview/apply: guidelines-reasoning-effort must be none, minimal, low, medium, high, xhigh, max or default; using the CLI's default." ;;
         esac
+        # Variants asked per composable, likewise only for a CLI that knows the flag.
+        if [ -n "$MAX_VARIANTS" ]; then
+          if [[ "$MAX_VARIANTS" =~ ^([1-9][0-9]?|size-class)$ ]]; then
+            if grep -q -- '--max-variants' <<<"$cli_help"; then
+              concurrency_args+=(--max-variants "$MAX_VARIANTS")
+            fi
+          else
+            echo "::warning::compose-preview/apply: guidelines-max-variants must be a whole number from 1 to 99 or size-class; asking every size."
+          fi
+        fi
         # The module directories come from the handoff, which the PR's own build
         # wrote, so neither their number nor any results already in them are
         # trusted: `guidelines-max-cost` is ONE budget for the whole check, not
