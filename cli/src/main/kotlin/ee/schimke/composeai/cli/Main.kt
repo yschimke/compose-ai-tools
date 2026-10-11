@@ -17,8 +17,11 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "a11y" to { a -> A11yCommand(a).run() },
     "guidelines" to
       { a ->
-        if (a.firstOrNull() == "key") GuidelinesKeyCommand(a.drop(1)).run()
-        else GuidelinesCommand(a).run()
+        when (a.firstOrNull()) {
+          "key" -> GuidelinesKeyCommand(a.drop(1)).run()
+          "models" -> GuidelinesModelsCommand(a.drop(1)).run()
+          else -> GuidelinesCommand(a).run()
+        }
       },
     "review" to { a -> GuidelinesCommand(a, review = true).run() },
     "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
@@ -190,18 +193,24 @@ private fun printFullUsage() {
                        still writes the recording but exits non-zero (code 2).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
-      review           Review rendered previews against their catalog's design guidelines
-                       with the agent running the command as the model (--backend prompt,
-                       the default): writes each request to build/compose-previews/review/
-                       <id>/request.md with its pictures, reads <id>/reply.json on the next
-                       run, and writes the follow-up when a reply asks for more evidence
-                       (a11y, source, another render). Exits 3 while requests wait for
-                       replies. Same selection flags as render/show; --backend openrouter
-                       and every `guidelines` flag also apply
+      review           Review rendered previews against their catalog's design guidelines.
+                       --backend auto (the default) picks prompt inside an agent session,
+                       OpenRouter with a usable key, prompt otherwise, and says why.
+                       prompt: the agent running the command is the model: writes each
+                       request to build/compose-previews/review/<id>/request.md with its
+                       pictures, reads <id>/reply.json on the next run, and writes the
+                       follow-up when a reply asks for more evidence. Exits 3 while
+                       requests wait for replies. openrouter: as `guidelines`, capped at
+                       $0.25 unless --max-cost says otherwise. openai: an OpenAI-compatible
+                       endpoint, --base-url <url> (version path included) and --model <id>,
+                       key from COMPOSE_PREVIEW_MODEL_KEY or `guidelines key set --for <url>`
+                       (none needed on localhost); it reports no cost. Same selection flags
+                       as render/show; every `guidelines` flag also applies
       guidelines       Check rendered previews against their catalog's design guidelines
                        (ui-builder.guidelines.json) with a model through OpenRouter, in
                        batches; key from COMPOSE_PREVIEW_OPENROUTER_KEY, else the file
-                       `guidelines key set` stores (`guidelines key status|forget`). Flags: --model,
+                       `guidelines key set` stores (`guidelines key status|forget`);
+                       `guidelines models` lists the --model ids that read pictures. Flags: --model,
                        --max-cost, --rounds, --request-timeout <seconds> (default 300),
                        --concurrency <n> (requests in flight, default 4; 1 is one at a
                        time), --idle-timeout <seconds> (a stream with no token, default

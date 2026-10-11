@@ -158,4 +158,36 @@ class GuidelineCredentialsTest {
     assertThat(runCatching { GuidelineCredentials.store(file, secret) }.isFailure).isTrue()
     assertThat(file.readText()).isEqualTo(future)
   }
+
+  @Test
+  fun `an endpoint's key is stored under its origin and resolved from its own variable`() {
+    val provider = GuidelineCredentials.endpointProvider("HTTPS://Api.OpenAI.com/v1/")
+    assertThat(provider).isEqualTo("endpoint:https://api.openai.com")
+    assertThat(GuidelineCredentials.endpointProvider("http://localhost:11434/v1"))
+      .isEqualTo("endpoint:http://localhost:11434")
+    assertThat(runCatching { GuidelineCredentials.endpointProvider("ftp://x") }.isFailure).isTrue()
+
+    GuidelineCredentials.store(file, secret)
+    GuidelineCredentials.store(file, "sk-endpoint-5678", provider)
+    val stored =
+      GuidelineCredentials.resolve(provider, GuidelineCredentials.MODEL_ENV, { null }, file)
+    assertThat(stored!!.key).isEqualTo("sk-endpoint-5678")
+    assertThat(stored.stored).isTrue()
+    // OpenRouter's key is untouched, and never answers for the endpoint.
+    assertThat(GuidelineCredentials.openRouter(env = { null }, file = file)?.key).isEqualTo(secret)
+    val other = GuidelineCredentials.endpointProvider("https://example.com/v1")
+    assertThat(GuidelineCredentials.resolve(other, GuidelineCredentials.MODEL_ENV, { null }, file))
+      .isNull()
+
+    val fromEnv =
+      GuidelineCredentials.resolve(
+        provider,
+        GuidelineCredentials.MODEL_ENV,
+        { if (it == GuidelineCredentials.MODEL_ENV) "sk-env" else null },
+        file,
+      )
+    assertThat(fromEnv)
+      .isEqualTo(GuidelineCredentials.Resolved("sk-env", GuidelineCredentials.MODEL_ENV))
+    assertThat(fromEnv!!.stored).isFalse()
+  }
 }

@@ -41,15 +41,41 @@ public object GuidelineCredentials {
   /** The provider id OpenRouter's key is stored under. */
   public const val OPENROUTER: String = "openrouter"
 
-  /** A key and where it came from: [ENV], or the credentials file's path. */
+  /**
+   * The environment variable holding the key for an OpenAI-compatible endpoint
+   * ([OpenAiCompatibleClient]); it beats the key stored for that endpoint ([endpointProvider]).
+   */
+  public const val MODEL_ENV: String = "COMPOSE_PREVIEW_MODEL_KEY"
+
+  /**
+   * The provider id an OpenAI-compatible endpoint's key is stored under: its origin
+   * (`scheme://host[:port]`, lowercased), so a key is only ever sent to the endpoint it was stored
+   * for.
+   */
+  public fun endpointProvider(baseUrl: String): String {
+    val uri = java.net.URI(baseUrl.trim())
+    val scheme = uri.scheme?.lowercase()
+    require(scheme in setOf("http", "https") && !uri.host.isNullOrEmpty()) {
+      "an endpoint is an http(s) URL"
+    }
+    val port = if (uri.port == -1) "" else ":${uri.port}"
+    return "endpoint:$scheme://${uri.host.lowercase()}$port"
+  }
+
+  /**
+   * A key and where it came from: an environment variable's name, or the credentials file's path.
+   */
   public data class Resolved(val key: String, val source: String) {
     /** The last four characters, for a status line: `…abcd`. Never the key itself. */
     public val masked: String
       get() = if (key.length <= 8) "…" else "…" + key.takeLast(4)
 
-    /** Whether the key came from the credentials file rather than [ENV]. */
+    /**
+     * Whether the key came from the credentials file (an absolute path) rather than the
+     * environment.
+     */
     public val stored: Boolean
-      get() = source != ENV
+      get() = File(source).isAbsolute
 
     override fun toString(): String = "Resolved(key=$masked, source=$source)"
   }
@@ -62,16 +88,29 @@ public object GuidelineCredentials {
     env: (String) -> String? = System::getenv,
     file: File? = defaultFileOrNull(env = env),
     warn: (String) -> Unit = {},
+  ): Resolved? = resolve(OPENROUTER, ENV, env, file, warn)
+
+  /**
+   * The key for [provider] from [envVar], else as stored in [file] under [provider]; null when
+   * neither holds one. [openRouter] is this for OpenRouter; an OpenAI-compatible endpoint uses
+   * [MODEL_ENV] and [endpointProvider].
+   */
+  public fun resolve(
+    provider: String,
+    envVar: String,
+    env: (String) -> String? = System::getenv,
+    file: File? = defaultFileOrNull(env = env),
+    warn: (String) -> Unit = {},
   ): Resolved? {
-    env(ENV)
+    env(envVar)
       ?.trim()
       ?.takeIf { it.isNotEmpty() }
       ?.let {
-        return Resolved(it, ENV)
+        return Resolved(it, envVar)
       }
     if (file == null) return null
     return read(file, warn)
-      .keys[OPENROUTER]
+      .keys[provider]
       ?.trim()
       ?.takeIf { it.isNotEmpty() }
       ?.let {
