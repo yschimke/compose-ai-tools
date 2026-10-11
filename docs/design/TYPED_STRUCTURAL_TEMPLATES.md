@@ -62,7 +62,9 @@ remade for the text around it. Most of the structure does not need text:
   `ScreenValue.LocalRead`.
 - **Each item is a `SlotItem`.** The list's DSL slot wraps every child in `item { … }`, and the item
   scope the catalog declares (`code.scopes["list-item"]`) is that wrapper's attested `bodyScopeFqn`,
-  so `Modifier.transformedHeight(this, spec)` inside it is checked like any other scoped read.
+  so `Modifier.transformedHeight(this, spec)` inside it is checked like any other scoped read. The
+  target names the role its item member opens (`itemRoles`), so a variant whose rows take no
+  context (`transformation = none`) wraps them in `item { … }` without the role.
 - **The frame is the `screen-root` template**, written by `ScreenGenerator.generate(…, frame)`
   around the root, with one hole: `${content}`. It declares what the records read and no record
   declares: `val listState = rememberTransformingLazyColumnState()`, `val spec = …`, and

@@ -157,6 +157,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineCredentials$Resolved
 public final class ee/schimke/composeai/guidelines/GuidelineEngine {
 	public fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun plan (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;)Lee/schimke/composeai/guidelines/GuidelinePlan;
 	public final fun run (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;)Lee/schimke/composeai/guidelines/GuidelineRunResult;
 }
 
@@ -254,6 +255,44 @@ public final class ee/schimke/composeai/guidelines/GuidelineModel$DefaultImpls {
 	public static fun decide (Lee/schimke/composeai/guidelines/GuidelineModel;Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
 }
 
+public final class ee/schimke/composeai/guidelines/GuidelinePlan {
+	public fun <init> (IIILjava/lang/Double;Ljava/lang/Integer;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/Double;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun copy (IIILjava/lang/Double;Ljava/lang/Integer;)Lee/schimke/composeai/guidelines/GuidelinePlan;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelinePlan;IIILjava/lang/Double;Ljava/lang/Integer;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelinePlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCached ()I
+	public final fun getPredictedChecked ()Ljava/lang/Integer;
+	public final fun getPredictedCostUsd ()Ljava/lang/Double;
+	public final fun getPreviews ()I
+	public final fun getRequests ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelinePrice {
+	public static final field Companion Lee/schimke/composeai/guidelines/GuidelinePrice$Companion;
+	public fun <init> (DD)V
+	public final fun component1 ()D
+	public final fun component2 ()D
+	public final fun copy (DD)Lee/schimke/composeai/guidelines/GuidelinePrice;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelinePrice;DDILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelinePrice;
+	public final fun costUsd (II)D
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompletionPerMillion ()D
+	public final fun getPromptPerMillion ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelinePrice$Companion {
+	public final fun of (Ljava/util/List;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelinePrice;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineReply {
 	public fun <init> (Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineServed;)V
 	public final fun component1 ()Ljava/util/List;
@@ -338,6 +377,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
+	public final fun getPrice ()Lee/schimke/composeai/guidelines/GuidelinePrice;
 	public final fun getRanBy ()Ljava/lang/String;
 	public final fun getReasoningEffort ()Ljava/lang/String;
 	public final fun getRetry ()Lee/schimke/composeai/guidelines/GuidelineRetry;
@@ -349,6 +389,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withJudge (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withPrice (Lee/schimke/composeai/guidelines/GuidelinePrice;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }
@@ -372,6 +413,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public final fun getDeferredRequests ()I
 	public final fun getFailedEvidence ()I
 	public final fun getFailedRequests ()I
+	public final fun getPredictedCostUsd ()Ljava/lang/Double;
 	public final fun getProblems ()Ljava/util/List;
 	public final fun getReasoningRetries ()I
 	public final fun getReasoningTokens ()J
@@ -667,6 +709,7 @@ public final class ee/schimke/composeai/guidelines/PreviewCheck {
 
 public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public static final field EXPECTED_LISTED_SHARE D
+	public static final field EXPECTED_REASONING_SHARE D
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;
 	public static final field KIND_A11Y Ljava/lang/String;
 	public static final field KIND_SCROLL_CAPTURE Ljava/lang/String;
@@ -682,8 +725,11 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineRequests {
 	public final fun a11ySummary (Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
 	public final fun batches (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;)Ljava/util/List;
 	public static synthetic fun batches$default (Lee/schimke/composeai/guidelines/PreviewGuidelineRequests;Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/util/List;Lee/schimke/composeai/guidelines/GuidelineBudget;ILjava/lang/Object;)Ljava/util/List;
+	public final fun breadthFirst (Ljava/util/List;)Ljava/util/List;
+	public final fun expectedReasoningTokens (Ljava/lang/String;)I
 	public final fun expectedReplyTokens (I)I
 	public final fun getRESPONSE_SCHEMA ()Lkotlinx/serialization/json/JsonObject;
+	public final fun predictedCostUsd (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Lee/schimke/composeai/guidelines/GuidelineBatch;Lee/schimke/composeai/guidelines/GuidelinePrice;Ljava/lang/String;)D
 	public final fun reasoningTokenAllowance (Ljava/lang/String;)I
 	public final fun replyTokenLimit (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;)I
 	public final fun replyTokenLimit (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)I

@@ -2,6 +2,7 @@ package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -614,6 +615,88 @@ class ExportProjectionTest {
       )
     }
     assertThat(written.exceptionOrNull()?.message).contains("both a DSL slot and written")
+  }
+
+  @Test
+  fun `a property only another target writes is refused, unless unset`() {
+    val container = ExportProjection.Value.Property("containerColor", ExportProjection.Codec.Text)
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target("catalog/Button", mapOf("containerColor" to container)),
+          ExportProjection.Target(
+            "catalog/OutlinedButton",
+            emptyMap(),
+            variants = setOf("outlined"),
+          ),
+        ),
+        variantProperty = "variant",
+      )
+    val outlined = JsonPrimitive("outlined")
+    val refused =
+      projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive("primary")))
+        as ExportProjection.Lowered.Refused
+    assertThat(refused.reasons.single())
+      .isEqualTo("containerColor: not written by catalog/OutlinedButton")
+    // The seeded empty default and an explicit null are unset, so nothing is dropped.
+    assertThat(
+        projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive("")))
+      )
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+    assertThat(projection.lower(mapOf("variant" to outlined, "containerColor" to JsonNull)))
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+    // A property no target writes is the host's to refuse, not the projection's.
+    assertThat(projection.lower(mapOf("variant" to outlined, "other" to JsonPrimitive("x"))))
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+  }
+
+  @Test
+  fun `an item member names the role it opens, per target, and round trips`() {
+    val list =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "catalog/List",
+            emptyMap(),
+            items = mapOf("content" to "item"),
+            itemRoles = mapOf("content" to "list-item"),
+          ),
+          ExportProjection.Target(
+            "catalog/List",
+            emptyMap(),
+            variants = setOf("none"),
+            items = mapOf("content" to "item"),
+          ),
+        ),
+        variantProperty = "transformation",
+      )
+    val spec = list.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(spec.itemRoles).containsExactly("content", "list-item")
+    val none =
+      list.lower(mapOf("transformation" to JsonPrimitive("none"))) as ExportProjection.Lowered.Node
+    assertThat(none.items).containsExactly("content", "item")
+    assertThat(none.itemRoles).isEmpty()
+    val json = ExportProjectionJson.encode(list)
+    assertThat(json.toString()).contains("\"itemRoles\":{\"content\":\"list-item\"}")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(list)
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.Target("r", emptyMap(), itemRoles = mapOf("content" to "list-item"))
+        }
+      )
+      .contains("has an item role but no item member")
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            "r",
+            emptyMap(),
+            items = mapOf("content" to "item"),
+            itemRoles = mapOf("content" to "row"),
+          )
+        }
+      )
+      .contains("is not one of")
   }
 
   @Test

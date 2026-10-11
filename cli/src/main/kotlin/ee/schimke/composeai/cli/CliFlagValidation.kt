@@ -54,6 +54,7 @@ internal object CliFlagValidation {
         "--compare-with",
         "--no-triage",
         "--annotate",
+        "--estimate",
         "--guidelines",
         "--surface",
         "--profile",

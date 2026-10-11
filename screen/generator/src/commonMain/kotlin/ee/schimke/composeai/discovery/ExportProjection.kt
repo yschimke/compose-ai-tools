@@ -53,9 +53,12 @@ data class ExportProjection(
    *   `content` is a `wear-m3/text` holding the header's `text`.
    * @property items for a parameter declared through its receiver's DSL rather than composed
    *   (`TransformingLazyColumn`'s `content: TransformingLazyColumnScope.() -> Unit`), the member
-   *   each child is wrapped in (`item`). The child is then the direct child of the `list-item`
-   *   role: its target's `list-item` context applies, and the wrapper's body composes under the
-   *   scope the catalog's `code.scopes["list-item"]` declares.
+   *   each child is wrapped in (`item`).
+   * @property itemRoles for an [items] parameter, the structural role its member opens. The child
+   *   is then the direct child of that role: its target's context for the role applies, and the
+   *   wrapper's body composes under the scope the catalog's `code.scopes[role]` declares. A
+   *   parameter with no role wraps its children without one, so a list target whose rows take no
+   *   context (Wear's `transformation = none`) names none.
    */
   data class Target(
     val record: String,
@@ -67,11 +70,18 @@ data class ExportProjection(
     val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
     val synthesize: Map<String, Synthesis> = emptyMap(),
     val items: Map<String, String> = emptyMap(),
+    val itemRoles: Map<String, String> = emptyMap(),
   ) {
     init {
       for ((parameter, member) in items) {
         require(ComponentSnippets.isIdentifier(member)) {
           "`$parameter`'s item member `$member` is not a Kotlin identifier"
+        }
+      }
+      for ((parameter, role) in itemRoles) {
+        require(parameter in items) { "`$parameter` has an item role but no item member" }
+        require(role in UI_BUILDER_STRUCTURAL_ROLES) {
+          "`$parameter`'s item role `$role` is not one of $UI_BUILDER_STRUCTURAL_ROLES"
         }
       }
       val itemsWritten = items.keys intersect parameters.keys
@@ -470,19 +480,22 @@ data class ExportProjection(
   val properties: Set<String>
     get() = buildSet {
       variantProperty?.let(::add)
-      fun visit(value: Value) {
-        when (value) {
-          is Value.Property -> add(value.name)
-          is Value.Call -> value.arguments.values.forEach(::visit)
-          is Value.Fixed -> Unit
-        }
-      }
-      targets.forEach { target ->
-        target.parameters.values.forEach(::visit)
-        target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
-        target.synthesize.values.forEach { addAll(it.properties.values) }
+      targets.forEach { addAll(read(it)) }
+    }
+
+  /** The wire properties [target] writes, in any role, or copies to a synthesized child. */
+  private fun read(target: Target): Set<String> = buildSet {
+    fun visit(value: Value) {
+      when (value) {
+        is Value.Property -> add(value.name)
+        is Value.Call -> value.arguments.values.forEach(::visit)
+        is Value.Fixed -> Unit
       }
     }
+    target.parameters.values.forEach(::visit)
+    target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+    target.synthesize.values.forEach { addAll(it.properties.values) }
+  }
 
   /**
    * The parameter of [record] that [property] is written to as itself, through no factory call —
@@ -589,6 +602,8 @@ data class ExportProjection(
       val synthesized: Map<String, Synthesized> = emptyMap(),
       /** The target's [Target.items]: the member each child of a DSL parameter is wrapped in. */
       val items: Map<String, String> = emptyMap(),
+      /** The target's [Target.itemRoles]: the structural role an [items] member opens. */
+      val itemRoles: Map<String, String> = emptyMap(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
@@ -620,6 +635,16 @@ data class ExportProjection(
       if (variant == null) targets.firstOrNull { it.variants == null }
       else targets.firstOrNull { it.variants?.contains(variant) == true }
     if (target == null) return Lowered.Refused(listOf("no target for $variantProperty=$variant"))
+    // A property another target writes but this one does not (an outlined button's
+    // `containerColor`) would be dropped, so stating one is refused, as a host refuses a property
+    // no target writes.
+    val read = read(target)
+    for (name in
+      (properties.keys intersect this.properties) - read - setOfNotNull(variantProperty)) {
+      val raw = wireValue(properties[name]) ?: continue
+      if (raw is JsonNull || (raw.isString && raw.content.isEmpty())) continue
+      reasons += "$name: not written by ${target.record}"
+    }
     val context = role?.let { target.contexts[it] }
     val arguments = buildMap {
       for ((parameter, value) in target.parameters + context?.parameters.orEmpty()) {
@@ -646,6 +671,7 @@ data class ExportProjection(
         context?.modifier.orEmpty(),
         synthesized,
         target.items,
+        target.itemRoles,
       )
     else Lowered.Refused(reasons)
   }

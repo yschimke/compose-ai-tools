@@ -613,6 +613,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   private var declaredProjection: ExportProjection? = null
   private val projectionRecords = mutableListOf<ComponentRecord>()
   private val projectionFactories = mutableListOf<FactorySignature>()
+  private val refusedOnExport = mutableSetOf<String>()
 
   /** How a design using this component is exported onto real records, when declared. */
   val projection: ExportProjection?
@@ -699,7 +700,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
    * [parameters] written from declared properties, the wire [slots] / [events] renamed onto its
    * parameters, what it writes besides when placed in a structural role ([contexts]), and how a
    * slot's children choose the parameters they fill ([slotPatterns]); and the member each child of
-   * a DSL parameter is wrapped in ([items]).
+   * a DSL parameter is wrapped in ([items]) and the structural role that member opens
+   * ([itemRoles]).
    */
   protected fun target(
     record: ComponentRecord,
@@ -711,6 +713,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     slotPatterns: Map<String, ExportProjection.SlotPatterns> = emptyMap(),
     synthesize: Map<String, ExportProjection.Synthesis> = emptyMap(),
     items: Map<String, String> = emptyMap(),
+    itemRoles: Map<String, String> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
@@ -724,6 +727,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         slotPatterns,
         synthesize,
         items,
+        itemRoles,
       ),
     )
 
@@ -777,6 +781,20 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     }
     declaredProjection = ExportProjection(targets.map { it.target }, variant?.name)
     projectionRecords += targets.map { it.record }
+  }
+
+  /**
+   * Declared [properties] the [exportAs] projection deliberately does not write, because no
+   * parameter of any target can carry them: Wear `Text`'s `fontVariationSettings` reaches the call
+   * only through a `TextStyle` copy. They stay on the shelf; a host refuses a node that sets one
+   * (it is outside [ExportProjection.properties]), and validation stops requiring them exported.
+   */
+  protected fun exportRefuses(vararg properties: AdapterProperty<P, *>) {
+    check(!frozen) { "$id: adapter definition is already frozen" }
+    for (property in properties) {
+      require(property.owner === this) { "${property.name} belongs to another adapter" }
+      require(refusedOnExport.add(property.name)) { "$id.${property.name}: already refused" }
+    }
   }
 
   protected fun slot(name: String, required: Boolean = false): AdapterSlot<P> {
@@ -874,7 +892,13 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       // A declared property no projection reads would be refused by every host on every node.
       val read = projection.properties
       for (property in declaredProperties) {
-        if (property.name !in read) add("$id: property ${property.name} is not exported")
+        val refused = property.name in refusedOnExport
+        if (property.name !in read && !refused) {
+          add("$id: property ${property.name} is not exported")
+        }
+        if (property.name in read && refused) {
+          add("$id: property ${property.name} is refused on export but the projection writes it")
+        }
       }
       val records =
         projectionRecords.associateBy { it.canonicalId } + (record.canonicalId to record)
@@ -920,7 +944,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               written,
               fills,
               overload?.parameters ?: targetRecord.parameters,
-              targetRecord.code?.call,
               at,
             )
           }
@@ -939,7 +962,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
                 written + alsoWritten,
                 fills,
                 overload?.parameters ?: targetRecord.parameters,
-                targetRecord.code?.call,
                 inRole,
               )
             }
@@ -1017,7 +1039,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     written: Map<String, String?>,
     fills: List<SlotFill>,
     overloadParameters: List<TargetParameter>,
-    placeholders: String?,
     where: String,
   ): List<String> = buildList {
     val parameters = overloadParameters.associateBy { it.name }
@@ -1055,47 +1076,15 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         fills.filter { it.always }.map { it.parameter } +
         target.events.values +
         declaredChanges.map { it.name }
-    // The record's call site is printed with every export, as named arguments, so it fills a
-    // required parameter of any overload that has one by that name and breaks one that has not.
-    val placed = placeholders?.let(::namedArguments).orEmpty()
-    for (name in placed) {
-      if (name !in parameters)
-        add("$where: the call site writes $name, which it has no parameter for")
-    }
+    // The generator writes the chosen overload's own call: a required parameter nothing writes gets
+    // that parameter's placeholder (`onClick = {}`). The record's recorded call site belongs to its
+    // own overload and is not printed for another. A required composable slot left to its `{}`
+    // placeholder would draw nothing where the component expects content, so it is reported.
     for (parameter in overloadParameters) {
-      if (parameter.hasDefault || parameter.name in covered || parameter.name in placed) continue
+      if (parameter.hasDefault || parameter.name in covered) continue
+      if (!parameter.composableSlot && ComponentSnippets.placeholderFor(parameter) != null) continue
       add("$where: required parameter ${parameter.name} is not written")
     }
-  }
-
-  /** The named arguments of a call snippet's outermost call: `Button(onClick = {})` → `onClick`. */
-  private fun namedArguments(call: String): Set<String> {
-    val open = call.indexOf('(')
-    if (open < 0) return emptySet()
-    val names = mutableSetOf<String>()
-    var depth = 0
-    var start = open + 1
-    var quoted = false
-    var i = open
-    while (i < call.length) {
-      val c = call[i]
-      when {
-        quoted && c == '\\' -> i++
-        c == '"' -> quoted = !quoted
-        quoted -> Unit
-        c == '(' || c == '{' || c == '[' -> depth++
-        c == ')' || c == '}' || c == ']' -> depth--
-        c == ',' && depth == 1 -> start = i + 1
-        c == '=' &&
-          depth == 1 &&
-          call.getOrNull(i + 1) != '=' &&
-          call.getOrNull(i - 1) !in OPERATOR_CHARS ->
-          call.substring(start, i).trim().takeIf { it.isNotEmpty() }?.let(names::add)
-      }
-      if (depth == 0 && i > open) break
-      i++
-    }
-    return names
   }
 
   /** The Kotlin type [value] writes, after checking the properties it reads exist and export. */
@@ -1259,11 +1248,14 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         b.canvas = id
         b.propertyCapabilities = declaredProperties.map { it.capability() }
         b.slotCapabilities = declaredSlots.map { it.capability() }
+        // A refused property's default is not seeded: a new node setting it would be refused.
         b.insertContent = buildJsonObject {
           put(
             "properties",
             JsonObject(
-              declaredProperties.associate { property -> property.name to defaultValue(property) }
+              declaredProperties
+                .filter { it.name !in refusedOnExport }
+                .associate { property -> property.name to defaultValue(property) }
             ),
           )
         }
@@ -1388,8 +1380,3 @@ object TypedAdapterCatalog {
 private const val COLOR_TYPE = "androidx.compose.ui.graphics.Color"
 
 private const val MODIFIER_TYPE = "androidx.compose.ui.Modifier"
-
-/**
- * The characters that make a following `=` part of an operator (`<=`, `!=`, `==`), not an argument.
- */
-private val OPERATOR_CHARS = setOf('=', '!', '<', '>')
