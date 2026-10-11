@@ -50,6 +50,16 @@ public data class ModelResponse(val status: Int, val body: String) {
     /** The [status] of a request that got no HTTP answer at all. */
     public const val NO_ANSWER: Int = 0
 
+    /**
+     * The [status] of a request the model left for someone else to answer ([DeferredReplyModel]):
+     * its previews stay pending, and it is neither a failure nor retried. [body] says where it
+     * went.
+     */
+    public const val DEFERRED: Int = -1
+
+    /** A request left to be answered elsewhere, described by [where]. */
+    public fun deferred(where: String): ModelResponse = ModelResponse(DEFERRED, where)
+
     /** A request that got no answer, for [reason]; [timedOut] when a timeout gave up on it. */
     public fun noAnswer(reason: String, timedOut: Boolean = false): ModelResponse =
       ModelResponse(

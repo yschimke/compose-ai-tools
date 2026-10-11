@@ -33,6 +33,24 @@ public final class ee/schimke/composeai/guidelines/CatalogGuidelinesLoaderKt {
 	public static synthetic fun subjectRules$default (Lee/schimke/composeai/guidelines/protocol/CatalogGuidelinesV1;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
 }
 
+public final class ee/schimke/composeai/guidelines/DeferredReplyModel : ee/schimke/composeai/guidelines/GuidelineModel {
+	public static final field Companion Lee/schimke/composeai/guidelines/DeferredReplyModel$Companion;
+	public static final field DEFAULT_MODEL Ljava/lang/String;
+	public static final field REPLY Ljava/lang/String;
+	public static final field REQUEST Ljava/lang/String;
+	public fun <init> (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public final fun getWaiting ()Ljava/util/List;
+	public final fun prune ()V
+}
+
+public final class ee/schimke/composeai/guidelines/DeferredReplyModel$Companion {
+	public final fun idOf (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;)Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineAnnotator {
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineAnnotator;
 	public final fun annotate ([BLjava/util/List;Ljava/util/List;Ljava/lang/String;)[B
@@ -345,6 +363,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCompletionTokens ()J
 	public final fun getCostUsd ()D
+	public final fun getDeferredRequests ()I
 	public final fun getFailedEvidence ()I
 	public final fun getFailedRequests ()I
 	public final fun getProblems ()Ljava/util/List;
@@ -513,6 +532,7 @@ public final class ee/schimke/composeai/guidelines/JevTriage$Offer {
 
 public final class ee/schimke/composeai/guidelines/ModelResponse {
 	public static final field Companion Lee/schimke/composeai/guidelines/ModelResponse$Companion;
+	public static final field DEFERRED I
 	public static final field NO_ANSWER I
 	public fun <init> (ILjava/lang/String;)V
 	public final fun component1 ()I
@@ -533,6 +553,7 @@ public final class ee/schimke/composeai/guidelines/ModelResponse {
 }
 
 public final class ee/schimke/composeai/guidelines/ModelResponse$Companion {
+	public final fun deferred (Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
 	public final fun noAnswer (Ljava/lang/String;Z)Lee/schimke/composeai/guidelines/ModelResponse;
 	public static synthetic fun noAnswer$default (Lee/schimke/composeai/guidelines/ModelResponse$Companion;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
 }

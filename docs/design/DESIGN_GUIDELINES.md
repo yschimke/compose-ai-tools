@@ -476,6 +476,43 @@ compose-preview guidelines --checker jev --compare-with vision/guidelines.json \
   --source-root <module>/src --guidelines <module>/ui-builder.guidelines.json
 ```
 
+## Prompt mode: `compose-preview review`
+
+`review` is `guidelines` with the agent that runs it as the model (`--backend prompt`, its
+default; `--backend openrouter` makes it `guidelines`). It takes the same selection as `render`
+and `show` (`--module`, `--filter`, `--id`, `--changed-only`, `--id-file`, `--permutations`) and
+every `guidelines` option that does not name OpenRouter. No key, no provider, no cost.
+
+`DeferredReplyModel` stands in for the model. It does not call anything: each request the engine
+would send is written under the module, named by a hash of everything a model would be sent
+(pictures included), so the same previews, rules and evidence make the same request on every run:
+
+```
+build/compose-previews/review/<id>/request.md     the system prompt, the request, picture paths, the reply schema
+build/compose-previews/review/<id>/picture-N.png  picture N, as a reply's `regions[].picture` numbers it
+build/compose-previews/review/<id>/reply.json     written by the agent
+```
+
+Without a `reply.json` the model answers `ModelResponse.DEFERRED`: the engine leaves that batch's
+previews pending, neither failed nor retried nor split, and counts it in
+`GuidelineRunResult.deferredRequests`. The command lists the waiting `request.md` files and exits
+**3**. The agent (or one subagent per request, which keeps the pictures out of its own context)
+writes each reply and runs the same command again.
+
+The next run reads each reply through the same checks as a model's: rule ids held to what was
+asked, `others` statements expanded, regions mapped to pictures. A reply answering
+`needs_evidence` starts the evidence loop exactly as it would with OpenRouter: the CLI's host
+fetches the accessibility data (or source, or another render) and the follow-up request is written
+out as a new `<id>`, so the agent never has to know how to get the nodes. Once every rule is
+decided the result is cached under the agent's model name (`agent`, or `--model`) and
+`guidelines.json`, `--annotate` and `--fail-on` behave as for any run. A run over the whole
+selection deletes request directories the current previews no longer make.
+
+Differences from an OpenRouter run: no Jev triage (it is OpenRouter's decisions API); one attempt
+per request and no splitting, since asking again would read the same reply and halves would be new
+requests for the agent; an unreadable reply is a failed request, reported with why, and is fixed by
+rewriting `reply.json`. Handoff mode and `--checker jev` need `--backend openrouter`.
+
 ## Handoff mode (CI)
 
 No Gradle, no daemon:

@@ -252,6 +252,13 @@ public data class GuidelineRunResult(
    */
   public var reasoningRetries: Int = 0
     internal set
+
+  /**
+   * Requests the model deferred ([ModelResponse.DEFERRED]): written out for someone else (an agent)
+   * to answer, their previews pending. Not failures; the next run reads the answers.
+   */
+  public var deferredRequests: Int = 0
+    internal set
 }
 
 /**
@@ -298,6 +305,8 @@ public class GuidelineEngine(
     var spent = 0.0
     var requests = 0
     var failedRequests = 0
+    // Requests a [ModelResponse.DEFERRED] model left for someone else to answer: not failures.
+    var deferredRequests = 0
     // The dearest request so far: what the next one is expected to cost, so the cap is not crossed
     // by a request started just under it. Before the first answer there is nothing to go on.
     var dearest = 0.0
@@ -578,6 +587,11 @@ public class GuidelineEngine(
               settle(held, 0.0, unanswered = false)
               return FailedRequest("request failed: ${it.message}", FailureKind.FATAL)
             }
+          // Left for someone else to answer, not asked: nothing spent, nothing to retry.
+          if (response.status == ModelResponse.DEFERRED) {
+            settle(held, 0.0, unanswered = false)
+            return FailedRequest(response.body, FailureKind.DEFERRED)
+          }
           // Paid for whether or not the answer can be used; an error in place of a completion can
           // carry a cost too.
           val cost = GuidelineResponse.cost(response.body) ?: 0.0
@@ -800,6 +814,14 @@ public class GuidelineEngine(
       }
 
       val failure = ask(batch, 0, null, first)
+      if (failure?.kind == FailureKind.DEFERRED) {
+        // Pending, not failed: the next run reads the answer and carries on from here.
+        lock.withLock {
+          deferredRequests++
+          uncheckedLocked(batch)
+        }
+        return
+      }
       if (failure != null) {
         if (failure.splittable && batch.subjects.size > 1 && options.retry.split && mayRecover()) {
           // One slow or failing batch must not sink every preview in it: ask its halves, next.
@@ -863,8 +885,12 @@ public class GuidelineEngine(
           )
         if (followUpFailure != null) {
           lock.withLock {
-            failures.getOrPut(task.key) { mutableListOf() } += followUpFailure.problem
-            failedRequests++
+            if (followUpFailure.kind == FailureKind.DEFERRED) {
+              deferredRequests++
+            } else {
+              failures.getOrPut(task.key) { mutableListOf() } += followUpFailure.problem
+              failedRequests++
+            }
           }
           interrupted = undecided.keys
           break
@@ -1041,6 +1067,7 @@ public class GuidelineEngine(
       it.completionTokens = completionTokens
       it.reasoningTokens = reasoningTokens
       it.reasoningRetries = reasoningRetries
+      it.deferredRequests = deferredRequests
     }
   }
 
@@ -1239,6 +1266,8 @@ internal enum class FailureKind {
   REASONING_EXHAUSTED,
   /** Nothing to retry: an invalid key (401), no credit (402), forbidden (403), a bad request. */
   FATAL,
+  /** Left to be answered outside the run ([ModelResponse.DEFERRED]): pending, never retried. */
+  DEFERRED,
 }
 
 /** Whether an OpenRouter error [body] names its in-flight budget as the limit it hit. */
@@ -1254,7 +1283,8 @@ internal data class FailedRequest(val problem: String, val kind: FailureKind) {
     get() =
       kind != FailureKind.FATAL &&
         kind != FailureKind.RATE_LIMITED &&
-        kind != FailureKind.REASONING_EXHAUSTED
+        kind != FailureKind.REASONING_EXHAUSTED &&
+        kind != FailureKind.DEFERRED
 
   companion object {
     /** [response], not a 2xx, as a failure. */
