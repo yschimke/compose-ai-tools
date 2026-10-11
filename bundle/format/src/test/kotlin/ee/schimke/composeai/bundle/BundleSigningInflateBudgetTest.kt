@@ -10,9 +10,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /**
- * [BundleSigning.canonicalDigest] and [BundleSigning.readSignatures] read client-controlled zips
- * on the server's upload path. Every member — including ones the server's extraction ignores —
- * must be charged to one inflation budget and streamed, never inflated whole into memory.
+ * [BundleSigning.canonicalDigest] and [BundleSigning.readSignatures] read client-controlled zips on
+ * the server's upload path. Every member — including ones the server's extraction ignores — must be
+ * charged to one inflation budget and streamed, never inflated whole into memory.
  */
 class BundleSigningInflateBudgetTest {
 
@@ -57,6 +57,18 @@ class BundleSigningInflateBudgetTest {
     }
     assertFailsWith<ZipException> { BundleSigning.canonicalDigest(bomb) }
     assertFailsWith<ZipException> { BundleSigning.readSignatures(bomb) }
+  }
+
+  @Test
+  fun `a bomb hidden in signatures json or a directory entry is still charged to the digest`() {
+    val inSignatures = zip {
+      entry("previews/probe.png", 8)
+      entry(BundleSigning.SIGNATURES_PATH, BundleSigning.MAX_UNCOMPRESSED_BYTES + 1)
+    }
+    assertFailsWith<ZipException> { BundleSigning.canonicalDigest(inSignatures) }
+    val inDirectory = zip { entry("previews/", BundleSigning.MAX_UNCOMPRESSED_BYTES + 1) }
+    assertFailsWith<ZipException> { BundleSigning.canonicalDigest(inDirectory) }
+    assertFailsWith<ZipException> { BundleSigning.readSignatures(inDirectory) }
   }
 
   @Test
