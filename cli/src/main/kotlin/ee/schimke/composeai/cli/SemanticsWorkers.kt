@@ -56,7 +56,7 @@ internal object SemanticsWorkers {
     previewCount: Int,
     descriptorFile: File?,
     cores: Int = Runtime.getRuntime().availableProcessors(),
-    availableMemoryMb: () -> Long? = ::availableMemoryMb,
+    availableMemoryMb: () -> Long? = { SemanticsWorkers.availableMemoryMb() },
   ): Int {
     if (spec == null) return 1
     if (spec.equals("auto", ignoreCase = true)) {
@@ -112,29 +112,65 @@ internal object SemanticsWorkers {
   }
 
   /**
-   * Memory available to new processes: Linux `MemAvailable` (which counts reclaimable page cache,
-   * unlike the JVM's free-memory figure), else half the physical memory, else unknown.
+   * Memory a new daemon could actually get: the smaller of the host's `MemAvailable` and what the
+   * enclosing cgroup still allows (a container's limit, which `/proc/meminfo` doesn't reflect).
+   * Falls back to half the physical memory when neither is readable. [procRoot] and [cgroupRoot]
+   * are injectable for tests.
    */
-  private fun availableMemoryMb(): Long? {
-    runCatching {
-      File("/proc/meminfo")
-        .takeIf { it.isFile }
-        ?.useLines { lines -> lines.firstOrNull { it.startsWith("MemAvailable:") } }
-        ?.split(Regex("\\s+"))
-        ?.getOrNull(1)
-        ?.toLongOrNull()
-        ?.let { kb -> kb / 1024 }
-    }
-      .getOrNull()
-      ?.let {
-        return it
+  fun availableMemoryMb(
+    procRoot: File = File("/proc"),
+    cgroupRoot: File = File("/sys/fs/cgroup"),
+  ): Long? {
+    val host = memAvailableMb(procRoot)
+    val cgroup = cgroupRemainingMb(cgroupRoot)
+    return listOfNotNull(host, cgroup).minOrNull()
+      ?: runCatching {
+        val os =
+          java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+            as com.sun.management.OperatingSystemMXBean
+        os.totalMemorySize / MB / 2
       }
-    return runCatching {
-      val os =
-        java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-          as com.sun.management.OperatingSystemMXBean
-      os.totalMemorySize / (1024 * 1024) / 2
-    }
-      .getOrNull()
+        .getOrNull()
   }
+
+  /** `MemAvailable` from `<procRoot>/meminfo`, which counts reclaimable page cache. */
+  private fun memAvailableMb(procRoot: File): Long? = runCatching {
+    File(procRoot, "meminfo")
+      .takeIf { it.isFile }
+      ?.useLines { lines -> lines.firstOrNull { it.startsWith("MemAvailable:") } }
+      ?.split(Regex("\\s+"))
+      ?.getOrNull(1)
+      ?.toLongOrNull()
+      ?.let { kb -> kb / 1024 }
+  }
+    .getOrNull()
+
+  /**
+   * The cgroup's remaining allowance: v2 `memory.max - memory.current` (`max` is unlimited), else
+   * v1 `memory/memory.limit_in_bytes - memory/memory.usage_in_bytes` (v1 reports "unlimited" as a
+   * huge page-rounded value, so anything above [CGROUP_V1_UNLIMITED] counts as unlimited). Null
+   * when unlimited or unreadable.
+   */
+  fun cgroupRemainingMb(cgroupRoot: File): Long? {
+    fun read(name: String): String? {
+      val file = File(cgroupRoot, name)
+      return if (file.isFile) runCatching { file.readText().trim() }.getOrNull() else null
+    }
+    val v2Max = read("memory.max")
+    if (v2Max != null) {
+      if (v2Max == "max") return null
+      val limit = v2Max.toLongOrNull() ?: return null
+      val used = read("memory.current")?.toLongOrNull() ?: 0L
+      return ((limit - used) / MB).coerceAtLeast(0)
+    }
+    val v1Limit = read("memory/memory.limit_in_bytes")?.toLongOrNull() ?: return null
+    if (v1Limit >= CGROUP_V1_UNLIMITED) return null
+    val used = read("memory/memory.usage_in_bytes")?.toLongOrNull() ?: 0L
+    return ((v1Limit - used) / MB).coerceAtLeast(0)
+  }
+
+  private const val MB = 1024L * 1024L
+
+  /** cgroup v1's "no limit" is `LONG_MAX` rounded to a page; nothing real comes near 2^60. */
+  private const val CGROUP_V1_UNLIMITED = 1L shl 60
 }

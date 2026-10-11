@@ -24,6 +24,7 @@ import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
+import ee.schimke.composeai.data.fonts.FigmaSvgFontWarningsSidecar
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
@@ -548,6 +549,65 @@ class DaemonSemanticsFetcherTest {
       listOf("compose/semantics", "layout/inspector", "fonts/used"),
       factory.openedConfig?.attachDataProducts,
     )
+  }
+
+  @Test
+  fun `a stale figma font-warning sidecar never reaches a run without the export`() {
+    // A previous run degraded and left `figma-fonts.warnings.json`; this run passes --no-figma-svg,
+    // so nothing rewrites it. Reading it would fail the lost-font-family check on old data.
+    val projectDir = newTempFolder("semantics-stale-font-warnings")
+    writeDescriptor(projectDir)
+    val dataDir = File(projectDir, "build/compose-previews/data/AlphaPreview").also { it.mkdirs() }
+    val staleWarnings = File(dataDir, FigmaSvgFontWarningsSidecar.FILE)
+    staleWarnings.writeText("""{"lostFamilies":["Stale"]}""")
+    File(dataDir, "compose-figma.svg").writeText("<svg/>")
+
+    val outcome =
+      DaemonSemanticsFetcher(
+          factory = FakeFactory(mapOf("AlphaPreview" to """{"root":{"nodeId":"1"}}""")),
+          requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = false),
+        )
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("AlphaPreview"))
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(outcome.figmaFontWarningsById.isEmpty(), "stale warnings must not be carried")
+    assertTrue(outcome.figmaSvgById.isEmpty(), "no figma-svg without the export requested")
+    assertTrue(
+      !staleWarnings.exists(),
+      "the stale warnings sidecar should be cleared before render",
+    )
+  }
+
+  @Test
+  fun `figma artefacts are still carried when the export is requested`() {
+    val projectDir = newTempFolder("semantics-figma-requested")
+    writeDescriptor(projectDir)
+    val factory =
+      object : RenderSessionFactory {
+        val inner = FakeFactory(mapOf("AlphaPreview" to """{"root":{"nodeId":"1"}}"""))
+        override val backendKind = RenderSessionBackend.Subprocess
+
+        override fun open(config: RenderSessionConfig): RenderSession {
+          val session = inner.open(config)
+          // The daemon writes the export (and, degraded, its warning) during this run's render.
+          session.onNotification { method, _ ->
+            if (method == "renderFinished") {
+              val dir = File(projectDir, "build/compose-previews/data/AlphaPreview")
+              File(dir, "compose-figma.svg").writeText("<svg/>")
+              File(dir, FigmaSvgFontWarningsSidecar.FILE).writeText("""{"lostFamilies":["X"]}""")
+            }
+          }
+          return session
+        }
+      }
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory)
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("AlphaPreview"))
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(setOf("AlphaPreview"), outcome.figmaSvgById.keys)
+    assertEquals(setOf("AlphaPreview"), outcome.figmaFontWarningsById.keys)
   }
 
   @Test

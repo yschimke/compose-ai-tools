@@ -92,7 +92,14 @@ internal class DaemonSemanticsFetcher(
       fontsSidecarFile(projectDir, previewId).delete()
       figmaSvgSidecarFile(projectDir, previewId).delete()
       figmaRasterDir(projectDir, previewId).deleteRecursively()
+      // Written only for a degraded export, so a stale one would fail the lost-font check on its
+      // own.
+      figmaFontWarningsSidecarFile(projectDir, previewId).delete()
     }
+    // Without the export requested, nothing this run produces should carry figma artefacts: a
+    // daemon
+    // that doesn't gate the kind may still write them, but the caller asked to go without.
+    val readFigma = requestedKinds == null || ComposeFigmaSvgProduct.KIND in requestedKinds
 
     val workerCount = workers.coerceIn(1, previewIds.size)
     val baseName = workspaceRoot.name.ifBlank { moduleName }
@@ -183,13 +190,13 @@ internal class DaemonSemanticsFetcher(
       if (fonts.isFile && fonts.length() > 0) {
         fontsById[previewId] = fileSystem.read(fonts.path.toPath()) { readByteArray() }
       }
+      if (!readFigma) continue
       // The layered `compose/figma-svg` export from the same render. Best-effort.
       val figmaSvg = figmaSvgSidecarFile(projectDir, previewId)
       if (figmaSvg.isFile && figmaSvg.length() > 0) {
         figmaSvgById[previewId] = fileSystem.read(figmaSvg.path.toPath()) { readByteArray() }
         // A hybrid figma-svg's `figma-raster/<node>.png` crops, so its `<image>` layers resolve
-        // once
-        // published. Usually empty.
+        // once published. Usually empty.
         val crops =
           figmaRasterDir(projectDir, previewId)
             .listFiles { f -> f.isFile && f.name.endsWith(".png") }

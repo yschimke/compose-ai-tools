@@ -134,4 +134,54 @@ class SemanticsWorkersTest {
     assertEquals(1024L, SemanticsWorkers.parseHeapMb("1073741824"))
     assertNull(SemanticsWorkers.parseHeapMb("lots"))
   }
+
+  private fun tree(vararg files: Pair<String, String>): File =
+    java.nio.file.Files.createTempDirectory("semantics-workers-mem").toFile().apply {
+      deleteOnExit()
+      for ((name, text) in files) File(this, name).apply { parentFile.mkdirs() }.writeText(text)
+    }
+
+  private val gib = 1024L * 1024L * 1024L
+
+  @Test
+  fun `auto memory is bounded by a cgroup v2 limit, not just MemAvailable`() {
+    // A 64 GB host with plenty available, inside an 8 GB container already using 3 GB.
+    val proc = tree("meminfo" to "MemTotal: 67108864 kB\nMemAvailable: 50331648 kB\n")
+    val cgroup = tree("memory.max" to "${8 * gib}\n", "memory.current" to "${3 * gib}\n")
+
+    assertEquals(5 * 1024L, SemanticsWorkers.availableMemoryMb(proc, cgroup))
+  }
+
+  @Test
+  fun `an unlimited cgroup v2 leaves MemAvailable in charge`() {
+    val proc = tree("meminfo" to "MemAvailable: 8388608 kB\n")
+    val cgroup = tree("memory.max" to "max\n", "memory.current" to "${1 * gib}")
+
+    assertEquals(8192L, SemanticsWorkers.availableMemoryMb(proc, cgroup))
+    assertNull(SemanticsWorkers.cgroupRemainingMb(cgroup))
+  }
+
+  @Test
+  fun `cgroup v1 limits apply, and its huge no-limit value counts as unlimited`() {
+    val limited =
+      tree(
+        "memory/memory.limit_in_bytes" to "${4 * gib}",
+        "memory/memory.usage_in_bytes" to "${1 * gib}",
+      )
+    assertEquals(3 * 1024L, SemanticsWorkers.cgroupRemainingMb(limited))
+
+    val unlimited =
+      tree(
+        "memory/memory.limit_in_bytes" to "9223372036854771712",
+        "memory/memory.usage_in_bytes" to "${1 * gib}",
+      )
+    assertNull(SemanticsWorkers.cgroupRemainingMb(unlimited))
+  }
+
+  @Test
+  fun `a cgroup allowance alone is used when meminfo is unreadable`() {
+    val cgroup = tree("memory.max" to "${6 * gib}", "memory.current" to "0")
+
+    assertEquals(6 * 1024L, SemanticsWorkers.availableMemoryMb(tree(), cgroup))
+  }
 }
