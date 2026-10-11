@@ -130,6 +130,7 @@ public data class GuidelineRunOptions(
       it.checker = checker
       it.concurrency = concurrency
       it.reasoningEffort = reasoningEffort
+      it.judge = judge
     }
 
   /**
@@ -146,6 +147,7 @@ public data class GuidelineRunOptions(
       it.concurrency = concurrency
       it.checker = checker
       it.reasoningEffort = reasoningEffort
+      it.judge = judge
     }
 
   /**
@@ -171,7 +173,27 @@ public data class GuidelineRunOptions(
           if (reasoningEffort == OpenRouterClient.DEFAULT_REASONING_EFFORT) model
           else "$model#reasoning=${reasoningEffort ?: "default"}"
         else -> "checker:${checker.id}@${JevChecker.FORMAT}/$answeringModel"
-      }
+      }.let { identity -> judge?.let { "$it/$identity" } ?: identity }
+
+  /**
+   * Who answers besides the model name, when that is not OpenRouter: `prompt` for an agent
+   * answering [DeferredReplyModel]'s requests, `openai:<origin>` for an OpenAI-compatible endpoint.
+   * Part of [cacheModel], so the same `--model` at two endpoints, or at an endpoint and on
+   * OpenRouter, never answers for the other. Null (OpenRouter) keeps existing cache keys. A body
+   * property like [retry]: set it with [withJudge].
+   */
+  public var judge: String? = null
+    private set
+
+  /** These options, answered by [judge]. */
+  public fun withJudge(judge: String?): GuidelineRunOptions =
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency
+      it.checker = checker
+      it.reasoningEffort = reasoningEffort
+      it.judge = judge
+    }
 
   /** These options, with up to [concurrency] requests in flight at once. */
   public fun withConcurrency(concurrency: Int): GuidelineRunOptions =
@@ -180,6 +202,7 @@ public data class GuidelineRunOptions(
       it.concurrency = concurrency.coerceAtLeast(1)
       it.checker = checker
       it.reasoningEffort = reasoningEffort
+      it.judge = judge
     }
 
   /**
@@ -198,6 +221,7 @@ public data class GuidelineRunOptions(
       it.concurrency = concurrency
       it.checker = checker
       it.reasoningEffort = reasoningEffort
+      it.judge = judge
     }
 
   public companion object {

@@ -509,6 +509,11 @@ triage and no `--checker jev`: both need OpenRouter's decisions API. A key is st
 origin, so it is only ever sent to the endpoint it was stored for, and the trusted-projects rule
 (*Keys*) applies to it as to OpenRouter's.
 
+Results are cached per backend as well as per model: `GuidelineRunOptions.judge` (`prompt`, or
+`openai:<origin>`) prefixes the cache identity, so the same `--model` at two endpoints, or at an
+endpoint and on OpenRouter, never answers for the other. OpenRouter keeps no prefix, so its
+existing cached verdicts still match.
+
 `compose-preview guidelines models` lists OpenRouter's models that read pictures and honour a
 strict reply schema, cheapest input first, with prices per million tokens (`--all` for every model,
 `--json` for a script). It needs no key.

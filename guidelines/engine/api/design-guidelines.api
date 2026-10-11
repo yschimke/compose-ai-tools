@@ -334,6 +334,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getCacheModel ()Ljava/lang/String;
 	public final fun getChecker ()Lee/schimke/composeai/guidelines/GuidelineChecker;
 	public final fun getConcurrency ()I
+	public final fun getJudge ()Ljava/lang/String;
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
@@ -347,6 +348,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public fun toString ()Ljava/lang/String;
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withJudge (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 }

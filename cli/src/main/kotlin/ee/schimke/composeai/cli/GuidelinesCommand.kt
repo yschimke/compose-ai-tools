@@ -177,6 +177,21 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       // An agent's unreadable reply is its to fix: asking again would read the same file, and
       // halves would be new requests for it to answer.
       .let { if (prompted) it.withRetry(GuidelineRetry(maxAttempts = 1, split = false)) else it }
+      // Who answered, beyond the model name: a verdict from one backend or endpoint never answers
+      // for another that happens to share a --model.
+      .withJudge(judge)
+
+  /** [GuidelineRunOptions.judge] for this run's backend; null for OpenRouter, as before. */
+  private val judge: String?
+    get() =
+      when (backend) {
+        GuidelinesBackend.PROMPT -> GuidelinesBackend.PROMPT
+        GuidelinesBackend.OPENAI ->
+          baseUrl
+            ?.let { runCatching { GuidelineCredentials.endpointProvider(it) }.getOrNull() }
+            ?.let { "openai:" + it.removePrefix("endpoint:") }
+        else -> null
+      }
 
   /** The model a report names: the one that answers under this checker. */
   private val reportModel: String
@@ -428,10 +443,18 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     return (if (handoff) sourceRoot?.let(::File) else findProjectRoot()) ?: File(".").absoluteFile
   }
 
-  /** Exits unless the stored key in [resolved] may be spent on this project. */
-  private fun requireTrusted(resolved: GuidelineCredentials.Resolved) {
+  /**
+   * Exits unless the stored key in [resolved] may be spent on this project. [envVar] is the
+   * variable that would supply the key instead, which the refusal names.
+   */
+  private fun requireTrusted(
+    resolved: GuidelineCredentials.Resolved,
+    envVar: String = GuidelineCredentials.ENV,
+  ) {
     if (!resolved.stored) return
-    if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project())) exitProcess(2)
+    if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project(), envVar)) {
+      exitProcess(2)
+    }
   }
 
   /**
@@ -474,7 +497,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       )
       exitProcess(2)
     }
-    resolved?.let(::requireTrusted)
+    resolved?.let { requireTrusted(it, GuidelineCredentials.MODEL_ENV) }
     if (maxCostFlag != null) {
       System.err.println(
         "guidelines: an OpenAI-compatible endpoint reports no cost, so --max-cost cannot stop " +

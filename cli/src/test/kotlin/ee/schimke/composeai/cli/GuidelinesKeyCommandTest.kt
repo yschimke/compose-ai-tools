@@ -143,4 +143,20 @@ class GuidelinesKeyCommandTest {
     assertEquals(0, stdout { command("forget", "--for", url).forget() }.first)
     assertEquals(secret, GuidelineCredentials.openRouter(env = { null }, file = file)?.key)
   }
+
+  @Test
+  fun `an untrusted refusal names the variable that would supply the key`() {
+    stdout { command("set").set() }
+    val project = File(dir, "app").apply { mkdirs() }
+    val errors = java.io.ByteArrayOutputStream()
+    val original = System.err
+    System.setErr(PrintStream(errors, true))
+    try {
+      GuidelinesKeyCommand.confirmTrust(file, project, GuidelineCredentials.MODEL_ENV, ask = null)
+    } finally {
+      System.setErr(original)
+    }
+    assertTrue(GuidelineCredentials.MODEL_ENV in errors.toString())
+    assertFalse(GuidelineCredentials.ENV in errors.toString())
+  }
 }

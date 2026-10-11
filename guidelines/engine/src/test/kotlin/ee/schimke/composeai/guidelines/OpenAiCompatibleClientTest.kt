@@ -137,4 +137,16 @@ class OpenAiCompatibleClientTest {
     assertThat(OpenAiCompatibleClient.isLoopback("https://api.openai.com/v1")).isFalse()
     assertThat(OpenAiCompatibleClient.isLoopback("not a url")).isFalse()
   }
+
+  @Test
+  fun `the judge namespaces cached verdicts and survives the other option builders`() {
+    val base = GuidelineRunOptions(model = "llava:13b")
+    assertThat(base.cacheModel).isEqualTo("llava:13b")
+    val local =
+      base.withJudge("openai:http://localhost:11434").withConcurrency(2).withRetry(GuidelineRetry())
+    val remote = base.withJudge("openai:https://api.example.com")
+    assertThat(local.cacheModel).isEqualTo("openai:http://localhost:11434/llava:13b")
+    assertThat(local.cacheModel).isNotEqualTo(remote.cacheModel)
+    assertThat(local.cacheModel).isNotEqualTo(base.cacheModel)
+  }
 }

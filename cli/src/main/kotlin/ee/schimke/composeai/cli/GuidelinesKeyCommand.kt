@@ -225,6 +225,8 @@ internal class GuidelinesKeyCommand(
     fun confirmTrust(
       file: File,
       project: File,
+      /** The variable that would supply this key instead, named as the non-interactive way out. */
+      envVar: String = GuidelineCredentials.ENV,
       ask: ((String) -> String?)? =
         System.console()?.let { console -> { console.readLine("%s", it) } },
     ): Boolean {
@@ -234,7 +236,7 @@ internal class GuidelinesKeyCommand(
       if (ask == null) {
         System.err.println(
           "guidelines: $path is not trusted with the key stored in ${file.path}. " +
-            "Run `$trustCommand` in a terminal, or set ${GuidelineCredentials.ENV} for this run."
+            "Run `$trustCommand` in a terminal, or set $envVar for this run."
         )
         return false
       }
