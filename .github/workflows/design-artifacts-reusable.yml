@@ -275,6 +275,21 @@ on:
         required: false
         type: string
         default: ''
+      ui-builder-renderer-standalone:
+        description: >-
+          Build ui-builder-runtime-task in its OWN job, from a clean checkout, while the render
+          shards run, instead of in the rendered Gradle build after preview rendering. Takes the
+          build (~4 minutes on m3-catalog) off the critical path. Only on the sharded path
+          (render-shards > 1): a single-shard run has no render to overlap, so a separate job would
+          only add a runner hop. Off by default, which keeps the documented contract above.
+
+          Opt in ONLY if the task is self-contained: it must not read anything the render or
+          `generate` produces (preview renders, the bundle, generated theme providers, any
+          build/compose-previews output). It runs before any of those exist. Its archive is
+          verified by manifest in `generate` either way.
+        required: false
+        type: boolean
+        default: false
       ui-builder-runtime-source-ref:
         description: >-
           Immutable compose-ui-builder release tag (vN.N.N) or full commit SHA to check out for a
@@ -930,8 +945,8 @@ env:
   # The catalog-owned UI-builder renderer's checks and build, defined ONCE here because two jobs run
   # it: `ui-builder-renderer`, which builds it alongside the render shards, and `generate`, which
   # places that job's archive (UI_BUILDER_RENDERER_PREBUILT set) or, when that job did not run —
-  # import mode, or only one of the two inputs set, which the checks below then reject — builds it
-  # inline as it always did. Extra arguments are passed to Gradle. Workflow logic rather than a
+  # the default, a single-shard run, import mode, or only one of the two inputs set (which the
+  # checks below then reject) — builds it inline as it always did. Extra arguments are passed to Gradle. Workflow logic rather than a
   # script under scripts/design-artifacts/, for the reason TRUST_PREVIEW_PLUGIN_PY gives above.
   UI_BUILDER_RENDERER_SH: |
     set -euo pipefail
@@ -2700,11 +2715,16 @@ jobs:
           compression-level: 0
           retention-days: 1
 
-  # The catalog-owned UI-builder renderer, built WHILE the shards render rather than after them.
-  # It is a standalone Gradle task over the caller's sources and reads no render output, so the
-  # ~4 minutes it took inside `generate` (a cold Gradle distribution download, a fresh
+  # The catalog-owned UI-builder renderer, built WHILE the shards render rather than after them,
+  # for a caller that opts in with `ui-builder-renderer-standalone`. For a task that reads no render
+  # output, the ~4 minutes it took inside `generate` (a cold Gradle distribution download, a fresh
   # configuration, every task executed) sat on the critical path for nothing. `generate` downloads
   # the archive this uploads.
+  #
+  # Opt-in, and sharded runs only. The documented contract is that the task runs in the rendered
+  # build AFTER preview rendering, and a caller's task may consume what that produced; by default
+  # it still does, inline in `generate`. And with one shard there is no render to overlap, so a
+  # separate job would only add a runner hop in front of `generate`.
   #
   # Gradle's user home is cached here (setup-gradle: distribution, dependencies, the local build
   # cache, which `--build-cache` turns on for this one build), written only from the default branch
@@ -2712,10 +2732,9 @@ jobs:
   # are what a cache would change the bytes of, and this archive is verified by manifest at
   # `generate` whatever produced it.
   #
-  # It builds from a clean checkout of the caller, as a developer would — before `generate`'s own
-  # preparation (declared theme providers, the render) has touched the tree. A renderer module that
-  # depended on those would need them generated here too; the m3-catalog one depends on its library
-  # coordinates and `ui-builder.policy.json` only.
+  # It builds from a clean checkout of the caller, before `generate`'s own preparation (declared
+  # theme providers, the render) has touched the tree — which is exactly what the opt-in asserts the
+  # task does not need.
   #
   # Not in import mode: the inline build in `generate` keeps that path exactly as it was, and an
   # import names no catalog-owned renderer anyway.
@@ -2723,8 +2742,10 @@ jobs:
     name: ${{ inputs.system }} · UI-builder renderer
     needs: [driver]
     if: >-
-      ${{ needs.driver.outputs.in-scope != 'false' && inputs.upstream-repository == '' &&
-      inputs.ui-builder-runtime-task != '' && inputs.ui-builder-runtime-archive != '' }}
+      ${{ needs.driver.outputs.in-scope != 'false' && inputs.ui-builder-renderer-standalone &&
+      inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' &&
+      inputs.upstream-repository == '' && inputs.ui-builder-runtime-task != '' &&
+      inputs.ui-builder-runtime-archive != '' }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 30
     permissions:
