@@ -67,6 +67,89 @@ class ScreenGeneratorTest {
       ),
     )
 
+  private fun slotParameter(name: String, default: Boolean = false) =
+    TargetParameter.Builder(name = name, type = "@Composable RowScope.() -> Unit")
+      .also { b ->
+        b.composableSlot = true
+        b.hasDefault = default
+      }
+      .build()
+
+  private val onClick =
+    TargetParameter.Builder(name = "onClick", type = "() -> Unit")
+      .also { b ->
+        b.typeFqn = "kotlin.Function0"
+        b.lambdaReturnTypeFqn = "kotlin.Unit"
+      }
+      .build()
+
+  private fun overload(vararg parameters: TargetParameter) =
+    ComponentOverload.Builder().also { it.parameters = parameters.toList() }.build()
+
+  /** Wear's `Button`: the record is its `label` overload, and `content` is another. */
+  private fun overloadedButton(vararg extra: ComponentOverload) =
+    component(
+        "Button",
+        "androidx.wear.compose.material3.Button",
+        listOf(onClick, slotParameter("secondaryLabel", default = true), slotParameter("label")),
+        call = "Button(onClick = {}, label = {})",
+      )
+      .newBuilder()
+      .also {
+        it.overloads =
+          listOf(
+            overload(
+              onClick,
+              slotParameter("secondaryLabel", default = true),
+              slotParameter("label"),
+            ),
+            overload(onClick, slotParameter("content")),
+          ) + extra
+      }
+      .build()
+
+  private fun buttonWith(slot: String) =
+    ScreenDocument(
+      name = "Screen",
+      root =
+        ScreenNode(
+          "app/androidx.compose.material3.ButtonKt.Button",
+          slots =
+            mapOf(
+              slot to listOf(ScreenNode(text.canonicalId, mapOf("text" to ScreenValue.Text("Go"))))
+            ),
+        ),
+    )
+
+  @Test
+  fun `a node filling another overload's slot is called through that overload`() {
+    val source = emitted(buttonWith("content"), catalog(overloadedButton(), text)).source
+    assertThat(source).contains("Button(onClick = {}) {")
+    assertThat(source).contains("""Text(text = "Go")""")
+    assertThat(source).doesNotContain("label =")
+  }
+
+  @Test
+  fun `the record's own overload stands when it takes what the node writes`() {
+    val source = emitted(buttonWith("label"), catalog(overloadedButton(), text)).source
+    assertThat(source).contains("label = {")
+  }
+
+  @Test
+  fun `a node two overloads equally take is refused as Kotlin would refuse it`() {
+    val reasons =
+      refusal(
+        buttonWith("content"),
+        catalog(
+          overloadedButton(
+            overload(onClick, slotParameter("content"), slotParameter("icon", default = true))
+          ),
+          text,
+        ),
+      )
+    assertThat(reasons.joinToString()).contains("has 2 overloads taking `content`")
+  }
+
   private fun catalog(vararg records: ComponentRecord) =
     ComponentRecordFile.Builder(module = "app", variant = "debug", components = records.toList())
       .build()

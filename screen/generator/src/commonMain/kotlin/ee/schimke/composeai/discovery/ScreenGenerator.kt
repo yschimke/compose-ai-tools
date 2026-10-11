@@ -954,6 +954,33 @@ object ScreenGenerator {
       return block.locals.joinToString("") { "$pad$it\n" } + rendered
     }
 
+    /**
+     * The parameters of the overload of [record] that [node] calls. The record's own when they take
+     * every argument, slot and handler the node writes; otherwise the one published
+     * [ComponentRecord.overloads] entry that does, as Kotlin resolves named arguments and as a
+     * typed projection's validation already resolved it (Wear `Button`'s `content` overload, beside
+     * its `label` record). Several such overloads is a call Kotlin refuses too, so it is reported;
+     * with none, the record's own parameters stand and their own refusals name what is missing.
+     */
+    private fun overloadParameters(
+      record: ComponentRecord,
+      node: ScreenNode,
+    ): List<TargetParameter> {
+      val written = node.arguments.keys + node.slots.keys + node.handlers.keys
+      fun takes(candidate: List<TargetParameter>) = written.all { name ->
+        candidate.any { it.name == name }
+      }
+      if (takes(record.parameters) || record.overloads.isEmpty()) return record.parameters
+      val candidates = record.overloads.map { it.parameters }.filter(::takes)
+      if (candidates.size > 1) {
+        reasons +=
+          "`${record.symbol.name}` has ${candidates.size} overloads taking " +
+            written.sorted().joinToString(", ") { "`$it`" } +
+            ", and Kotlin would pick none"
+      }
+      return candidates.singleOrNull() ?: record.parameters
+    }
+
     private fun nodeCall(node: ScreenNode, depth: Int): String {
       if (depth > 128) {
         reasons += "screen nesting exceeds 128 levels"
@@ -1029,7 +1056,9 @@ object ScreenGenerator {
       markers(code.requiredOptIns, optIns, "`${record.symbol.name}`")
       markers(code.androidxOptIns, androidxOptIns, "`${record.symbol.name}`")
 
-      val byName = record.parameters.associateBy { it.name }
+      // The overload this node calls: the parameters every later check and argument is read from.
+      val parameters = overloadParameters(record, node)
+      val byName = parameters.associateBy { it.name }
       node.arguments.keys.filterNot(byName::containsKey).forEach {
         reasons += "`${record.symbol.name}` has no parameter `$it`"
       }
@@ -1069,10 +1098,10 @@ object ScreenGenerator {
       var trailing: String? = null
       // An unknown handler is refused, not dropped: a button that does nothing still compiles.
       node.handlers.keys
-        .filterNot { key -> record.parameters.any { it.name == key } }
+        .filterNot { key -> parameters.any { it.name == key } }
         .sorted()
         .forEach { reasons += "`${record.symbol.name}` has no `$it` to bind a handler to" }
-      for (parameter in record.parameters) {
+      for (parameter in parameters) {
         val supplied = node.arguments[parameter.name]
         val children = node.slots[parameter.name]
         val handler = node.handlers[parameter.name]
@@ -1155,7 +1184,7 @@ object ScreenGenerator {
             // `content` trails the parentheses, as Compose is written. Keyed on the name rather
             // than position, since a record may list only some parameters; the API guidelines put
             // `content` last.
-            if (parameter.name == "content" && parameter === record.parameters.last())
+            if (parameter.name == "content" && parameter === parameters.last())
               trailing = "$head\n$nested\n$pad}"
             else
               arguments +=
