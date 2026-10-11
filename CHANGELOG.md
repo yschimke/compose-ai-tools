@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.46.0](https://github.com/yschimke/compose-ai-tools/compare/v2.45.0...v2.46.0) (2026-10-11)
+
+
+### Features
+
+* **cli:** `compose-preview review` with a prompt mode, and a stored OpenRouter key ([#5833](https://github.com/yschimke/compose-ai-tools/issues/5833)) ([2d4262b](https://github.com/yschimke/compose-ai-tools/commit/2d4262b1870f5ec03e3f347b1174980aa75e0c60))
+* **screen:** discover …Defaults factories and check projection calls against them ([#5840](https://github.com/yschimke/compose-ai-tools/issues/5840)) ([0d59273](https://github.com/yschimke/compose-ai-tools/commit/0d59273346d30197e625b966f0ca9977ad3b11c0))
+* **screen:** publish export projections, add unit and token codecs, tighten lowering ([#5835](https://github.com/yschimke/compose-ai-tools/issues/5835)) ([81be6f8](https://github.com/yschimke/compose-ai-tools/commit/81be6f864023c2908bb6e152b2cfabd0b4bcc611))
+* **screen:** typed definitions on real records carry their export projection ([#5832](https://github.com/yschimke/compose-ai-tools/issues/5832)) ([1bb6c77](https://github.com/yschimke/compose-ai-tools/commit/1bb6c779d864c454dcf60e8513dddee75afa377b))
+
+
+### Bug Fixes
+
+* **bundle-coordinates:** refuse a download shorter than its declared length ([#5843](https://github.com/yschimke/compose-ai-tools/issues/5843)) ([d4c31f4](https://github.com/yschimke/compose-ai-tools/commit/d4c31f44774b92ee86f55896458ac47d5a9cb6fa))
+* **discovery:** keep @JvmSynthetic overloads, and carry the full record's overload in filtered bundles ([#5830](https://github.com/yschimke/compose-ai-tools/issues/5830)) ([e6cf380](https://github.com/yschimke/compose-ai-tools/commit/e6cf38038240a3d2006a1431c2a0f153b9cdb5c7))
+* **guidelines:** describe a LONG capture stopped at its scroll limit ([#5836](https://github.com/yschimke/compose-ai-tools/issues/5836)) ([7c79db5](https://github.com/yschimke/compose-ai-tools/commit/7c79db5e31c7505155796b2ce7b255472c422261))
+
 ## [2.45.0](https://github.com/yschimke/compose-ai-tools/compare/v2.43.0...v2.45.0) (2026-10-11)
 
 
