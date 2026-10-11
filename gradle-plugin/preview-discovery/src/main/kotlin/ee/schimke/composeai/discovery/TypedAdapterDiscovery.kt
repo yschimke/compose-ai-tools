@@ -272,7 +272,12 @@ object TypedAdapterDiscovery {
     var pending = setOf(jvmName)
     val seen = mutableSetOf(jvmName)
     while (pending.isNotEmpty()) {
-      val graph = ClassGraph().enableClassInfo().acceptClasses(*pending.toTypedArray())
+      // External: a supertype outside the accepted set is still named, and read next level.
+      val graph =
+        ClassGraph()
+          .enableClassInfo()
+          .enableExternalClasses()
+          .acceptClasses(*pending.toTypedArray())
       if (classpath != null) graph.overrideClasspath(classpath)
       val next = mutableSetOf<String>()
       graph.scan().use { scan ->
