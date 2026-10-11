@@ -96,6 +96,42 @@ public final class ee/schimke/composeai/guidelines/GuidelineChecker$Companion {
 	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineChecker;
 }
 
+public final class ee/schimke/composeai/guidelines/GuidelineCredentials {
+	public static final field ENV Ljava/lang/String;
+	public static final field FILE_ENV Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineCredentials;
+	public static final field OPENROUTER Ljava/lang/String;
+	public static final field SCHEMA_V1 Ljava/lang/String;
+	public final fun defaultFileOrNull (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ljava/io/File;
+	public static synthetic fun defaultFileOrNull$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/io/File;
+	public final fun forget (Ljava/io/File;Ljava/lang/String;)Z
+	public static synthetic fun forget$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;ILjava/lang/Object;)Z
+	public final fun isTrusted (Ljava/io/File;Ljava/io/File;)Z
+	public final fun openRouter (Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public static synthetic fun openRouter$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public final fun store (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun store$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun trust (Ljava/io/File;Ljava/io/File;)V
+	public final fun trustedProjects (Ljava/io/File;)Ljava/util/List;
+	public final fun untrust (Ljava/io/File;Ljava/io/File;)Z
+	public final fun validKey (Ljava/lang/String;)Z
+}
+
+public final class ee/schimke/composeai/guidelines/GuidelineCredentials$Resolved {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getMasked ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getStored ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/guidelines/GuidelineEngine {
 	public fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Lee/schimke/composeai/guidelines/GuidelineModel;Lee/schimke/composeai/guidelines/GuidelineEvidenceHost;Lee/schimke/composeai/guidelines/GuidelineResultCache;Lee/schimke/composeai/guidelines/GuidelineRunOptions;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

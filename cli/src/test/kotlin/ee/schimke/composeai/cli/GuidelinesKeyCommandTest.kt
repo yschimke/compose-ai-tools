@@ -75,4 +75,52 @@ class GuidelinesKeyCommandTest {
     assertEquals(1, command("set", key = null).set())
     assertFalse(file.exists())
   }
+
+  @Test
+  fun `an untrusted project is refused without a terminal and nothing is remembered`() {
+    stdout { command("set").set() }
+    val project = File(dir, "app").apply { mkdirs() }
+    assertFalse(GuidelinesKeyCommand.confirmTrust(file, project, ask = null))
+    assertFalse(GuidelineCredentials.isTrusted(file, project))
+  }
+
+  @Test
+  fun `answering yes trusts the project once and for all, anything else declines`() {
+    stdout { command("set").set() }
+    val project = File(dir, "app").apply { mkdirs() }
+    var asked = 0
+    assertFalse(
+      GuidelinesKeyCommand.confirmTrust(file, project) {
+        asked++
+        ""
+      }
+    )
+    assertFalse(GuidelineCredentials.isTrusted(file, project))
+    assertTrue(
+      GuidelinesKeyCommand.confirmTrust(file, project) {
+        asked++
+        "y"
+      }
+    )
+    assertTrue(
+      GuidelinesKeyCommand.confirmTrust(file, project) {
+        asked++
+        "n"
+      }
+    )
+    assertEquals(2, asked)
+  }
+
+  @Test
+  fun `trust and untrust take a directory`() {
+    stdout { command("set").set() }
+    val project = File(dir, "app").apply { mkdirs() }
+    assertEquals(0, stdout { command("trust", project.path).trust() }.first)
+    assertTrue(GuidelineCredentials.isTrusted(file, project))
+    val (_, out) = stdout { command("status").status() }
+    assertTrue(project.canonicalPath in out)
+    assertEquals(0, stdout { command("untrust", project.path).untrust() }.first)
+    assertFalse(GuidelineCredentials.isTrusted(file, project))
+    assertEquals(1, stdout { command("trust", File(dir, "missing").path).trust() }.first)
+  }
 }

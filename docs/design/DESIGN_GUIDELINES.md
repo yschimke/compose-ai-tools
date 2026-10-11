@@ -528,6 +528,16 @@ source in use and only the key's last four characters, and `key forget` removes 
 quotes the file: a malformed one is reported by path only, and one readable by other users is used
 with a warning to `chmod 600` it.
 
+**Trusted projects.** A stored key is used only for a project its owner trusted. The first
+`guidelines` run in a Gradle root (in handoff mode, `--source-root`) asks, before anything is
+built, whether to use the stored key there, since that project's previews and source go to
+OpenRouter on the user's bill. A yes is remembered in the same file as `trustedProjects`
+(canonical paths; a parent directory does not cover the checkouts under it). Without a terminal,
+which is how an agent or a script runs the CLI, the answer is no, and the message names
+`compose-preview guidelines key trust <dir>`: nothing can grant itself the user's key.
+`key untrust <dir>` takes it back and `key status` lists them. A key from
+`COMPOSE_PREVIEW_OPENROUTER_KEY` needs no trust: setting it is that choice.
+
 **What the file does not protect against.** The CLI withholds the environment variable from the
 Gradle daemon and render daemons (`WITHHELD_BUILD_ENVIRONMENT`), because the project being built
 may be a third party's. A build script runs as the same user and can still open the file, as it

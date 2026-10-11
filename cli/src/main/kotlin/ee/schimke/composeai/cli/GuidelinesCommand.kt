@@ -4,6 +4,7 @@ import ee.schimke.composeai.guidelines.CatalogGuidelinesLoader
 import ee.schimke.composeai.guidelines.GuidelineAnnotator
 import ee.schimke.composeai.guidelines.GuidelineBudget
 import ee.schimke.composeai.guidelines.GuidelineChecker
+import ee.schimke.composeai.guidelines.GuidelineCredentials
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineModel
@@ -12,7 +13,6 @@ import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
 import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
-import ee.schimke.composeai.guidelines.GuidelineCredentials
 import ee.schimke.composeai.guidelines.OpenRouterClient
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.PreviewNode
@@ -172,8 +172,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             exitProcess(2)
           }
     }
-    val key =
-      GuidelineCredentials.openRouter { System.err.println("guidelines: $it") }?.key
+    val resolved =
+      GuidelineCredentials.openRouter { System.err.println("guidelines: $it") }
         ?: run {
           System.err.println(
             "guidelines: no OpenRouter key (openrouter.ai, Settings, then Keys). Store one with " +
@@ -182,9 +182,16 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           )
           exitProcess(2)
         }
+    // A stored key is spent only on a project its owner trusted, asked before anything is built.
+    if (resolved.stored) {
+      val handoff = previewsJson != null || rendersDir != null
+      val project =
+        (if (handoff) sourceRoot?.let(::File) else findProjectRoot()) ?: File(".").absoluteFile
+      if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project)) exitProcess(2)
+    }
     val client =
       OpenRouterClient(
-          key,
+          resolved.key,
           http =
             OpenRouterClient.httpClient(
               requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }

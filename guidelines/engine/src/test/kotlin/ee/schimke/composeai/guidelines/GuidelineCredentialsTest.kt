@@ -22,7 +22,8 @@ class GuidelineCredentialsTest {
         env = { if (it == GuidelineCredentials.ENV) " sk-or-env " else null },
         file = file,
       )
-    assertThat(resolved).isEqualTo(GuidelineCredentials.Resolved("sk-or-env", GuidelineCredentials.ENV))
+    assertThat(resolved)
+      .isEqualTo(GuidelineCredentials.Resolved("sk-or-env", GuidelineCredentials.ENV))
   }
 
   @Test
@@ -45,9 +46,7 @@ class GuidelineCredentialsTest {
   @Test
   fun `other providers' keys survive a store and a forget`() {
     file.parentFile.mkdirs()
-    file.writeText(
-      """{"schema":"${GuidelineCredentials.SCHEMA_V1}","keys":{"other":"k-other"}}"""
-    )
+    file.writeText("""{"schema":"${GuidelineCredentials.SCHEMA_V1}","keys":{"other":"k-other"}}""")
     GuidelineCredentials.store(file, secret)
     assertThat(GuidelineCredentials.forget(file)).isTrue()
     assertThat(GuidelineCredentials.forget(file)).isFalse()
@@ -106,5 +105,30 @@ class GuidelineCredentialsTest {
     env[GuidelineCredentials.FILE_ENV] = "/elsewhere/keys.json"
     assertThat(GuidelineCredentials.defaultFileOrNull(prop = { null }) { env[it] })
       .isEqualTo(File("/elsewhere/keys.json"))
+  }
+
+  @Test
+  fun `trust is per canonical project root and kept beside the key`() {
+    val project = File(dir, "app").apply { mkdirs() }
+    val child = File(project, "nested").apply { mkdirs() }
+    GuidelineCredentials.store(file, secret)
+    assertThat(GuidelineCredentials.isTrusted(file, project)).isFalse()
+
+    GuidelineCredentials.trust(file, File(project, "../app"))
+    GuidelineCredentials.trust(file, project)
+    assertThat(GuidelineCredentials.isTrusted(file, project)).isTrue()
+    assertThat(GuidelineCredentials.isTrusted(file, child)).isFalse()
+    assertThat(GuidelineCredentials.trustedProjects(file)).containsExactly(project.canonicalPath)
+    assertThat(GuidelineCredentials.openRouter(env = { null }, file = file)?.key).isEqualTo(secret)
+
+    assertThat(GuidelineCredentials.untrust(file, project)).isTrue()
+    assertThat(GuidelineCredentials.untrust(file, project)).isFalse()
+    assertThat(GuidelineCredentials.isTrusted(file, project)).isFalse()
+  }
+
+  @Test
+  fun `a key from the environment is not a stored one`() {
+    assertThat(GuidelineCredentials.Resolved("k", GuidelineCredentials.ENV).stored).isFalse()
+    assertThat(GuidelineCredentials.Resolved("k", file.path).stored).isTrue()
   }
 }

@@ -10,8 +10,8 @@ import kotlinx.serialization.json.Json
 
 /**
  * Where a guidelines check finds its model key: [ENV] when set, else the user's credentials file
- * ([defaultFile], `~/.config/compose-preview/credentials.json`), written `0600` by
- * `compose-preview guidelines key set` and never by anything that also writes reports.
+ * ([defaultFile], `~/.config/compose-preview/credentials.json`), written `0600` by `compose-preview
+ * guidelines key set` and never by anything that also writes reports.
  *
  * The environment wins so CI, and a one-off override, need no file. The key is never taken from a
  * command line, and nothing here prints it: [Resolved.masked] is what a status line shows.
@@ -21,10 +21,13 @@ import kotlinx.serialization.json.Json
  * but a build can still open a file, so a user who runs untrusted builds keeps to [ENV].
  *
  * ```json
- * { "schema": "compose-preview-credentials/v1", "keys": { "openrouter": "sk-or-…" } }
+ * { "schema": "compose-preview-credentials/v1", "keys": { "openrouter": "sk-or-…" },
+ *   "trustedProjects": ["/home/me/src/app"] }
  * ```
  *
- * Keyed by provider, so another backend's key can sit beside OpenRouter's.
+ * Keyed by provider, so another backend's key can sit beside OpenRouter's. `trustedProjects` lists
+ * the project roots the user agreed to use the stored key for ([isTrusted]): a checkout must not
+ * spend the key, sending its previews and source to a model, before its owner says so.
  */
 public object GuidelineCredentials {
   /** The environment variable holding the OpenRouter key; it beats the file. */
@@ -44,26 +47,39 @@ public object GuidelineCredentials {
     public val masked: String
       get() = if (key.length <= 8) "…" else "…" + key.takeLast(4)
 
+    /** Whether the key came from the credentials file rather than [ENV]. */
+    public val stored: Boolean
+      get() = source != ENV
+
     override fun toString(): String = "Resolved(key=$masked, source=$source)"
   }
 
   /**
-   * The OpenRouter key from [ENV], else from [file]; null when neither holds one. A file that cannot
-   * be read is reported through [warn] (without its content) and treated as holding none.
+   * The OpenRouter key from [ENV], else from [file]; null when neither holds one. A file that
+   * cannot be read is reported through [warn] (without its content) and treated as holding none.
    */
   public fun openRouter(
     env: (String) -> String? = System::getenv,
     file: File? = defaultFileOrNull(env = env),
     warn: (String) -> Unit = {},
   ): Resolved? {
-    env(ENV)?.trim()?.takeIf { it.isNotEmpty() }?.let { return Resolved(it, ENV) }
-    if (file == null) return null
-    return read(file, warn).keys[OPENROUTER]?.trim()?.takeIf { it.isNotEmpty() }?.let {
-      if (readableByOthers(file)) {
-        warn("${file.path} is readable by other users; run `chmod 600 ${file.path}`")
+    env(ENV)
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let {
+        return Resolved(it, ENV)
       }
-      Resolved(it, file.path)
-    }
+    if (file == null) return null
+    return read(file, warn)
+      .keys[OPENROUTER]
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let {
+        if (readableByOthers(file)) {
+          warn("${file.path} is readable by other users; run `chmod 600 ${file.path}`")
+        }
+        Resolved(it, file.path)
+      }
   }
 
   /**
@@ -83,6 +99,36 @@ public object GuidelineCredentials {
     write(file, stored.copy(keys = stored.keys - provider))
     return true
   }
+
+  /**
+   * Whether [project] (a Gradle root or source root) has been trusted with the stored key. Checked
+   * only for a [Resolved.stored] key: [ENV] is the user's explicit choice for that shell. Exact
+   * canonical paths: trusting a directory does not trust the checkouts under it.
+   */
+  public fun isTrusted(file: File, project: File): Boolean =
+    canonical(project) in read(file) {}.trustedProjects
+
+  /** The projects trusted with the stored key, as canonical paths. */
+  public fun trustedProjects(file: File): List<String> = read(file) {}.trustedProjects
+
+  /** Trusts [project] with the stored key. Throws on failure. */
+  public fun trust(file: File, project: File) {
+    val path = canonical(project)
+    val stored = read(file) {}
+    if (path in stored.trustedProjects) return
+    write(file, stored.copy(trustedProjects = (stored.trustedProjects + path).sorted()))
+  }
+
+  /** Stops trusting [project]; false when it was not trusted. Throws on failure. */
+  public fun untrust(file: File, project: File): Boolean {
+    val path = canonical(project)
+    val stored = read(file) {}
+    if (path !in stored.trustedProjects) return false
+    write(file, stored.copy(trustedProjects = stored.trustedProjects - path))
+    return true
+  }
+
+  private fun canonical(project: File): String = project.absoluteFile.canonicalPath
 
   /** Whether [key] looks like a key at all: non-empty, one line, no spaces. */
   public fun validKey(key: String): Boolean = key.isNotEmpty() && key.none { it.isWhitespace() }
@@ -115,6 +161,7 @@ public object GuidelineCredentials {
   internal data class Stored(
     val schema: String = SCHEMA_V1,
     val keys: Map<String, String> = emptyMap(),
+    val trustedProjects: List<String> = emptyList(),
   )
 
   private val JSON = Json {
@@ -161,16 +208,14 @@ public object GuidelineCredentials {
     view.setPermissions(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE))
   }
 
-  private fun readableByOthers(file: File): Boolean =
-    runCatching {
-        Files.getFileAttributeView(file.toPath(), PosixFileAttributeView::class.java)
-          ?.readAttributes()
-          ?.permissions()
-          ?.any {
-            it == PosixFilePermission.GROUP_READ || it == PosixFilePermission.OTHERS_READ
-          } ?: false
-      }
-      .getOrDefault(false)
+  private fun readableByOthers(file: File): Boolean = runCatching {
+    Files.getFileAttributeView(file.toPath(), PosixFileAttributeView::class.java)
+      ?.readAttributes()
+      ?.permissions()
+      ?.any { it == PosixFilePermission.GROUP_READ || it == PosixFilePermission.OTHERS_READ }
+      ?: false
+  }
+    .getOrDefault(false)
 
   private fun absolute(candidate: String?): String? =
     candidate?.trim()?.takeIf { it.isNotEmpty() && it != "?" && File(it).isAbsolute }
