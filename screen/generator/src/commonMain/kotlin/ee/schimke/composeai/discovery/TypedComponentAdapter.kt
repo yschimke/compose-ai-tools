@@ -613,7 +613,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           if (overloads.none { it.returnTypeFqn == value.typeFqn })
             problems +=
               "$where: ${value.callableFqn} returns ${overloads.first().returnTypeFqn}, not ${value.typeFqn}"
-          val mismatches = overloads.map { overloadMismatch(it, written) }
+          // A property-backed argument (or a nested call of them) drops out when its property is
+          // unset; only a fixed one is written on every node, so only it may fill a required slot.
+          val always = value.arguments.filterValues { it is ExportProjection.Value.Fixed }.keys
+          val mismatches = overloads.map { overloadMismatch(it, written, always) }
           if (mismatches.none { it == null }) {
             problems +=
               "$where: no overload of ${value.callableFqn} takes " +
@@ -648,9 +651,14 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   /**
    * Why [overload] cannot take [written] (argument name to the type written, null when unknown), or
    * null when it can: Kotlin resolves named arguments against the overload whose parameters they
-   * name and whose other parameters are all defaulted.
+   * name and whose other parameters are all defaulted. A required parameter must be among [always],
+   * the arguments written on every node, since lowering omits an unset property's.
    */
-  private fun overloadMismatch(overload: FactorySignature, written: Map<String, String?>): String? {
+  private fun overloadMismatch(
+    overload: FactorySignature,
+    written: Map<String, String?>,
+    always: Set<String>,
+  ): String? {
     val parameters = overload.parameters.associateBy { it.name }
     val reasons = buildList {
       for ((name, type) in written) {
@@ -662,8 +670,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         }
       }
       for (parameter in overload.parameters) {
-        if (!parameter.hasDefault && parameter.name !in written)
-          add("required ${parameter.name} is not written")
+        if (parameter.hasDefault) continue
+        if (parameter.name !in written) add("required ${parameter.name} is not written")
+        else if (parameter.name !in always)
+          add("required ${parameter.name} is written only when its property is set")
       }
     }
     return reasons.takeIf { it.isNotEmpty() }?.joinToString(", ")

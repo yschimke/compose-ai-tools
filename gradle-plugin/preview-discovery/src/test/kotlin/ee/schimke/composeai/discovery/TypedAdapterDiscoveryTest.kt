@@ -145,6 +145,20 @@ class TypedAdapterDiscoveryTest {
   }
 
   @Test
+  fun `a class's member is not a factory, since its call needs an instance`() {
+    assertThrows(IllegalArgumentException::class.java) {
+      TypedAdapterDiscovery.discoverFactories(
+        listOf(
+          TypedAdapterDiscovery.Callable(
+            "ee.schimke.composeai.discovery.AdapterFactoryColors",
+            "derive",
+          )
+        )
+      )
+    }
+  }
+
+  @Test
   fun `duplicate selections cannot create conflicting records`() {
     assertThrows(IllegalArgumentException::class.java) {
       TypedAdapterDiscovery.discover(":app", "jvm", listOf(entry, entry))
@@ -169,7 +183,9 @@ object AdapterMemberFixture {
   @JvmStatic fun member(): Unit = error("not executed")
 }
 
-class AdapterFactoryColors
+class AdapterFactoryColors {
+  fun derive(): AdapterFactoryColors = error("not executed")
+}
 
 @Suppress("UNUSED_PARAMETER")
 object AdapterFactoryFixture {

@@ -115,7 +115,7 @@ object TypedAdapterDiscovery {
           }
         ComposableSignature.factorySignatures(owner, factory.name).also {
           require(it.isNotEmpty()) {
-            "${factory.owner}.${factory.name}: no public function with readable metadata"
+            "${factory.owner}.${factory.name}: no public member of an object or companion with readable metadata"
           }
         }
       }

@@ -404,6 +404,44 @@ class TypedRealRecordAdapterTest {
   }
 
   @Test
+  fun `a required factory parameter filled only by an optional property is reported`() {
+    val fqn = "app.ColorsDefaults.colors"
+    val required =
+      FactorySignature(
+        fqn,
+        BUTTON_COLORS,
+        listOf(
+          TargetParameter.Builder("container", "Color")
+            .also { it.typeFqn = "androidx.compose.ui.graphics.Color" }
+            .build()
+        ),
+      )
+    val wearColor = ExportProjection.Codec.Color("androidx.wear.compose.material3.MaterialTheme")
+    val adapter =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+        val containerColor =
+          wireProperty(
+            ButtonModel::containerColor,
+            AdapterValueCodecs.color(wearColor),
+            WireColor.Unset,
+          )
+        val content = slot("content", required = true)
+
+        init {
+          exportAs(
+            target(
+              button,
+              mapOf("colors" to call(listOf(required), "container" to from(containerColor))),
+              slots = SLOTS,
+            )
+          )
+        }
+      }
+    assertThat(adapter.validateAgainst(button).joinToString("\n"))
+      .contains("required container is written only when its property is set")
+  }
+
+  @Test
   fun `generation refuses a factory discovery did not return`() {
     val error = runCatching {
       TypedAdapterCatalog.generate(
