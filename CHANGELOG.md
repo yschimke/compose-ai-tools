@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.50.0](https://github.com/yschimke/compose-ai-tools/compare/v2.49.0...v2.50.0) (2026-10-11)
+
+
+### Features
+
+* **discovery:** discover real library composables, every overload, for typed definitions ([#5868](https://github.com/yschimke/compose-ai-tools/issues/5868)) ([95b7074](https://github.com/yschimke/compose-ai-tools/commit/95b7074b167785be365c5a1a43b3447ef5fb23a9))
+
 ## [2.49.0](https://github.com/yschimke/compose-ai-tools/compare/v2.48.0...v2.49.0) (2026-10-11)
 
 
