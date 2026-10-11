@@ -114,6 +114,20 @@ class ScreenFunctionTest {
   }
 
   @Test
+  fun `a component in a components file may take the screen's name`() {
+    val document = document().copy(state = emptyList(), root = call().copy(handlers = emptyMap()))
+    val named =
+      document.copy(
+        root = document.root.copy(function = "FunctionScreen"),
+        functions = listOf(document.functions.single().copy(name = "FunctionScreen")),
+      )
+    refused(named, "available Kotlin")
+    val result = components(named)
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
+    assertTrue("internal fun FunctionScreen(" in (result as ScreenGenerator.Result.Emitted).source)
+  }
+
+  @Test
   fun `a components file needs components and no screen state`() {
     val noFunctions = components(document().copy(state = emptyList(), functions = emptyList()))
     assertTrue(noFunctions.toString(), noFunctions is ScreenGenerator.Result.Refused)
@@ -310,6 +324,41 @@ class ScreenFunctionTest {
     val source = (result as ScreenGenerator.Result.Emitted).source
     assertFalse(source, "@OptIn(" in source)
     assertEquals(source, 2, Regex("@kotlin\\.OptIn\\(").findAll(source).count())
+  }
+
+  @Test
+  fun `a components file annotates each component's opt ins once`() {
+    val gated =
+      ScreenFunction(
+        "Gated",
+        emptyList(),
+        text(
+          ScreenValue.Reference(
+            "example.caption",
+            typeFqn = "kotlin.String",
+            requiredOptIns = listOf("example.ExperimentalCaption"),
+          )
+        ),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          "OptInScreen",
+          ScreenNode("", function = "Gated"),
+          functions = listOf(gated),
+        ),
+        M3Palette.records,
+        expressionPackages = M3Palette.expressionPackages + "example",
+        frame = null,
+        output = ScreenGenerator.Output.COMPONENTS,
+      )
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertEquals(source, 1, Regex("@kotlin\\.OptIn\\(").findAll(source).count())
+    assertTrue(
+      source,
+      "@kotlin.OptIn(ExperimentalCaption::class)\n@Composable\ninternal fun Gated(" in source,
+    )
   }
 
   @Test
