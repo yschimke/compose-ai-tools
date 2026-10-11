@@ -1,7 +1,9 @@
 package ee.schimke.composeai.bundle
 
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
@@ -10,6 +12,7 @@ import java.security.PublicKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -65,16 +68,21 @@ public object BundleSigning {
 
   /**
    * SHA-256 over the bundle's logical content: one `"<path>:<hex-sha256>"` line per non-directory
-   * zip entry except [SIGNATURES_PATH], sorted by path and `\n`-joined.
+   * zip entry except [SIGNATURES_PATH], sorted by path and `\n`-joined. Entries are hashed as they
+   * stream and the archive is held to [MAX_UNCOMPRESSED_BYTES] / [MAX_ENTRIES] — the bytes are
+   * client-controlled on the upload path — throwing [ZipException] past either.
    */
   public fun canonicalDigest(zipBytes: ByteArray): ByteArray {
     val lines = ArrayList<String>()
+    val budget = InflateBudget()
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
+        budget.countEntry()
         if (!entry.isDirectory && entry.name != SIGNATURES_PATH) {
-          val sha = sha256(zin.readBytes())
-          lines.add("${entry.name}:${hex(sha)}")
+          val digest = MessageDigest.getInstance("SHA-256")
+          budget.drain(zin) { buffer, n -> digest.update(buffer, 0, n) }
+          lines.add("${entry.name}:${hex(digest.digest())}")
         }
         zin.closeEntry()
       }
@@ -89,13 +97,28 @@ public object BundleSigning {
 
   // --- signatures.json read / write ------------------------------------------------------------
 
-  /** Decode `signatures.json` from a bundle's [zipBytes], or null when the bundle is unsigned. */
+  /**
+   * Decode `signatures.json` from a bundle's [zipBytes], or null when the bundle is unsigned. Held
+   * to the same budgets as [canonicalDigest], and the signatures entry itself to
+   * [MAX_SIGNATURES_BYTES].
+   */
   public fun readSignatures(zipBytes: ByteArray): Signatures? {
     var bytes: ByteArray? = null
+    val budget = InflateBudget()
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
-        if (!entry.isDirectory && entry.name == SIGNATURES_PATH) bytes = zin.readBytes()
+        budget.countEntry()
+        if (!entry.isDirectory && entry.name == SIGNATURES_PATH) {
+          val out = ByteArrayOutputStream()
+          budget.drain(zin) { buffer, n ->
+            if (out.size() + n > MAX_SIGNATURES_BYTES) {
+              throw ZipException("$SIGNATURES_PATH exceeds $MAX_SIGNATURES_BYTES bytes")
+            }
+            out.write(buffer, 0, n)
+          }
+          bytes = out.toByteArray()
+        }
         zin.closeEntry()
       }
     }
@@ -185,6 +208,47 @@ public object BundleSigning {
         trimmed.replace("\\s".toRegex(), "")
       }
     return Base64.getDecoder().decode(body)
+  }
+
+  // --- inflation budget -------------------------------------------------------------------------
+
+  /**
+   * Cumulative inflated bytes [canonicalDigest] / [readSignatures] will read from one archive.
+   * Far above any real bundle (whose jars are minimized), and far below what a zip bomb inflates
+   * to.
+   */
+  internal const val MAX_UNCOMPRESSED_BYTES: Long = 1L shl 30 // 1 GiB
+
+  /** Entry count limit per archive, for the same reason. */
+  internal const val MAX_ENTRIES: Int = 65_536
+
+  /** `signatures.json` is a handful of base64 signatures; it is parsed in memory, so cap it. */
+  internal const val MAX_SIGNATURES_BYTES: Int = 1 shl 20 // 1 MiB
+
+  /**
+   * Charges every entry and every inflated byte — including entries the caller then ignores — to
+   * one per-archive budget, so no member can be inflated outside it.
+   */
+  private class InflateBudget {
+    private var entries = 0
+    private var total = 0L
+    private val buffer = ByteArray(64 * 1024)
+
+    fun countEntry() {
+      if (++entries > MAX_ENTRIES) throw ZipException("bundle has more than $MAX_ENTRIES entries")
+    }
+
+    fun drain(input: InputStream, sink: (ByteArray, Int) -> Unit) {
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        total += n
+        if (total > MAX_UNCOMPRESSED_BYTES) {
+          throw ZipException("bundle inflates to more than $MAX_UNCOMPRESSED_BYTES bytes")
+        }
+        sink(buffer, n)
+      }
+    }
   }
 
   // --- helpers ----------------------------------------------------------------------------------
