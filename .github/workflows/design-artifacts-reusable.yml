@@ -290,6 +290,16 @@ on:
         required: false
         type: boolean
         default: false
+      semantics-workers:
+        description: >-
+          Render daemons each `bundle pack --with-semantics` runs in parallel: a positive integer
+          or `auto` (half the cores, bounded by free memory and the container's memory limit, at
+          most one per 50 previews, at most 8). Exported as COMPOSE_PREVIEW_SEMANTICS_WORKERS, so
+          it reaches every pack line, including each render shard's. Empty keeps one daemon. A CLI
+          that predates the setting ignores it.
+        required: false
+        type: string
+        default: ''
       ui-builder-runtime-source-ref:
         description: >-
           Immutable compose-ui-builder release tag (vN.N.N) or full commit SHA to check out for a
@@ -1041,6 +1051,8 @@ env:
   INPUT_UI_BUILDER_RUNTIME_ARCHIVE: ${{ inputs.ui-builder-runtime-archive }}
   INPUT_UI_BUILDER_RUNTIME_SOURCE_REF: ${{ inputs.ui-builder-runtime-source-ref }}
   INPUT_DEFER_FIGMA_SVG: ${{ inputs.defer-figma-svg }}
+  # Read by `bundle pack --with-semantics` directly; empty means one daemon.
+  COMPOSE_PREVIEW_SEMANTICS_WORKERS: ${{ inputs.semantics-workers }}
   INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
   INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
   INPUT_SPLIT_MODE: ${{ inputs.split-mode }}
