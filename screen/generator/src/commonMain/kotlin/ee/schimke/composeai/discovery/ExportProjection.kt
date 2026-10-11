@@ -567,8 +567,9 @@ data class ExportProjection(
         }
       }
       fun link(link: ChainLink) {
-        // A scope member is supplied by the receiver and never imported, so it names no owner.
-        if (link.receiverScopeFqn == null) add(link.callableFqn.substringBeforeLast('.'))
+        // A scope member is supplied by the receiver and never imported, but the generator still
+        // holds its qualified name to the allowlist, so its scope is the owner a host must admit.
+        add(link.callableFqn.substringBeforeLast('.'))
         link.positional.forEach(::screen)
         link.named.values.forEach(::screen)
       }
