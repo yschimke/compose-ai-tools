@@ -130,6 +130,61 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `an argument typed as the parameter it is passed as keeps the record's own overload`() {
+    val vertical = "androidx.compose.foundation.layout.Arrangement.Vertical"
+    val both = "androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical"
+    fun arrangement(type: String) =
+      TargetParameter.Builder(name = "verticalArrangement", type = type.substringAfterLast('.'))
+        .also { b ->
+          b.typeFqn = type
+          b.hasDefault = true
+        }
+        .build()
+    val dense =
+      TargetParameter.Builder(name = "dense", type = "Boolean")
+        .also { b -> b.typeFqn = "kotlin.Boolean" }
+        .build()
+    // The record's own overload takes `Arrangement.Vertical`; another takes the subtype `spacedBy`
+    // returns, and needs a `dense` its placeholder would invent.
+    val column =
+      component("Column", "androidx.compose.material3.Column", listOf(arrangement(vertical)))
+        .newBuilder()
+        .also {
+          it.overloads = listOf(overload(arrangement(vertical)), overload(arrangement(both), dense))
+        }
+        .build()
+    fun spaced(type: String) =
+      ScreenDocument(
+        name = "Screen",
+        root =
+          ScreenNode(
+            column.canonicalId,
+            mapOf(
+              "verticalArrangement" to
+                ScreenValue.Construct(
+                  "androidx.compose.foundation.layout.Arrangement.spacedBy",
+                  named = mapOf("space" to ScreenValue.Whole(4)),
+                  typeFqn = type,
+                )
+            ),
+          ),
+      )
+    // As its return type, the call looks inapplicable to the own overload and lands on the other.
+    fun source(type: String) =
+      (ScreenGenerator.generate(
+          spaced(type),
+          catalog(column),
+          expressionPackages = setOf("androidx.compose"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+    assertThat(source(both)).contains("dense = false")
+    // As the parameter's type, which is what a projection now writes, the own overload stands.
+    val source = source(vertical)
+    assertThat(source).contains("Arrangement.spacedBy(space = 4)")
+    assertThat(source).doesNotContain("dense")
+  }
+
+  @Test
   fun `the record's own overload stands when it takes what the node writes`() {
     val source = emitted(buttonWith("label"), catalog(overloadedButton(), text)).source
     assertThat(source).contains("label = {")

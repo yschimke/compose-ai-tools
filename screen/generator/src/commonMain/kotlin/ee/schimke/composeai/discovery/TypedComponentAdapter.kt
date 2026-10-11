@@ -719,17 +719,48 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       record,
       ExportProjection.Target(
         record.canonicalId,
-        parameters,
+        typedAs(record, parameters),
         variants,
         slots,
         events,
-        contexts,
+        contexts.mapValues { (_, context) ->
+          context.copy(parameters = typedAs(record, context.parameters))
+        },
         slotPatterns,
         synthesize,
         items,
         itemRoles,
       ),
     )
+
+  /**
+   * [values] with each factory call typed as the parameter it is passed to, where that parameter's
+   * type is one of the call's recorded return supertypes: `Arrangement.spacedBy(…)` returns a
+   * `HorizontalOrVertical` and is written to `verticalArrangement` as an `Arrangement.Vertical`.
+   * The generator matches an argument's type to a parameter's exactly when it picks the overload,
+   * so a call typed as its return type would make the record's own overload look inapplicable.
+   */
+  private fun typedAs(
+    record: ComponentRecord,
+    values: Map<String, ExportProjection.Value>,
+  ): Map<String, ExportProjection.Value> = values.mapValues { (name, value) ->
+    if (value !is ExportProjection.Value.Call) return@mapValues value
+    val declared =
+      (record.parameters + record.overloads.flatMap { it.parameters })
+        .filter { it.name == name }
+        .mapNotNull { it.typeFqn }
+        .distinct()
+        .filter { it != value.typeFqn }
+        .filter { type ->
+          projectionFactories.any {
+            it.callableFqn == value.callableFqn &&
+              it.returnTypeFqn == value.typeFqn &&
+              type in it.returnSupertypes
+          }
+        }
+    // One supertype every overload agrees on; otherwise the call keeps its own type.
+    declared.singleOrNull()?.let { value.copy(typeFqn = it) } ?: value
+  }
 
   /** A declared property written through its codec, skipped when it equals [omitWhen]. */
   protected fun from(property: AdapterProperty<P, *>, omitWhen: JsonPrimitive? = null) =
@@ -1122,7 +1153,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           problems +=
             "$where: factory ${value.callableFqn} was not discovered; call it through its FactorySignature"
         } else {
-          if (overloads.none { it.returnTypeFqn == value.typeFqn })
+          // Typed as its return type, or as a supertype it is passed as (see [typedAs]).
+          if (
+            overloads.none {
+              it.returnTypeFqn == value.typeFqn || value.typeFqn in it.returnSupertypes
+            }
+          )
             problems +=
               "$where: ${value.callableFqn} returns ${overloads.first().returnTypeFqn}, not ${value.typeFqn}"
           // A property-backed argument (or a nested call of them) drops out when its property is

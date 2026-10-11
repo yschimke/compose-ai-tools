@@ -547,13 +547,28 @@ class TypedRealRecordAdapterTest {
           )
         }
       }
-    assertThat(
-        adapter(setOf(vertical, "androidx.compose.foundation.layout.Arrangement.Horizontal"))
-          .validateAgainst(record)
-      )
-      .isEmpty()
-    assertThat(adapter(emptySet()).validateAgainst(record).joinToString("\n"))
+    val typed =
+      adapter(setOf(vertical, "androidx.compose.foundation.layout.Arrangement.Horizontal"))
+    assertThat(typed.validateAgainst(record)).isEmpty()
+    // Written as the parameter's type, so the generator's exact overload match takes the record's
+    // own overload rather than finding it inapplicable.
+    val arrangement =
+      (typed.projection!!.lower(emptyMap()) as ExportProjection.Lowered.Node)
+        .arguments
+        .getValue("verticalArrangement") as ScreenValue.Construct
+    assertThat(arrangement.typeFqn).isEqualTo(vertical)
+    assertThat(arrangement.callableFqn)
+      .isEqualTo("androidx.compose.foundation.layout.Arrangement.spacedBy")
+    val untyped = adapter(emptySet())
+    assertThat(untyped.validateAgainst(record).joinToString("\n"))
       .contains("writes $both, parameter takes $vertical")
+    assertThat(
+        ((untyped.projection!!.lower(emptyMap()) as ExportProjection.Lowered.Node)
+            .arguments
+            .getValue("verticalArrangement") as ScreenValue.Construct)
+          .typeFqn
+      )
+      .isEqualTo(both)
   }
 
   @Test
