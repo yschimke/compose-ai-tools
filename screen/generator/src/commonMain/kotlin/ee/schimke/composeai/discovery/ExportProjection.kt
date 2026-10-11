@@ -42,6 +42,8 @@ data class ExportProjection(
    * @property slots the record's composable parameter for each wire slot whose name differs (Wear's
    *   `content` is `Button`'s `label`).
    * @property events the record's callback parameter for each wire event (`click` is `onClick`).
+   * @property contexts what this record writes besides [parameters] when its node is placed in a
+   *   structural role, keyed by role (`list-item`): the arguments its parent decides.
    */
   data class Target(
     val record: String,
@@ -49,6 +51,34 @@ data class ExportProjection(
     val variants: Set<String>? = null,
     val slots: Map<String, String> = emptyMap(),
     val events: Map<String, String> = emptyMap(),
+    val contexts: Map<String, Context> = emptyMap(),
+  ) {
+    init {
+      for ((role, context) in contexts) {
+        require(role in UI_BUILDER_STRUCTURAL_ROLES) {
+          "context role `$role` is not one of $UI_BUILDER_STRUCTURAL_ROLES"
+        }
+        val both = context.parameters.keys intersect parameters.keys
+        require(both.isEmpty()) { "`$role` context rewrites ${both.sorted()}, already written" }
+        require(MODIFIER !in context.parameters || context.modifier.isEmpty()) {
+          "`$role` context both writes `$MODIFIER` and appends to it"
+        }
+      }
+    }
+  }
+
+  /**
+   * What a target writes only when its node is the **direct** child of a structural role: Wear's
+   * `transformation = SurfaceTransformation(spec)` and `Modifier.transformedHeight(this, spec)` for
+   * an item of the screen's list. One level deep, as the hand-written exporters do.
+   *
+   * @property parameters further arguments, checked against the record exactly as [Target]'s.
+   * @property modifier links appended, in order, after the node's own modifier chain — never in
+   *   place of it.
+   */
+  data class Context(
+    val parameters: Map<String, Value> = emptyMap(),
+    val modifier: List<ChainLink> = emptyList(),
   )
 
   /** What one parameter, or one argument of a nested call, is written from. */
@@ -133,7 +163,10 @@ data class ExportProjection(
           is Value.Fixed -> Unit
         }
       }
-      targets.forEach { it.parameters.values.forEach(::visit) }
+      targets.forEach { target ->
+        target.parameters.values.forEach(::visit)
+        target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+      }
     }
 
   /**
@@ -197,7 +230,19 @@ data class ExportProjection(
           is Value.Fixed -> screen(value.value)
         }
       }
-      targets.forEach { it.parameters.values.forEach(::visit) }
+      fun link(link: ChainLink) {
+        // A scope member is supplied by the receiver and never imported, so it names no owner.
+        if (link.receiverScopeFqn == null) add(link.callableFqn.substringBeforeLast('.'))
+        link.positional.forEach(::screen)
+        link.named.values.forEach(::screen)
+      }
+      for (target in targets) {
+        target.parameters.values.forEach(::visit)
+        for (context in target.contexts.values) {
+          context.parameters.values.forEach(::visit)
+          context.modifier.forEach(::link)
+        }
+      }
     }
 
   /** A node lowered onto one record, or every reason it could not be. */
@@ -211,13 +256,19 @@ data class ExportProjection(
       val arguments: Map<String, ScreenValue>,
       val slots: Map<String, String> = emptyMap(),
       val events: Map<String, String> = emptyMap(),
+      /** The role context's links, for the caller to append after the node's own modifiers. */
+      val modifier: List<ChainLink> = emptyList(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
   }
 
-  /** Lower one saved node's [properties] (the builder's `{type, value}` wrappers). */
-  fun lower(properties: Map<String, JsonElement>): Lowered {
+  /**
+   * Lower one saved node's [properties] (the builder's `{type, value}` wrappers). [role] is the
+   * structural role the node is the direct child of, if any; its context's arguments are written
+   * too, and a role with no context on the chosen target writes nothing extra.
+   */
+  fun lower(properties: Map<String, JsonElement>, role: String? = null): Lowered {
     val reasons = mutableListOf<String>()
     val statedVariant = variantProperty?.let { properties[it] }?.takeUnless { it is JsonNull }
     if (statedVariant != null && wireValue(statedVariant) == null) {
@@ -235,13 +286,20 @@ data class ExportProjection(
       if (variant == null) targets.firstOrNull { it.variants == null }
       else targets.firstOrNull { it.variants?.contains(variant) == true }
     if (target == null) return Lowered.Refused(listOf("no target for $variantProperty=$variant"))
+    val context = role?.let { target.contexts[it] }
     val arguments = buildMap {
-      for ((parameter, value) in target.parameters) {
+      for ((parameter, value) in target.parameters + context?.parameters.orEmpty()) {
         write(value, properties, "${target.record}.$parameter", reasons)?.let { put(parameter, it) }
       }
     }
     return if (reasons.isEmpty())
-      Lowered.Node(target.record, arguments, target.slots, target.events)
+      Lowered.Node(
+        target.record,
+        arguments,
+        target.slots,
+        target.events,
+        context?.modifier.orEmpty(),
+      )
     else Lowered.Refused(reasons)
   }
 
@@ -368,6 +426,7 @@ data class ExportProjection(
 
   private companion object {
     const val COLOR = "androidx.compose.ui.graphics.Color"
+    const val MODIFIER = "modifier"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =
       mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")

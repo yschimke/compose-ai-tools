@@ -30,6 +30,14 @@ import kotlinx.serialization.json.put
  *
  * A scalar codec is its name (`text`, `bool`, `whole`, `float`); a colour or enum codec is an
  * object naming its kind. A fixed value is a `ScreenValue` in screen-document's own JSON.
+ *
+ * A target's `contexts`, keyed by structural role, carry the further `parameters` it writes there
+ * and the `modifier` links (screen-document `ChainLink`s) appended after the node's own chain:
+ * ```json
+ * "contexts": { "list-item": {
+ *   "parameters": { "transformation": { "fixed": … } },
+ *   "modifier": [ { "callableFqn": "…minimumVerticalContentPadding", "positional": [ … ] } ] } }
+ * ```
  */
 object ExportProjectionJson {
   private val screenJson = Json { encodeDefaults = false }
@@ -46,6 +54,9 @@ object ExportProjectionJson {
             if (target.slots.isNotEmpty()) put("slots", strings(target.slots))
             if (target.events.isNotEmpty()) put("events", strings(target.events))
             put("parameters", JsonObject(target.parameters.mapValues { (_, v) -> value(v) }))
+            if (target.contexts.isNotEmpty()) {
+              put("contexts", JsonObject(target.contexts.mapValues { (_, c) -> context(c) }))
+            }
           }
         }
       ),
@@ -67,7 +78,34 @@ object ExportProjectionJson {
             events = target["events"]?.let(::stringMap).orEmpty(),
             parameters =
               target["parameters"]?.jsonObject.orEmpty().mapValues { (_, v) -> readValue(v) },
+            contexts =
+              target["contexts"]?.jsonObject.orEmpty().mapValues { (_, c) -> readContext(c) },
           )
+        },
+    )
+  }
+
+  private fun context(context: ExportProjection.Context): JsonObject = buildJsonObject {
+    if (context.parameters.isNotEmpty()) {
+      put("parameters", JsonObject(context.parameters.mapValues { (_, v) -> value(v) }))
+    }
+    if (context.modifier.isNotEmpty()) {
+      put(
+        "modifier",
+        JsonArray(
+          context.modifier.map { screenJson.encodeToJsonElement(ChainLink.serializer(), it) }
+        ),
+      )
+    }
+  }
+
+  private fun readContext(element: JsonElement): ExportProjection.Context {
+    val obj = element.jsonObject
+    return ExportProjection.Context(
+      parameters = obj["parameters"]?.jsonObject.orEmpty().mapValues { (_, v) -> readValue(v) },
+      modifier =
+        obj["modifier"]?.jsonArray.orEmpty().map {
+          screenJson.decodeFromJsonElement(ChainLink.serializer(), it)
         },
     )
   }

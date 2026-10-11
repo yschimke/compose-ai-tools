@@ -543,6 +543,108 @@ class TypedRealRecordAdapterTest {
     assertThat(problems).contains("required parameter onClick is not written")
   }
 
+  private fun listedAdapter(context: ExportProjection.Context) =
+    object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+      val enabled =
+        property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+      val content = slot("content", required = true)
+
+      init {
+        exportAs(
+          target(
+            button,
+            mapOf("enabled" to from(enabled)),
+            slots = SLOTS,
+            contexts = mapOf("list-item" to context),
+          )
+        )
+      }
+    }
+
+  private val listPadding =
+    ChainLink(
+      "androidx.wear.compose.material3.minimumVerticalContentPadding",
+      positional =
+        listOf(
+          ScreenValue.Reference(
+            "androidx.wear.compose.material3.ButtonDefaults",
+            listOf("minimumVerticalListContentPadding"),
+            typeFqn = "androidx.compose.ui.unit.Dp",
+          )
+        ),
+    )
+
+  @Test
+  fun `a role context that only appends modifiers validates against a record taking one`() {
+    val adapter = listedAdapter(ExportProjection.Context(modifier = listOf(listPadding)))
+    assertThat(adapter.validateAgainst(button)).isEmpty()
+  }
+
+  @Test
+  fun `a role context's arguments are checked against the record like the target's own`() {
+    val missing =
+      listedAdapter(
+          ExportProjection.Context(
+            mapOf(
+              "transformation" to
+                ExportProjection.Value.Fixed(
+                  ScreenValue.Construct(
+                    "androidx.wear.compose.material3.lazy.SurfaceTransformation",
+                    typeFqn = "androidx.wear.compose.material3.SurfaceTransformation",
+                  )
+                )
+            )
+          )
+        )
+        .validateAgainst(button)
+    assertThat(missing)
+      .containsExactly("wear-m3/button -> Button in list-item: no parameter transformation")
+
+    val mistyped =
+      listedAdapter(
+          ExportProjection.Context(
+            mapOf(
+              "colors" to
+                ExportProjection.Value.Fixed(
+                  ScreenValue.Reference("app.Theme", listOf("colors"), typeFqn = "app.OtherColors")
+                )
+            )
+          )
+        )
+        .validateAgainst(button)
+    assertThat(mistyped)
+      .containsExactly(
+        "wear-m3/button -> Button in list-item.colors: writes app.OtherColors, parameter takes $BUTTON_COLORS"
+      )
+  }
+
+  @Test
+  fun `a role context appending modifiers to a record without one is reported`() {
+    val noModifier =
+      button
+        .newBuilder()
+        .also { b -> b.parameters = button.parameters.filterNot { it.name == "modifier" } }
+        .build()
+    val adapter =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", noModifier) {
+        val content = slot("content", required = true)
+
+        init {
+          exportAs(
+            target(
+              noModifier,
+              emptyMap(),
+              slots = SLOTS,
+              contexts =
+                mapOf("list-item" to ExportProjection.Context(modifier = listOf(listPadding))),
+            )
+          )
+        }
+      }
+    assertThat(adapter.validateAgainst(noModifier))
+      .containsExactly("wear-m3/button -> Button in list-item: no parameter modifier")
+  }
+
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
 

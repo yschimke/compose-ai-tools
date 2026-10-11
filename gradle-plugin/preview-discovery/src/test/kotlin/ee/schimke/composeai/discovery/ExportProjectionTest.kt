@@ -204,4 +204,140 @@ class ExportProjectionTest {
         as ExportProjection.Lowered.Refused
     assertThat(lowered.reasons.single()).contains("enabled")
   }
+
+  private val listPadding =
+    ChainLink(
+      "androidx.wear.compose.material3.minimumVerticalContentPadding",
+      positional =
+        listOf(
+          ScreenValue.Reference(
+            "androidx.wear.compose.material3.ButtonDefaults",
+            listOf("minimumVerticalListContentPadding"),
+            typeFqn = "androidx.compose.ui.unit.Dp",
+          )
+        ),
+    )
+
+  private val inList =
+    ExportProjection.Context(
+      parameters =
+        mapOf(
+          "shape" to
+            ExportProjection.Value.Fixed(
+              ScreenValue.Reference(
+                "androidx.wear.compose.material3.ButtonDefaults",
+                listOf("shape"),
+                typeFqn = "androidx.compose.ui.graphics.Shape",
+              )
+            )
+        ),
+      modifier = listOf(listPadding),
+    )
+
+  private val listed =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          button.canonicalId,
+          common("buttonColors"),
+          contexts = mapOf("list-item" to inList),
+        )
+      )
+    )
+
+  @Test
+  fun `a role's context is written only when the node is placed in that role`() {
+    val alone = listed.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(alone.arguments).doesNotContainKey("shape")
+    assertThat(alone.modifier).isEmpty()
+
+    val item = listed.lower(emptyMap(), role = "list-item") as ExportProjection.Lowered.Node
+    assertThat(item.arguments.keys).containsExactly("shape")
+    assertThat(item.modifier).containsExactly(listPadding)
+
+    // A role this target says nothing about adds nothing.
+    val boxed = listed.lower(emptyMap(), role = "container") as ExportProjection.Lowered.Node
+    assertThat(boxed).isEqualTo(alone)
+  }
+
+  @Test
+  fun `contexts round trip through the published spelling`() {
+    val json = ExportProjectionJson.encode(listed)
+    assertThat(json.toString()).contains("\"contexts\":{\"list-item\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(listed)
+    // A projection without contexts keeps its exact earlier spelling.
+    assertThat(ExportProjectionJson.encode(projection).toString()).doesNotContain("contexts")
+  }
+
+  @Test
+  fun `a context's owners are allowed, and its properties are read`() {
+    val readsInList =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    mapOf(
+                      "enabled" to
+                        ExportProjection.Value.Property("listEnabled", ExportProjection.Codec.Bool)
+                    ),
+                    listOf(listPadding),
+                  )
+              ),
+          )
+        )
+      )
+    assertThat(readsInList.properties).containsExactly("listEnabled")
+    assertThat(readsInList.qualifiedOwners)
+      .containsAtLeast(
+        "androidx.wear.compose.material3",
+        "androidx.wear.compose.material3.ButtonDefaults",
+      )
+  }
+
+  @Test
+  fun `a context must name a structural role and not rewrite what the target writes`() {
+    fun target(role: String, context: ExportProjection.Context) = runCatching {
+      ExportProjection.Target(
+        button.canonicalId,
+        mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(false))),
+        contexts = mapOf(role to context),
+      )
+    }
+      .exceptionOrNull()
+      ?.message
+
+    assertThat(target("list-itme", inList)).contains("not one of")
+    assertThat(
+        target(
+          "list-item",
+          ExportProjection.Context(
+            mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(true)))
+          ),
+        )
+      )
+      .contains("rewrites [enabled]")
+    assertThat(
+        target(
+          "list-item",
+          ExportProjection.Context(
+            mapOf(
+              "modifier" to
+                ExportProjection.Value.Fixed(
+                  ScreenValue.Reference(
+                    "androidx.compose.ui.Modifier",
+                    typeFqn = "androidx.compose.ui.Modifier",
+                  )
+                )
+            ),
+            listOf(listPadding),
+          ),
+        )
+      )
+      .contains("both writes `modifier` and appends to it")
+  }
 }

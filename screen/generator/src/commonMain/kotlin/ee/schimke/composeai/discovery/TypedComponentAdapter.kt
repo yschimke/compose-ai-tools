@@ -376,8 +376,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
 
   /**
    * A target for [exportAs]: the real [record], selected by [variants] (null for the default), its
-   * [parameters] written from declared properties, and the wire [slots] / [events] renamed onto its
-   * parameters.
+   * [parameters] written from declared properties, the wire [slots] / [events] renamed onto its
+   * parameters, and what it writes besides when placed in a structural role ([contexts]).
    */
   protected fun target(
     record: ComponentRecord,
@@ -385,10 +385,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     variants: Set<String>? = null,
     slots: Map<String, String> = emptyMap(),
     events: Map<String, String> = emptyMap(),
+    contexts: Map<String, ExportProjection.Context> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
-      ExportProjection.Target(record.canonicalId, parameters, variants, slots, events),
+      ExportProjection.Target(record.canonicalId, parameters, variants, slots, events, contexts),
     )
 
   /** A declared property written through its codec, skipped when it equals [omitWhen]. */
@@ -566,19 +567,47 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             where,
           )
         }
-        when {
-          mismatches.any { it.isEmpty() } -> Unit
-          mismatches.size == 1 -> addAll(mismatches.single())
-          else ->
-            add(
-              "$where: no overload takes this target: " +
-                candidates.zip(mismatches).joinToString("; ") { (overload, reasons) ->
-                  "${overload?.descriptor}: " +
-                    reasons.joinToString(", ") { it.removePrefix("$where").removePrefix(": ") }
-                }
+        addAll(resolution(where, candidates, mismatches))
+        // In a role the context's arguments are written too, so the call must still resolve.
+        for ((role, context) in target.contexts) {
+          val inRole = "$where in $role"
+          val alsoWritten =
+            context.parameters.mapValues { (name, value) ->
+              writtenType(value, properties, "$inRole.$name", this)
+            } + (if (context.modifier.isEmpty()) emptyMap() else mapOf("modifier" to MODIFIER_TYPE))
+          val roleMismatches = candidates.map { overload ->
+            targetMismatches(
+              target,
+              written + alsoWritten,
+              overload?.parameters ?: targetRecord.parameters,
+              targetRecord.code?.call,
+              inRole,
             )
+          }
+          // Only what the role adds: the target's own mismatches are reported once, above.
+          if (mismatches.any { it.isEmpty() })
+            addAll(resolution(inRole, candidates, roleMismatches))
         }
       }
+    }
+
+  /** Nothing when some overload takes the call, else why none does. */
+  private fun resolution(
+    where: String,
+    candidates: List<ComponentOverload?>,
+    mismatches: List<List<String>>,
+  ): List<String> =
+    when {
+      mismatches.any { it.isEmpty() } -> emptyList()
+      mismatches.size == 1 -> mismatches.single()
+      else ->
+        listOf(
+          "$where: no overload takes this target: " +
+            candidates.zip(mismatches).joinToString("; ") { (overload, reasons) ->
+              "${overload?.descriptor}: " +
+                reasons.joinToString(", ") { it.removePrefix(where).removePrefix(": ") }
+            }
+        )
     }
 
   /** Why [target] cannot call the overload taking [overloadParameters]; empty when it can. */
@@ -612,7 +641,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     // Only what the projection actually writes: a declared property it leaves out is not passed by
     // name, whatever the record calls its parameters.
     val covered =
-      target.parameters.keys +
+      written.keys +
         declaredSlots.map { target.slots[it.name] ?: it.name } +
         target.events.values +
         declaredChanges.map { it.name }
@@ -934,6 +963,8 @@ object TypedAdapterCatalog {
 }
 
 private const val COLOR_TYPE = "androidx.compose.ui.graphics.Color"
+
+private const val MODIFIER_TYPE = "androidx.compose.ui.Modifier"
 
 /**
  * The characters that make a following `=` part of an operator (`<=`, `!=`, `==`), not an argument.
