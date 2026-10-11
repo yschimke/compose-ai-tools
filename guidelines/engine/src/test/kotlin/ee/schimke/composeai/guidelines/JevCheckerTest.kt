@@ -637,6 +637,26 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a key at its spending limit stops every later request and says so`() {
+    val model = FakeDecisions(status = { 402 })
+    val checker =
+      JevChecker(
+        model,
+        GuidelineEvidenceHost.None,
+        null,
+        GuidelineRunOptions(triage = false).withChecker(GuidelineChecker.JEV),
+        System::currentTimeMillis,
+      )
+    checker.parallelism = 1
+    val run = checker.run(guidelines, (1..4).map { subject("k$it") })
+    assertThat(model.bodies).hasSize(1)
+    assertThat(run.keyLimitReached).isTrue()
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.all { it.pending }).isTrue()
+    assertThat(run.problems.joinToString("\n")).contains("spending limit is reached")
+  }
+
+  @Test
   fun `the cost cap stops asking, even with requests in parallel`() {
     val model = FakeDecisions()
     val checker =

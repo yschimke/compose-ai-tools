@@ -333,7 +333,8 @@ class GuidelineRetryTest {
     assertThat(kind(429)).isEqualTo(FailureKind.RATE_LIMITED)
     assertThat(kind(413)).isEqualTo(FailureKind.TOO_LARGE)
     assertThat(kind(400)).isEqualTo(FailureKind.FATAL)
-    assertThat(kind(402)).isEqualTo(FailureKind.FATAL)
+    // No credit, or the key's limit: the key's, not the request's, so the run stops asking.
+    assertThat(kind(402)).isEqualTo(FailureKind.KEY_LIMIT)
     // OpenRouter's errors page: 503 (no provider can take it now) carries a Retry-After, and so
     // does a 402 that is the in-flight budget rather than the balance.
     assertThat(kind(503)).isEqualTo(FailureKind.RATE_LIMITED)
@@ -348,10 +349,10 @@ class GuidelineRetryTest {
     val credits =
       """{"error":{"code":402,"message":"Insufficient credits",""" +
         """"metadata":{"limit_source":"openrouter_credits"}}}"""
-    assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.FATAL)
+    assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.KEY_LIMIT)
     // Said in a 200's body instead: the same reading.
     assertThat(GuidelineResponse.failure(inFlight)!!.kind).isEqualTo(FailureKind.RATE_LIMITED)
-    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.FATAL)
+    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
     assertThat(
         GuidelineResponse.failure(
             """{"error":{"code":"server_error","message":"Provider disconnected unexpectedly"},""" +

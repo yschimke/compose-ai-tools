@@ -374,6 +374,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getChecker ()Lee/schimke/composeai/guidelines/GuidelineChecker;
 	public final fun getConcurrency ()I
 	public final fun getJudge ()Ljava/lang/String;
+	public final fun getKeyStatus ()Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
 	public final fun getModel ()Ljava/lang/String;
@@ -389,6 +390,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withJudge (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withKeyStatus (Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withPrice (Lee/schimke/composeai/guidelines/GuidelinePrice;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
@@ -413,6 +415,8 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunResult {
 	public final fun getDeferredRequests ()I
 	public final fun getFailedEvidence ()I
 	public final fun getFailedRequests ()I
+	public final fun getKeyLimitReached ()Z
+	public final fun getObservedCostRatio ()Ljava/lang/Double;
 	public final fun getPredictedCostUsd ()Ljava/lang/Double;
 	public final fun getProblems ()Ljava/util/List;
 	public final fun getReasoningRetries ()I
@@ -638,6 +642,7 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke
 	public final fun getReasoningUnsupported ()Z
 	public final fun getRelaxedParameters ()Z
 	public final fun getStream ()Z
+	public final fun keyStatus ()Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;
 	public final fun setIdleTimeout (Ljava/time/Duration;)V
 	public final fun setPreferredMaxLatencySeconds (Ljava/lang/Double;)V
 	public final fun setPreferredMinThroughput (Ljava/lang/Double;)V
@@ -654,6 +659,30 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 	public final fun getREASONING_EFFORTS ()Ljava/util/List;
 	public final fun httpClient (Ljava/time/Duration;)Lokhttp3/OkHttpClient;
 	public static synthetic fun httpClient$default (Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;Ljava/time/Duration;ILjava/lang/Object;)Lokhttp3/OkHttpClient;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterKeyStatus {
+	public static final field Companion Lee/schimke/composeai/guidelines/OpenRouterKeyStatus$Companion;
+	public fun <init> (Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/Double;
+	public final fun component2 ()Ljava/lang/Double;
+	public final fun component3 ()Ljava/lang/Double;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/String;)Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;
+	public final fun describe (Ljava/lang/Double;)Ljava/lang/String;
+	public static synthetic fun describe$default (Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;Ljava/lang/Double;ILjava/lang/Object;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLimitUsd ()Ljava/lang/Double;
+	public final fun getRemainingUsd ()Ljava/lang/Double;
+	public final fun getReset ()Ljava/lang/String;
+	public final fun getUsageUsd ()Ljava/lang/Double;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterKeyStatus$Companion {
+	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/guidelines/OpenRouterKeyStatus;
 }
 
 public final class ee/schimke/composeai/guidelines/OpenRouterModels {

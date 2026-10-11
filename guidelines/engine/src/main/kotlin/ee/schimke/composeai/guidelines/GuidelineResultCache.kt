@@ -106,6 +106,10 @@ public class GuidelineResultCache(private val directory: File) {
 
   private val touched = mutableSetOf<String>()
 
+  /** What earlier runs learned about each model, beside the verdicts and never pruned with them. */
+  internal val ledger: GuidelineModelLedger =
+    GuidelineModelLedger(File(directory, GuidelineModelLedger.FILE_NAME))
+
   private fun marker(previewId: String): File = File(directory, "$CHECKED_DIR/${sha256(previewId)}")
 
   /** Keeps [result], judged on [subject] against [guidelines] by [model]. */

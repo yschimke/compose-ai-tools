@@ -209,6 +209,23 @@ public data class GuidelineRunOptions(
   public fun withPrice(price: GuidelinePrice?): GuidelineRunOptions =
     carry().also { it.price = price }
 
+  /**
+   * What the OpenRouter key may still spend ([OpenRouterClient.keyStatus]): the run is capped at
+   * [OpenRouterKeyStatus.remainingUsd] as well as [maxCostUsd], whichever is lower, so a key at its
+   * limit is asked nothing instead of answering every request 403. Null (the default) asks without
+   * knowing. A body property like [retry]: set it with [withKeyStatus].
+   */
+  public var keyStatus: OpenRouterKeyStatus? = null
+    private set
+
+  /** These options, capped at what [keyStatus] says the key has left. */
+  public fun withKeyStatus(keyStatus: OpenRouterKeyStatus?): GuidelineRunOptions =
+    carry().also { it.keyStatus = keyStatus }
+
+  /** The lower of [maxCostUsd] and what [keyStatus] has left; null when neither caps the run. */
+  internal val effectiveCapUsd: Double?
+    get() = listOfNotNull(maxCostUsd, keyStatus?.remainingUsd).minOrNull()
+
   /** A copy carrying every body property, which `copy` would reset. */
   private fun carry(): GuidelineRunOptions =
     copy().also {
@@ -218,6 +235,7 @@ public data class GuidelineRunOptions(
       it.reasoningEffort = reasoningEffort
       it.judge = judge
       it.price = price
+      it.keyStatus = keyStatus
     }
 
   public companion object {
@@ -287,6 +305,22 @@ public data class GuidelineRunResult(
    */
   public var predictedCostUsd: Double? = null
     internal set
+
+  /**
+   * What the priced requests billed over what they were predicted to cost, before any learned
+   * scaling: 1.0 is a perfect prediction. Null without a price, or when nothing priced was billed.
+   * Learned per model across runs ([GuidelineResultCache]), so the next run predicts closer.
+   */
+  public var observedCostRatio: Double? = null
+    internal set
+
+  /**
+   * Whether OpenRouter refused a request because the key's spending limit is reached (a 403 `Key
+   * limit exceeded`, or a 402 that is not the in-flight budget): the run stopped asking at once,
+   * and a host running several should ask nothing more with the key.
+   */
+  public var keyLimitReached: Boolean = false
+    internal set
 }
 
 /**
@@ -331,6 +365,29 @@ public class GuidelineEngine(
     }
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()
+    // What earlier runs learned about this model: how far its bills ran from the prediction, and
+    // which parameters its providers refuse, so this one starts from there.
+    val ledger = cache?.ledger
+    val learned = ledger?.get(options.cacheModel)
+    val started = clock()
+    val client = model as? OpenRouterClient
+    // Each run starts from its own model's record, not from what the client a host shares between
+    // runs learned for another: a refusal still fresh is acted on, a stale one is tested again.
+    // The newest still-fresh refusal of the record or of the client wins; a stale one is dropped.
+    fun freshest(vararg at: Long?): Long? =
+      at.filterNotNull().filter { GuidelineModelRecord().fresh(it, started) }.maxOrNull()
+    val relaxedAt =
+      freshest(learned?.relaxedAt, client?.relaxedSince?.takeIf { client.relaxedParameters })
+    val noReasoningAt =
+      freshest(
+        learned?.noReasoningAt,
+        client?.noReasoningSince?.takeIf { client.reasoningUnsupported },
+      )
+    val presetRelaxed = relaxedAt != null
+    client?.learned(relaxedAt, noReasoningAt)
+    val learnedRatio = learned?.costRatio?.takeIf { options.price != null }
+    // The cap: the lower of the cost cap and what the key has left.
+    val cap = options.effectiveCapUsd
     var spent = 0.0
     var requests = 0
     var failedRequests = 0
@@ -342,6 +399,12 @@ public class GuidelineEngine(
     // With a price: how far the dearest answer so far ran past its prediction, which scales every
     // later prediction. Null until a priced request has come back, when predictions stand as made.
     var dearestRatio: Double? = null
+    // Priced requests' billed cost and their unscaled predictions: the ratio the ledger learns.
+    var pricedSpent = 0.0
+    var pricedPredicted = 0.0
+    // Set when OpenRouter refused a request for the key's spending limit: nothing more is asked.
+    var keyLimitReached = false
+    var keyLimitProblem: String? = null
     // What the request the cap last turned away was expected to cost, for the report.
     var lastExpected = 0.0
     var capped = 0
@@ -408,20 +471,22 @@ public class GuidelineEngine(
      * request so far cost. Holding [lock].
      */
     fun expectedLocked(predicted: Double?): Double =
-      if (predicted == null || predicted <= 0.0) dearest else predicted * (dearestRatio ?: 1.0)
+      if (predicted == null || predicted <= 0.0) dearest
+      else predicted * (dearestRatio ?: learnedRatio ?: 1.0)
 
     /**
      * Whether one more request, expected to cost [expected], fits the cap on top of what is spent
      * and what the requests in flight are expected to cost. Holding [lock].
      */
     fun fitsLocked(expected: Double): Fit {
-      val cap = options.maxCostUsd ?: return Fit.YES
+      if (keyLimitReached) return Fit.NO
+      val limit = cap ?: return Fit.YES
       val committed = spent + unpriced + reserved
       return when {
         // Before any request has come back nothing has tested an expectation: one at a time, so
         // concurrent starts cannot jointly cross the cap.
         settledRequests == 0 && inFlight > 0 -> Fit.WAIT
-        committed < cap && committed + expected <= cap -> Fit.YES
+        committed < limit && committed + expected <= limit -> Fit.YES
         // A request in flight may come back cheaper than reserved and leave room.
         inFlight > 0 -> Fit.WAIT
         else -> Fit.NO.also { lastExpected = expected }
@@ -430,7 +495,7 @@ public class GuidelineEngine(
 
     /** Reserves what a request [predicted] to cost is expected to, as it starts. Holding [lock]. */
     fun reserveLocked(predicted: Double?): Reservation {
-      val amount = if (options.maxCostUsd == null) 0.0 else expectedLocked(predicted)
+      val amount = if (cap == null) 0.0 else expectedLocked(predicted)
       reserved += amount
       inFlight++
       return Reservation(amount, predicted)
@@ -461,6 +526,8 @@ public class GuidelineEngine(
       val predicted = reservation.predicted
       if (predicted != null && predicted > 0.0 && cost > 0.0) {
         dearestRatio = maxOf(dearestRatio ?: 0.0, cost / predicted)
+        pricedSpent += cost
+        pricedPredicted += predicted
       }
       // Abandoned without an answer: it may still have been billed, so it counts against the
       // cap at what the dearest request cost, though not reported as spent.
@@ -696,6 +763,16 @@ public class GuidelineEngine(
             } else {
               FailedRequest.of(response)
             }
+          if (failure.kind == FailureKind.KEY_LIMIT) {
+            // The key's, not this request's: every request after it would be refused the same, so
+            // the run stops asking rather than meet it once per batch.
+            lock.withLock {
+              keyLimitReached = true
+              if (keyLimitProblem == null) keyLimitProblem = failure.problem
+              changed.signalAll()
+            }
+            return failure
+          }
           if (failure.kind == FailureKind.REASONING_EXHAUSTED) {
             // Not this request's size, so not split, and not the provider failing, so not paid
             // from the run's allowance for retries: one more try with reasoning off, which
@@ -864,6 +941,14 @@ public class GuidelineEngine(
         }
         return
       }
+      if (failure?.kind == FailureKind.KEY_LIMIT) {
+        // Not asked, as when the cap is reached: unchecked, and asked again once the key has room.
+        lock.withLock {
+          uncheckedLocked(batch)
+          capped += batch.subjects.size
+        }
+        return
+      }
       if (failure != null) {
         if (failure.splittable && batch.subjects.size > 1 && options.retry.split && mayRecover()) {
           // One slow or failing batch must not sink every preview in it: ask its halves, next.
@@ -933,7 +1018,7 @@ public class GuidelineEngine(
           lock.withLock {
             if (followUpFailure.kind == FailureKind.DEFERRED) {
               deferredRequests++
-            } else {
+            } else if (followUpFailure.kind != FailureKind.KEY_LIMIT) {
               failures.getOrPut(task.key) { mutableListOf() } += followUpFailure.problem
               failedRequests++
             }
@@ -1049,7 +1134,21 @@ public class GuidelineEngine(
       mine.forEach { (id, n) -> invented.merge(id, n, Int::plus) }
     }
 
-    if (capped > 0) {
+    val keyLeft = options.keyStatus?.remainingUsd
+    if (keyLimitReached) {
+      problems +=
+        "OpenRouter refused a request because the key's spending limit is reached; " +
+          "$capped previews were not checked and nothing more was asked (\$${money(spent)} " +
+          "spent; ${keyLimitProblem?.take(160)})"
+    } else if (capped > 0 && keyLeft != null && keyLeft == cap) {
+      problems +=
+        "${options.keyStatus?.describe()}, below the cost cap; $capped previews were not " +
+          "checked (\$${money(spent)} spent" +
+          (if (lastExpected > 0.0)
+            "; the next request was expected to cost about \$${money(lastExpected)}"
+          else "") +
+          ")"
+    } else if (capped > 0) {
       problems +=
         "the cost cap (\$${money(options.maxCostUsd ?: 0.0)}) was reached; $capped previews were " +
           "not checked (\$${money(spent)} spent; the next request was expected to cost about " +
@@ -1107,24 +1206,70 @@ public class GuidelineEngine(
           splits.take(4).joinToString("; ") +
           (if (splits.size > 4) " and ${splits.size - 4} more" else "")
     }
-    if ((model as? OpenRouterClient)?.relaxedParameters == true) {
+    if (client?.relaxedParameters == true) {
       problems +=
         "no provider of ${options.model} honours every parameter sent (the strict reply schema, " +
           "max_tokens), so requests were routed without provider.require_parameters and a " +
-          "reply may ignore the schema"
+          "reply may ignore the schema" +
+          (if (presetRelaxed) " (learned on an earlier run; tried strictly again after a week)"
+          else "")
     }
-    if (abandoned > 0 && unpriced > 0.0 && options.maxCostUsd != null) {
+    if (abandoned > 0 && unpriced > 0.0 && cap != null) {
       problems +=
         "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
           "counted \$${money(unpriced)} for them"
     }
+    val observedRatio = (pricedSpent / pricedPredicted).takeIf { pricedPredicted > 0.0 }
+    // Only what there is to learn: a priced bill, or how an OpenRouter model's providers answered.
+    if (ledger != null && requests > 0 && (observedRatio != null || client != null)) {
+      ledger.put(
+        options.cacheModel,
+        learn(learned, observedRatio, client),
+      )
+    }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
-      it.predictedCostUsd = options.price?.let { formed.sumOf { batch -> predict(batch) ?: 0.0 } }
+      it.predictedCostUsd =
+        options.price?.let {
+          formed.sumOf { batch -> predict(batch) ?: 0.0 } * (learnedRatio ?: 1.0)
+        }
+      it.observedCostRatio = observedRatio
+      it.keyLimitReached = keyLimitReached
       it.completionTokens = completionTokens
       it.reasoningTokens = reasoningTokens
       it.reasoningRetries = reasoningRetries
       it.deferredRequests = deferredRequests
     }
+  }
+
+  /**
+   * [learned] moved by what this run saw: the cost ratio half way to [observedRatio], and each
+   * parameter refusal as [client] holds it — when it was met, or the earlier record this run
+   * started from (so it is tested again once stale) — and cleared when strict routing answered.
+   */
+  private fun learn(
+    learned: GuidelineModelRecord?,
+    observedRatio: Double?,
+    client: OpenRouterClient?,
+  ): GuidelineModelRecord {
+    val before = learned ?: GuidelineModelRecord()
+    val ratio =
+      observedRatio
+        ?.let { seen ->
+          before.costRatio?.let { it + (seen - it) * GuidelineModelRecord.SMOOTHING } ?: seen
+        }
+        ?.coerceIn(GuidelineModelRecord.MIN_RATIO, GuidelineModelRecord.MAX_RATIO)
+    if (client == null) {
+      return before.copy(
+        costRatio = ratio ?: before.costRatio,
+        pricedRuns = before.pricedRuns + if (ratio != null) 1 else 0,
+      )
+    }
+    return GuidelineModelRecord(
+      costRatio = ratio ?: before.costRatio,
+      pricedRuns = before.pricedRuns + if (ratio != null) 1 else 0,
+      relaxedAt = client.relaxedSince.takeIf { client.relaxedParameters },
+      noReasoningAt = client.noReasoningSince.takeIf { client.reasoningUnsupported },
+    )
   }
 
   /**
@@ -1136,15 +1281,18 @@ public class GuidelineEngine(
     val prepared = prepare(guidelines, subjects)
     // Prediction prices the vision checker's batches; the Jev checker asks differently.
     val price = options.price.takeIf { options.checker == GuidelineChecker.VISION }
+    // Scaled as the run's would be, by how far this model's bills ran from prediction before.
+    val learnedRatio = price?.let { cache?.ledger?.get(options.cacheModel)?.costRatio } ?: 1.0
     val predictions = price?.let { p ->
       prepared.formed.map { batch ->
-        PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, p, options.reasoningEffort)
+        PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, p, options.reasoningEffort) *
+          learnedRatio
       }
     }
     val previews = prepared.formed.sumOf { it.subjects.size }
     // As the run's cap does: a request that would cross it is skipped and the next one tried.
     val reached = predictions?.let {
-      val cap = options.maxCostUsd ?: return@let previews
+      val cap = options.effectiveCapUsd ?: return@let previews
       var committed = 0.0
       prepared.formed.zip(it).sumOf { (batch, cost) ->
         if (committed + cost <= cap) {
@@ -1408,11 +1556,25 @@ internal enum class FailureKind {
    * [GuidelineRetry.maxFailedAttempts].
    */
   REASONING_EXHAUSTED,
-  /** Nothing to retry: an invalid key (401), no credit (402), forbidden (403), a bad request. */
+  /**
+   * The key's spending limit is reached (a 403 `Key limit exceeded`) or the account has no credit
+   * (a 402 that is not the in-flight budget): every later request would be refused the same, so the
+   * run stops asking and reports what it did not check as capped, not failed.
+   */
+  KEY_LIMIT,
+  /** Nothing to retry: an invalid key (401), forbidden (403), a bad request. */
   FATAL,
   /** Left to be answered outside the run ([ModelResponse.DEFERRED]): pending, never retried. */
   DEFERRED,
 }
+
+/**
+ * Whether an OpenRouter 403 [body] is the key's spending limit (`Key limit exceeded`), not a key
+ * that is forbidden outright.
+ */
+internal fun keyLimit(body: String): Boolean =
+  body.contains("limit exceeded", ignoreCase = true) ||
+    body.contains("key limit", ignoreCase = true)
 
 /** Whether an OpenRouter error [body] names its in-flight budget as the limit it hit. */
 internal fun inFlightBudget(body: String): Boolean = body.contains(IN_FLIGHT_BUDGET)
@@ -1426,6 +1588,7 @@ internal data class FailedRequest(val problem: String, val kind: FailureKind) {
   val splittable: Boolean
     get() =
       kind != FailureKind.FATAL &&
+        kind != FailureKind.KEY_LIMIT &&
         kind != FailureKind.RATE_LIMITED &&
         kind != FailureKind.REASONING_EXHAUSTED &&
         kind != FailureKind.DEFERRED
@@ -1449,6 +1612,7 @@ internal data class FailedRequest(val problem: String, val kind: FailureKind) {
           status == 413 -> FailureKind.TOO_LARGE
           status == 429 || status == 503 -> FailureKind.RATE_LIMITED
           status == 402 && inFlightBudget(response.body) -> FailureKind.RATE_LIMITED
+          status == 402 || (status == 403 && keyLimit(response.body)) -> FailureKind.KEY_LIMIT
           status in 500..599 -> FailureKind.TRANSIENT
           else -> FailureKind.FATAL
         }
