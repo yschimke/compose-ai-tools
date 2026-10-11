@@ -41,19 +41,22 @@ concurrency:
 # "skipped"), which branch protection treats as passing — so the required
 # checks go green instantly with no bypass.
 #
-# The guard requires BOTH the `release-please--*` head branch AND the PR author
-# being the release bot (`github-actions[bot]`). The branch name alone is
-# contributor-controlled: a human or fork PR from a branch named
+# The guard requires BOTH the `release-please--*` branch AND the release bot
+# (`github-actions[bot]`) behind it. It matches two forms of release run: the
+# `pull_request` run (branch from `head_ref`, bot as PR author) and a
+# `workflow_dispatch` run on the release branch (branch from `ref_name`, bot as
+# actor — a human dispatching it still gets the full suite). The branch name
+# alone is contributor-controlled: a human or fork PR from a branch named
 # `release-please--…` could otherwise skip CI and abuse "skipped == passing" to
-# land source changes uninspected. The author can't be spoofed, so pairing the
-# two closes that bypass. (If release-please is ever switched to a GitHub App
-# token, update the login here to the app's `<name>[bot]`.)
+# land source changes uninspected. The author/actor can't be spoofed, so pairing
+# the two closes that bypass. (If release-please is ever switched to a GitHub App
+# token, update the login here to the app's `<name>[bot]`.) Same guard as
+# yschimke/compose-ui-builder#700/#701.
 #
 # The guard intentionally lives at job level (not a `branches` filter on the
 # trigger): a workflow that never triggers would leave the required check stuck
-# pending forever. On push events `github.head_ref` is empty and
-# `github.event.pull_request` is null, so pushes to main always run the full
-# suite.
+# pending forever. Pushes to main never match (`ref_name` is `main`), so they
+# always run the full suite.
 jobs:
   # Deliberately the cheapest job in the workflow: checkout + a path classifier,
   # a few seconds. Every other job is `needs: changes`, and GitHub does not even
@@ -138,7 +141,7 @@ jobs:
   plugin-tests:
     name: Plugin Unit Tests
     needs: changes
-    if: ${{ needs.changes.outputs.plugin_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.plugin_tests == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -195,7 +198,7 @@ jobs:
       ${{ !cancelled()
           && needs.changes.result == 'success'
           && needs.changes.outputs.module_unit_tests == 'true'
-          && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+          && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -287,7 +290,7 @@ jobs:
   functional-tests:
     name: Plugin Functional Tests
     needs: changes
-    if: ${{ needs.changes.outputs.functional_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.functional_tests == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -315,7 +318,7 @@ jobs:
     # Keep the historical check name because branch protection requires it.
     name: Build Samples
     needs: changes
-    if: ${{ needs.changes.outputs.build_samples == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.build_samples == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -539,7 +542,7 @@ jobs:
   build-cli:
     name: Build CLI
     needs: changes
-    if: ${{ needs.changes.outputs.build_cli == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.build_cli == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -829,7 +832,7 @@ jobs:
   actions-tests:
     name: Actions Script Tests
     needs: changes
-    if: ${{ needs.changes.outputs.actions_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.actions_tests == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1069,7 +1072,7 @@ jobs:
   design-artifacts-driver-tests:
     name: Design Artifacts Driver Tests
     needs: changes
-    if: ${{ needs.changes.outputs.design_artifacts == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.design_artifacts == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1111,7 +1114,7 @@ jobs:
   # every PR until the ruleset catches up.
   xr-composite-pin:
     name: XR Composite Pin
-    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1197,7 +1200,7 @@ jobs:
   # path filter can skip is not a gate.
   serve-wasm-fork:
     name: Serve-Wasm Fork Drift
-    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1213,7 +1216,7 @@ jobs:
     # Informational only — see the script's docstring for why this must not gate. It is a
     # separate job rather than a step on an existing one so its permissions stay minimal and
     # a failure to comment can never be mistaken for a contract problem.
-    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

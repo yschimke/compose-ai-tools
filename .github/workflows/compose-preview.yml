@@ -73,7 +73,7 @@ jobs:
   # a11y+notifications job below is a new check name — add it to branch
   # protection if it should gate merges too.
   apply:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: Apply compose-preview
     runs-on: ubuntu-latest
     steps:
@@ -129,7 +129,7 @@ jobs:
           retention-days: 1
 
   a11y:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: A11y + notification previews
     runs-on: ubuntu-latest
     steps:
