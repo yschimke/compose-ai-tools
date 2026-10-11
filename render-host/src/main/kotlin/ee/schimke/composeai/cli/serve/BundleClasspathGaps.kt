@@ -9,54 +9,21 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * The coordinates a catalog's bundle recorded that this server could not resolve — written beside
- * the daemon launch descriptor at materialization time, read back when a render dies of a linkage
- * error so the failure can name its cause.
+ * The coordinates a catalog's bundle recorded that this server could not resolve, or resolved to
+ * different bytes than recorded — written beside the daemon launch descriptor at materialization
+ * and read back when a render dies of a linkage error, so the failure can name its cause.
  *
- * ## Why
+ * [CoordinateResolver][ee.schimke.composeai.cli.CoordinateResolver] warns and continues on a miss
+ * or a sha256 mismatch, which is right for leaf deps but leaves the eventual `NoClassDefFoundError`
+ * or `NoSuchFieldError` naming a class rather than a cause. Mismatches matter for families that
+ * must move together (two builds of one `1.0.0-SNAPSHOT` look identical by version; only the hash
+ * differs).
  *
- * [CoordinateResolver][ee.schimke.composeai.cli.CoordinateResolver] warns and drops a coordinate it
- * can't find rather than failing, and that is right: most misses are harmless (a dependency no
- * render path touches), and a slightly-thin classpath still beats no catalog. What it cost was
- * attribution. `remote-m3` publishes a `coordinates` bundle whose whole Remote Compose runtime is
- * an androidx.dev snapshot build; the server resolved none of it, logged thirteen separate warnings
- * at startup, stood the daemon up, and every render then died with `NoClassDefFoundError:
- * androidx/compose/remote/player/view/RemoteComposePlayer`. That is the text the circuit breaker
- * latched and the viewer showed, and it names a class, not a cause — so issues #4259 and #4265 were
- * both filed against the symptom.
- *
- * ## The other shape: resolved, but not the recorded bytes
- *
- * A coordinate can also come back **wrong** rather than missing.
- * [CoordinateResolver][ee.schimke.composeai.cli.CoordinateResolver] compares a resolved artifact
- * against the `sha256` the bundle recorded and, on a mismatch, warns and returns it anyway
- * ("almost-compatible beats nothing") — which is right for a leaf dependency and fatal for a family
- * whose artifacts must move together. That is what killed `meshcore-mobile`: its whole Remote
- * Compose runtime is pinned at `1.0.0-SNAPSHOT` from one androidx.dev build, a stale extraction
- * served `remote-player-core` from a *different* build, and the resulting classpath carried two
- * Remote Compose lines. Every IR replay died on `NoSuchFieldError: class
- * androidx.compose.remote.core.RemoteClock does not have member field … SYSTEM`
- * (compose-preview-server#187; the resolver-side fix is content-keyed extraction).
- *
- * Nothing was *unresolved* there, so the record above stayed silent and the breaker reason named a
- * class and no cause — the same hole issues #4259 / #4265 opened, reached through a different door.
- * A version-level skew check would not have found it either: both sides read `1.0.0-SNAPSHOT`. Only
- * the hash separates them, and the resolver already computed it, so [record] keeps the mismatches
- * too.
- *
- * ## What
- *
- * [record] persists the gap as `classpath-gaps.json` next to `daemon-launch.json`.
- * [linkageDiagnosis] reads it at trip time and returns one sentence for [RenderCircuitBreaker] to
- * append to the open breaker's reason — the only diagnosis anyone outside the box ever sees. When
- * the missing class's package matches one of the unresolved coordinates, the sentence names that
- * artifact specifically; otherwise it reports the gap and lets the reader draw the line. A
- * mismatched coordinate that explains the failure is reported ahead of an unresolved one: "these
- * exact bytes are not the ones the bundle recorded" is a cause, where "something is missing" is a
- * direction.
- *
- * Read at trip time rather than held in memory, mirroring [SkikoNativePairing.linkageDiagnosis]: a
- * diagnosis nobody needs must not cost anything on the healthy path.
+ * [record] writes `classpath-gaps.json` next to `daemon-launch.json`. [linkageDiagnosis] reads it
+ * at trip time and returns one sentence for [RenderCircuitBreaker] to append: a mismatched
+ * coordinate that explains the failure first, then an unresolved one matching the missing type's
+ * package, else the bare gap. Read at trip time (like [SkikoNativePairing.linkageDiagnosis]) so the
+ * healthy path pays nothing.
  */
 internal object BundleClasspathGaps {
 
@@ -79,8 +46,8 @@ internal object BundleClasspathGaps {
   data class Gaps(
     val unresolved: List<Gap> = emptyList(),
     /**
-     * Coordinates that resolved to bytes whose sha256 is not the one the bundle recorded. Defaulted
-     * so a `classpath-gaps.json` written before this field existed still reads back.
+     * Coordinates that resolved to bytes with an unexpected sha256. Defaulted so older files still
+     * read.
      */
     val mismatched: List<Gap> = emptyList(),
     /** How many Maven coordinates the bundle recorded in total, for proportion. */
@@ -88,9 +55,8 @@ internal object BundleClasspathGaps {
   )
 
   /**
-   * Persist [unresolved] and [mismatched] beside the launch descriptor in [destDir] and log the
-   * aggregate. A no-op (and no file) when every coordinate resolved to the bytes the bundle
-   * recorded, so the diagnosis can never fire on a healthy catalog.
+   * Persist [unresolved] and [mismatched] beside the descriptor in [destDir] and log the aggregate.
+   * No file when everything resolved as recorded, so the diagnosis can't fire on a healthy catalog.
    */
   fun record(
     destDir: File,
@@ -133,11 +99,9 @@ internal object BundleClasspathGaps {
   }
 
   /**
-   * One sentence attributing a **fatal** linkage [reason] to this catalog's unresolved coordinates,
-   * or null when the classpath was complete, the record is unreadable, or the failure isn't the
-   * kind an absent artifact explains.
-   *
-   * [descriptorPath] is the daemon's `daemon-launch.json`; the record sits beside it.
+   * One sentence attributing a fatal linkage [reason] to this catalog's classpath gaps, or null
+   * when the classpath was complete, the record is unreadable, or the failure isn't one a missing
+   * artifact explains. [descriptorPath] is the `daemon-launch.json` the record sits beside.
    */
   fun linkageDiagnosis(
     reason: String,
@@ -148,16 +112,11 @@ internal object BundleClasspathGaps {
       ?: unattributedDiagnosis(reason, descriptorPath, fileSystem)
 
   /**
-   * The half of [linkageDiagnosis] that names the artifact the failing type actually lives in: a
-   * mismatched coordinate, or an unresolved one whose group and artifact tokens appear in the
-   * failure. Null when this record can point at nothing in particular.
-   *
-   * Split from [unattributedDiagnosis] so a caller with a **more specific** diagnosis of its own
-   * can sit between the two. The generic half fires on any unresolved coordinate, related or not —
-   * a catalog missing one optional dependency would otherwise answer every linkage failure in the
-   * process with "something is missing", including the ones
-   * [RemoteComposePairing][RemoteComposePairing.linkageDiagnosis] can explain exactly. Attribution
-   * earns the first word; a bare gap does not.
+   * The half of [linkageDiagnosis] that names the artifact the failing type lives in (mismatched,
+   * or unresolved with matching group/artifact tokens), or null. Split from [unattributedDiagnosis]
+   * so a more specific diagnosis (e.g.
+   * [RemoteComposePairing][RemoteComposePairing.linkageDiagnosis]) can run in between: the generic
+   * half fires on any gap, related or not.
    */
   fun attributedDiagnosis(
     reason: String,
@@ -166,10 +125,8 @@ internal object BundleClasspathGaps {
   ): String? {
     val gaps = readGaps(reason, descriptorPath, fileSystem) ?: return null
     val dotted = reason.replace('/', '.')
-    // A mismatched coordinate the failing type points at is reported first and alone: it names the
-    // artifact AND says what is wrong with it, which is strictly more than the unresolved list can
-    // say. Unattributed mismatches fall through — "some artifact is the wrong build" without a name
-    // is weaker than an unresolved list that does name one.
+    // An attributed mismatch is reported first and alone: it names the artifact and what's wrong.
+    // Unattributed mismatches fall through.
     mismatchDiagnosis(gaps, dotted)?.let {
       return it
     }
@@ -180,11 +137,7 @@ internal object BundleClasspathGaps {
     )
   }
 
-  /**
-   * The half that reports the gap without naming a culprit — "these ${'$'}n coordinates are missing
-   * and one of them is probably it". A direction rather than a cause, and correspondingly the last
-   * diagnosis to be tried.
-   */
+  /** The half that reports the gap without naming a culprit — a direction, tried last. */
   fun unattributedDiagnosis(
     reason: String,
     descriptorPath: File,
@@ -215,14 +168,9 @@ internal object BundleClasspathGaps {
   }
 
   /**
-   * The sentence for a linkage failure inside a coordinate whose bytes are not the ones the bundle
-   * recorded, or null when no mismatch explains this failure.
-   *
-   * Attribution is required here, unlike the unresolved case. A `NoSuchFieldError` in a package no
-   * mismatched artifact ships is not this record's to claim — some other dependency is at fault and
-   * saying "one of these is probably wrong" would send the reader down the wrong path. The whole
-   * mismatch list still rides along once one of them does match, because these artifacts travel in
-   * families and the reader needs to see the rest of the family.
+   * The sentence for a linkage failure inside a mismatched coordinate, or null. Requires
+   * attribution (a failure elsewhere isn't this record's to claim); once one matches, the whole
+   * mismatch list is included since these artifacts travel in families.
    */
   private fun mismatchDiagnosis(gaps: Gaps, dottedReason: String): String? {
     val culprit = gaps.mismatched.bestExplanationOf(dottedReason) ?: return null
@@ -245,16 +193,9 @@ internal object BundleClasspathGaps {
     Gap(coordinate = "$group:$artifact:$version", group = group, artifact = artifact)
 
   /**
-   * How well [gap] explains the type named in [dottedReason] (the failure text with `/` rewritten
-   * to `.`, since a `NoClassDefFoundError` prints the internal form). Zero means "says nothing".
-   *
-   * The group has to appear at all — the naming convention every AndroidX / JetBrains / Square
-   * artifact follows — and then each hyphen-separated token of the artifact id that also appears
-   * breaks the tie between siblings in one group. So for
-   * `androidx/compose/remote/player/view/RemoteComposePlayer` the group `androidx.compose.remote`
-   * matches five unresolved artifacts, and `remote-player-view` (whose `player` and `view` tokens
-   * are both in the package) outscores `remote-core`. When nothing scores, the diagnosis stays
-   * general rather than naming an artifact it can't stand behind.
+   * How well [gap] explains the type in [dottedReason] (failure text with `/` → `.`); zero means
+   * not at all. The group must appear, then each artifact-id token that also appears breaks ties
+   * between siblings (e.g. `remote-player-view` beats `remote-core` for `…/remote/player/view/…`).
    */
   private fun attributionScore(dottedReason: String, gap: Gap): Int {
     if (!dottedReason.contains(gap.group)) return 0
@@ -263,10 +204,8 @@ internal object BundleClasspathGaps {
   }
 
   /**
-   * Linkage markers an absent artifact explains. Deliberately narrower than
-   * [RenderFailureClassifier]'s fatal set: a `VerifyError` or an `UnsatisfiedLinkError` is a
-   * different fault (bad bytecode, a native pairing — see [SkikoNativePairing]) and an unresolved
-   * coordinate says nothing useful about it.
+   * Linkage markers a missing artifact explains; narrower than [RenderFailureClassifier]'s fatal
+   * set (`VerifyError` / `UnsatisfiedLinkError` are different faults, see [SkikoNativePairing]).
    */
   private val MISSING_TYPE_MARKERS =
     listOf(

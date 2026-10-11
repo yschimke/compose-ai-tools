@@ -37,23 +37,13 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Canonical [RenderSession] implementation backed by a JSON-RPC [DaemonClient]. Shared by every
- * backend that ultimately drives a daemon over the same protocol — today: the subprocess backend in
- * this module, the embedded-desktop backend in `:render-session-embedded-desktop`, and the MCP
- * supervisor's `SupervisedDaemon.session` view in `:mcp`.
+ * Canonical [RenderSession] backed by a JSON-RPC [DaemonClient], shared by every backend speaking
+ * the daemon protocol (subprocess, embedded-desktop, and the MCP supervisor's session view).
  *
- * **What this class owns**: the transport-agnostic surface. Every [RenderSession] method delegates
- * to the supplied [client]. [DataProductWireException]s from the client surface as the public
- * [DataProductException]. Notifications fan out through [notificationFanout].
- *
- * **What it does NOT own**: subprocess lifecycle, classloader management, or anything else
- * backend-specific. The caller passes a [closeAction] lambda that's invoked exactly once on the
- * first [close] — that's where the subprocess backend tears down `DaemonSpawn`, the embedded
- * backend joins its daemon thread and closes pipes, and the MCP supervisor's view leaves the daemon
- * running (no-op close).
- *
- * Pre-1.0 surface. The public constructor lets new backends construct one without owning a copy of
- * the ~150 LOC of pass-through delegate methods.
+ * Owns only the transport-agnostic surface: methods delegate to [client],
+ * [DataProductWireException] surfaces as [DataProductException], and notifications fan out through
+ * [notificationFanout]. Backend-specific teardown goes in [closeAction], invoked once on the first
+ * [close]. Pre-1.0.
  */
 public class DaemonClientRenderSession(
   override val workspaceRoot: String,
@@ -287,11 +277,9 @@ public class DaemonClientRenderSession(
 }
 
 /**
- * Fan-out registry for the notification stream a [DaemonClientRenderSession] wraps. The owner of
- * the underlying [DaemonClient] installs a single sink on its `onNotification` callback and pipes
- * every event into [dispatch]; consumers register listeners via [RenderSession.onNotification]
- * (which delegates to [register]). Lifetime is the owner's: `clear()` on teardown so stale handles
- * to `close()` are harmless after the underlying daemon goes away.
+ * Fan-out registry for a [DaemonClientRenderSession]'s notifications: the client owner pipes every
+ * event into [dispatch], and [RenderSession.onNotification] registers listeners via [register].
+ * `clear()` on teardown so stale handles are harmless.
  */
 public class NotificationFanout {
   private val listeners = CopyOnWriteArraySet<NotificationListener>()

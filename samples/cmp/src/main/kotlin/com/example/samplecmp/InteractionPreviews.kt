@@ -20,24 +20,11 @@ import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.InteractionPreview
 
 /**
- * An inline options menu that grows in place when it opens — the `@InteractionPreview` fixture for
- * a capture whose content **changes size during the recording**.
+ * An inline options menu that grows from one row to four ~700ms into the capture: the fixture for
+ * the renderer's re-record path when content outgrows the frame chosen from the resting
+ * measurement. A regression doesn't fail loudly; it clips the revealed items at the bottom edge.
  *
- * Every other motion capture in this repo measures the same size on frame 0 and on the last frame,
- * so the renderer's single-pass path covers all of them and its re-record path — the one that
- * notices the composable outgrew the frame it committed to and records again at the larger size —
- * had only a unit fixture behind it. This is that case on a real component: closed it is one row,
- * open it is four, and the expansion arrives ~700ms into a capture that had already chosen its
- * frame size from the resting measurement.
- *
- * A capture that regressed to the single-pass behaviour does not fail loudly. It publishes a
- * recording of a menu opening into a wall, its revealed items sliced off at the bottom edge — which
- * is why this fixture is worth keeping even though nothing here is novel as a component.
- *
- * The menu is deliberately **inline** rather than a `DropdownMenu`: a real dropdown renders into a
- * separate popup window, which the captured root doesn't contain at all, so it would exercise
- * nothing. Expanding in place is also the honest shape for a sticker — the component's own bounds
- * are what changes.
+ * Inline rather than `DropdownMenu`, whose popup window isn't part of the captured root.
  */
 @Preview(name = "Interaction — Expandable Menu")
 @InteractionPreview(

@@ -41,9 +41,8 @@ import kotlinx.serialization.json.putJsonObject
 
 /**
  * Contract for [DaemonSemanticsFetcher]: with a fake [RenderSessionFactory] whose `renderNow`
- * writes `compose-semantics.json` sidecars (standing in for the daemon's always-on
- * ComposeSemanticsExtension), the fetcher renders the requested previews and returns each one's
- * sidecar bytes keyed by preview id (issue #1843).
+ * writes `compose-semantics.json` sidecars, the fetcher returns each requested preview's sidecar
+ * bytes keyed by preview id.
  */
 class DaemonSemanticsFetcherTest {
 
@@ -88,15 +87,9 @@ class DaemonSemanticsFetcherTest {
 
   @Test
   fun `carries a PreviewParameter fan-out's semantics from the bare id`() {
-    // Issue #3049: `bundle pack --with-semantics` dropped every `@PreviewParameter` preview's a11y
-    // tree on a build predating the daemon's `@PreviewParameter` support — the parameterless
-    // `(Composer, int)` lookup threw `NoSuchMethodException`, so no sidecar was written at all.
-    // Once the daemon resolves the annotation it renders one frame of the provider's *first* value
-    // under the **bare** function id (it does not fan out per value — that stays with the
-    // standalone
-    // renderer), so the sidecar lands at `build/compose-previews/data/<id>/` exactly like a plain
-    // preview's. This guards that contract from the fetcher's side: a fan-out id is carried with no
-    // per-value directory resolution, because none is written.
+    // The daemon renders a `@PreviewParameter` preview's first provider value under the bare
+    // function id, so its sidecar lands at `build/compose-previews/data/<id>/` like a plain
+    // preview's; the fetcher must carry the id without per-value resolution.
     val projectDir = newTempFolder("semantics-fanout")
     writeDescriptor(projectDir)
 
@@ -220,12 +213,8 @@ class DaemonSemanticsFetcherTest {
     val projectDir = newTempFolder("semantics-render-failed")
     writeDescriptor(projectDir)
 
-    // Alpha renders; Beta's composition throws, so the daemon emits `renderFailed` — the *other*
-    // terminal event — and never a `renderFinished`. This is what a Glance composable reached
-    // through the plain `androidx.compose.ui.tooling.preview.Preview` annotation does (jetchat's
-    // MessagesWidget previews): it dies in the Compose applier within seconds. The fetcher used to
-    // wait only on `renderFinished`, so one such preview sat out the entire 180s batch budget and
-    // failed the whole catalog pack.
+    // Beta's composition throws, so the daemon emits only `renderFailed` (as a Glance composable
+    // under the plain `@Preview` does); the fetcher must not wait out the whole budget on it.
     val logs = mutableListOf<String>()
     val fetcher =
       DaemonSemanticsFetcher(
@@ -294,20 +283,12 @@ class DaemonSemanticsFetcherTest {
 
   @Test
   fun `render timeout is an inactivity window, not a batch-wide budget`() {
-    // Issue #2948: a wide catalog (a component library fanning out across many themes) renders far
-    // more previews than fit inside a single `--timeout`, yet each individual render still lands
-    // quickly. The daemon here completes one render every 20ms across 100 previews (~2s total),
-    // well past the 1s window — but never idle for that long. Every semantics sidecar must still be
-    // collected: the old batch-wide budget cut the batch off mid-flight and silently dropped
-    // roughly a third of the catalog's semantics.
+    // A wide catalog takes far longer than one window in total while each render lands quickly (one
+    // every 20ms across 100 previews, ~2s, vs a 1s window); every sidecar must still be collected.
     //
-    // Two numbers carry the test and they are independent. Total elapsed must exceed the window —
-    // that is the property, and it is why this test cannot be made cheap by simply widening the
-    // window. The stagger must sit far *below* the window — that is the margin, and 150ms against
-    // a 20ms stagger was not enough of it: the wait below trips on a single scheduling stall or GC
-    // pause longer than one window, and a CI runner encoding shader GIFs while it renders stalls a
-    // thread past 150ms routinely. At 1s the same stall has to be ~50x the stagger to fail. Retune
-    // both together if this ever gets too slow; do not close the gap between them.
+    // The two numbers are independent: total elapsed must exceed the window (the property), and the
+    // stagger must stay far below it (the margin against CI scheduling stalls). Retune them
+    // together without closing the gap.
     val projectDir = newTempFolder("semantics-inactivity")
     writeDescriptor(projectDir)
 
@@ -437,11 +418,9 @@ class DaemonSemanticsFetcherTest {
   }
 
   /**
-   * Minimal [RenderSession] modelling the real daemon's async render: [renderNow] writes the
-   * always-on `compose-semantics.json` sidecar for every preview it has canned content for, then
-   * emits one terminal notification per requested id — `renderFailed` for ids in [failedIds],
-   * `renderFinished` otherwise. Both are signals the fetcher must stop waiting on. Every other
-   * method throws.
+   * Minimal [RenderSession] modelling the daemon's async render: [renderNow] writes the sidecar for
+   * every canned preview, then emits one terminal notification per id (`renderFailed` for
+   * [failedIds], `renderFinished` otherwise). Everything else throws.
    */
   private class FakeSession(
     override val workspaceRoot: String,
@@ -484,10 +463,9 @@ class DaemonSemanticsFetcherTest {
       overrides: PreviewOverrides?,
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
-      // With a stagger, model the real daemon: `renderNow` only queues and acks, then the terminal
-      // notifications land one at a time on a background thread as each render actually completes.
-      // This lets a test drive the total render past the fetcher's inactivity window while keeping
-      // each individual gap inside it (issue #2948).
+      // With a stagger, model the real daemon: `renderNow` acks, then terminal notifications land
+      // one at a time on a background thread, so total time can exceed the inactivity window while
+      // each gap stays inside it.
       if (staggerMs > 0) {
         Thread {
           for (id in previewIds) {

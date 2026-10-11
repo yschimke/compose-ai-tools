@@ -25,24 +25,13 @@ import okio.Path.Companion.toPath
 
 /**
  * Drives a short-lived [RenderSession] for one module, renders the requested previews so the
- * daemon's always-on `compose/semantics` extension writes each one's `compose-semantics.json`
- * sidecar, then reads those sidecars back off disk. Used by `compose-preview bundle pack
- * --with-semantics` to carry the per-preview semantics blob (the [ComposeSemanticsProduct] tree
- * with resolved foreground/background colours) inside the bundle as `previews/<id>.semantics.json`
- * — the shape the design-parity static bundle reader consumes (issue #1843).
+ * daemon's `compose/semantics` extension writes each `compose-semantics.json`, and reads them back,
+ * for `bundle pack --with-semantics` (`previews/<id>.semantics.json`). The standalone
+ * `composePreviewRender` task never produces semantics; the daemon is the only producer.
  *
- * The standalone `composePreviewRender` Gradle task is "normal render only" and never produces
- * semantics — the daemon is the single producer (see `docs/AGENT_GUIDE.md`). So unlike the rest of
- * `pack` (which is pure Gradle), the semantics blob is obtained by spinning up the same daemon the
- * VS Code extension / MCP server / `compose-preview a11y` use, fetching, and shutting it down.
- *
- * @param factory pluggable render-session factory; defaults to the subprocess backend. Test
- *   scaffolding can inject a fake by constructing a custom [RenderSessionFactory].
- * @param renderTimeout the *inactivity* budget for the semantics render (issue #2948): how long to
- *   keep waiting after the **last** render completed before concluding the daemon has stalled. It
- *   is deliberately not a batch-wide deadline — a wide catalog's full render can legitimately
- *   outlast any single value here, and it still finishes as long as renders keep landing within the
- *   window.
+ * @param factory render-session factory; defaults to the subprocess backend, tests inject a fake.
+ * @param renderTimeout an inactivity budget: how long to wait after the last completed render
+ *   before concluding the daemon stalled. Not a batch deadline, so wide catalogs still finish.
  */
 internal class DaemonSemanticsFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
@@ -51,27 +40,14 @@ internal class DaemonSemanticsFetcher(
   private val renderTimeout: Duration = DEFAULT_RENDER_TIMEOUT,
 ) {
   /**
-   * Render [previewIds] through a temporary daemon and return each preview's
-   * `compose-semantics.json` bytes, keyed by preview id. Previews whose sidecar never materialised
-   * (a render that failed, an unsupported backend) are simply absent from the returned map — the
-   * caller carries what it got and reports the rest.
+   * Render [previewIds] through a temporary daemon and return each `compose-semantics.json`, keyed
+   * by preview id. Previews whose sidecar never materialised are absent; the caller reports them.
    *
-   * **`@PreviewParameter` fan-outs read from the bare id like any other preview.** The daemon does
-   * *not* fan a parameterized preview out across its provider's values — it renders one frame of
-   * the provider's first value under the bare `<id>` base name (Android:
-   * `daemon/android/.../RenderEngine.kt`, `resolvePreviewInvocation`; desktop:
-   * `daemon/desktop/.../RenderEngine.kt` via `PreviewParameterSupport`; the fan-out-per-value path
-   * stays with the standalone renderer on both). So a fan-out's `compose-semantics.json` lands at
-   * `build/compose-previews/data/<id>/` exactly where a plain preview's does, and the bare-id read
-   * below carries it. This was broken before the daemon learned to resolve `@PreviewParameter`
-   * (previously the `(Composer, int)`-only lookup threw `NoSuchMethodException`, so every such
-   * preview lost its PNG *and* its semantics — the drop reported in issue #3049 against a build
-   * that predates that fix); nothing per-value is written, so there is nothing extra to resolve
-   * here.
+   * `@PreviewParameter` previews read from the bare id too: the daemon renders the provider's first
+   * value under `<id>`, so the sidecar lands in `build/compose-previews/data/<id>/` like any other.
    *
-   * [projectDir] is the module's project directory (`PreviewModule.projectDir`);
-   * `daemon-launch.json` and the daemon's `build/compose-previews/data/<id>/` output both sit under
-   * it regardless of the module's gradle path.
+   * [projectDir] is the module directory (`PreviewModule.projectDir`), which holds both
+   * `daemon-launch.json` and the daemon's output.
    */
   fun fetch(
     projectDir: File,
@@ -90,14 +66,11 @@ internal class DaemonSemanticsFetcher(
         workspaceRoot = workspaceRoot.absoluteFile,
         workspaceName = workspaceRoot.name.ifBlank { moduleName },
         logSink = onLog,
-        // The daemon's `host.submit(...)` deadline starts while each render is still queued. Let a
-        // long command timeout extend that deadline (issue #3197), but never let a short inactivity
-        // window reduce the daemon's five-minute default: doing so would make queued tail previews
-        // expire even while the fetcher continues to observe steady progress.
+        // Let a long command timeout extend the daemon's per-render deadline (which starts while
+        // queued), but never shorten its five-minute default.
         maxRenderTime = maxOf(renderTimeout, DEFAULT_RENDER_TIMEOUT),
-        // A genuinely stuck render must not add the subprocess backend's normal 15s shutdown RPC
-        // plus process-exit grace after this fetcher's inactivity timeout. Give the daemon a short
-        // graceful window, then let the subprocess owner terminate the outstanding render.
+        // A stuck render shouldn't add the normal 15s shutdown RPC plus exit grace after the
+        // inactivity timeout; shut down quickly and let the owner kill it.
         shutdownTimeout = SEMANTICS_SHUTDOWN_TIMEOUT,
       )
 
@@ -109,16 +82,10 @@ internal class DaemonSemanticsFetcher(
       }
 
     return session.use { live ->
-      // `renderNow` only *queues* the renders and acks immediately (`RenderNowResult.queued`) — the
-      // daemon's always-on ComposeSemanticsExtension writes each sidecar later, signalled by a
-      // `renderFinished` notification per preview. Reading the files right after the ack would race
-      // the render and inject nothing (or a stale sidecar from a prior run), so we wait for the
-      // notifications before reading. Mirrors `render-session/cli`'s RenderCli wait loop.
-      //
-      // Clear any stale sidecars first so a render that doesn't fire (rejected / failed) can't
-      // leave
-      // us reading cross-run data. Safe because `bundle pack` spawns a fresh, cold daemon that
-      // always renders (no warm cache to serve "unchanged").
+      // `renderNow` only queues and acks; sidecars are written later, signalled by a per-preview
+      // terminal notification, so wait for those before reading (as `render-session/cli`'s
+      // RenderCli does). Clear stale sidecars first so a render that never fires can't yield
+      // cross-run data (the daemon is fresh and cold, so it always renders).
       for (previewId in previewIds) {
         sidecarFile(projectDir, previewId).delete()
         layoutSidecarFile(projectDir, previewId).delete()
@@ -128,24 +95,17 @@ internal class DaemonSemanticsFetcher(
       }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
-      // Each terminal event offers one token here, so the wait below wakes on *every* completed
-      // render rather than only when the whole batch is done — that's what lets the deadline be an
-      // inactivity budget instead of a batch-wide one (issue #2948).
+      // One token per terminal event, so the wait wakes on every completion and the deadline can be
+      // an inactivity budget.
       val progress = LinkedBlockingQueue<Unit>()
       live
         .onNotification { method, params ->
           val failed = method == "renderFailed"
           if ((method != "renderFinished" && !failed) || params == null) return@onNotification
           val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
-          // Signal progress on either terminal event for a pending id — the daemon owes exactly one
-          // (`renderFinished` OR `renderFailed`) per queued render, and a render whose composition
-          // throws emits only the latter. Waiting on `renderFinished` alone meant one broken
-          // preview burned the ENTIRE batch budget: a Glance composable reached through the plain
-          // `androidx.compose.ui.tooling.preview.Preview` annotation dies in the Compose applier
-          // within seconds, yet `bundle pack --with-semantics` sat out all 180s and then failed the
-          // whole catalog, reading as "the daemon hangs on widgets". Same fix ServeRenderHost
-          // already carries. Whether a sidecar actually materialised is decided by the disk read
-          // below, so a failure needs no special-casing beyond releasing the wait.
+          // Either terminal event (`renderFinished` or `renderFailed`) releases the wait; otherwise
+          // one broken preview burns the whole budget. Whether a sidecar exists is decided by the
+          // disk read below.
           if (failed) {
             val reason =
               params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
@@ -171,15 +131,8 @@ internal class DaemonSemanticsFetcher(
             onLog("render rejected for '${rejected.id}': ${rejected.reason}")
             if (pending.remove(rejected.id)) progress.offer(Unit)
           }
-          // Wait for every queued render to reach a terminal event. `renderTimeout` is an
-          // *inactivity* deadline, not a batch-wide one (issue #2948, #2857): it resets each time a
-          // render completes, so a wide catalog — a component library fanning out across many
-          // themes — whose full render legitimately outlasts any single `--timeout` still finishes
-          // as long as the daemon keeps making progress. Each individual render still lands
-          // quickly;
-          // only a genuine stall (no render completing at all for the whole window) trips the
-          // timeout. The old batch-wide `--timeout`-length budget silently dropped a third of a
-          // large catalog's semantics once the total render time crossed it.
+          // Wait for every queued render to reach a terminal event. The timeout resets on each
+          // completion, so only a genuine stall trips it, not a large catalog's total render time.
           val timeoutMs = renderTimeout.inWholeMilliseconds
           while (pending.isNotEmpty()) {
             val signalled = progress.poll(timeoutMs, TimeUnit.MILLISECONDS)
@@ -206,33 +159,23 @@ internal class DaemonSemanticsFetcher(
         } else {
           onLog("no ${ComposeSemanticsProduct.FILE} for '$previewId'")
         }
-        // The layout-inspector tree (full LayoutNode walk with per-node bounds + resolved tokens)
-        // is baked by the same always-on daemon render; carry it too so consumers can build
-        // slot-level redlines/wireframes the a11y semantics tree can't express (issue: layout
-        // wireframes). Best-effort — absent for a render that produced no tree.
+        // The layout-inspector tree from the same render, for slot-level redlines. Best-effort.
         val layout = layoutSidecarFile(projectDir, previewId)
         if (layout.isFile && layout.length() > 0) {
           layoutById[previewId] = fileSystem.read(layout.path.toPath()) { readByteArray() }
         }
-        // The `fonts/used` record (requested vs resolved family, weight, style per font
-        // resolution) is baked by the same always-on daemon render (FontsRecorderExtension); carry
-        // it so the design-catalog export can generate the in-browser tier's fonts.json from what
-        // the previews actually resolved. Best-effort — absent on backends without the recorder.
+        // `fonts/used` (requested vs resolved fonts) from the same render, for the in-browser
+        // tier's fonts.json. Best-effort; absent on backends without the recorder.
         val fonts = fontsSidecarFile(projectDir, previewId)
         if (fonts.isFile && fonts.length() > 0) {
           fontsById[previewId] = fileSystem.read(fonts.path.toPath()) { readByteArray() }
         }
-        // The layered `compose/figma-svg` export (real fills/strokes/corner radii + editable text)
-        // is baked by the same always-on daemon render; carry it so the design-catalog export can
-        // ship an editable vector per sticker alongside the raster PNG. Best-effort — absent for a
-        // render that produced no drawing layers.
+        // The layered `compose/figma-svg` export from the same render. Best-effort.
         val figmaSvg = figmaSvgSidecarFile(projectDir, previewId)
         if (figmaSvg.isFile && figmaSvg.length() > 0) {
           figmaSvgById[previewId] = fileSystem.read(figmaSvg.path.toPath()) { readByteArray() }
-          // A hybrid figma-svg (opaque Image/Icon/Canvas node) references `figma-raster/<node>.png`
-          // crops the daemon wrote beside it. Carry them too so the SVG's `<image>` layers resolve
-          // once the export copies the SVG onto the delivery branch — else they'd dangle. Absent
-          // (empty) for a pure-vector export, which is the common case for a component catalog.
+          // A hybrid figma-svg's `figma-raster/<node>.png` crops, so its `<image>` layers resolve
+          // once published. Usually empty.
           val crops =
             figmaRasterDir(projectDir, previewId)
               .listFiles { f -> f.isFile && f.name.endsWith(".png") }
@@ -241,11 +184,9 @@ internal class DaemonSemanticsFetcher(
               .orEmpty()
           if (crops.isNotEmpty()) figmaRasterById[previewId] = crops
         }
-        // The export's font-warning sidecar, written ONLY when it had to draw text as
-        // missing-glyph boxes because the render used a family it could not name. Collected
-        // unconditionally of the SVG above: a degraded preview is exactly the one whose warning
-        // has to travel, and it is the caller — not this fetcher — that decides whether a
-        // degraded catalog may publish.
+        // The font-warning sidecar, written only when text exported as missing-glyph boxes.
+        // Collected regardless of the SVG; the caller decides whether a degraded catalog may
+        // publish.
         val fontWarnings = figmaFontWarningsSidecarFile(projectDir, previewId)
         if (fontWarnings.isFile && fontWarnings.length() > 0) {
           figmaFontWarningsById[previewId] =
@@ -283,19 +224,11 @@ internal class DaemonSemanticsFetcher(
 
   sealed interface Outcome {
     /**
-     * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
-     * `compose-semantics.json` materialised — possibly empty if every render failed. [layoutById]
-     * holds the matching `layout-inspector.json` (the full LayoutNode tree) for each preview that
-     * produced one; a preview may have semantics but no layout tree, or vice versa. [fontsById]
-     * holds the matching `fonts-used.json` (`fonts/used` — requested vs resolved font families) for
-     * each preview whose backend runs the fonts recorder. [figmaSvgById] holds the matching
-     * `compose-figma.svg` (the layered editable `compose/figma-svg` export) for each preview that
-     * produced drawing layers. [figmaRasterById] holds, for each preview whose figma-svg is
-     * **hybrid** (opaque Image/Icon/Canvas node), its `figma-raster/<node>.png` crops (filename →
-     * bytes) so the SVG's `<image>` layers still resolve once carried; empty for a vector-only
-     * export. [figmaFontWarningsById] holds the export's font-warning sidecar for each preview it
-     * had to draw in missing-glyph boxes — **normally empty**, since a healthy export writes no
-     * sidecar, and an entry is the signal that this preview's text is wrong.
+     * Session opened and renders attempted. Each map holds entries only for previews that produced
+     * that artifact: [semanticsById] (`compose-semantics.json`), [layoutById]
+     * (`layout-inspector.json`), [fontsById] (`fonts/used`), [figmaSvgById] (`compose-figma.svg`),
+     * [figmaRasterById] (hybrid export crops, filename → bytes), and [figmaFontWarningsById] —
+     * normally empty; an entry means that preview's text is wrong.
      */
     data class Ok(
       val semanticsById: Map<String, ByteArray>,
@@ -316,8 +249,8 @@ internal class DaemonSemanticsFetcher(
     val RENDER_ACK_TIMEOUT = 60.seconds
 
     /**
-     * Default inactivity window used by callers that do not expose a command timeout — the gap a
-     * single render may take before the daemon is presumed stalled, not a whole-batch budget.
+     * Default inactivity window for callers without a command timeout: how long a single render may
+     * take before the daemon is presumed stalled.
      */
     val DEFAULT_RENDER_TIMEOUT = 300.seconds
 

@@ -24,20 +24,11 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 
 /**
- * Renders every Material 3 colour role in [colorScheme] as a labelled swatch — `primary`,
- * `onPrimary`, `primaryContainer`, …, `surfaceContainerHighest` — so visual regressions in a custom
- * theme's `ColorScheme` surface as a pixel diff in the surrounding `@Preview`.
- *
- * This is the colour analogue of [ee.schimke.composeai.preview.typography] `TypographySpecimen`:
- * wrap a `ColorScheme` value (light or dark — flip via the ambient theme, or pass
- * `MaterialTheme.colorScheme` from inside a `@Preview(uiMode = …)`) and get a one-PNG audit of
- * every role at the exact ARGB the theme resolves to. Airbnb Showkase's `@ShowkaseColor` sheet is
- * the equivalent surface; here the roles are pulled straight off the `ColorScheme` type rather than
- * per-token annotations, so a stock `lightColorScheme()` renders with zero extra code.
- *
- * Roles are listed in the Material 3 reference order (accent families first — primary / secondary /
- * tertiary with their containers — then surfaces, then utility roles) so the rendered PNG diffs
- * cleanly across calls.
+ * Renders every Material 3 colour role in [colorScheme] as a labelled swatch, so regressions in a
+ * custom theme's `ColorScheme` show up as a pixel diff. The colour analogue of
+ * [ee.schimke.composeai.preview.typography] `TypographySpecimen` (and of Showkase's
+ * `@ShowkaseColor`), but read straight off the `ColorScheme` with no per-token annotations. Roles
+ * follow the M3 reference order: accent families, surfaces, utility roles.
  */
 @Composable
 fun ColorSchemeSpecimen(colorScheme: ColorScheme, modifier: Modifier = Modifier) {
@@ -45,13 +36,8 @@ fun ColorSchemeSpecimen(colorScheme: ColorScheme, modifier: Modifier = Modifier)
 }
 
 /**
- * Renders an arbitrary list of named [colors] as labelled swatches — one row each, a filled swatch
- * on the left and the role name plus its `#AARRGGBB` hex on the right. Use this directly for a
- * design system's own colour tokens (brand palette, semantic aliases) that don't live on a Material
- * 3 [ColorScheme]; [ColorSchemeSpecimen] is the convenience overload for the M3 roles.
- *
- * The list order is preserved verbatim so the caller controls row sequence and the rendered PNG is
- * deterministic.
+ * Renders an arbitrary list of named [colors] as labelled swatches (swatch, name, `#AARRGGBB`), for
+ * tokens that don't live on a [ColorScheme]. Order is preserved.
  */
 @Composable
 fun ColorSpecimen(colors: List<Pair<String, Color>>, modifier: Modifier = Modifier) {
@@ -63,10 +49,8 @@ fun ColorSpecimen(colors: List<Pair<String, Color>>, modifier: Modifier = Modifi
 }
 
 /**
- * Material 3 role order for [ColorSchemeSpecimen]. Returned as a stable `List<Pair<...>>` rather
- * than reflecting the `ColorScheme` properties so the row sequence is deterministic and matches the
- * M3 reference grouping (accent families → surfaces → utility) regardless of the declaration order
- * the underlying library uses.
+ * Material 3 role order for [ColorSchemeSpecimen], listed explicitly rather than reflected so it is
+ * deterministic and grouped as in the M3 reference.
  */
 private fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
   listOf(
@@ -109,11 +93,8 @@ private fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
   )
 
 /**
- * One swatch row: a fixed-size filled square on the left, then the role name and its hex value. The
- * swatch carries a thin outline so a role that resolves to the same colour as the preview
- * background (e.g. `surface` on a `Surface`, or `onPrimary` ≈ white) is still bounded and visible.
- * Text sits outside the swatch — never on top of it — so the label stays legible regardless of the
- * swatch's contrast.
+ * One swatch row: an outlined square (visible even when it matches the background), then the role
+ * name and hex value beside it rather than on top of it.
  */
 @Composable
 internal fun SwatchRow(label: String, color: Color) {
@@ -138,10 +119,8 @@ internal fun SwatchRow(label: String, color: Color) {
 }
 
 /**
- * Formats [color] as an uppercase `#AARRGGBB` string via [Color.toArgb]. Always eight digits (alpha
- * included) so a semi-transparent role — `scrim` is typically black at partial alpha — reads as
- * such instead of looking identical to its opaque sibling. `Locale.ROOT` keeps the hex digits ASCII
- * regardless of the render environment's default locale.
+ * [color] as uppercase `#AARRGGBB`; always eight digits so partial alpha (e.g. `scrim`) is visible.
+ * `Locale.ROOT` keeps the digits ASCII.
  */
 internal fun hex(color: Color): String = String.format(Locale.ROOT, "#%08X", color.toArgb())
 

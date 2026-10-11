@@ -4,12 +4,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
 /**
- * On-disk shape mirrors `gradle-plugin/PreviewBundleFormat.kt` and `gradle-plugin/PreviewData.kt`.
- * Duplicated here (rather than depending on either source module) so the viewer's runtime classpath
- * stays minimal — bundle parsing is tiny and rarely changes.
- *
- * Keep field names in lockstep with the plugin-side definitions; `ignoreUnknownKeys = true` makes
- * forward-compat round-trips safe.
+ * Mirrors `gradle-plugin/PreviewBundleFormat.kt` and `PreviewData.kt`, duplicated to keep the
+ * viewer's classpath minimal. Keep field names in lockstep; `ignoreUnknownKeys` keeps forward
+ * compat.
  */
 @Serializable
 data class BundleManifest(
@@ -40,9 +37,7 @@ data class BundleManifest(
   val dataExtensions: List<BundleDataExtension> = emptyList(),
   /**
    * v9+: extra Maven repository base URLs (beyond Maven Central / Google Maven) needed to
-   * re-resolve this bundle's [ClasspathEntry.Maven] coordinates — a JitPack fork, an internal
-   * mirror, an androidx.dev snapshot build. Empty on a pre-v9 bundle and on any module whose deps
-   * all live on the two defaults.
+   * re-resolve [ClasspathEntry.Maven] coordinates.
    */
   val repositories: List<String> = emptyList(),
 )
@@ -55,9 +50,8 @@ data class BundleManifest(
 data class BundleIr(
   val previewId: String,
   /**
-   * `remotecompose` (RC doc), `protolayout` (Wear tile Layout proto), `lottie` (a Lottie animation
-   * asset packed straight from the module resources), or `svg` (a static SVG asset, likewise packed
-   * from the module resources).
+   * `remotecompose` (RC doc), `protolayout` (Wear tile Layout proto), `lottie` or `svg` (assets
+   * packed from module resources).
    */
   val format: String,
   val path: String,
@@ -117,10 +111,8 @@ data class PreviewParams(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
   /**
-   * Bound a wrapped axis was measured against without being fixed to it — see
-   * `discovery.PreviewParams.wrapSandboxWidthDp`. The viewer uses it as the window size for
-   * previews that carry no explicit dims, so a Wear sticker opens at watch size rather than the
-   * generic 400×800 dp sandbox.
+   * Bound a wrapped axis was measured against (see `discovery.PreviewParams.wrapSandboxWidthDp`);
+   * the viewer's window size for previews without explicit dims.
    */
   val wrapSandboxWidthDp: Int? = null,
   /** See [wrapSandboxWidthDp]. */

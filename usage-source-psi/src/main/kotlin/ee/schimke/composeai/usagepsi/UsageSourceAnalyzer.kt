@@ -20,37 +20,19 @@ import org.jetbrains.kotlin.psi.KtLambdaArgument
 import org.jetbrains.kotlin.psi.KtValueArgument
 
 /**
- * Parses Kotlin source and reports the **structure** the usage cleaner needs, as JSON.
+ * Parses Kotlin source and reports the structure the usage cleaner needs, as JSON.
  *
- * ### Why JSON, and why one method
+ * JSON across a single `analyze(String): String` method because this runs in an isolated
+ * classloader holding a Kotlin frontend; the caller shares no classes with it.
  *
- * This class runs inside an isolated classloader holding a whole Kotlin frontend; the CLI that
- * calls it holds none of those types. Returning JSON means the two sides share no classes at all,
- * so the loader can be parented to the platform loader with nothing bridged, and the reflective
- * surface stays a single `analyze(String): String`. A typed interface would need a shared package
- * visible to both loaders — more moving parts for a boundary this narrow.
+ * Parse only: [KotlinCoreEnvironment] with an empty [CompilerConfiguration] builds a tree without
+ * resolution (~0.5 s setup, ~3 ms per file; `docs/design/PSI_PARSE_SPIKE.md`).
  *
- * ### Parse only
- *
- * No classpath, no source roots, no resolution: [KotlinCoreEnvironment] with an empty
- * [CompilerConfiguration] is enough to build a tree, and the tree is all the rewrites need. The
- * expensive half of a frontend is resolution, which nothing here asks for. Setup costs ~0.5 s once
- * per process and parsing ~3 ms per file (`docs/design/PSI_PARSE_SPIKE.md`), against a seed path
- * that already makes a network round trip.
- *
- * ### What it deliberately does not do
- *
- * It reports facts, never decisions. Whether `ee.schimke.composeai.overrides.previewOverrideString`
- * is scaffolding to unqualify, and whether `state.metrics.counted` is somebody's receiver chain, is
- * a question about a catalog's declared rules — the same `KtDotQualifiedExpression` either way.
- * This hands over the receiver as an exact string so the caller can look it up, which is precisely
- * what the regex it replaces could not do.
+ * Reports facts, never decisions: whether a qualified call is scaffolding is the caller's question,
+ * answered from the exact receiver string reported here.
  */
-// `CoreEnvironmentDeprecation` arrived with Kotlin 2.4.20:
-// `KotlinCoreEnvironment.createForProduction`
-// now carries an opt-in marker ("planned to be reworked"), which is a hard compile error without
-// this. The call is still the supported way to stand up a parse-only frontend — see
-// `docs/design/PSI_PARSE_SPIKE.md` — so this opts in rather than changing how the parser is built.
+// `KotlinCoreEnvironment.createForProduction` gained the `CoreEnvironmentDeprecation` opt-in in
+// Kotlin 2.4.20; it is still the supported way to build a parse-only frontend.
 @OptIn(
   CompilerConfiguration.Internals::class,
   K1Deprecation::class,
@@ -65,11 +47,8 @@ class UsageSourceAnalyzer : AutoCloseable {
     val env =
       KotlinCoreEnvironment.createForProduction(
         disposable,
-        // Kotlin 2.4.20 reads `configuration.extensionsStorage` while wiring compiler-plugin
-        // extension points, and a bare `CompilerConfiguration()` carries none — every parse dies
-        // on `IllegalStateException: Extensions storage is not registered`. Parsing needs no
-        // plugins, so an empty storage is the whole fix. The property exists in 2.4.10 too, so
-        // this is not a version-gated branch.
+        // Kotlin 2.4.20 reads `extensionsStorage` while wiring plugin extension points, and a bare
+        // configuration has none; parsing needs no plugins, so an empty storage suffices.
         CompilerConfiguration().apply {
           extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
         },
@@ -79,15 +58,9 @@ class UsageSourceAnalyzer : AutoCloseable {
   }
 
   /**
-   * [source] → a JSON object of `calls` and `declarations`, or `{"error":"…"}` if it could not be
-   * parsed at all.
-   *
-   * Never throws across the reflective boundary: an exception here would surface in the caller as
-   * an `InvocationTargetException` carrying a frontend-loaded class the caller cannot name. A JSON
-   * error field degrades to "no facts", and the cleaner's caller already knows how to fall back.
-   *
-   * Offsets are 0-based character indices into [source], end-exclusive, so the caller can splice
-   * without re-finding anything.
+   * [source] → a JSON object of `calls` and `declarations`, or `{"error":"…"}` if unparseable.
+   * Never throws across the reflective boundary. Offsets are 0-based, end-exclusive character
+   * indices into [source].
    */
   fun analyze(source: String): String =
     try {
@@ -98,16 +71,10 @@ class UsageSourceAnalyzer : AutoCloseable {
         arrayField("calls", PsiTreeUtil.findChildrenOfType(file, KtCallExpression::class.java)) {
           call(it)
         }
-        // The file's top-level declarations, in source order. Reported for the same reason the
-        // calls are: a caller that has to say WHICH declaration a call belongs to would otherwise
-        // infer the boundaries from formatting, and the blank-line rule that is safe for seeding an
-        // editor buffer (over-select rather than truncate) is wrong here — over-selecting merges
-        // two declarations, and every call in both is then attributed to each.
+        // Top-level declarations in source order, so the caller can attribute each call to its
+        // declaration rather than inferring boundaries from blank lines.
         arrayField("declarations", file.declarations) { declaration ->
-          // `textRange` starts at the declaration proper. `startOffsetSkippingComments` would skip
-          // the KDoc the other way; what is wanted is the widest honest span, so the KDoc and
-          // annotations that precede a `fun` count as part of it rather than as a gap between
-          // declarations.
+          // `textRange` includes preceding KDoc and annotations: the widest honest span.
           number("start", declaration.textRange.startOffset)
           number("end", declaration.textRange.endOffset)
         }

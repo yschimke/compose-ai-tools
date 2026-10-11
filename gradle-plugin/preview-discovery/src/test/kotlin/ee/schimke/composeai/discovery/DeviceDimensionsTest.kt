@@ -14,9 +14,7 @@ class DeviceDimensionsTest {
 
   @Test
   fun `known device ID resolves correctly`() {
-    // Pixel 6 = 1080x2400 px @ 420dpi → 411x914 dp
-    // (sergio-sastre/ComposablePreviewScanner Phone.PIXEL_6, exposed via the
-    // takahirom/roborazzi compose-preview-scanner-support pipeline.)
+    // Pixel 6 = 1080x2400 px @ 420dpi → 411x914 dp (ComposablePreviewScanner `Phone.PIXEL_6`).
     val spec = DeviceDimensions.resolve("id:pixel_6")
     assertThat(spec.widthDp).isEqualTo(411)
     assertThat(spec.heightDp).isEqualTo(914)
@@ -74,10 +72,8 @@ class DeviceDimensionsTest {
 
   @Test
   fun `spec string portrait orientation rotates a landscape spec`() {
-    // #3547, one layer earlier than the daemon's override lane: `orientation=portrait` was dropped
-    // here (only `landscape` was handled), so `@PreviewScreenSizes`' own "Tablet" entry —
-    // `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait` — rendered landscape, pixel for
-    // pixel identical to its "Tablet - Landscape" sibling.
+    // #3547: `orientation=portrait` was ignored, so `@PreviewScreenSizes`' "Tablet" rendered
+    // identically to "Tablet - Landscape".
     val spec =
       DeviceDimensions.resolve("spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
     assertThat(spec.widthDp).isEqualTo(800)
@@ -230,12 +226,8 @@ class DeviceDimensionsTest {
     assertThat(spec.heightDp).isEqualTo(800)
   }
 
-  // -- Density coverage --
-  //
-  // density = densityDpi / 160. We carry this through PreviewParams so renderers
-  // can size bitmaps the same way Android Studio's `@Preview` does (Studio's
-  // default phone-class preview is 420dpi → 2.625x, not Robolectric's mdpi 1.0x
-  // / xhdpi 2.0x default).
+  // -- Density coverage -- density = densityDpi / 160, so bitmaps match Studio (420dpi → 2.625x
+  // default).
 
   @Test
   fun `pixel 6 density matches its 420dpi panel`() {
@@ -301,9 +293,7 @@ class DeviceDimensionsTest {
 
   @Test
   fun `wearos_xl_round resolves`() {
-    // 480x480 px @ xhdpi → 240x240 dp. Source: AOSP sdklib/devices/wear.xml.
-    // Larger than wearos_large_round (227dp) — sits at the top of the
-    // 192–240 dp wear range Material 2.5 calls out.
+    // 480x480 px @ xhdpi → 240x240 dp (AOSP sdklib `wear.xml`), the top of the Wear range.
     val spec = DeviceDimensions.resolve("id:wearos_xl_round")
     assertThat(spec.widthDp).isEqualTo(240)
     assertThat(spec.heightDp).isEqualTo(240)
@@ -313,10 +303,8 @@ class DeviceDimensionsTest {
 
   @Test
   fun `custom round wear spec keeps its dp size and dpi-derived density`() {
-    // A Wear-shaped device larger than anything in the shipped catalog: 385dp round at
-    // 360dpi → 2.25x (866px). Guards the `:samples:wear` WearDeviceMatrixPreview fixture —
-    // a `spec:` string has to carry size, density AND shape through, not fall back to
-    // DEFAULT_WEAR just because the string contains "round".
+    // A Wear-shaped spec larger than any catalog device: size, density and shape must all survive
+    // the `spec:` parse rather than falling back to DEFAULT_WEAR.
     val spec = DeviceDimensions.resolve("spec:width=385dp,height=385dp,dpi=360,isRound=true")
     assertThat(spec.widthDp).isEqualTo(385)
     assertThat(spec.heightDp).isEqualTo(385)
@@ -326,10 +314,9 @@ class DeviceDimensionsTest {
 
   @Test
   fun `WearPreviewRealDevices spec strings keep their per-device density`() {
-    // Pins the four device strings behind `:samples:wear`'s @WearPreviewRealDevices. Each is a
-    // shipping watch's reported (screenWidthDp, densityDpi) pair, NOT a panel size divided by two
-    // — Google ships 320dpi and Samsung 340dpi, so the density has to survive the `spec:` parse
-    // for the render to match the device. Triple is (spec, expected density, panel px).
+    // Pins `:samples:wear`'s @WearPreviewRealDevices: real watches' (screenWidthDp, densityDpi)
+    // pairs; Google ships 320dpi and Samsung 340dpi, so density must survive parsing. Triple is
+    // (spec, expected density, panel px).
     val devices =
       listOf(
         // Pixel Watch / Pixel Watch 2 — 450px panel, stock `wm density` 320.
@@ -354,9 +341,7 @@ class DeviceDimensionsTest {
 
   @Test
   fun `the same wear panel resolves to different dp at different densities`() {
-    // The point of @WearPreviewRealDevices: dp is NOT derivable from pixels. One 450px round panel
-    // is 225dp on a Pixel Watch (320dpi) and 211dp on a Galaxy Watch 4/5 (340dpi) — both stock.
-    // Deriving dp as `px / 2` overstates every Samsung device by ~7%.
+    // dp isn't derivable from pixels: a 450px panel is 225dp at 320dpi but 211dp at 340dpi.
     val pixelWatch = DeviceDimensions.resolve("spec:width=225dp,height=225dp,dpi=320,isRound=true")
     val galaxyWatch = DeviceDimensions.resolve("spec:width=211dp,height=211dp,dpi=340,isRound=true")
 

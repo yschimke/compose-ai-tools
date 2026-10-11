@@ -23,16 +23,13 @@ import ee.schimke.composeai.wear.preview.TlcScalingHost
 private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
 
 /**
- * A **single** Wear Card shown with real `TransformingLazyColumn` item scaling — authored in the
- * normal list-item code (`transformedHeight(this, spec)` + `SurfaceTransformation(spec)`), with no
- * list of its own. `TlcScalingHost` (`:wear-preview-runtime`) hosts it in a real single-item TLC
- * and hands over the genuine scope + spec; the item sits **centred at full scale by default**.
+ * A single Wear Card with real `TransformingLazyColumn` scaling, authored as normal list-item code
+ * (`transformedHeight(this, spec)` + `SurfaceTransformation(spec)`). `TlcScalingHost` hosts it in a
+ * one-item TLC, centred at full scale.
  *
- * The author pins **nothing** — the scroll harness drives the position and reuses this one preview:
- * `@ScrollingPreview` [ScrollMode.TOP] captures the resting, unscaled frame, and [ScrollMode.END]
- * (bounded by `maxScrollPx`) rides the card up into the top scaling zone so it renders scaled +
- * faded. `reduceMotion = false` keeps the real scaling transforms on. `maxScrollPx` is tuned to the
- * large-round canvas (454px) so END lands the card at the top edge rather than scrolling it off.
+ * The scroll harness drives position: [ScrollMode.TOP] captures the unscaled frame, and
+ * [ScrollMode.END] (bounded by `maxScrollPx`, tuned to the 454px canvas) rides it into the top
+ * scaling zone. `reduceMotion = false` keeps the scaling transforms on.
  */
 @Preview(
   name = "Large Round",
@@ -66,11 +63,9 @@ private val scrollGifItems =
   )
 
 /**
- * The scaling **animated GIF**: the compose-preview scroll harness drives a real scaling
- * `TransformingLazyColumn`, so the cards scale + fade as they ride through the curved top/bottom
- * edges — one preview, harness-controlled scroll (same mechanism as `:samples:wear`'s
- * `ActivityListGifPreview`). TLC scaling is a list behaviour, so the GIF is authored as a short
- * list rather than a lone item; the isolated-component case is [CardScaling].
+ * Scaling GIF: the scroll harness drives a real `TransformingLazyColumn` so cards scale + fade
+ * through the curved edges. Authored as a short list since scaling is a list behaviour; the single
+ * item case is [CardScaling].
  */
 @Preview(
   name = "Large Round",

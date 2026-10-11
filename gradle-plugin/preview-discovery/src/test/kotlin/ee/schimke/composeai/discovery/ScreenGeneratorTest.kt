@@ -138,9 +138,8 @@ class ScreenGeneratorTest {
     assertThat(source).contains("Card {")
     assertThat(source).contains("fun HomeScreen()")
     assertThat(source).contains("import androidx.compose.material3.Card")
-    // `Text` is nested inside `Card`'s `ColumnScope` slot and is still imported by simple name:
-    // an implicit receiver adds names to the scope, it does not evict the import. See the
-    // dedicated test.
+    // `Text` inside `Card`'s `ColumnScope` slot is still imported by simple name: implicit
+    // receivers add names, they don't evict imports.
     assertThat(source).contains("import androidx.compose.material3.Text")
     assertThat(source).doesNotContain("androidx.compose.material3.Text(text = ")
     // `modifier` is defaulted and untouched, so it is omitted rather than guessed at.
@@ -248,9 +247,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * The named set is the design's answer and the multipreview is androidx's, so they are two
-   * questions rather than two spellings of one: a screen claiming a foldable and nothing else gets
-   * a foldable and nothing else.
+   * The named set and androidx's multipreview are separate answers: a screen claiming only a
+   * foldable gets only a foldable.
    */
   @Test
   fun `devices and the reference-size fan-out are independent`() {
@@ -281,9 +279,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * A shape check rather than a catalog: which ids exist is the tooling's question, and a list here
-   * would go stale and refuse devices that work. What it does settle is that the value cannot close
-   * the string literal and continue in code.
+   * A shape check, not a catalog of ids (which would go stale): the value can't escape the string
+   * literal.
    */
   @Test
   fun `a device that would escape its string literal is refused by name`() {
@@ -408,9 +405,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a component the preview wrapper would shadow is qualified instead`() {
-    // The wrapper is a top-level declaration, so it beats an import of the same simple name. Left
-    // alone, `HomeScreenPreview()` in the body would call the wrapper, which calls the screen —
-    // a stack overflow standing in for the component somebody placed.
+    // A top-level wrapper beats an import of the same simple name, so the body would call the
+    // wrapper recursively.
     val clashing =
       component("HomeScreenPreview", "androidx.compose.material3.HomeScreenPreview", emptyList())
     val document = ScreenDocument(name = "HomeScreen", root = ScreenNode(clashing.canonicalId))
@@ -621,9 +617,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `content trails the call, and any other slot stays named`() {
-    // A record may list only some of a composable's parameters, so being last in the record does
-    // not make a slot last in the signature. `content` is last by the Compose API guidelines, and
-    // is the one slot written as a trailing lambda.
+    // Being last in the record doesn't make a slot last in the signature; `content` is last by
+    // convention and the only trailing lambda.
     val item =
       component(
         "ListItem",
@@ -707,9 +702,7 @@ class ScreenGeneratorTest {
 
     val emitted = emitted(screen, catalog(experimental))
 
-    // Imported, the way an opt-in is written by hand. Two markers sharing a simple name across
-    // packages stay qualified instead — see the `com.a` / `com.b` case — so the short form is only
-    // ever used where it is unambiguous.
+    // Imported, as written by hand; same-named markers from different packages stay qualified.
     assertThat(emitted.source).contains("@kotlin.OptIn(ExperimentalMaterial3Api::class)")
     assertThat(emitted.source)
       .contains("import androidx.compose.material3.ExperimentalMaterial3Api\n")
@@ -985,9 +978,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `Long MIN_VALUE is emitted by name, because its literal does not compile`() {
-    // `-9223372036854775808L` is rejected: Kotlin reads the positive token first and it is out of
-    // range, then applies unary minus. Confirmed against the compiler — and `Int.MIN_VALUE`, the
-    // same spelling one type down, *is* accepted, so it stays a plain literal.
+    // `-9223372036854775808L` doesn't compile (the positive token overflows before unary minus),
+    // while `Int.MIN_VALUE` written that way does.
     val counted =
       component(
         "Counted",
@@ -1119,22 +1111,11 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a child inside a receiver slot is imported, like any other child`() {
-    // This reverses a deliberate decision, so it records both halves. The hazard it avoided is
-    // real: Kotlin resolves a simple name against implicit receivers before imports, so a
-    // `ColumnScope` declaring a member `Text` would outrank `import
-    // androidx.compose.material3.Text`
-    // and draw something else. The receiver's members are not in the record, so it was avoided
-    // rather than checked.
-    //
-    // What that cost was not worth it. The flag was sticky, so one scoped slot near the root
-    // qualified every descendant, and since almost every container in Material 3 scopes its
-    // content — `Column`, `Card`, `Button` — a realistic screen came out fully qualified from top
-    // to bottom. That is the source a builder shows its user.
-    //
-    // It is also a hazard the language hands every hand-written file, and one that named arguments
-    // blunt: a shadowing member has to match the simple name *and* the parameter names to bind at
-    // all, and anything less is a compile error rather than a wrong screen. Checking it properly
-    // means recording a receiver's members in the catalog, which is the version worth building.
+    // Reverses an earlier choice. Kotlin resolves simple names against implicit receivers before
+    // imports, so a scope member `Text` could outrank the import; the record has no receiver
+    // members to check. But qualifying every descendant of a scoped slot made realistic screens
+    // fully qualified, and named arguments blunt the hazard (a mismatch is a compile error, not a
+    // wrong screen). Checking it properly needs receiver members in the catalog.
     val screen =
       ScreenDocument(
         "Screen",
@@ -1165,9 +1146,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a nullable composable slot accepts children`() {
-    // `(@Composable () -> Unit)?` renders as `(() -> Unit)?`, which has no ` -> Unit` suffix for
-    // the lambda-shape check to find — so an optional slot was refused even though Kotlin accepts
-    // a non-null `{ … }` for it.
+    // `(@Composable () -> Unit)?` renders as `(() -> Unit)?`, which the lambda-shape check missed;
+    // Kotlin accepts `{ … }` for it.
     val optional =
       component(
         "Optional",
@@ -1204,11 +1184,9 @@ class ScreenGeneratorTest {
 
   @Test
   fun `an opt-in marker is emitted exactly as recorded, dollars and all`() {
-    // The producer rebuilds a nested marker's name from its nesting chain, so what arrives here is
-    // already source notation. The emitter must not rewrite it — turning every `$` into `.` would
-    // reference a class that does not exist — but it must still quote a segment that cannot be
-    // written bare, which is how such a name came to hold a `$` in the first place.
-    // `ComposableSignatureTest` covers both producer halves.
+    // The producer already rebuilds nested marker names in source notation; the emitter must not
+    // rewrite `$` but must still quote segments that need it. Producer halves are in
+    // `ComposableSignatureTest`.
     val nested =
       component(
         "Nested",
@@ -1252,9 +1230,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a catalog older than the current schema is refused outright`() {
-    // Not "refused when it carries markers": a schema-1 record also cannot say whether a component
-    // needs a context receiver, and every field added since would need its own exception here. One
-    // rule, and a stale catalog is regenerated rather than squinted at.
+    // Old-schema records can't express newer fields (e.g. context receivers), so they're refused
+    // wholesale and regenerated.
     val plain = component("Plain", "com.example.Plain", emptyList())
     val legacy =
       ComponentRecordFile.Builder(module = "app", variant = "debug", components = listOf(plain))
@@ -1328,10 +1305,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a component named Composable is qualified, so it cannot collide with the wrapper's import`() {
-    // The generated file always imports `androidx.compose.runtime.Composable` for its own
-    // `@Composable`
-    // annotation. Importing a catalog component of the same simple name alongside it makes
-    // `Composable()` ambiguous between the two.
+    // The generated file imports `androidx.compose.runtime.Composable`, so a same-named catalog
+    // component would make it ambiguous.
     val clash =
       component("Composable", "com.example.Composable", emptyList()).let {
         it
@@ -1355,13 +1330,9 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a receiver slot imports its children by simple name`() {
-    // This used to assert the opposite: a slot with a receiver qualified everything beneath it,
-    // because an import supposedly could not reach inside one. It can — `import …material3.Text`
-    // then `Column { Text("hi") }` is ordinary Compose, and an implicit receiver adds names to the
-    // scope rather than removing the imported one. Since the flag was sticky, one scoped slot near
-    // the root qualified an entire screen. A nullable slot is kept as the case because it is the
-    // one whose receiver is invisible in the rendered type, so it proves nesting is not consulted
-    // at all rather than merely mis-detected.
+    // A scoped slot doesn't force qualification below it: `Column { Text("hi") }` with an import is
+    // ordinary Compose. A nullable slot is used because its receiver is invisible in the rendered
+    // type, proving nesting isn't consulted.
     val optional =
       component(
         "Optional",
@@ -1400,9 +1371,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `an AndroidX marker is emitted under the AndroidX annotation, not kotlin OptIn`() {
-    // Not interchangeable: `kotlin.OptIn` rejects a marker declared with
-    // `androidx.annotation.RequiresOptIn` outright, and the AndroidX annotation takes an array
-    // under a named `markerClass`. Emitting one for the other is source the compiler refuses.
+    // `kotlin.OptIn` rejects AndroidX markers, and AndroidX's `OptIn` takes a named `markerClass`
+    // array; they aren't interchangeable.
     val guarded =
       component(
         "Guarded",
@@ -1501,22 +1471,16 @@ class ScreenGeneratorTest {
   private val columnScope = "androidx.compose.foundation.layout.ColumnScope"
 
   /**
-   * A container whose slot is a **DSL** rather than a composable region.
-   *
-   * `LazyColumn(content: LazyListScope.() -> Unit)` is the shape that had no expression at all: a
-   * bare `{ Text(…) }` satisfies the lambda's type and does not compile, because the children of a
-   * lazy list are declared with `item { … }` and `Text` is not a member of `LazyListScope`. That is
-   * why every lazy container was left out of the m3 catalog's component record rather than guessed
-   * at (compose-preview-server#394).
+   * A container whose slot is a **DSL**: `{ Text(…) }` type-checks against `LazyListScope.() ->
+   * Unit` but doesn't compile, since lazy children are declared with `item { … }`
+   * (compose-preview-server#394).
    */
   private val lazyColumn =
     component(
       "LazyColumn",
       "androidx.compose.foundation.lazy.LazyColumn",
       listOf(
-        // Not `composableSlot`, which is the half that made this a record nobody could write:
-        // `LazyColumn`'s `content` is a plain receiver lambda, so the whole container used to
-        // refuse as "a parameter, not a @Composable slot".
+        // A plain receiver lambda, not `composableSlot`.
         TargetParameter.Builder(name = "content", type = "LazyListScope.() -> Unit")
           .also { b -> b.scopeDslReceiver = lazyListScope }
           .build()
@@ -1587,10 +1551,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a slot item claiming the wrong scope is refused, naming both`() {
-    // The check that makes the claim worth making, and the same one a scoped `ChainLink` gets.
-    // `item` is in scope inside a `LazyListScope` lambda and nowhere else, so a document that says
-    // it about a `ColumnScope` slot is an unresolved reference in a file this generator would
-    // otherwise have called compilable.
+    // `item` is only in scope in a `LazyListScope` lambda, so claiming it for a `ColumnScope` slot
+    // must be refused.
     val document =
       ScreenDocument(
         name = "HomeScreen",
@@ -1631,9 +1593,7 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a refused slot item still names what was inside it`() {
-    // The fifth branch that rejects a node and would otherwise drop its subtree. A document whose
-    // wrapper is stale is exactly the document most likely to be stale further down, and one
-    // export per problem is what the refusal list exists to avoid.
+    // Rejecting a node must not drop its subtree's problems: report them all in one export.
     val document =
       ScreenDocument(
         name = "HomeScreen",
@@ -1657,10 +1617,8 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a scope DSL slot with no slot item stays refused, rather than composing into it`() {
-    // The failure this whole shape exists to keep: `{ Text(…) }` type-checks against
-    // `LazyListScope.() -> Unit` and does not compile, because `Text` is not a member of
-    // `LazyListScope`. Without a wrapper the generator has nothing to write the children as, so it
-    // says so instead of emitting a file it would wrongly have called compilable.
+    // Without a wrapper there's nothing to write the children as, so refuse rather than emit
+    // uncompilable code.
     val document =
       ScreenDocument(
         name = "HomeScreen",
@@ -1677,9 +1635,7 @@ class ScreenGeneratorTest {
 
   @Test
   fun `a slot item whose member is not an identifier is refused rather than written`() {
-    // A `SlotItem` arrives over the wire like everything else in a `ScreenDocument`, and its
-    // member is emitted as a name. One holding a dot escapes nothing — `` `it.em` `` is not a
-    // backticked identifier, it is two — so it goes through the same check every other name does.
+    // A `SlotItem` member is emitted as a name, so it's validated like every other name.
     assertThat(
         refusal(list(SlotItem("it.em", lazyListScope), textNode("a")), catalog(lazyColumn, text))
       )
@@ -1688,12 +1644,7 @@ class ScreenGeneratorTest {
       )
   }
 
-  /**
-   * A run of identical siblings is one `repeat`.
-   *
-   * A builder's document has no loop in it, so a twelve-cell contribution row arrives as twelve
-   * nodes and generated twelve identical `Text(…)` calls — faithful, and a screen nobody reads.
-   */
+  /** A run of identical siblings becomes one `repeat` rather than N identical calls. */
   @Test
   fun `identical siblings are generated as one repeat`() {
     val source = emitted(cells(12), catalog(card, text)).source
@@ -1710,13 +1661,7 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
   }
 
-  /**
-   * Eight cells, one of them different, read as their eight values.
-   *
-   * Both folds can claim this run — three identical, then one, then four — and the longer one wins,
-   * which is also the better reading: what differs between the children is a value, so the values
-   * are what the generated screen shows.
-   */
+  /** Eight cells, one different: the longer values fold wins over identical-run folds. */
   @Test
   fun `a sibling differing in one literal folds the whole run into its values`() {
     val cells =
@@ -1732,12 +1677,7 @@ class ScreenGeneratorTest {
     assertThat(source).doesNotContain("kotlin.repeat(")
   }
 
-  /**
-   * A sibling that differs in more than a literal breaks the run at itself.
-   *
-   * The values fold needs one varying piece between two fixed ones. A child of another component
-   * shares no such shape, so the run is what it always was: three, the odd one, four.
-   */
+  /** A sibling differing in more than a literal breaks the run. */
   @Test
   fun `a sibling of another component breaks the run at itself and neither side is lost`() {
     val cells =
@@ -1754,12 +1694,7 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
   }
 
-  /**
-   * The shape this fold exists for: a contribution graph whose cells carry different colours.
-   *
-   * Cells generating calls that differ only in the colour they carry is what the identical-run fold
-   * cannot touch and what a reader most wants written as a list.
-   */
+  /** Cells differing only in colour fold into a list (the contribution graph case). */
   @Test
   fun `cells differing only in one number become the list of those numbers`() {
     val swatch =
@@ -1786,11 +1721,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * Numbers of different textual length are left alone, because their types can differ.
-   *
-   * `listOf(1, 2)` is a `List<Int>` and `listOf(0xFFEBEDF0, 2)` a `List<Any>`, and a body written
-   * for the first would not compile against the second. Same spelling, same inferred type — so the
-   * rule is textual and conservative rather than a type inference this generator cannot do.
+   * Numbers of different textual lengths may infer different types (`List<Int>` vs `List<Any>`), so
+   * they're left alone.
    */
   @Test
   fun `numbers of unequal length are not folded into one list`() {
@@ -1834,12 +1766,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * `repeat` and the `it` it binds are names like any other, and the emitted form owns that.
-   *
-   * A document may legally declare state called either — `isUsableIdentifier` admits both — so an
-   * unqualified `repeat(n) { … }` would resolve to a local `val repeat`, and its implicit `Int`
-   * would shadow a state named `it`. `kotlin.repeat(n) { _ -> … }` can be captured by neither, so
-   * the fold still happens and the child still reads what it read.
+   * A document may declare state named `repeat` or `it`, so the fold writes `kotlin.repeat(n) { _
+   * -> … }`, which neither can capture.
    */
   @Test
   fun `state named it or repeat does not capture the folded call or its parameter`() {
@@ -1858,13 +1786,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * The qualifier a folded run writes is a name the file spends, so nothing is imported under it.
-   *
-   * `kotlin.repeat(n)` is capture-proof against a local — that is why it is qualified — but an
-   * import of a declaration whose simple name is `kotlin` would take the *qualifier* and leave
-   * `repeat` unresolved. A value naming one is written qualified instead, which is what this
-   * function replaced for every value and what a component in the same position already gets. It is
-   * not a refusal: the document is legal and generated before folding existed.
+   * An import whose simple name is `kotlin` would capture the qualifier, so such values are written
+   * qualified instead. Not a refusal.
    */
   @Test
   fun `a value named kotlin is written qualified rather than imported`() {
@@ -1890,16 +1813,12 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * A state named `kotlin` turns the fold off rather than being refused.
-   *
-   * It is a local in the body, so it captures the qualifier — and unlike an import there is nowhere
-   * else to put it. State names are known before emission, so the fold is what gives way.
+   * A state named `kotlin` is a local that captures the qualifier and can't be moved, so the fold
+   * is disabled instead.
    */
   @Test
   fun `state named kotlin turns the fold off rather than refusing the document`() {
-    // Typed outside the `kotlin` package on purpose: a declaration typed `kotlin.String` already
-    // puts that root in the shadowing set every state name is checked against, so the residual case
-    // this guard exists for is a document that names `kotlin` and never writes the package.
+    // Typed outside `kotlin` so the root isn't already in the shadowing set.
     val source =
       (ScreenGenerator.generate(
           cells(6)
@@ -1923,11 +1842,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * The one import the document does not choose is reserved on the same terms.
-   *
-   * A constructed placeholder imports the *record's* parameter type, so a catalog whose parameter
-   * is typed `app.kotlin` would put that import in the file without any document asking for it —
-   * and it would capture the qualifier a folded run writes.
+   * A placeholder's import of the record's parameter type (e.g. `app.kotlin`) is reserved the same
+   * way.
    */
   @Test
   fun `a constructed placeholder typed kotlin is refused, like every other import of that name`() {
@@ -1958,12 +1874,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * Same length is not the same type.
-   *
-   * `1000L` and `10.0f` are five characters each and a `Long` and a `Float`, so a list of both is a
-   * list of their supertype — which the call they were lifted out of need not accept. A factory's
-   * own arguments are where two kinds can meet, since the parameter check that keeps them apart
-   * elsewhere is about the *component's* parameter rather than the factory's.
+   * Same length isn't same type (`1000L` vs `10.0f`); a factory's arguments are where kinds can
+   * mix.
    */
   @Test
   fun `numbers of one length but different kinds are not folded into one list`() {
@@ -1998,12 +1910,8 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * A literal that does not carry its type is left where it was written.
-   *
-   * `label(100)` compiles against a `Long` parameter because the literal takes its type from the
-   * call. Lifted into `kotlin.collections.listOf(100, 200, 300)` it is an `Int`, and `label(value)`
-   * then does not compile — Kotlin widens neither implicitly. So a whole number folds only when it
-   * says which type it is.
+   * An untyped literal takes its type from the call (`label(100)` against `Long`); lifted into
+   * `listOf` it becomes `Int`. Only literals that state their type fold.
    */
   @Test
   fun `whole numbers without a suffix are not folded, because the call gave them their type`() {

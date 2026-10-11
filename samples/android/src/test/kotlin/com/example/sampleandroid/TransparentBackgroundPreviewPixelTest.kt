@@ -6,15 +6,10 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification that a `@Preview` with no `showBackground` / `backgroundColor` writes a
- * PNG with a real alpha channel — same contract Roborazzi gives consumers from
- * `RoborazziComposeOptions.background(showBackground = false, backgroundColor = 0)`.
- *
- * Reads the file produced by `:samples:android:composePreviewRenderAll` (wired into this module's
- * `test` task in `build.gradle.kts`) and pixel-asserts that the four corner pixels outside the
- * circle button are alpha=0 while the centre pixel is fully opaque. Without alpha preservation a
- * `Button(shape = CircleShape)` would sit on an opaque material-surface background and lose the
- * circle's transparent corners — that's the regression this test guards against.
+ * A `@Preview` with no `showBackground` / `backgroundColor` must write a PNG with real alpha (the
+ * Roborazzi `background(showBackground = false, backgroundColor = 0)` contract): the corners
+ * outside the circle button are alpha=0 and the centre is opaque. Reads the
+ * `composePreviewRenderAll` output.
  */
 class TransparentBackgroundPreviewPixelTest {
 

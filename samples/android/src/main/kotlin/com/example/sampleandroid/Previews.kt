@@ -83,11 +83,8 @@ fun LoadingPreview() {
 }
 
 /**
- * Demonstrates `@RoboComposePreviewOptions`: the same preview captured at three distinct points
- * along the infinite animation timeline. Each entry in `manualClockOptions` fans out into its own
- * manifest entry / PNG, suffixed `_TIME_<ms>ms`. Useful for reviewing how a spinner looks at frame
- * 0 vs mid-rotation vs a settled-ish point — the kind of thing you'd want a reviewer to see in a
- * diff.
+ * `@RoboComposePreviewOptions`: the same infinite animation captured at three points in time. Each
+ * `manualClockOptions` entry becomes its own manifest entry / PNG, suffixed `_TIME_<ms>ms`.
  */
 @Preview(name = "Spinner Timeline", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @RoboComposePreviewOptions(
@@ -137,15 +134,10 @@ fun PhoneGreetingPreview() {
 }
 
 /**
- * Issue #256: rendering a known phone (Pixel 8) with `showSystemUi = true` should produce a PNG
- * that *looks* like a phone screenshot — full device canvas plus the system bars (status bar at the
- * top, gesture-pill nav at the bottom). Robolectric has no SystemUI process to draw real bars, so
- * the renderer paints a synthetic overlay onto the captured PNG to bridge the gap (see
- * [ee.schimke.composeai.renderer.SystemBarsOverlay] in renderer-android).
- *
- * Two variants — light and dark — exercise the `uiMode`-aware tint branches of the overlay so
- * reviewers can confirm the bars adapt to the theme rather than always rendering as light chrome on
- * a dark surface.
+ * A known phone with `showSystemUi = true` should look like a phone screenshot. Robolectric has no
+ * SystemUI, so the renderer paints synthetic bars
+ * ([ee.schimke.composeai.renderer.SystemBarsOverlay]); light and dark variants exercise the
+ * `uiMode`-aware tints.
  */
 @Preview(name = "Pixel 8", device = "id:pixel_8", showSystemUi = true)
 @Preview(
@@ -169,9 +161,8 @@ fun Pixel8SystemUiPreview() {
 }
 
 /**
- * Deliberately-broken preview — a small Button with no content description AND a tiny size.
- * Exercises the accessibility pipeline end-to-end: a real Material Button is
- * important-for-accessibility, so ATF should flag the TouchTargetSize / SpeakableText rules on it.
+ * Deliberately broken: a tiny Button with no content description, so ATF flags TouchTargetSize /
+ * SpeakableText.
  */
 @Preview(name = "Bad Button", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Composable
@@ -183,36 +174,23 @@ fun BadButtonPreview() {
 }
 
 /**
- * Showcase for the downloadable-fonts path under Robolectric. Uses the same `Font(GoogleFont(name),
- * provider)` shape a consumer writes in production — no `src/debug` fork, no preloaded resource
- * fonts. The shadow in `renderer-android` intercepts `FontsContractCompat.requestFont` and swaps in
- * a TTF downloaded on first render from `fonts.googleapis.com/css2`, cached under
- * `~/.cache/composeai/fonts/`.
+ * Downloadable fonts under Robolectric, using the production `Font(GoogleFont(name), provider)`
+ * shape. The renderer's shadow intercepts `FontsContractCompat.requestFont` and serves a TTF
+ * downloaded from `fonts.googleapis.com/css2`, cached under `~/.cache/composeai/fonts/`.
  *
- * Compares four visually distinct families at multiple weights:
- * - **Roboto** — static family with pre-rendered weights 100/400/700/900. All four render at their
- *   declared weight (Thin, Regular, Bold, Black).
- * - **Roboto Flex** — purely variable (no static sub-fonts on CSS2 for non-default weights). The
- *   shadow falls back to a `wght@100..1000` range query to fetch the variable TTF, then applies the
- *   requested weight via `Typeface.Builder.setFontVariationSettings`. All four rows currently
- *   render at ~400 in the Robolectric native-graphics rasterizer — the variation axis doesn't
- *   propagate through Skia's font renderer under test. Landing upstream with
- *   android-review.googlesource.com/c/platform/frameworks/support/+/3945083 should make this work
- *   without any renderer-side changes.
- * - **Google Sans Flex** — variable family, but CSS2 returns pre-interpolated static TTFs for
- *   single-weight queries; each declared weight caches to a distinct file and renders at the
- *   correct weight.
- * - **Lobster Two** — static display script (400/700). Radically different silhouette from the
- *   sans-serifs — proves the shadow works regardless of family shape.
+ * - **Roboto** — static weights 100/400/700/900.
+ * - **Roboto Flex** — variable only; fetched via a `wght@100..1000` range and weighted through
+ *   `setFontVariationSettings`. Currently all rows render at ~400: the axis doesn't propagate
+ *   through Robolectric's rasterizer (upstream fix: android-review.googlesource.com/c/platform/
+ *   frameworks/support/+/3945083).
+ * - **Google Sans Flex** — CSS2 returns static per-weight TTFs, so weights render correctly.
+ * - **Lobster Two** — a static display script, a very different silhouette.
  */
 private val googleFontProvider =
   androidx.compose.ui.text.googlefonts.GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
-    // Required at runtime on-device, but never consulted under Robolectric —
-    // the shadow short-circuits before PackageManager signature verification.
-    // A local empty int-array is enough to exercise the preview path without
-    // pulling in `play-services-base` for a sample.
+    // Required on-device; under Robolectric the shadow skips signature verification.
     certificates = R.array.com_google_android_gms_fonts_certs,
   )
 
@@ -260,21 +238,10 @@ fun GoogleFontsShowcasePreview() {
 }
 
 /**
- * Showcase for the `DeviceFontFamilyName` → Google Fonts transparent swap.
- *
- * `Font(DeviceFontFamilyName("roboto-flex"), weight = FontWeight(100))` is the shape consumer code
- * uses when targeting Pixel's bundled variable fonts — on-device it resolves to
- * `/system/fonts/RobotoFlex-Variable.ttf`. Under Robolectric the sandboxed `/system/fonts` doesn't
- * ship those families, so without intervention every row would render as plain Roboto.
- *
- * `PixelSystemFontAliases` in `renderer-android` seeds `Typeface.sSystemFontMap` with the Google
- * Fonts equivalents (`roboto-flex` → `Roboto Flex`, `google-sans-flex` → `Google Sans Flex`, etc.)
- * before the first preview renders, so these calls resolve to cached downloadable TTFs.
- *
- * Same caveat as [GoogleFontsShowcasePreview] for variable families: the wght axis doesn't fully
- * propagate through Robolectric's native-graphics rasterizer yet (tracked upstream), so Roboto
- * Flex's four rows currently render close-to-identical weight. The static families (Noto Serif
- * italic/non-italic, Dancing Script) exercise the seeding path cleanly.
+ * `Font(DeviceFontFamilyName("roboto-flex"), …)`, as code targeting Pixel's bundled fonts writes
+ * it. Robolectric's `/system/fonts` lacks those families, so `PixelSystemFontAliases` in the
+ * renderer seeds `Typeface.sSystemFontMap` with Google Fonts equivalents. Same variable-weight
+ * caveat as [GoogleFontsShowcasePreview].
  */
 private fun deviceFontFamily(
   familyName: String,

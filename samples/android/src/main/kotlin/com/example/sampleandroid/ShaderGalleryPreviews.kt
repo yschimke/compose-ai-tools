@@ -35,31 +35,20 @@ import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * AGSL feature-survey gallery — the Android twins of `:samples:cmp` `ShaderGalleryPreviews.kt`.
- * Same four programs (raymarched SDF, fBm noise, Julia escape-time, content-sampling render
- * effect), but compiled by `android.graphics.RuntimeShader` and captured through Robolectric NATIVE
- * graphics rather than skiko. Comparing each PNG against its CMP sibling is the cross-backend "what
- * works / what differs" matrix; AGSL is nearly a subset of SkSL, so the interesting question is
- * whether the native runtime's compiler + raster accept the same programs.
+ * AGSL feature-survey gallery — the Android twins of `:samples:cmp`'s `ShaderGalleryPreviews.kt`:
+ * the same four programs (raymarched SDF, fBm noise, Julia set, content-sampling render effect)
+ * compiled by `android.graphics.RuntimeShader` (API 33+) under Robolectric NATIVE graphics. Compare
+ * each PNG with its CMP sibling. `iTime` is fixed for deterministic stills.
  *
- * `RuntimeShader` is API 33+; the sample's Robolectric `sdk=35` satisfies it. `iTime` is pinned to
- * a fixed phase for deterministic stills.
- *
- * Technique credits — textbook GPU techniques adapted from Inigo Quilez's writing/shaders (MIT
- * License); the AGSL is rewritten for Compose but the maths is his:
- * - Raymarching loop, SDF primitives & tetrahedron-normal:
- *   https://iquilezles.org/articles/raymarchingdf/ and
- *   https://iquilezles.org/articles/distfunctions/
+ * Techniques adapted from Inigo Quilez's articles and shaders (MIT License):
+ * - Raymarching, SDF primitives, tetrahedron normal: https://iquilezles.org/articles/raymarchingdf/
+ *   and https://iquilezles.org/articles/distfunctions/
  * - Value noise + fBm and the `sin(dot(p, vec2(127.1, 311.7))) * 43758.5453` hash:
  *   https://www.shadertoy.com/view/lsf3WH and https://iquilezles.org/articles/fbm/
- * - Cosine palette (`0.5 + 0.5*cos(...)`): https://iquilezles.org/articles/palettes/ The Julia
- *   escape-time iteration is classic public-domain complex-dynamics maths; only its colouring uses
- *   the palette above.
+ * - Cosine palette: https://iquilezles.org/articles/palettes/
  *
- * Boundary note — every loop here uses a **literal constant bound**. AGSL (like SkSL) rejects a
- * uniform/dynamic trip count with `error: loop index must be compared with a constant expression`;
- * the pipeline surfaces that as a clean `.error.json` sidecar rather than a crash, but the shader
- * won't render. Keep loop bounds literal.
+ * Every loop uses a literal constant bound: AGSL rejects dynamic trip counts ("loop index must be
+ * compared with a constant expression"), which surfaces as an `.error.json`.
  */
 private const val FIXED_TIME = 1.2f
 
@@ -79,10 +68,8 @@ private fun ShaderCard(agsl: String) {
 }
 
 /**
- * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π`
- * every 2s, captured as a GIF by the Robolectric `@AnimatedPreview` path. Reading `time` in
- * composition resets the uniform each frame. Only used with programs that loop seamlessly over a
- * `2π` `iTime`.
+ * Animated twin of [ShaderCard]: `iTime` ramps 0 → 2π every 2s, captured as a GIF via
+ * `@AnimatedPreview`. Only for programs that loop seamlessly over 2π.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
@@ -237,15 +224,10 @@ private const val JULIA_AGSL =
 @Composable
 fun ShaderJuliaPreview() = ShaderCard(JULIA_AGSL)
 
-// Animated companions — looped as GIFs via @AnimatedPreview. Each program is periodic in iTime
-// (raymarch light + wobble, Julia c-orbit, fBm domain orbit), so a 0..2π ramp is a seamless 2s
-// loop.
+// Animated companions, each periodic in iTime so a 0..2π ramp loops seamlessly.
 //
-// The raymarch companion is DISABLED for now: it is the preview CI blamed for an intermittent
-// daemon OutOfMemoryError (1 of 172 previews; the stack was in the framework's PaletteBuilder, so
-// the attribution may be a concurrent render rather than this one). Tracked in
-// yschimke/compose-preview-daemon#154 — re-enable it there, not here. The static
-// `ShaderRaymarchPreview` above still renders this shader as a PNG.
+// TODO: the raymarch companion is disabled pending an intermittent daemon OutOfMemoryError
+// (yschimke/compose-preview-daemon#154); re-enable it there. The static preview still renders it.
 //
 // @Preview(name = "Shader Gallery — Raymarch SDF (animated, AGSL)")
 // @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)

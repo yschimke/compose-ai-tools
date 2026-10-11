@@ -8,27 +8,14 @@ import okio.Path
 import okio.Path.Companion.toPath
 
 /**
- * Expands a parameterized `@PreviewParameter` preview into the **row ids** the daemon can address,
- * by reading the fan-out the render pass already wrote to disk (issue #3749 follow-up).
+ * Expands a `@PreviewParameter` preview into the row ids the daemon can address, by reading the
+ * fan-out the render already wrote (`<stem>_<label>.png` / `<stem>_PARAM_<idx>.png`,
+ * docs/RENDER_FILENAMES.md). Discovery can't instantiate providers, so only the render knows the
+ * rows.
  *
- * **Why disk and not discovery.** `previews.json` carries one entry per parameterized function —
- * discovery reads bytecode and can't instantiate a `PreviewParameterProvider`, so it has no idea
- * how many values there are. The *renderer* does: it writes `<stem>_<label>.png` /
- * `<stem>_PARAM_<idx>.png` per value (docs/RENDER_FILENAMES.md). `serve`'s Gradle path runs a full
- * render before it starts the server, so those files are sitting there — and the daemon now accepts
- * exactly those `<baseId>_<row>` ids. Reading them back is what turns "the daemon *can* render row
- * 3" into "the viewer lists row 3", with no new protocol surface.
- *
- * **Which files, and what each row is called, is not decided here** — [PreviewParameterFanout] owns
- * that rule, and `PreviewResultBuilder` reads the same fan-out through it for `show` / `list` /
- * `render` (issue #3819). This class contributes the manifest evidence (who claims which output)
- * and the directory listing; sharing the rest is what stops `serve` and the result-shaped commands
- * from disagreeing about what row `Foo_Dark_Alice` is — a disagreement that doesn't merely
- * misreport, it hands you a different row than the one you selected.
- *
- * A preview with no provider, or one whose fan-out isn't on disk (a `serve` run that didn't render
- * — a bundle-backed session, or a render that failed), expands to nothing and keeps its bare id, so
- * this only ever adds rows that genuinely exist.
+ * [PreviewParameterFanout] owns which files and row names count, shared with `PreviewResultBuilder`
+ * so `serve` and `show` / `list` / `render` agree; this class supplies the manifest evidence and
+ * the directory listing. With no provider or no fan-out on disk, the preview keeps its bare id.
  */
 public object ServeParameterRows {
 
@@ -36,12 +23,10 @@ public object ServeParameterRows {
   public data class Row(val id: String, val label: String)
 
   /**
-   * The rows of [preview] found under [moduleDir]`/build/compose-previews/`, in the fan-out's own
-   * order (numeric `PARAM_<idx>` by index first, then labels alphabetically — matching how the CLI
-   * orders a fan-out elsewhere). Empty when [preview] declares no provider or nothing matched.
-   *
-   * [siblingOutputs] must be every *other* preview's capture outputs, used to reject files this
-   * preview doesn't own.
+   * The rows of [preview] under [moduleDir]`/build/compose-previews/`, in fan-out order
+   * (`PARAM_<idx>` numerically, then labels alphabetically); empty when there are none.
+   * [siblingOutputs] are the other previews' outputs, used to reject files this preview doesn't
+   * own.
    */
   public fun rowsFor(
     preview: PreviewInfo,

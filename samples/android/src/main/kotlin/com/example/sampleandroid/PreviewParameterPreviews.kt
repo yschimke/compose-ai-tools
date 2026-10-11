@@ -14,22 +14,15 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 
 /**
- * Demo data for the `@PreviewParameter` samples below. Shape mirrors what a typical list-cell or
- * detail-screen composable would receive from a ViewModel — a handful of fields, each value
- * visually distinct, so the rendered PNGs make the fan-out obvious at a glance.
+ * Demo data for the `@PreviewParameter` samples below: a few visually distinct fields, like a
+ * ViewModel would hand a list cell.
  */
 data class UserCardData(val name: String, val role: String, val active: Boolean)
 
 /**
- * Minimal `@PreviewParameter` demo: one preview function, one provider, N rendered PNGs. The
- * plugin's discovery pass records the provider FQN on `PreviewParams`; the Robolectric renderer
- * instantiates the provider at test-load time, enumerates `values`, and emits one file per value.
- * The filename suffix is derived from the value's `name` property (`..._Ada_Lovelace.png`,
- * `..._Grace_Hopper.png`, …); the renderer falls back to `_PARAM_<idx>` only when no label can be
- * recovered.
- *
- * Kept intentionally simple (no `@PreviewWrapper`, no device, no fan-out dimensions other than the
- * provider) so the output diff reviewing the parameter path is unambiguous.
+ * Minimal `@PreviewParameter` demo: one function, one provider, one PNG per value. The renderer
+ * instantiates the provider and names each file from the value's `name` (`..._Ada_Lovelace.png`),
+ * falling back to `_PARAM_<idx>`.
  */
 class UserCardProvider : PreviewParameterProvider<UserCardData> {
   override val values: Sequence<UserCardData> =
@@ -65,10 +58,8 @@ fun UserCardPreview(@PreviewParameter(UserCardProvider::class) user: UserCardDat
 }
 
 /**
- * Demonstrates `limit = N` on `@PreviewParameter`: the provider exposes seven values, but the
- * annotation takes only the first three. Good smoke test for the `limit` handling — without it the
- * plugin would render seven PNGs here, one of which (`status = "unknown"`) would look odd next to
- * the rest.
+ * `limit = N` on `@PreviewParameter`: the provider has seven values, the annotation takes the first
+ * three.
  */
 class TextSampleProvider : PreviewParameterProvider<String> {
   override val values: Sequence<String> =
@@ -96,13 +87,8 @@ fun BodyTextPreview(@PreviewParameter(TextSampleProvider::class, limit = 3) body
 }
 
 /**
- * Regression fixture for issue #2493: a `private` `PreviewParameterProvider`. Declaring a provider
- * private is idiomatic Kotlin and renders fine in Android Studio, but a private top-level class
- * compiles to a *package-private* JVM class — so the renderer, which lives in a different package,
- * must open the constructor and `getValues()` accessor with `isAccessible` to enumerate it. Before
- * the fix this threw `IllegalAccessException` at shard-load time and sank the whole render batch.
- * Public preview function + file-private provider (legal because both live in this file) so the
- * fan-out flows through the normal capture pipeline and the visual-diff bot renders it on every PR.
+ * Regression fixture: a `private` provider compiles to a package-private JVM class, so the renderer
+ * must open its constructor and `getValues()` reflectively.
  */
 private class BadgeProvider : PreviewParameterProvider<String> {
   override val values: Sequence<String> = sequenceOf("NEW", "BETA", "PRO")

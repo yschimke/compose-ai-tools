@@ -8,32 +8,21 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Proves the desktop renderer config resolves in the consumer's dependency graph so a single
- * coherent (max) version of every shared module wins — the fix for issue #1844.
+ * Proves the desktop renderer config resolves in the consumer's graph so one version of each shared
+ * module wins (#1844). Merging raw `FileCollection`s put a consumer's newer Skiko bindings beside
+ * the renderer's older native library → `UnsatisfiedLinkError`;
+ * `ComposePreviewTasks.alignDesktopToolWithConsumerGraph` fixes it with `extendsFrom`.
  *
- * Background: a consumer on Compose Multiplatform 1.11 pulls a newer Skiko whose Java bindings call
- * `org.jetbrains.skia.paragraph.TextStyleKt._nSetFontEdging`; the renderer bundles an older Skiko
- * (pinned to CMP 1.10.3) whose native library doesn't export that symbol. Before the fix the
- * renderer config and the consumer's runtime classpath were merged as raw `FileCollection`s with no
- * cross-graph conflict resolution, so both Skikos landed on the render classpath and the older
- * native + newer bindings collided at runtime with `UnsatisfiedLinkError`.
- * `ComposePreviewTasks.alignDesktopToolWithConsumerGraph` makes the renderer config `extendsFrom`
- * the consumer's runtime classpath, so Gradle picks one coherent version.
- *
- * This test stands in for "renderer pinned older than consumer" by pre-seeding
- * `composePreviewRenderer` with an *older* `org.jetbrains.compose.material3` than the consumer's
- * Compose plugin resolves. Without the fold the renderer config would resolve that older version in
- * isolation; with it, conflict resolution against the consumer graph collapses to the single newer
- * version — the same mechanism that aligns the Skiko native library with the bindings.
+ * Simulated by seeding `composePreviewRenderer` with an older `material3` than the consumer
+ * resolves: with the fold, conflict resolution collapses to the newer one.
  */
 class DesktopRendererGraphAlignmentFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
 
   /**
-   * [rendererSeed] stands in for whatever Compose/Skiko the published `renderer-desktop` carries;
-   * [consumerCompose] is the Compose Multiplatform plugin version the consumer applies. Varying the
-   * two independently is what lets one harness cover both skew directions.
+   * [rendererSeed] stands in for the renderer's Compose/Skiko; [consumerCompose] is the consumer's
+   * CMP plugin version. Varying both covers both skew directions.
    */
   private fun createTestProject(
     rendererSeed: String = "org.jetbrains.compose.material3:material3:1.7.3",
@@ -150,13 +139,8 @@ class DesktopRendererGraphAlignmentFunctionalTest {
     // The fold is wired: the renderer config extends the consumer's runtime classpath.
     assertThat(extendsFrom).contains("runtimeClasspath")
 
-    // The invariant the fix guarantees: the renderer's transitive Skiko native runtime resolves to
-    // at most one version — the side-by-side duplicate (renderer-pinned older + consumer newer)
-    // that
-    // produced the `UnsatisfiedLinkError` is gone. Asserting "no duplicate version" rather than
-    // "exactly one" keeps the test deterministic even when the OS-native variant download lands
-    // late
-    // on a cold cache.
+    // At most one Skiko native runtime version. "No duplicate" rather than "exactly one" tolerates
+    // a late native download on a cold cache.
     val skikoRuntimeVersions =
       jars
         .filter { it.startsWith("skiko-awt-runtime") }
@@ -164,32 +148,18 @@ class DesktopRendererGraphAlignmentFunctionalTest {
         .toSet()
     assertThat(skikoRuntimeVersions.size).isAtMost(1)
 
-    // Positive proof that the graphs were actually folded: conflict resolution against the consumer
-    // graph wins, so the pre-seeded older material3 (1.7.3) is replaced by the single version the
-    // consumer's Compose plugin resolves (a `-desktop`-suffixed KMP artifact), not carried
-    // alongside.
+    // Proof of folding: the seeded older material3 is replaced by the consumer's version, not
+    // carried alongside.
     val material3Jars = jars.filter { it.startsWith("material3-") && it.endsWith(".jar") }
     assertThat(material3Jars).hasSize(1)
     assertThat(material3Jars.single()).doesNotContain("1.7.3")
   }
 
   /**
-   * The MIRROR of the test above, and the direction the CMP 1.11.1 bump creates (issue #3447): the
-   * renderer is now pinned *newer* than an existing consumer, rather than older.
-   *
-   * This matters because `renderers/desktop/build.gradle.kts` declares Compose with
-   * `implementation`, not `compileOnly` — unlike `renderer-android`, the desktop renderer *carries*
-   * its Compose and Skiko into the consumer's graph. So raising the repo's `compose-multiplatform`
-   * floor to 1.11.1 pushes skiko 0.144.6 at every desktop consumer, including the ones still on
-   * 1.10.3 (skiko 0.9.37.4). Those two Skikos are not interchangeable — 0.144.6 introduced
-   * `org.jetbrains.skia.PathBuilder`, whose native symbols 0.9.37.4 does not export at all.
-   *
-   * The property that keeps such a consumer working is the same fold as above: both Skikos must
-   * collapse to ONE version rather than landing side by side. If they ever split, the older native
-   * pairs with the newer bindings and every path-touching render dies with `UnsatisfiedLinkError` —
-   * the exact production failure #3447 reported, just reached from the other side.
-   *
-   * Without this case the bump would have shipped with only the older-renderer direction covered.
+   * The mirror case (#3447): the renderer pinned newer than the consumer. The desktop renderer
+   * carries its Compose and Skiko via `implementation`, so a CMP bump pushes a newer Skiko (with
+   * `PathBuilder` natives the old one lacks) at older consumers. Both must still collapse to one
+   * version.
    */
   @Test
   fun `a consumer older than the renderer still folds to one coherent Skiko`() {
@@ -217,10 +187,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
 
     assertThat(jars).isNotEmpty()
 
-    // Guard against a vacuous pass: every assertion below is over a *set of Skiko versions*, and
-    // "at most one" / "none equals the old version" are both trivially true of an empty set. If the
-    // seed ever stops dragging Skiko onto the tool classpath this test would silently stop testing
-    // anything, so require the artifacts to actually be there first.
+    // Guard against a vacuous pass over an empty set of Skiko versions.
     assertThat(jars.filter { it.startsWith("skiko-awt") }).isNotEmpty()
 
     // The safety property: bindings and native are one version, so there is no split-Skiko render
@@ -239,9 +206,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
         .toSet()
     assertThat(skikoAwtVersions.size).isAtMost(1)
 
-    // And the bindings the renderer was COMPILED against must be the ones that win. Gradle resolves
-    // to the max version, so the renderer's newer Skiko carries the older consumer up rather than
-    // the consumer dragging the renderer down to a native that lacks `PathBuilder_*`.
+    // The renderer's newer bindings must win (max version), not be dragged down.
     if (skikoAwtVersions.isNotEmpty() && skikoRuntimeVersions.isNotEmpty()) {
       assertThat(skikoAwtVersions.single()).isEqualTo(skikoRuntimeVersions.single())
     }
@@ -249,15 +214,10 @@ class DesktopRendererGraphAlignmentFunctionalTest {
   }
 
   /**
-   * The render JVM's classpath, not just the tool config, carries one copy of each shared module.
-   *
-   * The fold above makes `composePreviewRenderer` resolve coherently, but the render task used to
-   * add the consumer's runtime classpath ALSO, resolved on its own and FIRST. With the renderer
-   * newer than the consumer that put the consumer's older `kotlinx-coroutines-core` ahead of the
-   * newer one the renderer's `kotlinx-coroutines-test` was built against, and every motion capture
-   * (`runComposeUiTest` → `runTest` → `runBlockingK`) died with `NoSuchMethodError` — every
-   * animated, interaction and scroll preview of `samples:cmp` once daemon 3.13.2 brought
-   * kotlinx-coroutines 1.11.0 against the sample's 1.9.0.
+   * The render JVM's classpath carries one copy of each shared module. The task used to also
+   * prepend the consumer's separately-resolved runtime classpath, putting an older
+   * `kotlinx-coroutines-core` ahead of the one `kotlinx-coroutines-test` needs, so every motion
+   * capture failed with `NoSuchMethodError`.
    */
   @Test
   fun `the render classpath carries the folded graph once, not the consumer's copy as well`() {

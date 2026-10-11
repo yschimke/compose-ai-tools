@@ -635,14 +635,8 @@ class CoordinateResolverTest {
 
   @Test
   fun `a re-downloaded snapshot aar is extracted fresh, not served from the stale extraction`() {
-    // compose-preview-server#187, the whole failure in one test. Two catalogs pin
-    // `androidx.compose.remote:*:1.0.0-SNAPSHOT` from two androidx.dev builds. Build A resolves
-    // first and its `.aar` lands in the download cache; build B then resolves the SAME coordinate,
-    // rejects the cached copy on hash, and re-downloads. Keyed on the AAR's path — the literal
-    // `widgets-1.0.0-SNAPSHOT.aar` both builds share — the extraction cache would hand back build
-    // A's `classes.jar` forever, while a sibling `.jar` coordinate (never extracted) came back
-    // fresh: two builds of one library on one classpath, and every render dead on
-    // `NoSuchFieldError`. Keyed on content, build B gets build B.
+    // Two builds of one `-SNAPSHOT` coordinate share an `.aar` path; keying the extraction cache on
+    // the path would serve build A's `classes.jar` to build B. Keyed on content, B gets B.
     val buildA = byteArrayOf(0xA, 0xA, 0xA)
     val buildB = byteArrayOf(0xB, 0xB, 0xB, 0xB)
     val coord = { classes: ByteArray ->

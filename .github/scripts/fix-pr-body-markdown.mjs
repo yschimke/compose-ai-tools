@@ -1,52 +1,29 @@
 #!/usr/bin/env node
-// Repairs the mangled-backtick markdown that agent-written PR descriptions keep
-// arriving with, so the visual evidence a PR body is *supposed* to show
-// actually renders.
-//
-// The failure mode, seen verbatim in real PR bodies:
+// Repairs the mangled-backtick markdown agent-written PR bodies arrive with, so image evidence
+// renders inline:
 //
 //   ![before: one lane](``https://raw.githubusercontent.com/.../before.png)``
 //
-// GitHub renders that as literal text plus a stray code span — the image never
-// appears — and the repo's PR rules require the pixels to be *viewable inline*,
-// not merely linked. The fix is mechanical: a link destination never legally
-// starts with a backtick, so backticks wrapping the destination of a markdown
-// link or image are unambiguously junk and can be dropped.
+// A link destination never legally starts with a backtick, so backtick runs adjacent to a link
+// destination that still looks like a URL or path are dropped:
 //
-// Deliberately narrow. Only backtick runs ADJACENT TO A LINK DESTINATION are
-// touched, and only when the destination still looks like a URL or path:
+//   ](``URL)``   ->  ](URL)
+//   ](``URL``)   ->  ](URL)
+//   ](``URL)     ->  ](URL)
 //
-//   ](``URL)``   ->  ](URL)     opener after `](`, closer trailing the `)`
-//   ](``URL``)   ->  ](URL)     both runs inside the parens
-//   ](``URL)     ->  ](URL)     stray opener only
-//
-// NOT touched, because they are legitimate markdown that someone may have
-// written on purpose:
-//   • a whole link/image inside a code span — `![alt](url)` — which is how you
-//     quote markdown literally (this file's own comments do it);
-//   • anything inside a fenced code block, for the same reason;
-//   • backticks anywhere else on the line.
-//
-// The transform is idempotent: its own output contains no backtick adjacent to
-// a link destination, so a second pass is a no-op. That matters because the
-// workflow's own edit re-fires the `edited` trigger — the second run has to
-// find nothing to change and stop, rather than oscillating.
+// Code spans, fenced blocks and backticks elsewhere are left alone. Idempotent, so the workflow's
+// own edit (which re-fires `edited`) finds nothing to change.
 //
 // Usage:
-//   fix-pr-body-markdown.mjs [<file>]   read <file> (or stdin), write the
-//                                       repaired text to stdout
-//   fix-pr-body-markdown.mjs --check [<file>]
-//                                       write nothing; exit 0 if already clean,
-//                                       exit 1 if it would change
+//   fix-pr-body-markdown.mjs [<file>]          read <file> (or stdin), write repaired text to stdout
+//   fix-pr-body-markdown.mjs --check [<file>]  exit 0 if clean, 1 if it would change
 //
 // Exit codes: 0 clean / repaired, 1 --check found problems, 2 bad usage.
 
 import { readFileSync } from 'node:fs'
 
-// A link destination we are willing to rewrite: no backticks (they are what we
-// are stripping), no whitespace, no parens (bare-destination form only), and
-// shaped like a target — a URL, a path, or an anchor. Anything else is left
-// alone rather than guessed at.
+// A destination we'll rewrite: no backticks, whitespace or parens, shaped like a URL, path or
+// anchor.
 const DEST = String.raw`[^\s\`()<>]+`
 const DEST_LOOKS_LIKE_TARGET = /^(?:[a-z][a-z0-9+.-]*:|[.#/]|[\w.@+-]+\/)/i
 
@@ -73,10 +50,8 @@ function repairLine(line) {
   return out
 }
 
-// Fenced code blocks are quoted content — an example of the broken syntax
-// inside a fence (a bug report about it, say) must survive untouched. A fence
-// opens on ``` / ~~~ (3+, indented up to 3 spaces) and closes on a run of the
-// same character that is at least as long, per CommonMark.
+// Fenced code blocks are quoted content and stay untouched. CommonMark: opens on 3+ ``` / ~~~
+// (indented ≤ 3), closes on a run of the same character at least as long.
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/
 
 /**

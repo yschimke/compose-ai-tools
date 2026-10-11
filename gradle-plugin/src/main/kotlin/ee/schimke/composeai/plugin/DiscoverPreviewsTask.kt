@@ -31,15 +31,9 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Gradle adapter over [PreviewDiscovery]. Resolves the task's Gradle-typed inputs to plain
- * `java.io.File` / `String` values, hands them to the pure-JVM library, routes warnings and the
- * discovery summary back through Gradle's logger, and writes the resulting `previews.json` to
- * [outputFile].
- *
- * The scan logic itself lives in `:preview-discovery` so non-Gradle build systems (Bazel rules,
- * Amper task definitions in `yschimke/compose-ai-contrib`) can drive it without depending on Gradle
- * or AGP. See [PreviewDiscovery] for the library contract; this file is intentionally thin and
- * should stay that way.
+ * Gradle adapter over [PreviewDiscovery]: resolves Gradle-typed inputs to plain values, routes
+ * warnings and the summary to Gradle's logger, and writes `previews.json` to [outputFile]. The scan
+ * itself lives in `:preview-discovery` so non-Gradle build systems can use it; keep this file thin.
  */
 @CacheableTask
 abstract class DiscoverPreviewsTask : DefaultTask() {
@@ -49,9 +43,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val classDirs: ConfigurableFileCollection
 
   /**
-   * Class directories produced by the active compilation. [classDirs] can include compatibility
-   * fallbacks for several Kotlin targets; stale classes in one of those inactive directories must
-   * not hide an empty output restored for the compilation that discovery depends on.
+   * Class dirs of the active compilation. [classDirs] may include fallbacks whose stale classes
+   * must not hide an empty restored output.
    */
   @get:InputFiles
   @get:Optional
@@ -59,13 +52,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val activeClassDirs: ConfigurableFileCollection
 
   /**
-   * The module's own compiled classes laid out as directories, sourced from AGP's scoped `PROJECT`
-   * `CLASSES` artifact (`variant.artifacts.forScope(PROJECT).toGet(CLASSES, …)`). Wired by the
-   * Android backend in addition to [classDirs]; resolving the scoped artifact also creates the
-   * implicit task dependency on whichever task compiled the classes — the standalone Kotlin Gradle
-   * Plugin's `compile<Variant>Kotlin` OR AGP 9.x built-in Kotlin (`built_in_kotlinc`), whose output
-   * the legacy hardcoded `build/tmp/kotlin-classes/<variant>` directory never receives. Optional /
-   * empty on non-Android backends (desktop/JVM). See issue #1924.
+   * The module's classes as directories from AGP's scoped `PROJECT` `CLASSES` artifact, in addition
+   * to [classDirs]. Also wires the dependency on whichever task compiled them, including AGP 9
+   * built-in Kotlin, whose output never reaches the legacy directory (#1924). Empty off Android.
    */
   @get:InputFiles
   @get:Optional
@@ -73,10 +62,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val projectClassDirs: ListProperty<Directory>
 
   /**
-   * The module's own compiled classes packaged as jars, the jar half of AGP's scoped `PROJECT`
-   * `CLASSES` artifact (see [projectClassDirs]). Method-walked as project classes by
-   * [PreviewDiscovery] — unlike [dependencyJars] — so previews compiled into a project jar are
-   * discovered. Optional / empty on non-Android backends. See issue #1924.
+   * The jar half of the same artifact, method-walked as project classes (unlike [dependencyJars])
+   * (#1924). Empty off Android.
    */
   @get:InputFiles
   @get:Optional
@@ -84,18 +71,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val projectClassJars: ListProperty<RegularFile>
 
   /**
-   * Compiled output of the modules named in the `composePreviewSource` configuration — shared
-   * preview-source modules whose `@Preview` functions this module renders on its own lane.
-   *
-   * One collection rather than a dirs/jars pair because what a project dependency resolves to is
-   * not the consumer's to predict: a KMP producer hands back a jar, an Android one an extracted
-   * `classes.jar`, an in-place compilation a directory. [discover] sorts them, because the two
-   * halves land in different [PreviewDiscovery.Input] fields — and putting a jar on `classDirs`
-   * fails silently, since discovery filters that list to directories that exist.
-   *
-   * Method-walked as project classes, exactly like the module's own output. That is the whole
-   * point: a dependency JAR stays on the ClassGraph classpath so a multi-preview annotation
-   * resolves, but its previews are never walked.
+   * Compiled output of `composePreviewSource` modules, whose previews this module renders. One
+   * collection because a producer may resolve to a jar, an extracted `classes.jar` or a directory;
+   * [discover] sorts them, since a jar on `classDirs` would be silently dropped. Method-walked as
+   * project classes, unlike dependency jars.
    */
   @get:InputFiles
   @get:Optional
@@ -107,13 +86,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val dependencyJars: ConfigurableFileCollection
 
   /**
-   * Maven coordinate of each [dependencyJars] entry, keyed by absolute path, so the scan-classpath
-   * filter can ask what a jar *is* instead of guessing from where the cache put it. See
-   * [PreviewDiscovery.Input.dependencyJarCoordinates].
-   *
-   * `@Internal`, deliberately: it is derived from [dependencyJars], which is already tracked as a
-   * `@Classpath`, and its keys are absolute paths — declaring it an input would pin this task's
-   * cache key to one machine's Gradle cache layout for no added coverage.
+   * Maven coordinate of each [dependencyJars] entry by absolute path; see
+   * [PreviewDiscovery.Input.dependencyJarCoordinates]. `@Internal`: derived from the tracked
+   * [dependencyJars], and absolute-path keys would tie the cache key to one machine.
    */
   @get:Internal abstract val dependencyJarCoordinates: MapProperty<String, String>
 
@@ -129,11 +104,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val activeSourceFiles: ConfigurableFileCollection
 
-  /**
-   * Processed-resource roots (`build/resources/main`, `build/processedResources/<target>/main`)
-   * scanned for Lottie animation assets — each becomes a `kind=LOTTIE` preview with no consumer
-   * composable. Optional: empty on modules without resources, which simply skips the asset scan.
-   */
+  /** Processed-resource roots scanned for Lottie assets (`kind=LOTTIE`). Empty skips the scan. */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val resourceDirs: ConfigurableFileCollection
@@ -142,48 +113,30 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
   @get:Input abstract val variantName: Property<String>
 
-  /**
-   * Project root path used to render module-relative source paths in the manifest. Captured at
-   * configuration time so the task action stays configuration-cache-safe.
-   */
+  /** Project root for module-relative source paths, captured at configuration time. */
   @get:Input abstract val projectDirectory: Property<String>
 
   /**
-   * When `true` and discovery produces zero previews, emit a diagnostics block to the lifecycle log
-   * (classDirs contents, post-filter dep-JAR sample, ClassGraph scan summary, observed annotation
-   * FQNs) and fail the task. Wired from the `composePreview.failOnEmpty` extension /
-   * `-PcomposePreview.failOnEmpty=true` Gradle property.
+   * When `true` and zero previews are found, log diagnostics and fail. From
+   * `composePreview.failOnEmpty` / `-PcomposePreview.failOnEmpty=true`.
    */
   @get:Input abstract val failOnEmpty: Property<Boolean>
 
-  // a11y data products are daemon-only — the standalone Gradle path neither produces them nor
-  // stamps a manifest pointer for them. New per-extension report rollups would add their own
-  // dedicated input here when they have an on-disk artefact to point at.
+  // No a11y input: a11y is daemon-only.
 
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   /**
-   * `components.json` — the components those previews render (see `ComponentRecordFile`).
-   *
-   * A **declared** output, not a file written beside [outputFile]. This task is `@CacheableTask`,
-   * and Gradle restores only declared outputs from the build cache: an undeclared write would
-   * simply be missing on a cache hit while the task still reported success, and deleting the file
-   * by hand would leave the task up to date so it never came back.
+   * `components.json` (see `ComponentRecordFile`). A declared output because this task is cacheable
+   * and only declared outputs are restored from the cache.
    */
   @get:OutputFile abstract val componentsFile: RegularFileProperty
 
   /**
-   * `ui-builder.policy.json` candidates, most specific first: the module's own, then the repository
-   * root's. The first that exists wins.
-   *
-   * A **file collection** rather than two optional `@InputFile`s because an `@InputFile` pointing
-   * at a file that does not exist fails the build, and "no policy" is the ordinary case — every
-   * module that is not a design catalog, and every design catalog that has not adopted the builder
-   * contract. A collection simply does not contain what is not there.
-   *
-   * Two locations because both shapes exist in the wild: wear-m3-catalog keeps one
-   * `catalog.spec.json` at its root for `:catalog` and a second inside `remote-catalog/` for the
-   * module that publishes a different system, and the policy has to be findable beside either.
+   * `ui-builder.policy.json` candidates, module first, then repository root; the first that exists
+   * wins. A file collection because a missing `@InputFile` fails the build, and "no policy" is
+   * normal. Both locations occur (e.g. a root catalog plus a nested module publishing a different
+   * system).
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -195,126 +148,80 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val catalogSpecCandidates: ConfigurableFileCollection
 
   /**
-   * The `ui-builder/designs/` trees a policy's `templates` paths resolve against — module first,
-   * repository root second, matching how the policy and cover sheet are found.
-   *
-   * Declared as an input so a changed template design re-runs this task, and so the files can be
-   * carried with the catalog that advertises them. A `templates` entry is a branch-relative path,
-   * and the publish flow snapshots only what is written out — so a template that is not carried is
-   * a 404 in the New design chooser, advertised by the catalog and absent from the branch.
+   * `ui-builder/designs/` trees for a policy's `templates`, module first. Inputs so edits re-run
+   * the task and the advertised designs can be carried; an uncarried template would be a 404 in the
+   * New design chooser.
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val uiBuilderTemplateCandidates: ConfigurableFileCollection
 
   /**
-   * The directories a `templates` path resolves against — the module's, then the repository root's.
-   *
-   * `@Internal` on purpose: these are the *project* directories, and snapshotting them would make
-   * every file in the project an input to this task. Change detection is carried by
-   * [uiBuilderTemplateCandidates], which snapshots only the `ui-builder/` tree; this property
-   * exists so execution can resolve a branch-relative path without reaching for `project`, which is
-   * not available under the configuration cache.
+   * Directories `templates` paths resolve against. `@Internal`: they're project dirs; change
+   * detection is via [uiBuilderTemplateCandidates]. Exists so execution needn't touch `project`.
    */
   @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
 
   /**
-   * Where the copied template designs land, declared so Gradle owns them.
-   *
-   * Without this the task's declared outputs were `previews.json`, `components.json` and
-   * `ui-builder.json`, so a cache hit in a clean checkout restored the catalog and none of the
-   * designs it advertises — the local New design chooser would then list templates that are not
-   * there. Declaring the directory also lets Gradle remove designs a policy has stopped naming,
-   * which a copy loop alone never does.
+   * Where copied template designs land, declared so cache hits restore them and Gradle removes
+   * designs a policy no longer names.
    */
   @get:OutputDirectory abstract val uiBuilderTemplateDir: DirectoryProperty
 
   /**
-   * `ui-builder.json` — the builder catalog this module publishes, or nothing when it authors no
-   * policy.
-   *
-   * Declared for the reason [componentsFile] is: this task is `@CacheableTask` and Gradle restores
-   * only declared outputs, so an undeclared write would be missing on a cache hit while the task
-   * still reported success. A module with no policy has the file deleted rather than left stale —
-   * removing `ui-builder.policy.json` has to remove the catalog it produced, or the build keeps
-   * publishing a description nobody authored any more.
+   * `ui-builder.json`, or nothing without a policy. Declared like [componentsFile]; deleted when
+   * there's no policy so a removed policy stops publishing.
    */
   @get:OutputFile abstract val uiBuilderFile: RegularFileProperty
 
   /**
-   * `ui-builder.guidelines.json` candidates beside each policy candidate, declared so an edit to a
-   * catalog's guidelines re-runs this task. Which one is published is decided by the policy that
-   * was chosen: only the file in that policy's directory (see [UiBuilderGuidelinesFile]).
+   * `ui-builder.guidelines.json` candidates beside each policy candidate; only the one beside the
+   * chosen policy is published (see [UiBuilderGuidelinesFile]).
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val uiBuilderGuidelinesCandidates: ConfigurableFileCollection
 
   /**
-   * `ui-builder.guidelines.json` beside [uiBuilderFile]: the catalog's own design guidance, copied
-   * verbatim from beside its policy, or nothing. Removed whenever no catalog is written, for the
-   * reason a stale `ui-builder.json` is.
+   * The catalog's guidelines copied beside [uiBuilderFile], or nothing; removed whenever no catalog
+   * is written.
    */
   @get:OutputFile abstract val uiBuilderGuidelinesFile: RegularFileProperty
 
-  /**
-   * Subdirectory for Lottie capture `renderOutput` paths (see
-   * [PreviewDiscovery.Input.lottieRenderSubdir]). Defaults to `"renders"`; the Android task sets a
-   * disjoint dir so its JVM Lottie render doesn't share the `renders/` output with the Robolectric
-   * render.
-   */
+  /** See [PreviewDiscovery.Input.lottieRenderSubdir]; Android sets a disjoint dir. */
   @get:Input abstract val lottieRenderSubdir: Property<String>
 
-  /**
-   * Subdirectory for `kind=SVG` capture `renderOutput` paths (see
-   * [PreviewDiscovery.Input.svgRenderSubdir]). Defaults to `"renders"`; the Android task sets a
-   * disjoint dir so its JVM SVG render doesn't share the `renders/` output with the Robolectric
-   * render.
-   */
+  /** See [PreviewDiscovery.Input.svgRenderSubdir]; Android sets a disjoint dir. */
   @get:Input abstract val svgRenderSubdir: Property<String>
 
   /**
-   * Whether this module's render backend can draw `@ColorCatalog` sheets. The Android backend can
-   * (default `true`); the desktop backend can't yet (#2135), so it passes `false` and discovery
-   * marks the synthetic `CATALOG` captures `optional` — the single flag every consumer reads (the
-   * render gate, VS Code's consistency check + render UI) to know a missing catalog PNG is expected
-   * on that backend rather than a regression.
+   * Whether the backend can draw `@ColorCatalog` sheets; `false` on desktop (#2135) marks `CATALOG`
+   * captures `optional`.
    */
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
-   * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. Both backends
-   * set `true` ([ComposePreviewTasks.registerDiscoverTask]): the desktop renderer always has, and
-   * the Android renderer does from compose-preview-daemon 3.13.0. `false` would make discovery
-   * record (and name) those captures as GIF instead of promising a `.apng` filled with GIF bytes.
+   * Whether the backend honours `@AnimatedPreview(format = Apng)`; `true` on both backends
+   * ([ComposePreviewTasks.registerDiscoverTask]). `false` records GIF.
    */
   @get:Input abstract val animatedPreviewApngSupported: Property<Boolean>
 
   /**
-   * Whether a Wear module's device-less previews are retargeted onto the Wear canvas (227dp @
-   * 2.0x). `true` (default) keeps the historical behaviour; `false` opts out so device-less
-   * previews stay wrap-content and the renderer crops each PNG to its intrinsic layout bounds —
-   * needed for Wear widget/tile previews exported as fixed-size drawable assets (#2670). No effect
-   * on non-Wear modules. Wired from the `composePreview.retargetWearPreviews` extension /
-   * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
+   * Whether Wear device-less previews are retargeted onto the Wear canvas; `false` keeps them
+   * wrap-content for widget/tile assets (#2670). From `retargetWearPreviews`.
    */
   @get:Input abstract val retargetWearPreviews: Property<Boolean>
 
   /**
-   * Extra library owners for component-target inference: packages ending in `.` or exact JVM owner
-   * classes. Wired from the `composePreview.componentLibraryPrefixes` extension.
+   * Extra component-library owners (packages ending in `.` or exact classes), from
+   * `componentLibraryPrefixes`.
    */
   @get:Input abstract val componentLibraryPrefixes: ListProperty<String>
 
   /**
-   * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`). Used to
-   * detect whether this is a Wear OS module — a `<uses-feature android:name=
-   * "android.hardware.type.watch" …>` declaration — so frame-less, device-less component previews
-   * render at wear density/width instead of the phone default, and for app-level discovery: its
-   * `<activity>` declarations become [PreviewManifest.activities] metadata plus synthetic
-   * `kind=ACTIVITY` previews (the launcher activity's render is the app's hero image), and its
-   * launcher activity is the default start for tour specs. Optional: absent on the desktop backend
-   * and on Android modules with no manifest artifact — treated as non-Wear, no app-level previews.
+   * The merged `AndroidManifest.xml`: detects Wear modules and drives app-level discovery
+   * (activities, ACTIVITY previews, default tour start). Absent on desktop: non-Wear, no app-level
+   * previews.
    */
   @get:InputFile
   @get:Optional
@@ -322,10 +229,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val mergedManifest: RegularFileProperty
 
   /**
-   * Committed tour scripts (`compose-previews/tours/<name>.json` under the module root), each
-   * becoming a synthetic `kind=APP_TOUR` preview whose captures are the tour's steps. Only honoured
-   * when [mergedManifest] is present (tours launch real activities — Android backend only).
-   * Optional / empty on modules without tours.
+   * Tour scripts (`compose-previews/tours/<name>.json`), each an APP_TOUR preview; only with
+   * [mergedManifest].
    */
   @get:InputFiles
   @get:Optional
@@ -338,23 +243,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The reader for the two files the catalog repository authors, as opposed to the writer for the
-   * files this task produces.
-   *
-   * `ignoreUnknownKeys` because both are contracts this task does not own: `catalog.spec.json`
-   * belongs to the design-artifacts pipeline and has a large schema, and `ui-builder.policy.json`
-   * will grow fields a plugin released today has never heard of. Refusing either over a key this
-   * task never reads would make every additive change to those schemas a plugin release.
+   * Reader for the two catalog-authored files. `ignoreUnknownKeys` because their schemas belong
+   * elsewhere and grow independently.
    */
   private val lenientJson = Json { ignoreUnknownKeys = true }
 
   @TaskAction
   fun discover() {
-    // Union the directory-scan candidates ([classDirs]) with the scoped PROJECT
-    // CLASSES directories so the module's own classes are found regardless of
-    // which compiler produced them. ClassGraph attributes each FQN to a single
-    // element and previews are deduped by id, so any overlap between the two
-    // sources is harmless. See issue #1924.
+    // Union with the scoped project-class dirs so classes are found whatever compiled them; overlap
+    // dedupes (#1924).
     val sharedPreviewSources = previewSourceClasses.files.filter { it.exists() }
     val scopedClassDirs =
       projectClassDirs.getOrElse(emptyList()).map { it.asFile } +
@@ -362,9 +259,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val scopedClassJars =
       projectClassJars.getOrElse(emptyList()).map { it.asFile } +
         sharedPreviewSources.filter { it.isFile && it.name.lowercase().endsWith(".jar") }
-    // A Wear OS module declares `<uses-feature android:name="android.hardware.type.watch">` in its
-    // merged manifest. Plain-substring match on the raw XML — enough to distinguish a Wear module
-    // from a phone one without pulling in an XML parser; absent manifest → not Wear.
+    // Plain substring match for the `android.hardware.type.watch` feature; no manifest means not
+    // Wear.
     val isWear =
       mergedManifest.orNull
         ?.asFile
@@ -400,25 +296,18 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val outFile = outputFile.get().asFile
         outFile.parentFile.mkdirs()
         outFile.writeText(json.encodeToString(outcome.manifest))
-        // The components those previews render, rather than the renders themselves. Derived wholly
-        // from the manifest, so it never disagrees with it, and written unconditionally — an empty
-        // component list is a fact worth publishing (it says inference found nothing), not a
-        // reason to omit the file.
+        // Derived from the manifest and always written; an empty list says inference found nothing.
         val componentsOut = componentsFile.get().asFile
         componentsOut.parentFile.mkdirs()
-        // The builder catalog decides which overload each component's record speaks for (the one
-        // its policy describes, never a deprecated one), so it runs first and `components.json`
-        // publishes the record it chose — the export path reads that record, and must call the
-        // same overload the catalog offers properties for.
+        // The builder catalog chooses each component's overload (per its policy, never deprecated),
+        // so it runs first and `components.json` publishes the chosen record.
         val record = writeUiBuilderCatalog(outcome.manifest)
         componentsOut.writeText(json.encodeToString(record))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
-        // Surface per-method skip reasons (e.g. unsupported parameters) before the
-        // diagnostics dump so users can see WHY a method was filtered out — when failOnEmpty=true
-        // and every candidate was skipped, these warnings are the most actionable signal. Mirrors
-        // the Success branch's warning emission so the failure path doesn't drop them.
+        // Per-method skip reasons first, as on success; they're often the real cause of zero
+        // previews.
         outcome.warnings.forEach { logger.warn(it) }
         outcome.diagnostics.forEach { logger.lifecycle(it) }
         throw GradleException(outcome.reason)
@@ -427,18 +316,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The authored pair — policy and cover sheet — resolved from ONE location.
-   *
-   * Both are looked for in the module directory first and the repository root second, but they are
-   * chosen *together*: a multi-catalog repository routinely has a root policy for its main catalog
-   * and a nested module with its own `catalog.spec.json` and deliberately no policy of its own.
-   * Picking each file independently would hand that module the root's platform, frame, builtins and
-   * templates under its own cover sheet's identity — a hybrid catalog describing a module nobody
-   * wrote a policy for, which is worse than the nothing it should publish.
-   *
-   * So: if the module has either file, the module's location wins outright and a missing policy
-   * there means this module publishes no builder catalog. Only a module with neither falls back to
-   * the root.
+   * The authored policy and cover sheet, resolved from one location: if the module has either file,
+   * the module wins (a missing policy there means no builder catalog); only a module with neither
+   * falls back to the root. Picking each independently would give a nested catalog the root's
+   * policy under its own identity.
    */
   private fun authoredPair(): AuthoredPair? {
     val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
@@ -452,21 +333,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The authored files and WHERE they came from.
-   *
-   * [moduleOwns] is not decoration: a policy resolved from the repository root names its templates
-   * relative to the root, so the template lookup has to search that side first or a module-local
-   * design shadows the one the selected policy owns.
+   * [moduleOwns] decides which side template lookup searches first, since a root policy's templates
+   * are root-relative.
    */
   private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
-   * Copy the catalog's `ui-builder.guidelines.json` from beside [policy] next to `ui-builder.json`,
-   * with the rule packs it includes merged in.
-   *
-   * Like the policy, a malformed file costs only itself and a warning here: discovery feeds every
-   * render lane. The publish is where it fails loudly — the design-artifacts workflow checks it
-   * before rendering, as it checks the policy.
+   * Copies the guidelines beside [policy] next to `ui-builder.json`, with included rule packs
+   * merged. A malformed file only costs itself and a warning here; the publish workflow fails
+   * loudly.
    */
   private fun writeUiBuilderGuidelines(policy: File, catalogId: String) {
     val source = UiBuilderGuidelinesFile.besidePolicy(policy) ?: return
@@ -478,8 +353,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       )
       return
     }
-    // Published flat: the rule packs it includes are merged in here, once, so the server and the
-    // browser read every rule without fetching anything (UiBuilderGuidelinesFile.flatten).
+    // Flattened once so consumers needn't fetch included packs.
     val flat = UiBuilderGuidelinesFile.flatten(text)
     flat.problem?.let {
       logger.warn(
@@ -490,27 +364,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Write `ui-builder.json` beside the record, or remove a stale one.
+   * Writes `ui-builder.json` via [UiBuilderCatalogs.generate] (shared `screen/generator` code), or
+   * removes a stale one.
    *
-   * The generator is [UiBuilderCatalogs.generate], which lives in the shared `screen/generator`
-   * source so the same code runs here, in a test, and in the browser. Nothing about it is
-   * Gradle-shaped; this method's whole job is finding the two authored files and reporting what
-   * happened.
-   *
-   * **Never fails the build.** A malformed policy costs the builder catalog and a warning, not the
-   * discovery run: `previews.json` and `components.json` are what every other consumer of this task
-   * is waiting for, and a render lane stopped by a typo in a file it does not read would be a poor
-   * trade. The generator's own findings travel *inside* the published file as `diagnostics`, where
-   * a person who was not watching this build can still read them.
+   * **Never fails the build:** a malformed policy costs the builder catalog and a warning, since
+   * every render lane waits on this task. The generator's findings travel inside the file as
+   * `diagnostics`.
    */
   private fun writeUiBuilderCatalog(manifest: PreviewManifest): ComponentRecordFile {
     val record = ComponentRecords.from(manifest)
     val out = uiBuilderFile.get().asFile
     // Published only beside a catalog that is written, so cleared before anything can return.
     uiBuilderGuidelinesFile.get().asFile.delete()
-    // No authored pair — this module publishes no builder catalog. Removing the policy has to
-    // remove the catalog it produced: a stale file would keep being published and would describe a
-    // catalog nobody authors any more.
+    // No authored pair: remove any stale catalog.
     val authored =
       authoredPair()
         ?: return run {
@@ -532,9 +398,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val spec = specFile?.let {
       runCatching { lenientJson.decodeFromString<CatalogCoverSheet>(it.readText()) }.getOrNull()
     }
-    // A policy with no readable cover sheet still publishes: `system` and `title` are the only two
-    // fields wanted from it, the policy can name the id itself, and a catalog with no title is
-    // worth more than no catalog at all.
+    // A missing cover sheet still publishes; only `system` and `title` come from it.
     val cover =
       UiBuilderCatalogs.CoverSheet(
         system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
@@ -548,16 +412,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     out.parentFile.mkdirs()
     out.writeText(json.encodeToString(catalog))
     writeUiBuilderGuidelines(authored.policy, cover.system)
-    // The designs this catalog advertises, copied beside it. `compose-preview-server ui` reads this
-    // directory and has no delivery branch to fall back on, so a template that is not here is a
-    // template the local builder cannot open — the same 404 the branch lane would have, arriving
-    // for the consumer this contract most wanted to serve.
+    // Copy the advertised designs beside the catalog; `compose-preview-server ui` has no other
+    // source for them.
     val declared = catalog.statusSemantics.templates
-    // Parsed before it is copied, exactly as the bundle lane does. `compose-preview-server ui`
-    // reads this directory and has no delivery branch to fall back on, so a truncated design here
-    // is a chooser entry that fails when somebody opens it — the same failure the bundle-side check
-    // was added for, in the lane that has no second chance. Validating one and not the other was
-    // half a fix.
+    // Parse before copying, like the bundle lane, so a truncated design isn't offered.
     val resolved =
       UiBuilderTemplateLookup.resolve(
         uiBuilderTemplateRoots.files,
@@ -575,8 +433,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       )
     }
     val found = usable.associate { (path, file) -> path to file }
-    // Emptied first: a design a policy has stopped naming must stop being published, and a stale
-    // one left behind is advertised by nothing and opened by accident.
+    // Emptied first so designs a policy stopped naming stop being published.
     val templateDir = uiBuilderTemplateDir.get().asFile
     if (templateDir.exists()) templateDir.deleteRecursively()
     found.forEach { (path, file) ->

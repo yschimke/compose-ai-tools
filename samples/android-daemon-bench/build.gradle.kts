@@ -1,17 +1,10 @@
-// Latency baseline harness for the preview daemon work — see compose-preview-daemon's
-// docs/daemon/DESIGN.md § 13.
+// Latency baseline harness for the preview daemon (compose-preview-daemon's docs/daemon/DESIGN.md
+// § 13). Deliberately tiny (five trivial @Previews, no animations / scrolls / @PreviewParameter) so
+// `composePreviewRender` wall time isolates the per-render cost; keep it separate from
+// :samples:android.
 //
-// This module is deliberately small (5 trivial @Preview functions, no
-// animations / scrolls / Wear / @PreviewParameter) so its `composePreviewRender`
-// wall time isolates the per-render cost from sandbox-init and configuration
-// noise. The :samples:android workload is a different beast — it has scroll
-// GIFs, animations, and PreviewParameter providers that each add hundreds of
-// ms to the render row. Keep them separate.
-//
-// `benchPreviewLatency` shells out to `./gradlew` repeatedly under different
-// scenarios (cold / warm-no-edit / warm-after-1-line-edit) and writes a CSV
-// to build/daemon-bench/baseline-latency.csv. See README.md in this module for the
-// scenario definitions.
+// `benchPreviewLatency` runs `./gradlew` under cold / warm-no-edit / warm-after-1-line-edit
+// scenarios and writes build/daemon-bench/baseline-latency.csv. See README.md.
 @file:Suppress("UnstableApiUsage")
 
 import java.io.File
@@ -139,13 +132,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       gradle("$benchPath:clean")
     }
 
-    // Replace a single string literal in BenchPreviews.kt with a unique
-    // marker, run the scenario body, then revert. We need the edit to
-    // produce *different bytecode* — comment-only edits get stripped by
-    // kotlinc and downstream tasks (composePreviewRender, composePreviewDiscover)
-    // stay UP-TO-DATE because their input snapshots hash the .class
-    // files. A varying string literal is the smallest meaningful change
-    // that kotlinc must propagate.
+    // Swap a string literal rather than a comment: kotlinc strips comments, so downstream
+    // class-hashing tasks would stay UP-TO-DATE.
     val literalMarker = "\"three\""
     fun <T> withPreviewEdit(block: () -> T): T {
       val originalText = previewFile.readText()
@@ -162,11 +150,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       }
     }
 
-    // Detect "Gradle skipped the task entirely" (UP-TO-DATE / NO-SOURCE / FROM-CACHE).
-    // A skipped task contributes nothing to the wall-clock above pure config /
-    // up-to-date checking, and crucially does NOT rewrite the JUnit XML — so
-    // re-reading the XML would charge the warm scenario for the *previous*
-    // (cold) run's per-test times.
+    // A skipped task (UP-TO-DATE / NO-SOURCE / FROM-CACHE) doesn't rewrite the JUnit XML, so
+    // re-reading it would charge this run with the previous run's times.
     fun didTaskRun(output: String, task: String): Boolean {
       val line = output.lineSequence().firstOrNull { it.contains("> Task $task") } ?: return false
       // Lines look like `> Task :path:taskName` or `> Task :path:taskName UP-TO-DATE`.
@@ -365,22 +350,17 @@ tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   outputs.upToDateWhen { false }
 }
 
-// --- Stage-1 + stage-2 compile-leg bench (issue #1586) --------------------------------------
+// Stage-1 + stage-2 compile-leg bench (#1586); kept in lockstep with
+// :samples:desktop-daemon-bench's BenchCompileStagesTask. Times the two faster save loops against
+// the promote/demote thresholds (< 2 s save→pixel on Android) and prints a verdict:
 //
-// Android counterpart to :samples:desktop-daemon-bench's BenchCompileStagesTask — kept in lockstep
-// (same scenarios, same output protocol, same verdict). `benchPreviewLatency` (above) measures
-// stage 0 (per-save `./gradlew`); this sibling drives the two faster save loops that shipped behind
-// experimental flags and emits per-stage compile-leg medians, then evaluates the promote/demote
-// thresholds (< 2 s save→pixel on Android) and prints a verdict:
-//
-//   * stage 1 (`composePreview.daemon.continuousCompile`): a resident `gradle --continuous`
-//     invocation; we prime its warm-up build then time edit→`BUILD SUCCESSFUL in N` per rep.
-//   * stage 2 (`composePreview.daemon.compileInProcess`): the in-process Build Tools API compile;
-//     we read the `btaCompile` block from `daemon-launch.json` and `javaexec` `:daemon:core`'s
+//   * stage 1 (`composePreview.daemon.continuousCompile`): a resident `gradle --continuous`, timing
+//     edit → `BUILD SUCCESSFUL in N`.
+//   * stage 2 (`composePreview.daemon.compileInProcess`): `javaexec`s `:daemon:core`'s
 //     `BtaBenchMain`, driving the real `BtaCompileSession.compileIncremental()`.
 //
-// The render leg is unchanged from stage 0, so the verdict reuses the stage-0
-// `render,warm-after-1-line-edit` median already in the CSV — run `benchPreviewLatency` first.
+// The verdict reuses the stage-0 warm-edit render median from the CSV — run `benchPreviewLatency`
+// first.
 
 abstract class BenchCompileStagesTask : DefaultTask() {
 
@@ -795,9 +775,8 @@ configurations.create("daemonBench") {
 }
 
 dependencies {
-  // `daemonBench` is a resolvable configuration of its own, so it does not inherit the daemon BOM
-  // that `ComposeAiBaseConventionsPlugin` puts on `api` and `implementation`. Without the platform
-  // here, `daemon-core` has no version at all -- the catalog entry deliberately carries none.
+  // A standalone resolvable configuration doesn't inherit the daemon BOM, and the catalog entry
+  // carries no version.
   add("daemonBench", platform(libs.composeai.daemon.bom))
   add("daemonBench", libs.composeai.daemon.core)
 }
@@ -815,19 +794,7 @@ tasks.register<BenchCompileStagesTask>("benchCompileStages") {
   outputs.upToDateWhen { false }
 }
 
-// --- CI smoke (issue #1586) -----------------------------------------------------------------
-// The full benches are deliberately slow (run on the reference machine, not per-PR). To keep this
-// module from bit-rotting, the five trivial previews are rendered — a cheap proof the module
-// builds, discovery wires up, and the renderer path is intact.
-//
-// CI does that by **naming `composePreviewRender` directly**, in ci.yml's `build-samples-full`
-// job, which is gated `if: github.event_name != 'pull_request'` because these render-heavy checks
-// "routinely make Build Samples the slowest CI leg". It is not reached through `check`: nothing in
-// CI invokes `check` at all (see `:mcp` and `:renderer-desktop` for the two guards that had to be
-// moved onto `test` for exactly that reason), and this module has no `test` task to move it to —
-// only a `main` source set, and `affected-gradle-tests.py` ignores `samples/**` outright.
-//
-// So the hook below is a local convenience: `./gradlew :samples:<this>:check` renders. Deliberately
-// NOT wired onto a PR-path task — that would drag a Robolectric/Compose-Desktop render onto every
-// pull request, which is the cost `build-samples-full` exists to keep off it.
+// CI smoke: ci.yml's `build-samples-full` (non-PR) runs `composePreviewRender` directly to keep
+// this module from bit-rotting; nothing in CI invokes `check`. This hook is a local convenience
+// only — don't wire it onto a PR-path task.
 tasks.named("check") { dependsOn("composePreviewRender") }

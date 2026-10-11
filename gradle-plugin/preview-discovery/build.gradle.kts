@@ -1,9 +1,7 @@
 plugins {
   id("composeai.maven-publishing")
-  // No version on `kotlin("jvm")` — `kotlin-dsl` in the parent (root) build script of this
-  // composite already supplies the embedded Kotlin plugin, and re-specifying the version
-  // here trips Gradle's "plugin already on the classpath with an unknown version" check.
-  // `kotlin("plugin.serialization")` follows the same rule for the same reason.
+  // No versions: the parent build's `kotlin-dsl` already supplies the embedded Kotlin plugins, and
+  // a version trips Gradle's "already on the classpath" check.
   kotlin("jvm")
   kotlin("plugin.serialization")
   alias(libs.plugins.ktfmt)
@@ -12,22 +10,10 @@ plugins {
 
 ktfmt { googleStyle() }
 
-// Phase A2 of the contrib refactor (see `contrib/README.md`): the `previews.json` schema and
-// the ClassGraph-driven scan that produces it lift out of `:gradle-plugin`'s root subproject
-// into a pure-JVM library so non-Gradle consumers (Bazel rules, Amper task definitions in
-// `yschimke/compose-ai-contrib`) can pull `ee.schimke.composeai:preview-discovery` from
-// Maven Central and produce conforming `previews.json` manifests by running the same scan the
-// gradle plugin uses — without dragging :gradle-plugin or AGP onto their classpath.
-//
-// A2c (next PR) adds a `java -cp` CLI main (`PreviewDiscoveryCli`) so a Bazel `genrule` or
-// Amper task can wrap a shell call to drive discovery once it has resolved the runtime
-// closure through its own dep system; the library API exposed here is enough for in-process
-// Kotlin/JVM consumers today.
-//
-// Lives inside the `gradle-plugin` composite build (rather than the outer build) so the
-// gradle plugin can take a normal `project(":preview-discovery")` dep without round-tripping
-// through Maven Local on every dev iteration. The publish coordinate is set explicitly
-// below so the artifact lands in Maven Central under a clean module name.
+// The `previews.json` schema and ClassGraph scan as a pure-JVM library, so non-Gradle consumers
+// (Bazel, Amper) can produce conforming manifests without the plugin or AGP (see
+// `contrib/README.md`). Lives in this composite so the plugin can use
+// `project(":preview-discovery")` directly.
 
 // Generator and discovery behaviour is shared with the JVM/WASM screen-model module.
 // ScreenDocument and its value/action DTOs come from the contracts artifact on both paths,
@@ -38,31 +24,21 @@ sourceSets.named("main") {
 
 dependencies {
   api(libs.kotlinx.serialization.json)
-  // The contracts BOM supplies every version for the line (the coordinate below names none), and
-  // it is declared here rather than left to `composeai.base-conventions` because this module does
-  // not apply that plugin — it is a plain published library, not a module of this build's
-  // conventions. `api`, not `implementation`: this module's own consumers, including the sample
-  // buildscript classpath that resolves it as a Gradle plugin implementation, need the constraint
-  // too. A platform only constrains the configuration it is declared on, and `implementation`
-  // constraints are not exported.
+  // The contracts BOM supplies the versions; declared here because this module doesn't apply
+  // `composeai.base-conventions`. `api` so consumers (including buildscript classpaths) get the
+  // constraint; `implementation` constraints aren't exported.
   api(platform(libs.composeai.contracts.bom))
   api(libs.composeai.screen.document)
-  // The `components.json` / `ui-builder.policy.json` / `ui-builder.json` wire types. `api`: the
-  // generator's public signatures (`UiBuilderCatalogs.generate`, `ScreenGenerator`) take and return
-  // them, so a consumer of this artifact needs them on its compile classpath.
+  // Wire types for `components.json` / `ui-builder.*.json`; `api` because the generator's public
+  // signatures use them.
   api(libs.composeai.component.catalog.protocol)
-  // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
-  // `@Preview`-annotated methods, fans out multi-preview meta-annotations via
-  // `scanResult.getClassInfo(...)`. Same coord as :gradle-plugin (and matched at runtime so the
-  // adapter doesn't drag a second copy of ClassGraph onto its classpath).
+  // ClassGraph drives `PreviewDiscovery.discover(...)`; same coordinate as the plugin, so only one
+  // copy is loaded.
   api(libs.classgraph)
-  // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph
-  // only surfaces annotations + signatures, not method-body invocations. Used by
-  // `PreviewTargetInference`.
+  // ASM reads method bodies for @Composable call targets (ClassGraph only sees signatures).
   api(libs.asm)
-  // Parses a target composable's `@kotlin.Metadata` to recover its real Kotlin parameter list
-  // (names / types / defaults) for the Code Connect template — `implementation`, not `api`: the
-  // metadata types stay an internal detail of `ComposableSignature`, off the published API.
+  // Reads `@kotlin.Metadata` for real parameter lists; `implementation` keeps metadata types off
+  // the published API.
   implementation(libs.kotlin.metadata.jvm)
 
   testImplementation(libs.junit)
@@ -88,39 +64,22 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
-// CLI entry point (`PreviewDiscoveryCli`) is what Bazel rules and Amper tasks shell out to.
-// The published artifact is a slim library JAR — the transitive deps (classgraph, asm,
-// kotlinx-serialization) are exposed as `api` so consumers resolving the POM through their
-// own dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) get the full classpath,
-// and the intended invocation is:
-//
-//     java -cp <resolved-classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli ...
-//
-// The `Main-Class:` stamp is a convenience for build systems that have already materialised
-// the full runtime closure next to the artifact (e.g. Bazel's `runtime_jars` provider, or a
-// hand-rolled `lib/` directory); in that shape `java -jar preview-discovery-<v>.jar ...`
-// will work because the JVM happens to find every transitive class on the search path.
-// `java -jar` against the bare published JAR will NOT work — there is no `Class-Path:`
-// manifest entry and no shaded uber-JAR; it will fail with `NoClassDefFoundError`. See the
-// "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md` for the consumer-facing
-// contract.
+// `PreviewDiscoveryCli` is what Bazel / Amper shell out to: `java -cp <resolved-classpath>
+// ee.schimke.composeai.discovery.PreviewDiscoveryCli ...`. Dependencies are `api` so POM-resolving
+// consumers get the full classpath. `Main-Class` helps only when the runtime closure is already
+// beside the jar; `java -jar` on the bare jar fails (no `Class-Path`, no uber-jar). See
+// `docs/NON_GRADLE_INTEGRATION.md`.
 tasks.named<Jar>("jar").configure {
   manifest { attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli") }
 }
 
-// The published policy schema is a test INPUT, and Gradle cannot know that.
-//
-// `UiBuilderPolicySchemaTest` reads `scripts/design-artifacts/ui-builder.policy.schema.json` and
-// holds it to the serial names of `UiBuilderAuthoredComponent` and `UiBuilderBuiltin`. Without
-// this the test task is up to date after a schema edit — so the one change the test exists to
-// catch is the one change that would not re-run it, which is how a check stops checking.
+// The published policy schema is a test input: `UiBuilderPolicySchemaTest` checks it against the
+// serial names, so without this a schema edit wouldn't re-run the test.
 tasks.named<Test>("test").configure {
   inputs
     .file(
-      // `..` because `gradle-plugin` is an INCLUDED build: its `rootProject` is that directory,
-      // not the repository, and the schema lives beside the other design-artifact scripts at the
-      // top. Resolved wrongly this fails loudly at configuration time rather than silently
-      // skipping the input, which is the failure mode worth having.
+      // `..` because this is an included build whose root isn't the repository; a wrong path fails
+      // loudly at configuration time.
       rootProject.layout.projectDirectory.file(
         "../scripts/design-artifacts/ui-builder.policy.schema.json"
       )

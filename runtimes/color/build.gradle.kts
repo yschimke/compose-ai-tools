@@ -1,13 +1,7 @@
-// `:color-preview-runtime` — composable-helper authoring path for colour / design-token specimens.
-// Sister to `:typography-preview-runtime`. `ColorSchemeSpecimen` renders every Material 3
-// `ColorScheme` role as a labelled swatch, and `ColorSpecimen` does the same for an arbitrary list
-// of named brand/semantic colours — reference catalogues that consumers wrap in a normal `@Preview`
-// so visual regressions in a theme's palette surface as PNG diffs alongside the rest of the
-// gallery.
-// This is the compose-ai-tools analogue of Airbnb Showkase's `@ShowkaseColor` sheet.
-//
-// Standalone on purpose — no compile dep on `:renderer-android` so the runtime can be used in
-// Bazel modules or JVM unit tests that don't carry the full Robolectric renderer.
+// `:color-preview-runtime` — `ColorSchemeSpecimen` (every Material 3 `ColorScheme` role) and
+// `ColorSpecimen` (arbitrary named colours) render labelled swatches inside a normal `@Preview`, so
+// palette regressions show up as PNG diffs. No dependency on `:renderer-android`, so it works in
+// Bazel modules and plain JVM tests.
 
 plugins {
   id("composeai.base-conventions")

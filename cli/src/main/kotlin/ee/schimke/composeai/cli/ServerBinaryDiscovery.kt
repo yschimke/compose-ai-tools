@@ -3,29 +3,14 @@ package ee.schimke.composeai.cli
 import java.io.File
 
 /**
- * Finds the binary a launcher command execs — the preview server for `serve`, `browse` and
- * `ui-builder`, the MCP server for `mcp serve`.
+ * Finds the binary a launcher command execs: the preview server for `serve`, `browse` and
+ * `ui-builder`, the MCP server for `mcp serve` (parameterised by [ReleasedDistribution]; [FLAG] /
+ * [ENV] / [BINARY] name the server's for `doctor` and tests).
  *
- * One implementation for both, parameterised by [ReleasedDistribution]: the two differ only in
- * their names, and a second copy of this ordering would be a second thing to keep in step. The
- * server's names stay available as [FLAG] / [ENV] / [BINARY] because `doctor` and the tests read
- * them.
- *
- * The mirror image of the server's own build-host discovery, and deliberately the same shape, so an
- * operator who has learned one has learned both: an explicit flag, then the environment, then
- * `PATH`. Most explicit first, because the failure this ordering prevents is running a binary the
- * user did not mean.
- *
- * A fourth source sits after those three: the copy [ServerDistributionProvision] has already
- * fetched into the CLI's cache. It is **last** for the same reason `PATH` is above it — an operator
- * who installed a server chose that one, and a cached download must never quietly win over a
- * deliberate choice.
- *
- * A miss is not yet a failure. Nothing installs this binary (#5183 — the documented one-liner
- * fetches the CLI and the skills, and knows nothing about the server), so the caller asks
- * [ServerDistributionProvision] to fetch the pinned release before giving up; only a *failed* fetch
- * reports [installationHint] and exits. `serve` has nothing to degrade to — the server body left
- * this repository.
+ * Order, most explicit first so the user's choice always wins: the flag, the environment, `PATH`,
+ * then the copy [ServerDistributionProvision] cached. A miss isn't yet a failure: the caller asks
+ * [ServerDistributionProvision] to fetch the release, and only a failed fetch reports
+ * [installationHint].
  */
 internal object ServerBinaryDiscovery {
 
@@ -60,16 +45,10 @@ internal object ServerBinaryDiscovery {
   }
 
   /**
-   * [choice], unless it is a cached copy older than [minimum], in which case the newest release is
-   * fetched in its place.
-   *
-   * Only the cache is second-guessed. A binary named by the flag, the environment or `PATH` was
-   * chosen by someone, and so was a release pinned with `COMPOSE_PREVIEW_SERVER_VERSION`
-   * ([requested]); those are launched as they are, and a server that lacks the command says so
-   * itself. The cache is different because nobody chose it: it is whatever was newest the last time
-   * this machine fetched, and without this a command added since then would never reach a server
-   * that has it. If the fetch fails the old copy is still launched, with a note, rather than
-   * nothing.
+   * [choice], unless it is an unpinned cached copy older than [minimum], in which case the newest
+   * release is fetched instead. Explicitly chosen binaries (flag, environment, `PATH`,
+   * `COMPOSE_PREVIEW_SERVER_VERSION`) are launched as-is. If the fetch fails the old copy still
+   * launches, with a note.
    */
   fun meetsMinimum(
     choice: Choice,
@@ -99,15 +78,10 @@ internal object ServerBinaryDiscovery {
   const val REFRESH_STAMP: String = ".latest-check"
 
   /**
-   * [choice], unless it is a cached copy older than the newest release, in which case that release
-   * is fetched and launched instead (#5602).
-   *
-   * [meetsMinimum]'s rule about *which* choices may be second-guessed applies unchanged — only an
-   * unpinned cache — but the trigger is time rather than a command: at most once per
-   * [REFRESH_INTERVAL_MS], recorded in [stamp], the newest release is resolved and compared. The
-   * stamp is written before asking, so a machine that cannot reach GitHub pays for one failed
-   * lookup a day rather than one per launch. Offline mode never asks. Any failure launches the
-   * cached copy with one line of explanation.
+   * [choice], unless it is an unpinned cached copy older than the newest release, which is then
+   * fetched and launched. Checked at most once per [REFRESH_INTERVAL_MS] via [stamp] (written
+   * before asking, so offline machines pay one failed lookup a day). Never in offline mode;
+   * failures launch the cached copy.
    */
   fun refreshed(
     choice: Choice,
@@ -146,9 +120,8 @@ internal object ServerBinaryDiscovery {
   }
 
   /**
-   * One stderr line naming what is about to be launched: the version when it is a cached release,
-   * and where it came from — the cache, a fresh download, or an override (flag, environment,
-   * `PATH`).
+   * One stderr line naming what is launching: the version for cached releases, and whether it came
+   * from the cache, a fresh download, or an override.
    */
   fun describeLaunch(choice: Choice, downloaded: Boolean, label: String): String {
     val origin =
@@ -162,8 +135,8 @@ internal object ServerBinaryDiscovery {
   }
 
   /**
-   * Nobody chose it: a cached copy, with no release pinned by `COMPOSE_PREVIEW_SERVER_VERSION`. The
-   * only kind of choice [meetsMinimum] and [refreshed] replace.
+   * A cached copy with no release pinned by `COMPOSE_PREVIEW_SERVER_VERSION` — the only choice
+   * [meetsMinimum] and [refreshed] replace.
    */
   private fun isUnchosenCache(choice: Choice, requested: String?): Boolean =
     choice.source == CACHE && requested == null
@@ -179,10 +152,8 @@ internal object ServerBinaryDiscovery {
   }
 
   /**
-   * The first executable named [binary] on `PATH`.
-   *
-   * The working directory is deliberately not consulted: resolving a server from `.` would let a
-   * checked-out repository decide what this command executes.
+   * The first executable named [binary] on `PATH`; never the working directory, so a checkout can't
+   * choose what runs.
    */
   private fun onPath(binary: String): File? =
     System.getenv("PATH")
@@ -193,12 +164,8 @@ internal object ServerBinaryDiscovery {
       ?.firstOrNull { it.isFile && it.canExecute() }
 
   /**
-   * What to tell someone who has not got one *and* could not be given one.
-   *
-   * Reached only after [ServerDistributionProvision.ensure] has failed and said why, so this does
-   * not repeat the reason — it says what a person can do about it. Both halves matter: an offline
-   * or firewalled machine needs the manual route, and a machine that can reach GitHub needs to know
-   * the automatic one exists and will be retried.
+   * What to tell someone who has no binary and couldn't be given one: the manual route, and that
+   * the automatic fetch will be retried. The failure reason was already printed.
    */
   fun installationHint(distribution: ReleasedDistribution = ReleasedDistribution.SERVER): String =
     """

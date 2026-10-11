@@ -12,19 +12,12 @@ import okio.fakefilesystem.FakeFileSystem
 import org.junit.Test
 
 /**
- * `SubprocessRenderSessions.open` gates the on-disk descriptor's `schemaVersion` before anything
- * acts on its fields (#5105, deferred from #4571).
+ * `SubprocessRenderSessions.open` must reject a descriptor `schemaVersion` it doesn't understand
+ * before using its fields: the reader ignores unknown keys, so a newer descriptor would otherwise
+ * launch silently on defaults.
  *
- * The hazard is specific and silent: the JVM reader tolerates unknown keys and defaults its
- * reader-only fields, so a descriptor written by a NEWER writer parses cleanly and the daemon
- * launches against defaults for everything the new version added — no exception, just a session
- * built from a contract nobody agreed on. Post-split this module is a published contract an
- * extracted preview server links against (#3824), so an older reader meeting a newer descriptor is
- * an ordinary cross-repo pairing rather than a same-commit mistake.
- *
- * The descriptors below are deliberately skewed off the writer's version — that is the point of the
- * test, and `check-daemon-launch-schema.py` excludes test sources from its stamp scan for exactly
- * this case.
+ * The descriptors are deliberately off the writer's version; `check-daemon-launch-schema.py`
+ * excludes test sources for this reason.
  */
 class DescriptorSchemaVersionTest {
 

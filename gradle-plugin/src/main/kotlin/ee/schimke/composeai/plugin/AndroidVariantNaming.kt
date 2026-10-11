@@ -1,16 +1,9 @@
 package ee.schimke.composeai.plugin
 
 /**
- * The AGP-generated names the Robolectric lane reaches for, resolved per variant.
- *
- * Classic AGP (`com.android.application` / `com.android.library`) derives every one of them from
- * the variant name: variant `debug` gives `debugRuntimeClasspath`, `debugUnitTestRuntimeClasspath`,
- * `generateDebugUnitTestConfig`, and so on. [classic] is that convention written down.
- *
- * `com.android.kotlin.multiplatform.library` — AGP 9's replacement for nesting
- * `com.android.library` inside KMP — does not. Its single variant is called `androidMain`, but the
- * configurations and tasks around it are named after the KMP *target* (`android`) and the host-test
- * *compilation* (`androidHostTest`) instead, so four of the six names stop matching:
+ * The AGP-generated names the Robolectric lane uses, per variant. Classic AGP derives them all from
+ * the variant name ([classic]). KMP-Android names them after the KMP target and host-test
+ * compilation instead:
  *
  * |                           |classic (`debug`)              |KMP-Android (`androidMain`)      |
  * |---------------------------|-------------------------------|---------------------------------|
@@ -22,12 +15,8 @@ package ee.schimke.composeai.plugin
  * |implementation bucket      |`debugImplementation`          |`androidMainImplementation`      |
  * |class output               |`tmp/kotlin-classes/debug`     |`classes/kotlin/android/main`    |
  *
- * The implementation bucket is the one that agrees by coincidence — KMP names it after the source
- * set, which for this plugin IS the variant name. It is listed here anyway so the mapping is
- * readable as a whole rather than as a set of exceptions.
- *
- * Every name is derived, never guessed: [kmpAndroid] takes the host-test component's own name from
- * `variant.unitTest`, so a consumer who renames the compilation is followed rather than broken.
+ * Names are derived, not guessed: [kmpAndroid] takes the host-test component's name from
+ * `variant.unitTest`, so renamed compilations work.
  */
 internal data class AndroidVariantNaming(
   /** The AGP variant name — `debug`, `demoRelease`, `androidMain`. */
@@ -35,63 +24,47 @@ internal data class AndroidVariantNaming(
   /** The module's own runtime classpath, the render graph's starting point. */
   val runtimeClasspath: String,
   /**
-   * The unit-test runtime classpath. Robolectric, `android.jar` and the merged-resource APK reach
-   * the renderer through it. Null when the module has no host-test component at all, which is the
-   * KMP-Android default: `withHostTest { }` is opt-in.
+   * Unit-test runtime classpath (Robolectric, `android.jar`, merged-resource APK). Null without a
+   * host-test component (KMP-Android's default).
    */
   val unitTestRuntimeClasspath: String?,
   /** The declarable bucket plugin-injected dependencies are added to. */
   val implementation: String,
-  /**
-   * The declarable bucket for host-test-only dependencies — `ui-test-manifest`, `ui-test-junit4`,
-   * the renderer's own JUnit surface. Classic AGP calls it `testImplementation` whatever the
-   * variant; KMP names it after the host-test compilation, and has none until `withHostTest { }`.
-   */
+  /** Declarable bucket for host-test-only dependencies; KMP has none until `withHostTest { }`. */
   val testImplementation: String?,
   /**
-   * AGP's generator for `com/android/tools/test_config.properties` — the file Robolectric reads to
-   * find `apk-for-local-test.ap_`. Null for the same reason as [unitTestRuntimeClasspath].
+   * AGP's `test_config.properties` generator, which Robolectric uses to find
+   * `apk-for-local-test.ap_`. Null like [unitTestRuntimeClasspath].
    */
   val unitTestConfigTask: String?,
   /**
-   * Where that generator writes, relative to the build directory. Null when there is no generator.
-   * A bare path with no producer wired in, so consumers must `dependsOn` [unitTestConfigTask] — see
-   * the call site in `AndroidPreviewSupport`.
+   * That generator's output dir (relative to build dir). No producer is wired, so consumers must
+   * depend on [unitTestConfigTask].
    */
   val unitTestConfigDir: String?,
   /**
-   * AGP's own `Test` task for the host-test component. The render classpath is appended with its
-   * `classpath` and `testClassesDirs`, which is the only place the merged unit-test `R.jar` appears
-   * — dependency R classes (`androidx.lifecycle.runtime.R`) are reachable through nothing else.
-   * Null when there is no host-test component.
+   * AGP's host-test `Test` task; its classpath is the only source of the merged unit-test `R.jar`.
+   * Null without a host-test component.
    */
   val unitTestTask: String?,
   /**
-   * AGP's merged unit-test resource APK directory (`apk_for_local_test`), relative to the build
-   * directory. `BundlePreviewTask` reads the real APK during its action, so this has to be declared
-   * as an input or a resource-only change leaves a cache hit carrying stale resources.
+   * The `apk_for_local_test` dir, declared as a bundle input so resource-only changes invalidate
+   * the cache.
    */
   val apkForLocalTest: String?,
   /**
-   * Extra compiled-class directories beyond the classic AGP ones, relative to the build directory.
-   * On KMP the target's own output lives under `classes/kotlin/<target>/…`, and the target is NOT
-   * always `android` — a consumer who renames it gets `classes/kotlin/mobile/main`, which the
-   * render classpath has to carry or `composePreviewRender` cannot load a class discovery already
-   * found.
+   * Extra class dirs relative to the build dir; KMP's target output lives under
+   * `classes/kotlin/<target>/…`, and the target may be renamed.
    */
   val extraClassDirs: List<String>,
 ) {
   val capVariant: String = variantName.replaceFirstChar { it.uppercase() }
 
   /**
-   * Where an in-process (BTA) compile of this variant writes its classes, relative to the build
-   * directory: the same directory Gradle's own Kotlin compile writes, because that is the directory
-   * the daemon's child classloader loads (`composeai.daemon.userClassDirs` is built from the render
-   * classpath's class dirs). A BTA compile anywhere else writes classes the daemon never reads.
-   *
-   * AGP 9 built-in Kotlin writes `intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/
-   * classes`; the standalone `org.jetbrains.kotlin.android` plugin writes `tmp/kotlin-classes/
-   * <variant>`. KMP modules never reach here — stage 2 declares them ineligible.
+   * Where an in-process (BTA) compile writes classes: the same dir as Gradle's Kotlin compile,
+   * which the daemon's child classloader loads. AGP 9 built-in Kotlin uses
+   * `intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/classes`; the standalone
+   * plugin uses `tmp/kotlin-classes/<variant>`. KMP is stage-2 ineligible.
    */
   fun btaOutputDir(kotlinAndroidPluginApplied: Boolean): String =
     if (kotlinAndroidPluginApplied) "tmp/kotlin-classes/$variantName"
@@ -99,11 +72,9 @@ internal data class AndroidVariantNaming(
 
   companion object {
     /**
-     * The naming for [variantName] on [project], picking the KMP-Android mapping when that plugin
-     * is applied. The host-test compilation is derived (`<target>HostTest`) and verified against
-     * the configuration it names rather than assumed, because this entry point has no `Variant` to
-     * read `unitTest` off — it exists for callers outside `onVariants`, the Tooling API model
-     * builder above all, which resolves the same configurations for `compose-preview doctor`.
+     * Naming for [variantName], using the KMP-Android mapping when that plugin is applied. Without
+     * a `Variant` (e.g. the Tooling API model builder), the host-test compilation
+     * `<target>HostTest` is derived and verified against its configuration.
      */
     fun forProject(project: org.gradle.api.Project, variantName: String): AndroidVariantNaming {
       if (!project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")) {
@@ -142,9 +113,8 @@ internal data class AndroidVariantNaming(
     }
 
     /**
-     * [targetName] is the KMP target the plugin creates — `android` unless the consumer renamed it.
-     * [unitTestName] is `variant.unitTest?.name` (`androidHostTest` by default), null when the
-     * consumer never called `withHostTest { }`.
+     * [targetName] is the KMP target (`android` unless renamed); [unitTestName] is
+     * `variant.unitTest?.name`, null without `withHostTest { }`.
      */
     fun kmpAndroid(
       variantName: String,
@@ -166,8 +136,8 @@ internal data class AndroidVariantNaming(
         apkForLocalTest = unitTestName?.let { "intermediates/apk_for_local_test/$it" },
         extraClassDirs =
           listOf(
-            // `androidTarget()` + `com.android.library` (issue #1492): compilation named after
-            // the variant.
+            // `androidTarget()` + `com.android.library` (#1492): compilation named after the
+            // variant.
             "classes/kotlin/$targetName/$variantName",
             // `com.android.kotlin.multiplatform.library` (issue #248): one compilation, `main`.
             "classes/kotlin/$targetName/main",

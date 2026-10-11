@@ -26,12 +26,8 @@ import org.gradle.process.ExecOperations
 abstract class RenderPreviewsTask : DefaultTask() {
 
   /**
-   * The task's project directory — the working directory a render runs in.
-   *
-   * `ExecOperations.javaexec` defaults to it, so a preview reading a relative path has always
-   * resolved it against its own subproject. The worker pool starts its processes here for the same
-   * reason; `@Internal` because it affects where a render *runs*, not what it produces, and making
-   * it an input would key every module's cache on its own absolute path.
+   * The project directory renders run in, matching `javaexec`'s default so relative paths resolve
+   * against the subproject. `@Internal`: it affects where a render runs, not what it produces.
    */
   @get:org.gradle.api.tasks.Internal abstract val projectDirectory: DirectoryProperty
 
@@ -42,33 +38,21 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Input abstract val renderBackend: Property<String>
 
   /**
-   * Restricts rendering to previews whose `params.kind.name` is in this set. Empty (the default)
-   * renders every kind — the historical behaviour. The Android path uses this to run a Lottie-only
-   * desktop-renderer pass (`composePreviewRenderLottie`) for `kind=LOTTIE` assets, which the
-   * Robolectric `composePreviewRender` deliberately skips (it can't inflate Compottie). Kept
-   * generic (a set of kind names) rather than a Lottie-specific flag so other JVM-renderable kinds
-   * can reuse it.
+   * Restricts rendering to these `params.kind` names; empty renders every kind. Used for Android's
+   * Lottie/SVG-only desktop passes (Robolectric skips those kinds).
    */
   @get:Input abstract val includeKinds: org.gradle.api.provider.SetProperty<String>
 
   /**
-   * Preview-name filter (issue #2066). When non-empty, only previews whose simple or
-   * package-qualified name matches an entry are rendered; everything else — including any unrelated
-   * broken preview — is left untouched on disk and never scheduled. Empty (the default) renders
-   * every discovered preview, the historical behaviour.
-   *
-   * Populated from the repeatable `--preview` task option (see [setPreviewFilterOption]) or, as a
-   * convention, from the `composePreview.filter` Gradle property wired at registration. Matching
-   * (glob `*`/`?` or substring, against simple + FQN) lives in [PreviewNameFilter]. `@Input` so a
-   * filter change re-runs the render.
+   * Preview-name filter (#2066): only previews whose simple or qualified name matches are rendered;
+   * others are untouched. Empty renders everything. From `--preview` ([setPreviewFilterOption]) or
+   * the `composePreview.filter` convention; matching lives in [PreviewNameFilter].
    */
   @get:Input abstract val previewFilters: ListProperty<String>
 
   /**
-   * Backs the repeatable `--preview` CLI option. `List<String>` makes it repeatable (`--preview A
-   * --preview B`); each value is a name or glob. Setting the option overrides the
-   * `composePreview.filter` convention rather than merging with it, so the command line always
-   * wins.
+   * Repeatable `--preview` option; overrides (not merges with) the `composePreview.filter`
+   * convention.
    */
   @Option(
     option = "preview",
@@ -82,30 +66,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Preview **id** filter (issue #2966) — narrows the render to individual members of a `@Preview`
-   * function's fan-out, which [previewFilters] cannot: a multipreview member / `@PreviewParameter`
-   * row has its own `id` but shares its `functionName`. Applied AFTER the name filter, so the two
-   * compose. Empty (the default) renders every preview the name filter kept.
-   *
-   * Populated from the repeatable `--preview-id` task option (see [setPreviewIdFilterOption]) or,
-   * as a convention, from the `composePreview.idFilter` Gradle property wired at registration.
-   * Matching (glob `*`/`?` or substring) lives in [PreviewNameFilter.matchesId]. `@Input` so a
-   * filter change re-runs the render.
-   *
-   * **Applies to this desktop/JVM task**; the Android Robolectric render honours the same three
-   * filters via its own path (issue #2977). On an Android module `composePreviewRender` is a
-   * `RobolectricRenderTask` registered by [AndroidPreviewSupport] that forwards these filters
-   * (sourced from the same `composePreview.*` property conventions) to the render JVM as
-   * `composeai.preview.*` system properties, where `PreviewFilter` applies the same matching. So a
-   * catalog's render-time saving from a filter now lands on both backends.
+   * Preview id filter (#2966): selects individual fan-out members, which share a `functionName`.
+   * Applied after the name filter. From `--preview-id` ([setPreviewIdFilterOption]) or
+   * `composePreview.idFilter`; matching is [PreviewNameFilter.matchesId]. The Android render
+   * applies the same filters via system properties (#2977).
    */
   @get:Input abstract val previewIdFilters: ListProperty<String>
 
-  /**
-   * Backs the repeatable `--preview-id` CLI option. Setting it overrides the
-   * `composePreview.idFilter` convention rather than merging with it, matching how `--preview`
-   * relates to `composePreview.filter`.
-   */
+  /** Repeatable `--preview-id` option; overrides the `composePreview.idFilter` convention. */
   @Option(
     option = "preview-id",
     description =
@@ -119,18 +87,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Preview **id** exclusions (issue #2966) — drops individual fan-out members, keeping everything
-   * else. The polarity a *deferral* needs, and not interchangeable with [previewIdFilters]:
-   *
-   * A catalog that bakes one palette per component and defers the rest can't express that as a
-   * positive filter, because the ids it wants are not a matchable set. `*_light` would keep the
-   * light members but also drop every preview whose id carries no theme suffix at all — the
-   * untagged primary stickers, i.e. most of the catalog. `--exclude-preview-id *_dark` says what it
-   * means.
-   *
-   * Exclusion also fails safe under a stale spec: a pattern that matches nothing renders *more*
-   * than intended (a wasted render, caught by the publish), where a positive filter that matches
-   * nothing renders none. Applied after [previewIdFilters]. Empty (the default) excludes nothing.
+   * Preview id exclusions (#2966). A deferral needs this polarity: untagged primary stickers have
+   * no suffix a positive filter could keep. Fails safe — a non-matching pattern renders more, not
+   * less. Applied after [previewIdFilters].
    */
   @get:Input abstract val previewIdExcludes: ListProperty<String>
 
@@ -149,23 +108,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * `@PreviewParameter` **row** exclusions, by label — the one fan-out the id filters above cannot
-   * reach.
+   * `@PreviewParameter` row exclusions by label. Discovery emits one entry per parameterized
+   * function, and rows only exist after the renderer enumerates the provider, so id patterns can't
+   * name them.
    *
-   * Discovery emits ONE `PreviewInfo` per parameterized function (it reads bytecode, so it can't
-   * instantiate a provider to learn the values), and the rows only exist once the renderer has
-   * enumerated them and `PreviewParameterLabels` has named each `<stem>_<label>.png`. So no id
-   * pattern can name a row — which is why a design system whose theme axis is a `@PreviewParameter`
-   * provider (nine palettes on one provider, the shape behind #2966's measurement) still rendered
-   * every palette after `--exclude-preview-id` landed.
-   *
-   * Forwarded to the render subprocess as `composeai.preview.rowExclude` and applied by
-   * `PreviewRowFilter`: exclusion polarity like the id filter, matched case-insensitively (a label
-   * is user data — `"Dark"` — while the pattern is usually a spec's own spelling, `"dark"`), and
-   * never allowed to empty a preview's row set. Empty (the default) renders every row.
-   *
-   * Desktop-only, like the filters above (see [previewIdFilters]); the Android/Robolectric renderer
-   * expands its own rows and reads none of these — issue #2977.
+   * Forwarded as `composeai.preview.rowExclude` to `PreviewRowFilter`: case-insensitive, and never
+   * allowed to empty a preview's rows. Desktop-only; Android expands its own rows (#2977).
    */
   @get:Input abstract val previewRowExcludes: ListProperty<String>
 
@@ -183,9 +131,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Extra render fan-outs to synthesize from every discovered preview. `accessibility` adds dark,
-   * RTL pseudolocale, and 2x font-scale siblings by rewriting the manifest entries before the
-   * existing renderer path sees them; no new render capability is introduced.
+   * Fan-outs synthesized from every preview: `accessibility` adds dark, RTL pseudolocale and 2x
+   * font-scale siblings by rewriting manifest entries.
    */
   @get:Input abstract val permutations: ListProperty<String>
 
@@ -200,35 +147,26 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
-   * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
-   * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
+   * `"fast"` skips previews whose representative capture exceeds [HEAVY_COST_THRESHOLD]; `"full"`
+   * (default) renders everything.
    */
   @get:Input abstract val tier: Property<String>
 
   /**
-   * Comma-separated `composeai.displayfilter.filters` value forwarded as a system property to the
-   * desktop renderer subprocess. Empty / unset disables display filters. See
-   * [AndroidPreviewSupport.resolveDisplayFilterFilters] for the canonical resolver shared with the
-   * Android Test task. Marked `@Input` so a filter-list change drives re-render.
+   * `composeai.displayfilter.filters` for the renderer subprocess; empty disables. See
+   * [AndroidPreviewSupport.resolveDisplayFilterFilters].
    */
   @get:Input abstract val displayFilterFilters: Property<String>
 
   /**
-   * Device-frame selection (`auto`, a Device Art Generator id, or empty to disable) forwarded as
-   * `composeai.deviceframe.device` to the desktop renderer subprocess. See
-   * [AndroidPreviewSupport.resolveDeviceFrameDevice]. Marked `@Input` so a selection change drives
-   * re-render.
+   * `composeai.deviceframe.device` for the renderer subprocess; empty disables. See
+   * [AndroidPreviewSupport.resolveDeviceFrameDevice].
    */
   @get:Input abstract val deviceFrameDevice: Property<String>
 
   /**
-   * `"true"` to render with the Compose runtime's rewritten `SlotTable` (the "link buffer"
-   * composer), forwarded to the desktop renderer JVM as `composeai.render.linkBufferComposer`. See
-   * [composeAiLinkBufferComposer] for the resolver shared with the Android Test task and both
-   * daemons, and `ee.schimke.composeai.data.render.LinkBufferComposer` for what the renderer does
-   * with it. `@Input` so flipping the composer re-renders instead of reporting UP-TO-DATE against
-   * PNGs drawn by the other one — which is the entire point of the flag.
+   * `"true"` renders with the link-buffer `SlotTable` composer (see [composeAiLinkBufferComposer]).
+   * An `@Input` so switching composers re-renders.
    */
   @get:Input abstract val linkBufferComposer: Property<String>
 
@@ -237,11 +175,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
   /**
-   * Data-products output. Sibling of [outputDir] in the standard layout
-   * (`build/compose-previews/data/...`). `@ScrollingPreview(modes = [LONG, GIF])` and other
-   * heavyweight annotations route their per-capture artifacts here rather than `renders/` so the
-   * primary preview carousel stays small. Optional so older test scaffolds keep working without
-   * changes; when absent the task falls back to a sibling-of-[outputDir] directory at execution.
+   * Data-products output (`build/compose-previews/data/...`) for heavyweight artifacts such as
+   * scrolling LONG/GIF. Optional; defaults to a sibling of [outputDir].
    */
   @get:org.gradle.api.tasks.Optional
   @get:OutputDirectory
@@ -250,77 +185,37 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Inject abstract val execOperations: ExecOperations
 
   /**
-   * Absolute path to the `java` binary the render subprocess forks into. Unset (default) means the
-   * `javaexec` below runs on the Gradle daemon JVM — the historical behaviour. The plugin sets this
-   * only when the module's bytecode target outruns that daemon JVM (or `composePreview
-   * .renderJavaVersion` is pinned), raising the render fork to a JDK that can load the classes
-   * instead of failing with `UnsupportedClassVersionError`. See [RenderJvmSelection]. `@Input` so a
-   * JDK change re-renders; `@Optional` so the "no upgrade needed" path leaves it null.
+   * `java` binary for the render subprocess; unset uses the Gradle JVM. Set only when the bytecode
+   * target needs a newer JDK (or `renderJavaVersion` is pinned). See [RenderJvmSelection].
    */
   @get:org.gradle.api.tasks.Optional @get:Input abstract val renderJavaExecutable: Property<String>
 
   /**
-   * The `composeai.render.nativeEnv` mode ([RenderNativeEnv.SYS_PROP_MODE]) this execution renders
-   * under, as a declared input.
-   *
-   * A task input rather than a bare `System.getProperty` read inside the action, because the task
-   * is `@CacheableTask` and a failed render still writes outputs (the `.error.json` sidecars). A
-   * run with `-Dcomposeai.render.nativeEnv=inherit` that failed every preview would otherwise stay
-   * UP-TO-DATE — or be restored from the cache — after the override was dropped, so the fix would
-   * never get a chance to run.
-   *
-   * `LD_LIBRARY_PATH` itself is deliberately *not* declared: it differs between every developer
-   * machine and CI, so keying outputs on it would cost build-cache sharing to catch a case the
-   * `--rerun` guidance in `docs/DESKTOP_NATIVE_DEPS.md` already covers (a failed render is an
-   * up-to-date output whatever the environment reason).
+   * The `composeai.render.nativeEnv` mode ([RenderNativeEnv.SYS_PROP_MODE]) as an input, so a
+   * failed run under `inherit` (which still writes error sidecars) isn't kept UP-TO-DATE after the
+   * override is dropped. `LD_LIBRARY_PATH` itself isn't an input: it differs per machine and would
+   * defeat cache sharing.
    */
   @get:org.gradle.api.tasks.Optional @get:Input abstract val nativeEnvMode: Property<String>
 
   @get:Inject protected abstract val providerFactory: org.gradle.api.provider.ProviderFactory
 
   init {
-    // Conventioned here rather than at each registration site: three tasks register this type
-    // (desktop render, Lottie, SVG) and a site that forgot it would silently go back to reading
-    // the property at execution time, i.e. back to the staleness this input exists to prevent.
+    // Conventioned here so no registration site forgets it.
     nativeEnvMode.convention(providerFactory.systemProperty(RenderNativeEnv.SYS_PROP_MODE))
-    // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
-    // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
-    // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
-    // and self-documents it.
+    // Explicit empty default: render every kind.
     includeKinds.convention(emptySet())
-    // Empty default = "render every preview". The plugin registration overrides this convention
-    // with the `composePreview.filter` Gradle property; a `--preview` option overrides both.
+    // Empty renders every preview; overridden by `composePreview.filter`, then `--preview`.
     previewFilters.convention(emptyList())
-    // Same story one axis down: empty = "render every preview the name filter kept". Overridden at
-    // registration with the `composePreview.idFilter` property; `--preview-id` overrides both.
+    // Same for the id filter.
     previewIdFilters.convention(emptyList())
     previewIdExcludes.convention(emptyList())
-    // And one axis further down again: empty = "render every row of every parameterized preview".
-    // Overridden at registration with `composePreview.rowExclude`; `--exclude-preview-row` wins.
+    // Same for row exclusions.
     previewRowExcludes.convention(emptyList())
     permutations.convention(emptyList())
-    // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
-    // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
-    // writes
-    // only the fast captures, so a build-cache restore from a fast snapshot would *wipe* the
-    // previous full run's heavy outputs — exactly the stale images the interactive UI relies on. A
-    // filtered `tier=full` run is likewise partial: it renders only the named previews and
-    // deliberately leaves every other (possibly stale) PNG in place, so caching that mixed
-    // directory
-    // could store an unrelated stale `Bar.png` and later restore it on a clean checkout for the
-    // same
-    // filtered inputs (issue #2066 review). Up-to-date checks still apply, so a re-run with no
-    // input
-    // changes is a no-op and the renders directory stays as-is regardless of tier or filter.
-    // An id filter is partial for exactly the same reason a name filter is — it renders a subset
-    // and
-    // leaves every other (possibly stale) PNG in place — so it disqualifies caching too. Missing
-    // this
-    // would let a one-palette catalog render be stored and later restored as if it were the
-    // module's
-    // complete set.
-    // A row exclusion is the same kind of partial one level finer: the excluded rows' PNGs stay on
-    // disk from whatever ran last, so `outputDir` again isn't this module's complete render set.
+    // Cacheable only when `outputDir` will be the module's complete render set: a `tier=fast`,
+    // name/id-filtered, or row-excluded run leaves other PNGs stale in place, and caching it could
+    // later restore stale renders or wipe heavy outputs (#2066). Up-to-date checks still apply.
     outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
       tier.get().equals("full", ignoreCase = true) &&
         previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
@@ -336,12 +231,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val json = Json { ignoreUnknownKeys = true }
     val rawManifest = json.decodeFromString<PreviewManifest>(previewsJson.get().asFile.readText())
 
-    // Name filter (issue #2066) — when `--preview` / `-PcomposePreview.filter` is set, narrow to
-    // the
-    // named previews FIRST, before tier/kind/catalog filtering. A non-empty filter that matches
-    // nothing fails fast (listing available names) rather than silently rendering zero previews.
-    // Filtered-out previews keep their PNGs on disk (protected by the raw-manifest fan-out guard
-    // below), so an unrelated broken preview is never scheduled and can't poison a filtered run.
+    // Name filter first (#2066); a non-empty filter matching nothing fails fast. Filtered-out PNGs
+    // are protected below, so unrelated broken previews are never scheduled.
     val nameFiltered =
       selectNamedPreviews(
         rawManifest.previews,
@@ -349,10 +240,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         previewsJson.get().asFile.absolutePath,
       )
 
-    // Id filter (issue #2966) — narrows to individual fan-out members within the functions the name
-    // filter kept, which is the granularity a catalog's per-theme `modePriority` needs to skip the
-    // renders it isn't going to publish. Runs immediately after the name filter so both are applied
-    // before tier/kind/catalog filtering, and so `--preview Foo --preview-id *_Light` composes.
+    // Id filter (#2966), right after the name filter so the two compose.
     val idSelected =
       selectPreviewIds(
         nameFiltered,
@@ -360,18 +248,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
         previewsJson.get().asFile.absolutePath,
         rawManifest.previews,
       )
-    // Say what each exclusion pattern actually matched, BEFORE the render starts (issue #5064).
-    // Exclusion fails safe — a pattern matching nothing renders more than intended, never less —
-    // and that is the right default; saying nothing about it is not. A pattern at zero is almost
-    // always a typo or a wrong guess about id shape, and staying quiet turns that into a wasted
-    // ~30-minute render instead of a one-line diagnosis. The counts are also what makes the
-    // arithmetic of a partial exclusion visible: `*_ja → 28` next to a 62-preview total is how you
-    // see that the bare and `_en` arms of a locale fan-out still collide.
+    // Report what each exclusion pattern matched before rendering (#5064): a zero-match pattern is
+    // almost always a mistake, and the counts expose partial exclusions.
     val exclusionMatches =
       previewIdExclusionMatches(idSelected, previewIdExcludes.getOrElse(emptyList()))
     for (match in exclusionMatches) {
-      // `warn`, not `lifecycle`, for a pattern that matched nothing: it is the one line here that
-      // reports a probable mistake rather than progress.
+      // `warn` for a zero match: it reports a probable mistake.
       if (match.matched == 0) logger.warn("composePreviewRender: ${match.line}")
       else logger.lifecycle("composePreviewRender: ${match.line}")
     }
@@ -380,14 +262,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val permutationValues = permutations.getOrElse(emptyList())
     val permuted = PreviewPermutations.expand(idFiltered, permutationValues)
 
-    // Tier filter — drop previews whose representative capture is heavy
-    // when running in `fast` mode. The desktop path renders just the
-    // first capture per preview, so the decision is per-preview rather
-    // than per-capture (unlike the Robolectric path which can pick and
-    // choose among an entry's captures). Skipped previews keep their
-    // previous PNG on disk (referenced by the manifest, untouched by
-    // `cleanStaleRenders`) so VS Code can still display the stale image
-    // with its badge.
+    // Fast tier: desktop renders one capture per preview, so the decision is per preview. Skipped
+    // previews keep their old PNG for VS Code to show as stale.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
     val tierFiltered =
       if (!isFastTier) permuted
@@ -396,26 +272,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
-    // Kind filter — when set, render only the named kinds (e.g. the Android Lottie-only pass).
-    // Empty
-    // keeps every kind.
     val kinds = includeKinds.getOrElse(emptySet())
     val kindFiltered =
       if (kinds.isEmpty()) tierFiltered else tierFiltered.filter { it.params.kind.name in kinds }
-    // `CATALOG` / `THEME_CATALOG` / `WEAR_THEME_CATALOG` sheets are synthetic (no consumer
-    // composable): a CATALOG carries its tokens as structured data (`params.catalogTokens`) and the
-    // theme kinds render a canned specimen inside a `@ThemeCatalog` / `@WearThemeCatalog` provider
-    // —
-    // none is forwarded by this desktop path's flat positional-arg protocol, and their display
-    // `functionName` ("Brand colours" / "Meshcore theme") isn't a real composable, so
-    // `getDeclaredComposableMethod` would throw and sink `composePreviewRenderAll` on any
-    // CMP/desktop module using them. All render on the Android backend today; desktop support is
-    // tracked in #2135. Skip them here rather than crash.
+    // Synthetic catalog sheets have no composable to reflect, and the positional-arg protocol can't
+    // carry their data; desktop support is #2135. Skip rather than crash.
     val previews = kindFiltered.filter {
       it.params.kind.name !in SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP
     }
-    // Always rebuild from the filtered list now that the CATALOG skip applies unconditionally (the
-    // old fast-path reused `rawManifest` verbatim, which would leave catalog entries in).
+    // Always rebuild from the filtered list so catalog entries are dropped.
     val manifest = rawManifest.copy(previews = previews)
 
     if (manifest.previews.isEmpty()) {
@@ -443,20 +308,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
     rawManifest: PreviewManifest,
     outDir: java.io.File,
   ) {
-    // This path is only used for desktop rendering.
-    // Android rendering uses a separate Test-type task (see ComposePreviewPlugin).
+    // Desktop only; Android uses a Test task.
     val mainClass = "ee.schimke.composeai.renderer.DesktopRendererMainKt"
 
-    // Data products (e.g. `@ScrollingPreview(modes = [LONG, GIF])` LONG/GIF outputs) land in
-    // `<previews-dir>/data/<kind>/<id>.<ext>` instead of `renders/`. Each PreviewDataProduct's
-    // `output` is `data/<kind>/<id>.<ext>` — relative to the previews root (sibling of `outDir`).
-    // The `dataProductsDir` task output, when wired by the plugin, points at that same `data/`
-    // directory so Gradle tracks the written artifacts for caching / up-to-date checks.
+    // Data products land in `<previews-dir>/data/<kind>/<id>.<ext>`, relative to the previews root.
     val previewsRoot = outDir.parentFile
 
-    // Every output file the manifest lays claim to, resolved the same way the render loops below
-    // resolve theirs. Built from the RAW manifest — a tier/kind-filtered preview's files stay on
-    // disk and must still be protected from a sibling's stale fan-out cleanup (issue #2193).
+    // Every output the RAW manifest claims, so filtered-out previews' files are protected from a
+    // sibling's fan-out cleanup (#2193).
     val manifestOutputFiles =
       rawManifest.previews.flatMap { p ->
         p.captures.map { c ->
@@ -465,9 +324,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         } + p.dataProducts.filter { it.output.isNotBlank() }.map { previewsRoot.resolve(it.output) }
       }
 
-    // Device frame — prefetch the needed bezels (Ktor/OkHttp, here in the Gradle JVM) into the
-    // shared cache before launching renderer subprocesses, which only read that cache. See
-    // DeviceArtPrefetch for why fetching can't live on the render classpath.
+    // Prefetch bezels in the Gradle JVM; subprocesses only read the cache. See DeviceArtPrefetch.
     val frameDevice = deviceFrameDevice.get()
     if (frameDevice.isNotBlank()) {
       DeviceArtPrefetch.prefetchInto(
@@ -477,13 +334,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     }
 
-    // What environment the render JVM starts with — decided once for the execution so the pooled
-    // and forked lanes can never disagree about it (see [RenderNativeEnv]).
+    // Decided once so pooled and forked lanes agree (see [RenderNativeEnv]).
     val nativeEnv = renderNativeEnv()
 
-    // One warm renderer for this whole task execution, closed before the action returns so no
-    // process outlives the build. Created here rather than held on the task so nothing
-    // process-shaped is on a field the configuration cache would try to store.
+    // One warm renderer per execution, closed before returning; a local so the configuration cache
+    // never sees it.
     val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
     val attempted = mutableListOf<java.io.File>()
     try {
@@ -512,19 +367,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Fail when every capture this execution scheduled left no file behind.
-   *
-   * The renderer draws each capture and then swallows its own failure — deliberately, so one broken
-   * preview does not sink a catalog — which means "nothing encoded at all" reaches Gradle looking
-   * exactly like a successful run: the pool reports each capture served, the task logs how many
-   * were drawn, and it exits 0 with an empty `renders/` directory. That is how a skiko API change
-   * (compose-ai-tools#4190) came back GREEN from a dependency bump while publishing an empty
-   * sticker sheet.
-   *
-   * The gate is deliberately all-or-nothing rather than per capture. A single preview that cannot
-   * draw is an ordinary fact about a catalog and is already reported through its `.error.json`
-   * sidecar; a run where not one capture survived is never that, and is always an environment or
-   * classpath fault worth stopping for.
+   * Fail when no scheduled capture produced a file. The renderer swallows per-preview failures
+   * (reported via `.error.json`), so a total failure otherwise looks like success — e.g. a skiko
+   * API change published an empty sticker sheet (#4190). One broken preview is normal; none
+   * surviving is an environment or classpath fault.
    */
   private fun failIfNothingWasWritten(attempted: List<java.io.File>) {
     emptyRunFailure(attempted)?.let { throw GradleException(it) }
@@ -535,13 +381,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     internal fun emptyRunFailure(attempted: List<java.io.File>): String? {
       if (attempted.isEmpty()) return null
       if (attempted.any { it.isFile && it.length() > 0L }) return null
-      // A capture does not always land on the exact path it was scheduled at. A preview that fans
-      // out over themes writes one sibling per theme — `Foo-<hash>_DeepTeal.png`,
-      // `Foo-<hash>_SakuraPlum.png` … — and never the bare `Foo-<hash>.png` this list holds. Judged
-      // on exact paths alone, DroidKaigi's `:core:ui` rendered 450 files across 90 previews and
-      // still failed this gate with "none produced a file", which is both wrong and the opposite of
-      // actionable. So a stem match counts too: the question this gate exists to ask is whether the
-      // renderer produced ANYTHING, not whether it used the filename we predicted.
+      // Fan-outs (e.g. per theme) write `<stem>_<suffix>` siblings rather than the scheduled path,
+      // so a stem match counts: the question is whether anything was produced.
       if (attempted.any { candidate -> hasSuffixedSibling(candidate) }) return null
       return "composePreviewRender: ${attempted.size} capture(s) were drawn and none produced a " +
         "file. That is a renderer or classpath fault rather than a broken preview — check the " +
@@ -550,10 +391,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         "Expected e.g. ${attempted.first().absolutePath}"
     }
 
-    /**
-     * True when [candidate]'s directory holds a non-empty file with the same stem and an added
-     * `_suffix` — the shape a theme or variant fan-out writes instead of the exact path.
-     */
+    /** True when [candidate]'s directory has a non-empty `<stem>_<suffix>` file. */
     private fun hasSuffixedSibling(candidate: java.io.File): Boolean {
       val stem = candidate.nameWithoutExtension
       val extension = candidate.extension
@@ -586,12 +424,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
           wrapSandboxWidthDp = preview.params.wrapSandboxWidthDp,
           wrapSandboxHeightDp = preview.params.wrapSandboxHeightDp,
         )
-      // Per-device density (= densityDpi / 160), so output bitmaps match
-      // what Android Studio renders for the same `@Preview`. Source: the
-      // same data sergio-sastre/ComposablePreviewScanner /
-      // takahirom/roborazzi consume. Discovery pins `params.density` when
-      // a device/showSystemUi frame applies; the wrap-content path leaves
-      // it null and we fall back to `spec.density` (= DEFAULT_DENSITY).
+      // Per-device density (densityDpi / 160) to match Studio; discovery pins it for device frames,
+      // else `spec.density`.
       val density = preview.params.density ?: spec.density
       val isDeviceFrame = !preview.params.device.isNullOrBlank()
       val explicitWidthDp = preview.params.widthDp?.takeIf { !isDeviceFrame && it > 0 }
@@ -609,17 +443,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
           (spec.heightDp * density).toInt().coerceAtLeast(1)
         }
 
-      // (1) Iterate primary captures. Most previews have exactly one; multi-mode @ScrollingPreview
-      // (TOP/END), @RoboComposePreviewOptions time fan-out, and @FocusedPreview indexed mode all
-      // produce N captures with different `renderOutput` paths. Skipping all but the first (the
-      // old behaviour) silently dropped those extra files.
+      // Render every primary capture (scroll TOP/END, time fan-out, focus indices each have their
+      // own path).
       for (capture in preview.captures) {
-        // Resolve `renderOutput` (e.g. `renders/<id>.png`, or `lottie-renders/<id>.png` for the
-        // Android Lottie pass) relative to the compose-previews root — same convention the
-        // data-product outputs and the missing-render gate use. For the normal `renders/<id>.png`
-        // this is identical to the old `outDir.resolve(<id>.png)` (outDir == previewsRoot/renders),
-        // but it also lets a task whose `outputDir` is a disjoint sibling (lottie-renders/) write
-        // there without an output-dir overlap.
+        // Relative to the compose-previews root, so tasks with a sibling `outputDir` (e.g.
+        // `lottie-renders/`) can write there.
         val outputFile =
           if (capture.renderOutput.isNotEmpty()) previewsRoot.resolve(capture.renderOutput)
           else outDir.resolve("${preview.id}.png")
@@ -644,11 +472,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
         )
       }
 
-      // (2) Iterate data products. `@ScrollingPreview(modes = [LONG, GIF])` emits these instead
-      // of placing LONG/GIF in `captures` — discovery splits scroll modes so the heavyweight
-      // outputs don't crowd the primary carousel (see `PreviewDiscovery.kt:844`). Render each
-      // here with the same arg shape; renderer dispatches on `scrollMode` to the dedicated
-      // `runComposeUiTest`-driven path.
+      // Data products (scrolling LONG/GIF), rendered with the same args; the renderer dispatches on
+      // `scrollMode`.
       for (product in preview.dataProducts) {
         if (product.scroll == null) continue
         if (product.output.isBlank()) continue
@@ -707,22 +532,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     val overridesSeed =
       preview.overrides?.let { OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it) }
-    // This preview's editable value parameters, for the renderer to declare into the capture's
-    // `<stem>.overrides.json` sidecar and to bind an `@OverrideVariant` seed onto. The desktop
-    // subprocess has no manifest to read them from — unlike the Android backend, which reads
-    // `previews.json` itself — so they ride a per-capture channel beside the seed.
-    // `previews.json`'s
-    // own `knobs` array, serialized unchanged, so producer and consumer share one shape.
+    // The preview's knob parameters (`previews.json`'s `knobs`, unchanged), for the knob sidecar
+    // and `@OverrideVariant` binding. Desktop has no manifest to read them from, so they ride per
+    // capture.
     val knobsPayload =
       preview.knobs
         .takeIf { it.isNotEmpty() }
         ?.let { OVERRIDES_JSON.encodeToString(ListSerializer(PreviewKnob.serializer()), it) }
 
-    // Warm path: a pooled worker draws this on an already-booted JVM instead of paying JVM +
-    // Compose Desktop + Skiko startup again for one capture. It calls the renderer's own `main()`,
-    // so a pooled capture runs identical code to a forked one. Only `Unusable` falls through to the
-    // fork below — a `Failed` is the renderer's real answer about this capture, and re-running it
-    // cold would double the cost of every capture that cannot be drawn.
+    // Warm path: a pooled worker runs the renderer's own `main()` on a booted JVM. Only `Unusable`
+    // falls back to forking; `Failed` is a real answer and re-running cold would double its cost.
     lane.pool?.let { pool ->
       when (val pooled = pool.render(rendererArgs, overridesSeed, knobsPayload)) {
         is DesktopRenderWorkerPool.WorkerResult.Ok -> return
@@ -742,41 +561,24 @@ abstract class RenderPreviewsTask : DefaultTask() {
     }
 
     execOperations.javaexec {
-      // Fork on a JDK new enough for the consumer's bytecode when the plugin raised it (see
-      // [RenderJvmSelection]); otherwise leave the default (Gradle daemon JVM).
+      // Raised JDK when needed ([RenderJvmSelection]), else the Gradle JVM.
       renderJavaExecutable.orNull?.let { executable = it }
-      // Same environment the pooled worker gets: package-store libraries pruned when this JVM is
-      // not itself from the store, so a hybrid sandbox can't kill every preview with a glibc
-      // mismatch (see [RenderNativeEnv]). Untouched on every other host.
+      // Same environment as pooled workers (see [RenderNativeEnv]).
       RenderNativeEnv.rewritten(lane.nativeEnv, environment)?.let { environment = it }
       classpath = renderClasspath
       this.mainClass.set(mainClass)
-      // Run the render JVM as a macOS "background agent" (LSUIElement) so it never claims a Dock
-      // icon or steals keyboard focus while capturing. DesktopRendererMain draws offscreen via
-      // ImageComposeScene and never opens a window, but any non-headless AWT/Skiko init still
-      // registers a Dock tile + focus grab on macOS. Setting it here on the JavaExec spec forwards
-      // it as a `-D` on the forked JVM command line, i.e. *before* AWT initializes (a
-      // `System.setProperty` inside main() is too late once Skiko touches the toolkit). Ignored on
-      // Linux/Windows, so it's safe to set unconditionally. Headless=true would be stronger but can
-      // break Skiko font/graphics init, so scope this to the focus/Dock symptom only.
+      // macOS background agent (LSUIElement) so renders never take a Dock icon or focus. Must be a
+      // launch `-D`, before AWT initializes; ignored elsewhere. Not headless, which can break
+      // Skiko.
       systemProperty("apple.awt.UIElement", "true")
-      // Forward the display-filter selection so DesktopRendererMain can call
-      // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
-      // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
+      // Display filters; blank disables.
       systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
-      // Forward the device-frame selection + the prefetch cache dir so DesktopRendererMain can
-      // composite the render into a device-art bezel (reading the cache the task action filled).
-      // Empty string disables it (DeviceFrameConfig treats blank as "off").
+      // Device frame and prefetch cache; blank disables.
       systemProperty("composeai.deviceframe.device", deviceFrameDevice.get())
-      // The rewritten-SlotTable opt-in. Has to reach the renderer as a launch property because the
-      // runtime latches the flag at the first composition — see `LinkBufferComposer`.
+      // Must be a launch property: the runtime latches it at first composition.
       systemProperty("composeai.render.linkBufferComposer", linkBufferComposer.get())
-      // Forward the `@PreviewParameter` row exclusions so `PreviewRowFilter` can drop fan-out
-      // members
-      // by label — the rows don't exist until the subprocess has enumerated the provider, so this
-      // is
-      // the only place the filter can be applied. Set only when non-empty, keeping the render JVM's
-      // command line (and therefore every unfiltered run's inputs) exactly as it was.
+      // Row exclusions, applied in the subprocess after enumeration. Only set when non-empty,
+      // keeping unfiltered command lines unchanged.
       previewRowExcludes
         .getOrElse(emptyList())
         .filter { it.isNotBlank() }
@@ -791,32 +593,23 @@ abstract class RenderPreviewsTask : DefaultTask() {
           DeviceArtPrefetch.defaultCacheDir().absolutePath,
         )
       }
-      // Forward this preview's `@OverrideVariant` seeds (a synthetic variant preview carries a
-      // non-null `overrides`) as JSON so DesktopRendererMain can seed `PreviewOverrideController`
-      // before composing — the desktop counterpart of the Android renderer's per-preview seed. A
-      // per-render system property (not a positional arg) keeps it clear of the size-bound arg
-      // tail.
-      // Absent/blank ⇒ an ordinary preview whose `previewOverride*` reads resolve to their
-      // defaults.
+      // `@OverrideVariant` seeds as JSON for `PreviewOverrideController`; a system property keeps
+      // it out of the positional args.
       preview.overrides?.let {
         systemProperty(
           "composeai.overrides.seed",
           OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it),
         )
       }
-      // The forked lane's half of the knob channel. Set only when the preview declares one, so an
-      // ordinary capture's command line — and therefore every unknobbed run's task inputs — is
-      // exactly as it was.
+      // Set only when the preview declares knobs.
       knobsPayload?.let { systemProperty("composeai.preview.knobs", it) }
       args = rendererArgs
     }
   }
 
   /**
-   * The warm renderer for one task execution, plus the one-shot notice flag so a pool that cannot
-   * serve says so once rather than per capture. Passed down the render loop rather than held on the
-   * task: a live pool on a task field is exactly the kind of state the configuration cache cannot
-   * store.
+   * The warm renderer for one execution, plus a once-only notice flag. Passed down rather than
+   * stored on the task, which the configuration cache would try to serialize.
    */
   private class RenderLane(
     val pool: DesktopRenderWorkerPool?,
@@ -826,11 +619,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val fallbackNoticePrinted = java.util.concurrent.atomic.AtomicBoolean(false)
   }
 
-  /**
-   * Decide what `LD_LIBRARY_PATH` the render JVM starts with, and say so in the log when it differs
-   * from what the daemon inherited — a silent environment edit is exactly the kind of thing that
-   * makes the *next* native-loading bug undiagnosable.
-   */
+  /** Decides the render JVM's `LD_LIBRARY_PATH`, logging when it differs from the daemon's. */
   private fun renderNativeEnv(): RenderNativeEnv.Decision {
     val decision =
       RenderNativeEnv.decide(
@@ -846,20 +635,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * Spin up the render worker pool for this execution, or null to keep forking per capture.
-   *
-   * Null whenever the pool cannot be trusted to behave exactly like the fork it replaces: switched
-   * off explicitly, or a renderer classpath that could not be resolved. Everything else — a worker
-   * that fails to start or speaks the wrong protocol — is handled per capture inside the pool,
-   * which reports `Unusable` and lets the caller fork that one.
+   * The render worker pool, or null to fork per capture (disabled, or no resolvable classpath).
+   * Per-worker failures are handled inside the pool as `Unusable`.
    */
   private fun openWorkerPool(nativeEnv: RenderNativeEnv.Decision): DesktopRenderWorkerPool? {
     if (!DesktopRenderWorkerPool.isEnabled()) return null
     val cp = renderClasspath.files.toList()
     if (cp.isEmpty()) return null
-    // A registration that never wired the project directory forks rather than guessing one: a
-    // worker started in the wrong directory would resolve a preview's relative paths differently
-    // from the lane it replaces, which is worse than not pooling.
+    // Without a project directory, fork rather than guess: relative paths must resolve as in the
+    // forked lane.
     val workingDir = projectDirectory.orNull?.asFile ?: return null
     return DesktopRenderWorkerPool(
       classpath = cp,
@@ -867,31 +651,19 @@ abstract class RenderPreviewsTask : DefaultTask() {
       jvmArgs = workerJvmArgs(),
       maxWorkers = DesktopRenderWorkerPool.configuredWorkers(),
       maxRendersPerWorker = DesktopRenderWorkerPool.configuredMaxRenders(),
-      // `javaexec` defaulted the working directory to the task's project, so a preview reading a
-      // relative path resolved it against that subproject. A worker must start there too, or the
-      // warm and forked lanes would disagree about what `File("src/main/resources/…")` means.
+      // `javaexec`'s default working directory, so both lanes agree on relative paths.
       workingDir = workingDir,
-      // The forked lane let the renderer's diagnostics through to the build log. Most of them ride
-      // a *successful* request — a missing `@PreviewParameter` provider, a device-frame failure,
-      // the `Render failed …` line beside an error sidecar — so without this they would vanish the
-      // moment a capture went warm.
+      // Forward renderer stderr; many diagnostics accompany successful requests.
       stderrSink = { line -> logger.lifecycle("composePreviewRender: $line") },
-      // The forked lane's environment, verbatim — a worker that saw a different LD_LIBRARY_PATH
-      // from the fork it replaces could load a different libskiko, which is precisely the
-      // divergence this pool must never introduce.
+      // The forked lane's environment verbatim, so workers can't load a different libskiko.
       nativeEnv = nativeEnv,
     )
   }
 
   /**
-   * The launcher a worker is spawned with, when the plugin has not raised the render JDK.
-   *
-   * Taken from the **running process** rather than assembled from `java.home`: the file is
-   * `bin/java` on Linux and macOS but `bin\java.exe` on Windows, so a hand-built `bin/java` path
-   * fails `canExecute()` there and falls back to searching `PATH` — which a Gradle launched via
-   * `JAVA_HOME` need not be on. Every spawn would then fail and the task would quietly revert to
-   * per-capture forks after three attempts, losing the whole point of the pool on that platform.
-   * `ExecOperations.javaexec` never had this problem because Gradle resolves the launcher itself.
+   * The worker launcher when no JDK was raised, taken from the running process: `bin/java` vs
+   * `bin\java.exe` differ by platform, and a wrong guess would silently disable the pool on
+   * Windows.
    */
   private fun defaultJavaExecutable(): String {
     ProcessHandle.current().info().command().orElse(null)?.let { running ->
@@ -906,20 +678,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The `-D` flags a worker boots under — the per-execution half of what the per-capture `javaexec`
-   * sets inline.
-   *
-   * Deliberately the same set, and deliberately *only* the constant ones: every property here is
-   * fixed for the whole task, so it can live on the worker's command line. The one genuinely
-   * per-capture property (`composeai.overrides.seed`) rides the request frame instead, because a
-   * worker that inherited one preview's variant seed would draw the next preview with it.
+   * `-D` flags workers boot with: only the constant per-execution ones. `composeai.overrides.seed`
+   * rides each request, or a worker would carry one preview's seed into the next.
    */
   private fun workerJvmArgs(): List<String> = buildList {
     add("-Dapple.awt.UIElement=true")
     add("-Dcomposeai.displayfilter.filters=${displayFilterFilters.get()}")
     add("-Dcomposeai.deviceframe.device=${deviceFrameDevice.get()}")
-    // A pooled worker composes on a warm JVM, so the opt-in has to be on its command line: by the
-    // time a render request arrives the worker may already have latched the runtime's default.
+    // Must be on the worker command line: the runtime may latch its default before any request
+    // arrives.
     add("-Dcomposeai.render.linkBufferComposer=${linkBufferComposer.get()}")
     if (deviceFrameDevice.get().isNotBlank()) {
       add("-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}")
@@ -935,9 +702,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The renderer's positional argv for one capture — the single source of truth for both the pooled
-   * worker and the per-capture fork, so the two lanes can never drift into passing different
-   * arguments for the same preview.
+   * The renderer's positional argv for one capture, shared by pooled and forked lanes so they can't
+   * drift.
    */
   private fun rendererArgs(
     preview: PreviewInfo,
@@ -966,112 +732,61 @@ abstract class RenderPreviewsTask : DefaultTask() {
       outputFile.absolutePath,
       // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
       preview.params.wrapperClassName.orEmpty(),
-      // 10th/11th — AS-parity wrap flags. When set, the renderer
-      // wraps the composable, measures it, and crops the PNG to
-      // the intrinsic bounds on that axis.
+      // 10th/11th — wrap flags: measure and crop to intrinsic bounds on that axis.
       spec.wrapWidth.toString(),
       spec.wrapHeight.toString(),
-      // 12th/13th — @PreviewParameter spec. Empty string signals
-      // "no provider"; otherwise the renderer enumerates the
-      // provider's values.take(limit) in-process and writes one
-      // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
-      // the count (consumer's classpath isn't loaded here), so
-      // fan-out is delegated to the renderer process that already
-      // has everything on its classpath.
+      // 12th/13th — @PreviewParameter provider and limit; empty means none. The renderer enumerates
+      // values and writes `<id>_PARAM_<idx>.png` per value, since only it has the consumer
+      // classpath.
       preview.params.previewParameterProviderClassName.orEmpty(),
       preview.params.previewParameterLimit.toString(),
-      // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
-      // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
-      // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
-      // string resources via the `:data-pseudolocale-connector` Resources subclass).
+      // 14th — `@Preview(locale)`; empty means none. `en-XA` / `ar-XB` get the pseudolocale wrap.
       preview.params.locale.orEmpty(),
-      // 15th–18th — @ScrollingPreview intent forwarded per capture / data product. Empty
-      // 15th signals "no scroll intent". Renderer dispatches LONG / GIF to
-      // `renderScrollPreview` (`runComposeUiTest`-driven scroll + slice or frame encode);
-      // TOP / END fall through to the default single-frame path.
+      // 15th–18th — @ScrollingPreview intent; empty 15th means none. LONG / GIF go to
+      // `renderScrollPreview`.
       scroll?.mode?.name.orEmpty(),
       scroll?.axis?.name.orEmpty(),
       (scroll?.maxScrollPx ?: 0).toString(),
       (scroll?.frameIntervalMs ?: 0).toString(),
-      // 19th/20th — preview kind + (for kind=LOTTIE) the resource-relative asset path. Empty
-      // 19th defaults to COMPOSE on the renderer side. A LOTTIE entry has no class/function to
-      // reflect; the renderer inflates the asset at arg 20 via Compottie instead.
+      // 19th/20th — kind and, for LOTTIE, the asset path; empty kind means COMPOSE.
       preview.params.kind.name,
       preview.params.assetPath.orEmpty(),
-      // 21st — `@Preview(fontScale = ...)`. Compose Desktop has no resource-qualifier system,
-      // so the renderer threads this through `Density(density, fontScale)` (and re-provides it
-      // as `LocalDensity`) the same way the daemon's desktop RenderEngine does. `1.0` is the
-      // annotation default / no-op; omitting it keeps older callers at 1.0 on the renderer
-      // side.
+      // 21st — `@Preview(fontScale)`, applied via `Density(density, fontScale)`; `1.0` is the
+      // default.
       preview.params.fontScale.toString(),
-      // 22nd–24th — `@Preview(showSystemUi = ...)` (issue #1930). When set on a phone-shape
-      // capture, DesktopRendererMain wraps the composition in the synthetic `SystemBarsFrame`
-      // (status bar + gesture-nav pill) so the desktop capture matches the Android renderer
-      // instead of coming back chrome-less. uiMode carries the night bit for dark chrome;
-      // device is forwarded only so the renderer can skip round/Wear surfaces.
+      // 22nd–24th — `showSystemUi` (#1930): wraps phone captures in `SystemBarsFrame`; uiMode
+      // supplies dark chrome, device lets round/Wear skip it.
       preview.params.showSystemUi.toString(),
       preview.params.uiMode.toString(),
       preview.params.device.orEmpty(),
-      // 25th–27th — `@AnimatedPreview` window. `-1` durationMs signals "no animation intent"
-      // (the renderer falls through to scroll / single-frame). `>= 0` means the annotation is
-      // present and dispatches to `renderAnimatedPreview` (a `runSkikoComposeUiTest`
-      // paused-clock loop that advances `mainClock` by frameIntervalMs across the window and
-      // encodes the frames as a GIF) — the desktop counterpart of the Android renderer's
-      // `@AnimatedPreview` path. `0` is the annotation's auto-detect sentinel and must NOT be
-      // collapsed into "no animation": a default-args `@AnimatedPreview` still needs the
-      // animated path or the `.gif` renderOutput gets a single PNG frame (issue #2190). An
-      // older renderer that predates the `-1` protocol parses it via `takeIf { it > 0 } ?: 0`,
-      // so the sentinel degrades to the old "no animation" behaviour rather than breaking. The
-      // reverse skew (an older plugin driving a newer renderer pinned on the
-      // `composePreviewRenderer` configuration) is guarded renderer-side: a bare `0` is only
-      // read as auto-detect when the capture is animation-shaped (a `.gif` output with no
-      // scroll intent).
-      // `showCurves` is forwarded for parity; the desktop path emits a screenshot-only GIF (no
-      // curve strip).
+      // 25th–27th — `@AnimatedPreview` window. `-1` means no animation; `0` is auto-detect and must
+      // stay distinct (#2190). Older renderers read `-1` as no animation, and newer ones only treat
+      // a bare `0` as auto-detect for animation-shaped captures. `showCurves` is forwarded but
+      // desktop emits no curve strip.
       (animation?.durationMs ?: -1).toString(),
       (animation?.frameIntervalMs ?: 0).toString(),
       (animation?.showCurves ?: false).toString(),
-      // 28th — sibling stems the renderer's `@PreviewParameter` stale fan-out cleanup must
-      // leave alone (issue #2193): manifest outputs in the same directory whose stem extends
-      // this capture's (`Foo` vs the `@Preview(name = "Dark")` sibling's `Foo_Dark`). The
-      // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
-      // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
+      // 28th — sibling stems the renderer's `@PreviewParameter` fan-out cleanup must not delete
+      // (#2193); `|`-joined, empty for none.
       fanoutSiblingStems.joinToString("|"),
-      // 29th–32nd — wrapped-axis content-size bounds. Not plumbed from this task (the plugin has
-      // no size-mode input; the daemon's `compose-preview serve` / `bundle render` path is what
-      // sets them), but the renderer reads them positionally, so the focus tail below has to sit
-      // *after* four placeholders rather than sliding into their slots. `0` is the renderer's
-      // "no bound" sentinel — the same value a missing arg decodes to.
+      // 29th–32nd — content-size bound placeholders (only set by the daemon's serve/bundle-render
+      // path), so later args keep their positions. `0` means no bound.
       "0",
       "0",
       "0",
       "0",
-      // 33rd–38th — `@FocusedPreview` per-capture drive (issue #3672). Only the DESKTOP renderer
-      // reads these: the Android lane gets the same state from the manifest it already loads, and
-      // ignores argv entirely. `-1` / empty means "no focus intent", which is what every preview
-      // without the annotation sends, so those captures stay byte-identical on the undriven path.
-      // Discovery has always emitted `@FocusedPreview` captures on every target — desktop simply
-      // dropped the state on the floor and rendered the resting frame N times, one per requested
-      // index. Forwarding it is what makes a CMP focused / pressed sticker real input rather than
-      // a hand-emitted interaction.
+      // 33rd–38th — `@FocusedPreview` drive (#3672), desktop only (Android reads the manifest).
+      // `-1` / empty means no focus intent.
       (focus?.tabIndex ?: -1).toString(),
       focusTraversalPrefix(preview, focus).joinToString("|"),
       (focus?.step ?: 0).toString(),
       (focus?.enterPlacesFocus ?: false).toString(),
       (focus?.pressed ?: false).toString(),
       (focus?.overlay ?: false).toString(),
-      // 39th — addressable `@OverrideVariant(interaction = Hovered)` target. Kept separate from
-      // focus so hovering never has to focus a node merely to discover where to send the pointer.
+      // 39th — `@OverrideVariant(interaction = Hovered)` target, separate from focus.
       (hover?.targetIndex ?: -1).toString(),
-      // 40th–46th — `@InteractionPreview` script (the pointer-driven motion capture). An empty
-      // gesture at arg 40 means "no interaction intent", which is what every preview without the
-      // annotation sends, so those captures stay on the untouched paths. Desktop-only, like the
-      // focus tail above: the Android lane reads the same state off the manifest it already loads.
-      //
-      // The script travels as its parts rather than as a duration because the *renderer* derives
-      // the capture window from them (lead-in, plus one press and one settle window per target).
-      // Sending a pre-computed duration alongside the script would give two places to state the
-      // same fact, and a skewed renderer would then cut a recording short mid-gesture.
+      // 40th–46th — `@InteractionPreview` script; empty gesture means none. Desktop only. Sent as
+      // parts, not a duration, because the renderer derives the window from the script.
       (interaction?.gesture?.name).orEmpty(),
       interaction?.targets?.joinToString("|").orEmpty(),
       (interaction?.holdMs ?: 0).toString(),
@@ -1079,45 +794,26 @@ abstract class RenderPreviewsTask : DefaultTask() {
       (interaction?.leadInMs ?: 0).toString(),
       (interaction?.frameIntervalMs ?: 0).toString(),
       (interaction?.format?.name).orEmpty(),
-      // 47th — `@AnimatedPreview(format = …)`. Empty (and any unrecognised value) keeps the
-      // historical GIF, so an older plugin driving a newer renderer publishes exactly the bytes it
-      // did before the format axis existed.
+      // 47th — `@AnimatedPreview(format)`; empty keeps GIF.
       (animation?.format?.name).orEmpty(),
-      // 48th/49th — `@SettledPreview` (issue #4202). Desktop-only, like the focus and interaction
-      // tails above: the Android lane reads the settle off the manifest it already loads. `-1`
-      // means "no settle intent", which is what every preview without the annotation sends, so
-      // those captures stay byte-identical on the untouched two-`render()` path — and an older
-      // renderer that never reads these positions ignores them entirely.
+      // 48th/49th — `@SettledPreview` (#4202), desktop only; `-1` means none.
       (settle?.afterMs ?: -1).toString(),
       (settle?.maxMs ?: 0).toString(),
-      // 50th–53rd — `@CaptureGutter`, per edge, in dp (m3-catalog#179). `0` on every edge is what a
-      // preview without the annotation sends, and it is also what a missing arg decodes to, so an
-      // older renderer pinned on the `composePreviewRenderer` configuration simply ignores these
-      // positions and renders exactly what it did before. Dp, not px: the renderer resolves them
-      // against the density it is actually composing at.
+      // 50th–53rd — `@CaptureGutter` per edge in dp; `0` (also the missing-arg default) means none.
       (preview.params.captureGutter?.start ?: 0).toString(),
       (preview.params.captureGutter?.top ?: 0).toString(),
       (preview.params.captureGutter?.end ?: 0).toString(),
       (preview.params.captureGutter?.bottom ?: 0).toString(),
-      // 54th — addressable `@OverrideVariant(interaction = Dragged)` target. Appended so older
-      // renderer artifacts safely ignore it and every pre-drag capture keeps the old argv prefix.
+      // 54th — `@OverrideVariant(interaction = Dragged)` target; appended so older renderers ignore
+      // it.
       (drag?.targetIndex ?: -1).toString(),
     )
 }
 
 /**
- * Every traversal direction a capture's walk has to apply, in order — steps 1..N of the preview's
- * `@FocusedPreview(traverse = [...])` up to and including [focus]'s own step. Empty for an
- * indexed-mode (or absent) focus capture.
- *
- * Only the **desktop** renderer needs this. The Android renderer keeps one composition alive across
- * a preview's captures and flips the focus controller per step, so each capture inherits where the
- * previous one left focus. The desktop renderer runs one process per capture, so a step has no
- * predecessor to inherit from and must replay the walk from the start; passing only `Previous` for
- * step 3 of `[Next, Next, Previous]` would render step 1's frame under step 3's name.
- *
- * Internal (not private) so [FocusTraversalPrefixTest] can pin the ordering without a Gradle task
- * instance.
+ * Traversal directions up to [focus]'s step, in order; empty for indexed or absent focus. Desktop
+ * only: it renders one process per capture, so each step replays the walk from the start (Android
+ * keeps one composition across steps). Internal for [FocusTraversalPrefixTest].
  */
 internal fun focusTraversalPrefix(preview: PreviewInfo, focus: FocusCapture?): List<String> {
   val step = focus?.step ?: return emptyList()
@@ -1126,10 +822,7 @@ internal fun focusTraversalPrefix(preview: PreviewInfo, focus: FocusCapture?): L
     .mapNotNull { it.focus }
     .filter { it.direction != null && (it.step ?: 0) <= step }
     .sortedBy { it.step ?: 0 }
-    // One entry per step, not one per capture row. `captures` is the *cross product* of the
-    // scroll / clock-timing / focus fan-outs, so a traversal crossed with two timings carries each
-    // step twice. Replaying that literally would send `Next` four times for step 2 and land the
-    // capture past the element its `_FOCUS_step2_Next` suffix names.
+    // One entry per step: `captures` is a cross product, so steps can repeat across timings.
     .distinctBy { it.step }
     .mapNotNull { it.direction?.name }
 }
@@ -1143,20 +836,16 @@ private val OVERRIDES_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys
 private const val MAX_SUGGESTED_PREVIEW_NAMES = 20
 
 /**
- * Synthetic catalog kinds the **desktop** render path can't drive: they have no consumer composable
- * to reflect, so the flat positional-arg protocol has nothing to invoke. Compared by name because
- * this task sees the manifest's kind as a string. Android renders all of them; see #2135.
+ * Synthetic catalog kinds desktop can't render (no composable to reflect); Android renders them
+ * (#2135).
  */
 private val SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP =
   setOf("CATALOG", "THEME_CATALOG", "WEAR_THEME_CATALOG")
 
 /**
- * Narrows [previews] to those matching [filters] (issue #2066). An empty/blank filter returns the
- * list unchanged ("render every preview"). A non-empty filter that matches nothing throws a
- * [GradleException] listing the available preview names — a filtered run that would render zero
- * previews is a user error (typo / wrong module), not a silent no-op. Matching semantics live in
- * [PreviewNameFilter]; this function owns only the select-or-fail policy so it's unit-testable
- * without a Gradle task instance.
+ * Narrows [previews] by name (#2066). Blank filters keep everything; a non-empty filter matching
+ * nothing throws, listing available names. Matching is [PreviewNameFilter]; this owns the
+ * select-or-fail policy.
  */
 internal fun selectNamedPreviews(
   previews: List<PreviewInfo>,
@@ -1197,21 +886,9 @@ internal fun selectNamedPreviews(
 }
 
 /**
- * Narrows [previews] to those whose **id** matches [filters] (issue #2966) — the per-fan-out-member
- * counterpart of [selectNamedPreviews].
- *
- * Exists because the name filter can't reach inside a `@Preview` function. A multipreview member or
- * a `@PreviewParameter` row is its own [PreviewInfo] with a distinct `id` (`FilledButton_Light` /
- * `FilledButton_Dark`) but the same `functionName`, so a name filter keeps or drops all of them
- * together. A design catalog that bakes one palette per component and leaves the rest to the live
- * preview server (`modePriority` in `catalog.spec.json`) needs exactly this granularity to skip the
- * renders it isn't publishing — without it that deferral shrinks the published bundle but not the
- * build.
- *
- * Same select-or-fail policy as [selectNamedPreviews], and for the same reason: a filter that
- * matches nothing is a typo or a stale spec, and rendering zero previews silently would surface
- * much later as a bundle full of missing stickers. Both filters compose — the name filter runs
- * first, so `--preview Foo --preview-id *_Light` means "Foo's light member".
+ * Narrows [previews] by id (#2966), reaching individual fan-out members a name filter can't (they
+ * share `functionName`), e.g. to skip palettes a catalog defers. Same select-or-fail policy as
+ * [selectNamedPreviews]; runs after it.
  */
 internal fun selectPreviewIds(
   previews: List<PreviewInfo>,
@@ -1250,14 +927,8 @@ internal fun selectPreviewIds(
 }
 
 /**
- * Names the likeliest cause when a filter that should have matched carries a `?` (issue #5172).
- *
- * Preview ids reach this task as process arguments, encoded with the JVM's `sun.jnu.encoding`. On a
- * C/POSIX-locale JVM (`ANSI_X3.4-1968` — containers, CI runners, cloud agent sandboxes) every
- * non-ASCII character is replaced by `?` in transit, so a preview named `Cadence — Sync ready` is
- * asked for as `Cadence ? Sync ready` and can never match. Without this line the failure reads as a
- * typo in a filter the caller never typed: `compose-preview --filter` resolves an ASCII request to
- * full ids itself, and it is those ids that get mangled.
+ * Hints at argument mangling when a filter contains `?` (#5172): on a non-UTF-8 `sun.jnu.encoding`,
+ * non-ASCII characters arrive as `?`.
  */
 private fun StringBuilder.appendEncodingHint(filters: List<String>) {
   if (filters.none { it.contains('?') }) return
@@ -1285,12 +956,8 @@ private fun StringBuilder.appendManifestContext(
 }
 
 /**
- * What one `--exclude-preview-id` pattern matched, so a run can say so before it renders.
- *
- * [matched] counts the previews THIS pattern would drop, independent of the others — patterns may
- * overlap, so the counts do not sum to the number actually excluded. Per-pattern is the whole
- * point: the total was already reported ("skipping 28 excluded preview(s)"), and a total cannot
- * tell you which of three patterns did nothing.
+ * What one `--exclude-preview-id` pattern matched, reported before rendering. Counts are per
+ * pattern and may overlap; the point is spotting a pattern that did nothing.
  */
 internal data class PreviewIdExclusionMatch(
   val pattern: String,
@@ -1298,9 +965,8 @@ internal data class PreviewIdExclusionMatch(
   val total: Int,
 ) {
   /**
-   * The line a run prints. A zero-match pattern carries the likeliest cause with it: preview ids
-   * keep the spaces that render filenames sanitise to underscores, so a pattern copied off a PNG
-   * name matches nothing — the exact way this cost a 26-minute render (issue #5064).
+   * The printed line; a zero match hints that ids keep spaces that filenames turn into underscores
+   * (#5064).
    */
   val line: String
     get() =
@@ -1312,13 +978,8 @@ internal data class PreviewIdExclusionMatch(
 }
 
 /**
- * Per-pattern match counts for [excludes] over [previews], in the order the patterns were given.
- *
- * Pure, and separate from [excludePreviewIds] rather than folded into it, because the two answer
- * different questions: that one produces the previews to render (where an overlapping pattern is
- * irrelevant), this one attributes the exclusion to the pattern that caused it (where overlap is
- * exactly what a reader needs to see). Blank patterns are dropped the same way [excludePreviewIds]
- * drops them, so nothing is reported that could not have excluded anything.
+ * Per-pattern match counts for [excludes], in order. Separate from [excludePreviewIds], which only
+ * needs the result; blank patterns are dropped the same way.
  */
 internal fun previewIdExclusionMatches(
   previews: List<PreviewInfo>,
@@ -1333,18 +994,9 @@ internal fun previewIdExclusionMatches(
   }
 
 /**
- * Drops previews whose **id** matches [excludes], keeping the rest (issue #2966).
- *
- * The deferral polarity — see [RenderPreviewsTask.previewIdExcludes] for why a positive filter
- * can't express "bake one palette per component, defer the others": the ids to keep aren't a
- * matchable set, because the untagged primary stickers carry no theme suffix to match on.
- *
- * A pattern matching nothing is a no-op on purpose (it renders more than intended, which the
- * publish catches, rather than less) — but never a SILENT one: [previewIdExclusionMatches] reports
- * what each pattern matched and the task warns on a zero (issue #5064). Excluding *everything*
- * still throws: the render would write no PNGs at all and the pack that follows would produce a
- * catalog of missing stickers, which is precisely the silent failure the select-or-fail policy
- * exists to prevent.
+ * Drops previews whose id matches [excludes] (#2966); see [RenderPreviewsTask.previewIdExcludes]. A
+ * non-matching pattern is a no-op, reported via [previewIdExclusionMatches] (#5064). Excluding
+ * everything throws.
  */
 internal fun excludePreviewIds(
   previews: List<PreviewInfo>,
@@ -1364,20 +1016,10 @@ internal fun excludePreviewIds(
 }
 
 /**
- * Stems (filenames without extension) of manifest outputs in the same directory as [outputFile],
- * with the same extension, whose name extends [outputFile]'s stem with an underscore — exactly the
- * files the desktop renderer's prefix-greedy `deleteStaleFanoutFiles` would otherwise mistake for
- * its own `@PreviewParameter` fan-out (issue #2193). `@Preview(name = "Dark")` on `Foo` yields the
- * sibling stem `Foo_Dark`; both its base PNG and its own fan-out (`Foo_Dark_<label>.png`) match
- * `Foo_*`.
- *
- * The same-extension restriction matters in both directions: the cleanup only scans files with
- * [outputFile]'s extension, so a different-extension sibling (`Foo_Dark.gif`) needs no protection —
- * and shielding its stem anyway would keep a genuinely stale `Foo_Dark.png`, left from before that
- * sibling's capture became a GIF, on disk forever.
- *
- * Joined with `|` on the renderer command line — discovery's `sanitizeForPath` strips `|` from
- * every stem, so the separator can't collide.
+ * Stems of same-directory, same-extension manifest outputs that extend [outputFile]'s stem with `_`
+ * (e.g. `Foo_Dark` for `Foo`), which the renderer's `deleteStaleFanoutFiles` would otherwise delete
+ * as its own fan-out (#2193). Other extensions need no protection, and shielding them would keep
+ * stale files forever. Joined with `|`, which `sanitizeForPath` strips from stems.
  */
 internal fun fanoutSiblingStems(
   manifestOutputFiles: List<java.io.File>,

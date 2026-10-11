@@ -45,30 +45,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.AnimatedPreview
 
+// A container transform — a "now playing" mini-player growing into a full player — shown two ways:
+// [NowPlayingContainerTransformPreview] as it ships, and [NowPlayingDebugOverlayPreview] wrapped in
+// Compose 1.11's [LookaheadAnimationVisualDebugging] overlay. Both render the identical
+// [NowPlayingSharedLayout], so the GIFs side by side show exactly what the overlay adds.
+//
+// The album art is the hero shared element (`key = "art"`), morphing from a 56dp square to the
+// full-width cover via [artworkBrush]; the title and card surface use `sharedBounds`; the scrubber
+// and transport controls fade in.
 /**
- * A single, deliberately-designed **container transform** — a compact "now playing" mini-player
- * that grows into a full player screen — shown two ways:
- * - [NowPlayingContainerTransformPreview] renders the transition on its own, the way it ships.
- * - [NowPlayingDebugOverlayPreview] wraps the *same* scene in Compose 1.11's
- *   [LookaheadAnimationVisualDebugging] overlay, so the target-bounds rectangles and shared-element
- *   key labels are drawn over the morph.
- *
- * Both are the identical composable ([NowPlayingSharedLayout]); the only difference is the debug
- * wrapper. Put the two GIFs side by side and you can see exactly what the overlay adds — which is
- * the point of the tool: it's a lens you drop over a working animation to see the shared-element
- * bounds, not a different animation.
- *
- * The gradient album art is the hero shared element (`key = "art"`): a 56dp rounded square in the
- * mini-player that morphs into the full-width cover art in the expanded player, carrying continuous
- * identity through the [artworkBrush] rather than cross-fading. The title (`sharedBounds`) and the
- * card surface (`sharedBounds`) travel with it; the scrubber and transport controls exist only in
- * the expanded state and fade in over the morphing container.
- */
-/**
- * Duration of the container-transform morph. Shared by the bounds tween *and* the [AnimatedContent]
- * transition below: shared elements only animate while the `AnimatedContent` transition is active,
- * so if the content transition (a short default fade) finishes first, the shared bounds snap to
- * their target instead of tweening. Matching both to [MORPH_MS] keeps the whole morph on screen.
+ * Duration of the morph, shared by the bounds tween and the [AnimatedContent] transition: shared
+ * elements only animate while that transition is active, so a shorter default fade would snap them.
  */
 private const val MORPH_MS = 1200
 
@@ -114,21 +101,15 @@ fun NowPlayingDebugOverlayPreview() {
 }
 
 /**
- * The shared-element scene itself, factored out so the plain and debug previews render
- * byte-for-byte the same transition. Kicks the mini→full transition off on the first composed
- * frame.
+ * The shared-element scene, shared so both previews render the same transition. Starts the
+ * mini→full transition on the first frame.
  */
 @Composable
 private fun NowPlayingSharedLayout(modifier: Modifier = Modifier) {
-  // Drive the transition with a SeekableTransitionState animated over MORPH_MS rather than by
-  // flipping an AnimatedContent targetState. Under the paused render clock a targetState flip snaps
-  // the shared-element bounds to their target in a single captured frame (only the fades tween);
-  // making the transition *fraction* the clock-driven animation means the bounds interpolate
-  // smoothly across every captured frame. Note this animates the fraction rather than pinning it:
-  // SharedElementFilmstripPreview used to *seek* to constant fractions and had to stop, because a
-  // fraction is a share of a total duration that shared-element transitions keep changing (issue
-  // #4097). Sweeping the fraction 0→1 is unaffected — it ends where it started aiming, and every
-  // frame in between is a frame of the animation rather than a claim about a specific fraction.
+  // Animate a SeekableTransitionState's fraction over MORPH_MS rather than flipping targetState:
+  // under the paused clock a flip snaps shared bounds in one frame. Sweeping 0→1 is safe, unlike
+  // seeking to fixed fractions (see SharedElementFilmstripPreview), since every frame is part of
+  // the animation.
   val seekState = remember { SeekableTransitionState(PlayerScreen.MiniPlayer) }
   LaunchedEffect(Unit) {
     seekState.animateTo(PlayerScreen.FullPlayer, animationSpec = tween(MORPH_MS))

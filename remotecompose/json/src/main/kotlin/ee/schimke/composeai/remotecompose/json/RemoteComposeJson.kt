@@ -19,22 +19,19 @@ import kotlinx.serialization.json.put
 import org.json.JSONException
 
 /**
- * The two JSON dialects of a Remote Compose document, and the supported way between them and the
- * binary `.rc` wire format: `authoring JSON --compile--> .rc --dump--> document JSON`, one way.
+ * The two JSON dialects of a Remote Compose document, and the supported way between them and binary
+ * `.rc`: `authoring JSON --compile--> .rc --dump--> document JSON`, one way.
  *
- * **Authoring JSON** is the source language [RemoteComposeJsonParser] reads (named resources, infix
- * expressions, modifier shorthands); compiling it is lossy. **Document JSON** is the
- * operation-level projection [dump] writes for inspection and diffing; nothing reads it back, and
- * it does not resemble the authoring JSON that produced it (`RemoteComposeJsonTest` pins that).
+ * Authoring JSON is what [RemoteComposeJsonParser] reads (named resources, infix expressions,
+ * modifier shorthands); compiling it is lossy. Document JSON is the operation-level projection
+ * [dump] writes for inspection; nothing reads it back.
  *
- * [dump] inflates with `remote-core` and walks AndroidX's own
- * `androidx.compose.remote.core.serialize.Serializable` hook via [JsonMapSerializer], rather than a
- * hand-written reader that would silently drift across alphas; an operation upstream can't
- * serialize shows up as [JsonMapSerializer.UNSERIALIZED].
+ * [dump] walks AndroidX's own `Serializable` hook via [JsonMapSerializer] rather than a
+ * hand-written reader that would drift; unserializable operations show as
+ * [JsonMapSerializer.UNSERIALIZED].
  *
- * Both directions run on a bare JVM. The parser needs `org.json`, which this module declares
- * itself, and [compile]'s default platform stubs text measurement, so text-dependent layout is only
- * meaningful once a real player measures it. Path parsing is real.
+ * Both directions run on a bare JVM; [compile]'s default platform stubs text measurement, so
+ * text-dependent layout is only meaningful once a real player measures it.
  */
 public object RemoteComposeJson {
 

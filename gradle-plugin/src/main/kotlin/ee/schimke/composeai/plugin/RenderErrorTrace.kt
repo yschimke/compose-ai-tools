@@ -1,20 +1,13 @@
 package ee.schimke.composeai.plugin
 
 /**
- * Reads the useful parts out of a render-error sidecar's printed stack trace: the `Caused by:`
- * chain, and the first stack frame belonging to the *user's own* package.
+ * Extracts the `Caused by:` chain and the first user-package frame from a render-error sidecar's
+ * stack trace. Needed because the headline fields are often uninformative (#3741): the reflective
+ * invoke makes `exception` an `InvocationTargetException`, and `topAppFrame` lands on the tooling
+ * frame that invoked the preview.
  *
- * Both exist because the sidecar's headline fields are routinely uninformative (issue #3741). The
- * renderer invokes each preview reflectively, so `exception` is often
- * `java.lang.reflect.InvocationTargetException` — the actual failure lives at the end of the cause
- * chain. And `topAppFrame` is computed with a skip-the-framework-prefixes heuristic over the
- * *outermost* throwable's frames, which lands on whichever tooling frame did the invoking
- * (`KeyboardDataProduct.kt:148` in the reported case) rather than on the consumer file the reader
- * can actually open (`AmbientAwareActivity.kt:76`).
- *
- * Deliberately duplicated in `:cli` (`MissingRenderReport.kt`): `:gradle-plugin` is a separate
- * included build, so there is no module both can depend on — the same reason `ErrorSidecar` mirrors
- * the renderer's schema here. Keep the two in step; a drift degrades the message, never the build.
+ * Duplicated in `:cli` (`MissingRenderReport.kt`) since this included build shares no module with
+ * it; keep in step (drift only degrades the message).
  */
 internal object RenderErrorTrace {
 
@@ -22,9 +15,8 @@ internal object RenderErrorTrace {
   private const val SUPPRESSED_PREFIX = "Suppressed:"
 
   /**
-   * `at [<module>/]<class>.<method>(<file>:<line>)`. The optional leading group swallows the module
-   * / classloader qualifier a JPMS-aware JVM prints (`app//com.example.Foo.bar(…)`,
-   * `java.base@17/java.lang.reflect.Method.invoke(…)`); `/` never appears in a class name.
+   * `at [<module>/]<class>.<method>(<file>:<line>)`; the optional group swallows JPMS qualifiers
+   * (`app//…`, `java.base@17/…`).
    */
   private val FRAME_REGEX = Regex("^\\s*at\\s+(?:[\\w.@\$]*/{1,2})?([\\w\$.<>-]+)\\(([^()]*)\\)")
 
@@ -32,13 +24,9 @@ internal object RenderErrorTrace {
   data class Cause(val exception: String, val message: String)
 
   /**
-   * Every `Caused by:` entry of [stackTrace]'s **primary** chain, outermost cause first.
-   *
-   * `Suppressed:` branches are excluded. A suppressed throwable that has a cause of its own — the
-   * ordinary shape for a `use {}` body that threw and then failed to close — is printed by
-   * `printStackTrace()` as an *indented* `Caused by:`, so trimming every line first made it
-   * indistinguishable from the real chain and, being printed last, it won the `lastOrNull()` that
-   * picks the root cause. See [primaryLines].
+   * Every `Caused by:` of the **primary** chain, outermost first. `Suppressed:` branches are
+   * excluded: a suppressed throwable's own cause prints as an indented `Caused by:` after the
+   * primary chain and would otherwise win as root cause. See [primaryLines].
    */
   fun causeChain(stackTrace: String): List<Cause> =
     primaryLines(stackTrace)
@@ -56,10 +44,9 @@ internal object RenderErrorTrace {
   fun rootCause(stackTrace: String): Cause? = causeChain(stackTrace).lastOrNull()
 
   /**
-   * The first frame in the preview's own package, searching the deepest `Caused by:` section first.
-   * Package prefixes are tried longest-first (exact package, then parents down to two segments), so
-   * a sibling package of the preview counts but `com.` never does. `null` when nothing matches,
-   * leaving the sidecar's own `topAppFrame` as the fallback.
+   * The first frame in the preview's own package, deepest `Caused by:` section first. Package
+   * prefixes go longest-first down to two segments (so siblings count, `com.` never does). `null`
+   * falls back to the sidecar's `topAppFrame`.
    */
   fun preferredAppFrame(
     stackTrace: String,
@@ -85,14 +72,9 @@ internal object RenderErrorTrace {
   }
 
   /**
-   * [stackTrace]'s lines with every `Suppressed:` branch removed, indentation preserved.
-   *
-   * `printStackTrace()` nests by indentation and nothing else: a suppressed throwable's caption,
-   * frames, **and its own `Caused by:` chain** are printed one tab deeper than the throwable that
-   * suppressed it (`printEnclosedStackTrace` passes `prefix + "\t"` for suppressed and the
-   * unchanged `prefix` for causes), so a block that starts at indent *n* runs until the first
-   * non-blank line indented less than *n*. Mirrors `MissingRenderReport.primaryTraceLines` in
-   * `:cli`.
+   * [stackTrace] with `Suppressed:` branches removed. `printStackTrace()` nests suppressed blocks
+   * one tab deeper (causes keep the prefix), so a block at indent *n* runs until a non-blank line
+   * indented less. Mirrors `:cli`'s `MissingRenderReport.primaryTraceLines`.
    */
   private fun primaryLines(stackTrace: String): List<String> {
     val out = mutableListOf<String>()
@@ -116,9 +98,8 @@ internal object RenderErrorTrace {
   }
 
   /**
-   * The throwable sections of a printed trace: outermost first, then one per `Caused by:`.
-   * `Suppressed:` branches are dropped (see [primaryLines]) so the frame this picks belongs to the
-   * failure the message names.
+   * Throwable sections of a trace (outermost, then each `Caused by:`), without `Suppressed:`
+   * branches.
    */
   private fun sections(stackTrace: String): List<List<String>> {
     val out = mutableListOf<MutableList<String>>(mutableListOf())

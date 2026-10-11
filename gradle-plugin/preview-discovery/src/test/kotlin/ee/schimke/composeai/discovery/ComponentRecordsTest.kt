@@ -155,9 +155,7 @@ class ComponentRecordsTest {
 
   @Test
   fun `every catalog id a preview published the symbol under is kept`() {
-    // A shared component is rendered by several previews. Freezing the alias from whichever the
-    // manifest listed first would give it an arbitrary, order-dependent id — or none at all, when
-    // an uncatalogued preview happened to come first.
+    // A shared component's id must not depend on which preview the manifest listed first.
     val card = target("androidx.compose.material3.CardKt", "Card")
     fun catalogued(id: String, componentId: String) =
       preview(id, componentTargets = listOf(card))
@@ -262,9 +260,7 @@ class ComponentRecordsTest {
 
   @Test
   fun `overloads merging into one record drop the descriptor rather than name one of them`() {
-    // Two overloads share `<module>/<jvmOwner>.<name>`, so they merge. Keeping the first
-    // descriptor would label the merged record with whichever preview the manifest listed first —
-    // a precise-looking answer that is wrong half the time.
+    // Two overloads merge under one canonical id; keeping the first descriptor would be arbitrary.
     val file =
       ComponentRecords.from(
         manifest(
@@ -287,9 +283,8 @@ class ComponentRecordsTest {
 
   @Test
   fun `the overload most previews call speaks for the record, with its own whole signature`() {
-    // m3-catalog's shape: the sticker and a screen call OutlinedTextField(value, onValueChange);
-    // one other preview reaches the TextFieldState overload. Refusing all of them would withdraw
-    // the component; merging would pair the String descriptor with the state overload's parameters.
+    // m3-catalog's shape: most previews call the `value` overload, one the `TextFieldState` one.
+    // The majority wins rather than refusing all or mixing signatures.
     fun param(name: String, type: String, default: Boolean = false) =
       TargetParameter.Builder(name = name, type = type).also { b -> b.hasDefault = default }.build()
     val byValue =
@@ -385,9 +380,8 @@ class ComponentRecordsTest {
 
   @Test
   fun `a record carries the printed call site, so a consumer needs no generator`() {
-    // `components.json` has to answer "how do I call this?" on its own: the server that consumes it
-    // depends on published compose-ai-tools artifacts but not on this module, and re-deriving the
-    // call site there would mean a second implementation of the refusal rules.
+    // `components.json` must answer "how do I call this?" alone; its consumer doesn't depend on
+    // this module.
     val file =
       ComponentRecords.from(
         manifest(
@@ -515,10 +509,8 @@ class ComponentRecordsTest {
     val file =
       ComponentRecords.from(
         manifest(
-          // Declared in the manifest in the order that would win under first-seen, to pin that the
-          // resolution is by preview id: manifest order is not a fact anybody controls, and a
-          // record that changed which policy it published when a preview was renamed would be
-          // unreviewable.
+          // Declared in first-seen-wins order to pin that resolution is by preview id, not manifest
+          // order.
           preview(
             "p9",
             componentTargets = listOf(card),
@@ -560,9 +552,8 @@ class ComponentRecordsTest {
 
   @Test
   fun `a sticker that renders several components binds its policy to one of them`() {
-    // The bug this exists for: a `Button { Text(label) }` sticker records BOTH calls, and writing
-    // the button's builder id, canvas adapter and state callbacks onto `Text` as well hands a
-    // second component an identity that belongs to the first.
+    // A `Button { Text(label) }` sticker records both calls; the policy must not also land on
+    // `Text`.
     val button = target("androidx.wear.compose.material3.ButtonKt", "Button")
     val text = target("androidx.wear.compose.material3.TextKt", "Text")
     val file =
@@ -638,10 +629,7 @@ class ComponentRecordsTest {
 
   @Test
   fun `an ambiguous simple name binds nothing and is reported, while the FQN settles it`() {
-    // Two callables named `Text` from different packages is an ordinary shape. Picking the first
-    // would attach the canvas, callbacks and saved-design identity to whichever the scan reached
-    // first — silently, because naming a subject suppresses the `ambiguousWith` that would
-    // otherwise record the alternatives.
+    // Same-named `Text`s from different packages: a simple name can't pick one silently.
     val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
     val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
 
@@ -690,11 +678,8 @@ class ComponentRecordsTest {
 
   @Test
   fun `orphans belong to the previews they were read from`() {
-    // The premise `BundlePreviewTask` relies on when it packs a selection: an orphan is a property
-    // of a PREVIEW, so the record built from a filtered manifest carries only the orphans of the
-    // previews that survived the filter. Bundling components from the full record while carrying
-    // every orphan beside them made `bundle pack --id A` report a diagnostic about a preview B that
-    // its own previews.json does not contain.
+    // Orphans belong to previews, so a filtered record carries only the selected previews' orphans
+    // (as `bundle pack --id A` relies on).
     val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
     val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
     val orphaning =

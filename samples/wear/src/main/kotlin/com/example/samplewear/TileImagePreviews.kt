@@ -25,33 +25,24 @@ import androidx.wear.tooling.preview.devices.WearDevices
 import java.nio.ByteBuffer
 
 /**
- * Wear Tiles image previews — the counterpart to [TilePreviews.kt]'s text-only tiles, covering the
- * two ways a tile references artwork through the protolayout resource bundle, neither of which had
- * sample coverage before:
+ * Wear Tiles image previews, covering how a tile references artwork through the protolayout
+ * resource bundle:
  *
- * - [InlineImageTilePreview] — an [InlineImageResource]: raw pixels shipped *inside* the tile's
- *   `Resources`. Self-contained and portable, so it also survives the bundle IR-replay path
- *   (`renders/<stem>.tileresources`) with no reference back to this function's bytecode.
- * - [DrawableImageTilePreview] — an [AndroidImageResourceByResId]: the tile names an app drawable
- *   (`R.drawable.ic_watchface`) and the renderer resolves it against the module's merged resources,
- *   the shape a real tile uses for icons.
+ * - [InlineImageTilePreview] — an [InlineImageResource]: raw pixels inside the tile's `Resources`,
+ *   self-contained, so it survives bundle IR replay (`renders/<stem>.tileresources`).
+ * - [DrawableImageTilePreview] — an [AndroidImageResourceByResId] naming an app drawable, resolved
+ *   against the module's merged resources.
  *
- * Both drive the `Image` element that `TilePreviewComposable` (renderer-android) inflates via
- * `TileRenderer`. `TileRenderer` wires a direct executor for resource loading, so the drawable
- * future is already resolved when `inflateAsync()` returns and the bitmap is set synchronously
- * during inflate — no async hop onto the (Robolectric-paused) main looper. These previews are the
- * regression coverage for that path.
+ * `TileRenderer` loads resources on a direct executor, so the bitmap is set synchronously during
+ * inflate without needing the paused main looper; these previews cover that path.
  */
 private const val INLINE_IMAGE_ID = "hero"
 private const val DRAWABLE_IMAGE_ID = "watchface"
 private const val INLINE_IMAGE_PX = 96
 
 /**
- * Paints a small, recognisable device-independent bitmap (concentric rings) so the rendered PNG is
- * unambiguously "an image" rather than a flat colour block, and extracts it as the raw ARGB_8888
- * bytes an [InlineImageResource] carries. `copyPixelsToBuffer` emits exactly `width * height * 4`
- * bytes, matching the size the renderer's `DefaultInlineImageResourceResolver` asserts for
- * `IMAGE_FORMAT_ARGB_8888`.
+ * A small concentric-ring bitmap as the raw ARGB_8888 bytes an [InlineImageResource] carries
+ * (`width * height * 4`, as `DefaultInlineImageResourceResolver` asserts).
  */
 private fun heroImageBytes(): ByteArray {
   val bitmap = Bitmap.createBitmap(INLINE_IMAGE_PX, INLINE_IMAGE_PX, Bitmap.Config.ARGB_8888)
@@ -84,14 +75,9 @@ private fun heroImageResource(): ImageResource =
     .build()
 
 /**
- * Centres an `Image` of [imageId] on the watchface substrate. Shared by both variants so the only
- * thing that differs is how the resource id is backed in `onTileResourceRequest`.
- *
- * Uses the explicit `setResourceId` + `onTileResourceRequest` resource-mapping shape — the form the
- * Wear Tiles docs and samples use, and the clearer one to read here. protolayout 1.4 deprecates it
- * in favour of the `ProtoLayoutScope` `Image.Builder(scope).setImageResource(...)` auto-collection
- * API; the deprecated path is still fully supported by `TileRenderer`, so we suppress rather than
- * pull scope plumbing into a preview fixture.
+ * Centres an `Image` of [imageId] on the watchface; variants differ only in how
+ * `onTileResourceRequest` backs the id. Uses the deprecated (still supported) `setResourceId`
+ * mapping the Wear Tiles docs show, rather than `ProtoLayoutScope` plumbing.
  */
 @Suppress("DEPRECATION")
 private fun imageTile(imageId: String, sizeDp: Float) =
@@ -111,10 +97,7 @@ private fun imageTile(imageId: String, sizeDp: Float) =
     )
     .build()
 
-/**
- * Inline (self-contained) image tile — the artwork travels as raw bytes in the tile's `Resources`,
- * so nothing outside this preview is needed to render it and it replays intact from a bundle.
- */
+/** Inline image tile: the artwork travels as raw bytes and replays intact from a bundle. */
 @Preview(device = WearDevices.LARGE_ROUND, name = "Inline Image")
 fun InlineImageTilePreview(context: Context): TilePreviewData =
   TilePreviewData(
@@ -127,11 +110,7 @@ fun InlineImageTilePreview(context: Context): TilePreviewData =
     onTileRequest = { imageTile(INLINE_IMAGE_ID, INLINE_IMAGE_PX.toFloat()) },
   )
 
-/**
- * Drawable-by-resource-id image tile — the tile names an app drawable and the renderer resolves it
- * against the module's merged resources, exercising the `AndroidImageResourceByResId` path a real
- * tile uses for bundled icons.
- */
+/** Drawable-by-resource-id image tile, the path real tiles use for bundled icons. */
 @Preview(device = WearDevices.LARGE_ROUND, name = "Drawable Image")
 fun DrawableImageTilePreview(context: Context): TilePreviewData =
   TilePreviewData(
@@ -152,12 +131,9 @@ fun DrawableImageTilePreview(context: Context): TilePreviewData =
   )
 
 /**
- * Scope-registered image tile — the modern protolayout image API (`materialScopeWithResources` +
- * `avatarImage`) that real Wear tiles use. The image is registered into the `TileRequest`'s
- * `ProtoLayoutScope` during `onTileRequest` rather than through an `onTileResourceRequest` map, so
- * `TilePreviewComposable` has to harvest the scope (see `mergeScopeResources`) to serve it. Before
- * that harvest this rendered blank — the exact reason the wear-os-samples contact avatars
- * (`avatarImage` + `materialScopeWithResources`) came out empty.
+ * Scope-registered image tile: the modern `materialScopeWithResources` + `avatarImage` API, which
+ * registers the image into the `ProtoLayoutScope`; `TilePreviewComposable` harvests the scope
+ * (`mergeScopeResources`) to serve it.
  */
 @Preview(device = WearDevices.LARGE_ROUND, name = "Scope Image")
 fun ScopeImageTilePreview(context: Context): TilePreviewData = TilePreviewData { request ->

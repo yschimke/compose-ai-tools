@@ -11,21 +11,10 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Regression coverage for #1852 / #1855: a `com.android.kotlin.multiplatform.library`
-// `:shared`-style module with NO `jvm("desktop")` target. Its only resolvable runtime
-// classpath is `androidRuntimeClasspath` (carrying `*-android` Compose AARs), so the Compose
-// Multiplatform Desktop renderer can't render it — the same shape as the consumer's
-// `:meshcore-mobile`. Two regressions ride on this shape, and this module is the standing
-// guard for both:
-//   * #1852 — resolving `androidRuntimeClasspath` for the desktop render trips an AGP variant
-//     ambiguity that, unguarded, hard-fails the whole `composePreviewRender` pipeline.
-//   * #1855 — the #1853 "skip non-renderable module" fix must NOT regress CLI detection of the
-//     OTHER modules in the build (0.15.3 regressed to "detect nothing"). The `apply`
-//     pipeline must still discover the renderable samples with this module present, and this
-//     module must be skipped fail-soft (no render, no hard failure) rather than sinking the run.
-//
-// Intentionally distinct from `:samples:cmp-shared`, which DOES add `jvm("desktop")` and is the
-// supported, renderable layout. Keep this one target-poor on purpose.
+// Regression fixture: a `com.android.kotlin.multiplatform.library` module with no `jvm("desktop")`
+// target, so the desktop renderer can't render it. It must be skipped fail-soft without breaking
+// `composePreviewRender` (an AGP variant ambiguity) or CLI discovery of the other modules. Keep it
+// target-poor; `:samples:cmp-shared` is the supported layout.
 
 kotlin {
   // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.

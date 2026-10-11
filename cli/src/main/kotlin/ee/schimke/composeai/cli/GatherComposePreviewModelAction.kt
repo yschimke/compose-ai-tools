@@ -11,16 +11,10 @@ import org.gradle.tooling.BuildController
 import org.gradle.tooling.model.gradle.GradleBuild
 
 /**
- * Aggregates [ComposePreviewModel] across every project in the build.
- *
- * Runs in the Gradle daemon (serialised by the Tooling API). Walks every project via the
- * [GradleBuild] model and asks for the per-project `ComposePreviewModel` on each — projects that
- * don't apply the plugin return an empty `modules` map, which we drop. Aggregation happens inside
- * the daemon so each per-project `findModel` call is cross-project-safe under Isolated Projects,
- * where a single root-scoped builder wouldn't be allowed to poke at subprojects.
- *
- * The return type is a [ComposePreviewModel] implementation defined on the CLI side so the Tooling
- * API can ship it back without proxy round-tripping per field access.
+ * Aggregates [ComposePreviewModel] across every project in the build, inside the Gradle daemon:
+ * walks the [GradleBuild] model and asks each project for its model (empty ones dropped), which
+ * stays cross-project-safe under Isolated Projects. The return type is CLI-defined so it ships back
+ * by value.
  */
 class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewModel> {
   override fun execute(controller: BuildController): AggregatedComposePreviewModel {
@@ -56,11 +50,8 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
                   docsUrl = f.docsUrl,
                 )
               },
-            // New fields — marshalled defensively because older
-            // plugin versions don't implement the getters. The
-            // Tooling-API proxy throws `UnsupportedMethodException`
-            // in that case; catching it here lets a recent CLI
-            // still read an older plugin's model.
+            // Getters newer than the installed plugin throw `UnsupportedMethodException`; read them
+            // defensively.
             agpVersion = readOptional { info.agpVersion },
             kotlinVersion = readOptional { info.kotlinVersion },
             renderPreviewsTask =
@@ -83,10 +74,8 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
   }
 
   /**
-   * Read an optional getter on a Tooling-API proxy. Getters added to the model interface after the
-   * plugin version the consumer has installed throw `UnsupportedMethodException` at invocation time
-   * — we want those to surface as `null`, not propagate out as exceptions and kill the whole
-   * `compose-preview doctor` run.
+   * Read an optional getter on a Tooling-API proxy, turning `UnsupportedMethodException` (getter
+   * newer than the installed plugin) into null rather than failing `doctor`.
    */
   private inline fun <T> readOptional(block: () -> T?): T? =
     try {
@@ -96,19 +85,13 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
     }
 }
 
-/**
- * CLI-side [ComposePreviewModel] implementation. Tooling API serialises this class by value, so
- * both sides of the daemon boundary see the same object shape without dynamic proxies — easier to
- * debug and cheaper to iterate.
- */
+/** CLI-side [ComposePreviewModel], serialised by value across the daemon boundary (no proxies). */
 data class AggregatedComposePreviewModel(
   override val pluginVersion: String,
   override val modules: Map<String, SerializableModuleInfo>,
   /**
-   * Per-project failures encountered while building each module's model — projects skipped because
-   * `findModel` threw. Carried alongside the (interface-defined) [modules] so `doctor` can explain
-   * an empty result instead of reporting a bare "no modules applied" (issue #3). Defaulted so older
-   * call sites / deserialization paths that don't set it still construct.
+   * Projects skipped because `findModel` threw, so `doctor` can explain an empty result. Defaulted
+   * for older call sites.
    */
   val failures: List<ProjectDiscoveryFailure> = emptyList(),
 ) : ComposePreviewModel, Serializable

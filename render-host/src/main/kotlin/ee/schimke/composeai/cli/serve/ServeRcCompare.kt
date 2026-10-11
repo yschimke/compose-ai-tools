@@ -9,39 +9,25 @@ import okio.Path
 import okio.Path.Companion.toOkioPath
 
 /**
- * The **published** Remote Compose player comparison, served from a catalog's delivery branch.
+ * The published Remote Compose player comparison, served from a catalog's delivery branch.
  *
- * The offline `rc-compare` pipeline (`@design-parity/export-driver/rc-compare.mjs`) already renders
- * every `ir/<id>.rc` document through every player it can reach — the vendored TypeScript
- * `RC.RcdPlayer`, AndroidX's Compose-embedded `RcPlayer`, the Compose Desktop / Skiko player, the
- * CMP/Wasm player — pixel-diffs each against the baked render, and publishes the lot beside the
- * catalog: one PNG per lane per preview plus `rc-compare-summary.json`. That is the same data
- * `rc-compare.html` is built from.
+ * The offline `rc-compare` pipeline (`@design-parity/export-driver/rc-compare.mjs`) renders every
+ * `ir/<id>.rc` through every reachable player, pixel-diffs each against the baked render, and
+ * publishes lane PNGs plus `rc-compare-summary.json`. The serve page replays those instead of
+ * rendering in the browser: every player, with precomputed `pixelmatch` numbers.
  *
- * The serve page reuses it rather than re-deriving it. Rendering a document in the visitor's
- * browser is the slow path (one `.rc` fetch + a canvas render per preview, and only for the one
- * player that runs in a browser); replaying the published renders is a handful of `<img>` loads and
- * shows **every** player, with the build-time `pixelmatch` numbers already computed.
- *
- * ## Shape
- *
- * [RcCompareManifest] is what [ServeCatalogStore] stages into `<catalog>/rc-compare/index.json`
- * after fetching the lane PNGs, and what [ServeWeb] inlines into the compare page for the client
- * script. It is **catalog-keyed**: the published summary keys rows by the daemon preview id
- * (`…CatalogPreviewsKt.AppCardRemote_width_320dp…`), the served routes by the catalog id
- * (`appcard__ideal__default__compact`), so staging re-keys through the catalog's alias exactly like
- * [ServeCatalogStore.extractCatalogRcDocs] does for the documents themselves.
- *
- * Staged image names are `<lane-id>/<slot>.png` — a fixed lane vocabulary and an integer slot, so
- * no published id ever reaches the filesystem or a URL and there is nothing to escape. Slots are
- * per *daemon* id, so two catalog ids sharing a source preview share one set of files.
+ * [RcCompareManifest] is staged by [ServeCatalogStore] into `<catalog>/rc-compare/index.json` and
+ * inlined by [ServeWeb]. It is catalog-keyed: summary rows keyed by daemon preview id are re-keyed
+ * through the catalog alias (as [ServeCatalogStore.extractCatalogRcDocs] does). Staged images are
+ * `<lane-id>/<slot>.png` (fixed vocabulary, integer slot per daemon id), so no published id reaches
+ * the filesystem or a URL.
  */
 @Serializable
 public data class RcCompareManifest(
   val schema: String = SCHEMA,
   /**
-   * The pixelmatch threshold the build-time diffs used, carried so the client-side player↔player
-   * diff (which nothing precomputed can answer) scores on the same scale.
+   * The pixelmatch threshold of the build-time diffs, so client-side player↔player diffs use the
+   * same scale.
    */
   val threshold: Double = DEFAULT_THRESHOLD,
   /** The player columns this catalog actually has, in display order. `baked` is always first. */
@@ -65,9 +51,8 @@ public data class RcCompareRow(
   val width: Int = 0,
   val height: Int = 0,
   /**
-   * The baked render carries no opaque pixel at all, so it is no reference: a player that also drew
-   * nothing would score a perfect 0%. Such a row is shown but reads `no reference` whenever the
-   * baked lane is the selected reference (two *player* renders still compare normally).
+   * The baked render has no opaque pixel, so it can't be a reference (an empty player would score
+   * 0%); reads `no reference` when baked is the selected reference.
    */
   val referenceBlank: Boolean = false,
   val lanes: Map<String, RcCompareCell> = emptyMap(),
@@ -78,7 +63,7 @@ public data class RcCompareRow(
 public data class RcCompareCell(
   val rendered: Boolean = false,
   /**
-   * Staged image name (`<lane>/<slot>.png`), served under `/<system>/rc-compare/`. Empty ⇒ none.
+   * Staged image name (`<lane>/<slot>.png`), served under `/<system>/rc-compare/`; empty ⇒ none.
    */
   val render: String = "",
   /** The build-time pixel diff against the baked render. Empty for that lane itself. */
@@ -91,16 +76,11 @@ public data class RcCompareCell(
 )
 
 /**
- * A player lane as it exists **on the delivery branch**: which directories hold its renders and its
- * build-time diffs, and how to read its fields out of a published summary row.
- *
- * This mirrors `render-rc-compare-html.mjs`'s `LANES` — the same columns in the same order, so the
- * serve page and the published `rc-compare.html` show the same thing. `baked` is not a player (it
- * is the reference everything was scored against) but it is a first-class column and a first-class
- * reference choice, so it lives in the same list.
+ * A player lane as published on the delivery branch: where its renders and diffs live and how to
+ * read its summary fields. Mirrors `render-rc-compare-html.mjs`'s `LANES`. `baked` is the
+ * reference, not a player, but is a column and a selectable reference too.
  */
-// Public with `ServeRcCompare` above, which exposes `LANES: List<RcLaneSource>`: `internal` is
-// module-scoped and the `:server` call sites moved out of this module.
+// Public because `:server` call sites live in another module.
 public data class RcLaneSource(
   val id: String,
   val label: String,
@@ -116,30 +96,22 @@ public data class RcLaneSource(
   val note: (RcSummaryRow) -> String?,
 )
 
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
+// Public because `:server` call sites live in another module; not a widened API by intent.
 public object ServeRcCompare {
   /** Staged subdir under the served catalog root, and the URL segment it is served at. */
   public const val DIRECTORY: String = "rc-compare"
   public const val INDEX_FILE: String = "index.json"
 
   /**
-   * The manifest a catalog with nothing to show writes anyway — no lanes, no rows.
-   *
-   * It is the *settled* marker: it says the background lane ran and this catalog has no published
-   * comparison, which is a different state from "the lane hasn't finished yet". Only the second one
-   * makes the compare page's shape provisional, and only that one must stay out of caches.
+   * The manifest for a catalog with nothing to show. It marks the lane as settled, unlike "not
+   * finished yet", which is the only state that must stay out of caches.
    */
   public val NONE: RcCompareManifest = RcCompareManifest()
 
   /**
-   * Whether the staging lane runs for a session whose catalog-id → daemon-id bridge is [alias].
-   *
-   * The whole view is re-keyed through that bridge, so a catalog with an empty one publishes
-   * nothing and the lane is never scheduled. Two callers must agree on this — the scheduler, which
-   * would otherwise do a pointless fetch, and the host, whose "still pending" answer is only
-   * meaningful when a lane is actually coming — so they share this one expression rather than each
-   * spelling it out.
+   * Whether the staging lane runs for a session with this catalog-id → daemon-id [alias] (empty
+   * means nothing can be published). Shared by the scheduler and the host's "pending" answer so
+   * they agree.
    */
   public fun stagesFor(alias: Map<String, String>): Boolean = alias.isNotEmpty()
 
@@ -147,28 +119,19 @@ public object ServeRcCompare {
   public const val SUMMARY_FILE: String = "rc-compare-summary.json"
 
   /**
-   * The published columns. Their [RcLaneSource.id]s are column ids, not [RcPlayerBackend.wire] ids,
-   * and were deliberately left alone when the players were renamed by implementation: they key
-   * assets staged in already-published catalogs. `embedded` is the vendored AndroidX embedded
-   * player ([RcPlayerBackend.ANDROIDX_EMBEDDED]); `androidx-embedded` here is the androidx.dev
-   * build of that same player, a column no backend maps to; `js` is [RcPlayerBackend.CAMAELON_JS].
+   * The published columns. [RcLaneSource.id]s are column ids, not [RcPlayerBackend.wire] ids, and
+   * are frozen because they key already-published assets: `embedded` is the vendored AndroidX
+   * embedded player ([RcPlayerBackend.ANDROIDX_EMBEDDED]), `androidx-embedded` the androidx.dev
+   * build of it (no backend maps to it), `js` is [RcPlayerBackend.CAMAELON_JS].
    */
   public val LANES: List<RcLaneSource> =
     listOf(
       RcLaneSource(
         id = "baked",
-        // The catalog's own capture, rendered offline under Robolectric/Skiko. Named for the
-        // player rather than for the file it arrives as: "baked PNG" said how it got here, not
-        // what drew it, which is the only thing a reader comparing it against four other players
-        // cares about.
-        // That player is now the embedded `RcPlayer`: `RemoteOverridablePreview` defaults to
-        // `RemoteComposePlayerKind.EMBEDDED`, so a capture goes through it unless the preview pins
-        // the view-backed lane with `RemoteViewPreviewWrapper`. [ServeHost.bakedRcPlayer] is where
-        // that question is now asked, and a bundle answers it from its `previews.json` pin — but
-        // `rc-compare-summary.json` still records no per-row renderer, and a published catalog's
-        // inline `previewParams` does not carry the wrapper either. So a *catalog* whose previews
-        // mix the two is still mislabelled in this column rather than detected: carry the player
-        // per row into the published catalog before scoring such a catalog.
+        // The catalog's own capture, labelled by the player that drew it: the embedded `RcPlayer`
+        // unless a preview pins `RemoteViewPreviewWrapper`. The published summary records no
+        // per-row renderer, so a catalog mixing the two is mislabelled here; publish the player per
+        // row before scoring one.
         label = "AndroidX Embedded · baked",
         short = "baked",
         renderDir = "rc-baked",
@@ -216,8 +179,7 @@ public object ServeRcCompare {
         id = "cmp-jvm",
         label = "CMP JVM",
         short = "jvm",
-        // Directory names are frozen: they key assets already staged in published catalogs, and
-        // the column was `rc-embedded-jvm` when it drew the AndroidX embedded player's desktop cut.
+        // Directory names are frozen: they key assets in published catalogs.
         renderDir = "rc-embedded-jvm",
         diffDir = "rc-embedded-jvm-diff",
         rendered = { it.embeddedJvmRendered },
@@ -244,12 +206,8 @@ public object ServeRcCompare {
   private val JSON = Json { ignoreUnknownKeys = true }
 
   /**
-   * The row model the compare page's client script diffs over, inlined as `application/json`.
-   *
-   * Keeping it as data — rather than having the script scrape the DOM — is what lets the client
-   * pick the *build-time* diff whenever the selected reference is the baked lane (exact
-   * `pixelmatch` numbers, zero work) and fall back to a canvas diff only for the player↔player
-   * question nothing precomputed can answer.
+   * The row model the compare page's client script diffs over, inlined as `application/json`, so it
+   * can use build-time diffs against the baked lane and canvas-diff only player↔player.
    */
   @Serializable
   public data class ClientModel(
@@ -279,16 +237,11 @@ public object ServeRcCompare {
     ?.takeIf { it.rows.isNotEmpty() }
 
   /**
-   * Turn a published summary + the catalog's `catalog-id → daemon-id` alias into the manifest to
-   * stage and the branch assets to fetch for it. Pure, so the re-keying and the lane arithmetic are
-   * testable without a network or a filesystem.
+   * Turn a published summary and the catalog's `catalog-id → daemon-id` alias into the manifest to
+   * stage and the assets to fetch. Pure.
    *
-   * Only lanes that actually ran are kept: a catalog whose run had no cmp-wasm player simply has no
-   * cmp-wasm column, rather than a column of empty cells. Only *rendered* cells plan a fetch, so a
-   * player that choked on a document costs no round-trip — its note is shown in place of the image.
-   *
-   * Returns null when nothing published matches this catalog, which is the common case (most
-   * systems ship no `ir/<id>.rc` at all).
+   * Only lanes that ran are kept, and only rendered cells plan a fetch (a failed player shows its
+   * note). Returns null when nothing published matches this catalog (the common case).
    */
   public fun plan(summary: RcSummary, alias: Map<String, String>): RcComparePlan? {
     val byDaemonId = summary.rows.associateBy { it.id }
@@ -297,8 +250,7 @@ public object ServeRcCompare {
     }
     if (matched.isEmpty()) return null
 
-    // A lane is present when the run recorded a verdict for it on any row — the same test
-    // `render-rc-compare-html.mjs` applies before it emits the column.
+    // A lane is present when any row has a verdict for it, as in `render-rc-compare-html.mjs`.
     val lanes = LANES.filter { lane -> matched.any { (_, row) -> lane.rendered(row) != null } }
     val slots = LinkedHashMap<String, Int>()
     val assets = LinkedHashMap<String, String>()
@@ -349,12 +301,9 @@ public object ServeRcCompare {
   }
 
   /**
-   * Narrow a planned manifest to the images that actually landed. A lane whose render didn't arrive
-   * reads as unrendered with a plain reason rather than a broken `<img>`; a lane that rendered but
-   * lost its diff simply has no diff, and the page falls back to diffing it in the browser.
-   *
-   * Returns null when nothing survived — there is no page worth publishing then, and the absent
-   * manifest is what makes the compare page keep its client-rendered lane.
+   * Narrow a planned manifest to the images that actually landed: a missing render reads as
+   * unrendered, a missing diff falls back to an in-browser diff. Null when nothing survived, so the
+   * page keeps its client-rendered lane.
    */
   public fun retainStaged(manifest: RcCompareManifest, staged: Set<String>): RcCompareManifest? {
     val rows =
@@ -378,10 +327,8 @@ public object ServeRcCompare {
   }
 
   /**
-   * Whether [name] is a staged image this catalog could have written —
-   * `<known-lane>[-diff]/<n>.png` and nothing else. The fixed vocabulary is what keeps the route
-   * from being a file-read primitive: a request that isn't literally of this shape never reaches
-   * the filesystem.
+   * Whether [name] is `<known-lane>[-diff]/<n>.png` — the fixed shape that keeps this route from
+   * being a file-read primitive.
    */
   public fun isStagedImageName(name: String): Boolean {
     val (dir, file) = name.split('/').takeIf { it.size == 2 } ?: return false
@@ -393,14 +340,12 @@ public object ServeRcCompare {
 }
 
 /** The manifest to stage plus the branch assets (`source path → staged name`) it references. */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
+// Public because `:server` call sites live in another module; not a widened API by intent.
 public data class RcComparePlan(val manifest: RcCompareManifest, val assets: Map<String, String>)
 
 /**
- * A published `rc-compare-summary.json`, cut down to the per-row verdicts the serve page replays.
- * Extra fields (the coverage split, the cmp-wasm frame-pacing numbers, the CI gate) are ignored:
- * they belong to the parity gate, not to a side-by-side viewer.
+ * A published `rc-compare-summary.json`, cut to the per-row verdicts the page replays; parity-gate
+ * fields are ignored.
  */
 @Serializable
 public data class RcSummary(
@@ -438,13 +383,9 @@ public data class RcSummaryRow(
 )
 
 /**
- * Read-only view of a staged `rc-compare/index.json` + its images.
- *
- * Loaded **lazily and re-checked while absent**, unlike the reference/annotation manifests: the
- * lane PNGs are fetched on the catalog's background lane (they are an enrichment, not the catalog),
- * so a host built the moment `catalog.json` landed would otherwise cache "no rc-compare" forever
- * and only pick the page up on the next refresh. Once a manifest has been read it is kept — a
- * published comparison is a snapshot, and a refresh rebuilds the host anyway.
+ * Read-only view of a staged `rc-compare/index.json` and its images. Loaded lazily and re-checked
+ * while absent, since the lane PNGs arrive on a background lane after the host is built; once read,
+ * it is kept.
  */
 public class ServeRcCompareStore
 private constructor(private val root: Path, private val fileSystem: FileSystem) {
@@ -454,13 +395,8 @@ private constructor(private val root: Path, private val fileSystem: FileSystem) 
   public fun manifest(): RcCompareManifest? = read()?.takeIf { it.rows.isNotEmpty() }
 
   /**
-   * True while the background staging lane has yet to write anything — so this catalog's compare
-   * page is showing a shape that may still change.
-   *
-   * The page is assembled from published metadata and is normally short-cached at the edge, which
-   * would pin the pre-manifest shape in place for minutes after the lanes landed. A pending
-   * catalog's page is served uncacheable instead; once the lane settles (with a comparison or with
-   * [ServeRcCompare.NONE]) the page is stable and caches like every other one.
+   * True while the staging lane hasn't written anything yet, so the compare page is served
+   * uncacheable until its shape settles (with a comparison or [ServeRcCompare.NONE]).
    */
   public fun pending(): Boolean = read() == null
 

@@ -8,12 +8,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 /**
- * The generator that turns a discovered record, a cover sheet and an authored policy into the
- * `ui-builder.json` a catalog repository publishes.
- *
- * The interesting half is the diagnostics. A builder catalog is data now, so the two questions
- * somebody asks of a shelf — "why is this component not on it" and "why is all of it placeholders"
- * — have to be answerable from the published artifact by a person who was not watching the build.
+ * Tests the generator that turns a record, a cover sheet and a policy into a catalog's
+ * `ui-builder.json`. Mostly about diagnostics: "why is this component missing" and "why is it all
+ * placeholders" must be answerable from the published file alone.
  */
 class UiBuilderCatalogsTest {
 
@@ -94,11 +91,8 @@ class UiBuilderCatalogsTest {
       .build()
 
   /**
-   * A catalog states a component's vocabulary in the policy file, without annotating anything.
-   *
-   * This is m3-catalog's shape exactly: 104 record components, zero `@BuilderComponent`
-   * annotations, and a shelf whose properties, slots and modifiers are editorial decisions that
-   * belong in one reviewable file rather than sprayed across stickers.
+   * A catalog states component vocabulary in the policy file without annotating anything
+   * (m3-catalog's shape).
    */
   @Test
   fun `an authored component publishes its vocabulary, with no annotation`() {
@@ -176,9 +170,8 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * A record component's shelf role, stated as a builtin's is: slot presence cannot say `Scaffold`,
-   * so `NavigationSuiteScaffold` derived as a Container. Carried as written, absent when not, and a
-   * word outside the set is reported rather than silently ignored downstream.
+   * A record component's shelf role, stated like a builtin's (slot presence can't say `Scaffold`).
+   * Carried as written, absent when not, and unknown words reported.
    */
   @Test
   fun `an authored shelf role is published, and an unknown one is reported`() {
@@ -237,12 +230,8 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * A catalog's stable public noun need not be the current callable's noun.
-   *
-   * Material 3's sticker currently declares `progress-indicator`, while the catalog policy
-   * publishes `linear-progress-indicator`. The explicit record join is what makes the reviewed
-   * catalog vocabulary authoritative instead of silently publishing the annotation's second
-   * identity and leaving successor rules aimed at an id that does not exist.
+   * A catalog's stable public noun can differ from the current callable's; the explicit record join
+   * makes the policy's vocabulary authoritative.
    */
   @Test
   fun `an authored record join preserves a builder id that differs from the derived id`() {
@@ -288,14 +277,7 @@ class UiBuilderCatalogsTest {
       .doesNotContain(UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED)
   }
 
-  /**
-   * "Not stated" and "stated as empty" are different questions.
-   *
-   * A catalog declaring `modifierCapabilities: []` means the component accepts none; one omitting
-   * it means the consumer should fall back to whatever it does when a catalog says nothing.
-   * Collapsing the two would make the contract unable to express a component that takes no
-   * modifiers.
-   */
+  /** `modifierCapabilities: []` (accepts none) differs from omitting it (consumer default). */
   @Test
   fun `an omitted capability block stays absent rather than becoming empty`() {
     val file =
@@ -338,11 +320,8 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * A policy naming a component that is not there is a rename that got away.
-   *
-   * Reported rather than dropped, for the same reason an orphaned `@BuilderComponent` is: silently
-   * ignoring it leaves the component with a default nobody meant it to have and no symptom at all.
-   * A hand-authored vocabulary is exactly where a mistyped id is likely.
+   * A policy naming a missing component (a rename that got away) is reported, not dropped, since
+   * dropping leaves an unintended default with no symptom.
    */
   @Test
   fun `an authored policy naming no component is reported`() {
@@ -419,9 +398,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a declared component id prefix produces the ids designs already store`() {
-    // m3-catalog's components are `m3/button`, not `m3-catalog/button`: the catalog is named for
-    // the repository and the components for the library, and no rename reconciles that without
-    // invalidating every saved design. So the prefix is declared rather than derived from the id.
+    // The component prefix is declared rather than derived from the catalog id (`m3/button`, not
+    // `m3-catalog/button`).
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -624,9 +602,7 @@ class UiBuilderCatalogsTest {
     val codes = generated.diagnostics.map { it.code to it.subject }
     assertThat(codes)
       .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN to "wear-m3/mystery")
-    // A builtin is for a component with no call site. One that has a call site belongs in the
-    // record, with its policy on the sticker — otherwise this file is the second inventory the
-    // whole contract exists to avoid.
+    // A builtin is for components without a call site; one with a call site belongs in the record.
     assertThat(codes)
       .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD to "wear-m3/card")
     assertThat(codes.map { it.first })
@@ -636,24 +612,12 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * A builtin's traits and modifiers reach the published file.
-   *
-   * A builtin is the only way a catalog offers a component the record cannot carry, so what it
-   * declares is all there is. The consumer (`PublishedUiBuilderCatalog.builtinCapability`) reads
-   * `traits` and `modifierCapabilities`, and this type had neither field and the policy schema
-   * forbade both — so every builtin a schema-valid catalog could publish arrived on the shelf
-   * claiming no traits, which the slot-acceptance rules read as "accepted nowhere".
+   * A builtin's traits and modifiers reach the published file; without them every builtin read as
+   * accepted nowhere.
    */
   /**
-   * An excluded component gets no shelf entry.
-   *
-   * `excluded` means the consumer refuses to serve it — `PublishedUiBuilderCatalog` skips it and
-   * reports the reason — so a menu entry naming it offers a shelf item that disappears between the
-   * palette and the design. m3-catalog excluding its own `Sticker` and `MaterialExpressiveTheme`
-   * published both under "Badges" anyway, which is how this was found.
-   *
-   * The reason still ships in `statusSemantics.components`, so a component missing from the shelf
-   * can say why rather than looking lost. Only the menu drops it.
+   * An excluded component gets no menu entry (the consumer refuses to serve it), but its reason
+   * still ships in `statusSemantics.components`.
    */
   @Test
   fun `an excluded component is not on the menu`() {
@@ -722,11 +686,9 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a builtin publishes the shelf role, the lanes and the call a catalog states`() {
-    // Five fields the packaged vocabulary carries and a policy could not say, so every republished
-    // declaration dropped them: what the component IS on the shelf, what the canvas lane makes of
-    // it, what it exports as, what a structured-SVG export makes of it — and, one level down, a
-    // slot's `ordered`. A consumer DERIVES each of them when they are absent, so silence here is
-    // not silence: it is the derived answer published as if the catalog had agreed with it.
+    // Five fields a consumer otherwise derives (shelf role, canvas lane, export, structured-SVG
+    // export, and a slot's `ordered`) must survive republishing, since silence publishes the
+    // derived answer as if agreed.
     val generated =
       UiBuilderCatalogs.generate(
         record(component("Card", catalogId = "Containment/Card", group = "Containment")),
@@ -759,9 +721,8 @@ class UiBuilderCatalogsTest {
         ),
       )!!
 
-    // Nothing about the builtin is reported: every one of the five is a field the schema now
-    // admits, so a catalog stating them is a catalog saying more rather than a catalog in error.
-    // (The record component's unclaimed canvas is reported, and is not this test's subject.)
+    // None of the builtin's five fields is reported; the record component's unclaimed canvas isn't
+    // this test's subject.
     assertThat(generated.diagnostics.filter { it.subject.startsWith("compose-foundation/") })
       .isEmpty()
     val builtin = generated.statusSemantics.builtins.getValue("compose-foundation/box")
@@ -769,21 +730,14 @@ class UiBuilderCatalogsTest {
     assertThat(builtin.wasm?.adapterStatus).isEqualTo("planned")
     assertThat(builtin.code?.symbol).isEqualTo("Box")
     assertThat(builtin.svg?.status).isEqualTo("verified")
-    // The slot is carried verbatim — its shape is the loader's business — so `ordered` reaching the
-    // published file is the whole claim, and it is the claim that failed before the schema allowed
-    // the key at all.
+    // Slots are carried verbatim, so `ordered` reaching the file is the claim.
     assertThat(builtin.slots.getValue("children").jsonObject["ordered"]?.jsonPrimitive?.content)
       .isEqualTo("false")
   }
 
   /**
-   * The editing canvas's mock, for the two kinds of component a policy can declare one on.
-   *
-   * A container drawn as itself shows only what fits the frame — the ninth row of a lazy column is
-   * not on the canvas and cannot be edited — so a catalog says how the canvas lays its children out
-   * while an author is inside it. The record component states it beside the canvas word and the
-   * builtin beside its own; both reach the published file, and the key the consumer reads is the
-   * serial name, asserted on the encoded form rather than assumed from the Kotlin property.
+   * The editing canvas's mock for record components and builtins, asserted on the encoded serial
+   * name. Needed because a container drawn as itself can't show children beyond its frame.
    */
   @Test
   fun `an unrolled mock publishes for a component and a builtin, and stays absent when unstated`() {
@@ -913,9 +867,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `the two role vocabularies in one declaration reject each other's words`() {
-    // `role` says which template WRITES the component; `shelfRole` says what SHAPE it is. Both are
-    // spelled `role` in the document a consumer reads, which is exactly why crossing them is easy
-    // and why each has to refuse the other's vocabulary rather than publish a word nothing decodes.
+    // `role` says which template writes the component; `shelfRole` says its shape. Both serialise
+    // as `role`, so each must refuse the other's vocabulary.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -957,20 +910,16 @@ class UiBuilderCatalogsTest {
         UiBuilderCatalogs.Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN to "compose-foundation/column",
         UiBuilderCatalogs.Diagnostics.BUILTIN_CODE_EMPTY to "compose-foundation/column",
       )
-    // `container` IS a structural role now, so the thing this test crosses must not also be
-    // reported as an unknown template role — that would make the assertion above pass for the
-    // wrong reason.
+    // `container` is a structural role now, so it mustn't also be reported as an unknown template
+    // role.
     assertThat(codes.map { it.first })
       .doesNotContain(UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN)
   }
 
   @Test
   fun `a builtin slot names a structural role too`() {
-    // The slot's role selects a template exactly as the builtin's own role does. It was checked in
-    // the JavaScript pre-flight and nowhere else — and that pre-flight runs only in the two
-    // workflow
-    // lanes, so local discovery and a direct `bundle pack`, the consumers this contract exists to
-    // make first-class, published a misspelled role with nothing said about it.
+    // A slot's role selects a template like a builtin's; it must be checked here, not only in the
+    // workflow pre-flight that local and direct-pack consumers never run.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -996,9 +945,7 @@ class UiBuilderCatalogsTest {
                       mapOf(
                         "content" to Json.parseToJsonElement("{\"role\": \"lisst\"}"),
                         "footer" to Json.parseToJsonElement("{\"role\": \"list\"}"),
-                        // Not a role at all, and not this generator's to diagnose: the slot's shape
-                        // belongs to the loader, so an unreadable one is left alone rather than
-                        // turned into a second opinion about somebody else's contract.
+                        // An unreadable slot shape belongs to the loader, so no diagnostic here.
                         "header" to Json.parseToJsonElement("\"just a string\""),
                       )
                   }
@@ -1021,11 +968,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `code strategy is an enum on the authoritative path too`() {
-    // The two checks beside this one compare the strategy with the templates and agree with each
-    // other about a MISSPELLED strategy: `templtes` with no templates satisfies neither, so the
-    // policy published a strategy no exporter implements with nothing said. The JavaScript
-    // pre-flight caught it and runs only in the two workflow render lanes — the same asymmetry as
-    // the builtin slot role, in the same file, found one round later.
+    // A misspelled strategy satisfies neither neighbouring check; it must be reported here, not
+    // only in the workflow pre-flight.
     val misspelled =
       UiBuilderCatalogs.generate(
         record(
@@ -1163,9 +1107,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `an ambiguous subject and a malformed entry are both reported by name`() {
-    // Both are things discovery deliberately does not fail on — it binds a guess, it drops an
-    // unreadable entry — and both are only acceptable because they are reported here, in the
-    // published file, to somebody who was not watching the build.
+    // Both are lenient in discovery and only acceptable because they're reported in the published
+    // file.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1200,9 +1143,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a state callback that is not a parameter is reported, not just its state`() {
-    // A `onChekedChange` typo passes a state-only check, publishes the misspelled key, and the
-    // export then has nothing to hoist against — a component that draws, compiles and does not
-    // tick, with no diagnostic anywhere.
+    // A typoed callback key would publish and leave the export nothing to hoist against, silently.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1234,15 +1175,9 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `two unannotated components deriving one id are reported`() {
-    // The consumer shelves an unannotated component by deriving its id from `componentIdPrefix`,
-    // exactly as this does — so a collision between two of them is two records claiming one
-    // saved-design identity. Excluding them from the check made it blind to most of the shelf.
-    //
-    // Two callables of the same simple name in different packages is what a collision looks like
-    // now that the id is the symbol's rather than a catalog id's last segment. It is the realistic
-    // shape — a `Card` in `material3` and a `Card` in `foundation` — and it is rare, which is the
-    // point: the previous rule collided six unrelated components on `…/filled` because it named
-    // the variant.
+    // Unannotated components get ids from `componentIdPrefix` too, so collisions among them matter.
+    // Same-named callables in different packages (`Card` in material3 and foundation) are the
+    // realistic collision.
     val foundationCard =
       component("Card", catalogId = "Layout/Card").let {
         it
@@ -1270,9 +1205,7 @@ class UiBuilderCatalogsTest {
     val collision =
       generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
     assertThat(collision.subject).isEqualTo("wear-m3/card")
-    // Exactly one of them owns the id — the first — and the collision is still reported. Both
-    // being named is what makes "which one survives" answerable from the file rather than from
-    // record order.
+    // The first owns the id, and the collision still names both.
     assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
       .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
   }
@@ -1338,10 +1271,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a state callback without a usable type is reported`() {
-    // `onCheckedChange=checked` parses to a valid state name and no type at all, and `checked:bool`
-    // to a type nothing knows. Both passed while only the part before the colon was looked at, and
-    // the export prints the hoisted remember's initial value FROM that type — so the component
-    // published a hoist nothing could complete.
+    // `onCheckedChange=checked` has no type and `checked:bool` an unknown one; the export prints
+    // the initial value from the type, so both must be reported.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1356,9 +1287,7 @@ class UiBuilderCatalogsTest {
                     listOf(
                       BuilderPair.Builder(key = "onCheckedChange", value = "checked").build(),
                       BuilderPair.Builder(key = "onCheckedChange2", value = "checked:bool").build(),
-                      // A colon and a supported type, and no state at all: it passed the malformed
-                      // check because the colon was there, and the unknown-state check because the
-                      // empty name was skipped as "nothing declared".
+                      // A colon and type but no state name must not slip past both checks.
                       BuilderPair.Builder(key = "onCheckedChange3", value = ":boolean").build(),
                     )
                 }
@@ -1488,9 +1417,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a declared state type that the component does not take is reported`() {
-    // `checked:string` names a supported type and a real parameter, and the callback is
-    // function-typed — every other check passes. The export would initialise a String and thread it
-    // into a Boolean.
+    // A supported type that mismatches the parameter: the export would thread a String into a
+    // Boolean.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1533,11 +1461,8 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters =
               listOf(
-                // Nullable is the same classifier, and so is a package qualifier: a record holds
-                // `kotlin.Boolean`, not `Boolean`, and comparing the qualified string against a
-                // table keyed on simple names made this check fire on every correct policy. Written
-                // the way a record actually holds it, so the table and the record cannot drift
-                // apart again behind a test that agrees with neither.
+                // Nullable and package-qualified forms are the same classifier; written as records
+                // hold them (`kotlin.Boolean`).
                 parameter("checked", type = "kotlin.Boolean?"),
                 parameter("onCheckedChange", type = "(Boolean) -> Unit"),
               ),
@@ -1564,9 +1489,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `an unannotated component keeps its catalog group on the shelf`() {
-    // "A catalog that annotates nothing still publishes every component, grouped by its
-    // @CatalogGroup" was a claim with nothing behind it: only an explicit @BuilderComponent(group)
-    // produced a menu entry, so most of the default shelf had no group a consumer could recover.
+    // Unannotated catalogs must still group every component by its @CatalogGroup.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1596,14 +1519,8 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * A callable the sticker draws but does not declare is still on the sticker's shelf.
-   *
-   * A binding carries a group only for the component it DECLARES. `TopAppBar/Small` draws
-   * `CenterAlignedTopAppBar` and `LargeTopAppBar` on the way past, and both arrived with a null
-   * group — so the chain fell through to `continue` and neither got a menu entry at all. In
-   * m3-catalog that was twenty-eight of a hundred and eight components, filed by the editor under a
-   * generic role heading, while the comment over the loop said the menu covered every admitted
-   * component.
+   * A callable drawn but not declared by a sticker still lands on that sticker's shelf; bindings
+   * only carry a group for the declared component, which left many components with no menu entry.
    */
   @Test
   fun `a component the sticker did not declare is shelved by its catalog id`() {
@@ -1625,12 +1542,8 @@ class UiBuilderCatalogsTest {
   }
 
   /**
-   * What the catalog id cannot place, only the policy file can.
-   *
-   * A component no sticker declares has no catalog id and therefore no shelf to inherit —
-   * m3-catalog's `AnimatedPane`, `NavigationSuiteScaffold` and four more. Asserted as absent so the
-   * gap is a stated fact rather than a silently generic heading, and asserted as placeable so the
-   * way out is checked too.
+   * A component no sticker declares has no catalog id and so no shelf; asserted absent (a stated
+   * gap) and placeable via the policy.
    */
   @Test
   fun `a component no sticker declares is left for the policy file to place`() {
@@ -1688,10 +1601,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `the resolved component id prefix is published`() {
-    // The only way a consumer can name a component this file says nothing about. An unannotated
-    // record component is deliberately absent from `components` and still belongs on the shelf, so
-    // without the prefix a consumer holding m3-catalog's record has to guess between `m3/card` and
-    // `m3-catalog/card` — and guessing wrong changes the identity every saved design stores.
+    // The prefix is the only way a consumer can name a component this file omits; guessing wrong
+    // changes every saved design's identity.
     val prefixed =
       UiBuilderCatalogs.generate(
         record(component("Card")),
@@ -1707,9 +1618,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a published entry names the catalog alias of the sticker that declared it`() {
-    // The entry links a consumer to the sticker whose author wrote this policy, which is still the
-    // declaring one — `Buttons/Tonal`, not the sorted-first `Buttons/Filled`. The id beside it is
-    // the component's, so the two answer different questions and both have to be right.
+    // The entry links to the declaring sticker (`Buttons/Tonal`), while the id is the component's.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1775,11 +1684,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a derived id comes from the sticker that declared the policy`() {
-    // One callable is routinely published under several catalog ids — `Button/Filled` and
-    // `Button/Tonal` over one `Button`. Which of them the id came from used to matter, and picking
-    // wrong renamed the component in every saved design. It no longer arises: the id is the
-    // COMPONENT's symbol, so all three stickers of one `Button` publish `wear-m3/button` and there
-    // is no variant to pick between.
+    // One callable published under several catalog ids gets one id: the component's symbol.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -1816,9 +1721,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a builtin colliding with an unannotated record component is reported`() {
-    // An unannotated component is still shelved under its derived id — the honest default the whole
-    // contract rests on — so a builtin sharing that id is two components claiming one saved-design
-    // identity, which is exactly what this check is for.
+    // An unannotated component is shelved under its derived id, so a builtin sharing it is a
+    // collision.
     val generated =
       UiBuilderCatalogs.generate(
         record(component("Card", catalogId = "Containment/Card")),
@@ -1834,10 +1738,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a template hole no role supplies is reported against the role`() {
-    // `${'$'}{contnet}` is a perfectly valid NAME, so nothing about the syntax catches it. Only
-    // knowing
-    // which names the role will have values for does — and without that the refusal arrives at
-    // export, weeks from the person who typed it.
+    // `${'$'}{contnet}` is a valid name; only knowing which names the role provides catches it,
+    // rather than export failing much later.
     val generated =
       UiBuilderCatalogs.generate(
         record(),
@@ -1899,16 +1801,10 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a policy file as a catalog repository actually writes it decodes`() {
-    // Shaped after wear-m3-catalog's own `ui-builder.policy.json`, and here rather than in that
-    // repository because this is where the reader lives. Two things it pins that a
-    // model-constructed test cannot:
-    //
-    //   - `$comment` keys. A policy file is read far more often than written, so it carries prose,
-    //     and `ignoreUnknownKeys` has to cover the nested objects too — but NOT inside `builtins`,
-    //     whose values are typed, where a comment entry would decode as a builtin with no role.
-    //     The convention that keeps both true is a `$comment_<field>` key beside the field.
-    //   - `frame`, kept as a raw JsonElement, carrying a geometry block with numbers and prose in
-    //     it that this generator deliberately does not parse.
+    // Modelled on wear-m3-catalog's policy file. Pins what a model-built test can't:
+    //   - `$comment` keys: `ignoreUnknownKeys` covers nested objects, but not `builtins` (typed
+    //     values), hence the `$comment_<field>` convention beside fields.
+    //   - `frame` kept as a raw JsonElement whose geometry this generator doesn't parse.
     val text =
       """
       {
@@ -1999,9 +1895,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `an unannotated first claimant keeps the id it won`() {
-    // The sweep says the first claimant wins and the menu follows it. The policy map consulted only
-    // itself — a map no unannotated component ever enters — so the later annotated component
-    // published its policy under the contested id while the diagnostic said it had lost.
+    // The first claimant wins, and its policy (not the later annotated one's) must be published
+    // under the contested id.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2027,9 +1922,8 @@ class UiBuilderCatalogsTest {
           .subject
       )
       .isEqualTo("wear-m3/button")
-    // The shelf entry under the contested id belongs to the WINNER, and so does the menu entry.
-    // Stronger than the old "no entry at all": every component is named now, so an id pointing at
-    // the loser's record would be the file itself disagreeing with the diagnostic beside it.
+    // Shelf and menu entries under the contested id belong to the winner, agreeing with the
+    // diagnostic.
     assertThat(generated.statusSemantics.components.getValue("wear-m3/button").record)
       .isEqualTo(":catalog/androidx.wear.compose.material3.ButtonKt.Button")
     assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
@@ -2038,9 +1932,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a shelf of unannotated components reports every unclaimed canvas`() {
-    // The diagnostic's own message says it exists so a shelf drawn entirely in placeholders is
-    // visible rather than mysterious — and that shelf is the all-unannotated catalog, which was the
-    // one case it could not fire in, because only annotated components were diagnosed at all.
+    // The placeholder diagnostic must fire for an all-unannotated catalog, the very case it's for.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2057,9 +1949,7 @@ class UiBuilderCatalogsTest {
           .map { it.subject }
       )
       .containsExactly("wear-m3/card", "wear-m3/chip")
-    // Both are named, with no policy on either. The map is what says which record an id belongs
-    // to, so an unannotated catalog is exactly the case that must not be missing from it — a
-    // consumer with no entry has to re-derive the id, which is a second answer to one question.
+    // Unannotated components must be in the map, or consumers re-derive ids.
     assertThat(generated.statusSemantics.components.keys)
       .containsExactly("wear-m3/card", "wear-m3/chip")
     assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
@@ -2070,9 +1960,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `the menu group comes from the sticker that declared the policy`() {
-    // The id and `catalogId` already came from the declaring sticker. Taking the group from the
-    // first binding shelved a component keyed `…/tonal` under Filled's group, so the entry
-    // disagreed with its own identity.
+    // The group comes from the declaring sticker, like the id and `catalogId`.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2150,9 +2038,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a callback agreeing with its state is not reported, and one this cannot read is not guessed`() {
-    // The second half matters as much as the first: a rendering this reader cannot settle — two
-    // arguments, a receiver, a nested function type — must stay silent rather than report a
-    // mismatch against a component that is correct.
+    // Renderings this reader can't settle (two arguments, a receiver, nested function types) stay
+    // silent.
     val agreeing =
       UiBuilderCatalogs.generate(
         record(
@@ -2213,9 +2100,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a callback taking a nullable of the state's type is reported`() {
-    // The bare classifiers agree — both are Boolean — so only nullability separates these. The
-    // export writes the callback's argument back into the hoisted state, and a nullable `it` into a
-    // non-null `var` does not compile.
+    // Only nullability differs: a nullable `it` can't be assigned to a non-null `var`.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2249,9 +2134,7 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a non-null callback over nullable state is not reported`() {
-    // The other direction is ordinary and correct: `it` is a Boolean, the state is a `Boolean?`
-    // var, and the assignment compiles. Reporting it would be the false positive this check has
-    // already produced once.
+    // Non-null into nullable compiles; reporting it would be a false positive.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2285,9 +2168,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a key named twice in a list that becomes a map is reported`() {
-    // `policyFor` collapses these with `associate`, which keeps the last silently, so the entry
-    // that wins is whichever was written second and the contradiction appears nowhere. Every check
-    // above passes because every check above asks about one entry.
+    // `policyFor`'s `associate` silently keeps the last duplicate, so contradictions must be
+    // reported.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2327,10 +2209,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a componentIdPrefix missing its slash is reported`() {
-    // The schema and the JS pre-flight both require the trailing slash; this generator did not, and
-    // it is the one every consumer runs — a local `compose-preview-server ui` and a direct
-    // `bundle pack` never see the workflow's pre-flight. `m3` derives ids like `m3button`, which is
-    // the string every saved design stores.
+    // The trailing slash is required by the schema and pre-flight, but local `ui` and direct
+    // `bundle pack` only run this generator; `m3` would derive `m3button`.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2353,9 +2233,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a well-formed prefix and a derived one are not reported`() {
-    // The derived fallback is `<catalogId>/`, whose shape follows from the cover sheet rather than
-    // from anything anybody wrote — pointing a diagnostic at a field the author never set would
-    // send them looking for something that is not in their policy.
+    // The derived `<catalogId>/` fallback comes from the cover sheet, so don't point the diagnostic
+    // at an unset field.
     for (policyFile in
       listOf(
         policy().newBuilder().also { b -> b.componentIdPrefix = "m3/" }.build(),
@@ -2379,11 +2258,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `an unannotated component is shelved under the alias its id came from`() {
-    // `builderIdFor` derives an unannotated component's id from the first of the SORTED
-    // `componentIds`; the group fallback took the first BINDING's, which is preview-id order. When
-    // the two orders differ — as here, `ZFilledPreview` sorting after `ATonalPreview` — the entry
-    // was keyed `…/filled` and shelved under Tonal's group. The annotated branch was fixed for this
-    // one round earlier; this is the same defect in the branch beside it.
+    // The group must follow the same sorted-first catalog id as `builderIdFor`, not preview-id
+    // order.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2411,18 +2287,16 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    // The id is the component's now, so it names no alias — but the shelf still has to come from
-    // the alias the id was ATTRIBUTED to (the sorted-first `Buttons/Filled`) rather than from the
-    // first binding, which is preview-id order and would shelve this under Tonal's group.
+    // The shelf comes from the alias the id was attributed to (sorted-first), not the first
+    // binding.
     assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Actions")
   }
 
   @Test
   fun `a platform that is a label rather than a word is reported`() {
-    // Equality IS compatibility, so `Wear` joins no consumer expecting `wear`. The schema and the
-    // pre-flight both say so, and the pre-flight does not run for a local `ui` or a direct
-    // `bundle pack` — the same gap the componentIdPrefix check was added for.
+    // Equality is compatibility, so `Wear` matches no consumer expecting `wear`; checked here since
+    // local runs skip the pre-flight.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -2457,9 +2331,8 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a callback that cannot carry the new value is reported`() {
-    // The export writes `{ checked = it }`, which needs exactly one argument. Zero and two were
-    // both folded into "this rendering is unreadable, say nothing" — an argument for writing a
-    // different message, not for staying quiet.
+    // The export writes `{ checked = it }`, needing exactly one argument; zero or two get their own
+    // message.
     for (type in listOf("() -> kotlin.Unit", "(kotlin.Boolean, kotlin.Int) -> kotlin.Unit")) {
       val generated =
         UiBuilderCatalogs.generate(

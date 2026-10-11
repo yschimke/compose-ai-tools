@@ -5,8 +5,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * OpenAI MCP App deep links for `compose-preview show --link`: a link that opens the
- * `previews_library` sidebar app at one preview.
+ * OpenAI MCP App deep links for `compose-preview show --link`, opening the `previews_library`
+ * sidebar app at one preview.
  *
  * ```
  * codex://plugins/{pluginId}@{marketplace}/app/{toolName}?path={encodedAppRelativePath}   desktop
@@ -14,11 +14,9 @@ import java.io.File
  * https://chatgpt.com/plugins/{pluginId}/app/{toolName}?path=…                            web
  * ```
  *
- * **Deliberate duplicate** of compose-preview-server's `mcp/…/OpenAiDeepLinks.kt`
- * (compose-preview-server#1241 / #1246), kept behaviour-for-behaviour identical and covered by the
- * same tests. The CLI does not depend on the server (layer 1b may not reach layer 2), and the
- * builder is too small to justify a contracts module of its own; if a third caller appears, move it
- * to `compose-preview-contracts` and delete both copies.
+ * A deliberate duplicate of compose-preview-server's `mcp/…/OpenAiDeepLinks.kt`, kept identical and
+ * covered by the same tests (the CLI can't depend on the server). If a third caller appears, move
+ * it to `compose-preview-contracts`.
  */
 internal object OpenAiDeepLinks {
   /** The `previews_library` global entrypoint tool on the local MCP server. */
@@ -221,11 +219,9 @@ internal sealed interface ShowLinkRequest {
 
 /**
  * The `compose-preview://<workspace>/<module>/<previewId>` URI the MCP server would give this
- * preview — the shape of compose-preview-server's `PreviewUri.toUri()` without `config` /
- * `overrides`. The workspace id is [WorkspaceId.derive] over the project root's directory name and
- * canonical path, which is what the server derives for a project registered without a
- * `rootProjectName` override (`register_project {path}`, or the `--project` flag). Null when the
- * preview id carries a `/` or `?`, which that URI shape cannot hold.
+ * preview (compose-preview-server's `PreviewUri.toUri()` without `config` / `overrides`), with the
+ * workspace id from [WorkspaceId.derive] as for a project registered without a `rootProjectName`
+ * override. Null when the id contains `/` or `?`.
  */
 internal fun composePreviewUri(projectRoot: File, gradlePath: String, previewId: String): String? {
   if ('/' in previewId || '?' in previewId || previewId.isBlank()) return null

@@ -12,13 +12,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The serve mechanism's client. Most of these are about the credential rather than the upload: this
- * is the one place in the CLI that sends a GitHub token to a host somebody named on a command line,
- * so where it may go, where it comes from, and where it must never appear are all pinned.
- *
- * The protocol-level cases drive a bare JDK [HttpServer] — the client has to be tested against
- * answers a real serve host would never give (a redirect, a refusal), which is exactly the point.
- * [`a real serve host and this client agree`] closes the loop against the actual endpoint.
+ * The serve mechanism's client. Mostly about the credential: where it may go, where it comes from,
+ * and where it must never appear. Protocol cases use a bare JDK [HttpServer] so the client can face
+ * answers a real host never gives; [`a real serve host and this client agree`] checks the real
+ * endpoint.
  */
 class SharePreviewServeUploadTest {
 
@@ -175,9 +172,7 @@ class SharePreviewServeUploadTest {
 
   @Test
   fun `a bodyless 404 says the lane is off rather than leaving a bare status`() {
-    // What a serve host started WITHOUT --accept-images actually answers: the route is not
-    // registered, so the 404 carries no body to explain itself. preview.coo.ee answered exactly
-    // this, and "answered 404" alone reads as a wrong URL.
+    // A host without `--accept-images` returns a bodyless 404, which alone reads as a wrong URL.
     val seen = mutableListOf<Recorded>()
     withServer(seen, status = 404, body = "") { base ->
       val reason =
@@ -230,26 +225,13 @@ class SharePreviewServeUploadTest {
 
   @Test
   fun `the real serve host has the route this client posts to`() {
-    // What survives of the old round trip, and why it is less.
+    // Against the real distribution, a full upload can't complete (the host authenticates uploaders
+    // with GitHub), so this checks the part that drifts: an unknown bearer is refused rather than
+    // 404ed, which requires the path, method, host-token query and `Authorization: Bearer` header
+    // all to line up. Response parsing is covered by the stubbed cases.
     //
-    // This used to build a `ServeHttpServer` in this JVM with an `imageUploadAuth` stub that
-    // admitted one token, so the whole upload completed and the client parsed a real `201`. The
-    // server is a launched distribution now (compose-preview-server publishes no jar), and that
-    // seam is in-process only: a real host authenticates an uploader against GitHub, which a test
-    // cannot stand in for from outside the process.
-    //
-    // So the assertion narrows to the half that can still be checked against the real thing, and
-    // it is the half that actually drifts: an unknown bearer is REFUSED, with the server's own
-    // words about repository access, rather than 404ed. That is only true if four things line up —
-    // the path (`/images`), the method, the host-token query this client puts the operator
-    // credential in, and the `Authorization: Bearer` the route reads. The response *parsing* —
-    // `201`, the `url` field, `expiresIn` — is covered by the stubbed cases above, which can answer
-    // anything including answers a real host would not.
-    //
-    // The host token is load-bearing and is the trap this test exists to keep sprung: a caller that
-    // omits it gets **404**, not 401, because the server hides a token-gated surface rather than
-    // advertising it. So "the route is missing" and "I forgot the credential" look identical from
-    // outside, and only sending it correctly tells them apart.
+    // The host token matters: without it the server answers 404, not 401, hiding the token-gated
+    // route.
     val session = ServeDistributionHarness.start()
     if (session == null) {
       org.junit.jupiter.api.Assumptions.assumeTrue(false, ServeDistributionHarness.skipReason())
@@ -275,14 +257,8 @@ class SharePreviewServeUploadTest {
             "client is posting somewhere the server does not serve: " +
             refused.reason,
         )
-        // Deliberately NOT asserted: the refusal's wording. It depends on how far the bearer got,
-        // which is not a property of this repository — a token GitHub rejects outright and one it
-        // resolves to a user without access produce different sentences, and which of those a bogus
-        // string lands on differs between a CI runner and a developer's box behind a proxy that
-        // supplies an identity. The first version of this test asserted "collaborator" or "access"
-        // and passed locally for exactly that reason before failing on a clean runner.
-        //
-        // The status is the part that belongs to this wire, and it is checked above.
+        // The refusal's wording isn't asserted: it depends on how GitHub treats the bogus token,
+        // which varies by environment. The status is what belongs to this wire.
       } finally {
         file.delete()
       }
@@ -294,9 +270,8 @@ class SharePreviewServeUploadTest {
   private class Recorded(val query: String, val authorization: String?, val bodyBytes: Int)
 
   /**
-   * A one-shot HTTP endpoint answering [status]/[body], recording what it was sent. The JDK's own
-   * server rather than a test dependency, and deliberately dumb: what is under test is the client's
-   * behaviour in the face of an answer, including answers a real host would never give.
+   * A one-shot HTTP endpoint answering [status]/[body] and recording what it was sent; deliberately
+   * dumb so the client can face answers a real host never gives.
    */
   private fun withServer(
     into: MutableList<Recorded>,
@@ -380,9 +355,8 @@ class SharePreviewMarkdownTest {
 
   @Test
   fun `a backticked destination is not treated as a reference`() {
-    // The malformed shape the PR-body rule warns about. Rewriting it would produce a link that
-    // still renders as literal text, quietly turning a broken embed into a broken embed with a
-    // real URL in it — better to leave it visibly wrong.
+    // The malformed shape the PR-body rule warns about; leave it visibly broken rather than rewrite
+    // it.
     val markdown = "![before](`before.png`)"
     assertEquals(markdown, SharePreviewMarkdown.rewrite(markdown, uploaded))
   }

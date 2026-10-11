@@ -1,27 +1,16 @@
 package ee.schimke.composeai.discovery
 
 /**
- * Builds [ComponentRecordFile] from a discovered [PreviewManifest].
- *
- * A pure function of the manifest, deliberately: everything it needs — the resolved targets, their
- * signatures, the preview ids — is already recorded there, so the record can be rebuilt from a
- * published manifest without re-scanning, and this can be tested without a ClassGraph scan.
+ * Builds [ComponentRecordFile] from a [PreviewManifest]. A pure function of the manifest, so
+ * records can be rebuilt from a published manifest and tested without a scan.
  */
 object ComponentRecords {
 
   /**
-   * Group every preview's targets by component and invert the relation: `previews.json` says "this
-   * render came from that component", this says "this component is rendered by those previews".
-   *
-   * Both [PreviewInfo.componentTargets] and [PreviewInfo.targets] contribute, because they answer
-   * different questions and a module can have either or both: a catalog sticker wrapping
-   * `material3.Button` has only the former, an application preview of `HomeScreen` only the latter.
-   * [ComponentSymbol.origin] is what tells them apart in the output, so a consumer never has to
-   * know which list a record came from.
-   *
-   * Components are emitted in a stable order (by [ComponentRecord.canonicalId]) and bindings in
-   * preview-id order, so the file is byte-reproducible across runs — a data product that reorders
-   * itself between builds is a diff nobody can read.
+   * Inverts previews → components into components → previews. Both [PreviewInfo.componentTargets]
+   * (library components) and [PreviewInfo.targets] (project composables) contribute;
+   * [ComponentSymbol.origin] tells them apart. Ordered by [ComponentRecord.canonicalId] and preview
+   * id for byte-reproducible output.
    */
   fun from(manifest: PreviewManifest): ComponentRecordFile = select(manifest) { emptySet() }.record
 
@@ -32,9 +21,9 @@ object ComponentRecords {
   )
 
   /**
-   * [from], with each component's overload chosen against the names [supplied] says a builder
-   * policy authors for it (see [OverloadSelection]). [supplied] receives the policy-free record, so
-   * a caller can join it to a policy by canonical id or derived builder id.
+   * [from], choosing each component's overload against the names a builder policy authors
+   * ([supplied]; see [OverloadSelection]). [supplied] receives the policy-free record so callers
+   * can join by canonical id or builder id.
    */
   fun select(
     manifest: PreviewManifest,
@@ -123,16 +112,9 @@ object ComponentRecords {
             androidxOptIns = target.androidxOptIns,
           )
         }
-      // Overloads share a canonical id and merge into this one record. Both JVM handles identify
-      // ONE method, so keeping the first seen would label the merged record with whichever preview
-      // the manifest happened to list first. Disagreement drops each to null instead — the record
-      // then says "several methods, and I cannot tell you which", which is true, rather than
-      // naming one of them.
-      //
-      // `jvmName` needs the same rule as `descriptor` and not merely the same rule as `name`:
-      // overloads always agree on the source name, and can disagree on the JVM one, because
-      // mangling is per-signature. `Chip(label: String)` and `Chip(width: Dp)` are `Chip` and
-      // `Chip-a1b2c3d`.
+      // Overloads share a canonical id and merge here. On disagreement each JVM handle drops to
+      // null ("several methods") rather than naming whichever came first. `jvmName` follows the
+      // descriptor rule because mangling is per-signature (`Chip` vs `Chip-a1b2c3d`).
       target.descriptor?.let { d ->
         existing.overloads.getOrPut(d) { OverloadSeen(target) }.previews += preview.id
       }
@@ -146,13 +128,8 @@ object ComponentRecords {
         existing.descriptor = null
         existing.overloadsCollided = true
       }
-      // One component, many previews: keep the richest signature seen. A target resolved through a
-      // path that could not read metadata reports no parameters, and letting that overwrite a
-      // populated signature would lose the API for everyone.
-      //
-      // A read signature always beats an unread one, even when the read one has fewer parameters:
-      // "no arguments, and we checked" is strictly more information than "we could not look", and
-      // it is the only form a code generator is allowed to act on.
+      // Keep the richest signature: an unread one must not overwrite a populated one, and a read
+      // signature beats an unread one even with fewer parameters, since only it may be acted on.
       if (target.signatureKnown && !existing.signatureKnown) {
         existing.parameters = target.parameters
         existing.receiver = target.receiver
@@ -173,17 +150,13 @@ object ComponentRecords {
         ComponentBinding.Builder(previewId = preview.id)
           .also { b ->
             b.componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() }
-            // Already resolved by discovery: the per-component override, else the file's
-            // `@CatalogGroup`, else `Components`. Carried so the builder's shelf can be built for
-            // components that annotate nothing.
+            // Already resolved by discovery (override, file `@CatalogGroup`, else `Components`);
+            // carried for unannotated components' shelves.
             b.group = preview.catalog?.group?.takeIf { it.isNotBlank() }
           }
           .build()
-      // Builder policy travels with the preview that declared it — but onto ONE component, not
-      // every component the preview renders. A sticker is routinely `Button { Text(label) }`, and
-      // both calls are recorded here; writing the button's builder id, canvas adapter and state
-      // callbacks onto `Text` as well would hand a second component an identity that belongs to
-      // the first.
+      // Builder policy applies to ONE component, not every component the preview renders (e.g. not
+      // `Text` inside `Button { Text(label) }`).
       if (builderSubject != null && builderSubject.canonicalId == id) {
         existing.builderDeclarations += preview.id to builderSubject.policy
       }
@@ -194,24 +167,14 @@ object ComponentRecords {
   private data class BuilderSubject(val canonicalId: String, val policy: BuilderPolicy)
 
   /**
-   * Which component a preview's builder policy is about, or null when it declares none.
-   *
-   * The candidates are every component the preview renders, library targets first: a catalog
-   * sticker exists to demonstrate the library component it wraps, and its own project composables —
-   * where it has any — are the wrapper rather than the subject.
-   *
-   * Three cases, in order:
-   *
-   * 1. **The annotation names one** (`component = "…CheckboxButton"`, by FQN or simple name). That
-   *    wins, and a name matching nothing the preview renders binds nothing — a policy attached to a
-   *    component that is not there is a rename that got away, and quietly attaching it to whatever
-   *    else was in the list would hide it.
-   * 2. **One candidate.** The ordinary sticker. No ambiguity to record.
-   * 3. **Several, unnamed.** Bound to the first, with the rest recorded in
-   *    [BuilderPolicy.ambiguousWith] for the generator to report by name. The first is discovery's
-   *    inference order — the outermost call, usually, but a guess either way. It is a guess rather
-   *    than a refusal because the alternative is an annotation somebody wrote that silently does
-   *    nothing, and a wrong-but-reported binding is the one a person can see and fix.
+   * Which component a preview's builder policy is about, or null. Candidates are everything it
+   * renders, library targets first.
+   * 1. **Named** (`component = "…"`, FQN or simple name): wins; a name matching nothing binds
+   *    nothing (reported as an orphan).
+   * 2. **One candidate**: the ordinary sticker.
+   * 3. **Several, unnamed**: bound to the first (discovery's order), the rest recorded in
+   *    [BuilderPolicy.ambiguousWith] for reporting — a visible guess beats an annotation that
+   *    silently does nothing.
    */
   private fun builderSubject(
     preview: PreviewInfo,
@@ -223,8 +186,8 @@ object ComponentRecords {
       (preview.componentTargets + preview.targets)
         .map { canonicalId(module, it) to it }
         .distinctBy { it.first }
-    // The catalog identity of the sticker that declared this, so a derived builder id comes from
-    // THIS sticker rather than from the alphabetically first of a shared callable's aliases.
+    // The declaring sticker's catalog identity, so a derived builder id comes from it rather than
+    // the alphabetically first alias.
     val declared =
       policy
         .newBuilder()
@@ -233,11 +196,8 @@ object ComponentRecords {
         }
         .build()
     if (candidates.isEmpty()) {
-      // Reported whether or not the annotation named a subject. A policy that bound to nothing is
-      // an annotation somebody wrote whose every field does nothing, and that is true of an
-      // ordinary `@BuilderComponent(canvas = "…")` on a preview whose targets could not be inferred
-      // exactly as it is true of a misspelled `component = "…"`. Recording only the named case left
-      // the commoner one silent — the author sees no canvas, no starter and no diagnostic.
+      // Reported whether or not a subject was named: an unbound policy does nothing, which is just
+      // as true when targets couldn't be inferred.
       orphans +=
         BuilderOrphan.Builder(
             previewId = preview.id,
@@ -250,12 +210,8 @@ object ComponentRecords {
 
     val named = policy.component?.takeIf { it.isNotBlank() }
     if (named != null) {
-      // An FQN is unique by construction, so it wins outright. A SIMPLE name is only accepted when
-      // it matches one target: two callables named `Text` from different packages is an ordinary
-      // shape, and picking the first would attach the canvas, callbacks and saved-design identity
-      // to whichever the scan happened to reach first — silently, because naming a subject
-      // suppresses the `ambiguousWith` that would otherwise record the alternatives. Reported as an
-      // orphan instead, listing the candidates, so the fix (write the FQN) is in the message.
+      // An FQN wins outright. A simple name must match exactly one target; otherwise report an
+      // orphan listing candidates, since picking one would also suppress `ambiguousWith`.
       val exact = candidates.filter { (_, target) -> callableFqn(target) == named }
       val bySimpleName = candidates.filter { (_, target) -> target.functionName == named }
       val match = exact.firstOrNull() ?: bySimpleName.singleOrNull()
@@ -267,9 +223,8 @@ object ComponentRecords {
         return null
       }
       if (match == null) {
-        // Reported rather than dropped. A subject naming nothing the preview renders is a rename
-        // that got away, and the generator reads the record rather than the manifest — so if the
-        // orphan does not travel in the file, it cannot be reported anywhere a person will look.
+        // Reported, not dropped: the generator reads the record, so the orphan must travel in the
+        // file.
         orphans +=
           BuilderOrphan.Builder(previewId = preview.id, component = named)
             .also { b -> b.candidates = candidates.map { it.first } }
@@ -288,31 +243,21 @@ object ComponentRecords {
   }
 
   /**
-   * `<module>/<jvmOwner>.<name>` — always present, unlike a catalog id.
-   *
-   * The module prefix keeps two projects' same-named components apart in an aggregated view; the
-   * JVM owner keeps a top-level function apart from a same-named member of a class in the same
-   * package. Overloads still collide — see [ComponentRecord.canonicalId].
+   * `<module>/<jvmOwner>.<name>`, always present. The module separates projects; the owner
+   * separates top-level functions from same-named members. Overloads still collide (see
+   * [ComponentRecord.canonicalId]).
    */
   internal fun canonicalId(module: String, target: PreviewTarget): String =
     "$module/${target.className}.${target.functionName}"
 
   /**
-   * The source-level callable FQN a generated import would name.
-   *
-   * A top-level function compiles into a synthetic `<File>Kt` facade, so its callable is the
-   * package plus the function name — `androidx.compose.material3.ButtonKt` + `Button` becomes
-   * `androidx.compose.material3.Button`. A member of a real class keeps its owner.
-   *
-   * The `Kt` suffix is a heuristic and it can be wrong: a hand-written class genuinely named
-   * `FooKt` would be unwrapped here. Kotlin's own convention makes that rare, and the alternative —
-   * reading the `@kotlin.Metadata` kind for every target — costs a class-file read per component
-   * for a case nobody has hit. Recorded as a known limit rather than hidden.
+   * The source-level callable FQN an import would name: `<File>Kt` facades are unwrapped
+   * (`ButtonKt` + `Button` → `material3.Button`); class members keep their owner. Heuristic: a
+   * hand-written class named `FooKt` would be unwrapped too, a known limit not worth a metadata
+   * read per component.
    */
   internal fun callableFqn(target: PreviewTarget): String {
-    // A nested class, object or companion arrives with the JVM binary separator
-    // (`com.example.Controls$Companion`). Emitting that verbatim would print an import no Kotlin
-    // compiler accepts, which is the one thing this field exists to avoid.
+    // Nested owners arrive with `$`, which no import accepts.
     val owner = target.className.replace('$', '.')
     val simpleName = owner.substringAfterLast('.')
     if (!simpleName.endsWith("Kt") || simpleName.length == 2) return "$owner.${target.functionName}"
@@ -321,8 +266,8 @@ object ComponentRecords {
   }
 
   /**
-   * A `@Composable` lambda parameter is a slot, carrying the qualified receiver
-   * ([TargetParameter.composableSlotReceiver]) when it has one.
+   * `@Composable` lambda parameters are slots, with their qualified receiver
+   * ([TargetParameter.composableSlotReceiver]) when present.
    */
   internal fun slotsOf(parameters: List<TargetParameter>): List<ComponentSlot> =
     parameters
@@ -330,8 +275,8 @@ object ComponentRecords {
       .map { parameter ->
         ComponentSlot.Builder(name = parameter.name, required = !parameter.hasDefault)
           .also { b ->
-            // The QUALIFIED receiver recorded from metadata, not a slice of the human-readable
-            // rendered type: `RowScope` alone cannot be imported, and two libraries can define it.
+            // The qualified receiver from metadata; `RowScope` alone can't be imported and may be
+            // ambiguous.
             b.receiverScope = parameter.composableSlotReceiver
           }
           .build()
@@ -356,8 +301,8 @@ object ComponentRecords {
     var androidxOptIns: List<String> = emptyList(),
   ) {
     /**
-     * Set when two targets under this id disagreed about which method they are. Distinct from a
-     * null [descriptor], which is also what an unrecorded one looks like.
+     * Set when targets under this id disagreed about the method; distinct from an unrecorded (null)
+     * [descriptor].
      */
     var overloadsCollided: Boolean = false
 
@@ -374,31 +319,20 @@ object ComponentRecords {
     var bindings: List<ComponentBinding> = emptyList()
 
     /**
-     * Every `@BuilderComponent` policy declared for this component, with the preview that declared
-     * it. Reduced by [mergedBuilderPolicy]; kept as a list until then because the reduction needs
-     * to know how many there were and whether they agreed.
+     * Every `@BuilderComponent` policy declared for this component, with its preview; kept until
+     * [mergedBuilderPolicy] needs to know whether they agreed.
      */
     var builderDeclarations: List<Pair<String, BuilderPolicy>> = emptyList()
 
     /**
-     * The one policy this component publishes, or null when no sticker declared one.
-     *
-     * Several previews may render one component and any of them may carry the annotation. Where
-     * they agree — the ordinary case, including one preview declaring it and the rest declaring
-     * nothing — the agreed policy is published and [BuilderPolicy.declaredBy] names every preview
-     * that said it. Where they disagree, the **lowest preview id wins** and the rest are named in
-     * [BuilderPolicy.conflicting].
-     *
-     * Lowest-id rather than first-seen because manifest order is not a fact anybody controls, and a
-     * record that changes which policy it publishes when a preview is renamed is a record nobody
-     * can review. Recorded rather than resolved silently for the same reason the descriptor merge
-     * drops to null: the resolution is arbitrary, and the disagreement is what somebody has to fix.
+     * The one policy this component publishes, or null. Agreeing declarations publish with
+     * [BuilderPolicy.declaredBy] naming every declaring preview. On disagreement the **lowest
+     * preview id wins** (manifest order isn't controlled by anyone) and the rest are listed in
+     * [BuilderPolicy.conflicting] for someone to fix.
      */
     fun mergedBuilderPolicy(): BuilderPolicy? {
       if (builderDeclarations.isEmpty()) return null
-      // Deduplicated first: `collect` runs once over a preview's componentTargets and again over
-      // its targets, so a sticker that resolves the same component through both paths declares its
-      // policy twice and `declaredBy` would name the preview twice for saying it once.
+      // Dedupe: `collect` runs over both target lists, so a preview could otherwise be named twice.
       val ordered = builderDeclarations.distinct().sortedBy { it.first }
       val winner = ordered.first().second
       val agreed = ordered.filter { it.second == winner }.map { it.first }
@@ -413,16 +347,9 @@ object ComponentRecords {
     }
 
     /**
-     * When previews called more than one overload under this id, the one most of them called.
-     *
-     * Discovery records the overload each call site actually invoked, so a catalog whose stickers
-     * reach one function two ways — `Button(onClick, content)` beside `Button(onClick, shapes, …)`,
-     * or `OutlinedTextField(value, onValueChange)` beside a screen using the `TextFieldState` one —
-     * arrives here with several descriptors. Refusing code for all of them would withdraw every
-     * component a second call site touches; keeping whichever arrived first would publish a
-     * signature by manifest order. So the overload most previews call speaks for the record, with
-     * its whole signature rather than a merge of several, and only a TIE stays collided — that
-     * disagreement is real and somebody has to resolve it.
+     * When previews called several overloads under this id, adopt the one most of them called, with
+     * its whole signature; only a tie stays collided. Refusing all would withdraw components;
+     * first-arrived would depend on manifest order.
      */
     private fun adoptMajorityOverload() {
       if (!overloadsCollided || overloads.size < 2) return
@@ -443,9 +370,9 @@ object ComponentRecords {
     }
 
     /**
-     * The record this component publishes when a policy supplies [supplied], and the selection's
-     * diagnostic if it had one. Several known overloads go through [OverloadSelection]; a single
-     * deprecated one is refused there too; otherwise the merged signature stands as before.
+     * The record published when a policy supplies [supplied], plus any selection diagnostic.
+     * Multiple overloads go through [OverloadSelection], which also refuses a single deprecated
+     * one.
      */
     fun toRecord(supplied: Set<String>): Pair<ComponentRecord, UiBuilderDiagnostic?> {
       val alternatives = alternatives()
@@ -542,10 +469,8 @@ object ComponentRecords {
                 .build(),
           )
           .also { b ->
-            // Every alias any preview published this symbol under, not whichever the manifest
-            // listed
-            // first — a shared component such as `Card` is rendered by several previews and would
-            // otherwise take an arbitrary, order-dependent id.
+            // Every alias any preview published this symbol under, so shared components don't get
+            // an order-dependent id.
             b.componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted()
             b.parameters = parameters
             b.slots = slotsOf(parameters)
@@ -560,8 +485,7 @@ object ComponentRecords {
             b.builder = mergedBuilderPolicy()
           }
           .build()
-      // Printed from the finished record, so the snippet is answering the same symbol, parameters
-      // and receiver a consumer will read beside it.
+      // Printed from the finished record so the snippet matches what consumers read.
       return record.newBuilder().also { b -> b.code = ComponentSnippets.codeFor(record) }.build()
     }
   }

@@ -10,17 +10,10 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 
 /**
- * Regression coverage for [PreviewDiscovery.Outcome.Failure] carrying per-method `warnings`
- * symmetrically with [PreviewDiscovery.Outcome.Success]. The historical bug: when
- * `failOnEmpty=true` and every candidate method got filtered out (unsupported parameter shapes,
- * etc.), discovery returned `Failure` with `diagnostics` only — the skip reasons collected during
- * the scan were silently dropped, leaving the consumer with no actionable signal for "why didn't my
- * preview show up". See issue #1364.
- *
- * Hand-rolls a `.class` file via ASM so the test exercises the real ClassGraph scan against a
- * skipped `@Preview` candidate, without round-tripping through Kotlin compilation. We use an
- * unsupported-parameter method (one non-`@PreviewParameter` arg) as the skip trigger — `private`
- * previews are no longer dropped, they're surfaced and invoked with `setAccessible(true)`.
+ * [PreviewDiscovery.Outcome.Failure] carries per-method `warnings` like
+ * [PreviewDiscovery.Outcome.Success], so with `failOnEmpty=true` and every candidate skipped the
+ * reasons aren't lost (#1364). Hand-rolls `.class` files with ASM to exercise the real scan; the
+ * skip trigger is an unsupported parameter (private previews are no longer skipped).
  */
 class PreviewDiscoveryFailureWarningsTest {
 
@@ -73,13 +66,9 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @Test
   fun `missing @Preview annotation classpath is a soft warning when failOnEmpty is false`() {
-    // Reproduces the strictness bug: a non-empty module whose dependency-jar filter dropped
-    // the @Preview annotation class. Without `failOnEmpty=true` this used to hard-fail
-    // discovery; that broke real consumers (e.g. homeassistant-remotecompose `:demo-app`)
-    // where zero previews in one module is perfectly normal. The fix downgrades this to a
-    // WARN-level message + diagnostic dump on the Success branch — the build keeps going,
-    // the user sees the cause, and `composePreview.failOnEmpty=true` is still the opt-in
-    // for the hard-error behaviour.
+    // A non-empty module whose dep-jar filter dropped the @Preview annotation: a WARN with
+    // diagnostics on Success, not a hard failure, since zero previews in one module is normal.
+    // `failOnEmpty=true` opts into failing.
     val classDir = tempDir.newFolder("classes")
     writeEmptyClass(classDir, internalName = "test/Empty")
 
@@ -132,12 +121,8 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @Test
   fun `an unexpandable preview-family annotation warns instead of vanishing silently`() {
-    // Issue #2613: a method whose only preview annotation is a multi-preview meta-annotation
-    // (`@WearPreviewLargeRound`) whose annotation class is NOT on the discovery classpath — the
-    // classic shape of wear tooling wired only into `screenshotTest`. `resolveMultiPreview` can't
-    // see the `@Preview` inside it (its `getClassInfo` returns null) so the preview used to vanish
-    // with no diagnostic. Discovery must now emit an actionable WARN naming the method +
-    // annotation.
+    // #2613: a preview annotated only with a multi-preview annotation whose class is off the
+    // classpath must produce an actionable WARN naming method and annotation, not vanish.
     val classDir = tempDir.newFolder("classes")
     writeMethodWithAnnotationClass(
       classDir,
@@ -171,10 +156,8 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @Test
   fun `a known off-classpath wear device multi-preview is expanded from the built-in table`() {
-    // Issue #2613 follow-up: the reported `@WearPreviewLargeRound` on a `main` method, wear tooling
-    // wired only into screenshotTest so the annotation class is off the discovery classpath. It's a
-    // well-known AndroidX annotation, so discovery expands it from the built-in spec table (one
-    // large-round device variant) instead of dropping it or merely warning.
+    // #2613 follow-up: a well-known AndroidX annotation off the classpath is expanded from the
+    // built-in table instead.
     val classDir = tempDir.newFolder("classes")
     writeMethodWithAnnotationClass(
       classDir,
@@ -241,12 +224,8 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   /**
-   * Writes a minimal `.class` file containing one public static method annotated with
-   * `androidx.compose.ui.tooling.preview.Preview` that takes a single `int` parameter with no
-   * `@PreviewParameter` wiring. Mirrors the JVM shape Kotlin's compiler produces for a top-level
-   * `@Preview fun Hidden(x: Int)` — discovery flags it as an unsupported-parameter preview and
-   * skips it with a warning. The method body is a no-op (`RETURN`); discovery only inspects the
-   * annotation + signature, never invokes the method.
+   * A minimal class with one static `@Preview` method taking an un-annotated `int` (like `@Preview
+   * fun Hidden(x: Int)`), which discovery skips with a warning. Only the signature is inspected.
    */
   private fun writeUnsupportedParamPreviewClass(
     outDir: File,
@@ -279,12 +258,8 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   /**
-   * Writes a minimal `.class` file with one public static parameterless method carrying
-   * [annotationDescriptor] — an annotation whose own class is deliberately NOT written to [outDir],
-   * so the ClassGraph scan records the annotation on the method (parsed from the method's own
-   * bytecode) but `getClassInfo` for the annotation returns null. Mirrors an app `main` method
-   * tagged with a wear multi-preview annotation whose tooling artifact is absent from the discovery
-   * classpath (issue #2613).
+   * A minimal class with one static method carrying [annotationDescriptor], whose own class is NOT
+   * written, so `getClassInfo` returns null (#2613).
    */
   private fun writeMethodWithAnnotationClass(
     outDir: File,
@@ -318,13 +293,9 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @Test
   fun `sources declaring @Preview with zero discovered previews warns instead of saying nothing`() {
-    // Issue #4890. The gap this closes: the @Preview annotation IS on the scan classpath and the
-    // compiled outputs are NOT empty, so neither existing diagnostic path fires — discovery wrote
-    // an empty previews.json and said nothing at all. The first sign of trouble was
-    // composePreviewBundle failing three tasks later with "previews.json is empty", which names no
-    // class dir, no jar and no annotation, and the CI lane runs the CLI without --verbose so even
-    // Gradle's own output is gone. Reproduced by joreilly/BikeShare's :common, whose commonMain
-    // declares @Preview while the classes the scan reached carried none.
+    // #4890: annotation reachable, outputs non-empty, yet sources declare @Preview and none were
+    // found. Previously silent until a later bundle failure; reproduced by joreilly/BikeShare's
+    // `:common`.
     val classDir = tempDir.newFolder("classes")
     // Puts the @Preview annotation class itself on the scan classpath, so previewAnnotationsMissing
     // is false and the OTHER soft-warning branch cannot account for the message.
@@ -370,9 +341,7 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @Test
   fun `a module with no @Preview in its sources stays silent`() {
-    // The other half of the guard above: zero previews is NORMAL for a data layer or a utility
-    // module, and those must not start emitting a diagnostic dump. The discriminator is the
-    // module's own sources, the same signal the empty-compiled-outputs check trusts.
+    // Zero previews with no @Preview in sources is normal and must stay quiet.
     val classDir = tempDir.newFolder("classes")
     writeAnnotationClass(classDir, internalName = "androidx/compose/ui/tooling/preview/Preview")
     writeEmptyClass(classDir, internalName = "test/DataLayer")
@@ -398,11 +367,7 @@ class PreviewDiscoveryFailureWarningsTest {
     assertThat(joined).doesNotContain("0-previews diagnostics")
   }
 
-  /**
-   * Writes a minimal annotation `.class` file, so `scanResult.getClassInfo(fqn)` resolves it and
-   * `reachablePreviewFqns` is non-empty. No members: the tests using it only need the annotation
-   * CLASS to be reachable, never to read attributes off a usage.
-   */
+  /** A minimal annotation class so `getClassInfo(fqn)` resolves; no members needed. */
   private fun writeAnnotationClass(outDir: File, internalName: String) {
     val cw = ClassWriter(0)
     cw.visit(
@@ -420,9 +385,8 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   /**
-   * Writes a minimal empty `.class` file (no methods, no annotations). Used by the soft-warning
-   * tests where we want `scanClassCount > 0` but no preview-able methods so discovery returns zero
-   * previews and falls into the `previewAnnotationsMissing` diagnostic branch.
+   * An empty class: `scanClassCount > 0` with no previews, for the `previewAnnotationsMissing`
+   * branch.
    */
   private fun writeEmptyClass(outDir: File, internalName: String) {
     val cw = ClassWriter(0)

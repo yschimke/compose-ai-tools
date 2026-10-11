@@ -25,20 +25,12 @@ import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * Android `RuntimeShader` (AGSL) smoke test — the Android-backend half of "shader support".
- *
- * AGSL is nearly a subset of SkSL, so this is the *same* gradient-blob program as the CMP sample
- * ([com.example.samplecmp.RuntimeShaderGradientBlobPreview]), but the capture path is different:
- * `android.graphics.RuntimeShader` is an Android-framework class backed by libhwui, and under the
- * preview pipeline it renders through **Robolectric's NATIVE graphics mode** (the `nativeruntime`
- * jar's `RuntimeShaderNatives` JNI bindings) rather than skiko. This `@Preview` is the end-to-end
- * probe for whether that native AGSL compile + raster path captures cleanly.
- *
- * `RuntimeShader` is API 33+. The sample pins Robolectric to `sdk=35` (see the module build), so
- * the render sandbox satisfies the requirement; the `Build.VERSION.SDK_INT` guard keeps the
- * composable harmless on older on-device runs (it falls back to a flat fill).
+ * Android `RuntimeShader` (AGSL) smoke test: the same gradient-blob program as the CMP sample
+ * ([com.example.samplecmp.RuntimeShaderGradientBlobPreview]), but rendered through Robolectric's
+ * NATIVE graphics (libhwui via `RuntimeShaderNatives`) rather than skiko. API 33+, satisfied by the
+ * module's `sdk=35`; the `SDK_INT` guard falls back to a flat fill on older devices.
  */
-// AGSL source (Android Graphics Shading Language) — a near-subset of SkSL.
+// AGSL source — a near-subset of SkSL.
 private const val GRADIENT_BLOB_AGSL =
   """
   uniform float2 iResolution;
@@ -66,10 +58,8 @@ private fun runtimeShaderBrush(widthPx: Float, heightPx: Float): ShaderBrush {
 }
 
 /**
- * A 220×220dp box filled with the AGSL runtime-shader brush. If this captures as the same ringed
- * radial gradient the CMP preview produces, the Android/Robolectric NATIVE AGSL path works end to
- * end; a flat box or a render error sidecar means it doesn't (yet) and the skiko-bridge fallback is
- * warranted.
+ * A 220×220dp box with the AGSL brush: the same ringed gradient as the CMP preview means the native
+ * AGSL path works; a flat box or error sidecar means it doesn't.
  */
 @Preview(name = "Runtime Shader — Gradient Blob (AGSL)")
 @Composable
@@ -84,10 +74,9 @@ fun RuntimeShaderGradientBlobPreview() {
 }
 
 /**
- * Animated variant of [GRADIENT_BLOB_AGSL] — an `iTime` uniform phase-shifts the rings so they
- * travel outward. `38·d − iTime` over a `2π` ramp makes one seamless loop (the `sin` period).
+ * Animated variant: `iTime` phase-shifts the rings outward; `38·d − iTime` over 2π loops
+ * seamlessly.
  */
-// AGSL — same blob, with a time-driven phase on the ring term.
 private const val GRADIENT_BLOB_ANIMATED_AGSL =
   """
   uniform float2 iResolution;
@@ -108,18 +97,9 @@ private const val GRADIENT_BLOB_ANIMATED_AGSL =
   """
 
 /**
- * The animated AGSL shader as a GIF.
- *
- * Animation is driven the ordinary Compose way — a `rememberInfiniteTransition` ramps `iTime` from
- * `0` to `2π` and back to `0` every 2s — so the `@AnimatedPreview` paused-clock path picks it up
- * just like any other `InfiniteTransition`: the renderer advances `mainClock` by `frameIntervalMs`,
- * re-reading the uniform each step, and encodes the frames as `renders/<id>.gif`. `iTime` is set
- * inside `drawWithCache.onDrawBehind` so each clock advance re-runs the draw with the new phase
- * (the resolution uniform + brush stay cached until the size changes).
- *
- * `durationMs = 2000` matches the ramp's period — an `InfiniteTransition` has no inherent duration,
- * so the GIF window is set explicitly to capture exactly one seamless loop. `showCurves = false`
- * keeps the GIF to just the shader (the time ramp would otherwise add a curve strip).
+ * The animated shader as a GIF: `iTime` ramps every 2s via `rememberInfiniteTransition` and is set
+ * in `drawWithCache.onDrawBehind`, so each paused-clock step redraws with the new phase.
+ * `durationMs = 2000` captures exactly one loop.
  */
 @Preview(name = "Runtime Shader — Animated Blob (AGSL)")
 @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)

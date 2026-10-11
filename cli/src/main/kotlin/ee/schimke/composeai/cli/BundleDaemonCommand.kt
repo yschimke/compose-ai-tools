@@ -14,42 +14,17 @@ import kotlin.system.exitProcess
 
 /**
  * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
- * preview bundle's classpath. The backend follows the bundle's `backend`: a desktop bundle launches
- * the CMP/Skiko daemon (`lib-daemon-desktop` + `lib-renderer`); an android bundle launches the
- * Robolectric daemon (`lib-daemon-android` + `android.jar`, with the JDK-17 `--add-opens` and
- * `robolectric.*` mode sysprops from [AndroidBundleLaunch] — the daemon manages its own SDK/
- * application config, so unlike `bundle render` it carries no `robolectric.properties`). Both speak
- * the same JSON-RPC over stdio via the same `DaemonMain` entry point. Inherits stdio so the parent
- * process (the VS Code extension's bundle viewer panel) can speak the daemon's protocol directly,
- * the same way the Gradle plugin's `composePreviewDaemonStart` works for in-workspace modules.
+ * bundle's classpath, with inherited stdio so the parent (the VS Code bundle viewer) speaks its
+ * JSON-RPC directly, like `composePreviewDaemonStart` for in-workspace modules.
  *
- * # Layout
+ * The bundle's `backend` picks the daemon: desktop → CMP/Skiko (`lib-daemon-desktop` +
+ * `lib-renderer`); android → Robolectric (`lib-daemon-android` + `android.jar` with
+ * [AndroidBundleLaunch]'s `--add-opens` and `robolectric.*` sysprops). Both use the same
+ * `DaemonMain`.
  *
- * The packed bundle is a PNG+ZIP polyglot whose zip portion contains `classes/app.jar` (consumer
- * module + inlined project deps), optionally embedded third-party jars under `libs/`, plus
- * `previews.json` (discovery output). We extract them to a temp working directory, then launch a
- * Java subprocess whose classpath joins `$APP_HOME/lib-daemon-desktop/` (daemon + data-extension
- * connectors) with `$APP_HOME/lib-renderer/` (Compose Multiplatform + Skiko). The consumer's
- * bytecode — the extracted app classes plus any embedded `libs/` jars — is exposed to the daemon
- * via `-Dcomposeai.daemon.userClassDirs=<paths>`, and the discovery manifest via
- * `-Dcomposeai.daemon.previewsJsonPath=<extracted-previews-json>` — the same sysprops the Gradle
- * daemon launch path uses.
- *
- * The subprocess inherits stdin/stdout/stderr so the parent owns the JSON-RPC channel without
- * additional plumbing. We don't wait on it from this command — `daemon` is `exec`-style: we print
- * one ready line on stderr and replace this process via `ProcessBuilder.inheritIO`.
- *
- * # Dependency resolution
- *
- * The bundle's third-party deps are joined onto the daemon's `userClassDirs` from two sources, the
- * same way `bundle render` builds its classpath:
- * - Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps under
- *   `libs/`; those are extracted and added directly.
- * - Default coordinate bundles record `ClasspathEntry.Maven` entries; [CoordinateResolver] resolves
- *   each from the machine's local Maven / Gradle caches and, on a miss, downloads from Maven
- *   Central / Google Maven, hash-checking against the v4 `sha256`. A miss or mismatch warns but
- *   never fails — the renderer's bundled Compose still covers the common API surface, and an
- *   almost-compatible jar renders.
+ * The bundle's app classes, embedded `libs/` and [CoordinateResolver]-resolved Maven coordinates
+ * (misses only warn) are exposed via `-Dcomposeai.daemon.userClassDirs`, and the extracted manifest
+ * via `-Dcomposeai.daemon.previewsJsonPath`, the same sysprops as the Gradle launch.
  */
 class BundleDaemonCommand(args: List<String>) : Command(args) {
 
@@ -74,10 +49,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val previewsJson = workDir.resolve("previews.json")
     val zipBytes = BundleReader.extractZipBytes(file)
     val manifest = BundleReader.readMetadata(file).manifest
-    // A fully IR-backed bundle (schema v5+) drops its consumer classes — its previews replay from
-    // `ir/` (extracted below), so `classes/app.jar` is legitimately absent. A mixed bundle that
-    // still has a class-backed preview must carry it, so gate on whether any preview id is NOT
-    // covered by an intermediate representation rather than merely "has some IR".
+    // Fully IR-backed bundles (schema v5+) may omit `classes/app.jar`; require it when any preview
+    // is class-backed.
     val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
     extractBundleClassesAndManifest(
       zipBytes,
@@ -87,12 +60,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       requireAppJar = manifest.previewIds.any { it !in irPreviewIds },
       fileSystem = fileSystem,
     )
-    // Consumer classpath for the daemon's `userClassDirs` holder (dirs-before-jars ordered, see
-    // UserClassLoaderHolder) — the extracted app classes plus the bundle's third-party deps. NOT
-    // the
-    // daemon/renderer `-cp`. Deps come from two sources: embedded `libs/` jars (embedded-mode
-    // bundles) and `maven` coordinates resolved from local repos (the default detached bundles). A
-    // resolver miss or hash mismatch warns but never fails — same contract as `bundle render`.
+    // The daemon's `userClassDirs` (child loader), not its `-cp`: app classes plus embedded and
+    // resolved deps. Resolver misses only warn, as in `bundle render`.
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
@@ -104,10 +73,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         it.absolutePath
       }
 
-    // v5 IR replay: when the bundle carries intermediate representations, extract the `ir/` bytes
-    // and the bundle.json so the daemon (Piece B) can replay those previews through the protolayout
-    // / Remote Compose runtime instead of reflecting their (dropped) consumer classes. Skipped
-    // entirely for a classic all-classes bundle.
+    // v5 IR replay: extract `ir/` and bundle.json so the Android daemon can replay those previews.
     val hasIr = manifest.intermediateRepresentations.isNotEmpty()
     val irDir = if (hasIr) workDir.resolve("ir").apply { mkdirs() } else null
     val bundleManifestFile = if (hasIr) workDir.resolve("bundle.json") else null
@@ -115,18 +81,10 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       extractBundleIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file, fileSystem)
     }
 
-    // Android resource carriage (ungated by IR): any `backend == "android"` bundle carries the
-    // app's
-    // merged resource APK + manifest (+ generated R classes) under `android/`, because a classic
-    // `@Preview` that calls `stringResource(R.string.…)` needs the `0x7f` app table just as much as
-    // a
-    // Wear tile does. A detached daemon has neither the merged table (no AGP build) nor those R
-    // classes, so [AndroidBundleResources] extracts them and synthesizes the Robolectric
-    // `com/android/tools/test_config.properties` the daemon's RobolectricTestRunner auto-reads from
-    // the classpath — exactly how the in-Gradle render path gets resources — and the config dir + R
-    // jar ride the `-cp` seam below. Empty for a bundle with no `android/` payload (packed before
-    // this
-    // carriage / no binary resources): renders framework-resources-only, as before.
+    // Android bundles carry the app's resource APK, manifest and R classes under `android/`;
+    // extract them and synthesize Robolectric's `test_config.properties` so
+    // `stringResource(R.string.…)` resolves (as in the Gradle render path). Empty for bundles
+    // without that payload.
     val androidReplayClasspath = mutableListOf<File>()
     if (manifest.backend == "android") {
       androidReplayClasspath +=
@@ -140,12 +98,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       )
     }
 
-    // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
-    // the CMP/Skiko daemon (lib-daemon-desktop + lib-renderer); an android bundle launches the
-    // Robolectric daemon (lib-daemon-android + android.jar), reusing the Phase 1
-    // [AndroidBundleLaunch]
-    // jvmArgs + robolectric.* sysprops. Both speak the same JSON-RPC over stdio via the same
-    // `DaemonMain` entry point, so only the classpath / JVM args / sysprops differ.
+    // Branch on backend as `bundle render` does; only classpath, JVM args and sysprops differ.
     val launch =
       when (manifest.backend) {
         "desktop" -> desktopDaemonLaunch()
@@ -162,8 +115,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val command = buildList {
       add(javaBin)
       addAll(launch.jvmArgs)
-      // PROTOCOL.md § 3a — the daemon advertises capabilities lazily; the client
-      // (BundleViewerPanel's DaemonClient) does the `initialize` round-trip on stdin.
+      // PROTOCOL.md § 3a: the client does the `initialize` round-trip on stdin.
       add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
       add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
       // IR replay inputs (Piece B); present only for a bundle that carries IR.
@@ -171,19 +123,15 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       bundleManifestFile?.let { add("-D${BUNDLE_MANIFEST_PATH_PROP}=${it.absolutePath}") }
       // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
-      // Detached-bundle viewer: degrade a missing app-resource lookup to an obvious placeholder
-      // rather than throwing on a stale/incompletely-packed bundle. Off by default in the daemon;
-      // the pack-time semantics daemon never sets it, so published stickers still fail loudly.
+      // Viewer-only: a missing app resource renders a placeholder instead of throwing. The
+      // pack-time daemon leaves this off so published stickers fail loudly.
       add("-Dcomposeai.render.placeholderMissingResources=true")
       for (prop in launch.sysProps) add(prop)
       add("-cp")
       add(
         composeDaemonClasspath(
-          // The Android resource carriage (test-config dir + r-classes jar) must reach the
-          // daemon `-cp` for *every* android bundle, not just IR-carrying ones — a classic
-          // `stringResource` preview needs the resource table regardless of IR. Fold it into
-          // the base classpath so it survives the `hasIr` gate that only guards the carried
-          // lib/coordinate jars.
+          // The resource carriage must reach every android bundle's `-cp`, not only IR ones, so it
+          // goes into the base classpath outside the `hasIr` gate.
           base =
             (listOf(launch.classpath) + androidReplayClasspath.map { it.absolutePath })
               .joinToString(File.pathSeparator),
@@ -251,8 +199,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   )
 
   private fun desktopDaemonLaunch(): DaemonLaunch {
-    // Both directories arrive in one archive from the compose-preview-daemon release, fetched on
-    // first use; an explicit `-D…Dir` or a directory inside the install wins over the fetch.
+    // Fetched from the compose-preview-daemon release on first use; an explicit `-D…Dir` or an
+    // installed directory wins.
     DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
     val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {
@@ -286,51 +234,33 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         ) {
           it.absolutePath
         },
-      // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
-      // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
+      // `apple.awt.UIElement`: no Dock icon or focus steal on macOS; must be set before AWT inits.
       jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
       sysProps = desktopFontSysProps(),
     )
   }
 
   /**
-   * Font-related `-D` props the desktop daemon needs, mirroring what the Android launch forwards
-   * via [AndroidBundleLaunch.robolectricSystemProperties]. The `compose/figma-svg` export embeds
-   * fonts by default, so the daemon fetches generic faces (e.g. Roboto) from Google Fonts; without
-   * `composeai.fonts.cacheDir` those downloads would be uncached (re-fetched every launch), and
-   * without forwarding `composeai.svg.embedFonts` a `-Dcomposeai.svg.embedFonts=false` opt-out set
-   * on this CLI process would never reach the child daemon. Point at the SAME shared cache the
-   * Android path and the Gradle plugin use, and forward the parent's embed/offline choices when
-   * set.
+   * Font `-D`s for the desktop daemon: share the Google Fonts cache with the Android path and
+   * Gradle plugin, and forward `composeai.svg.embedFonts` / offline choices so opt-outs reach the
+   * child.
    */
   private fun desktopFontSysProps(): List<String> = buildList {
     add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
     System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
     System.getProperty("composeai.svg.embedFonts")?.let { add("-Dcomposeai.svg.embedFonts=$it") }
-    // Same for the figma-svg background opt-in: consulted in the child daemon, so without this a
-    // `-Dcomposeai.svg.background=true` set on this CLI process would never restore the fill.
+    // Read in the child daemon, so it must be forwarded.
     System.getProperty("composeai.svg.background")?.let { add("-Dcomposeai.svg.background=$it") }
   }
 
   /**
-   * Assemble the Robolectric daemon launch for an `backend="android"` bundle. The Android daemon
-   * ([ee.schimke.composeai.daemon.DaemonMain] in `:daemon:android`) bundles its own Robolectric
-   * render engine and manages its own Robolectric config: its `RobolectricHost.SandboxRunner` pins
-   * `@Config(sdk = 35)` and supplies the stub `Application` via `buildGlobalConfig`, and it does
-   * NOT read a renderer-package `robolectric.properties` (that file is scoped to
-   * `ee.schimke.composeai.renderer`; the daemon's runner is in `ee.schimke.composeai.daemon`). So
-   * we pass exactly what the Gradle Android daemon launch passes (AndroidPreviewSupport): the
-   * JDK-17 `--add-opens` args plus the `robolectric.*` mode sysprops — nothing that would falsely
-   * imply the SDK is configurable here. The `-Dcomposeai.bundle.androidSdk` override and
-   * synthesized `robolectric.properties` apply to the one-shot `bundle render` path only, not the
-   * daemon.
+   * The Robolectric daemon launch for a `backend="android"` bundle. The daemon manages its own
+   * Robolectric config (`@Config(sdk = 35)`, stub `Application`), so pass exactly what the Gradle
+   * launch does: JDK-17 `--add-opens` plus `robolectric.*` mode sysprops. The SDK override and
+   * `robolectric.properties` only apply to `bundle render`.
    *
-   * The Android daemon runtime is ~150-200 MB (Robolectric + the full Compose-Android stack), so it
-   * is NOT bundled in the CLI tarball — that ballooned it to ~382 MB. It is the
-   * `compose-preview-android-daemon-<version>.zip` asset of the compose-preview-daemon release,
-   * which [DaemonSidecarProvision] fetches and caches the first time an `backend="android"` bundle
-   * renders; `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` points at an unpacked
-   * copy instead. E2E coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
+   * The ~150-200 MB runtime isn't in the CLI tarball; [DaemonSidecarProvision] fetches it on first
+   * use, or `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` points at a copy.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
     DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
@@ -365,9 +295,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Find the nearest `local.properties` (carrying `sdk.dir`) by walking up from the working
-   * directory — `bundle daemon` runs outside Gradle but is commonly launched from inside an Android
-   * project whose SDK is configured only there. Mirrors `BundleRenderer.findLocalProperties`.
+   * The nearest `local.properties` (with `sdk.dir`) walking up from the working directory. Mirrors
+   * `BundleRenderer.findLocalProperties`.
    */
   private fun findLocalProperties(): File? {
     var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
@@ -428,22 +357,12 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
 
   companion object {
     /**
-     * Build the daemon launch `-cp`.
+     * Build the daemon `-cp`.
      *
-     * For an **IR-carrying** bundle, the parent-loaded replay host (`:renderer-android`'s
-     * `TileIrReplayComposable` or the connector's `RemoteComposeIrReplay`, both shipped on the
-     * sidecar `-cp`) links the carried renderer/player libs (`androidx.wear.tiles.renderer.*`,
-     * `androidx.compose.remote.player.*`) directly. Those libs live only in
-     * `composeai.daemon.userClassDirs` — the child ([UserClassLoaderHolder]) loader — which the
-     * parent never consults, so the parent-loaded host would `NoClassDefFoundError` at replay. We
-     * therefore also append the carried deps onto the parent `-cp` here.
-     *
-     * **Appended, not prepended:** the renderer's own bundled Compose on the sidecar `-cp` must
-     * stay authoritative (a `URLClassLoader` resolves first-match), so only classes *absent* from
-     * the parent — the player / tiles-renderer APIs — become resolvable; a stale Compose carried in
-     * the bundle can't shadow the renderer's. Classic (non-IR) bundles, which never load a replay
-     * host, are left untouched. See `IrReplayClassloaderTopologyTest` for the topology
-     * characterisation.
+     * For an IR bundle, the parent-loaded replay host links the carried player/tiles-renderer libs,
+     * which otherwise exist only in the child loader (`NoClassDefFoundError`), so they are appended
+     * to the parent `-cp`. Appended, not prepended, so the sidecar's Compose stays authoritative.
+     * Non-IR bundles are untouched. See `IrReplayClassloaderTopologyTest`.
      */
     internal fun composeDaemonClasspath(
       base: String,
@@ -453,15 +372,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       if (!hasIr || carriedDeps.isEmpty()) base
       else (listOf(base) + carriedDeps.map { it.absolutePath }).joinToString(File.pathSeparator)
 
-    // Same names the gradle daemon launch path uses — kept inline so this command doesn't
-    // need an extra :daemon:core dependency just for the constants.
+    // Same names as the Gradle daemon launch, inlined to avoid a `:daemon:core` dependency.
     private const val USER_CLASS_DIRS_PROP = "composeai.daemon.userClassDirs"
     private const val PREVIEWS_JSON_PATH_PROP = "composeai.daemon.previewsJsonPath"
-    // v5 IR replay (consumed by the Android daemon — Piece B). `irDir` holds the extracted
-    // `ir/<id>.<ext>` bytes; `bundleManifestPath` points at the bundle.json whose
-    // `intermediateRepresentations` tell the daemon which previews replay from IR and in what
-    // format. Passed only when the bundle actually carries IR; harmless to an older daemon that
-    // doesn't read them.
+    // v5 IR replay (Android daemon): `irDir` holds extracted `ir/<id>.<ext>`, `bundleManifestPath`
+    // the bundle.json naming which previews replay. Only passed when the bundle carries IR.
     private const val IR_DIR_PROP = "composeai.daemon.irDir"
     private const val BUNDLE_MANIFEST_PATH_PROP = "composeai.daemon.bundleManifestPath"
   }

@@ -1,24 +1,11 @@
 // The Remote Compose JSON codec: authoring JSON → `.rc` bytes, and `.rc` bytes → document JSON.
+// Layer 1 (behaviour, no socket); consumed by the Gradle plugin's IR resolution and, as a published
+// coordinate, by the server's playground.
 //
-// A layer-1 module by `docs/design/REPOSITORY_LAYERS.md`'s test — it is behaviour, and it opens no
-// socket — even though its first two consumers are the Gradle plugin's IR resolution here and the
-// server's playground in compose-preview-server. The server consumes it as a published coordinate,
-// which is the same shape `:render-matrix` and `:daemon-client` settled on.
-//
-// It is its own module rather than a package inside `:render-host` for one reason worth stating:
-// the dependency. `remote-core` + `remote-creation-core` + `org.json` are 1.6 MB of Remote Compose
-// runtime, and `:render-host` is the module whose whole point is that an offline caller does not
-// link what it does not use. A caller that wants to compile a JSON document takes them; a caller
-// rendering a plain Compose bundle does not, and `RemoteComposePairing` already has enough to
-// reason about without this repository adding a fourth place the family can appear from.
-//
-// Why the Remote Compose classpath here is only `-core`: both artifacts upstream publishes as a
-// plain `java-library`. Nothing in this module touches `remote-creation`, `remote-player-*` or
-// `remote-tooling-preview`, all of which are Android AARs, so the module compiles and tests on the
-// JVM toolchain with no Robolectric and no `compileSdk`. That is load-bearing — it is what lets the
-// Gradle plugin compile a JSON sidecar during configuration-time IR resolution rather than inside a
-// render — and `RemoteComposeJsonJvmOnlyTest` pins it so an accidental AAR dependency fails here
-// rather than in a consumer's daemon.
+// Its own module so callers that don't compile JSON documents (e.g. `:render-host`) don't link the
+// Remote Compose runtime. Only the plain-JVM `-core` artifacts are used, so it builds and tests
+// with no Robolectric or `compileSdk` — which lets the plugin compile JSON sidecars at
+// configuration time. `RemoteComposeJsonJvmOnlyTest` pins that.
 
 plugins {
   id("composeai.base-conventions")
@@ -39,11 +26,8 @@ kotlin {
 tasks.named("check") { dependsOn("checkKotlinAbi") }
 
 dependencies {
-  // `api`, not `implementation`: `RemoteComposeDocumentHeader` and the document-JSON projection are
-  // built out of `remote-core`'s model, and a consumer that inflates a document itself — the
-  // server's compare lane does — must resolve the same `CoreDocument` this module returns from POM
-  // metadata. Two copies of `remote-core` on one classpath is the linkage failure
-  // `RemoteComposePairing` in `:render-host` exists to name.
+  // `api`: the returned header and document model are `remote-core` types, and consumers must
+  // resolve the same `CoreDocument` (two copies on one classpath fail to link).
   api(libs.compose.remote.core)
 
   // The authoring parser. `implementation` because nothing it defines appears on this module's
@@ -51,16 +35,11 @@ dependencies {
   // `RemoteComposeJsonParser` and never has to care that it wants `org.json`.
   implementation(libs.compose.remote.creation.core)
 
-  // `RemoteComposeJsonParser` is written against `org.json.JSONObject`. Android ships it in the
-  // platform, a JVM does not, and `remote-creation-core` neither shades nor declares it — so this
-  // module does. Without it the first `compile()` call dies with `NoClassDefFoundError:
-  // org/json/JSONObject` at runtime rather than failing to resolve.
+  // `RemoteComposeJsonParser` uses `org.json`, which Android provides but a JVM doesn't, and
+  // `remote-creation-core` doesn't declare.
   implementation(libs.json.org)
 
-  // `api`, not `implementation`: `dumpToJsonObject()` returns a `JsonObject` and
-  // `RemoteComposeDocumentHeader.toJsonObject()` does too, so the type is on this module's ABI. A
-  // consumer resolving from POM metadata would otherwise have no `kotlinx-serialization-json` on
-  // its compile classpath and could not name the value it was handed.
+  // `api`: `kotlinx.serialization.json.JsonObject` is in this module's return types.
   api(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)

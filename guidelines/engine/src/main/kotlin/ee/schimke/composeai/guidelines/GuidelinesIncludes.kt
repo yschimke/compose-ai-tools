@@ -9,23 +9,19 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Shared rule packs a catalog's `ui-builder.guidelines.json` takes in through `includes`: each an
- * `https` URL to another `catalog-guidelines/v1` file, pinned by the sha256 of its bytes.
- *
- * Merging, the same as the Gradle plugin's flattening (`UiBuilderGuidelinesFile.flatten`), which
- * resolves them once at publish so the server and the browser read a flat file:
+ * Shared rule packs a catalog's `ui-builder.guidelines.json` pulls in via `includes`: `https` URLs
+ * to `catalog-guidelines/v1` files pinned by sha256. Merged like the Gradle plugin's
+ * `UiBuilderGuidelinesFile.flatten`:
  * - a pack rule naming `platforms` is carried only into a catalog whose `platform` it lists;
- * - packs are layers, in include order, with the catalog's own rules as the last layer: a rule
- *   replaces one of the same id from an earlier layer, so a form-factor pack (`wear-compose`) can
- *   override a general one (`compose-ui`) and a catalog can override either;
- * - a rule whose id the include `exclude`s is left out of that include;
- * - an include's `profiles` narrows every carried rule that names no profiles of its own;
- * - a pack's frames are added where the catalog does not already ask for the same one;
- * - a pack may not include another (no nesting), and is at most [MAX_PACK_BYTES].
+ * - packs are layers in include order, the catalog's own rules last; later rules replace same-id
+ *   ones, so a form-factor pack can override a general one and the catalog can override either;
+ * - `exclude`d ids are left out of that include;
+ * - an include's `profiles` narrows carried rules that name none;
+ * - pack frames are added unless the catalog already asks for the same one;
+ * - no nesting, and each pack is at most [MAX_PACK_BYTES].
  *
- * Read from the raw text rather than through `CatalogGuidelinesV1.includes`, so this works against
- * contracts releases that predate that field; once the pinned contracts carry it, the merged result
- * must also clear it (`it.includes = emptyList()`) so a resolved file never reads as unresolved.
+ * Reads the raw text rather than `CatalogGuidelinesV1.includes` for older contracts releases; once
+ * that field exists, the merged result must clear it so a resolved file never looks unresolved.
  */
 public object GuidelinesIncludes {
   /** The largest pack read, so a pin cannot make a reader buffer an arbitrary download. */

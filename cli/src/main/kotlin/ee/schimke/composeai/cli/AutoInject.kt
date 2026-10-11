@@ -8,31 +8,20 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Auto-inject the `ee.schimke.composeai.preview` Gradle plugin into the user's build via
- * `--init-script`, so the CLI works against projects that haven't manually applied the plugin in
- * their `build.gradle.kts`.
+ * Auto-inject the `ee.schimke.composeai.preview` plugin via `--init-script`, so the CLI works on
+ * projects that haven't applied it. Mirrors the VS Code extension's `initScript.ts` (see its docs
+ * for the rationale). Idempotent: a project that already applies the plugin is a no-op. CI
+ * materialises this same script via `compose-preview init-script --path`.
  *
- * Mirrors the VS Code extension's [`initScript.ts`] auto-inject path — see that file's kdoc for the
- * rationale (`pluginManager.withPlugin` over `afterEvaluate`, why we resolve via Gradle Plugin
- * Portal + Maven Central + Google). The init script is idempotent — if the user already applies the
- * plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op. CI's integration
- * matrix materialises this same script via `compose-preview init-script --path` rather than
- * shipping a CI-only variant.
- *
- * Opt-out:
- * - `--no-auto-inject` on any CLI invocation,
- * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment, or
- * - the project root's `settings.gradle[.kts]` already includes the plugin's source build via
- *   `includeBuild("gradle-plugin")` — i.e. this CLI is being driven against the compose-ai-tools
- *   repo's own samples (or a fork doing the same). Adding a Maven-resolved classpath alongside an
- *   included build would conflict.
+ * Opt-out: `--no-auto-inject`, `COMPOSE_PREVIEW_NO_AUTO_INJECT=1`, or a root settings file that
+ * `includeBuild("gradle-plugin")`s the plugin source (this repo's samples), where a Maven classpath
+ * would conflict.
  */
 const val INIT_SCRIPT_FILENAME = "apply-compose-ai-preview.init.gradle.kts"
 
 /**
- * Renders the Kotlin-DSL init-script body with [pluginVersion] baked in. Pure function so unit
- * tests can assert the wire shape without going through the filesystem. Kept in lockstep with the
- * VS Code extension's `renderInitScript`.
+ * The Kotlin-DSL init-script body with [pluginVersion] baked in. Lockstep with VS Code's
+ * `renderInitScript`.
  */
 internal fun renderInitScript(pluginVersion: String): String =
   """// Compose Preview auto-inject init script.
@@ -535,10 +524,8 @@ allprojects {
 """
 
 /**
- * Writes the rendered init script into [storageDir] iff its contents differ from what's already
- * there. Returns the absolute path Gradle should receive via `--init-script`. Idempotent:
- * re-running with the same plugin version leaves the file untouched (and its mtime, which keeps
- * Gradle's configuration cache happy).
+ * Write the rendered init script into [storageDir] only if its contents differ (keeping the mtime
+ * stable for the configuration cache), returning the path for `--init-script`.
  */
 internal fun materializeInitScript(
   storageDir: File,
@@ -564,11 +551,8 @@ internal fun initScriptDigest(pluginVersion: String): String {
 }
 
 /**
- * Default per-version storage directory under the user home, picked so multiple CLI versions can
- * coexist without racing on the same file path. Mirrors VS Code's `globalStorageUri` approach.
- *
- * Lives under the shared [composeAiCacheDir] (`$XDG_CACHE_HOME/composeai/init` when set, else
- * `~/.cache/composeai/init`), versioned so multiple CLI versions coexist.
+ * Per-version storage dir under [composeAiCacheDir] (`…/composeai/init/<version>`), so CLI versions
+ * don't race on one file.
  */
 internal fun defaultInitScriptStorageDir(version: String): File =
   File(composeAiCacheDir("init"), version)
@@ -576,82 +560,40 @@ internal fun defaultInitScriptStorageDir(version: String): File =
 /**
  * `--write-locks` when `COMPOSE_PREVIEW_WRITE_LOCKS=1` is set, otherwise nothing.
  *
- * A build that LOCKS its buildscript classpath rejects every module its lock state does not name,
- * and auto-inject's whole job is to add one it does not name:
- * ```
- * > Could not resolve all artifacts for configuration 'classpath'.
- *    > Resolved 'ee.schimke.composeai.preview:...' which is not part of the dependency lock state
- * ```
- *
- * That fires while the buildscript classpath resolves, so it takes the build out before discovery
- * runs — bitwarden/android hit it with 51 previews it could never reach
- * (yschimke/compose-preview-imports#30).
- *
- * `--write-locks` is Gradle's own answer: the lock state is regenerated to describe what was
- * actually resolved, rather than the injected module being smuggled past validation. It is the
- * mechanism and not a bypass, and it works whatever lock mode the project chose — bitwarden uses
- * `LockMode.STRICT` with `lockAllConfigurations()`, where simply deleting the lockfile FAILS
- * instead of relaxing.
- *
- * It is deliberately **not** inferred from a lockfile on disk. `--write-locks` rewrites files in
- * the project, and doing that to a developer's working tree because we noticed they lock is not
- * ours to decide. The environment variable is set by the import pipeline, where the checkout is a
- * throwaway clone and the rewrite is discarded with it; everywhere else the caller opts in
- * explicitly or the build is left exactly as it is.
- *
- * Visible for tests.
+ * A build that locks its buildscript classpath rejects the injected plugin ("Resolved '…' which is
+ * not part of the dependency lock state") before discovery runs. `--write-locks` regenerates the
+ * lock state and works in any lock mode, but it rewrites project files, so it is never inferred:
+ * the import pipeline sets the variable on throwaway clones.
  */
 internal fun gradleWriteLocksArgs(env: (String) -> String? = System::getenv): List<String> =
   if (env("COMPOSE_PREVIEW_WRITE_LOCKS") == "1") listOf("--write-locks") else emptyList()
 
 /**
- * Every Gradle invocation the CLI drives with auto-inject on also turns Isolated Projects **off**
- * for that build.
- *
- * The init script applies the plugin through `allprojects { buildscript { … } }`, which IP rejects
- * outright ("Project ':' cannot access 'Project.buildscript' functionality on subprojects via
- * 'allprojects'"), and no IP-safe injection mechanism exists — the docs page
- * `docs/isolated-projects-autoinject.md` records the three we tested and why each fails. A
- * consumer's own `gradle.properties` decides whether IP is on and the Tooling API daemon honours
- * it, so without this the CLI simply fails on any build that opted in. Passing the flag here is the
- * same opt-out that page tells a human to type by hand; a command-line `-D` outranks
- * `gradle.properties`.
- *
- * Both spellings go out because Gradle 9.7 graduated the feature and renamed
- * `org.gradle.unsafe.isolated-projects` to `org.gradle.isolated-projects`. Consumer builds carry
- * either name (nowinandroid moved to the new one, which is what turned its integration cell red the
- * moment its wrapper reached 9.7.1 — the old name alone no longer covers it), and a name the
- * running Gradle doesn't recognise is an inert system property.
+ * Auto-injected builds also turn Isolated Projects off: the init script's `allprojects {
+ * buildscript { … } }` is rejected under IP and no IP-safe mechanism exists (see
+ * `docs/isolated-projects-autoinject.md`). A command-line `-D` outranks `gradle.properties`. Both
+ * property names are sent because Gradle 9.7 renamed `org.gradle.unsafe.isolated-projects`; an
+ * unrecognised name is inert.
  */
 internal val ISOLATED_PROJECTS_OFF_ARGS: List<String> =
   listOf("-Dorg.gradle.unsafe.isolated-projects=false", "-Dorg.gradle.isolated-projects=false")
 
 /**
- * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation — followed by
- * [ISOLATED_PROJECTS_OFF_ARGS], since the injected script cannot run under Isolated Projects — or
- * an empty list when auto-inject is disabled. Materialises the script on first call.
+ * The `--init-script <path>` arguments (plus [ISOLATED_PROJECTS_OFF_ARGS]) to prepend to every
+ * Gradle invocation, or empty when auto-inject is disabled. Materialises the script on first call.
  *
- * The injected plugin version is the **project's version pin** when it has one —
- * `--plugin-version`, `COMPOSE_PREVIEW_VERSION`, `gradle.properties`' `composePreview.version`, or
- * the catalog's `[versions] composePreviewCli` (see [resolveVersionPin]) — and this CLI's
- * [MAVEN_LINE_VERSION] otherwise (the Maven line it resolves against, which is [BUNDLE_VERSION]
- * unless a release skipped publishing). That is what makes a pin mean the same thing here as it
- * does in VS Code and in the `install` / `apply` actions (issue #3738). Callers that already know
- * the version they want (the `init-script` command's `--plugin-version`, tests) pass
- * [pluginVersion] explicitly and no project lookup happens.
+ * The injected version is the project's pin ([resolveVersionPin]) when present, else
+ * [MAVEN_LINE_VERSION], so a pin means the same thing as in VS Code and the actions. An explicit
+ * [pluginVersion] skips the lookup.
  *
- * Opt-out (any one of these disables auto-inject):
+ * Disabled by any of:
  * - `--no-auto-inject` in [args],
  * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment,
- * - [projectRoot]'s `settings.gradle[.kts]` declares `includeBuild("gradle-plugin")` (the
- *   compose-ai-tools dev-loop layout — running the CLI against its own samples),
- * - an `includeBuild(...)`'d build supplies the plugin on its classpath, i.e. the plugin is applied
- *   by a convention plugin rather than per-module `plugins { id(...) version }` (see
- *   [includedBuildProvidesComposeAiPreviewPlugin]) — auto-injecting a second copy would collide
- *   with it and break discovery (issue #3).
+ * - [projectRoot]'s settings `includeBuild("gradle-plugin")` (this repo's dev loop),
+ * - an included build supplying the plugin, e.g. via a convention plugin
+ *   ([includedBuildProvidesComposeAiPreviewPlugin]); a second copy would break discovery.
  *
- * Failures (storage dir not writable, disk full) are swallowed with a stderr note and downgrade to
- * "no auto-inject" — the CLI continues with whatever the user has manually configured.
+ * Storage failures are logged and downgrade to no auto-inject.
  */
 internal fun autoInjectInitScriptArgs(
   args: List<String>,
@@ -695,13 +637,8 @@ internal fun autoInjectInitScriptArgs(
 }
 
 /**
- * True when [projectRoot]'s settings file declares `includeBuild("gradle-plugin")` (Kotlin or
- * Groovy DSL, single or double quotes, with or without surrounding whitespace). Used to short-
- * circuit auto-inject in the compose-ai-tools repo itself — the agent-audit-samples CI job and any
- * local `./samples/...` development loop drive the CLI against this same root, and stacking a
- * Maven-resolved classpath dep on top of the included build conflicts with it.
- *
- * Visible for tests.
+ * True when [projectRoot]'s settings file declares `includeBuild("gradle-plugin")` (either DSL or
+ * quote style); stacking a Maven classpath dep on the included build would conflict.
  */
 internal fun hasIncludedPluginBuild(
   projectRoot: File,
@@ -716,36 +653,13 @@ internal fun hasIncludedPluginBuild(
 }
 
 /**
- * True when the build's root `settings.gradle[.kts]` `includeBuild(...)`s a build whose own build
- * script puts the `ee.schimke.composeai.preview` plugin on its classpath — i.e. the plugin is
- * supplied (and typically applied) by a *convention plugin* in an included build, not declared
- * per-module via `plugins { id("…") version "…" }`.
+ * True when the root settings `includeBuild(...)`s a build whose scripts put the
+ * `ee.schimke.composeai.preview` plugin on their classpath, i.e. a convention plugin applies it.
  *
- * Why this disables auto-inject (issue #3): auto-inject decides which projects already have the
- * plugin by scanning *module* build scripts for a literal `id(...) version` / catalog-alias
- * declaration ([scanForComposeAiPreviewDeclaration]). A convention-plugin apply is invisible to
- * that scan, so auto-inject would inject a *second* copy of the plugin onto every project's
- * buildscript classpath — colliding with the copy the included build already supplies ("plugin …
- * already on the classpath with an unknown version", the #1855 class of failure). That fails
- * per-project configuration, and since the Tooling-API discovery walk isolates per-project
- * failures, the CLI silently comes back with zero modules even though the render task works. When
- * the plugin is already provided this way the right move mirrors the
- * `includeBuild("gradle-plugin")` opt-out: leave auto-inject off and let the convention plugin own
- * the application. The `androidchka.extras`-style convention plugin (yschimke/androidchka, which
- * `includeBuild`s `build-logic` and stages the plugin marker on its classpath) is the motivating
- * case.
- *
- * Detection is deliberately narrow: we only skip when an included build *actually references the
- * plugin coordinate*. Merely `includeBuild("build-logic")` without the plugin (the common shape)
- * leaves auto-inject on. Same parens-required heuristic scope as [hasIncludedPluginBuild].
- *
- * The scan is recursive across each included build, not just its root build script: a multi-project
- * convention build commonly declares the plugin dependency in a subproject
- * (`build-logic/conventions/build.gradle.kts`) rather than the root (PR #1939 review). We walk
- * every `build.gradle[.kts]` under the included build, pruning generated/output trees (`build/`,
- * `.gradle/`, …) and bounding the traversal so a pathological tree can't stall the CLI.
- *
- * Visible for tests.
+ * Auto-inject only detects literal per-module `plugins { id(...) }` declarations, so it would add a
+ * second copy that collides with the convention plugin's, and discovery would silently find zero
+ * modules. Detection is narrow (the included build must reference the coordinate) and recursive
+ * over its build scripts, since multi-project convention builds often declare it in a subproject.
  */
 internal fun includedBuildProvidesComposeAiPreviewPlugin(
   projectRoot: File,
@@ -766,25 +680,14 @@ internal fun includedBuildProvidesComposeAiPreviewPlugin(
   }
 }
 
-/**
- * Directory names never worth descending into when scanning an included build for build scripts.
- */
+/** Directory names never worth descending into when scanning an included build. */
 private val COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS =
   setOf("build", ".gradle", ".git", ".idea", "node_modules")
 
 /**
- * Walks [buildDir] for any `build.gradle[.kts]` whose (comment-stripped) text references the
- * **runtime** `ee.schimke.composeai.preview` plugin coordinate. Iterative DFS over [fileSystem]
- * that prunes generated/output dirs and caps the number of directories visited so it stays cheap on
- * large or adversarial trees. Used only by [includedBuildProvidesComposeAiPreviewPlugin].
- *
- * The negative lookahead excludes the **configuration-only** plugin
- * (`ee.schimke.composeai.preview.config` / `…preview.config.gradle.plugin`), of which the runtime
- * id is a prefix. A convention build that supplies only the config-only plugin does NOT supply the
- * runtime — auto-inject must stay ON so the CLI still injects the runtime; treating it as
- * convention-provided would wrongly disable injection and leave the build with no render tasks. The
- * config impl artifact (`compose-preview-config`) contains no `ee.schimke.composeai.preview`
- * substring, so only the dotted-id forms need excluding.
+ * Bounded DFS of [buildDir] for a `build.gradle[.kts]` whose comment-stripped text references the
+ * runtime `ee.schimke.composeai.preview` coordinate. The negative lookahead excludes the
+ * configuration-only `…preview.config` plugin, which doesn't supply the runtime.
  */
 private fun buildScriptsReferenceComposeAiPreview(
   buildDir: File,
@@ -814,17 +717,11 @@ private fun buildScriptsReferenceComposeAiPreview(
 }
 
 /**
- * Mirrors the rendered init script's `composeAiPreviewSettingsDeclaresExclusiveContent`. Returns
- * `true` when [projectRoot]'s `settings.gradle[.kts]` declares `exclusiveContent { ... }` inside a
- * `pluginManagement { repositories { ... } }` block — directly, via shared repository handlers (the
- * Confetti pattern `listOf(repositories, dependencyResolutionManagement.repositories).forEach`), or
- * via a helper called from `pluginManagement {}`. Used as the off-side reproducer for the Gradle
- * 9.3+ "When using exclusive repository content in 'settings.pluginManagement .repositories', you
- * cannot add repositories to 'buildscript.repositories'" validation (issues #1470, #1482) — the
- * init script's `allprojects { buildscript { ... } }` injection would fail every project
- * configuration once that validation fires, so we skip injection wholesale.
- *
- * Visible for tests. Kept in lockstep with the embedded Kotlin function inside [renderInitScript].
+ * Mirrors the init script's `composeAiPreviewSettingsDeclaresExclusiveContent`: true when
+ * [projectRoot]'s settings declares `exclusiveContent { ... }` in `pluginManagement { repositories
+ * }` (directly, via shared repository handlers, or via a helper). Gradle 9.3+ then forbids adding
+ * `buildscript.repositories`, which the injection needs, so injection is skipped. Lockstep with
+ * [renderInitScript].
  */
 internal fun settingsDeclaresExclusiveContentInPluginManagement(
   projectRoot: File,
@@ -866,14 +763,9 @@ internal fun settingsDeclaresExclusiveContentInPluginManagement(
 }
 
 /**
- * Mirrors the rendered init script's `scanForProjectsWithBuildscriptRepos`. Returns true when
- * [projectDir]'s `build.gradle[.kts]` declares its own `buildscript { repositories { ... } }` block
- * — the only shape where our classpath dep can possibly resolve in the
- * `exclusiveContent`-in-`pluginManagement.repositories` branch. Brace-balances the script body to
- * scope the `repositories` check to the buildscript block (so an unrelated top-level `repositories
- * { ... }` block doesn't falsely flag the project).
- *
- * Visible for tests.
+ * Mirrors the init script's `scanForProjectsWithBuildscriptRepos`: true when [projectDir]'s build
+ * script has its own `buildscript { repositories { ... } }` block (brace-balanced, so top-level
+ * `repositories` don't count).
  */
 internal fun projectHasBuildscriptRepositories(
   projectDir: File,
@@ -914,11 +806,8 @@ internal fun projectHasBuildscriptRepositories(
 }
 
 /**
- * Removes `// …` line comments and `/* … */` block comments from a Gradle build script before the
- * exclusiveContent / buildscript-repositories scanners look at it. Doesn't try to be a full Kotlin
- * / Groovy parser: enough to keep a commented-out example from triggering a false positive. String
- * literals aren't tracked — a deliberately-quoted comment-prefix inside a string is rare enough in
- * build scripts to ignore.
+ * Strip `//` and `/* */` comments from a build script before scanning, so commented-out examples
+ * don't match. Not a parser; string literals are not tracked.
  */
 internal fun stripGradleComments(source: String): String {
   val sb = StringBuilder(source.length)

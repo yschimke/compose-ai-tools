@@ -7,22 +7,10 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification that `@FocusedPreview` actually drives focus through the renderer's
- * Compose pipeline and that the resulting PNGs reflect the requested focus state. Reads the files
- * produced by `:samples:android-alpha:composePreviewRenderAll` (wired into this module's `test`
- * task in `build.gradle.kts`) and pixel-asserts on them.
- *
- * What this guards against:
- *
- * * Renderer regressions where `LocalInputModeManager` falls back to Touch and Compose's clickable
- *   focusable refuses focus — captures come back identical to a no-focus run.
- * * Off-by-one breakages in the `moveFocus(Enter) + Next * (n + 1)` walk — focus would land on the
- *   wrong button and every fan-out PNG would shift one slot.
- * * Overlay regressions — the red marker rect / `index N` pill is what reviewers actually see, so
- *   we assert the marked pixels are present *and* that the unmarked `.raw.png` companion was
- *   preserved.
- * * Traversal-mode regressions — `Previous` and `Next` should land on different buttons, and `Next,
- *   Next, Previous, Next` should walk a known sequence.
+ * End-to-end check that `@FocusedPreview` drives real focus and the PNGs reflect it (reading
+ * `:samples:android-alpha:composePreviewRenderAll` output). Guards against input mode falling back
+ * to Touch (focus refused), off-by-one in the focus walk, overlay regressions (marked `.png` vs
+ * unmarked `.raw.png`), and `Previous`/`Next` traversal regressions.
  */
 class FocusedPreviewPixelTest {
 
@@ -37,9 +25,8 @@ class FocusedPreviewPixelTest {
   private val movingBase = "InsetFocusRingMovingPreview_Inset_Focus_Ring_moving"
 
   /**
-   * The four `_FOCUS_<n>.png` fan-out captures must all differ from each other — same composition,
-   * focus driven to a different button per capture. If [LocalInputModeManager] falls back to Touch,
-   * every capture renders without a focus indicator and all four hashes collapse.
+   * The four `_FOCUS_<n>.png` captures must all differ; a Touch fallback would make every capture
+   * identical.
    */
   @Test
   fun `fan-out captures differ across focus indices`() {
@@ -49,21 +36,12 @@ class FocusedPreviewPixelTest {
     assertThat(hashes).hasSize(4)
   }
 
-  /**
-   * Where the focus ring lands per capture is verified indirectly by the traversal test: `Next,
-   * Next, Previous, Next` produces four captures in `0, 1, 0, 1` order, so step 1's hash must match
-   * step 3's and step 2's must match step 4's. If the renderer dispatched directions to wrong
-   * slots, those hashes would diverge. Trying to localise the ring inside fan-out captures via
-   * column-banded pixel counts was attempted and abandoned: Material's elevation shadow + the
-   * ring's outer stroke bleed across button boundaries by ~1.5% of the slot's pixels, which is
-   * enough to defeat any clean "untargeted slot is byte-identical" assertion without complicating
-   * the test with button-geometry math.
-   */
+  // Where the ring lands is verified by the traversal test's matching hashes; localising it within
+  // a capture is defeated by shadow and ring bleed across button boundaries.
 
   /**
-   * Traversal mode: `Next, Next, Previous, Next` should land on buttons 0, 1, 0, 1. After Next then
-   * Previous we should be back where we started, so step 1 and step 3 produce pixel-identical
-   * captures; step 2 and step 4 likewise. Step 1 ≠ step 2 (Next moves forward).
+   * `Next, Next, Previous, Next` lands on buttons 0, 1, 0, 1: steps 1 and 3 match, steps 2 and 4
+   * match, and step 1 ≠ step 2.
    */
   @Test
   fun `traversal walks Next-Next-Previous-Next as 0-1-0-1`() {
@@ -84,11 +62,8 @@ class FocusedPreviewPixelTest {
   }
 
   /**
-   * `@FocusedPreview(gif = true)`: discovery should emit one stitched `.gif` instead of N
-   * `_FOCUS_<n>.png` siblings, and the GIF mode must drive focus through the renderer's
-   * `FocusManager.moveFocus` walk — so the file exists, is non-empty, has the GIF magic header, and
-   * no per-step PNGs leaked alongside (the whole point of the gif flag was to collapse the sample's
-   * hand-rolled `LaunchedEffect` focus emission, #1020).
+   * `@FocusedPreview(gif = true)` emits one stitched `.gif` (non-empty, GIF magic) and no per-step
+   * PNGs.
    */
   @Test
   fun `moving inset ring lands at a single gif`() {
@@ -125,10 +100,8 @@ class FocusedPreviewPixelTest {
   }
 
   /**
-   * `true` when [img] contains a pixel close to the overlay's `(0xFF, 0x40, 0x40)` red. Wide
-   * tolerance per channel (±32) absorbs Java2D's antialiased stroke edges. The body purple in this
-   * composition is `(0x65, 0x4F, 0xA4)`, so the high-red / low-green combination cleanly
-   * distinguishes overlay paint from any natural pixel in the scene.
+   * Whether [img] has a pixel near the overlay's `(0xFF, 0x40, 0x40)` red (±32 per channel for
+   * antialiasing); the scene's purple `(0x65, 0x4F, 0xA4)` can't match.
    */
   private fun hasOverlayRedPixel(img: BufferedImage): Boolean {
     val targetR = 0xFF

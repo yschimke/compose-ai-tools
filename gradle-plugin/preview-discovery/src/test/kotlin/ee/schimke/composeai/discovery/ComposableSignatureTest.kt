@@ -6,17 +6,14 @@ import io.github.classgraph.MethodInfo
 import org.junit.Test
 
 /**
- * Reads the real Kotlin signature of the [sampleComponent] fixture out of its `@kotlin.Metadata`
- * and checks parameter names, rendered types, and default flags — the data a Code Connect call site
- * is built from. Scans this test module's own classes so the fixture's compiled metadata is
- * exercised end to end (no mocking of the metadata blob).
+ * Reads the real Kotlin signature of the [sampleComponent] fixtures from `@kotlin.Metadata` (names,
+ * rendered types, defaults), scanning this module's own compiled classes end to end.
  */
 class ComposableSignatureTest {
 
   /**
-   * Resolve the fixture facade's [simpleName] method and read its parameters — all inside the open
-   * ClassGraph scan, because `ClassInfo.resource` (which `ComposableSignature` reads the class
-   * bytes from) is only valid while the scan is open.
+   * Reads [simpleName]'s parameters inside the open scan: `ClassInfo.resource` is only valid while
+   * it's open.
    */
   private fun parametersOf(simpleName: String): List<TargetParameter> {
     ClassGraph()
@@ -36,9 +33,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `a type alias is recorded as the class it expands to, not as the alias`() {
-    // `typealias AliasedLabel = String` on a parameter. Kotlin's metadata expands aliases, so the
-    // classifier is `kotlin.String` and a value claiming `kotlin.String` matches — there is no
-    // fabricated `kotlin.AliasedLabel` for a claimed value to be refused against.
+    // Metadata expands type aliases, so the classifier is `kotlin.String`, not a fabricated
+    // `AliasedLabel`.
     val parameter = parametersOf("aliasedComponent").single()
     assertThat(parameter.typeFqn).isEqualTo("kotlin.String")
     assertThat(ComponentSnippets.qualifiedTypeOf(parameter)).isEqualTo("kotlin.String")
@@ -85,11 +81,9 @@ class ComposableSignatureTest {
 
   @Test
   fun `only markers written on the method are reported, not their meta-annotations`() {
-    // `optInComponent` carries `@ExperimentalFixtureApi` (a real requirement) and
-    // `@FixtureInferredTarget` (the shape the Compose compiler stamps on, itself guarded by
-    // `@InternalFixtureApi`). Reading ClassGraph's annotation closure rather than the direct
-    // annotations reported `InternalFixtureApi` — and `kotlin.RequiresOptIn` itself — telling a
-    // caller to opt into internals in order to place a component.
+    // `@ExperimentalFixtureApi` is a real requirement; `@FixtureInferredTarget` (guarded by
+    // `@InternalFixtureApi`, like Compose's inferred-target marker) must not leak
+    // `InternalFixtureApi` or `RequiresOptIn` through the annotation closure.
     assertThat(optInsOf("optInComponent"))
       .containsExactly("ee.schimke.composeai.discovery.ExperimentalFixtureApi")
   }
@@ -104,9 +98,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `a nested marker is recorded in source notation, not by its binary name`() {
-    // ClassGraph hands over `MarkerHolder$NestedApi`. The source name is rebuilt from the nesting
-    // chain here, at the one place that can see it — an emitter replacing every `$` with `.` would
-    // also corrupt a top-level marker whose backticked name legitimately contains one.
+    // ClassGraph gives `MarkerHolder$NestedApi`; the source name is rebuilt from the nesting chain,
+    // since blanket `$` → `.` would corrupt backticked names.
     assertThat(optInsOf("nestedMarkerComponent"))
       .containsExactly("ee.schimke.composeai.discovery.MarkerHolder.NestedApi")
   }
@@ -144,12 +137,9 @@ class ComposableSignatureTest {
     // The whole point of the kind: a viewer can enumerate these and draw a picker. Declaration
     // order, because that is the order the author wrote and the order a reader expects to browse.
     assertThat(emphasis.options).containsExactly("Filled", "Tonal", "Outlined").inOrder()
-    // The default is deliberately NOT asserted here: this module has no Compose compiler plugin, so
-    // the fixture compiles to the ordinary `name$default` bridge rather than the Compose-emitted
-    // mask block `PreviewKnobDefaults` reads. That an enum constant's own name is recovered from
-    // its `GETSTATIC` — which is not a constant-pool load, and so was invisible to a reader that
-    // only understood `LDC` — is proved in `PreviewKnobDefaultsTest` against hand-built bytecode.
-    // The sibling is untouched: adding a kind must not disturb the open ones.
+    // No default asserted: without the Compose compiler the fixture uses an ordinary `$default`
+    // bridge. Enum defaults via `GETSTATIC` are covered in `PreviewKnobDefaultsTest`. The sibling
+    // knob is unaffected.
     assertThat(knobs.getValue("label").type).isEqualTo(PreviewKnobType.STRING)
     assertThat(knobs.getValue("label").options).isEmpty()
   }
@@ -158,23 +148,16 @@ class ComposableSignatureTest {
   fun `an aliased constant reports the text it declares, not its own name`() {
     val knob = knobsOf("aliasedKnobComponent").single()
 
-    // A catalog migrating off `previewOverrideChoice` has its vocabulary written into every
-    // `@OverrideVariant` seed it has accumulated and into the design kit its renders are compared
-    // against. `extra-large` is not a legal Kotlin identifier, so the constant cannot be renamed to
-    // it — the constant declares the text instead.
+    // Migrating off `previewOverrideChoice` keeps existing seed texts; `extra-large` isn't a legal
+    // identifier, so the constant declares it.
     assertThat(knob.options).containsExactly("default", "large", "extra-large").inOrder()
   }
 
   @Test
   fun `an aliased constant carries both its name and its text, which is what translates a default`() {
-    // A knob's DEFAULT is read out of the compiled body as the constant NAME (`ExtraLarge`), while
-    // its options are the declared texts — so reporting the name as the default would hand a viewer
-    // a value its own picker does not offer, and a "reset" the knob then rejects. Translating one
-    // to the other needs both halves, which is what this carries.
-    //
-    // Asserted on the pairs rather than on `PreviewKnob.default`, because this module has no
-    // Compose compiler plugin: the fixture compiles to the ordinary `name$default` bridge instead
-    // of the mask block `PreviewKnobDefaults` reads, so no default is recoverable here at all.
+    // Defaults are read as the constant name while options are declared texts, so both halves are
+    // needed to translate. Asserted on the pairs, since no default is recoverable without the
+    // Compose compiler.
     val constants =
       ClassGraph().enableClassInfo().acceptPackages("ee.schimke.composeai.discovery").scan().use {
         scan ->
@@ -195,17 +178,14 @@ class ComposableSignatureTest {
 
   @Test
   fun `two constants claiming one seed text disable the knob rather than binding either`() {
-    // An ambiguous seed has no right answer, and binding to whichever constant was read first would
-    // be a silent wrong one. With no options the enum is not seedable, so it is not a knob — the
-    // untouched sibling still is.
+    // An ambiguous seed isn't seedable, so the enum isn't a knob; the sibling still is.
     assertThat(knobsOf("ambiguousKnobComponent").map { it.name }).containsExactly("tag")
   }
 
   @Test
   fun `an enum parameter is not a knob at all when the enum cannot be resolved`() {
-    // Without a scan result there is no way to read the constants, and a picker with no options
-    // would be worse than the text box it replaced — so it degrades to "not seedable", not to "a
-    // knob whose values are unknown".
+    // Without a scan the constants can't be read, so it's "not seedable" rather than an empty
+    // picker.
     ClassGraph()
       .enableClassInfo()
       .enableMethodInfo()
@@ -254,10 +234,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `a nullable function type is parenthesised so the question mark cannot read as the return`() {
-    // `((Boolean) -> Unit)?` rendered as `(Boolean) -> Unit?` says the callback returns `Unit?` and
-    // is nullable nowhere — the opposite of the truth. material3 declares `Checkbox`,
-    // `RadioButton` and `Switch` exactly this way, so every consumer of `TargetParameter.type` was
-    // being handed the wrong reading for three of its most common components.
+    // `((Boolean) -> Unit)?` must not render as `(Boolean) -> Unit?` (material3's `Checkbox`,
+    // `RadioButton`, `Switch`).
     val params = parametersOf("nullableCallbackComponent").associate { it.name to it.type }
 
     assertThat(params["onCheckedChange"]).isEqualTo("((Boolean) -> Unit)?")
@@ -266,17 +244,13 @@ class ComposableSignatureTest {
 
   @Test
   fun `a nullable parameter is not a knob`() {
-    // Passing null is how the renderer says "use the author default", so a knob that can
-    // legitimately
-    // be null has no way to be seeded null and would silently resolve to its default instead.
+    // `null` means "use the author default", so a nullable knob can't be seeded null.
     assertThat(knobsOf("nullableKnobComponent").map { it.name }).containsExactly("enabled")
   }
 
   @Test
   fun `a function with a non-defaulted parameter declares no knobs`() {
-    // `sampleComponent` has `state` with no default — an unrenderable shape for the parameter
-    // format, since the $default mask cannot supply it. Reporting knobs for it would advertise
-    // editable controls on a preview discovery refuses to admit.
+    // `state` has no default, so the preview is unrenderable in this format and reports no knobs.
     assertThat(knobsOf("sampleComponent")).isEmpty()
   }
 
@@ -297,17 +271,14 @@ class ComposableSignatureTest {
     assertThat(content.name).isEqualTo("content")
     assertThat(content.type).isEqualTo("TestRowScope.(Int) -> Unit")
     assertThat(content.composableSlot).isTrue()
-    // A composable slot is not a scope DSL. The two are filled in opposite ways — children
-    // composed in, versus children declared through the receiver — so a consumer that conflated
-    // them would emit `item { … }` inside a `RowScope`.
+    // A composable slot isn't a scope DSL; conflating them would emit `item { … }` in a `RowScope`.
     assertThat(content.scopeDslReceiver).isNull()
   }
 
   @Test
   fun `a non-composable receiver lambda records its scope, which is what a lazy list needs`() {
-    // `LazyColumn(content: LazyListScope.() -> Unit)` is this shape. It is not a `@Composable`
-    // slot, so `composableSlot` is false and a generator reading only that refuses the whole
-    // container; the receiver is what says the children are `item { … }` rather than composables.
+    // The `LazyColumn` shape: not a composable slot, so the receiver is what says children are
+    // `item { … }`.
     val content = parametersOf("scopeDslComponent").single()
 
     assertThat(content.composableSlot).isFalse()
@@ -347,10 +318,8 @@ class ComposableSignatureTest {
   // --- constructibility of a required parameter's type (issue #5067) ----------------------------
 
   /**
-   * `isNoArgConstructible` over a real scan of the fixtures. Asked of the TYPE rather than through
-   * a component function, because that is the question the clauses are about — and because a
-   * fixture function taking an `internal` type could not itself be public, which would change what
-   * is being tested.
+   * `isNoArgConstructible` asked of the type directly (a public fixture function can't take an
+   * `internal` type).
    */
   private fun constructible(simpleName: String): Boolean {
     ClassGraph()
@@ -369,9 +338,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `an all-defaulted constructor is constructible, which only source shows`() {
-    // The JVM sees `(String, int, int, DefaultConstructorMarker)` and no zero-arg constructor at
-    // all; `DefaultedState()` compiles anyway. Reading `declaresDefaultValue` off metadata is what
-    // makes that visible — counting JVM parameters would answer no.
+    // The JVM sees only the `DefaultConstructorMarker` bridge, yet `DefaultedState()` compiles;
+    // metadata's `declaresDefaultValue` shows it.
     assertThat(constructible("DefaultedState")).isTrue()
   }
 
@@ -471,10 +439,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `a factory whose JVM name is mangled still resolves, under the name metadata carries`() {
-    // `rememberMangledFactoryState` takes an inline value class, so the emitted method is
-    // `rememberMangledFactoryState-…`. The source name is what a call site prints and what
-    // metadata records; the mangled one is what the scan can find. Confusing the two is what made
-    // the real `rememberTextFieldState` invisible.
+    // The method name is mangled by an inline value class parameter; lookup must use the JVM name
+    // while printing the source name (as with `rememberTextFieldState`).
     assertThat(factoryFor("MangledFactoryState"))
       .isEqualTo("ee.schimke.composeai.discovery.rememberMangledFactoryState")
   }
@@ -513,9 +479,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `a required parameter also carries the factory its package declares`() {
-    // Both travel: the record says what is TRUE of the type, and choosing between them is the
-    // generator's job (`ComponentSnippets` prefers the factory). A record that carried only the
-    // winner would have to be re-resolved the moment that preference changed.
+    // Both are recorded; `ComponentSnippets` chooses (preferring the factory), so the record
+    // needn't change if that preference does.
     val parameter = parameterWithScan("factoryStateComponent")
 
     assertThat(parameter.noArgConstructible).isTrue()
@@ -535,9 +500,8 @@ class ComposableSignatureTest {
 
   @Test
   fun `without a scan nothing is claimed, so an older caller behaves exactly as before`() {
-    // Annotation info is enabled because `signatureOf` reads the method's opt-in markers whatever
-    // else it is asked for; what this test withholds is the SCAN ARGUMENT, which is the only input
-    // constructibility is resolved from.
+    // Annotation info is on for opt-in markers; what's withheld is the scan argument
+    // constructibility needs.
     ClassGraph()
       .enableClassInfo()
       .enableMethodInfo()

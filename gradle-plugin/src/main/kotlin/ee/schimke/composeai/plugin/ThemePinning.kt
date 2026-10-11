@@ -5,30 +5,22 @@ import org.gradle.api.Project
 
 /**
  * Opt-in theme pinning: a catalog's selected theme recolours previews that install their own theme.
+ * The innermost `MaterialTheme` normally wins over the wrapping provider (see
+ * [ee.schimke.composeai.discovery.PreviewThemeShadowing]); with pinning:
+ * - `theme-pin-compiler-plugin` redirects the module's calls to M3 `MaterialTheme` to
+ *   `PreviewMaterialTheme` (same descriptor, different owner), and
+ * - `theme-pin-runtime` supplies `PreviewMaterialTheme`, which prefers a scheme pinned via
+ *   `PinMaterialTheme`.
  *
- * A theme provider wraps a preview from the outside, but an app preview usually installs its own
- * theme further in (`AppScaffold { AppTheme { … } }`), and the innermost `MaterialTheme` wins — the
- * case [ee.schimke.composeai.discovery.PreviewThemeShadowing] warns about. With pinning on, two
- * artifacts reverse that precedence:
- * - `theme-pin-compiler-plugin` points the module's own calls to Material 3 `MaterialTheme` at
- *   `PreviewMaterialTheme` (same JVM descriptor, so only the call's owner changes), and
- * - `theme-pin-runtime` supplies `PreviewMaterialTheme`, which prefers a colour scheme a generated
- *   theme provider has pinned with `PinMaterialTheme`.
+ * **Opt-in, never on a shipped build:** only with `composePreview.themePinning=true`, which the
+ * import pipeline sets in throwaway checkouts.
  *
- * **Opt-in, and never on a shipped build.** The compiler plugin rewrites the module's own call
- * sites, so it is attached only when `composePreview.themePinning=true` — which the import pipeline
- * sets in its throwaway checkout of somebody else's project. A first-party build that applies this
- * plugin is unchanged.
+ * **Kotlin version gate:** compiler plugins link against compiler internals, so it's attached only
+ * on the Kotlin line it was built for (`themePinKotlin`), otherwise warn and skip.
  *
- * **Kotlin version gate.** A compiler plugin links against compiler internals, which change between
- * Kotlin lines. It is attached only when the consumer's Kotlin is on the line it was built against
- * (`themePinKotlin` in `plugin-version.properties`, baked from the catalog); anything else logs a
- * warning and renders without pinning rather than risk a compiler crash.
- *
- * **Paired per compilation.** Only the runtime classpath needs `theme-pin-runtime` — the module's
- * source never names it — so it rides on the runtime-only bucket of each JVM / Android compilation,
- * and the compiler plugin is attached to exactly those compilations. A compilation that would get
- * one without the other is skipped, so a redirected call can never meet a missing method.
+ * **Paired per compilation:** the runtime goes on each JVM / Android compilation's runtime-only
+ * bucket and the compiler plugin on exactly those compilations, so a redirected call never lacks
+ * its target.
  */
 internal object ThemePinning {
   const val PROPERTY = "composePreview.themePinning"
@@ -94,10 +86,7 @@ internal object ThemePinning {
   /** Adds [runtime] and [compilerPlugin] to each paired render compilation — see [pairings]. */
   internal fun wire(project: Project, multiplatform: Boolean, runtime: Any, compilerPlugin: Any) {
     val pairs = pairings(multiplatform)
-    // The two halves of a pair are created by different parts of KGP, in no promised order, so
-    // whichever arrives second completes the pair. The compiler plugin is attached only once its
-    // runtime bucket exists: a compilation can never be redirected without the method it is
-    // redirected to.
+    // KGP creates the two halves in no promised order; whichever arrives second completes the pair.
     val attached = mutableSetOf<String>()
     fun attach(pluginClasspath: String) {
       if (attached.add(pluginClasspath)) project.dependencies.add(pluginClasspath, compilerPlugin)
@@ -119,13 +108,10 @@ internal object ThemePinning {
   }
 
   /**
-   * `(runtime-only bucket, compiler-plugin classpath configurations)` per render compilation.
-   *
-   * A plain JVM or Android module has one `runtimeOnly` feeding every compilation, so every
-   * compiler plugin classpath it has pairs with it. A KMP module pairs each JVM / Android target's
-   * `<target>MainRuntimeOnly` with that target's `kotlinCompilerPluginClasspath<Target>Main` — and
-   * nothing else: a native, JS or Wasm compilation, or a JVM target under another name, gets
-   * neither.
+   * `(runtime-only bucket, compiler-plugin classpath configurations)` per render compilation. Plain
+   * JVM / Android modules pair one `runtimeOnly` with every compiler plugin classpath; KMP pairs
+   * each JVM / Android target's `<target>MainRuntimeOnly` with its
+   * `kotlinCompilerPluginClasspath<Target>Main`, and nothing else.
    */
   internal fun pairings(multiplatform: Boolean): List<Pair<String, Regex>> =
     if (!multiplatform) {
@@ -139,9 +125,7 @@ internal object ThemePinning {
     }
 
   /**
-   * The published coordinate at this plugin's version — or, inside the compose-ai-tools build
-   * itself, where the artifact is a sibling project, that project (the same rule as the local
-   * `:daemon:desktop` lookup in `registerDesktopDaemonStartTask`).
+   * The published coordinate at this plugin's version, or the sibling project inside this build.
    */
   private fun artifact(project: Project, artifactId: String): Any =
     project.findProject(":$artifactId")?.let {

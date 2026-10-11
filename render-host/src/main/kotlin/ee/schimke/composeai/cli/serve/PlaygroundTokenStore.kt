@@ -7,27 +7,19 @@ import okio.FileSystem
 import okio.Path
 
 /**
- * The expiring **preview-token** capability behind `/pg/<token>` — the Stage-1 → Stage-2 handoff in
- * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md).
+ * The expiring preview-token capability behind `/pg/<token>` — the Stage-1 → Stage-2 handoff in
+ * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md). Holds a cleanly
+ * compiled snippet ([PlaygroundSnippet]) and redeems into a live daemon session or a Remote Compose
+ * document permalink.
  *
- * Sibling of [ServeDocStore]: where that holds a client-uploaded *document* and hands back a
- * `/d/<id>` playback link, this holds a **just-compiled snippet** ([PlaygroundSnippet]) and hands
- * back a `/pg/<id>` link that redeems into a live daemon session (CMP/Android) or a document
- * permalink (Remote Compose). A token is minted only after a *clean* compile, so possessing one
- * means "there are real classes on disk ready to render".
+ * Safety model as in [ServeDocStore]:
+ * - The id is the capability: 128 bits of [SecureRandom], base64url, `pg_`-prefixed.
+ * - Expiring: after [ttlSeconds] `/pg/<id>` 404s without revealing whether it existed.
+ * - Bounded: [maxTokens] evicts nearest-expiry first, and dropping a token deletes its work dir, so
+ *   disk is bounded too.
  *
- * Safety model mirrors [ServeDocStore]:
- * - **Id is the capability.** 128 bits of [SecureRandom], base64url, `pg_`-prefixed. Unguessable,
- *   so a link is safe to hand to one person without listing it.
- * - **Expiring.** After [ttlSeconds] the token is dropped and `/pg/<id>` 404s without disclosing
- *   whether the id ever existed.
- * - **Bounded.** A [maxTokens] cap evicts nearest-expiry first on overflow. Each token owns a temp
- *   work directory ([PlaygroundSnippet.workDir]); dropping the token **deletes that directory**, so
- *   the cap bounds disk, not just the map.
- *
- * Unlike [ServeDocStore] this store owns on-disk state, so every removal path (expiry, overflow,
- * explicit [remove], [clear]) routes through [disposeSnippet] to delete the work dir. The delete is
- * best-effort — a failure is swallowed so one undeletable directory can't wedge purging.
+ * Every removal path goes through [disposeSnippet]; deletion is best-effort so one stuck directory
+ * can't wedge purging.
  */
 public class PlaygroundTokenStore(
   /** How long a preview token stays redeemable. Short by design — minutes, not hours. */
@@ -39,17 +31,16 @@ public class PlaygroundTokenStore(
   private val clock: () -> Long = System::currentTimeMillis,
   private val mintId: () -> String = ::randomId,
   /**
-   * Invoked as a token is dropped (expiry, overflow eviction, [remove], [clear]), after its work
-   * dir is deleted. Stage 2 wires this to [PlaygroundRedeemService.release] so a dropped token also
-   * unregisters + closes any live session it stood up. Best-effort — a throw here must not wedge
-   * purging — so it runs under `runCatching`. Defaults to a no-op (mint-only hosts).
+   * Called after a dropped token's work dir is deleted; Stage 2 wires it to
+   * [PlaygroundRedeemService.release] to close any live session. Runs under `runCatching`. Defaults
+   * to a no-op.
    */
   private val onRemove: (Token) -> Unit = {},
 ) {
 
   /**
-   * A compiled snippet a token points at — everything Stage 2 needs to stand up (or, for Remote
-   * Compose, replay) the preview without recompiling.
+   * A compiled snippet: everything Stage 2 needs to stand up (or replay) the preview without
+   * recompiling.
    */
   public data class PlaygroundSnippet(
     val mode: PlaygroundMode,
@@ -64,16 +55,8 @@ public class PlaygroundTokenStore(
     /** The `@Preview` id Stage 2 opens on, and the one the Stage-1 still frame draws. */
     val previewId: String,
     /**
-     * **Every** `@Preview` the snippet declared, [previewId] first.
-     *
-     * A snippet routinely declares more than one — a multi-file snippet almost always does — and
-     * for a long time the live session was told about exactly one of them, so the others could be
-     * compiled and then never looked at. The redeemed session's `previews.json` lists all of these,
-     * which is what makes the viewer's ordinary preview navigation work on a snippet the same way
-     * it works on a catalog.
-     *
-     * Defaults to just [previewId] so a caller that doesn't care (and every existing test) is
-     * unchanged.
+     * Every `@Preview` the snippet declared, [previewId] first, so the redeemed session can
+     * navigate between them. Defaults to just [previewId].
      */
     val previewIds: List<String> = listOf(previewId),
   )
@@ -101,10 +84,8 @@ public class PlaygroundTokenStore(
   private val tokens = ConcurrentHashMap<String, Token>()
 
   /**
-   * Mint a token for [snippet] and return it. The store now owns [snippet]'s [workDir] and will
-   * delete it on expiry/eviction/[remove]. [isSecurityChecked] is the greppable audit marker
-   * [ServeDocStore.add] uses (no runtime enforcement): the caller passes `true` only once the
-   * request has cleared the playground route's gate.
+   * Mint a token for [snippet]; the store now owns its [workDir]. [isSecurityChecked] is the
+   * greppable audit marker [ServeDocStore.add] uses: pass `true` only after the route's gate.
    */
   public fun add(snippet: PlaygroundSnippet, isSecurityChecked: Boolean): Token {
     val now = clock()
@@ -128,10 +109,7 @@ public class PlaygroundTokenStore(
     return tokens[id]?.takeIf { it.expiresAtMillis > now }
   }
 
-  /**
-   * Seconds left on [token], measured on the **store's** clock — the one that decides expiry.
-   * Callers must not read the wall clock themselves.
-   */
+  /** Seconds left on [token] by the store's clock (the one that decides expiry). */
   public fun remainingSeconds(token: Token): Long = token.secondsUntilExpiry(clock())
 
   /** Explicitly drop [id] (and delete its work dir); returns true if it was present. */
@@ -171,9 +149,8 @@ public class PlaygroundTokenStore(
   }
 
   /**
-   * Enforce the count cap by dropping the tokens closest to expiry first — a burst evicts the
-   * oldest shares (deleting their work dirs) rather than being refused, so disk + heap stay
-   * bounded.
+   * Enforce the count cap by dropping the tokens nearest expiry (and their work dirs) rather than
+   * refusing new ones.
    */
   private fun evictOverflow() {
     while (tokens.size > maxTokens) {
@@ -193,8 +170,7 @@ public class PlaygroundTokenStore(
     try {
       fileSystem.deleteRecursively(snippet.workDir, mustExist = false)
     } catch (_: Exception) {
-      // The directory may already be gone, or held open on Windows; leaking one temp dir is
-      // strictly better than throwing out of a purge and stranding the rest.
+      // Leaking one temp dir beats throwing out of a purge.
     }
   }
 

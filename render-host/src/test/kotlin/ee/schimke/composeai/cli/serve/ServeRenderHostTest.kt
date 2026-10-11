@@ -65,11 +65,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderFailed completes the wait immediately instead of sleeping out the budget`() {
-    // Regression for the serve cold-render investigation: only `renderFinished` completed the
-    // pending latch, so a preview whose render body threw (daemon sends `renderFailed` within
-    // seconds) left the host sleeping out its ENTIRE render budget under renderLock — 180s per
-    // broken-preview render on the CLI, 900s on the public server. Profiled on confetti-mobile:
-    // this single behaviour was the whole "cold Android renders take minutes" symptom.
+    // `renderFailed` must complete the pending latch; otherwise a broken preview holds renderLock
+    // for the whole render budget.
     lateinit var session: FakeRenderSession
     session =
       FakeRenderSession(
@@ -158,10 +155,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `a render backs off to Busy when the daemon lock is held, not blocking the render budget`() {
-    // The host is built with renderTimeoutSeconds = 30. A cold render holding the per-daemon lock
-    // for that long must NOT make a concurrent render block for the whole budget (which, on the
-    // live server, pins a shared HTTP render slot and saturates the queue). It must back off to
-    // Busy near the bounded wait instead.
+    // With a 30s budget, a render holding the lock must not block a concurrent render for the whole
+    // budget (that pins shared HTTP slots); it backs off to Busy near the bounded wait.
     val firstHoldsLock = CountDownLatch(1)
     val release = CountDownLatch(1)
     val session =
@@ -220,9 +215,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `hasSvgExport enables the daemon's figma-svg data products on open`() {
-    // The daemon registers compose/figma-svg (+ -long) inactive; without this enable an
-    // override-bearing .svg render fails "-32020 kind not advertised". Assert the host activates
-    // them on open and advertises the SVG export.
+    // compose/figma-svg is registered inactive; the host must enable it on open and advertise SVG
+    // export, or `.svg` renders fail `-32020 kind not advertised`.
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
       assertTrue(h.hasSvgExport, "a figma-svg-capable daemon advertises SVG export")
@@ -271,9 +265,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderSvg short-circuits to NotFound when figma-svg is unavailable`() {
-    // Without the producer the SVG render methods must NOT hit fetchData (which would 500 with
-    // `-32020 kind not advertised`); they return NotFound (a 404) to match the advertised no-SVG
-    // lane. Guards the Codex P2 on the availability gate.
+    // Without the producer the SVG methods must not call fetchData (a `-32020` 500); they return
+    // NotFound.
     val session = FakeRenderSession(newRenderRoot(), figmaSvgAvailable = false)
     host(session).use { h ->
       assertEquals(
@@ -494,10 +487,8 @@ class ServeRenderHostTest {
       assertEquals(AnnotationBounds(x = 8, y = 8, width = 32, height = 32), theme.bounds)
       assertEquals("#FF6750A4", theme.detail["background"])
 
-      // The tag index rides the SAME response, off the SAME semantics payload, under the same
-      // render lock. That co-location is the contract: a parity element gate compares a recorded
-      // tag box against a current one, so an index built by a second render would report movement
-      // that never happened.
+      // The tag index comes from the same semantics payload under the same lock; a second render
+      // could report movement that never happened.
       val tags =
         Json.decodeFromJsonElement(
           MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
@@ -626,9 +617,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderA11y still draws the focus map when the backend has no ATF products`() {
-    // The desktop backend advertises no `a11y/touchTargets` at all and answers `a11y/atf` with
-    // empty findings — the overlay must still be worth drawing from the hierarchy alone rather
-    // than failing the whole request because an optional product wasn't there.
+    // Desktop advertises no `a11y/touchTargets` and returns empty `a11y/atf`; the overlay must
+    // still draw from the hierarchy.
     val session =
       FakeRenderSession(
         newRenderRoot(),
@@ -654,13 +644,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderA11y enables the daemon's inactive a11y extension before fetching`() {
-    // The bug behind "the a11y overlay doesn't work" on a served catalog. The daemon registers its
-    // inspection products INACTIVE, so a `data/fetch` on a session nobody enabled fails `-32020
-    // kind not advertised`. `renderA11y` read no capability of its own, so nothing ran the enable:
-    // on a host whose flags were never asked for — the per-preview daemons `ServeCatalogLiveHost`
-    // routes this lane to, while answering `hasA11yOverlayFor` from the SHARED one — every
-    // accessibility fetch 500'd, until an unrelated SVG or scroll request happened to enable that
-    // daemon and the same URL silently started working.
+    // Inspection products are registered inactive, so `renderA11y` must run the enable itself;
+    // otherwise a per-preview daemon nobody else enabled fails every a11y fetch with `-32020`.
     lateinit var session: FakeRenderSession
     session =
       FakeRenderSession(
@@ -696,9 +681,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderA11y is NotFound rather than a 500 when the backend has no a11y extension`() {
-    // Mirrors `renderSvg` on a backend without figma-svg: a host that reports the extension unknown
-    // cannot produce the hierarchy at all, so the lane 404s cleanly instead of fetching into a
-    // `-32020` the viewer surfaces as a 500.
+    // Like `renderSvg`: a backend reporting the extension unknown 404s instead of fetching into a
+    // `-32020`.
     val session =
       FakeRenderSession(
         newRenderRoot(),
@@ -715,15 +699,12 @@ class ServeRenderHostTest {
 
   @Test
   fun `renderA11y reports a daemon that cannot be opened instead of throwing`() {
-    // Forcing the enable moved the daemon OPEN into this lane, and that open is deliberately
-    // outside the enable's own `runCatching` so a transient failure leaves the lazy uninitialized
-    // and the next caller retries. It must not escape as an exception: the route only translates
-    // outcome values, so a throw would skip its 500-with-reason and its log line entirely.
+    // The enable now opens the daemon in this lane, and that open throws through the lazy (so it
+    // can be retried); it must surface as an outcome, not an exception, so the route logs and
+    // answers 500.
     val logged = CopyOnWriteArrayList<String>()
     val opens = AtomicInteger(0)
-    // Not `use {}`: a host whose open failed has no subprocess to reap, and `close()` reaches for
-    // the session again to find that out — which would re-throw the stubbed failure from the
-    // cleanup and mask the outcome this test is about.
+    // Not `use {}`: `close()` would touch the session again and re-throw the stubbed failure.
     val h =
       ServeRenderHost(
         openSession = {
@@ -831,9 +812,8 @@ class ServeRenderHostTest {
 
   @Test
   fun `a late renderFinished from a timed-out render does not corrupt the next render`() {
-    // Render 1 emits nothing → it times out (the daemon still owes a late renderFinished). Render 2
-    // (the daemon catching up) emits the timed-out render's STALE event first, then its own FRESH
-    // event. The stale one must be drained, not cached/served under render 2's override key.
+    // Render 1 times out (its renderFinished arrives late); render 2's stale event arrives before
+    // its fresh one and must be drained, not cached under render 2's key.
     val session =
       FakeRenderSession(
         newRenderRoot(),

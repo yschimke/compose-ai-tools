@@ -101,9 +101,8 @@ class DaemonA11yFetcherTest {
 
   @Test
   fun `preserves per-node ref from a11y-hierarchy into the aggregated report`() {
-    // #1784 — the aggregate decodes a11y-hierarchy.json through this module's AccessibilityNode
-    // mirror and re-encodes it into accessibility.json. The mirror must carry `ref` or the stable
-    // handles silently drop out of `compose-preview a11y` output.
+    // The AccessibilityNode mirror must carry `ref`, or stable handles drop out of `compose-preview
+    // a11y` output.
     val projectDir = newTempFolder("module-ref")
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
@@ -147,9 +146,8 @@ class DaemonA11yFetcherTest {
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.DescriptorMissing)
-    // The python PR-comment helper reads accessibility.json directly, so we stamp a sidecar
-    // even when the session can't open — otherwise the workflow can't tell apart "no module
-    // tried" from "the daemon descriptor was missing."
+    // A sidecar is stamped even when the session can't open, so the PR-comment helper can tell "no
+    // module tried" from "descriptor missing".
     val reportFile = File(projectDir, "build/compose-previews/accessibility.json")
     assertTrue(reportFile.exists(), "expected an atf-unavailable sidecar")
     val report =
@@ -164,9 +162,7 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
 
-    // Null payload simulates a fetch that errored (the fake session below returns null payloads
-    // verbatim; the production fetcher wraps DataProductException / RenderSessionException to
-    // the same `null` here).
+    // A null payload simulates an errored fetch (the production fetcher maps exceptions to null).
     val fetcher =
       DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to null, "BetaPreview" to null)))
 
@@ -245,8 +241,8 @@ class DaemonA11yFetcherTest {
         )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
-    // The daemon only knows `Foo` — `PreviewIndex.byId` is an exact lookup — so both fetches
-    // address it, and the permutation carries its configuration in the params bag instead.
+    // The daemon only knows `Foo` (exact `PreviewIndex.byId`), so both fetches address it and the
+    // permutation carries its configuration in params.
     assertEquals(listOf("Foo", "Foo"), factory.calls.map { it.previewId })
     val overrideParams = factory.calls.first { it.params != null }.params!!.jsonObject
     assertEquals(
@@ -257,8 +253,7 @@ class DaemonA11yFetcherTest {
         ?.jsonPrimitive
         ?.content,
     )
-    // ...and the artefact is forced fresh, since the shared per-preview file may hold the other
-    // configuration's render.
+    // …and is forced fresh, since the shared per-preview file may hold the other configuration.
     assertEquals(
       true,
       overrideParams[DataFetchParams.PARAM_FORCE_RERENDER]?.jsonPrimitive?.content?.toBoolean(),
@@ -277,8 +272,8 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
     val dataDir = File(projectDir, "build/compose-previews/data/Foo")
 
-    // Stand in for the daemon: every render writes the overlay to `data/<previewId>/`, keyed by the
-    // id it was asked for rather than by the overrides — which is exactly why they collide.
+    // Like the daemon, every render writes to `data/<previewId>/` keyed by the addressed id, which
+    // is why permutations collide.
     val factory =
       FakeFactory(
         payloads = mapOf("Foo" to atfPayload(emptyList())),
@@ -324,8 +319,8 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
 
-    // Findings come back inline in the payload, so they are per-render even though every fetch
-    // addresses the same preview. Call 1 is the permutation (fetched first), call 2 the base.
+    // Findings come back inline, so they are per-render. Call 1 is the permutation, call 2 the
+    // base.
     val factory =
       FakeFactory(
         payloads = emptyMap(),
@@ -383,9 +378,8 @@ class DaemonA11yFetcherTest {
           ),
       )
 
-    // The permutation was rendered *as* `Foo`, so it left its data product at `Foo`'s own cache
-    // path. `FileBackedDataProductRegistry` only queues a re-render when that file is *missing*, so
-    // an unforced base fetch would serve the permutation's artefact and file it as the base.
+    // The permutation left its data product at `Foo`'s cache path, and the registry only re-renders
+    // a missing file, so an unforced base fetch would serve the permutation's artefact.
     val baseParams = factory.calls.last().params?.jsonObject
     assertEquals(
       true,
@@ -418,9 +412,8 @@ class DaemonA11yFetcherTest {
         narrowed = true,
       )
 
-    // `--id Foo_dark` asks for one entry, but the render that produced it overwrote
-    // `renders/Foo.png` — which `buildResults` hashes as the declared preview. So the restore runs
-    // even though it has no entry to file.
+    // The permutation overwrote `renders/Foo.png`, so the restoring fetch runs even with no `Foo`
+    // entry to file.
     assertEquals(2, factory.calls.size, "expected the permutation plus a restoring base fetch")
     assertEquals(
       true,
@@ -447,8 +440,7 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
     val dataDir = File(projectDir, "build/compose-previews/data/Foo")
 
-    // Only the first fetch renders; the second errors, so `data/Foo/` still holds the *first*
-    // permutation's overlay when it returns.
+    // The second fetch errors, so `data/Foo/` still holds the first permutation's overlay.
     val factory =
       FakeFactory(
         payloads = emptyMap(),
@@ -497,9 +489,8 @@ class DaemonA11yFetcherTest {
     darkDir.mkdirs()
     File(darkDir, "a11y-overlay.png").writeText("from-an-earlier-run")
 
-    // This render produces a hierarchy but no overlay (the overlay-only path is optional). The copy
-    // loop has nothing to overwrite the earlier run's PNG with, so it must remove it — otherwise
-    // `annotatedPath` points a reader at pixels from a render that isn't this one.
+    // A hierarchy but no overlay: the earlier run's PNG must be removed, or `annotatedPath` points
+    // at the wrong render.
     val factory =
       FakeFactory(
         payloads = mapOf("Foo" to atfPayload(emptyList())),
@@ -532,9 +523,8 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
 
-    // `@Preview(fontScale = 2.0f)` expands to a `_fontscale-2x` variant whose params equal the
-    // base's, so `overridesFor` hands back null. Unforced, that fetch would serve whatever the
-    // preceding RTL render left at the shared cache path and file it under the 2× id.
+    // A `_fontscale-2x` variant whose params equal the base's gets null overrides; unforced it
+    // would serve the previous permutation's cached file.
     val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
     DaemonA11yFetcher(factory = factory)
       .fetch(
@@ -566,8 +556,8 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
     val dataDir = File(projectDir, "build/compose-previews/data/Foo")
 
-    // The permutation renders as `Foo` and leaves its artefacts — including the cached
-    // `a11y-atf.json` — under `Foo`. Then the restoring fetch errors, so nothing replaces them.
+    // The permutation's artefacts (including `a11y-atf.json`) land under `Foo`, then the restoring
+    // fetch errors.
     val factory =
       FakeFactory(
         payloads = emptyMap(),
@@ -597,8 +587,7 @@ class DaemonA11yFetcherTest {
     val base = readReport(projectDir).entries.single { it.previewId == "Foo" }
     assertNull(base.annotatedPath, "the overlay left under `Foo` is the permutation's")
     assertEquals(emptyList(), base.nodes, "so is the hierarchy")
-    // And the cached data product goes too: `FileBackedDataProductRegistry` only re-renders when
-    // the file is missing, so leaving it would serve the permutation's findings to the next run.
+    // The cached data product must go too, or the next run serves the permutation's findings.
     assertFalse(File(dataDir, "a11y-atf.json").exists())
     assertFalse(File(dataDir, "a11y-overlay.png").exists())
     // The permutation's own snapshot, taken before the failure, is untouched.
@@ -618,9 +607,8 @@ class DaemonA11yFetcherTest {
     File(dataDir, "a11y-overlay.png").writeText("foo-own-render")
     File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
 
-    // Every fetch fails — an unavailable extension fails them all alike — so no render happened
-    // and `data/Foo/` still holds Foo's own earlier one. Discarding it here would delete a valid
-    // cache and, on a narrowed run, strand a carried-forward entry pointing at the overlay.
+    // Every fetch fails, so no render happened and `data/Foo/` is still Foo's own; deleting it
+    // would lose a valid cache and strand a carried entry.
     DaemonA11yFetcher(factory = FakeFactory(mapOf("Foo" to null)))
       .fetch(
         projectDir = projectDir,
@@ -635,8 +623,7 @@ class DaemonA11yFetcherTest {
 
     assertEquals("foo-own-render", File(dataDir, "a11y-overlay.png").readText())
     assertTrue(File(dataDir, "a11y-atf.json").exists())
-    // The entry still shows the preview was attempted and produced nothing this run, but its own
-    // artefacts are honestly still its own, so the report may point at them.
+    // The entry records the failed attempt but may still point at the preview's own artefacts.
     val base = readReport(projectDir).entries.single { it.previewId == "Foo" }
     assertEquals("data/Foo/a11y-overlay.png", base.annotatedPath)
     assertEquals(emptyList(), base.findings)
@@ -651,8 +638,7 @@ class DaemonA11yFetcherTest {
     dataDir.mkdirs()
     File(dataDir, "a11y-overlay.png").writeText("foos-own-render")
     File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
-    // `--id Foo_dark` files no fresh `Foo` entry, so the narrowed merge carries the previous one
-    // forward — `annotatedPath` included. Deleting the overlay would strand that reference.
+    // `--id Foo_dark` carries `Foo`'s previous entry forward, `annotatedPath` included.
     writeExistingReport(
       projectDir,
       AccessibilityEntry(
@@ -710,9 +696,8 @@ class DaemonA11yFetcherTest {
     dataDir.mkdirs()
     File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
 
-    // A permutation render can land and its fetch still error — an unparseable ATF payload comes
-    // back as a failure after the artefacts were written. Keying the roll-back off "did a payload
-    // come back" would skip it and leave the override's data product at this preview's cache path.
+    // A render can land and its fetch still fail (unparseable payload); the roll-back must not key
+    // off a returned payload.
     val factory =
       FakeFactory(
         payloads = emptyMap(),
@@ -751,9 +736,8 @@ class DaemonA11yFetcherTest {
     val dataDir = File(projectDir, "build/compose-previews/data/Foo")
     dataDir.mkdirs()
     File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
-    // An earlier run's hold, carrying an overlay this run's base does not have. If the hold were
-    // reused rather than cleared, the roll-back would treat that image as the preview's current
-    // one and reinstate a render from two runs ago.
+    // An earlier run's hold with an overlay this base lacks; reusing it would reinstate a stale
+    // render.
     val hold = File(projectDir, "build/compose-previews/.a11y-pre-permutation/Foo")
     hold.mkdirs()
     File(hold, "a11y-overlay.png").writeText("from-two-runs-ago")
@@ -819,8 +803,7 @@ class DaemonA11yFetcherTest {
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
     val report = readReport(projectDir)
-    // `accessibility.json` is a per-module report: `a11y --id AlphaPreview` must not delete the
-    // module's other findings on its way to printing one row.
+    // `accessibility.json` is per module: `a11y --id AlphaPreview` must keep the other findings.
     assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
     assertEquals("fresh", report.entries[0].findings.single().message)
     assertEquals("keep me", report.entries[1].findings.single().message)
@@ -835,10 +818,9 @@ class DaemonA11yFetcherTest {
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
     writeExistingReport(projectDir, entry("GonePreview", finding("ERROR", "Stale", "deleted")))
 
-    // The `--permutations` shape: every *declared* preview is fetched (so nothing was skipped and
-    // there is nothing to carry forward), but the consumer id space also contains synthetic ids the
-    // daemon can't address, so the report is still partial. Deriving "should I merge?" from that
-    // coverage gap would keep a deleted preview's findings on disk forever.
+    // The `--permutations` shape: every declared preview is fetched (nothing to carry forward) but
+    // synthetic ids stay uncovered, so the report is partial. Deriving "merge?" from coverage would
+    // keep deleted previews' findings forever.
     DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
       .fetch(
         projectDir = projectDir,
@@ -870,9 +852,7 @@ class DaemonA11yFetcherTest {
       modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
     )
 
-    // Nothing on disk to merge with, so the report genuinely covers one of two previews. Without
-    // the flag, a consumer reads `BetaPreview`'s absence as "checked, found nothing" — the module
-    // -wide report would quietly certify a preview ATF never looked at.
+    // Nothing to merge with, so the report covers one of two previews and must say so.
     val report = readReport(projectDir)
     assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
     assertTrue(report.partial, "a report covering 1 of 2 previews is partial")
@@ -925,9 +905,8 @@ class DaemonA11yFetcherTest {
         narrowed = true,
       )
 
-    // `BetaPreview`'s entry records a fetch that produced nothing under a stamp saying nothing ran.
-    // Republishing it now that this run's stamp is gone would present it as "checked, found
-    // nothing" — so it's dropped, and `partial` says out loud that Beta is uncovered.
+    // Beta's empty entry came from a run that ran nothing; republishing it would claim "checked,
+    // clean", so it's dropped and `partial` reports Beta uncovered.
     val report = readReport(projectDir)
     assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
     assertNull(report.status)
@@ -945,9 +924,8 @@ class DaemonA11yFetcherTest {
       entry("BetaPreview"),
     )
 
-    // Alpha is requested again and its fetch errors; Gamma succeeds, so the run as a whole is
-    // "available" and stamps no status. Letting Alpha's empty entry win would delete a real
-    // finding and republish the preview as checked-and-clean in the same move.
+    // Alpha's fetch errors while Gamma succeeds (no status stamped); Alpha's empty entry must not
+    // delete its real finding.
     DaemonA11yFetcher(
         factory =
           FakeFactory(mapOf("AlphaPreview" to null, "GammaPreview" to atfPayload(emptyList())))
@@ -994,9 +972,7 @@ class DaemonA11yFetcherTest {
     val projectDir = newTempFolder("module-merge-nodes")
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
-    // `readNodes` populates `nodes` off `a11y-hierarchy.json` for every preview whether or not its
-    // ATF fetch succeeded, and that file survives from earlier renders — so a failed entry can
-    // carry a full node list. Treating that as evidence would launder it into a clean row.
+    // `nodes` can come from a leftover `a11y-hierarchy.json`, so they don't prove ATF ran.
     writeExistingReport(
       projectDir,
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
@@ -1031,9 +1007,8 @@ class DaemonA11yFetcherTest {
     val projectDir = newTempFolder("module-merge-status-real")
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
-    // A stamp can land on top of a previous run's genuine results — a failed session open stamps
-    // the report without touching the entries it carried. Those findings are data; only the empty
-    // ones are suspect.
+    // A stamp can land over a previous run's real findings; those are data, only empty entries are
+    // suspect.
     writeExistingReport(
       projectDir,
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
@@ -1052,8 +1027,8 @@ class DaemonA11yFetcherTest {
       )
 
     val report = readReport(projectDir)
-    // Alpha's own empty entry was the uninformative kind, so it drops out of the carried set and
-    // comes back from this run's fetch — hence the order. Beta's findings survive untouched.
+    // Alpha's uninformative entry drops and returns from this fetch (hence the order); Beta's
+    // findings survive.
     assertEquals(setOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId }.toSet())
     assertEquals(
       "real",
@@ -1078,8 +1053,7 @@ class DaemonA11yFetcherTest {
       previews = declared("AlphaPreview"),
     )
 
-    // The unnarrowed run is the only thing that ever evicts an entry for a preview that no longer
-    // exists — so it keeps clobbering.
+    // Only an unnarrowed run evicts entries for removed previews.
     assertEquals(listOf("AlphaPreview"), readReport(projectDir).entries.map { it.previewId })
   }
 
@@ -1106,8 +1080,8 @@ class DaemonA11yFetcherTest {
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
     val report = readReport(projectDir)
-    // Failing to reach the daemon teaches us nothing about the previews we weren't going to fetch,
-    // so they survive — but the run still stamps itself unavailable so the CLI exits 2.
+    // Failing to reach the daemon says nothing about unrequested previews, so they survive; the run
+    // is still stamped unavailable.
     assertEquals(listOf("BetaPreview"), report.entries.map { it.previewId })
     assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
   }
@@ -1158,9 +1132,6 @@ class DaemonA11yFetcherTest {
       Companion.json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
     assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
   }
-
-  // -------------------------------------------------------------------------
-  // Fake factory + session
 
   /** One `data/fetch` the fetcher made: the id it addressed and the params bag it sent. */
   data class FetchCall(val previewId: String, val params: JsonElement?)

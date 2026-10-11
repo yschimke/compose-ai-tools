@@ -5,14 +5,10 @@ import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Inline image rendering for `compose-preview show --images`. Today implements kitty's graphics
- * protocol — kitty/Ghostty/WezTerm all speak it. A multi-capture preview (paused-clock animation
- * frames at increasing `advanceTimeMillis`) is emitted as a native kitty animation rather than a
- * flipbook: the first frame transmits with `a=T`, subsequent frames extend with `a=f,z=<gap_ms>`,
- * and playback starts via `a=a,s=3` (loop indefinitely). Inter-frame delays come from the
- * `advanceTimeMillis` deltas so playback matches the simulated clock.
- *
- * iTerm2 / sixel / chafa fallbacks are not implemented yet — `auto` resolves them to [Mode.OFF].
+ * Inline images for `compose-preview show --images`, via kitty's graphics protocol (kitty, Ghostty,
+ * WezTerm). Multi-capture previews become a native kitty animation: frame 1 with `a=T`, later
+ * frames with `a=f,z=<gap_ms>`, then `a=a,s=3` to loop, with gaps from the `advanceTimeMillis`
+ * deltas. iTerm2 / sixel / chafa aren't implemented; `auto` resolves them to [Mode.OFF].
  *
  * Reference: https://sw.kovidgoyal.net/kitty/graphics-protocol/
  */
@@ -28,15 +24,10 @@ object TerminalImages {
   internal const val ST = "$ESC\\"
 
   /**
-   * Resolve `--images=<value>` plus the environment into the effective mode. Pure for testability:
-   * call sites pass [System.getenv] and a precomputed `isTty`.
-   *
-   * Default (flag absent) is `auto`: when stdout is an interactive TTY we sniff the env and resolve
-   * KITTY for kitty-graphics-capable terminals (`KITTY_WINDOW_ID`, `TERM_PROGRAM` ∈ {WezTerm,
-   * ghostty}, or `TERM=xterm-kitty`); everywhere else we stay OFF. A redirected / piped stdout
-   * always resolves to OFF — escape sequences in a captured file are just noise. `off` is the
-   * explicit opt-out for users who want to silence images even inside a kitty terminal (e.g.
-   * screen-readers, terminal recordings).
+   * Resolve `--images=<value>` plus the environment into the effective mode (pure; callers pass
+   * [System.getenv] and `isTty`). Default `auto` picks KITTY on an interactive TTY in a
+   * kitty-capable terminal (`KITTY_WINDOW_ID`, `TERM_PROGRAM` ∈ {WezTerm, ghostty}, or
+   * `TERM=xterm-kitty`), else OFF; redirected stdout is always OFF. `off` opts out explicitly.
    */
   fun resolve(modeArg: String?, env: (String) -> String?, isTty: Boolean): Mode {
     val tag = modeArg?.lowercase()
@@ -55,10 +46,9 @@ object TerminalImages {
   data class Frame(val pngBytes: ByteArray, val gapMillis: Int)
 
   /**
-   * Build inter-frame gaps from a paused-clock capture series. Each frame's dwell is the delta to
-   * the next frame's `advanceTimeMillis`; the last frame inherits the previous gap (or
-   * [defaultGapMillis] when there's nothing to inherit). Non-positive or null deltas fall back to
-   * [defaultGapMillis] so the loop doesn't stall.
+   * Inter-frame gaps from a paused-clock series: each frame dwells for the delta to the next
+   * `advanceTimeMillis`; the last reuses the previous gap. Null or non-positive deltas use
+   * [defaultGapMillis].
    */
   fun framesFromCaptures(
     pngs: List<ByteArray>,

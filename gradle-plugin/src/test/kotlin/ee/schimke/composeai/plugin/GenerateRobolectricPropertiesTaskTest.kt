@@ -9,17 +9,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the contract of the generated `robolectric.properties`: `sdk`, `graphicsMode`, `shadows`,
- * and the `application` toggle driven by `composePreview.useConsumerApplication`. The `sdk` +
- * `graphicsMode` keys live here rather than on `@Config` / `@GraphicsMode` to avoid JUnit's
- * `AnnotationParser` resolving `android.app.Application` during test-class discovery — see
- * issue #142 and `GenerateRobolectricPropertiesTask` KDoc.
+ * Pins the generated `robolectric.properties`: `sdk`, `graphicsMode`, `shadows`, and the
+ * `application` toggle. `sdk` / `graphicsMode` live here rather than in annotations so JUnit's
+ * `AnnotationParser` doesn't resolve `android.app.Application` during discovery (#142).
  *
- * The `sdk` resolution chain — `composePreview.sdkVersion` override > consumer `android.compileSdk`
- * > static default, with the auto-detect path clamped to Robolectric's max — is the load-bearing
- * > fix for issue #1248 (`PackageParser: Requires newer sdk version`), so each link gets a
- * > dedicated assertion here. The samples (`:samples:android`, `:samples:wear`) exercise the
- * > AGP-side `finalizeDsl` plumbing end-to-end via `:samples:android:composePreviewRenderAll`.
+ * Each link of the `sdk` chain (override > `android.compileSdk` clamped to Robolectric's max >
+ * default) gets an assertion, since it fixes #1248. The samples cover AGP's `finalizeDsl` plumbing
+ * end-to-end.
  */
 class GenerateRobolectricPropertiesTaskTest {
 
@@ -36,10 +32,8 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `the coil preview shadow is registered with its package instrumented`() {
-    // Both lines are load-bearing together: the shadow can only replace
-    // `AsyncImagePainter.setPreview$…` if Robolectric instruments `coil.compose` (it isn't an
-    // Android SDK package, so it isn't instrumented by default). Dropping either one silently
-    // reverts coil-backed previews to capturing blank — see issue #2952.
+    // Both lines are needed: the shadow only replaces `AsyncImagePainter.setPreview$…` if
+    // `coil.compose` is instrumented (#2952).
     listOf(false, true).forEach { useConsumerApplication ->
       val body = generate(useConsumerApplication, override = null, compileSdk = 36)
       assertThat(body).contains("ee.schimke.composeai.renderer.ShadowAsyncImagePainter")
@@ -49,14 +43,9 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `the paused-clock hwui shadow is registered for the render lane`() {
-    // Without it Robolectric 4.17-beta-3+ rewrites hwui's frame timestamps into the host's
-    // monotonic domain, so every native render-thread animation — Material's `RippleDrawable` →
-    // `RenderNodeAnimator` first among them — is paced by how long the JVM has been up rather than
-    // by the clock the render advances. A still cannot notice; a capture that samples an animation
-    // does: three renders of one commit produced three different `SwitchButtonOn.apng`s before this
-    // registration and are byte-identical after it (issue #4578). The daemon spells the same shadow
-    // onto `SandboxHoldingRunner.getExtraShadows` (`SandboxHoldingRunnerFrameInfoShadowTest`); keep
-    // the two registrations together, since a lane rendering on the other one's timing is the bug.
+    // Without it Robolectric 4.17-beta-3+ paces hwui render-thread animations by JVM uptime rather
+    // than the render clock, so animation captures weren't reproducible (#4578). The daemon
+    // registers the same shadow in `SandboxHoldingRunner.getExtraShadows`; keep them together.
     listOf(false, true).forEach { useConsumerApplication ->
       val body = generate(useConsumerApplication, override = null, compileSdk = 36)
       assertThat(body).contains("ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer")
@@ -65,13 +54,8 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `the wear clock shadow is registered with its target class instrumented`() {
-    // Both lines are load-bearing together, exactly like the coil pair above: Robolectric can't
-    // shadow a class it didn't rewrite, and `androidx.wear.compose.materialcore.ResourcesKt` —
-    // where
-    // both Wear Material and Material3 `TimeText` read the clock — isn't instrumented by default.
-    // Dropping either one silently reverts Wear previews to painting the host wall clock, so an
-    // activity hero showing the time diffs on every run (issue #3239). `WearTimeTextClockTest`
-    // spells the same two entries onto its `@Config`; keep the spellings identical.
+    // Both lines needed, like coil: Wear's `ResourcesKt` (where `TimeText` reads the clock) isn't
+    // instrumented by default (#3239). `WearTimeTextClockTest` uses the same entries.
     listOf(false, true).forEach { useConsumerApplication ->
       val body = generate(useConsumerApplication, override = null, compileSdk = 36)
       assertThat(body).contains("ee.schimke.composeai.renderer.ShadowWearTimeSource")
@@ -91,17 +75,10 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `the permission-query tracker shadow is deliberately absent from the static lane`() {
-    // Issue #3698: `ShadowContextWrapperPermissionTracker` is daemon-only by decision, not by
-    // oversight. `@PermissionPreview` still flips the rendered branch here — `PermissionsController
-    // .set` mirrors grants into `ShadowApplication`, which `ContextCompat.checkSelfPermission`
-    // reads, pinned end-to-end by `:samples:android`'s `PermissionPreviewPixelTest`. The tracker's
-    // only other job is recording queried permissions for the `compose/permissions` payload, and
-    // that payload is served exclusively over the daemon's `data/fetch`, which this Test task has
-    // no protocol to answer. Adding it here would collect a list nothing in this lane reads while
-    // routing every `ContextWrapper.checkPermission` through the connector's grant map — including
-    // previews carrying no annotation, whose controller state is empty. This assertion is the net:
-    // see `docs/DATA_PRODUCTS.md` before deleting it, because reversing the decision needs a
-    // sidecar-writing path, not just the extra entry.
+    // #3698: `ShadowContextWrapperPermissionTracker` is daemon-only by decision.
+    // `@PermissionPreview` still works here via `ShadowApplication`; the tracker only records
+    // queried permissions for a payload served over the daemon's `data/fetch`, which this lane
+    // can't answer. See `docs/DATA_PRODUCTS.md` before changing this.
     listOf(false, true).forEach { useConsumerApplication ->
       val body = generate(useConsumerApplication, override = null, compileSdk = 36)
       assertThat(body).doesNotContain("ShadowContextWrapperPermissionTracker")
@@ -132,18 +109,15 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `compileSdk above the Robolectric ceiling clamps to the ceiling`() {
-    // Tiles consumers on compileSdk = 37 (transitive minCompileSdk from wear-tiles-renderer)
-    // shouldn't see a hard build failure — clamp to MAX_SUPPORTED_SDK (36 for stable Robolectric
-    // 4.16.1) and warn.
+    // compileSdk 37 (transitive from tiles) clamps to MAX_SUPPORTED_SDK with a warning, not a
+    // failure.
     val body = generate(useConsumerApplication = false, override = null, compileSdk = 37)
     assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
   }
 
   @Test
   fun `maxSupportedSdkOverride lifts the ceiling and skips the clamp`() {
-    // Matrix snapshot probes pair a Robolectric snapshot with this override so an above-ceiling
-    // compileSdk renders at its native level instead of clamping. Production consumers don't
-    // touch this knob.
+    // For SDK matrix snapshot probes rendering above the ceiling; not a production knob.
     val body =
       generate(
         useConsumerApplication = false,
@@ -251,10 +225,8 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `default also writes the daemon-package Application override`() {
-    // The daemon's SandboxRunner (package ee.schimke.composeai.daemon) can't read the
-    // renderer-package file, and its deprecated buildGlobalConfig override is no longer merged over
-    // the manifest by Robolectric 4.16 — so without this the daemon runs the consumer's Application
-    // and crashes the render sandbox.
+    // The daemon's SandboxRunner can't read the renderer-package file and Robolectric 4.16 no
+    // longer merges its `buildGlobalConfig`, so without this it runs the consumer's Application.
     val body = generateDaemon(useConsumerApplication = false)
     assertThat(body).contains("application=android.app.Application")
   }
@@ -266,10 +238,8 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   /**
-   * The app-tour lane's own file: `ee/schimke/composeai/apptour/robolectric.properties`. It is a
-   * SIBLING package of `…renderer`, not a child, so Robolectric merges nothing into it from the
-   * composable lane — which is the whole reason omitting `application=` here means "use the
-   * manifest" rather than "inherit the stub".
+   * The app-tour lane's file is a sibling package of `…renderer`, so nothing merges into it:
+   * omitting `application=` means "use the manifest", not "inherit the stub".
    */
   private fun generateAppTour(
     useConsumerApplication: Boolean,
@@ -301,9 +271,8 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `app-tour lane leaves the Application to the manifest by default`() {
-    // An Activity IS the app: launched against the stub, every Hilt / Koin / AppComponentFactory
-    // activity fails on contact. No `application=` line means Robolectric falls back to the
-    // manifest-declared class.
+    // Activities need their real Application (Hilt, Koin, AppComponentFactory); no `application=`
+    // line means the manifest's.
     val body = generateAppTour(useConsumerApplication = false, appTourUseConsumerApplication = true)
     assertThat(body.lines().none { it.startsWith("application=") }).isTrue()
   }

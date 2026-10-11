@@ -7,16 +7,10 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end regression for `@ScrollingPreview(modes = [LONG])` — drives the renderer to produce a
- * stitched tall PNG of the `ActivityListLongPreview` (`TransformingLazyColumn` + `EdgeButton`) and
- * asserts:
- * - Output height > viewport height (proves multi-slice stitching ran, not a single-frame
- *   fallback).
- * - Pixels in the top / middle / bottom thirds differ — proves real scroll-through content rather
- *   than the same frame repeated.
- *
- * `testDebugUnitTest.dependsOn("composePreviewRenderAll")` in samples/wear's build.gradle.kts
- * guarantees the PNG exists by the time this test runs.
+ * End-to-end regression for `@ScrollingPreview(modes = [LONG])` on `ActivityListLongPreview`
+ * (`TransformingLazyColumn` + `EdgeButton`): the stitched PNG is taller than the viewport, and its
+ * top / middle / bottom thirds differ. samples/wear's `testDebugUnitTest` depends on
+ * `composePreviewRenderAll`, so the PNG exists.
  */
 class LongScrollPreviewPixelTest {
 
@@ -70,29 +64,18 @@ class LongScrollPreviewPixelTest {
       return dr * dr + dg * dg + db * db
     }
 
-    // Dark-card-on-black content keeps mean RGB values close, so the
-    // bar is deliberately low — we just need to prove the stitch produced
-    // more than one distinct frame. Any two thirds differing at all
-    // catches a repeat-the-same-frame regression; the full bottom→top
-    // stretch is the strongest signal because the bottom contains the
-    // light-purple EdgeButton that isn't present at the top.
+    // Dark cards on black keep mean RGB close, so the bar is low; bottom→top is the strongest
+    // signal because only the bottom has the light-purple EdgeButton.
     assertThat(distance(top, bot)).isGreaterThan(5.0)
     assertThat(distance(top, mid)).isGreaterThan(0.5)
     assertThat(distance(mid, bot)).isGreaterThan(0.5)
   }
 
   /**
-   * Regression for `@ScrollingPreview(reduceMotion = true)`: without Wear's `LocalReduceMotion`
-   * being honoured, `TransformingLazyColumn` items at viewport edges are captured mid-scale
-   * (≈0.55–0.70 of full width) and reappear in the next slice as narrower ghost cards — the
-   * stitcher has no way to collapse them. Every `TitleCard` in `LongActivityListScreen` uses
-   * `fillMaxWidth()`, so in a correctly-rendered stitched PNG the distinguishing "scaled but not
-   * tiny" width band should be sparsely populated by antialiasing / EdgeButton curvature, not by
-   * whole cards.
-   *
-   * Measured on the fixed render: 4.2% of content rows fall in the [0.40, 0.70) band. With
-   * reduceMotion disabled the same band jumps to 19.5%. Gate at 10% — ~2.5× headroom above the
-   * passing value, ~2× below the failing value.
+   * Regression for `@ScrollingPreview(reduceMotion = true)`: if Wear's `LocalReduceMotion` isn't
+   * honoured, edge items are captured mid-scale and reappear as narrower ghost cards. All
+   * `TitleCard`s are `fillMaxWidth()`, so rows in the [0.40, 0.70) width band should be rare.
+   * Measured: 4.2% fixed vs 19.5% broken; gated at 10%.
    */
   @Test
   fun `LONG preview has no scaled-card ghost rows at slice seams`() {
@@ -100,11 +83,9 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * Regression for the Confetti `HomeListViewLongPreview` configuration — LONG + GIF on one
-   * annotation. LONG must flatten `TransformingLazyColumn` motion regardless of any flag (the
-   * renderer forces `LocalReduceMotion = true` around the stitched still): without that, mid-scale
-   * items baked into the slices produce ghost/duplicate card bands the stitcher cannot collapse —
-   * the same [0.40, 0.70) width-band signature the test above gates on.
+   * Regression for LONG + GIF on one annotation (Confetti's `HomeListViewLongPreview`): the
+   * renderer must force `LocalReduceMotion = true` for the LONG still regardless of flags, or the
+   * same mid-scale width-band signature appears.
    */
   @Test
   fun `LONG capture always flattens motion in a multi-mode annotation`() {
@@ -118,10 +99,8 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * The GIF half of the per-mode contract: the sibling capture from the same annotation still
-   * encodes an animated scroll (GIF always keeps motion — its frames can genuinely express it).
-   * Frame-level morph state isn't asserted — decodability plus a real frame count guards the
-   * pipeline; the LONG test above is the regression gate.
+   * The GIF half of that annotation still encodes an animated scroll. Only decodability and frame
+   * count are asserted; the LONG test above is the regression gate.
    */
   @Test
   fun `GIF sibling of forced-flatten LONG still animates`() {
@@ -137,11 +116,8 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * The renderer now verifies every LONG stride against the content's semantics bounds and every
-   * seam against the pixels, and writes anything it could not verify to `<png>.warnings.json` as
-   * `unlandedScrollSteps` / `unverifiedScrollSeams`. A stitched still that ships with either is
-   * untrustworthy somewhere along its height; this is the assertion a consumer makes to refuse one,
-   * applied to both TLC fixtures.
+   * The renderer writes unverified strides/seams to `<png>.warnings.json` as `unlandedScrollSteps`
+   * / `unverifiedScrollSeams`; a trustworthy stitch has neither. Applied to both TLC fixtures.
    */
   @Test
   fun `LONG captures land every stride and verify every seam`() {
@@ -163,11 +139,7 @@ class LongScrollPreviewPixelTest {
     }
   }
 
-  /**
-   * Reads every frame of an animated GIF into a list of [BufferedImage] — same standard
-   * `javax.imageio` reader plugin the encoder writes against (mirrors the android sample's
-   * `ScrollPreviewPixelTest`).
-   */
+  /** Reads every frame of an animated GIF with the standard `javax.imageio` reader. */
   private fun readGifFrames(file: File): List<BufferedImage> {
     val reader = ImageIO.getImageReadersByFormatName("gif").next()
     javax.imageio.stream.FileImageInputStream(file).use { input ->
@@ -203,9 +175,8 @@ class LongScrollPreviewPixelTest {
       if (left < 0) continue
       contentRows++
       val extent = (right - left + 1).toDouble() / w
-      // [0.40, 0.70) isolates "mid-scale TLC items" — narrower than a
-      // full-width card, wider than the EdgeButton's narrow band or
-      // a card's rounded-corner top/bottom rows.
+      // [0.40, 0.70) isolates mid-scale TLC items: narrower than a full card, wider than the
+      // EdgeButton band or a card's rounded-corner rows.
       if (extent >= 0.40 && extent < 0.70) scaledCardRows++
     }
 
@@ -215,23 +186,12 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * Regression guard for the intermittent "ghost peek pill" bug (investigated alongside #170). In
-   * flaky runs the stitched output contains one or more narrow muted grey/purple pills — the peek
-   * state of `EdgeButton` that `ScreenScaffold` pins to the bottom of every intermediate slice —
-   * painted into the scrolling-content region of the stitch, ABOVE the fully-revealed "Start
-   * workout" EdgeButton at the true bottom.
+   * Regression guard for the intermittent "ghost peek pill": `ScreenScaffold` pins the EdgeButton's
+   * peek state to the bottom of every intermediate slice, and if it falls in the band the stitcher
+   * copies from a slice, it lands mid-stitch where the final-frame overwrite can't reach.
    *
-   * Mechanism: each intermediate slice has the peek pill at the same `y` within the slice (it is
-   * pinned to the viewport, not scrolled with the list). The stitcher paints only the bottom `d`
-   * rows of every slice ≥ 1 at a shifted destination `y`, so if the peek pill falls inside that
-   * bottom band the pill lands in the middle of the stitched output. `stitchSlicesWithFinalFrame`'s
-   * final-frame overwrite only covers the last `finalH` rows, so ghosts painted from earlier slices
-   * are never reached.
-   *
-   * This test looks for the signature: a narrow, centred run of muted-grey pixels anywhere ABOVE
-   * the real EdgeButton band. The real EdgeButton is Wear Material3 primary (bright, saturated,
-   * spans most of the viewport width); the peek pill is a dim ~90–100 px wide oval, centred
-   * horizontally, with mean luminance well below the primary colour.
+   * Looks for a narrow, centred, dim (~90–100 px) pill anywhere above the real, bright, near
+   * full-width EdgeButton band.
    */
   @Test
   fun `LONG preview has no ghost peek-pill rows above the EdgeButton`() {
@@ -239,45 +199,31 @@ class LongScrollPreviewPixelTest {
     val w = img.width
     val h = img.height
 
-    // Locate the topmost row of the real EdgeButton band. The band is
-    // the first wide (> 40 % width) run of bright/saturated-purple
-    // pixels scanning from top to bottom after we've already cleared
-    // the list content region.
+    // The real EdgeButton band: the first wide (> 40% width) run of bright purple after the list
+    // content.
     val edgeButtonTop =
       (0 until h).firstOrNull { y ->
         val (extent, avg) = brightCentredRun(img, y)
         extent > w * 0.40 && avg > 400 // primary is bright on all channels
       } ?: h
 
-    // Scan everything strictly above the EdgeButton band for the ghost
-    // signature: narrow (8–110 px), centred (± w/8 of centre), with a
-    // mean colour that is content-ish but distinctly DIMMER than the
-    // real EdgeButton (sum of RGB channels < 420 — well below the
-    // ~670 of Wear Material3 primary, above the ~0 of pure black
-    // background).
+    // Ghost signature above the band: 8–110 px wide, centred (± w/8), and dimmer than the real
+    // button (RGB sum < 420 vs ~670) but not background black.
     val ghostRows = mutableListOf<Int>()
     for (y in 0 until edgeButtonTop) {
       val row = extractCentredPillRow(img, y)
       if (row != null) ghostRows += y
     }
 
-    // Allow a tiny budget for AA fringing / unrelated chrome at
-    // extreme top (TimeText curvature), but the Wear long preview
-    // should produce zero peek-pill ghost rows in a correct stitch.
+    // A correct stitch has zero peek-pill ghost rows.
     assertThat(ghostRows).isEmpty()
   }
 
   /**
-   * Regression for the EdgeButton reveal animation at the bottom of a scroll-to-end stitch: without
-   * a post-scroll settle pass, the final slice captures `ScreenScaffold`'s `EdgeButton` mid-reveal,
-   * and the stitched PNG shows a narrow pill at the very bottom instead of the fully-expanded
-   * "Start workout" button. Once the renderer advances the paused `mainClock` enough for the expand
-   * spec to complete (`settlePostScrollAnimations` in `handleLongCapture`), the bottom band
-   * contains a near-full-width run of primary-coloured pixels.
-   *
-   * Measured on the fixed render: widest primary-colour run spans ~85 % of the viewport width. With
-   * the settle disabled the same run collapses to ~30 %. Gate at 0.60 — ~1.4× headroom above the
-   * passing value, ~2× above the failing value.
+   * Regression for the EdgeButton reveal at the end of a scroll-to-end stitch: without the
+   * renderer's post-scroll settle (`settlePostScrollAnimations`), the final slice shows the button
+   * mid-reveal as a narrow pill. Measured widest primary run: ~85% fixed vs ~30% broken; gated at
+   * 60%.
    */
   @Test
   fun `LONG preview final frame shows fully-expanded EdgeButton`() {
@@ -285,12 +231,8 @@ class LongScrollPreviewPixelTest {
     val w = img.width
     val h = img.height
 
-    // EdgeButton Large is ~46 dp tall ≈ 92 px at 2x density. Scan the
-    // bottom 120 px so the whole button (plus the round-face pill
-    // curvature below it) is in range regardless of exact Material3
-    // sizing changes. For each row find the widest continuous run of
-    // bright pixels; the expanded button sits as one wide horizontal
-    // stripe, a mid-reveal button as a short centred pill.
+    // EdgeButton Large is ~92 px tall at 2x; scan the bottom 120 px. Expanded it is one wide
+    // stripe, mid-reveal a short centred pill.
     val scanFromY = (h - 120).coerceAtLeast(0)
     var maxRunWidth = 0
     for (y in scanFromY until h) {
@@ -307,10 +249,7 @@ class LongScrollPreviewPixelTest {
         val r = (argb shr 16) and 0xff
         val g = (argb shr 8) and 0xff
         val b = argb and 0xff
-        // Button container is Material3 primary (bright, saturated);
-        // scaffold background is pure black. Sum > 120 isolates the
-        // coloured button from the 0-summed background and from any
-        // dark card surfaces that might stray into the band.
+        // Primary-coloured button vs black background (and stray dark cards).
         if (r + g + b > 120) {
           currentRun++
           if (currentRun > bestRun) bestRun = currentRun
@@ -326,10 +265,8 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * Widest continuous horizontal run of bright visible pixels on row [y], returned as `(extent,
-   * averageChannelSum)` where `averageChannelSum` is the mean of `r + g + b` across the run
-   * (0..765). Transparent pill- clip pixels (alpha = 0) break the run, matching the shape of a Wear
-   * round-device capsule mask. Used to locate the real EdgeButton band in the stitched output.
+   * Widest continuous run of bright visible pixels on row [y], as `(extent, averageChannelSum)`
+   * with the mean `r + g + b` over the run (0..765). Transparent capsule-mask pixels break the run.
    */
   private fun brightCentredRun(img: java.awt.image.BufferedImage, y: Int): Pair<Int, Int> {
     val w = img.width
@@ -368,15 +305,13 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
-   * Returns the first (x0, x1, avgRgbSum) tuple describing a centred "peek pill" run on row [y], or
-   * `null` if none qualifies. A peek pill of `EdgeButton` — the ghost-flake signature — has:
-   * - extent ∈ [8, 110] px (too narrow to be a card, too wide to be AA on a single icon edge);
-   * - centred within ± w/8 of the image centre;
-   * - mean `r + g + b` in `[60, 420]` — darker than the Wear Material3 primary-coloured EdgeButton
-   *   (~670) and brighter than pure background (0);
-   * - a distinct purple cast (`B − G ≥ 5`). This filters out neutral-grey chrome like `TimeText`
-   *   (`B == G == R`) that can also present as a narrow centred run near the top of the stitched
-   *   image but is not the flake.
+   * The first centred "peek pill" run on row [y] as `(x0, x1, avgRgbSum)`, or `null`. Qualifies
+   * when:
+   * - extent ∈ [8, 110] px;
+   * - centred within ± w/8;
+   * - mean `r + g + b` in `[60, 420]` (dimmer than the primary EdgeButton, brighter than
+   *   background);
+   * - purple cast (`B − G ≥ 5`), excluding neutral-grey chrome like `TimeText`.
    */
   private fun extractCentredPillRow(
     img: java.awt.image.BufferedImage,

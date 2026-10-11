@@ -8,28 +8,20 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The empirical half of the Phase-4 gate: launch a **throwaway JVM inside the configured jail** and
- * have it report what it can still reach. [PlaygroundPublicGate] admits the playground under
- * `--public` only on a clean report, so "is this box sandboxed?" is answered by measurement rather
- * than by trusting a profile name or an operator's `custom:` argv.
+ * The empirical half of the playground gate: launch a throwaway JVM inside the configured jail and
+ * have it report what it can reach. [PlaygroundPublicGate] admits `--public` only on a clean
+ * report. It uses the same launch shape as a snippet (jail argv, JDK, read-only binds, work dir),
+ * so a jail that would break real renders fails loudly at startup.
  *
- * The probe deliberately runs the **same launch shape** a snippet gets — same jail argv, same JDK,
- * same read-only classpath binds, same writable work dir — so a jail that would break a real render
- * (no `/lib64` bound, `bwrap` blocked by a hardened kernel) fails preflight loudly at startup
- * instead of silently degrading every playground run to "no image".
- *
- * Four checks, each a property the sandbox exists to provide:
- * - **egress blocked** — a snippet must not be able to reach the network from the serve box.
- * - **filesystem contained** — a canary file the parent creates *outside* the jail's bind set must
- *   be invisible to the child.
- * - **process isolated** — the serve host's own pid must not be visible in the child's `/proc`.
- * - **work dir writable** — the containment must not be so total that a real render can't run.
+ * Checks:
+ * - egress blocked — no network from the serve box;
+ * - filesystem contained — a canary outside the bind set is invisible;
+ * - process isolated — the serve host's pid isn't in the child's `/proc`;
+ * - work dir writable — a real render can still run.
  */
 public object PlaygroundSandboxProbe {
 
-  /**
-   * The single line the in-jail probe prints, so ordinary JVM noise on stdout can't be mistaken.
-   */
+  /** The single line the in-jail probe prints, so JVM noise isn't mistaken for it. */
   public const val REPORT_PREFIX: String = "PLAYGROUND_SANDBOX_PROBE "
 
   /** Main class of the in-jail probe; spawned as `java -cp <cli classpath> <this>`. */
@@ -39,9 +31,8 @@ public object PlaygroundSandboxProbe {
   private val json = Json { ignoreUnknownKeys = true }
 
   /**
-   * What the child observed. [ran] false means the jail never produced a report at all (the tool is
-   * missing, the kernel refused the namespace, the JVM died) — a refusal, not a pass; the checks
-   * are then meaningless and left false.
+   * What the child observed. [ran] false means no report at all (tool missing, namespace refused,
+   * JVM died): a refusal, with the checks left false.
    */
   @Serializable
   public data class Report(
@@ -74,11 +65,11 @@ public object PlaygroundSandboxProbe {
   /**
    * Run the preflight for [sandbox].
    *
-   * @param javaHome the JDK the snippet JVMs launch from (bound read-only into the jail).
-   * @param classpath the CLI's own classpath — the probe main lives in it, and binding it is also
-   *   the closest analogue of a snippet's catalog classpath.
+   * @param javaHome the JDK snippet JVMs launch from (bound read-only).
+   * @param classpath the CLI's classpath, holding the probe main (and the closest analogue of a
+   *   snippet's catalog classpath).
    * @param workRoot the playground work root; the probe gets a fresh writable dir under it.
-   * @param launcher spawns argv and returns its outcome; defaults to a real subprocess.
+   * @param launcher spawns argv and returns its outcome; a real subprocess by default.
    */
   public fun run(
     sandbox: PlaygroundSandbox,
@@ -97,8 +88,7 @@ public object PlaygroundSandboxProbe {
     return try {
       probeDir.mkdirs()
       canaryDir.mkdirs()
-      // The canary lives OUTSIDE everything the jail is told to bind. A child that can read it has
-      // the run of the host filesystem.
+      // Outside every bind; readable means the child has the run of the host filesystem.
       val canary = File(canaryDir, "canary.txt").apply { writeText("playground-sandbox-canary") }
       val javaBin = File(javaHome, "bin/java").absolutePath
       val argv =
@@ -203,12 +193,10 @@ public object PlaygroundSandboxProbe {
 }
 
 /**
- * The in-jail half of [PlaygroundSandboxProbe]: runs *inside* the sandbox, measures what it can
- * still reach, prints one [PlaygroundSandboxProbe.Report] line, and exits. Deliberately dependency-
- * free beyond the CLI jar itself, because it must start under the tightest jail the operator can
- * build (cleared environment, read-only host, empty network namespace).
- *
- * `argv`: `<writable work dir> <canary path outside the jail> <serve host pid>`.
+ * The in-jail half of [PlaygroundSandboxProbe]: measures what it can reach, prints one
+ * [PlaygroundSandboxProbe.Report] line, and exits. Dependency-free beyond the CLI jar so it starts
+ * under the tightest jail. `argv`: `<writable work dir> <canary path outside the jail> <serve host
+ * pid>`.
  */
 public object PlaygroundSandboxProbeMain {
 
@@ -237,9 +225,8 @@ public object PlaygroundSandboxProbeMain {
     )
 
   /**
-   * Every probe target must be unreachable. Routable, well-known addresses (no DNS — resolution
-   * would hang rather than fail in an empty netns, and a blocked resolver is not the property we're
-   * testing). A single successful connect means the sandbox leaks egress.
+   * Every target must be unreachable. Literal routable addresses (DNS would hang in an empty
+   * netns); one successful connect means egress leaks.
    */
   private fun egressBlocked(): Boolean = EGRESS_TARGETS.none { (host, port) ->
     runCatching {

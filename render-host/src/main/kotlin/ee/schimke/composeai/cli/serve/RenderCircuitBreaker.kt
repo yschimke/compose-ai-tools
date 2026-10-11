@@ -3,24 +3,15 @@ package ee.schimke.composeai.cli.serve
 import kotlinx.serialization.Serializable
 
 /**
- * Classifies a render failure reason as **fatal** (a fault no retry of any request can clear) or
- * transient.
- *
- * A daemon that fails to link a native symbol, resolve a class, or find a method is broken at the
- * classpath/runtime level: the same call will fail identically for every preview, every override,
- * forever. Retrying is not merely useless, it is actively harmful — see [RenderCircuitBreaker].
+ * Classifies a render failure as fatal (no retry of any request can clear it) or transient. A
+ * daemon that can't link a symbol, resolve a class or find a method fails identically for every
+ * input, so retrying only does harm ([RenderCircuitBreaker]).
  */
 public object RenderFailureClassifier {
   /**
-   * Substrings of a failure reason that mean "linkage/classpath fault". Matched against the reason
-   * text because that is all the serve host has: the daemon reports its render failure as a message
-   * (`render failed: UnsatisfiedLinkError: 'long org.jetbrains.skia…'`), not a typed throwable
-   * across the RPC boundary.
-   *
-   * Every entry is a [LinkageError] subtype (or [ClassNotFoundException], its checked cousin) —
-   * deliberately narrow. A `NullPointerException` from one preview's composition says nothing about
-   * the next preview; a `NoSuchMethodError` says the two halves of the classpath disagree, which no
-   * input can route around.
+   * Failure-reason substrings meaning a linkage/classpath fault; matched as text because the daemon
+   * reports failures as messages across RPC. Deliberately only [LinkageError] subtypes and
+   * [ClassNotFoundException]: an NPE in one composition says nothing about the next.
    */
   private val FATAL_MARKERS =
     listOf(
@@ -45,36 +36,20 @@ public object RenderFailureClassifier {
 }
 
 /**
- * Per-daemon breaker that stops a [ServeRenderHost] from re-attempting renders it has proved it
- * cannot serve.
+ * Per-daemon breaker that stops a [ServeRenderHost] re-attempting renders it has proved it cannot
+ * serve. Without it a linkage failure was retried thousands of times, starving optimization and
+ * users while the catalog still advertised itself as healthy.
  *
- * ## Why
+ * Two independent trips:
+ * - Fatal classification: the first [RenderFailureClassifier]-fatal failure opens the breaker
+ *   terminally (no cooldown, no probe).
+ * - Sustained failure rate: once [minSamples] outcomes are in the rolling window and at least
+ *   [failureRateThreshold] failed, it opens. Catches unclassified fatal errors. Not terminal: after
+ *   [probeCooldownMillis] one probe render is admitted, and a success closes it.
  *
- * Issue #3448: an `m3-catalog` daemon hit an `UnsatisfiedLinkError` — a JVM linkage failure that
- * cannot succeed on retry, ever, for any input — and the host retried it **3794 times in ~14
- * minutes**, still going. Nothing backed off and nothing gave up, with three separate consequences:
- * the theme-optimization pass kept feeding a renderer that could not render (275s of gate wait, a
- * ~7h ETA on work where every item fails); user requests never reached the renderer and timed out
- * into `503 render busy; retry shortly`, a diagnosis wrong in both directions; and the catalog went
- * on advertising itself live and healthy at a 95% failure rate.
- *
- * ## What
- *
- * Two independent trips, because the first is precise and the second is the backstop:
- * - **Fatal classification.** The first failure [RenderFailureClassifier] calls fatal opens the
- *   breaker **terminally** — no cooldown, no probe. There is nothing to wait for.
- * - **Sustained failure rate.** Regardless of class, once [minSamples] outcomes are in the rolling
- *   window and at least [failureRateThreshold] of them failed, the breaker opens. This catches an
- *   unclassified fatal error (a message shape nobody anticipated) without needing to name it. A
- *   rate-tripped breaker is *not* terminal: after [probeCooldownMillis] it lets exactly one render
- *   through, and a success closes it — a genuine wave of transient failures heals itself.
- *
- * While open, [blockedReason] short-circuits renders with the underlying failure text, which is
- * what turns the useless `503 busy; retry shortly` into an actionable answer naming the linkage
- * error, and what lets the host drop its `hasLiveStream` / publish a [ServeDegradation] instead of
- * claiming health.
- *
- * Thread-safe; every method takes one short critical section.
+ * While open, [blockedReason] short-circuits renders with the underlying failure text (an
+ * actionable answer instead of "503 busy"), and the host stops advertising its live lane.
+ * Thread-safe.
  */
 public class RenderCircuitBreaker(
   /** Outcomes that must be in the window before the rate trip can fire at all. */
@@ -86,23 +61,16 @@ public class RenderCircuitBreaker(
   private val probeCooldownMillis: Long = PROBE_COOLDOWN_MILLIS,
   private val clock: () -> Long = System::currentTimeMillis,
   /**
-   * Given the failure text of a **fatal** trip, one extra sentence explaining it — or null when
-   * there is nothing to add.
-   *
-   * The open breaker's reason is what every refused render answers with, so it is the only
-   * diagnosis anyone outside the box ever sees. A bare `UnsatisfiedLinkError: 'int
-   * org.jetbrains.skia…'` names the missing symbol and nothing that explains it, which is how
-   * issue #4220 was reported and why its cause had to be inferred from outside; the serve path
-   * supplies [SkikoNativePairing.linkageDiagnosis] here so the same body also names the Skiko skew
-   * the daemon's own classpath carries. Called once, under the lock, on the trip only — never on
-   * the hot path. Anything it throws is dropped: a diagnosis must not cost the trip.
+   * One extra sentence explaining a fatal trip's failure text, or null. The open breaker's reason
+   * is the only diagnosis outsiders see; the serve path supplies
+   * [SkikoNativePairing.linkageDiagnosis]. Called once under the lock on the trip; anything it
+   * throws is dropped.
    */
   private val linkageDiagnosis: (String) -> String? = { null },
 ) {
   private val lock = Any()
 
-  // Rolling outcome window: true = failed. Bounded, so the rate reflects recent behaviour rather
-  // than an all-time blur — a daemon that served fine for an hour before breaking must still trip.
+  // Rolling window (true = failed), bounded so the rate reflects recent behaviour.
   private val window = ArrayDeque<Boolean>()
 
   private var openReason: String? = null
@@ -114,11 +82,9 @@ public class RenderCircuitBreaker(
   private var shortCircuited = 0L
 
   /**
-   * Why this render must not be attempted, or null to proceed.
-   *
-   * **Mutating**: a rate-tripped breaker past its cooldown returns null here and arms the next
-   * cooldown, admitting exactly one probe render. Use [peekReason] for a read-only look (status
-   * reporting, the HTTP failure latch) so a status poll can't spend the probe.
+   * Why this render must not be attempted, or null to proceed. Mutating: past the cooldown a
+   * rate-tripped breaker returns null once and re-arms (one probe). Use [peekReason] for read-only
+   * looks so status polls can't spend the probe.
    */
   public fun blockedReason(): String? =
     synchronized(lock) {
@@ -129,8 +95,7 @@ public class RenderCircuitBreaker(
       }
       val now = clock()
       if (now >= nextProbeAtMillis) {
-        // Half-open: admit this one render and re-arm, so a probe that also fails doesn't open the
-        // floodgates until the next cooldown elapses.
+        // Half-open: admit this render and re-arm, so a failing probe waits another cooldown.
         nextProbeAtMillis = now + probeCooldownMillis
         return null
       }
@@ -211,18 +176,16 @@ public class RenderCircuitBreaker(
     public const val WINDOW_SIZE: Int = 50
 
     /**
-     * Cooldown between probe renders on a rate-tripped breaker. Long enough that a wedged daemon
-     * costs one render a minute instead of thousands (the #3448 behaviour), short enough that a
-     * transient wave — a daemon restart, a burst of cold-start timeouts — heals within a browse.
+     * Cooldown between probe renders on a rate-tripped breaker: one render a minute for a wedged
+     * daemon, short enough that a transient wave heals within a browse.
      */
     public const val PROBE_COOLDOWN_MILLIS: Long = 60_000L
   }
 }
 
 /**
- * Open-breaker state for one daemon's render lane, serialized onto `/status.json` under
- * `renderStats.breaker`. Present only while the breaker is open — its absence is the healthy case.
- * Additive on `compose-preview-serve/status/v1`.
+ * Open-breaker state for one daemon's render lane on `/status.json` (`renderStats.breaker`); absent
+ * when healthy. Additive on `compose-preview-serve/status/v1`.
  */
 @Serializable
 public data class RenderBreakerSnapshot(

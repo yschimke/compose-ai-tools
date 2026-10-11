@@ -5,22 +5,9 @@ import java.io.File
 import org.junit.Test
 
 /**
- * End-to-end verification that `@AmbientPreview` actually drives `LocalAmbientModeManager` through
- * the renderer's Compose pipeline. Reads the files produced by
- * `:samples:wear:composePreviewRenderAll` (wired in via `composePreview { renderBeforeUnitTests =
- * true }`) and pixel-asserts that the Interactive vs Ambient renders differ.
- *
- * What this guards against:
- *
- * * Renderer-side regressions where `RenderPreviewCapture.ambient` isn't honoured — the
- *   `AmbientOverrideExtension` wouldn't wrap the composition and both PNGs would render the
- *   `Interactive` fallback (the bug PR #907 fixed: previously horologist's `AmbientAware` fell back
- *   to `Inactive` and produced identical "Inactive" captures).
- * * Discovery-side regressions where the `@AmbientPreview` annotation is dropped from
- *   `previews.json`, the `ambient` capture field arrives null at the renderer, and the override
- *   never fires.
- * * Sample-side regressions where the body stops reading from `LocalAmbientModeManager` (e.g. an
- *   accidental hard-coded `AmbientMode.Interactive` fallback).
+ * `@AmbientPreview` must drive `LocalAmbientModeManager` through the renderer: the Interactive and
+ * Ambient renders must differ. Catches the override not being honoured, the annotation being
+ * dropped by discovery, or the sample no longer reading the manager.
  */
 class AmbientPreviewPixelTest {
 

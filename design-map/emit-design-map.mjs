@@ -7,40 +7,14 @@
  *                                      [--check] [--strict] [--allow-stated-absence]
  *                                      [--base-breakpoint <dp>]
  *
- * Run `./gradlew :<module>:composePreviewDiscover` first so the manifest exists.
+ * Run `./gradlew :<module>:composePreviewDiscover` first.
  *
- * ## Two files out
+ * `--out` is the design map; `--variants` the sidecar of unresolved variant declarations. Both are
+ * generated outputs; `--check` (for CI) exits non-zero if either committed file has drifted.
  *
- * `--out` is the design map design-parity reads. `--variants` is the sidecar of **unresolved**
- * variant declarations: which other previews are the same component with knobs turned, and which
- * knobs. Turning those into design nodes needs a design kit's published vocabulary, which this repo
- * does not hold — see the module KDoc in `design-map.mjs` for why the split falls here. A repo with
- * no resolver still gets a valid map of base references from this alone.
- *
- * Both are **outputs**: regenerate rather than edit. `--check` is the CI posture — it regenerates
- * in memory and exits non-zero if either committed file has drifted, without writing.
- *
- * ## Failure posture
- *
- * An unmapped component is reported, never fatal by default: a catalog is allowed to contain
- * components nobody has mapped yet, and failing the build over one would make adding a component a
- * breaking change.
- *
- * `--strict` is the opposite posture, for a catalog whose whole purpose is to reproduce a kit —
- * there, a component with no kit node to compare against does not belong in the published
- * inventory at all, and publishing it means shipping a sticker that can never be checked. It gates
- * on EVERY kind of absence: a missing `reference`, one explained by `noReference`, and a component
- * whose captures name no mode the reference could pair with. The annotation still earns its keep in
- * the default mode, where the three are reported apart so a retired pattern does not read as
- * neglect; `--strict` simply says there are no exceptions.
- *
- * `--allow-stated-absence` narrows `--strict` back to what it is usually wanted for: it still fails
- * on a missing `reference` and on an ambiguous mode, but accepts a component whose absence a
- * `noReference` explains. That is the posture of a catalog with two doors — one for the components
- * that reproduce a kit set, one for the components of its own library the kit never published —
- * where an exception is a fact about the kit rather than a gap. Without it such a catalog has to
- * drop `--strict` altogether and loses the guard against silence as well. No effect without
- * `--strict`.
+ * Unmapped components are reported, not fatal. `--strict` fails on any absence: a missing
+ * `reference`, a `noReference`, or an ambiguous mode. `--allow-stated-absence` relaxes `--strict`
+ * to accept `noReference` components, for catalogs that also publish components the kit never drew.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -62,12 +36,8 @@ const CHECK = process.argv.includes("--check");
 const STRICT = process.argv.includes("--strict");
 const ALLOW_STATED_ABSENCE = process.argv.includes("--allow-stated-absence");
 /**
- * The screen width, in dp, whose capture is the BASE of a breakpoint fan-out.
- *
- * A multipreview that draws one composable at several screen sizes publishes several captures of
- * it, and exactly one can carry the component's design reference — the rest fold under it as size
- * cells. Absent this flag the narrowest wins, which is the size a kit usually draws. Pass it when
- * the kit draws somewhere else, so the base capture and the base reference are the same width.
+ * The screen width (dp) whose capture is the base of a breakpoint fan-out, carrying the design
+ * reference; other sizes fold under it. Defaults to the narrowest.
  */
 const BASE_BREAKPOINT = Number(arg("base-breakpoint", ""));
 
@@ -93,13 +63,7 @@ const { map, variants, diagnostics } = projectDesignMap(manifest.previews ?? [],
 if (STRICT) {
   const missing = [
     ...diagnostics.unmapped.map((id) => `${id} — no reference, and no reason given`),
-    // A STATED absence is a gap under plain --strict and not under
-    // `--strict --allow-stated-absence`. The two postures are both real: a catalog whose inventory
-    // is exactly the kit's wants no exceptions at all, while one that also publishes components of
-    // its own library that the kit never drew (wear-m3-catalog's `ButtonGroup`, `Scaffold`) wants
-    // strictness about SILENCE without being failed by the four cases somebody already looked at
-    // and wrote down. Without the opt-in those catalogs cannot use --strict at all, which costs
-    // them the guard against silence too — the thing --strict was actually for.
+    // A stated absence fails plain --strict but not `--strict --allow-stated-absence`.
     ...(ALLOW_STATED_ABSENCE
       ? []
       : diagnostics.statedAbsent.map((s) => `${s.componentId} — ${s.reason}`)),

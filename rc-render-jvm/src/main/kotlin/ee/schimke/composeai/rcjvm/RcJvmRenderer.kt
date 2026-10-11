@@ -37,17 +37,13 @@ import org.jetbrains.skia.EncodedImageFormat
 /**
  * Render a captured Remote Compose document through `rc-player-compose` to a PNG.
  *
- * [density] and [fontScale] are handed to the scene as one [Density]: the player reads
- * `LocalDensity`, so a `RemoteDensity.Host` capture (text sized from `ID_FONT_SIZE`) resolves at
- * the render's density *and* font scale rather than at a default. [seeds] are the serve
- * `rc.<name>=…` knob edits, applied over the document's authored defaults; [dark] selects the
- * `ColorTheme` branch (light unless asked — a headless render has no desktop session whose theme it
- * should follow, and one that changed colour with the build machine's OS setting would not be
- * reproducible).
+ * [density] and [fontScale] go to the scene as one [Density], so `RemoteDensity.Host` text resolves
+ * at both. [seeds] are serve `rc.<name>=…` knob edits over the authored defaults. [dark] selects
+ * the `ColorTheme` branch (light by default, never the build machine's OS theme, for
+ * reproducibility).
  *
- * The whole document — composition, measure, layout and draw — happens inside the one
- * `scene.render()`; there is no frame loop, so the result is the document settled at t=0, the same
- * frame the catalog's baked capture is.
+ * Everything happens in one `scene.render()` with no frame loop, so the result is the document at
+ * t=0, the same frame as the baked capture.
  */
 public fun renderRemoteDocumentToPng(
   bytes: ByteArray,
@@ -75,18 +71,11 @@ public fun renderRemoteDocumentToPng(
 }
 
 /**
- * Render a captured document and export the resulting ordinary Compose tree as a self-contained
- * layered `compose/figma-svg` document.
- *
- * Mirrors the desktop [ImageComposeScene] post-capture path: collect composition slot tables, keep
- * the scene's semantics root after the frame is drawn, build the layout and semantics payloads,
- * then run [ComposeFigmaSvgDataProducer]. Draw operations the structural model cannot represent
- * stay small PNG layers beneath editable text; those files are inlined before returning, because
- * the one-shot subprocess removes its temporary export directory.
- *
- * `rc-player-compose` lays a document out as ordinary Compose nodes with semantics on the
- * interactive and textual ones, which is what the structural export reads. A document whose content
- * is all canvas drawing exports as a raster layer, exactly as a hand-written `Canvas` preview does.
+ * Render a captured document and export the resulting Compose tree as a self-contained layered
+ * `compose/figma-svg`, mirroring the desktop [ImageComposeScene] post-capture path into
+ * [ComposeFigmaSvgDataProducer]. Unrepresentable draw ops become PNG layers, inlined before
+ * returning because the subprocess deletes its temp directory. An all-canvas document exports as a
+ * raster layer.
  */
 public fun renderRemoteDocumentToSvg(
   bytes: ByteArray,
@@ -210,15 +199,10 @@ private fun InspectableContent(
 public const val FONTS_DIR_PROPERTY: String = "composeai.rcjvm.fontsDir"
 
 /**
- * The host typefaces: the `fonts.json` manifest under [FONTS_DIR_PROPERTY], loaded once and held
- * for the life of the process, which is what lets a pooled worker reuse the faces a first document
- * fetched. Null — the player's own default face — when no directory is configured or it holds no
- * manifest, because a render that fails over a missing font is worse than one in the fallback.
- *
- * A `CoreText` that names no family asks the host for its `default` face, and with no manifest it
- * silently gets Compose's built-in one, which draws good-looking text at a different width. So the
- * serve host points this at the vendored faces the Wasm player ships (`rc-player-wasm/fonts`), the
- * same set the browser lane and the offline parity run shape text with.
+ * The host typefaces from the `fonts.json` manifest under [FONTS_DIR_PROPERTY], loaded once per
+ * process (so a pooled worker reuses them). Null — the player's default — when unconfigured. The
+ * serve host points this at the Wasm player's vendored faces, so text width matches the browser and
+ * parity lanes.
  */
 internal fun rcTypefaces(): RcTypefaceLoader? = typefaceHolder
 

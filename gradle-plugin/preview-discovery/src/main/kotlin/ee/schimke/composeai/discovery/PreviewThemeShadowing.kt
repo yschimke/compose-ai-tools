@@ -5,43 +5,22 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
 
 /**
- * Detects `@Preview` functions that install a `MaterialTheme` in their **own body** in a module
- * that also declares `@ThemeCatalog` / `@WearThemeCatalog` providers — the combination that
- * silently kills the preview server's theme switcher.
+ * Detects `@Preview` functions that install a `MaterialTheme` in their own body in a module that
+ * declares `@ThemeCatalog` / `@WearThemeCatalog` providers. A theme catalog wraps the preview
+ * (`Wrap(content)`, see `InvokeWithOptionalWrapper` in the daemon), so a theme installed inside the
+ * body shadows it and every entry in the viewer's Theme select renders identically — as happened in
+ * the Confetti catalogs.
  *
- * The two features disagree about composition order. A theme catalog is applied by *wrapping* the
- * preview function: the renderer resolves the provider and composes `Wrap(content)` around the
- * preview body ([`InvokeWithOptionalWrapper`] in the daemon). A theme installed *inside* the
- * preview body therefore composes within that wrapper and shadows it, so every entry in the
- * viewer's **Theme** select renders byte-identical pixels. The catalog looks like it has a live
- * theme axis and doesn't.
+ * **A warning, never an error:** pinning a preview to one theme can be intentional.
  *
- * This is not hypothetical: it is exactly what shipped in `confetti-wear` and `confetti-mobile`,
- * where all five conference themes rendered the same PNG because every catalog preview opened with
- * `ConfettiThemeFixed { … }`. Nothing in the pipeline noticed, because the synthetic per-theme
- * specimen sheets ([PreviewKind.THEME_CATALOG]) wrap a *canned* grid rather than an app preview and
- * so kept differing correctly.
- *
- * **Warning, never an error.** Pinning a preview to one theme is legitimate — a per-identity "theme
- * foundation" sticker documents exactly one theme on purpose, and should stay pinned. The check
- * can't tell that apart from the bug, so it reports and lets the author decide.
- *
- * Detection is a bounded walk of the preview's bytecode: direct calls first, then into the module's
- * own methods (a preview almost never calls `MaterialTheme` directly — it calls the app's theme
- * wrapper, which calls it). Library code other than the theme entry points themselves is not
- * followed, so the walk stays cheap and can't wander into Compose internals.
+ * Bounded walk of the preview's bytecode: direct calls, then module-local methods (previews usually
+ * call an app theme wrapper). Library code other than the theme entry points isn't followed.
  */
 internal object PreviewThemeShadowing {
 
   /**
-   * Owners of the `MaterialTheme(…)` *composable* — the call that installs a theme. Kotlin compiles
-   * a top-level composable into a `…Kt` facade, so `MaterialTheme { }` in `material3` becomes
-   * `androidx.compose.material3.MaterialThemeKt.MaterialTheme(…)`.
-   *
-   * Deliberately NOT matched: `MaterialTheme.colorScheme` and friends, which *read* the ambient
-   * theme and compile to `androidx.compose.material3.MaterialTheme.getColorScheme(…)` — owner
-   * without the `Kt` facade suffix, and a different method name. Reading the theme is what a
-   * well-behaved preview body does; only installing one shadows the wrapper.
+   * Owners of the `MaterialTheme(…)` composable (the `…Kt` facade). Not `MaterialTheme.colorScheme`
+   * etc., which only read the theme.
    */
   private val THEME_INSTALL_OWNERS =
     setOf(
@@ -53,12 +32,7 @@ internal object PreviewThemeShadowing {
 
   private const val THEME_INSTALL_METHOD = "MaterialTheme"
 
-  /**
-   * How many module-local hops to follow from the preview body. Real chains are short —
-   * `SessionCardPopulatedPreview → ConfettiThemeFixed → MaterialTheme` is two, and the deepest in
-   * Confetti (`…Preview → ConfettiPreviewScaffold → ConfettiThemeFixed → MaterialTheme`) is three.
-   * The cap keeps a pathological call graph from turning discovery into a whole-program analysis.
-   */
+  /** Module-local hops to follow; real chains are 2–3 deep. Caps pathological call graphs. */
   private const val MAX_DEPTH = 6
 
   /** One preview whose body installs a theme, with the call chain that gets there. */
@@ -73,10 +47,9 @@ internal object PreviewThemeShadowing {
   }
 
   /**
-   * @param previewMethods the `@Preview` methods discovery actually produced previews from, as
-   *   (declaring class, method) pairs.
-   * @param projectClassFqns FQNs compiled from the module's own sources; the walk only recurses
-   *   into these, never into dependency JARs.
+   * @param previewMethods the `@Preview` methods that produced previews, as (declaring class,
+   *   method).
+   * @param projectClassFqns FQNs from the module's own sources; the walk only recurses into these.
    */
   internal fun detect(
     previewMethods: List<Pair<ClassInfo, MethodInfo>>,
@@ -87,17 +60,13 @@ internal object PreviewThemeShadowing {
       try {
         walk(classInfo, method, scanResult, projectClassFqns, depth = 0, visited = mutableSetOf())
       } catch (_: Throwable) {
-        // Bytecode we can't read is not worth failing discovery over — the whole check is
-        // advisory. Same posture as PreviewTargetInference's own extractCalls guard.
+        // Advisory check: unreadable bytecode is skipped, as in PreviewTargetInference.
         null
       }
     chain?.let { Finding(classInfo.name, method.name, it) }
   }
 
-  /**
-   * Returns the chain of call names from [method] down to a theme install, or `null` if this method
-   * doesn't reach one within [MAX_DEPTH] module-local hops.
-   */
+  /** The call chain from [method] to a theme install, or `null` within [MAX_DEPTH] hops. */
   private fun walk(
     classInfo: ClassInfo,
     method: MethodInfo,
@@ -107,8 +76,8 @@ internal object PreviewThemeShadowing {
     visited: MutableSet<String>,
   ): List<String>? {
     if (!visited.add("${classInfo.name}#${method.name}${method.typeDescriptorStr}")) return null
-    // Reuses the inference walker: it already follows the method's own lambda bodies, so a theme
-    // installed as `AppTheme { … }` inside the preview is seen from the preview's own root method.
+    // The inference walker already follows lambda bodies, so `AppTheme { … }` is seen from the
+    // root.
     val calls = PreviewTargetInference.extractCalls(classInfo, method)
 
     if (calls.any(::isThemeInstall)) return listOf(THEME_INSTALL_METHOD)
@@ -128,10 +97,8 @@ internal object PreviewThemeShadowing {
   }
 
   /**
-   * `MaterialTheme` takes defaulted parameters (`colorScheme`, `typography`, `shapes`), so all but
-   * the fully-specified call site compiles to the synthetic `MaterialTheme$default` bridge rather
-   * than `MaterialTheme` itself — and `AppTheme { … }` passing only `content` is by far the common
-   * shape. Matching the bare name alone would miss nearly every real occurrence.
+   * Defaulted parameters make most call sites compile to `MaterialTheme$default`, so match that
+   * too.
    */
   internal fun isThemeInstall(call: PreviewTargetInference.Invocation): Boolean =
     call.ownerFqn in THEME_INSTALL_OWNERS &&
@@ -139,9 +106,7 @@ internal object PreviewThemeShadowing {
         call.methodName == "$THEME_INSTALL_METHOD\$default")
 
   /**
-   * The discovery warning for [findings], or `null` when there is nothing to say. [themeCount] is
-   * how many theme providers the module declares — quoted back so the message explains *why* this
-   * matters for this module specifically.
+   * The warning for [findings], or `null`; [themeCount] explains why it matters for this module.
    */
   internal fun warningOrNull(findings: List<Finding>, themeCount: Int): String? {
     if (findings.isEmpty() || themeCount == 0) return null

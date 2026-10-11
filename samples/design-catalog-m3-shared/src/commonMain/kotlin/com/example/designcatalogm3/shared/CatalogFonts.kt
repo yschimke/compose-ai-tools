@@ -7,17 +7,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 
 /**
- * Generic-family substitutes for the running catalog: family name (`serif`, `monospace`, …) → the
- * [FontFamily] holding the same files the platform's system font table resolves that name to (Noto
- * Serif / Droid Sans Mono). Empty (the default) ⇒ [genericFontFamily] falls back to the platform's
- * own generic constant.
+ * Generic-family substitutes: `serif`, `monospace`, … → the [FontFamily] with the files the
+ * platform maps that name to. Empty ⇒ [genericFontFamily] uses the platform constant.
  *
- * A composition local rather than a wrapped `FontFamily.Resolver` because CMP's
- * `FontFamily.Resolver` is a **sealed** interface — it can't be implemented outside compose-ui, so
- * true resolver-level interception isn't available to apps. Catalog components therefore say
- * `genericFontFamily("serif")` where the original Android catalog said `FontFamily.Serif`; the
- * lookup is the only permitted divergence, and it is shared so the desktop render and the wasm tier
- * resolve identically.
+ * A composition local because CMP's `FontFamily.Resolver` is sealed and can't be intercepted, so
+ * catalog components call `genericFontFamily("serif")` instead of `FontFamily.Serif`.
  */
 val LocalGenericFonts = staticCompositionLocalOf<Map<String, FontFamily>> { emptyMap() }
 
@@ -36,35 +30,24 @@ fun genericFontFamily(name: String): FontFamily =
     }
 
 /**
- * Named downloadable-GoogleFont substitutes for the running catalog: the font's display name
- * (`Orbitron`, `Space Grotesk`, …) → the [FontFamily] holding the faces vendored for it (the same
- * ones Android's downloadable-font provider fetches at that name). Empty (the default) ⇒
- * [namedFontFamily] falls back to the M3 default sans, exactly as if the manifest had never listed
- * the family.
- *
- * Same rationale as [LocalGenericFonts]: CMP's `FontFamily.Resolver` is **sealed**, so a
- * `Font(GoogleFont("Orbitron"))` request can't be intercepted at the resolver on desktop/wasm.
- * Catalog components therefore say `namedFontFamily("Orbitron")` where an Android-only component
- * would say `FontFamily(Font(GoogleFont("Orbitron"), provider))`; the lookup is shared so the
- * desktop render and the wasm tier resolve the branded face identically.
+ * Named GoogleFont substitutes: display name (`Orbitron`, …) → the vendored [FontFamily]. Empty ⇒
+ * [namedFontFamily] falls back to the default sans. Same sealed-resolver reason as
+ * [LocalGenericFonts]: components call `namedFontFamily("Orbitron")` instead of
+ * `FontFamily(Font(GoogleFont("Orbitron"), provider))`.
  */
 val LocalNamedFonts = staticCompositionLocalOf<Map<String, FontFamily>> { emptyMap() }
 
 /**
- * The [FontFamily] for a named GoogleFont [name], preferring the catalog's supplied vendored faces
- * ([LocalNamedFonts]). Falls back to [fallback] (default: the platform sans) when the tier didn't
- * vendor that family — the same graceful degradation the manifest generator assumes when it drops a
- * face the dist doesn't carry.
+ * The [FontFamily] for a named GoogleFont [name] from [LocalNamedFonts], or [fallback] (default:
+ * the platform sans) when not vendored.
  */
 @Composable
 fun namedFontFamily(name: String, fallback: FontFamily = FontFamily.SansSerif): FontFamily =
   LocalNamedFonts.current[name] ?: fallback
 
 /**
- * The stock M3 [Typography] with every style re-pointed at [fontFamily] — the type scale keeps its
- * real Material sizes/weights/line-heights, only the typeface changes (to the Roboto both the
- * desktop render and the baked snapshots use). Null ⇒ the untouched default scale (the platform
- * default).
+ * The stock M3 [Typography] with every style re-pointed at [fontFamily] (sizes and weights kept).
+ * Null ⇒ the untouched default scale.
  */
 fun catalogTypography(fontFamily: FontFamily?): Typography {
   val base = Typography()
@@ -89,15 +72,10 @@ fun catalogTypography(fontFamily: FontFamily?): Typography {
 }
 
 /**
- * [base] with each M3 role group's typeface swapped to the [families] map's GoogleFont family — the
- * `theme.fonts` counterpart to [catalogTypography]'s single face. [families] is keyed by role group
- * (`display`/`headline`/`title`/`body`/`label`, see `parseCatalogFontFamilies`); each name resolves
- * against [named] — the tier's vendored faces (the desktop [Map] `CatalogNamedFonts`, the wasm
- * tier's equivalent) — so `display=Orbitron,body=Space Grotesk` brands the whole scale identically
- * everywhere. A group [families] omits keeps [base]'s face (no copy); a specified-but-unvendored
- * family degrades to [fallback]. Overlay the `theme.typography` **metrics** on the result. Empty
- * [families] ⇒ [base] unchanged. Pure (the [named] lookup is passed in, not read from a composition
- * local) so it applies before the theme's `LocalNamedFonts` provider and is unit-testable.
+ * [base] with each M3 role group's typeface (`display`/`headline`/`title`/`body`/`label`) swapped
+ * to the [families] entry resolved against [named] — the `theme.fonts` counterpart to
+ * [catalogTypography]. Omitted groups keep [base]'s face; unvendored ones use [fallback]. Pure, so
+ * it applies before the theme's `LocalNamedFonts` provider and is unit-testable.
  */
 fun catalogApplyFontFamilies(
   base: Typography,

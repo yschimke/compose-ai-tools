@@ -8,20 +8,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
 /**
- * Pure helpers that produce the on-disk representation each agent host expects for the
- * `compose-preview-mcp` MCP server entry, given the absolute launcher path and project dir.
- *
- * - Antigravity: JSON `mcp_config.json` under `~/.gemini/antigravity/` or `~/.gemini/config/` (see
- *   [AntigravityConfig]), merged into `mcpServers`.
- * - Codex: TOML file at `~/.codex/config.toml`, with a `[mcp_servers.compose-preview-mcp]` table
- *   replaced in place (or appended when absent). Hand-rolled because the rest of the codebase
- *   doesn't pull in a TOML library, and our table is a fixed, small shape so a section-level edit
- *   is safe enough.
- * - OpenCode v2: JSON file at `~/.config/opencode/opencode.json` (or project-local
- *   `opencode.json`), merged into `mcp.servers`. JSONC is deliberately not rewritten because the
- *   JSON serializer cannot preserve comments.
- * - Claude Code: not a config file — invoked via `claude mcp add --scope user`. We expose the argv
- *   here so the caller can shell out and tests can assert the construction.
+ * Pure helpers producing each agent host's on-disk `compose-preview-mcp` server entry:
+ * - Antigravity: `mcp_config.json` under `~/.gemini/antigravity/` or `~/.gemini/config/`
+ *   ([AntigravityConfig]), merged into `mcpServers`.
+ * - Codex: `~/.codex/config.toml`, replacing or appending `[mcp_servers.compose-preview-mcp]`.
+ *   Hand-rolled (no TOML dependency); the table is small and fixed.
+ * - OpenCode v2: `~/.config/opencode/opencode.json` (or project-local), merged into `mcp.servers`.
+ *   JSONC isn't rewritten since comments can't be preserved.
+ * - Claude Code: `claude mcp add --scope user`; the argv is built here for the caller and tests.
  */
 internal object AgentMcpConfig {
 
@@ -105,10 +99,8 @@ internal object AgentMcpConfig {
   }
 
   /**
-   * Replace (or append) the `[mcp_servers.compose-preview-mcp]` table in a Codex `config.toml`,
-   * preserving every other line verbatim. Idempotent: a second call with the same inputs yields the
-   * same file contents (modulo a trailing newline). When `existing` is null/empty, returns a file
-   * containing only our table.
+   * Replace or append the `[mcp_servers.compose-preview-mcp]` table in a Codex `config.toml`,
+   * keeping every other line verbatim. Idempotent; an empty `existing` yields just our table.
    */
   fun mergeCodexConfig(existing: String?, launcher: String, projectAbsPath: String?): String {
     val block = buildString {
@@ -126,13 +118,10 @@ internal object AgentMcpConfig {
     while (i < lines.size) {
       val line = lines[i]
       if (line.trim() == "[mcp_servers.$SERVER_NAME]") {
-        // Skip our existing block: from this header up to the next top-level header (a line
-        // starting with "[" with no leading whitespace) or EOF. Trailing blank lines inside the
-        // block are dropped along with it.
+        // Skip our old block up to the next top-level header or EOF.
         i++
         while (i < lines.size && !lines[i].startsWith("[")) i++
-        // Insert the fresh block where the old one stood. Match the surrounding spacing: ensure
-        // a single blank line before it if there was content above.
+        // Insert the fresh block where the old one was, with one blank line before it.
         if (out.isNotEmpty() && !out.endsWith("\n\n")) {
           if (!out.endsWith("\n")) out.append('\n')
           out.append('\n')
@@ -162,9 +151,8 @@ internal object AgentMcpConfig {
   }
 
   /**
-   * `mcp serve`, plus `--project=<dir>` only for a project-scoped entry. A user-scope (global)
-   * entry must never carry `--project`: it would pin every session, in every project, to one
-   * checkout. The server finds the project from the client's roots or its working directory.
+   * `mcp serve`, plus `--project=<dir>` only for a project-scoped entry; a global entry must not
+   * pin every session to one checkout.
    */
   fun serveArgs(projectAbsPath: String?): List<String> =
     listOfNotNull("mcp", "serve", projectAbsPath?.let { "--project=$it" })

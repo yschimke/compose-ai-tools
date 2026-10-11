@@ -8,10 +8,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Unit coverage for the Phase 1 Android-bundle launch foundation: the deterministic assembly the
- * standalone Robolectric render subprocess needs. The render itself isn't exercised here (it needs
- * an Android SDK + Robolectric runtime — Phase 2 / the SDK-gated CI chain); these tests pin the
- * inputs the spawn is built from.
+ * Pins the deterministic inputs the standalone Robolectric render subprocess is spawned from; the
+ * render itself needs an Android SDK and is covered elsewhere.
  */
 class AndroidBundleLaunchTest {
 
@@ -85,15 +83,10 @@ class AndroidBundleLaunchTest {
   }
 
   /**
-   * The three the Android renderer and the figma-svg connector read off system properties.
-   *
-   * A `-D` on this process does not reach a spawned JVM, so anything the child reads has to be
-   * named in the map explicitly. These were not, so `-Dcomposeai.fonts.offline=true` took effect
-   * under the Gradle render task and on the desktop serve daemon but on no Android lane — an
-   * air-gapped Android render still tried to fetch Google Fonts.
-   *
-   * Table-driven because the failure is per-property and silent: a fourth one added to the child's
-   * read set and forgotten here looks exactly like this did.
+   * Properties the Android renderer and figma-svg connector read must be passed to the child
+   * explicitly, since a `-D` on this process doesn't reach a spawned JVM (e.g.
+   * `composeai.fonts.offline` previously never reached Android lanes). Table-driven so a forgotten
+   * property is caught.
    */
   @Test
   fun `font and svg opt-outs are forwarded to the android child when set on this process`() {
@@ -186,10 +179,8 @@ class AndroidBundleLaunchTest {
 
   @Test
   fun `the app-tour lane leaves the Application to the manifest`() {
-    // An Activity IS the app: against the stub, every Hilt / Koin / AppComponentFactory activity
-    // fails on launch. Omitting `application=` hands it to the merged manifest — and the app-tour
-    // package is a SIBLING of the renderer package, so the stub the composable lane pins is not
-    // merged back in.
+    // An Activity is the app, so app-tour omits `application=`; the app-tour package is a sibling
+    // of the renderer package, so the composable lane's stub isn't merged in.
     val body = AndroidBundleLaunch(sdkLevel = 34).appTourRobolectricPropertiesBody()
     assertTrue(
       body.lines().none { it.startsWith("application=") },

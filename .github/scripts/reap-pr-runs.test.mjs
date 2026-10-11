@@ -1,12 +1,7 @@
 // Self-test for the PR run reaper. Run: node --test .github/scripts/reap-pr-runs.test.mjs
 //
-// This runs on every PR (the `actions-tests` job in ci.yml) because the reaper
-// cancels workflow runs unattended, and every guard it has exists because the
-// failure it prevents is invisible until after it has happened: cancelling a
-// `push` run wipes post-merge CI for commits in flight; matching on branch name
-// alone lets a fork's `main` sweep up ours; reaping without a close-time cutoff
-// kills the checks of whatever reopened or re-used the branch; and sweeping up a
-// manual dispatch kills someone's regression investigation.
+// Runs on every PR (ci.yml's `actions-tests`) because the reaper cancels runs unattended and each
+// guard prevents a failure that's invisible until it happens.
 
 import assert from 'node:assert/strict'
 import test from 'node:test'

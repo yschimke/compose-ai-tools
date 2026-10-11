@@ -1,19 +1,14 @@
-// Synthetic single-`@Preview` module driven by `composeai.matrix.*` Gradle properties so the
-// nightly `sdk-matrix.yml` workflow can sweep (compileSdk × targetSdk × minSdk) without forking a
-// fresh sample per cell. Deliberately does NOT apply `composeai.android-conventions` — that plugin
-// pins `compileSdk = 36`, which would defeat the whole point.
+// Synthetic single-`@Preview` module driven by `composeai.matrix.*` properties so the nightly
+// `sdk-matrix.yml` can sweep compileSdk × targetSdk × minSdk. Doesn't apply
+// `composeai.android-conventions` (which pins `compileSdk`). An application module because AGP 9
+// removes `targetSdk` from libraries.
 //
-// `com.android.application` rather than `com.android.library` because AGP 9.x removes `targetSdk`
-// from `LibraryDefaultConfig` (library modules aren't supposed to pin a target), and `targetSdk`
-// is one of the axes the matrix needs to sweep.
-//
-// Run locally:
 //   ./gradlew :samples:sdk-matrix:composePreviewRenderAll \
 //     -Pcomposeai.matrix.compileSdk=36 \
 //     -Pcomposeai.matrix.targetSdk=36 \
 //     -Pcomposeai.matrix.minSdk=24
 //
-// See `docs/SDK_COMPATIBILITY.md` for the full cell matrix and the documented outcomes.
+// See `docs/SDK_COMPATIBILITY.md`.
 import org.gradle.api.JavaVersion
 import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
@@ -26,11 +21,8 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Defaults pinned to SDK 35 (not 36) so the no-override path renders cleanly under the project's
-// default JDK 17 toolchain — Robolectric refuses to bootstrap an SDK 36 sandbox without JDK 21+
-// (`DefaultSdkProvider.verifySupportedSdk`), which would fail every regular `preview-baselines`
-// run that doesn't set the matrix `-P` overrides. The nightly `sdk-matrix.yml` workflow always
-// passes explicit cell values, so it sweeps the full {35, 36, 37} range regardless of the default.
+// Defaults to SDK 35 so a plain run works on the JDK 17 toolchain (Robolectric needs JDK 21+ for
+// SDK 36). The nightly workflow always passes explicit values.
 val matrixCompileSdk: Int =
   providers.gradleProperty("composeai.matrix.compileSdk").orNull?.toIntOrNull() ?: 35
 val matrixTargetSdk: Int =
@@ -39,25 +31,16 @@ val matrixMinSdk: Int =
   providers.gradleProperty("composeai.matrix.minSdk").orNull?.toIntOrNull() ?: 24
 val matrixSdkOverride: Int? =
   providers.gradleProperty("composeai.matrix.sdkVersion").orNull?.toIntOrNull()
-// Robolectric snapshot version probe. When set (e.g. `4.17-SNAPSHOT`) the snapshots repo
-// declared in `settings.gradle.kts` is honoured and `resolutionStrategy.force(...)` pins this
-// version on every configuration so the test runtime classpath swaps in the snapshot regardless
-// of what `renderer-android` compiled against. See `docs/SDK_COMPATIBILITY.md` for the
-// snapshot-probe cells and the upstream commit (`0e89b68`) the snapshot picks up.
+// Robolectric snapshot probe (e.g. `4.17-SNAPSHOT`): forced on every configuration so the test
+// runtime uses the snapshot. See `docs/SDK_COMPATIBILITY.md`.
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
-// Matrix-only escape hatch for `GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK`. Production
-// consumers never reach for this — auto-detect clamps above-ceiling values so they don't trip a
-// runtime sandbox failure. The snapshot probe cells pair this with
-// `composeai.matrix.robolectricVersion` so a snapshot Robolectric that ships API 37 can render
-// without the task's validator throwing.
+// Matrix-only override of `GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK`, so a snapshot
+// Robolectric with API 37 can render without the validator throwing.
 val matrixMaxSupportedSdk: Int? =
   providers.gradleProperty("composeai.matrix.maxSupportedSdk").orNull?.toIntOrNull()
-// JDK toolchain the Kotlin compile + Test workers fork into. Driven by the workflow's matrix
-// `jdk` axis. Defaults to JDK 17 (the project's baseline), but bumps to 21 for cells that
-// exercise Robolectric SDK 36+: Robolectric's `DefaultSdkProvider.verifySupportedSdk` refuses
-// SDK 36 unless the test JVM is JDK 21+, so the matrix's whole JDK axis only does its job if the
-// Test task actually forks into the matrix-selected JDK rather than the project default.
+// JDK toolchain for compile and Test workers, from the matrix `jdk` axis (default 17; SDK 36+ cells
+// need 21).
 val matrixJvmToolchain: Int =
   providers.gradleProperty("composeai.matrix.jvmToolchain").orNull?.toIntOrNull() ?: 17
 
@@ -78,24 +61,16 @@ afterEvaluate {
     "composePreviewGenerateRobolectricProperties",
     ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
   ) {
-    // The matrix forks the render Test into `matrixJvmToolchain` (configured below), so the
-    // plugin's JDK-aware SDK ceiling must key off that JVM rather than the Gradle build JVM it
-    // defaults to. Without this, a `jvmToolchain = 21` cell probing SDK 36 would be clamped to 35
-    // as if it were on JDK 17.
+    // Key the plugin's JDK-aware SDK ceiling off the forked test JVM, not the Gradle JVM.
     buildJavaMajor.set(matrixJvmToolchain)
     if (matrixMaxSupportedSdk != null) {
       maxSupportedSdkOverride.set(matrixMaxSupportedSdk)
     }
   }
 
-  // NOTE: this module renders against `compose-bom-compat` (Compose 1.9.x — see `dependencies`
-  // below), which predates `ComposeRuntimeFlags.isLinkBufferComposerEnabled`. It needs no opt-out
-  // for that: the repo-wide default in the root `gradle.properties` is
-  // `composePreview.linkBufferComposer=auto`, which enables the rewritten SlotTable where the
-  // runtime has it and renders on the old composer — announcing that it did — where it doesn't.
-  // It used to be `true`, which means "fail a render whose runtime lacks the flag", and this
-  // module then had to pin `composeai.render.linkBufferComposer=false` onto its own Test tasks to
-  // survive the repo default. See `docs/LINK_BUFFER_COMPOSER.md`.
+  // This module uses `compose-bom-compat` (Compose 1.9.x), which lacks the link-buffer composer
+  // flag; the repo default `composePreview.linkBufferComposer=auto` handles that. See
+  // `docs/LINK_BUFFER_COMPOSER.md`.
 }
 
 android {
@@ -123,10 +98,7 @@ android {
 
 kotlin { jvmToolchain(matrixJvmToolchain) }
 
-// Belt-and-braces: the Test task's `javaLauncher` is what actually decides which JDK the test
-// JVM forks into. `kotlin { jvmToolchain(N) }` sets it on the AGP-created Test tasks, but a
-// fresh `Test` task created later wouldn't inherit. Pin it explicitly so every Test task — now
-// and future — honours the matrix's JDK axis.
+// `javaLauncher` decides the test JVM; pin it on every Test task, including ones created later.
 val javaToolchains = extensions.getByType(JavaToolchainService::class.java)
 
 tasks.withType(Test::class.java).configureEach {

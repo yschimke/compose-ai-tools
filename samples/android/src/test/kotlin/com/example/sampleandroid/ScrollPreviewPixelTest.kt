@@ -7,13 +7,9 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification that `@ScrollingPreview(modes = [TOP, END])` produces two distinct
- * captures from one preview function: an unscrolled top frame and a scrolled-to-end frame. Reads
- * the PNGs produced by `:samples:android:composePreviewRenderAll` and asserts colour dominance
- * matches the expected top (red) / bottom (blue) of [RedToBlueList].
- *
- * The `composePreviewRenderAll` task is wired into this module's `test` task dependency graph in
- * build.gradle.kts so running `:samples:android:test` (or `:check`) renders the PNGs first.
+ * End-to-end check that `@ScrollingPreview(modes = [TOP, END])` produces two distinct captures (top
+ * red, end blue) from one preview, reading the PNGs `:samples:android:composePreviewRenderAll`
+ * renders before `test`.
  */
 class ScrollPreviewPixelTest {
 
@@ -72,13 +68,8 @@ class ScrollPreviewPixelTest {
   }
 
   /**
-   * End-to-end check of the [ScrollMode.GIF] pipeline: driver captures each frame, encoder lays
-   * them into a NETSCAPE-looping GIF, and a standard `ImageIO` reader on the other side can decode
-   * the frames back out.
-   *
-   * Keyed off the single-mode `GIF` annotation on [RedToBlueScrollGifPreview], so the output file
-   * is `...RedToBlueScrollGifPreview_ScrollGif.gif` without the `_SCROLL_gif` suffix multi-mode
-   * would add.
+   * The [ScrollMode.GIF] pipeline end to end: frames captured, encoded as a looping GIF, and
+   * decodable by `ImageIO`. Single-mode, so the file has no `_SCROLL_gif` suffix.
    */
   @Test
   fun `GIF capture animates red to blue`() {
@@ -103,10 +94,8 @@ class ScrollPreviewPixelTest {
   }
 
   /**
-   * Regression guard for issue #154: a `@ScrollingPreview` with `modes = [END, GIF]` shares one
-   * composition across captures, so END leaves the scrollable at the bottom. Before the fix the
-   * follow-up GIF capture was a single frame indistinguishable from END (blue-dominant throughout).
-   * With the scroll reset, frame 0 should be red-dominant again.
+   * Regression guard: with `modes = [END, GIF]` sharing one composition, the GIF must scroll back
+   * to the top first, so frame 0 is red-dominant.
    */
   @Test
   fun `GIF capture following END resets scroll and still animates`() {
@@ -153,9 +142,8 @@ class ScrollPreviewPixelTest {
   }
 
   /**
-   * Reads every frame of an animated GIF into a list of [BufferedImage]. Uses the standard
-   * `javax.imageio` GIF reader plugin — same plugin [ScrollGifEncoder] writes against, so this
-   * doubles as a round-trip check on the encoder's metadata tree.
+   * Reads every frame of an animated GIF with the standard `javax.imageio` reader, doubling as a
+   * round-trip check on [ScrollGifEncoder]'s metadata.
    */
   private fun readGifFrames(file: File): List<BufferedImage> {
     val reader = ImageIO.getImageReadersByFormatName("gif").next()

@@ -6,26 +6,13 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Calibrates the Glimmer sample against the two quantitative rules Android Studio's preview pane
- * checks (see [GlimmerContrast]): the **30 PPD / 0.6° = 18px** angular sizing model and the **≥70%
- * HCT tone-difference** contrast bar.
+ * Calibrates the Glimmer sample against Studio's two quantitative rules (see [GlimmerContrast]): 30
+ * PPD / 0.6° = 18px sizing and the ≥70 HCT tone-difference bar. Computes the additive composite
+ * from the source backdrops directly, so it doesn't need the SDK-37 render path.
  *
- * Unlike the other tests here, this one doesn't read rendered captures — it computes the same
- * additive composite Studio approximates directly from the connector-owned source backdrops, so it
- * pins the calibration regardless of whether the SDK-37 render path is available. The numbers it
- * asserts are the measured tone gaps of white Glimmer text over each env; they encode, as a
- * regression gate, the qualitative finding the design doc states informally ("you see the
- * unreadable text in Busy. Good."):
- *
- * - **Additive-zero** (the SKILL-mandated `Color.Black` base) is the *only* surface that clears
- *   Studio's 70-tone bar — legibility is guaranteed only against true black.
- * - **Dark** (night cityscape) is the most legible *real* backdrop but still sits below 70 once the
- *   translucent `surface` tint lifts the panel.
- * - **Busy** (bright market) and **VeniceCanalCats** fall far below the bar — measurably
- *   unreadable, exactly what the env chips are for.
- *
- * A future regression that brightens Glimmer's `surface` token, swaps a backdrop for a darker one,
- * or breaks the additive blend shifts these gaps and trips the relevant bound below.
+ * Pinned measured gaps: only additive-zero (pure black) clears 70; Dark is the most legible real
+ * backdrop but below the bar; Busy and VeniceCanalCats are far below. A change to the `surface`
+ * token, a backdrop, or the additive blend trips a bound.
  */
 class GlimmerContrastTest {
 

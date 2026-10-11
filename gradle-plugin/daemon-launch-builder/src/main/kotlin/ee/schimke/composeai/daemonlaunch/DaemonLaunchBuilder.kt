@@ -3,25 +3,15 @@ package ee.schimke.composeai.daemonlaunch
 import kotlinx.serialization.json.Json
 
 /**
- * Pure-JVM library for producing `daemon-launch.json` from pre-resolved inputs. Generic by design —
- * the Android-specific classpath layering (AGP `artifactView` resolution, R.jar appending, the
- * Robolectric-on-JDK-17 `--add-opens` set) stays in the Gradle plugin's `AndroidPreviewClasspath`;
- * this library's contract is "given these resolved jar lists + sysprops + JVM args, emit a valid
- * descriptor."
- *
- * Bazel rules and Amper tasks resolve their classpath through their own dep system
- * (`rules_jvm_external` / Amper's m2 cache) and hand the result to [build] (in-process) or to
- * [DaemonLaunchBuilderCli] via `java -cp <resolved-classpath>
- * ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli …` (the published JAR is slim — see the
- * CLI's KDoc for the full contract).
+ * Builds `daemon-launch.json` from pre-resolved inputs, for Bazel / Amper via [build] or
+ * [DaemonLaunchBuilderCli]. Generic: Android classpath layering stays in the Gradle plugin's
+ * `AndroidPreviewClasspath`.
  */
 public object DaemonLaunchBuilder {
 
   /**
-   * Canonical JSON encoder. Pretty-printed because the descriptor is a debug surface (devs `cat` it
-   * when the daemon misbehaves); `encodeDefaults = true` + `explicitNulls = true` so optional
-   * fields like `javaLauncher` render explicitly as `null` rather than being omitted, removing "is
-   * the field missing or is it null?" ambiguity for downstream readers.
+   * Pretty-printed (devs `cat` it when debugging), with explicit nulls so a field is never
+   * ambiguously missing.
    */
   public val json: Json = Json {
     prettyPrint = true
@@ -30,10 +20,8 @@ public object DaemonLaunchBuilder {
   }
 
   /**
-   * Constructs a [DaemonClasspathDescriptor] with [schemaVersion] stamped at
-   * [DAEMON_DESCRIPTOR_SCHEMA_VERSION]. All other fields are passed through verbatim — the builder
-   * is intentionally thin, so it stays decoupled from how a given build system resolved its
-   * classpath / system properties / JVM args.
+   * A [DaemonClasspathDescriptor] stamped with [DAEMON_DESCRIPTOR_SCHEMA_VERSION]; all other fields
+   * pass through verbatim.
    */
   public fun build(
     modulePath: String,

@@ -1,30 +1,14 @@
-// `:samples:preview-source-shared` — previews declared ONCE, rendered on TWO lanes.
+// `:samples:preview-source-shared` — previews declared once, rendered on two lanes. A plain
+// multiplatform library (no preview plugin) whose `@Preview`s `:samples:cmp-shared` (desktop) and
+// `:samples:cmp-android-robolectric` (Robolectric) each render via `composePreviewSource`, since
+// discovery otherwise only walks a module's own classes.
 //
-// The module applies **no** `ee.schimke.composeai.preview` plugin and registers no render lane. It
-// is a plain multiplatform library that happens to contain `@Preview` functions. Two sibling
-// samples name it in their `composePreviewSource` configuration and each renders these same
-// previews on its own lane:
+// `@file:CatalogGroup` in `SharedSourcePreviews.kt` needs the source file, so each consumer also
+// sets `composePreview.previewSourceRoots` to this `src`; without it both lanes render ungrouped
+// and green, which is what this sample catches.
 //
-//   * `:samples:cmp-shared`             — Compose Multiplatform Desktop (`ImageComposeScene`)
-//   * `:samples:cmp-android-robolectric` — Robolectric, against real Android
-//
-// This is the case the `composePreviewSource` configuration exists for. The plugin registers
-// exactly ONE lane per module, and discovery method-walks only the module's own classes — a
-// dependency JAR stays on the ClassGraph classpath so a multi-preview annotation resolves, but its
-// `@Preview` functions are never walked. Before this configuration, a catalog that wanted both
-// lanes had to re-declare every preview once per lane, and the two copies drifted.
-//
-// `@file:CatalogGroup` in `SharedSourcePreviews.kt` is not decoration: it is the half of the
-// feature that classes alone cannot carry. The annotation reaches the bytecode on the `…Kt` facade
-// class, but resolving that class back to `SharedSourcePreviews.kt` is done by matching its
-// package-qualified source name against real files — which is why each consumer also points
-// `composePreview.previewSourceRoots` at this module's `src`. Drop that line and both lanes still
-// render, ungrouped, with a green build. That is the failure this sample is here to catch.
-//
-// Two targets so each consumer resolves its own flavour of the compose runtime: `android` for the
-// Robolectric lane (whose classes call into `compose-runtime-android`) and `jvm("desktop")` for the
-// Desktop one. A jvm-only producer would resolve for both — an `androidJvm` consumer takes a `jvm`
-// producer — but the Android lane would then render classes compiled against desktop Compose.
+// Two targets so each lane gets its own Compose flavour: `android` for Robolectric,
+// `jvm("desktop")` for desktop.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")

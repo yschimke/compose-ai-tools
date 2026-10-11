@@ -8,24 +8,14 @@ import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 
 /**
- * Points a project's own calls to Material 3's `MaterialTheme` at `PreviewMaterialTheme`.
+ * Points a project's own calls to Material 3's `MaterialTheme` at `PreviewMaterialTheme`, which has
+ * identical JVM descriptors, so only the owner of the `INVOKESTATIC
+ * androidx/compose/material3/MaterialThemeKt.MaterialTheme` instruction changes.
  *
- * `ee.schimke.composeai:theme-pin-runtime` declares `PreviewMaterialTheme` with the same parameters
- * and defaults as each `MaterialTheme` overload, so the two compile to byte-identical JVM
- * descriptors. The redirect is therefore one change to one instruction: the owner of an
- * `INVOKESTATIC androidx/compose/material3/MaterialThemeKt.MaterialTheme` in code this compilation
- * generates. Arguments, the Compose compiler's `$composer` / `$changed` / `$default` parameters and
- * everything else stay exactly as generated.
- *
- * **Why at bytecode generation and not in IR.** The Compose compiler plugin rewrites the signature
- * of every composable call during its own IR lowering, and the order IR extensions run in follows
- * plugin-classpath order rather than anything either plugin controls. An IR-level redirect would
- * see the call before or after that rewrite depending on the build. By the time a class is written,
- * the call is a fixed instruction with a fixed descriptor.
- *
- * Only the overloads listed in [REDIRECTS] are touched — an overload this runtime has no twin for
- * (a future `MaterialTheme` shape) keeps calling Material 3, unpinned, rather than failing at link
- * time. Library code is never rewritten: this runs on classes the compilation itself produces.
+ * Done at bytecode generation rather than in IR because IR extension order relative to the Compose
+ * compiler's own signature rewrite depends on plugin-classpath order. Only overloads in [REDIRECTS]
+ * are touched (others stay unpinned rather than failing to link), and only classes this compilation
+ * produces.
  */
 class ThemePinClassGeneratorExtension : ClassGeneratorExtension {
 

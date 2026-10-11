@@ -12,18 +12,12 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * Both directions, on the fixture in `src/test/resources/smoke.authoring.json`.
+ * Both directions, on `src/test/resources/smoke.authoring.json` (not `.rc.json`, which is what `rc
+ * dump` writes — the other dialect).
  *
- * Named `.authoring.json` and not `.rc.json` deliberately. `<stem>.rc.json` is what `rc dump`
- * WRITES, and a fixture holding authoring JSON under the name of a dump output is the same
- * two-dialects confusion this class documents, sitting in the tests that document it.
- *
- * The fixture is small on purpose but not trivial on purpose either: it carries a named colour
- * resource, a modifier shorthand string (`"fillMaxSize"`), an ordered modifier list, a text
- * component and a canvas with a paint op. Those are the five shapes that broke first in every
- * hand-written encoder this replaced — a resource that must be emitted *before* the component
- * referencing it, a modifier the parser expands from a bare string, modifier order mattering, a
- * component whose text lands in a separate `TextData` operation, and a nested command list.
+ * The fixture covers the shapes hand-written encoders broke on first: a named colour resource
+ * (emitted before its user), a modifier shorthand string, an ordered modifier list, a text
+ * component (separate `TextData` op) and a canvas with a paint op.
  */
 class RemoteComposeJsonTest {
 
@@ -84,10 +78,8 @@ class RemoteComposeJsonTest {
         .let { it["modifiers"] as JsonArray }
         .map { it.jsonObject.typeName() }
 
-    // Modifier ORDER is the assertion, not membership. `.background(...).padding(12)` and
-    // `.padding(12).background(...)` produce the same set and different pixels, and the authoring
-    // dialect's `"modifiers"` array exists precisely to pin the order — so a dump that lost it
-    // would be useless for the diffing it is for.
+    // Order is the assertion: `.background().padding()` and `.padding().background()` differ in
+    // pixels.
     assertThat(modifiers)
       .containsAtLeast(
         "WidthModifierOperation",
@@ -150,15 +142,10 @@ class RemoteComposeJsonTest {
 
   @Test
   fun `header reads a document whose later operations cannot be inflated`() {
-    // The whole point of a header-only read. A document carrying an opcode this `remote-core` does
-    // not know — a sticker baked on a newer Remote Compose alpha — still has a readable header, and
-    // "which profile, which version does this want" is exactly what someone asks when a document
-    // will not play. Inflating the stream to answer it would fail on the question it was asked to
-    // settle.
-    // A trailing opcode `remote-core` has no reader for. Truncation is NOT the way to build this
-    // fixture — the buffer tolerates a short tail and inflates what it has, so a truncated document
-    // would leave the second assertion below vacuous and the test claiming something it had not
-    // shown.
+    // The point of a header-only read: a document with an opcode this `remote-core` doesn't know
+    // still has a readable header. The fixture appends an unknown opcode rather than truncating,
+    // since the buffer tolerates a short tail and truncation would make the second assertion
+    // vacuous.
     val unreadable = RemoteComposeJson.compile(authoringJson) + byteArrayOf(110, 0, 0, 0)
 
     val header = RemoteComposeJson.header(unreadable)
@@ -214,10 +201,8 @@ class RemoteComposeJsonTest {
 
   @Test
   fun `a non-finite density does not break the projection`() {
-    // `Json.encodeToString` rejects a bare `NaN` / `Infinity` token outright, so putting a
-    // non-finite density in as a number took the whole dump down with a `JsonEncodingException` —
-    // thrown from outside this module's exception type, i.e. as a stack trace, over one optional
-    // header field nothing else depends on.
+    // A non-finite density as a JSON number would make `Json.encodeToString` throw over one
+    // optional field.
     val header =
       RemoteComposeDocumentHeader(
         version = "1.1.0",

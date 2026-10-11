@@ -7,14 +7,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * The AGP name mapping the Robolectric lane runs on.
- *
- * Every value here was read off a real `com.android.kotlin.multiplatform.library` module rather
- * than inferred: `:samples:cmp-android-robolectric` is the fixture, and its configurations are
- * `androidRuntimeClasspath` / `androidHostTestRuntimeClasspath`, its host-test config task is
- * `generateAndroidHostTestConfig`, and its AGP test task is `testAndroidHostTest`. Getting any one
- * of them wrong does not fail loudly — `findByName` returns null and the render silently loses the
- * merged R classes or the resource APK — so they are pinned.
+ * The AGP name mapping the Robolectric lane runs on. KMP values are read off the real
+ * `:samples:cmp-android-robolectric` fixture; a wrong name fails silently (`findByName` returns
+ * null and the render loses merged R classes or the resource APK), so they are pinned.
  */
 class AndroidVariantNamingTest {
 
@@ -174,11 +169,8 @@ class AndroidVariantNamingTest {
 
   @Test
   fun `KMP class dirs and the resource APK follow the target, not the literal android`() {
-    // A renamed target compiles into `classes/kotlin/<target>/…` and packages into
-    // `apk_for_local_test/<hostTest>`. Hardcoding `android` / `${variant}UnitTest` leaves the
-    // render classpath unable to load a class discovery already found, and leaves
-    // `BundlePreviewTask` reading an APK it never declared as an input — a cache hit then keeps
-    // stale resources.
+    // A renamed target must flow into class dirs and `apk_for_local_test/<hostTest>`, else classes
+    // fail to load and `BundlePreviewTask` reads an undeclared (stale-cacheable) APK.
     val naming =
       AndroidVariantNaming.kmpAndroid(
         variantName = "mobileMain",
@@ -213,9 +205,8 @@ class AndroidVariantNamingTest {
   }
 
   /**
-   * compose-preview-server#1174: the BTA output dir must be a directory the daemon loads classes
-   * from. The daemon's `userClassDirs` comes from the render classpath, which lists these exact
-   * compile outputs; the old `built_in_kotlinc/<variant>/classes` was never on it.
+   * The BTA output dir must be one the daemon loads classes from, i.e. on the render classpath (see
+   * compose-preview-server#1174).
    */
   @Test
   fun `bta output dir is the Kotlin compile output the daemon loads`() {

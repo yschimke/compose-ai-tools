@@ -1,17 +1,12 @@
 #!/usr/bin/env node
-// Single-source codegen for the SpatialScene wire contract.
-//
-// Source of truth: schema/spatial-scene.schema.json. This script templates that schema into the
-// three language mirrors (Kotlin / TypeScript / C++) so they cannot drift. Run it after editing the
-// schema; CI runs it with --check to fail if a committed mirror is stale.
+// Single-source codegen for the SpatialScene wire contract: templates
+// schema/spatial-scene.schema.json into its language mirrors. CI runs it with --check.
 //
 //   node scripts/codegen/gen-spatial-scene.mjs          # (re)write the mirrors
 //   node scripts/codegen/gen-spatial-scene.mjs --check  # fail if any mirror is out of date
 //
-// Deliberately dependency-free (Node stdlib only) and bespoke to this small schema: it produces the
-// existing idiomatic shapes (kotlinx defaults, TS string-literal unions, nlohmann std::optional)
-// rather than a generic tool's lowest-common-denominator output. See schema/README.md.
-// (This pointed at docs/design/WIRE_IDL_CODEGEN.md, removed in #2291.)
+// Dependency-free and bespoke, producing idiomatic shapes (kotlinx defaults, TS string-literal
+// unions, nlohmann std::optional). See schema/README.md.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,26 +21,10 @@ const cfg = schema["x-codegen"];
 const VERSION_CONST = cfg["version-const"];
 const VERSION_VALUE = defs[cfg.root].properties.version.default;
 
-// The TypeScript mirror used to be emitted here too, into
-// `vscode-extension/src/webview/shared/spatialScene.ts`. The extension now lives in
-// yschimke/compose-preview-vscode and this script cannot write into it, so that target
-// is gone rather than left pointing at a path `--check` would report as missing on
-// every run.
-//
-// The extension still carries a committed mirror. What keeps it honest from the other
-// side is its `Protocol Fixtures` workflow, which vendors `schema/spatial-scene.schema.json`
-// from this repo at the release it pins and fails on any difference — so a schema change
-// here surfaces there as a red check the next time the pin moves, rather than as a mirror
-// that silently describes an older contract.
-// The C++ mirror used to be emitted here too, into `renderers/xr-composite/src/spatial_scene.hpp`.
-// The compositor now lives in yschimke/compose-preview-xr and this script cannot write into it, so
-// that target is gone rather than left pointing at a path `--check` would report missing on every
-// run — the same treatment the TypeScript mirror got when the extension moved out.
-//
-// What keeps the C++ copy honest is the OTHER side: compose-preview-xr's `contract-drift` workflow
-// checks this repository out at the SHA it pins, runs this generator with `--emit-cpp`, and fails
-// on any difference. Because it pins a SHA rather than tracking main, a change here cannot turn
-// that repository red until someone deliberately bumps the pin.
+// The TypeScript mirror (yschimke/compose-preview-vscode) and C++ mirror
+// (yschimke/compose-preview-xr) live in other repos this script can't write to; use
+// `--emit-typescript` / `--emit-cpp`. Those repos' own workflows vendor the schema or run this
+// generator at a pinned SHA and fail on drift.
 const OUTPUTS = {
   kotlin: "api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt",
 };
@@ -57,12 +36,8 @@ const BANNER = (relPath) => [
 ];
 
 /**
- * Banner for the TypeScript mirror, which lives in yschimke/compose-preview-vscode.
- *
- * It cannot share [BANNER]: the plain command writes only the Kotlin and C++ mirrors, and
- * `--check` compares only those. A file carrying the generic banner would tell its reader
- * to run a command that leaves it untouched, and claim a gate that does not cover it —
- * the two things a generated-file header exists to get right.
+ * Banner for the TypeScript mirror. Can't share [BANNER]: the plain command and `--check` don't
+ * cover that file, and its header must not claim they do.
  */
 const TS_BANNER = () => [
   `// GENERATED FILE — DO NOT EDIT.`,
@@ -128,11 +103,9 @@ function block(text, indent = "") {
 
 // ---- Kotlin ------------------------------------------------------------------------------------
 
-// ktfmt (googleStyle, 100-col) reflows the generated Kotlin, so emit exactly what it would produce
-// — otherwise the file oscillates between this generator (checked by `--check`) and the repo-wide
-// ktfmt gate. Two rules to match: KDoc is collapsed to `/** … */` when it fits on one line, else
-// greedy-wrapped to 100 cols; a data class collapses onto one `@Serializable`-prefixed line when it
-// has no per-parameter KDoc and fits, else `@Serializable` sits on its own line with trailing commas.
+// Emit exactly what ktfmt (googleStyle, 100-col) would, or the file oscillates between this
+// generator and the ktfmt gate: KDoc collapses to one line when it fits, else greedy-wraps; a data
+// class collapses onto one `@Serializable` line when it has no per-parameter KDoc and fits.
 const KT_MAX = 100;
 
 function ktWrap(words, width) {
@@ -372,11 +345,7 @@ function emitCpp() {
 
 // ---- driver ------------------------------------------------------------------------------------
 
-// `--emit-typescript` prints the TypeScript mirror to stdout instead of writing any
-// file. The mirror's destination is in yschimke/compose-preview-vscode, which this
-// script cannot write to, and dropping the emitter outright would have made that
-// repo's copy unregenerable — a generated file with no generator is exactly the kind
-// of thing that drifts. From an extension checkout:
+// `--emit-typescript` prints the TypeScript mirror to stdout. From an extension checkout:
 //
 //   node ../compose-ai-tools/scripts/codegen/gen-spatial-scene.mjs --emit-typescript \
 //     > src/webview/shared/spatialScene.ts

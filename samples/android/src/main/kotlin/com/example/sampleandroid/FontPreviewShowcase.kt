@@ -14,17 +14,9 @@ import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.PreviewWrapperClass
 
 /**
- * Multi-preview meta-annotation that fans a preview out to light + dark **and** installs
- * [FontPreviewWrapper] via `@PreviewWrapperClass`, so the wrapped body renders in the downloaded
- * Lobster Two default without any per-function `@PreviewWrapper` line.
- *
- * This is the "reuse a preview wrapper in a multi-preview" shape. androidx's `@PreviewWrapper` is
- * `@Target(FUNCTION)`-only, so it can't ride on an annotation class; our [PreviewWrapperClass]
- * (which also targets `ANNOTATION_CLASS`) can. Discovery hoists the wrapper onto every `@Preview`
- * this annotation expands to — see `PreviewDiscovery.extractWrapperFqn`.
- *
- * Tag any composable with `@FontPreview` and it gets both variants, each rendered through the font
- * wrapper — no theme wiring, no repeated wrapper annotation.
+ * Multi-preview annotation: light + dark, each rendered through [FontPreviewWrapper]. androidx's
+ * `@PreviewWrapper` can't target annotation classes, but our [PreviewWrapperClass] can, and
+ * discovery hoists it onto every expanded `@Preview` (`PreviewDiscovery.extractWrapperFqn`).
  */
 @Preview(
   name = "Light",
@@ -42,12 +34,8 @@ import ee.schimke.composeai.preview.PreviewWrapperClass
 annotation class FontPreview
 
 /**
- * Showcase for [FontPreviewWrapper] applied through the [FontPreview] multi-preview annotation. The
- * body carries **no** font wiring — every line inherits Lobster Two from the wrapper, both when a
- * style comes from `MaterialTheme.typography` and when `Text` falls back to `LocalTextStyle`.
- *
- * If the wrapper ever fails to load (or the annotation reuse regresses), these lines render in the
- * platform sans-serif instead of the script face, so the diff is unmistakable.
+ * Showcase for [FontPreview]: no font wiring in the body, so if the wrapper fails to apply, the
+ * text renders in the platform sans instead of Lobster Two.
  */
 @FontPreview
 @Composable

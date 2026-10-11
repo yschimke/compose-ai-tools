@@ -1,24 +1,14 @@
 #!/usr/bin/env node
-// Single-source codegen for the XR render service RPC surface.
-//
-// Source of truth: schema/xr-render-service.schema.json. This script templates that schema into
-// the Kotlin and C++ mirrors so the two sides of the boundary cannot drift. Run it after editing
-// the schema; CI runs it with --check to fail if a committed mirror is stale.
+// Single-source codegen for the XR render service RPC surface: templates
+// schema/xr-render-service.schema.json into the Kotlin and C++ mirrors. CI runs it with --check.
 //
 //   node scripts/codegen/gen-xr-render-service.mjs          # (re)write the mirrors
 //   node scripts/codegen/gen-xr-render-service.mjs --check  # fail if any mirror is out of date
 //
-// Sibling of gen-spatial-scene.mjs and deliberately built the same way — Node stdlib only, bespoke
-// to this schema, emitting the idiomatic shape each language already uses. The two generate
-// different KINDS of thing: that one emits the SpatialScene *data types*, this one emits the
-// *protocol vocabulary* (method names, parameter keys, result keys, capability keys, error codes,
-// and the service version). Names are what drift across a repository boundary — a renamed method
-// or param key compiles on both sides and fails at runtime — so names are what get single-sourced.
-//
-// Why constants rather than generated request/response structs: `main.cpp` reads params inline off
-// nlohmann `json` and `XrServerClient` builds them with `buildJsonObject`, both of which stay
-// readable. Replacing every literal with a generated constant removes the drift without
-// restructuring either handler. See schema/README.md.
+// Sibling of gen-spatial-scene.mjs (data types); this emits the protocol vocabulary — method names,
+// param/result/capability keys, error codes and the service version — since renamed names compile
+// on both sides and fail at runtime. Constants rather than generated structs keep both handlers
+// readable. See schema/README.md.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -37,13 +27,9 @@ const OUTPUTS = {
     "renderers/xr-client/src/main/kotlin/ee/schimke/composeai/renderer/xr/client/XrRenderService.kt",
 };
 
-// The C++ and Python mirrors both belong to the compositor, which now lives in
-// yschimke/compose-preview-xr. This script cannot write into that repository, so their targets are
-// gone rather than left pointing at paths `--check` would report missing on every run. They are
-// still generated — via `--emit-cpp` / `--emit-python` below — and compose-preview-xr's
-// `contract-drift` workflow diffs this generator's output against its committed copies, at the
-// upstream SHA it pins. The Kotlin mirror stays here because its consumer, `:renderer-xr-client`,
-// stays here.
+// The C++ and Python mirrors belong to the compositor in yschimke/compose-preview-xr, so they're
+// emitted via `--emit-cpp` / `--emit-python` and diffed by that repo's `contract-drift` workflow at
+// a pinned SHA. The Kotlin mirror (for `:renderer-xr-client`) stays here.
 
 const BANNER = () => [
   `// GENERATED FILE — DO NOT EDIT.`,
@@ -238,10 +224,8 @@ function emitCpp() {
   out.push("");
   out.push("#pragma once");
   out.push("");
-  // `const char*` rather than `std::string_view`: these constants are used both as nlohmann
-  // json KEYS and in `==` against `std::string`. nlohmann only accepts a string_view key on
-  // recent versions with C++17 detection enabled, while `const char*` works on every version
-  // and in both positions.
+  // `const char*` rather than `std::string_view`: used as nlohmann json keys and compared with
+  // `std::string`, which works on every nlohmann version.
   out.push("");
   out.push(`namespace ${ns}::${inner} {`);
   out.push("");

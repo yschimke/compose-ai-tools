@@ -1,61 +1,21 @@
-// The render host, the bundle daemon and the git-backed preview history — what renders and reads
-// history, with no web server underneath it.
-//
-// **This module came home.** It was written inside the `serve` package, so when the server was
-// extracted to yschimke/compose-preview-server it went along, and `:cli` had to reach back across a
-// repository boundary for it: `bundle render`, `render matrix`, `history manifest` and the
-// missing-render report are OFFLINE commands that opened no socket, yet depended on a published
-// artifact from the repository that owns the web server. That is one of the two edges of the
-// dependency cycle in yschimke/compose-preview-server#180, and the half with no reason to exist —
-// the module has zero project dependencies inside the server, and its entire dependency block is
-// compose-ai-tools and contracts coordinates.
-//
-// `docs/design/REPOSITORY_LAYERS.md` settles where it belongs and the answer is here: layer 1 is
-// behaviour that opens no socket, and this renders. Nothing about the sources changed in the move.
-//
-// Coordinate change, deliberate: it published as `compose-preview-render-host` from the server and
-// publishes as `render-host` from here. Keeping the old coordinate would mean two repositories
-// publishing one artifact on two version lines — a 1.x release that sorts BELOW the 2.x the server
-// already shipped, which is a downgrade to every resolver and to Renovate. A new coordinate in this
-// repository's own naming (`bundle-format`, `daemon-core`, `render-session-api`) has neither
-// problem, and the old one stays resolvable at its final 2.x for anyone pinned to it.
-//
-// Package note: the sources keep `ee.schimke.composeai.cli.serve`, exactly as they did in the
-// server. The rename is a separately reviewed change in both repositories, and keeping it is what
-// makes this move source-compatible — `:cli`'s call sites do not change at all, they just resolve
-// from a module in the right repository.
-//
-// One simplification the move earns for free. In the server this project was named `render-host`
-// but published as `compose-preview-render-host`, so `java-test-fixtures` derived a capability
-// (`…:render-host-test-fixtures`) that did not match what a consumer's `testFixtures(...)` asks for
-// (`…:compose-preview-render-host-test-fixtures`), and the build file carried a block of
-// configuration plus a `checkTestFixturesCapabilities` guard to reconcile them. Here the project
-// name and the artifactId are the same string, so the derived capability is already the right one
-// and all of that goes away.
+// The render host, the bundle daemon and the git-backed preview history: rendering and history with
+// no web server underneath (layer 1 in `docs/design/REPOSITORY_LAYERS.md`). Sources keep the
+// `ee.schimke.composeai.cli.serve` package for source compatibility; published as `render-host`.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
-  // `FakeRenderSession` — the fake `RenderSession` that drives `ServeRenderHost` without a daemon
-  // subprocess. Shared by this module's own tests, `:cli`'s `BundleRenderKnobTest`, and the
-  // server's live-host and session-registry tests across the repository boundary. A fixture rather
-  // than a `main` source: it must not reach any runtime classpath.
+  // `FakeRenderSession`, which drives `ServeRenderHost` without a daemon; shared with `:cli` and
+  // the server's tests. A fixture so it never reaches a runtime classpath.
   `java-test-fixtures`
 }
 
 dependencies {
-  // `api` for everything appearing in this module's own public signatures, because both `:cli` here
-  // and `:server` in the other repository write against those types directly: `ServeRenderHost`
-  // returns products from `:data-*`, `ServeBundleDaemon.materialize` takes a
-  // `DaemonLaunchDescriptor`, and `ServeHost` exposes `PreviewOverrides` and `StreamFrameParams`.
-  //
-  // Project dependencies where the server had to name published coordinates. That substitution is
-  // the point of the move: this module is compiled and tested against the same source tree it ships
-  // beside, instead of against whichever compose-ai-tools release the server happened to pin. The
-  // skew that made #180 worth filing — the render host built against 1.62.0 while running against
-  // main — cannot recur from this side.
+  // `api` for everything in this module's public signatures, which `:cli` and the server's
+  // `:server` compile against (`:data-*` products, `DaemonLaunchDescriptor`, `PreviewOverrides`,
+  // `StreamFrameParams`). Project dependencies keep it built against the source tree it ships with.
   api(libs.composeai.preview.data.api)
   api(project(":bundle-format"))
   api(project(":bundle-coordinates"))
@@ -64,8 +24,7 @@ dependencies {
   api(project(":render-session-subprocess"))
   api(libs.composeai.data.remotecompose.core)
 
-  // Layer 0. These stay published coordinates in both repositories: contracts is shape-only and
-  // below us, which is exactly the dependency direction the layer rule allows.
+  // Layer 0 contracts stay published coordinates: shape-only and below this module.
   api(libs.composeai.data.layoutinspector.core)
   api(libs.composeai.data.theme.core)
   // `ServeHost.parityIssues()` exposes the shape published by catalogs. The wire contract is
@@ -74,10 +33,8 @@ dependencies {
   // `ServeHost.guidelineResultFor()` exposes a catalog's published design-guideline results in the
   // contracts' shape; this module only validates and loads them (ServeGuidelineResultsStore).
   api(libs.composeai.design.guidelines.protocol)
-  // Both reached by FULLY-QUALIFIED name rather than an import, so they are easy to miss when
-  // reading the sources for what this module needs: `ServePreview.overrides` is declared as
-  // `List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration>`. A public signature,
-  // hence `api`.
+  // Referenced by fully-qualified name (`ServePreview.overrides`), so easy to miss; public
+  // signature, hence `api`.
   api(libs.composeai.data.preview.overrides.core)
 
   implementation(libs.composeai.common.io)
@@ -86,19 +43,16 @@ dependencies {
   implementation(libs.classgraph)
 
   testImplementation(kotlin("test"))
-  // In-memory FileSystem for the store tests, which assert on-disk output without touching the real
-  // FS. Okio itself is on the compile classpath via `common-io`; the fake ships separately.
+  // In-memory FileSystem for store tests; okio itself comes via `common-io`.
   testImplementation(libs.okio.fakefilesystem)
 
   testFixturesImplementation(kotlin("test"))
-  // `FakeRenderSession` implements `RenderSession`, so the interface is part of the fixture's own
-  // signature rather than an implementation detail of it.
+  // `FakeRenderSession` implements `RenderSession`, so the interface is part of the fixture's API.
   testFixturesApi(project(":render-session-api"))
 }
 
 kotlin {
-  // Published across a repository boundary: compose-preview-server compiles against these
-  // coordinates on its own release cadence (yschimke/compose-preview-server#289), so every
+  // compose-preview-server compiles against these coordinates on its own cadence, so every
   // declaration states its visibility and every public one its return type.
   explicitApi()
 
@@ -121,28 +75,14 @@ composeAiMavenPublishing {
 }
 
 tasks.withType<Test>().configureEach {
-  // JUnit 5: the moved tests use the Jupiter `@Test` and `@TempDir`, which is what `kotlin("test")`
-  // resolves once the platform is selected. Without this the platform defaults to JUnit 4 and the
-  // moved test classes do not run.
+  // JUnit 5 (`@Test`, `@TempDir`); without it the platform defaults to JUnit 4 and the tests don't
+  // run.
   useJUnitPlatform()
 }
 
-// The whole point of the module, asserted against the RESOLVED runtime classpath rather than the
-// `dependencies {}` block above — a transitive Ktor server would not show up in the block, and
-// reading the block back would only re-state what someone just wrote.
-//
-// Ported unchanged in substance from the server, where it was `checkRenderHostIsServerFree`, and it
-// matters more here rather than less: `docs/design/REPOSITORY_LAYERS.md` puts this module in layer
-// 1
-// precisely because it opens no socket, so this task is the layer test for it. It is also narrower
-// than `checkLayerBoundary`, which asks where a coordinate comes from; this asks what kind of thing
-// it is.
-//
-// Scoped to what this module can actually hold out. The Ktor CLIENT and OkHttp arrive through
-// `:bundle-coordinates` (resolving coordinates is an HTTP fetch by nature) and
-// `kotlin-build-tools-api` — the interface, not the compiler — through `:daemon:core`. A check that
-// asserted "no HTTP at all" would fail on the commit introducing it, which is the same as not
-// having one. A client is not a server: `bundle render` opens no listening socket either way.
+// The module's layer test: the resolved runtime classpath must contain no web server (checked on
+// the resolved graph, since transitive arrivals don't show in `dependencies {}`). HTTP clients
+// (Ktor client, OkHttp via `:bundle-coordinates`) are allowed; a client opens no listening socket.
 abstract class CheckRenderHostIsServerFree : DefaultTask() {
   @get:Input abstract val resolvedModules: SetProperty<String>
 
@@ -182,8 +122,7 @@ tasks.register<CheckRenderHostIsServerFree>("checkRenderHostIsServerFree") {
     }
   )
 
-  // Prefixes rather than exact coordinates: `io.ktor:ktor-server-cio` today, but the invariant is
-  // "no web server", and an exact list would pass the first time someone swaps CIO for Netty.
+  // Prefixes, since the invariant is "no web server", not a specific engine.
   forbiddenPrefixes.set(
     listOf(
       "io.ktor:ktor-server",

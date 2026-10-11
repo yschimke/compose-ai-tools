@@ -12,24 +12,15 @@ import javax.xml.transform.stream.StreamResult
 import org.w3c.dom.Element
 
 /**
- * The Android app-resource carriage a **packed bundle** carries under `android/`, and the wiring
- * that re-registers it with a detached Robolectric render.
+ * The Android app-resource carriage a packed bundle carries under `android/`, and the wiring that
+ * re-registers it with a detached Robolectric render.
  *
- * A classic `@Composable @Preview` that calls `stringResource(R.string.…)` needs the app's compiled
- * resource table (the `0x7f` package, `resources.arsc` / `apk-for-local-test.ap_`) at render time.
- * The in-Gradle render path gets it for free — AGP puts a
- * `com/android/tools/test_config.properties` on the unit-test classpath and Robolectric's
- * `RobolectricTestRunner` auto-reads it. A **detached** render (a packed bundle spawned by `bundle
- * daemon` / `bundle render`, or a `serve --catalogs` live bundle) has neither the AGP build nor
- * that config file, so without re-supplying them the sandbox has only the framework `android-all`
- * table and `R.string.…` throws `Resources$NotFoundException: String resource ID #0x7f…`.
- *
- * `BundlePreviewTask.resolveAndroidResources` packs `android/resources.ap_` +
- * `android/AndroidManifest.xml` (+ optional `android/r-classes.jar`) for any `backend == "android"`
- * bundle; this object extracts that payload and synthesizes the `test_config.properties` both the
- * `bundle daemon` ([BundleDaemonCommand]) and `serve`
- * ([ee.schimke.composeai.cli.serve.ServeBundleDaemon]) paths prepend to the Robolectric daemon's
- * `-cp`. Shared so both wire resources identically.
+ * A preview calling `stringResource(R.string.…)` needs the app's compiled resource table. In
+ * Gradle, AGP's `com/android/tools/test_config.properties` supplies it; a detached render (`bundle
+ * daemon`, `bundle render`, `serve --catalogs`) has neither, so `R.string.…` would throw
+ * `Resources$NotFoundException`. This extracts the packed `android/resources.ap_`,
+ * `android/AndroidManifest.xml` (+ optional `android/r-classes.jar`) and synthesizes the config the
+ * [BundleDaemonCommand] and `ServeBundleDaemon` paths prepend to the daemon's `-cp`.
  */
 public object AndroidBundleResources {
 
@@ -44,11 +35,8 @@ public object AndroidBundleResources {
   )
 
   /**
-   * Extract `android/resources.ap_` + `android/AndroidManifest.xml` (+ optional
-   * `android/r-classes.jar`) from [zipBytes] into [androidDir] (Zip-Slip guarded — every
-   * destination is verified to live inside [androidDir]). Returns null when the bundle carries no
-   * `android/` resource payload (a desktop bundle, or an Android bundle packed before this carriage
-   * existed): the caller then renders without an app resource table, exactly as before.
+   * Extract the `android/` payload from [zipBytes] into [androidDir] (Zip-Slip guarded). Returns
+   * null when the bundle carries none; the caller then renders without an app resource table.
    */
   public fun extract(zipBytes: ByteArray, androidDir: File): Extracted? {
     androidDir.mkdirs()
@@ -82,13 +70,9 @@ public object AndroidBundleResources {
   }
 
   /**
-   * Write the Robolectric `com/android/tools/test_config.properties` under [root], pointing at the
-   * extracted [resourceApk] + [mergedManifest] (binary-resources mode: `android_resource_apk`
-   * carries the table; package + theme come from `android_merged_manifest`). [applicationPackage]
-   * (when the pack step recorded it) is written as `android_custom_package` — the package
-   * Robolectric/AGP use for the final R class. Returns [root] for the caller to put on the daemon
-   * `-cp`; it's the only mechanism a detached bundle has to re-register a resource table with
-   * Robolectric.
+   * Write Robolectric's `com/android/tools/test_config.properties` under [root], pointing at
+   * [resourceApk] and [mergedManifest] (binary-resources mode). [applicationPackage], if recorded,
+   * is written as `android_custom_package`. Returns [root] for the daemon `-cp`.
    */
   public fun writeTestConfig(
     root: File,
@@ -111,19 +95,13 @@ public object AndroidBundleResources {
   }
 
   /**
-   * Convenience for a daemon launch: extract [zipBytes]'s `android/` resources into
-   * `<workDir>/android`, synthesize the `test_config.properties` under `<workDir>/test-config`, and
-   * return the classpath entries (the `test-config` dir + optional `r-classes.jar`) to prepend to
-   * the Robolectric daemon's `-cp`. Empty when the bundle carries no `android/` payload — the
-   * render then falls back to framework resources only (unchanged pre-carriage behaviour).
+   * Extract [zipBytes]'s `android/` resources into `<workDir>/android`, synthesize the test config
+   * under `<workDir>/test-config`, and return the classpath entries to prepend to the daemon's
+   * `-cp` (empty when the bundle has no payload).
    *
-   * [useConsumerApplication] mirrors the daemon's own `composeai.daemon.useConsumerApplication`
-   * opt-in (read by `SandboxHoldingRunner.buildGlobalConfig`). It must carry the SAME value the
-   * caller forwards to the daemon subprocess: when the daemon is told to run the consumer's
-   * manifest `Application` (`true`), the manifest name is left intact so that opt-in works; when
-   * the daemon pins the framework `android.app.Application` (`false`, the default and the only
-   * value any current CLI path uses), the name is stripped so bootstrap can't crash on it. Pass it
-   * and the daemon `-D` from one source so the two never disagree.
+   * [useConsumerApplication] must match the `composeai.daemon.useConsumerApplication` value passed
+   * to the daemon: when false (the default), the manifest's Application name is stripped so
+   * bootstrap can't crash on it; when true it is left intact.
    */
   public fun daemonClasspath(
     zipBytes: ByteArray,
@@ -132,16 +110,9 @@ public object AndroidBundleResources {
     useConsumerApplication: Boolean = false,
   ): List<File> {
     val res = extract(zipBytes, File(workDir, "android")) ?: return emptyList()
-    // Neutralize the merged manifest's `<application android:name>` before handing it to
-    // Robolectric — see [sanitizeManifestForDaemon]. The daemon pins `android.app.Application`
-    // (SandboxHoldingRunner.buildGlobalConfig), so the consumer Application never runs; but
-    // Robolectric still *resolves* the manifest-declared class name at sandbox bootstrap, and a
-    // custom `Application` that the bundle doesn't pack (the common case — an app's own
-    // `Application` subclass) then throws `ClassNotFoundException` and aborts the whole sandbox
-    // pool, collapsing the live lane to baked PNGs. Stripping the attribute keeps bootstrap on the
-    // framework `android.app.Application`, matching the config pin. When the daemon opts into the
-    // consumer Application ([useConsumerApplication]), the manifest is handed over untouched so the
-    // opt-in — which requires a Robolectric-safe, packed Application — still resolves and runs.
+    // Strip `<application android:name>` (see [sanitizeManifestForDaemon]): Robolectric resolves
+    // the declared class at bootstrap, and an unpacked custom Application aborts the whole sandbox
+    // pool. Left untouched when the daemon opts into the consumer Application.
     val manifestForConfig =
       if (useConsumerApplication) res.mergedManifest
       else sanitizeManifestForDaemon(res.mergedManifest)
@@ -152,9 +123,8 @@ public object AndroidBundleResources {
         manifestForConfig,
         applicationPackage,
       )
-    // Pin the daemon's Robolectric Application via a package-scoped `robolectric.properties` — the
-    // ONLY override Robolectric 4.16 actually honours end-to-end (see
-    // [writeDaemonRobolectricProperties]).
+    // Pin the Application via a package-scoped `robolectric.properties`, the only override
+    // Robolectric 4.16 honours end-to-end (see [writeDaemonRobolectricProperties]).
     writeDaemonRobolectricProperties(testConfigDir, useConsumerApplication)
     return buildList {
       add(testConfigDir)
@@ -166,28 +136,18 @@ public object AndroidBundleResources {
   private const val DAEMON_RUNNER_PACKAGE_PATH = "ee/schimke/composeai/daemon"
 
   /**
-   * Write `ee/schimke/composeai/daemon/robolectric.properties` under [testConfigDir] (which the
-   * caller puts on the daemon `-cp`) so a detached bundle render pins the framework
-   * `android.app.Application` exactly like the Gradle `composePreviewRender` path does via
+   * Write `ee/schimke/composeai/daemon/robolectric.properties` under [testConfigDir] so a detached
+   * render pins `android.app.Application`, as the Gradle path does via
    * [ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask].
    *
-   * This is the load-bearing override, not the manifest strip above. Robolectric only merges a
-   * `robolectric.properties` from the **running test class's own package hierarchy**, and the
-   * daemon runs its own `RobolectricHost.SandboxRunner` (package `ee.schimke.composeai.daemon`) —
-   * so the pin has to live in *that* package. The daemon's historical
-   * [ee.schimke.composeai.daemon.SandboxHoldingRunner.buildGlobalConfig] override is `@Deprecated`
-   * in Robolectric 4.16 and is **no longer merged over the manifest-declared Application**, so
-   * without this file Robolectric resolves the consumer's `Application` (e.g.
-   * `ConfettiApplication`) at sandbox bootstrap. When that class isn't on the render classpath —
-   * the common case for a packed app bundle — it throws `ClassNotFoundException` and aborts every
-   * sandbox worker, collapsing the whole live lane to baked PNGs. Pinning `android.app.Application`
-   * here keeps bootstrap on the framework Application and never touches the consumer's.
+   * This is the load-bearing override: Robolectric only merges `robolectric.properties` from the
+   * running test class's package (`ee.schimke.composeai.daemon`), and the deprecated
+   * `SandboxHoldingRunner.buildGlobalConfig` override no longer wins over the manifest in 4.16.
+   * Without it, an unpacked consumer `Application` throws `ClassNotFoundException` and aborts every
+   * sandbox.
    *
-   * `sdk`/`graphicsMode` come from `@Config`/`@GraphicsMode` on `SandboxRunner` (class-level config
-   * outranks this package file), so only the `application` line belongs here. When
-   * [useConsumerApplication] is set the line is omitted so Robolectric falls back to the manifest
-   * Application (the opt-in for previews that genuinely need consumer-`Application` init),
-   * mirroring the Gradle task's opt-out branch.
+   * Only the `application` line belongs here (`sdk`/`graphicsMode` come from class-level
+   * `@Config`). Omitted when [useConsumerApplication] is set.
    */
   private fun writeDaemonRobolectricProperties(
     testConfigDir: File,
@@ -214,17 +174,10 @@ public object AndroidBundleResources {
   private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
   /**
-   * Return a manifest file for the daemon's `android_merged_manifest` whose `<application>` no
-   * longer declares an `android:name`. When [mergedManifest] has no application-name attribute
-   * (default `Application`, or already stripped), or when it can't be parsed, [mergedManifest] is
-   * returned unchanged — so a bundle whose manifest was already daemon-safe pays no cost and a
-   * malformed manifest degrades to the pre-sanitize behaviour rather than the render failing here.
-   *
-   * The stripped copy is written next to the original as `AndroidManifest-daemon.xml` so the raw
-   * merged manifest stays on disk for diagnostics. Only `android:name` is removed; `android:theme`,
-   * `android:label`, and every child element (`<activity>`, `<service>`, …) are preserved — those
-   * are resolved lazily (only when launched), so they never fire at bootstrap the way the
-   * `Application` does.
+   * A manifest for the daemon whose `<application>` has no `android:name`, written beside the
+   * original as `AndroidManifest-daemon.xml`. Returns [mergedManifest] unchanged when there's
+   * nothing to strip or it can't be parsed. Other attributes and children are kept; they resolve
+   * lazily.
    */
   private fun sanitizeManifestForDaemon(mergedManifest: File): File {
     val original = runCatching { mergedManifest.readText() }.getOrNull() ?: return mergedManifest
@@ -242,12 +195,8 @@ public object AndroidBundleResources {
   }
 
   /**
-   * Remove the `android:name` attribute from every `<application>` element in [manifestXml].
-   * Returns the rewritten XML when at least one attribute was removed, or `null` when there was
-   * nothing to strip (no `<application android:name>`) or the document couldn't be parsed — the
-   * caller treats `null` as "use the manifest as-is". Namespace-aware and XXE-safe (DOCTYPE and
-   * external entities disabled), so a hostile or unusual manifest can't reach the network or blow
-   * up parsing.
+   * Remove `android:name` from every `<application>` in [manifestXml]. Returns the rewritten XML,
+   * or `null` when nothing was stripped or parsing failed. Namespace-aware and XXE-safe.
    */
   public fun stripApplicationName(manifestXml: String): String? {
     val doc =

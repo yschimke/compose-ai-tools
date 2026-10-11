@@ -24,39 +24,25 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
- * Renders a captured Remote Compose document to PNG or layered SVG for the serve viewer's
- * **cmp-jvm** chip, by spawning the CMP render worker (`:rc-render-jvm`, which draws through
- * `rc-player-compose`; `ee.schimke.composeai.rcjvm.RcJvmRenderMain`) as a one-shot subprocess, or
- * its pooled counterpart, off an isolated classpath — the same subprocess isolation
- * `BundleRenderer` uses for the desktop `@Preview` renderer, and for the same reason: Compose
- * Desktop + Skiko's per-OS natives are kept off the CLI's own classpath so a cross-platform release
- * doesn't bake in one host's natives.
+ * Renders a captured Remote Compose document to PNG or layered SVG for the serve viewer's cmp-jvm
+ * chip, via the CMP render worker (`:rc-render-jvm`, drawing through `rc-player-compose`) as a
+ * pooled or one-shot subprocess. Isolated like `BundleRenderer`, so Compose Desktop + Skiko natives
+ * stay off the CLI's classpath.
  *
- * The classpath joins the CLI install's `lib-rcjvm/` (the render worker + `rc-player-compose` and
- * its Compose API deps, staged by the CLI build) with `lib-daemon-desktop/` (the Compose Desktop
- * runtime + Skiko natives the desktop daemon already carries), so the natives are shared rather
- * than bundled twice. When either sidecar is absent (a build that didn't stage them, or a headless
- * host that dropped the desktop lane) [isAvailable] is false and the viewer never lights the chip.
+ * The classpath joins `lib-rcjvm/` with `lib-daemon-desktop/` (sharing its Compose runtime and
+ * natives). Without either, [isAvailable] is false and the chip never lights.
  */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
+// Public because `:server` call sites live in another module; not a widened API by intent.
 public object RcJvmServerRenderer {
 
   private const val MAIN_CLASS = "ee.schimke.composeai.rcjvm.RcJvmRenderMainKt"
   private const val RENDER_TIMEOUT_SECONDS = 120L
 
-  /**
-   * Least budget worth starting a cold one-shot render with. Below this the retry cannot finish (a
-   * fresh JVM needs ~2.3s just to boot Compose + Skiko before it draws anything), so spending the
-   * remainder on a render that is going to be killed anyway only delays the failure.
-   */
+  /** Least budget worth starting a cold one-shot render with (a fresh JVM needs ~2.3s to boot). */
   private const val MIN_FALLBACK_SECONDS = 10L
   private const val DRAIN_FLUSH_MILLIS = 1000L
 
-  /**
-   * The subprocess classpath: the CMP render worker (`lib-rcjvm`) plus the desktop Compose + Skiko
-   * runtime (`lib-daemon-desktop`). Empty when either sidecar dir is missing.
-   */
+  /** `lib-rcjvm` plus `lib-daemon-desktop`; empty when either is missing. */
   private fun classpath(): List<File> {
     val rcjvm = locateBundleSidecarJars("lib-rcjvm")
     val desktop = locateBundleSidecarJars("lib-daemon-desktop")
@@ -74,48 +60,32 @@ public object RcJvmServerRenderer {
       "${bundleSidecarSearchDescription("lib-daemon-desktop")})"
 
   /**
-   * Render [docBytes] to [format] at [spec]'s pixel size and density, applying any [seeds] (the
-   * serve `rc.<name>=…` knob edits) on top of the document's authored defaults. Reports whether the
-   * subprocess is unavailable, timed out, or could not draw the document.
+   * Render [docBytes] to [format] at [spec]'s size and density, applying [seeds] (serve
+   * `rc.<name>=…` edits) over the authored defaults.
    *
-   * [RcJvmRenderSpec.fontScale] reaches the player as the scene's `Density(density, fontScale)`, so
-   * a `RemoteDensity.Host` capture (text sized from `ID_FONT_SIZE`) scales with it. The pooled
-   * frame carries no font-scale field, so a request that scales text takes the one-shot path, which
-   * spells `--fontScale`; an unscaled request stays pooled.
+   * [RcJvmRenderSpec.fontScale] reaches the player as `Density(density, fontScale)`. The pooled
+   * frame has no font-scale field, so scaled requests take the one-shot path (`--fontScale`).
    */
   public fun render(
     docBytes: ByteArray,
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue> = emptyMap(),
     format: Format = Format.PNG,
-    /**
-     * Which branch a `ColorTheme` operation selects. Defaults to light rather than to the machine's
-     * desktop setting: this renderer is headless, so "the host's theme" is not a real question, and
-     * a render that changed colour with the build machine's OS would not be reproducible. Documents
-     * with no `ColorTheme` are unaffected either way.
-     */
+    /** Defaults to light rather than the host's theme, so headless renders are reproducible. */
     theme: RenderTheme = RenderTheme.LIGHT,
   ): RenderResult {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
 
-    // One budget for the whole request, spent across both lanes. Without this a pooled worker could
-    // burn its full watchdog and *then* hand a fresh one-shot render another full timeout, so a
-    // request that used to fail at 120s would hold its caller's render-semaphore slot for ~240s and
-    // starve unrelated renders.
+    // One budget across both lanes, so a pool timeout plus a cold retry can't hold the caller's
+    // render slot for twice the timeout.
     val startNanos = System.nanoTime()
     fun secondsLeft(): Long =
       RENDER_TIMEOUT_SECONDS - (System.nanoTime() - startNanos) / 1_000_000_000L
 
-    // Warm path: a pooled worker draws this on an already-booted JVM (~85 ms) instead of paying
-    // Compose Desktop + Skiko startup again (~2.3 s). Only `Unusable` falls through to the one-shot
-    // path below — a `Failed` is the player's real answer about this document, and re-rendering it
-    // cold would double the cost of every document that cannot be drawn.
-    // The pooled worker frame is fixed at `PROTOCOL_VERSION` 2 and carries no font-scale field, so
-    // a request that asks for one cannot be expressed on it. Take the one-shot lane instead, which
-    // can at least spell the flag — rather than serving a warm render that silently ignored the
-    // axis. Costs the pool's ~85 ms vs ~2.3 s only on requests that actually scale text; an
-    // unscaled render (every ordinary browse) is untouched and stays pooled.
+    // Warm path (~85 ms vs ~2.3 s cold). Only `Unusable` falls through to the one-shot path;
+    // `Failed` is the player's real answer. Scaled-text requests skip the pool, which can't express
+    // font scale.
     if (!spec.scalesText) {
       pool(cp)?.let { pool ->
         val pooled =
@@ -131,10 +101,8 @@ public object RcJvmServerRenderer {
           is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
           is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
           is RcJvmWorkerPool.PoolResult.Unusable -> {
-            // A pool that declined instantly (disabled, stale sidecar, spawn refused) leaves the
-            // budget intact and the cold retry is free to use it. A pool that declined by *timing
-            // out* has already spent it — retrying cold would only blow through the deadline the
-            // caller is holding a semaphore permit against, so report the failure instead.
+            // A pool that declined by timing out has spent the budget; report instead of retrying
+            // cold.
             if (secondsLeft() < MIN_FALLBACK_SECONDS) {
               return RenderResult.Failed(
                 "${pooled.reason}; no time left in the ${RENDER_TIMEOUT_SECONDS}s render budget " +
@@ -150,10 +118,8 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * The original process-per-document path, kept as the fallback for every way the pool can decline
-   * to serve: pooling switched off, a `lib-rcjvm/` too old to speak the worker protocol, a worker
-   * that could not be spawned, or one that broke mid-request. Behaviour here is unchanged, so the
-   * worst case of the pool existing is the cost that was already being paid.
+   * The process-per-document path, the fallback whenever the pool declines (disabled, old
+   * `lib-rcjvm/`, spawn failure, worker broke).
    */
   private fun renderOneShot(
     cp: List<File>,
@@ -201,12 +167,8 @@ public object RcJvmServerRenderer {
 
       val process =
         ProcessBuilder(command).redirectErrorStream(true).start().also { it.outputStream.close() }
-      // Drain the merged stdout/stderr on a daemon thread *concurrently* with the timed wait — a
-      // blocking readText() here would wait for EOF, which a hung Skiko/native render never
-      // reaches,
-      // so the timeout below (and the render-semaphore permit the caller holds) would never
-      // release.
-      // Mirrors BundleRenderer.runRenderProcess.
+      // Drain output concurrently with the timed wait; a hung native render never reaches EOF, so a
+      // blocking read would never time out. Mirrors BundleRenderer.runRenderProcess.
       val log = StringBuilder()
       val drain = Thread {
         process.inputStream.bufferedReader().forEachLine { log.appendLine(it) }
@@ -243,31 +205,22 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * The JVM flags every cmp-jvm render runs under, shared by the pooled worker and the one-shot
-   * subprocess.
-   *
-   * Shared deliberately, not by coincidence: the font cache directory below decides which typeface
-   * a `google:`-named family resolves to, so a pooled worker started without it would draw text
-   * differently from the one-shot fallback. Two lanes that are supposed to be interchangeable must
-   * boot identically, or "did the pool serve this?" becomes visible in the pixels — exactly the
-   * property `RcJvmHotWorkerDeterminismTest` exists to protect.
+   * JVM flags shared by the pooled worker and the one-shot subprocess. They must boot identically
+   * (e.g. the font cache dir decides typefaces), or the pixels would reveal which lane served them
+   * (`RcJvmHotWorkerDeterminismTest`).
    */
   private fun renderJvmArgs(): List<String> = buildList {
     add("--enable-native-access=ALL-UNNAMED")
-    // Skiko draws offscreen; keep the JVM out of the macOS Dock / app-switcher when spawned
-    // on a developer's Mac, matching BundleRenderer's desktop renderer launch.
+    // Keep the offscreen JVM out of the macOS Dock.
     add("-Dapple.awt.UIElement=true")
-    // The host typefaces: the vendored faces the Wasm player ships, so this lane shapes text with
-    // the same set the browser lane and the offline parity run use. Without a manifest the player
-    // falls back to Compose's built-in face, which draws good-looking text at a different width.
+    // Use the same vendored faces as the Wasm player and parity run; without them text shapes at a
+    // different width.
     rcFontsDir()?.let { add("-Dcomposeai.rcjvm.fontsDir=${it.absolutePath}") }
   }
 
   /**
-   * The directory holding the player's `fonts.json` manifest and faces:
-   * `-Dcomposeai.rcjvm.fontsDir` when set, else the `fonts/` of the CLI install's `rc-player-wasm/`
-   * sidecar. Null when neither exists, in which case the worker renders in the player's default
-   * face rather than failing.
+   * The player's fonts dir: `-Dcomposeai.rcjvm.fontsDir`, else `rc-player-wasm/fonts/` in the
+   * install. Null falls back to the player's default face.
    */
   private fun rcFontsDir(): File? {
     System.getProperty("composeai.rcjvm.fontsDir")
@@ -290,9 +243,8 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * The process-wide worker pool, created on first use so a cli invocation that never renders a
-   * cmp-jvm document never spawns a JVM. Null when pooling is switched off
-   * ([RcJvmWorkerPool.SYS_PROP_ENABLED]`=off`), which forces every render down the one-shot path.
+   * The process-wide worker pool, created on first use. Null when disabled
+   * ([RcJvmWorkerPool.SYS_PROP_ENABLED]`=off`), forcing the one-shot path.
    */
   @Volatile private var poolInstance: RcJvmWorkerPool? = null
 
@@ -314,8 +266,7 @@ public object RcJvmServerRenderer {
           )
           .also { created ->
             poolInstance = created
-            // Workers outlive any single render, so nothing else would reap them if the cli exits
-            // while some are parked.
+            // Parked workers outlive renders, so reap them on exit.
             Runtime.getRuntime().addShutdownHook(Thread({ created.close() }, "rcjvm-pool-shutdown"))
           }
     }
@@ -330,14 +281,10 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * Serialize [seeds] to the line-based format the player reads (`<kind> <base64Name> <value>`,
-   * kind ∈ str/float/int/color). Normalizes the wire types the jvm player does not need to
-   * distinguish — `dp` collapses to float and `bool` to int, matching the daemon's
-   * `applyConnectorOverrides` — and drops a colour whose `#AARRGGBB` string won't parse.
-   *
-   * One producer for both lanes: the pooled worker receives these lines inline in its request
-   * frame, the one-shot subprocess reads them from the file [writeSeedsFile] writes. The parser is
-   * `parseSeedText` in the player module.
+   * Serialize [seeds] as `<kind> <base64Name> <value>` lines (kind ∈ str/float/int/color),
+   * collapsing `dp` to float and `bool` to int like the daemon, and dropping unparseable colours.
+   * Shared by both lanes (inline frame or [writeSeedsFile]); parsed by `parseSeedText` in the
+   * player.
    */
   internal fun seedLines(seeds: Map<String, RemoteNamedValue>): List<String> {
     if (seeds.isEmpty()) return emptyList()
@@ -366,13 +313,10 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * Parse an rc colour string to an ARGB int, matching the JS lane's `parseRcColor`: strip a
-   * leading `#` (or URL-encoded `%23`), treat a 6-digit `#RRGGBB` as **opaque** (prepend `FF` —
-   * without it a six-digit value becomes `0x00RRGGBB`, fully transparent), and accept only a
-   * resulting 8 hex digits. Null when it won't parse.
+   * Parse an rc colour to ARGB like the JS lane's `parseRcColor`: strip `#` or `%23`, treat 6
+   * digits as opaque (prepend `FF`), require 8 hex digits. Null when unparseable.
    */
-  // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-  // and the `:server` call sites are in a different module now. Not a widened API by intent.
+  // Public because `:server` call sites live in another module; not a widened API by intent.
   public fun rcColorToArgb(raw: String): Int? {
     val hex = raw.removePrefix("%23").removePrefix("#")
     val opaque = if (hex.length == 6) "FF$hex" else hex
@@ -399,13 +343,9 @@ public object RcJvmServerRenderer {
   }
 
   /**
-   * The `ColorTheme` branch a cmp-jvm render selects.
-   *
-   * Deliberately this module's own type rather than `remote-core`'s `Theme` int: the CLI drives the
-   * player as a subprocess and carries no compile dependency on it, which is what lets the worker's
-   * classpath be staged independently. [wire] and [frame] are the two forms that cross the boundary
-   * — a `--theme` argument on the one-shot path, and an int in the pooled worker's request frame,
-   * whose values `RcJvmRenderWorkerMain` mirrors.
+   * The `ColorTheme` branch a cmp-jvm render selects. Our own type rather than `remote-core`'s,
+   * since the player is a subprocess with no compile dependency. [wire] is the one-shot `--theme`
+   * value, [frame] the pooled request int (mirrored by `RcJvmRenderWorkerMain`).
    */
   public enum class RenderTheme(public val wire: String, public val frame: Int) {
     LIGHT("light", 0),
@@ -414,21 +354,16 @@ public object RcJvmServerRenderer {
 }
 
 /**
- * The pixel size, density and font scale a cmp-jvm render should use — matched to the baked/View-
- * player lane.
- *
- * [fontScale] is the `?fontScale=` axis, and it is the one field the sidecar may not be able to
- * honour yet: see [RcJvmServerRenderer.render] for what reaches the player today and what is
- * waiting on `yschimke/rc-players`.
+ * Pixel size, density and font scale for a cmp-jvm render, matched to the baked lane. See
+ * [RcJvmServerRenderer.render] for how [fontScale] reaches the player.
  */
 public data class RcJvmRenderSpec(
   val widthPx: Int,
   val heightPx: Int,
   val density: Float,
   /**
-   * The multiplier the player should apply to text — Compose's `Density.fontScale`, which the
-   * player turns into `ID_FONT_SIZE = 14 × density × fontScale`. `1f` is "unscaled", and is what
-   * every caller got implicitly before this field existed.
+   * Text multiplier (`Density.fontScale`); the player uses `ID_FONT_SIZE = 14 × density ×
+   * fontScale`.
    */
   val fontScale: Float = 1f,
 ) {

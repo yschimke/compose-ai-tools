@@ -9,33 +9,18 @@ import java.util.UUID
 import java.util.zip.ZipFile
 
 /**
- * Fetches the render daemons this CLI launches but does not contain.
+ * Fetches the render daemons this CLI launches but doesn't contain, from
+ * yschimke/compose-preview-daemon releases: `compose-preview-desktop-daemon-<v>.tar.gz`
+ * (`lib-daemon-desktop/` + `lib-renderer/`) and `compose-preview-android-daemon-<v>.zip`
+ * (`lib-daemon-android/`). Fetched on first need (like [ServerDistributionProvision] and
+ * [XrCompositeProvision]) into `<cache>/composeai/preview-daemon/<version>/`.
  *
- * The desktop renderer, the desktop daemon and the Android (Robolectric) daemon used to be staged
- * into the CLI install from this build's own modules — `lib-renderer/` and `lib-daemon-desktop/`
- * inside the tarball, `lib-daemon-android/` as a separate release archive that had to be unpacked
- * and pointed at by hand. Those modules publish from yschimke/compose-preview-daemon now (#5336),
- * and that repository's release attaches the same two archives:
- * `compose-preview-desktop-daemon-<v>.tar.gz` (holding `lib-daemon-desktop/` + `lib-renderer/`) and
- * `compose-preview-android-daemon-<v>.zip` (holding `lib-daemon-android/`). This fetches the pinned
- * release's archive on the first command that needs it, exactly as [ServerDistributionProvision]
- * fetches the preview server and [XrCompositeProvision] the compositor, and caches it under
- * `<cache>/composeai/preview-daemon/<version>/`.
+ * The version is [PREVIEW_DAEMON_VERSION], a point pin (not "latest") so an unvetted daemon never
+ * arrives without a PR; `COMPOSE_PREVIEW_DAEMON_VERSION` overrides it.
  *
- * # Which release
- *
- * [PREVIEW_DAEMON_VERSION] — the `composeai-preview-daemon` catalog pin, baked in at build time. A
- * point pin, not "latest": the daemons release on their own cadence, and a daemon this CLI was
- * never built against must not arrive under it without a pull request.
- * `COMPOSE_PREVIEW_DAEMON_VERSION` overrides it, for trying a release the pin has not moved to yet.
- *
- * # How the rest of the CLI finds it
- *
- * Nothing else changes: every launch path resolves a sidecar through
- * [ee.schimke.composeai.bundle.locateBundleSidecarJars], which reads `-Dcomposeai.cli.lib…Dir`
- * before `APP_HOME`. [install] provisions the archive and sets those properties for the sidecars it
- * carries — unless one is already set, or the install already holds that directory (a developer
- * install pointed at a checkout), in which case the explicit choice wins and nothing is fetched.
+ * Launch paths still resolve sidecars via [ee.schimke.composeai.bundle.locateBundleSidecarJars]
+ * (`-Dcomposeai.cli.lib…Dir`, then `APP_HOME`); [install] sets those properties unless one is
+ * already set or the install has the directory, in which case nothing is fetched.
  */
 internal object DaemonSidecarProvision {
 
@@ -92,20 +77,15 @@ internal object DaemonSidecarProvision {
     File(cacheRoot, version)
 
   /**
-   * Whether [dir] holds every directory of [sidecar], each with at least one jar. A partial unpack
-   * is deliberately not complete: an interrupted fetch that wrote one of the two desktop
-   * directories must not satisfy every later run and leave `bundle render` failing on a missing
-   * class until someone wipes the cache by hand.
+   * Whether [dir] holds every directory of [sidecar], each with at least one jar, so a partial
+   * unpack never satisfies later runs.
    */
   fun isComplete(dir: File, sidecar: Sidecar): Boolean =
     sidecar.directories.all { name ->
       File(dir, name).listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.isNotEmpty() == true
     }
 
-  /**
-   * The provisioned cache directory, or null when this machine has not fetched [sidecar]. Never
-   * downloads — this is the question `doctor` asks, and it may not block on a transfer to answer.
-   */
+  /** The provisioned cache directory, or null. Never downloads (`doctor` must not block on it). */
   fun cached(
     sidecar: Sidecar,
     env: (String) -> String? = System::getenv,
@@ -113,13 +93,9 @@ internal object DaemonSidecarProvision {
   ): File? = cacheDir(version(env), cacheRoot).takeIf { isComplete(it, sidecar) }
 
   /**
-   * Ensure the cache holds [version]'s [sidecar], fetching it when it does not, and return the
-   * cache directory. Returns null — never throws — on any failure, having explained it through
-   * [log]; the caller reports the sidecar as missing exactly as it did when the archive had to be
-   * unpacked by hand.
-   *
-   * Offline (`COMPOSE_PREVIEW_OFFLINE=1` / `-Dcomposeai.bundle.offline=true`, the same gate the
-   * bundle resolver and the Skiko provisioner read) never reaches the network.
+   * Ensure the cache holds [version]'s [sidecar], fetching if needed, and return its directory.
+   * Returns null (never throws) after explaining via [log]. Offline (`COMPOSE_PREVIEW_OFFLINE=1` /
+   * `-Dcomposeai.bundle.offline=true`) never touches the network.
    */
   fun ensure(
     sidecar: Sidecar,
@@ -162,8 +138,7 @@ internal object DaemonSidecarProvision {
             return null
           }
       dir.mkdirs()
-      // One directory at a time, replacing whatever a previous partial unpack left: the other
-      // sidecar's directories in the same version directory stay untouched.
+      // Replace one directory at a time; the other sidecar's directories stay untouched.
       for (name in sidecar.directories) {
         val target = File(dir, name)
         target.deleteRecursively()
@@ -186,11 +161,8 @@ internal object DaemonSidecarProvision {
   }
 
   /**
-   * Provision [sidecar] and point the sidecar lookup at it. Returns false, having explained why,
-   * when the sidecar is neither present nor fetchable.
-   *
-   * An explicit `-Dcomposeai.cli.lib…Dir` or a directory already inside the install wins: those are
-   * a person's choice of daemon, and this must not fetch over it.
+   * Provision [sidecar] and point the sidecar lookup at it; false (explained) when it is neither
+   * present nor fetchable. An explicit `-Dcomposeai.cli.lib…Dir` or an installed directory wins.
    */
   fun install(
     sidecar: Sidecar,
@@ -218,8 +190,8 @@ internal object DaemonSidecarProvision {
     }
 
   /**
-   * The directory inside an unpacked [stage] that holds the sidecar directories — [stage] itself
-   * (the archives pack flat), or a single wrapper directory if a future release ever adds one.
+   * The directory in an unpacked [stage] holding the sidecar dirs: [stage] itself, or a single
+   * wrapper dir.
    */
   fun archiveRoot(stage: File, sidecar: Sidecar): File? {
     fun looksRight(dir: File) = sidecar.directories.all { File(dir, it).isDirectory }
@@ -228,18 +200,16 @@ internal object DaemonSidecarProvision {
   }
 
   /**
-   * Unpack a zip into [destDir] with the JDK's own reader, refusing an entry that would escape it.
-   * No shell-out: `unzip` is not a given on every host the way `tar` is.
+   * Unpack a zip into [destDir] with the JDK reader (no `unzip` dependency), refusing entries that
+   * escape it.
    */
   fun unpackZip(zip: File, destDir: File) {
     destDir.mkdirs()
     val root = destDir.toPath().toAbsolutePath().normalize()
     ZipFile(zip).use { archive ->
       for (entry in archive.entries()) {
-        // Normalise before the containment check so a `..` segment cannot climb out of the
-        // destination (Zip Slip); the check is on the normalised path, never on the raw name. An
-        // explicit `if` rather than `require`: the inline stdlib call is invisible to CodeQL's
-        // guard detection, and this is the sanitizer form it recognises.
+        // Normalise before checking containment (Zip Slip). An explicit `if` rather than `require`
+        // so CodeQL recognises the sanitizer.
         val target = root.resolve(entry.name).normalize()
         if (!target.startsWith(root)) {
           throw IllegalArgumentException("zip entry escapes the destination: ${entry.name}")

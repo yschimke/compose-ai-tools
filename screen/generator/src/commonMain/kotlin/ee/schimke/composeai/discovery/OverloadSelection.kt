@@ -15,32 +15,21 @@ data class OverloadAlternative(
 )
 
 /**
- * Which overload a component record speaks for (compose-ai-tools#5807).
+ * Which overload a component record speaks for. A record holds one signature, and only the
+ * catalog's policy knows which overload its properties describe (e.g. `OutlinedTextField(value:
+ * String, …)` rather than the `TextFieldState` one listed first). Ranked by:
  *
- * A record holds one signature, and a catalog's policy describes one overload's parameters:
- * `m3/outlined-text-field` offers `value` and `singleLine`, which exist only on
- * `OutlinedTextField(value: String, …)`, not on the `TextFieldState` overload the class file lists
- * first. Neither "first in the class file" nor "what the stickers call" is a rule — the first
- * matched m3-catalog's buttons and sliders by luck, the second its text fields — because only the
- * policy knows which overload its properties describe. So the choice is made against the policy:
- *
- * 1. **Never a deprecated overload.** Excluded outright, whatever it would have won.
- * 2. **Coverage**: the overload whose parameters include every policy name that names a parameter
- *    of SOME overload (a builder-only property such as `containerColor` covers nothing and is
- *    ignored), then the one covering most of them.
- * 3. **Writable**: one the generator can call with the policy supplying its names
- *    ([ComponentSnippets.refusalWith] answers null) beats one it cannot (`Button(…, shapes:
- *    ButtonShapes)` has no placeholder).
- * 4. **Fewest unmatched required parameters**: required parameters the policy does not supply. This
- *    keeps `Card(content)` over `Card(onClick, content)` when the policy names neither.
- * 5. **Most called**: the overload most previews invoke.
+ * 1. **Never a deprecated overload.**
+ * 2. **Coverage**: includes every policy name that names a parameter of some overload (builder-only
+ *    properties are ignored), then covers the most.
+ * 3. **Writable**: [ComponentSnippets.refusalWith] answers null given the policy's names.
+ * 4. **Fewest unmatched required parameters** (keeps `Card(content)` over `Card(onClick,
+ *    content)`).
+ * 5. **Most called** by previews.
  * 6. **Declaration order**, so the answer never depends on manifest order.
  *
- * When some policy names are parameters of deprecated overloads only, the best non-deprecated one
- * is kept — the generator then refuses the properties it lacks, by name — and a diagnostic names
- * those properties, the deprecated overloads that have them, and the current alternatives. When
- * EVERY overload is deprecated the record's code is refused: printing deprecated source is never
- * the answer.
+ * If some policy names exist only on deprecated overloads, the best non-deprecated one is kept and
+ * a diagnostic names the gap. If every overload is deprecated, the record's code is refused.
  */
 object OverloadSelection {
 

@@ -51,25 +51,12 @@ import okio.Path.Companion.toPath
 import okio.buffer
 
 /**
- * Compose Preview Viewer — a one-window desktop app that opens a `compose-preview` bundle (PNG+ZIP
- * polyglot) and renders its `@Preview` composable LIVE inside the window. State, recomposition,
- * animations all tick as they would in the source app; the viewer is a thin Window shell around a
- * reflective composable invocation against the bundle's classloader.
+ * Compose Preview Viewer — a desktop window that opens a `compose-preview` bundle (PNG+ZIP
+ * polyglot) and renders its `@Preview` live (state, recomposition and animation tick as in the
+ * source app).
  *
- * # Modes
- *
- * - **CLI arg**: `compose-preview-viewer foo.png` opens the bundle on startup. Useful for
- *   double-click associations and shell scripting.
- * - **Drag-and-drop**: launching with no args opens an empty drop-target window. Dropping a `.png`
- *   polyglot loads it, swapping the live preview and resizing the window to the preview's declared
- *   size.
- *
- * # Window sizing
- *
- * On bundle load, [previewSize] computes a `DpSize` from the preview's `params.widthDp` /
- * `params.heightDp` (defaulting to 400×800 dp wrap-content for previews that didn't pin a device).
- * The window state is mutated so the OS chrome includes the preview at its declared dimensions —
- * same shape `@Preview` viewers in Android Studio show.
+ * `compose-preview-viewer foo.png` opens a bundle on startup; with no args the window is a drop
+ * target. Loading a bundle resizes the window to the preview's declared size ([previewSize]).
  */
 fun main(args: Array<String>) {
   // The bundle arg may be a local path or an http(s)/file URL — resolve (download) it to a local
@@ -189,10 +176,8 @@ private fun LivePreview(method: ComposableMethod, info: PreviewInfo) {
 }
 
 /**
- * Reflective invocation site — the method gets called from inside an active composition so the
- * bundle's `@Composable` function gets the composer state Compose expects. Loaded via the bundle's
- * child classloader; the parent has the viewer's Compose runtime, so the composer symbol is shared
- * and the call is a normal composable invocation as far as the runtime is concerned.
+ * Reflective invocation inside an active composition. The bundle's child classloader shares the
+ * viewer's Compose runtime as parent, so this is a normal composable call to the runtime.
  */
 @Composable
 private fun InvokeComposable(method: ComposableMethod) {
@@ -246,11 +231,9 @@ private fun ErrorPanel(message: String) {
 }
 
 /**
- * Resolve the [DpSize] the window should adopt for [preview]. Pinned dimensions from the
- * `@Preview(widthDp = .., heightDp = ..)` annotation win; absent ones fall back to the preview's
- * own wrap sandbox when it declares one (`wrapSandbox*Dp` — a Wear sticker opens at watch size),
- * and otherwise to the same 400×800 dp sandbox the renderer uses. The 200-dp floor avoids unusable
- * tiny windows for previews that pin extreme dimensions.
+ * The window [DpSize] for [preview]: pinned `widthDp`/`heightDp` win, then the preview's wrap
+ * sandbox (`wrapSandbox*Dp`, e.g. watch size), then the renderer's 400×800 dp default. Floored at
+ * 200dp.
  */
 private fun previewSize(preview: LoadedPreview): DpSize {
   val params = preview.info.params
@@ -263,10 +246,8 @@ private val INITIAL_WIDTH = 480.dp
 private val INITIAL_HEIGHT = 720.dp
 
 /**
- * Resolve a bundle CLI arg — a local path or an http(s)/file URL — to a readable local file, or
- * null when it can't be opened (missing path, failed download). URLs are downloaded to a temp file
- * (delete-on-exit). Kept self-contained here rather than depending on `:cli`'s BundleSource so the
- * viewer's module graph stays minimal (same convention as the duplicated `extractZipBytes`).
+ * Resolve a bundle CLI arg (path or http(s)/file URL) to a local file, or null. URLs download to a
+ * delete-on-exit temp file. Self-contained to keep the viewer's module graph minimal.
  */
 private fun resolveBundleArg(arg: String): Path? {
   val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()

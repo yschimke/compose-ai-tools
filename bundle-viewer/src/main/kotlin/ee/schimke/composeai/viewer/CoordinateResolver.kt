@@ -20,26 +20,17 @@ import okio.buffer
 import okio.openZip
 
 /**
- * Resolves a bundle's detached `maven` coordinates ([ClasspathEntry.Maven]) to jar files so the
- * viewer can add them to a bundle's child classloader. Consumer side of schema v4's
- * content-addressing: a coordinate names *what* dependency a preview needs, and this finds the
- * bytes from whatever the machine already has — or, failing that, downloads them.
+ * Resolves a bundle's detached `maven` coordinates ([ClasspathEntry.Maven]) to jar files for a
+ * bundle's child classloader. Duplicated from `:cli`'s `CoordinateResolver` to keep the viewer's
+ * module graph minimal; keep the two in sync.
+ * - Local repos and download cache first (`~/.m2/repository`, Gradle `modules-2`, our cache;
+ *   overridable via `maven.repo.local` / `GRADLE_USER_HOME` / `composeai.bundle.cacheDir`); the v4
+ *   `sha256` picks among several local copies.
+ * - Remote repos (when [networkEnabled]; Maven Central + Google Maven) only on a local miss, cached
+ *   afterwards. Off via `composeai.bundle.offline=true` / `COMPOSE_PREVIEW_OFFLINE=1`.
+ * - Warn, never fail: a miss or hash mismatch logs and returns the best jar (or none).
  *
- * Mirrors `:cli`'s `CoordinateResolver` (duplicated rather than depended on, same convention as the
- * viewer's copy of `extractZipBytes`, so the viewer's module graph stays minimal):
- * - **Local repos + download cache** — `~/.m2/repository` (Maven layout), `~/.gradle/.../modules-2`
- *   (Gradle cache), and our own download cache, overridable via `maven.repo.local` /
- *   `GRADLE_USER_HOME` / `composeai.bundle.cacheDir`. When several local copies exist for one GAV,
- *   the v4 `sha256` picks the matching one. The cache is read regardless of the network flag.
- * - **Remote repos** (when [networkEnabled]) — Maven Central + Google Maven by default; hit only on
- *   a local miss, and a download is cached for next time. Off via `composeai.bundle.offline=true` /
- *   `COMPOSE_PREVIEW_OFFLINE=1`.
- * - **Warn, never fail**: a miss or hash mismatch logs and still returns the best jar (or none), so
- *   a preview renders with an almost-compatible dep rather than not at all.
- *
- * All filesystem access funnels through `:common-io`'s Okio helpers; jar paths are [okio.Path]. The
- * one place a `java.io.File` is still required is `java.util.zip.ZipFile` for `.aar` extraction —
- * bridged at that call with [Path.toFile].
+ * Filesystem access goes through Okio; only `.aar` extraction bridges to `java.io.File`.
  */
 internal object CoordinateResolver {
 
@@ -127,9 +118,7 @@ internal object CoordinateResolver {
     val found = mutableListOf<Path>()
     for (root in roots) {
       if (fileSystem.metadataOrNull(root)?.isDirectory != true) continue
-      // Coordinate's recorded type first, then `.aar` (Android deps recorded as `jar` by an older
-      // bundle, or whose `.jar` isn't published). [materialize] turns an `.aar` into its
-      // classes.jar.
+      // The recorded type first, then `.aar`; [materialize] turns an `.aar` into its classes.jar.
       for (fileName in candidateFileNames(coord)) {
         val mavenPath =
           root / "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
@@ -153,9 +142,8 @@ internal object CoordinateResolver {
   }
 
   /**
-   * An `.aar` isn't classpath-loadable, so extract its `classes.jar` to a stable cache path under
-   * [downloadCacheDir] and return that; a `.jar` passes through. Returns null for a resource-only
-   * `.aar` (no `classes.jar`) or any extraction error — the caller then treats it as a miss.
+   * Extract an `.aar`'s `classes.jar` to a stable cache path and return it; a `.jar` passes
+   * through. Null for a resource-only `.aar` or an extraction error.
    */
   private fun materialize(file: Path, downloadCacheDir: Path, fileSystem: FileSystem): Path? {
     if (!file.name.endsWith(".aar", ignoreCase = true)) return file
@@ -179,10 +167,8 @@ internal object CoordinateResolver {
   }
 
   /**
-   * Download [coord]'s artifact from the first [remoteRepositories] base that serves it, into
-   * [downloadCacheDir] (Maven layout); return the cached file or null (never throws). A cached copy
-   * isn't short-circuited here — [locate] already searches the cache, so reaching this means we
-   * want fresh bytes.
+   * Download [coord]'s artifact from the first [remoteRepositories] base that serves it into
+   * [downloadCacheDir] (Maven layout), returning the cached file or null. Never throws.
    */
   private fun download(
     coord: ClasspathEntry.Maven,
@@ -205,19 +191,9 @@ internal object CoordinateResolver {
   }
 
   /**
-   * The file name [base] actually serves for [coord] — [fileName] itself for a release, and for a
-   * **unique snapshot** the timestamped name its `maven-metadata.xml` names.
-   *
-   * A Maven snapshot repository does not serve `<artifact>-1.0.0-SNAPSHOT.aar`: it stores each
-   * publication as `<artifact>-1.0.0-<yyyyMMdd.HHmmss>-<n>.<ext>` and points at the current one
-   * from the version directory's `maven-metadata.xml`. Constructing the literal name 404s against
-   * every real snapshot repo, so a bundle carrying a `-SNAPSHOT` coordinate could not be rehydrated
-   * from the network at all (issues #4259 / #4265). Mirrors `:cli`'s `CoordinateResolver` — keep
-   * the two in sync.
-   *
-   * Falls back to [fileName] on anything unexpected (no metadata, unparseable metadata, transport
-   * error, or a repo publishing non-unique snapshots under the literal name), which is the old
-   * behaviour exactly.
+   * The file name [base] serves for [coord]: [fileName] for a release, or for a unique snapshot the
+   * timestamped name from `maven-metadata.xml` (the literal `-SNAPSHOT` name 404s). Falls back to
+   * [fileName] on anything unexpected.
    */
   private fun remoteFileName(
     base: String,
@@ -251,11 +227,8 @@ internal object CoordinateResolver {
 
   /**
    * The unique-snapshot version (`1.0.0-20260818.194125-1`) a version-level `maven-metadata.xml`
-   * publishes for [extension], or null when the document names none. Scanned rather than parsed to
-   * keep the viewer's module graph free of an XML parser: `<snapshotVersion>` blocks carrying a
-   * `<classifier>` are skipped (the `sources` / `javadoc` siblings publish the same extension), and
-   * the first remaining block whose `<extension>` matches wins — a version-level metadata document
-   * carries one classifier-free entry per extension, the current publication.
+   * publishes for [extension], or null. A regex scan (no XML parser dependency) that skips
+   * `<classifier>` blocks and takes the first matching `<extension>`.
    */
   internal fun snapshotVersion(metadataXml: String, extension: String): String? =
     SNAPSHOT_VERSION_BLOCK.findAll(metadataXml)
@@ -276,10 +249,8 @@ internal object CoordinateResolver {
       ?.trim()
 
   /**
-   * GET [url] into [dest] (parent dirs created); true only on a 2xx with a non-empty body. The
-   * bytes land in a sibling `.part` temp file first and are moved into [dest] only on success, so a
-   * failed or empty fetch never clobbers an existing cached copy — which may be the
-   * stale-but-usable jar that [resolveOne]'s warn-never-fail fallback then returns.
+   * GET [url] into [dest]; true only on a non-empty 2xx. Downloads to a `.part` sibling and moves
+   * on success, so a failed fetch never clobbers a stale-but-usable cached copy.
    */
   private fun fetchTo(url: String, dest: Path, fileSystem: FileSystem): Boolean {
     val parent = dest.parent
@@ -328,9 +299,8 @@ internal object CoordinateResolver {
     listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
   /**
-   * Candidate `<artifact>-<version>.<ext>` filenames, in order: the coordinate's recorded type
-   * (`jar` desktop / `aar` Android) first, then `.aar` as a fallback for Android deps an older
-   * bundle recorded as `jar` or whose `.jar` isn't published. De-duplicated.
+   * Candidate `<artifact>-<version>.<ext>` filenames: the recorded type first, then `.aar` for
+   * Android deps an older bundle recorded as `jar`. De-duplicated.
    */
   private fun candidateFileNames(coord: ClasspathEntry.Maven): List<String> =
     listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
@@ -344,9 +314,7 @@ internal object CoordinateResolver {
     if (home != null) roots += home / ".m2/repository"
     val gradleHome = System.getenv("GRADLE_USER_HOME")?.toPath() ?: home?.let { it / ".gradle" }
     if (gradleHome != null) roots += gradleHome / "caches/modules-2/files-2.1"
-    // Pre-XDG download-cache location — read-only fallback so artifacts a previous version
-    // downloaded into `~/.cache/compose-preview/bundle-deps` still resolve after the move to
-    // [composeAiCacheDir]. Nothing writes here.
+    // Pre-XDG download-cache location, read-only fallback for previously downloaded artifacts.
     if (home != null) roots += home / ".cache/compose-preview/bundle-deps"
     return roots
   }

@@ -31,45 +31,25 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A pool of long-lived `DesktopRendererWorkerMain` processes for one module's render, so a capture
- * costs a frame on a warm JVM instead of a whole fork.
+ * costs a frame on a warm JVM (~36 ms) instead of a fork (~2 s).
  *
- * `RenderPreviewsTask` forked `:renderer-desktop` once per capture, paying JVM + Compose Desktop +
- * Skiko boot every time — 2.15 s/preview measured end-to-end on m3-catalog (~43 min for its 1095
- * previews) against ~36 ms warm.
+ * **Per module and per task execution:** workers are bound to the consumer's classpath. Created and
+ * closed inside the task action, so no process outlives the build or sits on a task field.
  *
- * **Per module, and per task execution.** Unlike `RcJvmWorkerPool` — whose workers take a
- * self-describing `.rc` document from any project — a renderer worker is bound to the consumer's
- * classpath, so it can only serve the module that spawned it. That costs nothing here: every
- * capture in one `composePreviewRender` execution shares that module, which is exactly the run the
- * amortisation applies to. The pool is created and closed inside the task action, so no process
- * outlives the build and nothing process-shaped is held on a task field (configuration cache).
+ * **Sound** because the worker calls the renderer's own `main()`; `DesktopRendererReentrancyTest`
+ * pins that repeated renders draw identical pixels and don't inherit the previous
+ * `@OverrideVariant` seed.
  *
- * **Why this is sound.** The worker calls the renderer's own `main()`, so a pooled capture runs the
- * identical code a forked one did. `DesktopRendererReentrancyTest` pins the two properties that
- * makes safe: repeated in-process renders draw identical pixels, and a capture does not inherit the
- * `@OverrideVariant` seed of the one before it.
+ * **Trade-off:** consumer classes load once, so a preview mutating global state can affect later
+ * captures — the same trade the daemon makes. Bounded by [maxRendersPerWorker], a deterministic
+ * single-worker default, and [SYS_PROP_ENABLED]`=off` to restore per-capture forks.
  *
- * **What reuse gives up.** A fork gave each capture a fresh JVM, so a preview that mutates
- * top-level or `object` state during composition could not affect any other. A warm worker loads
- * consumer classes once, so that isolation is gone: an order-dependent preview can now influence a
- * later capture. This is the trade the preview daemon has always made — it renders many previews
- * per JVM behind a persistent classloader — so the batch lane is not held to a stricter standard
- * than the interactive one. Bounded rather than defended against: [maxRendersPerWorker] recycles
- * workers, the default of one worker keeps ordering deterministic rather than racy, and
- * [SYS_PROP_ENABLED]`=off` restores per-capture forks exactly. A preview whose pixels depend on
- * what rendered before it is not reproducible for the catalogs either, so the fix in that case is
- * the preview, not the pool.
- *
- * **Failure posture**, mirroring the cmp-jvm pool and the two defects review found there:
- * * anything the pool cannot serve reports [WorkerResult.Unusable] and the caller forks that
- *   capture instead, so the worst case is the cost that was already being paid;
- * * a render the *renderer* rejects reports [WorkerResult.Failed] — a real answer about that
- *   capture, not retried on a fork, which would double the cost of every broken preview;
- * * [close] destroys **checked-out** workers too, before stopping the watchdog: a worker mid-render
- *   is absent from [idle], and `shutdownNow()` drops the scheduled kill that is the only other way
- *   out of a blocked pipe read;
- * * after [MAX_START_FAILURES] consecutive spawn failures the pool disables itself for the rest of
- *   the run, so a systematically broken pool costs one failed spawn rather than one per capture.
+ * **Failure posture:**
+ * * anything unservable reports [WorkerResult.Unusable] and the caller forks;
+ * * a renderer rejection reports [WorkerResult.Failed] and isn't retried;
+ * * [close] destroys checked-out workers too, before stopping the watchdog, since `shutdownNow()`
+ *   drops the scheduled kill that unblocks a pipe read;
+ * * after [MAX_START_FAILURES] consecutive spawn failures the pool disables itself.
  */
 internal class DesktopRenderWorkerPool(
   private val classpath: List<File>,
@@ -78,25 +58,18 @@ internal class DesktopRenderWorkerPool(
   private val maxWorkers: Int,
   private val maxRendersPerWorker: Int,
   /**
-   * Working directory for every worker, which must be the **task project's** directory:
-   * `ExecOperations.javaexec` defaulted to it, so a preview reading a relative path resolved it
-   * against the subproject. A bare `ProcessBuilder` would inherit the Gradle daemon's directory
-   * instead and quietly resolve the same path somewhere else — a difference between the warm and
-   * forked lanes, which is exactly what this pool must never introduce.
+   * Must be the task project's directory, as `javaexec` used, so relative paths resolve identically
+   * in both lanes.
    */
   private val workingDir: File,
   /**
-   * Where a worker's stderr goes. The forked lane let the renderer's own diagnostics through to the
-   * build log — missing `@PreviewParameter` providers, device-frame and display-filter failures,
-   * the `Render failed …` line that accompanies an error sidecar. Those arrive on *successful*
-   * requests (the renderer handles them and returns normally), so a pool that only kept stderr for
-   * its own failure messages would silently swallow them.
+   * Worker stderr; renderer diagnostics often accompany successful requests, so they must be
+   * forwarded.
    */
   private val stderrSink: (String) -> Unit,
   /**
-   * What the worker's `LD_LIBRARY_PATH` should be, relative to the daemon's own. Defaults to
-   * "inherit", which is what a worker got before [RenderNativeEnv] existed and what it still gets
-   * everywhere but a hybrid store/system sandbox.
+   * The worker's `LD_LIBRARY_PATH` relative to the daemon's; "inherit" except on hybrid
+   * store/system sandboxes.
    */
   private val nativeEnv: RenderNativeEnv.Decision = RenderNativeEnv.Decision.Inherit,
   private val workerMainClass: String = WORKER_MAIN_CLASS,
@@ -224,11 +197,9 @@ internal class DesktopRenderWorkerPool(
       add(workerMainClass)
     }
     return try {
-      // Registered BEFORE the handshake, not after. A worker waiting for its hello frame is a live
-      // child process; if `close()` ran while it booted it would be invisible to shutdown, and
-      // `watchdog.shutdownNow()` would then drop the handshake kill-switch — leaving the read
-      // blocked forever with the JVM still up. Registering first means `close()` can always reap
-      // it, and a pool that closed underneath us is detected right after.
+      // Register before the handshake so `close()` can reap a booting worker (otherwise
+      // `shutdownNow()` drops its kill-switch and the read blocks forever); a pool closed
+      // underneath is detected right after.
       val worker = Worker(command, watchdog, workingDir, stderrSink, nativeEnv)
       val tracked = synchronized(lock) { if (closed) false else liveWorkers.add(worker) }
       if (!tracked) {
@@ -264,9 +235,8 @@ internal class DesktopRenderWorkerPool(
         idle.clear()
         liveWorkers.toList().also { liveWorkers.clear() }
       }
-    // Every worker, not just the parked ones, and before the watchdog stops: destroying a
-    // checked-out worker's process is what unblocks the thread waiting on its pipe, and
-    // `shutdownNow()` would otherwise drop the scheduled kill that is the only other way out.
+    // All workers, before the watchdog stops: destroying a checked-out process unblocks its waiting
+    // thread.
     doomed.forEach { it.close() }
     watchdog.shutdownNow()
   }
@@ -297,9 +267,7 @@ internal class DesktopRenderWorkerPool(
               stderrTail.addLast(line)
               while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
             }
-            // Forwarded as well as buffered: the tail exists for the pool's own failure
-            // messages, but most renderer diagnostics ride a *successful* request and would
-            // otherwise never be seen.
+            // Forwarded as well as buffered for failure messages.
             stderrSink(line)
           }
         } catch (_: IOException) {
@@ -345,9 +313,7 @@ internal class DesktopRenderWorkerPool(
         toWorker.writeInt(requestId)
         toWorker.writeInt(seedBytes.size)
         toWorker.write(seedBytes)
-        // Per-capture, exactly like the seed above and for the same reason: a warm worker that
-        // inherited the previous preview's knob list would declare its controls into this capture's
-        // overrides sidecar.
+        // Per capture like the seed, so a warm worker never reuses the previous preview's knobs.
         toWorker.writeInt(knobBytes.size)
         toWorker.write(knobBytes)
         toWorker.writeInt(args.size)
@@ -371,8 +337,7 @@ internal class DesktopRenderWorkerPool(
       } catch (e: Exception) {
         val timedOut = guard.fired()
         close()
-        // Unusable rather than Failed: the *worker* broke, so nothing was learned about this
-        // capture and the caller is entitled to fork it.
+        // The worker broke, so nothing was learned about this capture; the caller may fork it.
         return WorkerResult.Unusable(
           if (timedOut) "render worker timed out after ${RENDER_GUARD_SECONDS}s"
           else "render worker failed: ${e.message}${stderrSuffix()}"
@@ -422,15 +387,13 @@ internal class DesktopRenderWorkerPool(
   internal companion object {
     const val WORKER_MAIN_CLASS = "ee.schimke.composeai.renderer.DesktopRendererWorkerMainKt"
 
-    // Mirrors `DesktopRendererWorkerMain.kt`. The plugin cannot depend on the renderer module (it
-    // is resolved into the consumer's dependency graph), so the wire constants are duplicated on
-    // purpose; the version check in [Worker.handshake] is what keeps that honest.
+    // Mirrors `DesktopRendererWorkerMain.kt` (no module dependency possible); [Worker.handshake]'s
+    // version check keeps them honest.
     const val MAGIC_HELLO = 0x43505731
     const val MAGIC_REQUEST = 0x43505131
     const val MAGIC_RESPONSE = 0x43505231
-    // 2 since the request frame gained the per-capture parameter-knob payload. A worker built from
-    // an older renderer answers 1, the handshake refuses it, and the caller forks that capture —
-    // which still renders correctly, because the forked lane passes the knobs as a system property.
+    // 2: requests carry the knob payload. Older workers answer 1, are refused, and the capture
+    // forks (which passes knobs as a system property).
     const val WORKER_PROTOCOL_VERSION = 2
     const val STATUS_OK = 0
 
@@ -439,8 +402,8 @@ internal class DesktopRenderWorkerPool(
     const val STDERR_TAIL_LINES = 40
 
     /**
-     * Per-capture kill-switch. Generous because a single heavy capture (a long scroll, a GIF
-     * window) legitimately takes a while, and killing a worker mid-render costs the whole warm JVM.
+     * Generous per-capture kill-switch: heavy captures take time, and a kill costs the whole warm
+     * JVM.
      */
     const val RENDER_GUARD_SECONDS = 600L
 
@@ -452,9 +415,7 @@ internal class DesktopRenderWorkerPool(
       !System.getProperty(SYS_PROP_ENABLED).equals("off", ignoreCase = true)
 
     /**
-     * One worker by default. Captures are already driven serially by the task, and the render
-     * itself is Skiko-bound; extra workers buy resident memory rather than throughput. Sharding
-     * across Gradle workers remains the way to use more cores.
+     * One worker by default: captures are serial and Skiko-bound, so more workers only add memory.
      */
     fun configuredWorkers(): Int =
       System.getProperty(SYS_PROP_WORKERS)?.toIntOrNull()?.coerceIn(1, 8) ?: 1

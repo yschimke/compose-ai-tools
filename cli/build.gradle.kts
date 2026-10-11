@@ -42,41 +42,25 @@ base { archivesName.set("compose-preview") }
 application {
   applicationName = "compose-preview"
   mainClass.set("ee.schimke.composeai.cli.MainKt")
-  // The Tooling API loads gradle-dist's native-platform jar into our JVM, which
-  // calls `System.load`. On JDK 24+ that prints a 4-line restricted-method
-  // warning on every CLI invocation. Pre-declaring native access for the
-  // unnamed module (where Tooling API + native-platform live) silences it.
+  // The Tooling API's native-platform jar calls `System.load`; declaring native access silences the
+  // JDK 24+ restricted-method warning on every invocation.
   applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
-// Note: don't set `archiveFileName` directly — Gradle's distribution plugin
-// uses it to derive the root directory inside the archive, so a full filename
-// like `compose-preview-<version>.tar.gz` leaks the `.tar.gz` suffix into the
-// extracted folder name. Setting `archiveExtension` instead lets Gradle compute
-// the file name as `<archivesName>-<version>.<extension>` while keeping the
-// internal root as `<archivesName>-<version>/`.
+// Don't set `archiveFileName`: the distribution plugin derives the archive's root directory from
+// it, which would leak `.tar.gz` into the extracted folder name.
 tasks.named<Tar>("distTar") {
   archiveExtension.set("tar.gz")
   compression = Compression.GZIP
 }
 
-// The desktop renderer (`lib-renderer/`), the desktop daemon (`lib-daemon-desktop/`) and the
-// Android daemon (`lib-daemon-android/`) are NOT staged into this distribution any more. They
-// publish from yschimke/compose-preview-daemon (#5336), whose release attaches them as
-// `compose-preview-desktop-daemon-<v>.tar.gz` and `compose-preview-android-daemon-<v>.zip`, and
-// `DaemonSidecarProvision` fetches the pinned release's archives on first use — the same first-use
-// provisioning the CLI already does for the preview server and the XR compositor. The pin is
-// `composeai-preview-daemon` in the catalog, baked in below as `previewDaemonVersion`.
+// The desktop renderer and the desktop/Android daemons are not staged here: they come from
+// yschimke/compose-preview-daemon releases, fetched on first use by `DaemonSidecarProvision` at the
+// `composeai-preview-daemon` catalog pin (baked in below as `previewDaemonVersion`).
 
-// Sidecar configuration carrying the CMP Remote Compose render worker (`:rc-render-jvm`, which
-// wraps
-// `rc-player-compose`). `compose-preview serve` spawns its `RcJvmRenderMain` as a one-shot
-// subprocess, or its pooled `RcJvmRenderWorkerMain`, to render a captured `ir/<id>.rc` to PNG or
-// layered SVG for the viewer's cmp-jvm chip — the same subprocess-only isolation as the desktop
-// daemon. Deliberately does NOT bundle Compose
-// Multiplatform / Skiko: the subprocess classpath joins `lib-rcjvm/*` + `lib-daemon-desktop/*` at
-// launch, and the daemon sidecar already carries the per-OS Compose + Skiko stack. Resolved into
-// `cli/build/install/compose-preview/lib-rcjvm/`, located at runtime via `APP_HOME/lib-rcjvm/` (or
+// The CMP Remote Compose render worker (`:rc-render-jvm`), which `serve` spawns to render
+// `ir/<id>.rc` for the cmp-jvm chip. Excludes Compose/Skiko: the subprocess classpath joins
+// `lib-rcjvm/*` + `lib-daemon-desktop/*`. Staged to `lib-rcjvm/` (or
 // `-Dcomposeai.cli.libRcjvmDir`).
 val composePreviewRcJvm =
   configurations.create("composePreviewRcJvm") {
@@ -84,29 +68,19 @@ val composePreviewRcJvm =
     isCanBeConsumed = false
   }
 
-// BTA (Kotlin Build Tools API) *implementation* classpath for the `serve --playground` in-process
-// compile: `kotlin-build-tools-impl` (transitively `kotlin-compiler-embeddable` + runtime) plus the
-// Compose compiler plugin. These are the jars the gradle plugin's `DaemonBootstrapTask` supplies to
-// the editor daemon via sysprops — the serve host has no gradle plugin, so it stages them into the
-// CLI install (`lib-bta/`) and loads them into BTA's isolated classloader at compile time. Never on
-// the CLI's own classpath (a whole compiler frontend); resolved into
-// `cli/build/install/compose-preview/lib-bta/`, located at runtime via `APP_HOME/lib-bta/` (or
-// `-Dcomposeai.cli.libBtaDir`).
+// Kotlin Build Tools API implementation plus the Compose compiler plugin, for the `serve
+// --playground` in-process compile. Loaded into BTA's isolated classloader, never onto the CLI's
+// own classpath. Staged to `lib-bta/` (or `-Dcomposeai.cli.libBtaDir`).
 val composePreviewBta =
   configurations.create("composePreviewBta") {
     isCanBeResolved = true
     isCanBeConsumed = false
   }
 
-// Sidecar configuration carrying `:usage-source-psi` — the Kotlin *parser* behind the usage
-// cleaner.
-// Same isolation story as `lib-bta/` above, and loaded together with it: the analyzer needs a
-// frontend, and the frontend must never be on the CLI's own classpath. Resolved into
-// `cli/build/install/compose-preview/lib-usage-psi/`, located at runtime via
-// `APP_HOME/lib-usage-psi/` (or `-Dcomposeai.cli.libUsagePsiDir`).
-//
-// Just this module's jar: `:usage-source-psi` declares the frontend `compileOnly`, so its runtime
-// closure is the Kotlin stdlib the CLI already ships, and the compiler jars ride in `lib-bta/`.
+// `:usage-source-psi`, the Kotlin parser behind the usage cleaner, loaded alongside `lib-bta/` and
+// likewise kept off the CLI's classpath. Staged to `lib-usage-psi/` (or
+// `-Dcomposeai.cli.libUsagePsiDir`). Only this module's jar: the frontend is `compileOnly` and
+// rides in `lib-bta/`.
 val composePreviewUsagePsi =
   configurations.create("composePreviewUsagePsi") {
     isCanBeResolved = true
@@ -115,9 +89,7 @@ val composePreviewUsagePsi =
 
 dependencies {
   implementation(platform(libs.rcplayers.bom))
-  // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
-  // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
-  // `kotlin-compiler-embeddable` and the rest of the frontend transitively.
+  // BTA implementation + Compose compiler plugin for `lib-bta/`; the frontend comes transitively.
   add(
     "composePreviewBta",
     "org.jetbrains.kotlin:kotlin-build-tools-impl:${libs.versions.kotlin.get()}",
@@ -127,118 +99,49 @@ dependencies {
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
   add("composePreviewUsagePsi", project(":usage-source-psi"))
-  // BTA *interfaces only* — the CLI references `BtaCompileSession`'s build-tools-api parameter
-  // types
-  // (`CompilerPlugin`, `KotlinLogger`, `SourcesChanges`) to drive an in-process playground compile.
-  // `:daemon:core` declares this as `implementation`, so it isn't transitive; the impl JARs ride in
-  // `lib-bta/`, not here.
+  // BTA interfaces only, for `BtaCompileSession`'s parameter types (not transitive from
+  // `:daemon:core`); the implementation jars ride in `lib-bta/`.
   implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
 
-  // SPIKE, test-only: the Kotlin frontend, for `PsiParseSpikeTest` to measure whether a
-  // *parse-only*
-  // PSI pass is cheap enough to replace the cleaner's text passes. Deliberately
-  // `testImplementation`
-  // and nothing else — the CLI's own runtime classpath must stay free of the frontend (see the
-  // `lib-bta/` note above). If the spike says yes, the real change loads these jars through the
-  // existing isolated `lib-bta/` classloader, not from here.
+  // SPIKE, test-only: the Kotlin frontend for `PsiParseSpikeTest`. Must stay off the runtime
+  // classpath; a real change would load it through the isolated `lib-bta/` classloader.
   testImplementation(
     "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
   )
 
-  // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
-  // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
-  // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
-  // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
-  // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
+  // Published wire-format DTOs. `api` so in-package imports here and in tests keep resolving;
+  // external consumers depend on `:preview-data-api` directly.
   api(libs.composeai.preview.data.api)
 
-  // The wire contract `compose-preview build-host` serves. `api` because `BuildHostCommand`'s
-  // testable seam takes and returns protocol types, and the CLI's own tests drive it by them.
-  //
-  // Note the direction: this module holds shape only, so depending on it costs the CLI nothing it
-  // did not already have, and the preview server can depend on the SAME module without acquiring
-  // the Gradle Tooling API. That asymmetry is the point of the protocol
-  // (yschimke/compose-preview-server#180, #9).
+  // The wire contract `compose-preview build-host` serves; `api` because `BuildHostCommand`'s seam
+  // uses its types. Shape only, so the preview server can depend on it without the Tooling API.
   api(project(":build-host-protocol"))
   implementation(project(":common-image-crop"))
 
-  // Gradle Tooling-API render pipeline + the `GradleConnection` / `PreviewModule` /
-  // `CapturedTestFailure` / `TerminalProgress` plumbing the CLI used to host inline. `api` again
-  // for source-compat (existing in-package imports). Transitively brings in the Tooling-API and
-  // slf4j-nop dependencies the CLI used to declare directly.
+  // Gradle Tooling-API render pipeline and `GradleConnection` plumbing. `api` for in-package source
+  // compatibility.
   api(project(":gradle-preview-driver"))
 
-  // The preview-bundle format — reading/writing a `.previewbundle`, its manifest DTO, sidecar
-  // injectors, deterministic zip helpers, the detached signature scheme, classpath hydration, and
-  // the Android resource/launch support. Split out of this module for #3824; the `bundle`
-  // subcommands stay here. `api` for source-compat: the types kept their `ee.schimke.composeai.cli`
-  // package, so every existing call site (including `serve`) resolves them unchanged.
+  // The preview-bundle format (reader/writer, manifest, sidecar injectors, signing, hydration).
+  // `api` because the types keep the `ee.schimke.composeai.cli` package.
   api(project(":bundle-format"))
   api(libs.composeai.agent.grant.protocol)
 
-  // Turning a bundle's recorded Maven coordinates back into local jars — the `bundle daemon` and
-  // `bundle render` subcommands and `serve` all need it. Split out of this module for #3824
-  // preparation item 7. `api` for source-compat with the existing in-package call sites.
+  // Turns a bundle's recorded Maven coordinates back into local jars. `api` for in-package source
+  // compatibility.
   api(project(":bundle-coordinates"))
 
-  // The render host, the bundle daemon and the git-backed preview history — what the OFFLINE
-  // commands actually use.
-  //
-  // Eight of the twelve serve-package symbols this module's main sources reference live here:
-  // `ServeRenderHost`, `ServeBundleDaemon`, `RenderOutcome`, `SvgOutcome`, `RenderFailureFrame`,
-  // `PreviewHistory`, `PreviewHistoryManifest` and `ServeParameterRows` — `bundle render`,
-  // `history manifest`, `render matrix` and the missing-render report. None of them opens a socket.
-  //
-  // A PROJECT dependency, not a published coordinate. The module was split out of the server in
-  // compose-preview-server#38 and published as `compose-preview-render-host`, but it moved into
-  // this repository in 1.77.0 (#5137) and the server now consumes it from here
-  // (compose-preview-server#289) — it had zero project dependencies inside that build and lived
-  // there only because it was written inside the `serve` package. `:cli` kept resolving the old
-  // external coordinate until compose-preview-server 3.0.0 retired it at its final 2.x, which is
-  // the second half of that move and what this line finishes.
-  //
-  // `api`, like the server dependency below and for the same reason: the call sites reference these
-  // types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact keeps.
-  // The render host, the bundle daemon and the git-backed preview history — what the OFFLINE
-  // commands actually use. This was `compose-preview-render-host`, published by the preview server,
-  // until yschimke/compose-preview-server#180 moved the module to the repository everything it
-  // depends on already lived in. It is a project here now, so `bundle render`, `render matrix` and
-  // `history manifest` compile against the source tree they ship beside rather than against
-  // whichever server release this module happened to pin.
+  // The render host, bundle daemon and git-backed preview history used by the offline commands
+  // (`bundle render`, `history manifest`, `render matrix`). A project dependency; `api` because
+  // call sites reference these types in-package (`ee.schimke.composeai.cli.serve`).
   api(project(":render-host"))
 
-  // The preview server is NOT on this module's compile, runtime OR test classpath.
-  //
-  // `serve` and `browse` were the last things holding it on the first two, and they are launchers
-  // now: they exec the published `compose-preview-server` binary instead of linking `ServeRunner`.
-  // That removes the forward edge of the dependency cycle in yschimke/compose-preview-server#180,
-  // and it is why `CheckLayerBoundary`'s allowlist of known layer-2 edges is now empty.
-  //
-  // What that actually removes from the distribution, measured rather than claimed: the
-  // `compose-preview-serve` jar itself, `jmdns` (the `serve --lan` advertiser), and two Ktor
-  // plugins nothing else asks for — `ktor-server-compression` and `-auto-head-response`.
-  // Seventy-two jars to sixty-nine.
-  //
-  // `ktor-server-core`, `-cio`, `-content-negotiation`, `-sse` and `-websockets` did NOT leave with
-  // it, and never were serve's to take: they arrived through `:mcp` and the MCP Kotlin SDK, because
-  // `compose-preview mcp` ran a server of its own. An earlier draft of this comment claimed the
-  // Ktor floor left with `serve`. It did not — checked against the built distribution, which is the
-  // only way that claim was ever checkable. They leave with `:mcp` instead, below (#5176).
-  //
-  // It survived as a TEST dependency until compose-preview-server stopped publishing to Maven
-  // Central. Two tests drove the CLI's own HTTP clients against an in-process `ServeHttpServer`,
-  // and their whole purpose is to catch the two repositories' independently-declared wire types
-  // drifting apart — `AgentAccessClientIntegrationTest` and `SharePreviewServeUploadTest`. That
-  // purpose is unchanged and the tests are still here; what changed is the server they drive. They
-  // launch the real distribution now, which is the same artifact `serve` launches, so the drift
-  // they can see is drift against what a user actually runs rather than against a jar nobody does.
-  // `ServeDistributionHarness` is the seam; see its note for why they skip rather than fetch.
+  // The preview server is not on any classpath of this module: `serve` and `browse` exec the
+  // published `compose-preview-server` binary. Tests that check wire compatibility launch that
+  // distribution via `ServeDistributionHarness`.
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(libs.composeai.common.io)
-
-  // mDNS/DNS-SD advertiser for `serve --lan` — publishes `_composeai._tcp` so the mobile/wear
-  // session-viewer clients (`:clients:*`) discover the server on the LAN without a typed URL.
 
   implementation(libs.kotlinx.serialization.json)
 
@@ -264,99 +167,45 @@ dependencies {
   implementation(libs.ktor.client.okhttp)
   implementation(libs.okhttp)
 
-  // Embedded Ktor server (CIO engine) backing `compose-preview serve` — the LAN preview server
-  // that fronts a long-lived render session over HTTP. CIO is pure-Kotlin/coroutines (no Netty),
-  // keeping the transitive + logging surface minimal. Same `ktor` version ref as the client above,
-  // so the strict slf4j pin in the `constraints {}` block below covers the server too.
-  // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
-  // HEAD answers GET across the whole site — the probe link unfurlers send before downloading.
-
-  // Axis expansion + contact-sheet stitching for the OFFLINE `render-matrix` command, shared with
-  // the MCP server's `render_matrix` tool so the two agree by construction (#1788). This used to be
-  // reached through `:mcp`, which meant an offline command compiled against an MCP server; the lift
-  // out is what lets `:mcp` move to compose-preview-server without taking `render-matrix` with it
-  // (#5176).
+  // Axis expansion and contact-sheet stitching for the offline `render-matrix` command, shared with
+  // the MCP `render_matrix` tool so they agree.
   implementation(project(":render-matrix"))
   // `compose-preview guidelines`: the batched design-guidelines check over rendered previews.
   implementation(project(":design-guidelines"))
 
-  // The Remote Compose JSON codec behind `compose-preview rc`. Brings `remote-core`,
-  // `remote-creation-core` and `org.json` into the CLI distribution — 1.6 MB, all JVM jars, no
-  // Android AAR. Worth restating because the CLI is the one place in this repository where a
-  // Remote Compose artifact reaching the classpath is *not* a `RemoteComposePairing` concern: the
-  // CLI never stands a daemon's classpath up from these, it compiles and inflates documents
-  // in-process, so there is no second copy of the family for these to skew against.
+  // The Remote Compose JSON codec behind `compose-preview rc`. Not a `RemoteComposePairing`
+  // concern: the CLI only compiles and inflates documents in-process and never builds a daemon
+  // classpath.
   implementation(project(":remotecompose-json"))
 
-  // The MCP server is NOT on this module's compile or runtime classpath.
-  //
-  // `mcp serve` is a launcher now, like `serve` and `ui-builder`: it execs the
-  // `compose-preview-mcp`
-  // binary published from compose-preview-server, fetched on first use from the same release as the
-  // server distribution. `:mcp` moved there because the layer rule places a module that needs an
-  // HTTP server in that repository (#5176) — the module ran a Ktor server for the UI-builder
-  // Streamable HTTP endpoint, and the MCP Kotlin SDK put four more `ktor-server-*` artifacts on
-  // this distribution behind it.
-  //
-  // What that removes from the CLI distribution, measured by diffing the built `lib/` against
-  // main's rather than claimed: SIXTEEN jars, seventy to fifty-four, and nothing arrives. The
-  // `compose-preview-mcp` jar; `kotlin-sdk-core`/`-server`; the five `ktor-server-*` the issue
-  // named (`-core`, `-cio`, `-content-negotiation`, `-sse`, `-websockets`) plus the two
-  // `ktor-serialization-*` they pull; `ui-builder-protocol`; and — the one nobody predicted —
-  // `kotlin-reflect`, `config`, `kotlin-logging`, `kotlinx-collections-immutable` and
-  // `kotlinx-serialization-json-io`, which were on an offline CLI's classpath because an MCP SDK
-  // wanted them. `CheckHttpServerFloor`'s allowlist is empty as a result, which is what finishing
-  // that move looks like.
-  //
-  // `mcp install` and `mcp doctor` stay here in full: descriptors, discovery and agent-host config
-  // are offline behaviour, and the config they write still names this CLI as the agent's command.
-  // Used directly by `DaemonSmokeCheck` (the spawn port + subprocess factory). It used to arrive
-  // transitively through `:mcp` as well; since that module left, this line is the only way it is
-  // here — which is the point of having declared it.
+  // The MCP server isn't on this classpath either: `mcp serve` execs the `compose-preview-mcp`
+  // binary from compose-preview-server. `mcp install` / `mcp doctor` stay here as offline
+  // behaviour. Used directly by `DaemonSmokeCheck` (spawn port + subprocess factory).
   implementation(libs.composeai.daemon.client)
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
   implementation(libs.composeai.daemon.core)
-  // ClassGraph for the `serve --playground` preview scan: a scoped `@Preview` enumeration of a
-  // just-compiled snippet's classes dir (mirrors `:daemon:core`'s IncrementalDiscovery, which keeps
-  // classgraph as its own `implementation` and so doesn't leak it here).
+  // ClassGraph for the `serve --playground` scoped `@Preview` scan of a just-compiled snippet.
   implementation(libs.classgraph)
-  // Wire-shape of the `compose/overrides` data product (`PreviewOverrideDeclaration`) — the
-  // editable
-  // knobs `compose-preview serve` reads from a bundle's `previews/<id>.overrides.json` sidecar to
-  // present controls. Pure JVM (depends only on `:daemon:core`), not a renderer artifact.
+  // `compose/overrides` wire shape (`PreviewOverrideDeclaration`) for editable knobs. Pure JVM.
   implementation(libs.composeai.data.preview.overrides.core)
-  // Wire-shape of the `compose/remotecompose` data product (`RemoteComposeKnobDeclaration` /
-  // `RemoteComposeDeclarationsPayload`) — the Remote Compose named-value knobs `serve` reads from a
-  // bundle's `previews/<id>.remotecompose.json` sidecar to advertise editable controls. Pure JVM
-  // (payload schema only; the alpha `androidx.compose.remote.*` deps live in the connector, not
-  // here), so it stays off the renderer/daemon boundary the CLI guards.
+  // `compose/remotecompose` wire shape for Remote Compose knobs. Pure JVM (schema only; the
+  // `androidx.compose.remote.*` deps live in the connector), so it stays off the renderer boundary.
   implementation(libs.composeai.data.remotecompose.core)
-  // `PreviewBackdrop` / `PreviewBackground` — the one chain that decides which ground a preview is
-  // presented on, shared with both renderers and both daemons so the served pages cannot disagree
-  // with the pixels. Pure JVM ARGB math, no Compose types, so it stays off the renderer/daemon
-  // boundary the CLI guards for the same reason the two entries above do.
+  // `PreviewBackdrop` / `PreviewBackground`, shared with renderers and daemons so served pages
+  // match the pixels. Pure JVM ARGB math.
   implementation(libs.composeai.data.render.core)
-  // Public render-session library — the CLI consumes its own published API for daemon-driven
-  // commands (`compose-preview a11y` etc.) instead of touching DaemonClient directly. We eat
-  // our own dog food: anything the CLI can do, a third-party tooling consumer can do via the
-  // same API.
+  // Daemon-driven commands use the public render-session API rather than DaemonClient, so
+  // third-party tooling can do anything the CLI can.
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
 
-  // `compose-preview serve` ships the CMP Remote Compose render worker in `lib-rcjvm/` for the
-  // cmp-jvm chip's render subprocesses. Subprocess-only isolation; Skiko's per-OS natives are not
-  // bundled here (the subprocess joins `lib-rcjvm/*` + `lib-daemon-desktop/*`, the latter
-  // provisioned from the compose-preview-daemon release, and `SkikoNativeProvision` fetches the
-  // host's native at run time).
+  // The CMP Remote Compose render worker for `lib-rcjvm/`. Skiko natives aren't bundled; the host's
+  // is fetched at run time by `SkikoNativeProvision`.
   add("composePreviewRcJvm", project(":rc-render-jvm"))
 
-  // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
-  // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
-  // transitively onto this same runtime classpath, which Gradle can't reconcile against the
-  // strict ceiling — `:cli:distTar`/`installDist`/etc. fail to resolve `runtimeClasspath`.
-  // Pin slf4j-api to the strictly-required 2.0.17 so the soft 2.0.18 requests downgrade. Safe:
-  // slf4j-api is a stable facade and 2.0.17↔2.0.18 are binary-compatible.
+  // The Tooling API strictly requires `slf4j-api:2.0.17` while Ktor pulls 2.0.18, which fails
+  // `runtimeClasspath` resolution. Pin 2.0.17; the two are binary-compatible.
   constraints {
     implementation("org.slf4j:slf4j-api") {
       version { strictly("2.0.17") }
@@ -368,43 +217,19 @@ dependencies {
   }
 
   testImplementation(kotlin("test"))
-  // In-memory FileSystem for tests that assert on-disk output without touching the real FS
-  // (e.g. RenderMatrixCellNamesTest's stale-cell clearing). okio itself is on the compile
-  // classpath transitively via `common:io`; the fake ships separately.
+  // In-memory FileSystem for tests; okio itself comes transitively via `common:io`.
   testImplementation(libs.okio.fakefilesystem)
 
-  // `FakeRenderSession`. `BundleRenderKnobTest` drives `bundle render --knob` against a fake render
-  // session rather than spawning a daemon; the fixture lives with `ServeRenderHost`, which is what
-  // it fakes, and the fixture variant keeps it off both modules' runtime classpaths.
-  //
-  // `testFixtures(project(":render-host"))` — the fixture moved with `ServeRenderHost` into
-  // `:render-host` (compose-preview-server#38, then into this repository in #5137), and a project
-  // dependency sidesteps capability matching entirely.
-  //
-  // Worth recording what that retires. `java-test-fixtures` derives the capability from the
-  // *Gradle project* name, and the server is `:server` upstream while it publishes as
-  // `compose-preview-serve`, so 2.0.0 advertised `ee.schimke.composeai:server-test-fixtures` and
-  // `testFixtures(...)` matched nothing:
-  //
-  //     Unable to find a variant of ee.schimke.composeai:compose-preview-serve:2.0.0 with the
-  //     requested capability: feature 'test-fixtures'
-  //
-  // We consumed it by naming that capability explicitly. Upstream has since fixed the server's
-  // spelling too (keeping the legacy name alongside, so the workaround would still resolve), but
-  // there is no reason to keep it: the fixture is not in that artifact any more.
+  // `FakeRenderSession` for `BundleRenderKnobTest`, from `:render-host`'s test fixtures (a project
+  // dependency, so no capability matching is needed).
   testImplementation(testFixtures(project(":render-host")))
-  // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
-  // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
-  // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
-  // pluginManagement repositories declare it (the Confetti `main` shape; issues #1470, #1482).
+  // TestKit for [InitScriptExclusiveContentReproducerTest]: asserts the init script doesn't trip
+  // Gradle 9.3+'s `exclusiveContent`-vs-`buildscript.repositories` validation.
   testImplementation(gradleTestKit())
 }
 
-// Stage the CMP render worker's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
-// `library-desktop-<version>.jar` filenames by Maven `module-version.jar`: multiple JetBrains
-// Compose Multiplatform `components-*-desktop` artifacts ship as `library-desktop-<version>.jar`.
-// Host-specific Skiko natives are filtered out so a macOS-built release does not embed a macOS
-// native in the portable archive; [SkikoNativeProvision] fetches the current host's at run time.
+// Stage the render worker's runtime for `lib-rcjvm/`, renaming colliding `library-desktop-<v>.jar`
+// files to `module-version.jar`. Host Skiko natives are filtered out so the archive stays portable.
 val stageRcJvmLibs =
   tasks.register<Sync>("stageRcJvmLibs") {
     description = "Stages the CMP render worker's runtime artifacts for lib-rcjvm/."
@@ -437,9 +262,7 @@ val stageRcJvmLibs =
     }
   }
 
-// Stage the BTA impl + Compose-plugin jars into `lib-bta/`, disambiguating any colliding filenames
-// by Maven `module-version.jar` (same reason as the desktop daemon: multiple artifacts can share a
-// basename). The playground compile loads this whole directory into BTA's isolated classloader.
+// Stage BTA + Compose-plugin jars into `lib-bta/`, disambiguating colliding filenames the same way.
 val stageBtaLibs =
   tasks.register<Sync>("stageBtaLibs") {
     description = "Stages the BTA impl + Compose compiler plugin jars for serve --playground."
@@ -465,17 +288,8 @@ val stageBtaLibs =
     }
   }
 
-// The CMP/Wasm Remote Compose player bundle, staged into the install dist as `rc-player-wasm/`.
-//
-// This used to be `files(project(":rc-player-wasm")...).builtBy(...)` — a directory produced by a
-// sibling module. The players are published by yschimke/rc-players now, so the bundle arrives as a
-// zip (`rc-player-wasm-dist`, `dist` classifier) and is unpacked here. `zipTree` inside a
-// `provider`
-// keeps resolution lazy, so a build that never assembles the distribution never downloads it.
-//
-// Resolved through its own configuration rather than a plain `dependencies {}` entry for the same
-// reason as the sidecars above: this is not the CLI's own classpath, and nothing here should reach
-// the compile or runtime graph.
+// The CMP/Wasm Remote Compose player, published by yschimke/rc-players as a `dist` zip and unpacked
+// into `rc-player-wasm/`. Lazy, and in its own configuration so it never reaches the CLI classpath.
 val composePreviewRcPlayerWasm =
   configurations.create("composePreviewRcPlayerWasm") {
     isCanBeResolved = true
@@ -511,8 +325,7 @@ distributions {
       into("lib-usage-psi") { from(composePreviewUsagePsi) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
       into("rc-player-wasm") { from(rcPlayerWasmDist) }
-      // The experimental Compose/Wasm preview browser is a release-matched static sidecar too.
-      // Shipping it here lets every CLI/image expose it without a source checkout or local build.
+      // The experimental Compose/Wasm preview browser, a release-matched static sidecar.
       into("preview-ui") { from(previewUiWasmDist) }
     }
   }
@@ -530,9 +343,9 @@ abstract class CheckCliSkikoNativePackaging : DefaultTask() {
     check(nativeJars.isEmpty()) {
       "Portable CLI contains host-specific Skiko natives: ${nativeJars.joinToString { it.name }}"
     }
-    // The `skiko-awt` API jar the native version is derived from rides in `lib-daemon-desktop/`,
-    // which is provisioned from the compose-preview-daemon release rather than staged here — that
-    // repository's `checkSkikoNativePackaging` holds the matching invariant over the archive.
+    // The `skiko-awt` jar the native version derives from is in the provisioned
+    // `lib-daemon-desktop/`; compose-preview-daemon's `checkSkikoNativePackaging` holds the
+    // matching invariant.
   }
 }
 
@@ -549,20 +362,11 @@ tasks.named("check") { dependsOn(checkCliSkikoNativePackaging) }
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
 
-  // The BTA jars, handed to `PsiParseSpikeTest` so its isolated-classloader check runs in an
-  // ordinary `:cli:test`. It used to look for the *installed* `lib-bta/`, which `test` does not
-  // stage — so on a clean checkout the one test of the proposed deployment route skipped silently,
-  // and a broken reflective signature would have passed CI. Same artifacts the install stages,
-  // taken straight from the configuration.
-  //
-  // Through a `CommandLineArgumentProvider` (resolved at execution time, declared as an input) so
-  // the configuration cache stays valid rather than resolving a configuration at configuration
-  // time.
+  // Hand the BTA jars to `PsiParseSpikeTest` so it runs in plain `:cli:test` (which doesn't stage
+  // `lib-bta/`). Via a `CommandLineArgumentProvider` to keep the configuration cache valid.
   val btaJars = composePreviewBta.incoming.files
   inputs.files(btaJars).withPropertyName("libBtaJars").withNormalizer(ClasspathNormalizer::class)
-  // And `:usage-source-psi` beside them, so `PlaygroundSourceCleaner` takes its **parsed** path
-  // under test instead of silently falling back to the text passes — which would leave the
-  // parser-backed rewrite, the whole point of the change, with no coverage at all.
+  // And `:usage-source-psi`, so `PlaygroundSourceCleaner`'s parsed path is covered.
   val usagePsiJars = composePreviewUsagePsi.incoming.files
   inputs
     .files(usagePsiJars)
@@ -597,10 +401,8 @@ abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
   }
 }
 
-// The renderers and daemon hosts are published coordinates since compose-ai-tools#5336, so the
-// check reads resolved module identities rather than project directories — the same shape as
-// build-logic's `checkLayerBoundary`, and the only one that sees a coordinate arriving
-// transitively through a daemon-line POM.
+// Daemon/renderers are published coordinates, so check resolved module identities (as
+// `checkLayerBoundary` does), which also catches transitive arrivals.
 tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
   description = "Fails if renderer implementations leak onto the CLI runtime classpath."
   group = "verification"
@@ -625,37 +427,14 @@ tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
 
 tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 
-// The `cli` -> `serve` seam ratchet and the server's module-boundary check both retired with the
-// extraction (#4732). They existed to keep the coupling measurable while the server was still a
-// module of this build; a published artifact enforces the same thing structurally and in the
-// stronger direction, because nothing in `cli/serve` can reach back into `:cli` from Maven Central.
-// The surviving question that note used to end on — that most of the crossing symbols were
-// render-host and history plumbing rather than server code — has since been answered: the server
-// split them out in 2.2.0 and they now live in this build as `:render-host` (#5137), which `:cli`
-// depends on as a project. Four symbols still cross into the server proper, all of them from
-// `ServeCommand.kt`; see the dependency block above for what that still costs and what deciding
-// it would take.
-
-// This repository's representations of `daemon-launch.json`, checked against each other.
-//
-// The descriptor is written by the gradle plugin and read by the daemon JVM, this CLI's `doctor`
-// and the subprocess writer. Two copies carry a comment asking a human to keep them in sync —
-// `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's writer" and `McpCommand.kt`'s
-// "Keep in sync — bump together". This is that comment, enforced.
-//
-// It lives on `:cli` because the check spans modules that sit in different builds (the writer is
-// inside the `gradle-plugin` composite and the JVM reader is in the pinned contracts checkout), so
-// no single owning module exists. `:cli` runs on every PR and holds one of the sites itself.
+// This repository's representations of `daemon-launch.json`, checked against each other — the "keep
+// in sync" comments in `SubprocessRenderSession.kt` and `McpCommand.kt`, enforced. Lives on `:cli`
+// because the sites span builds and `:cli` runs on every PR.
 abstract class CheckDaemonLaunchSchema : DefaultTask() {
   /**
-   * Every Kotlin source in the repo, not just the registered representations.
-   *
-   * The checker's strongest rule is repo-wide: it fails on a schema-version constant, or a
-   * descriptor construction stamping one, that is not registered. That rule reads files nobody
-   * listed — which is the point. Declaring only the representations let Gradle mark the task
-   * up-to-date after a mirror was added in an eighth file, so locally the one check that finds new
-   * mirrors never ran on the change that introduced one. The exclusions mirror `PRUNE` in the
-   * checker; if one list grows, so must the other.
+   * Every Kotlin source in the repo, since the checker fails on any unregistered schema-version
+   * constant or descriptor construction; declaring only known files would let new mirrors go
+   * unchecked. Exclusions mirror `PRUNE` in the checker.
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -681,8 +460,7 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
   fun checkSchema() {
     execOps.exec {
       commandLine("python3", checker.get().asFile.absolutePath)
-      // Passed explicitly rather than inherited, so what the checker sees is what Gradle
-      // fingerprinted above. An inherited value could differ from the declared input.
+      // Explicit rather than inherited, so the checker sees what Gradle fingerprinted.
       contractsRoot.orNull?.let { environment("COMPOSE_PREVIEW_CONTRACTS_ROOT", it) }
     }
     stamp.get().asFile.writeText("ok\n")
@@ -708,11 +486,8 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       )
     }
   )
-  // The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts, so it is
-  // declared as an input. Without it the first successful run stamps this task UP-TO-DATE and every
-  // later edit to the reader is invisible, which is the drift this gate exists to catch.
-  //
-  // Eagerly to a String, for the configuration-cache reason given above.
+  // The JVM reader lives in yschimke/compose-preview-contracts, so declare it as an input or edits
+  // to it never re-run this task. Eager String for the configuration cache.
   val contractsRootPath: String? =
     providers.environmentVariable("COMPOSE_PREVIEW_CONTRACTS_ROOT").orNull?.takeIf {
       it.isNotBlank()
@@ -744,42 +519,24 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
 
 tasks.named("check") { dependsOn("checkDaemonLaunchSchema") }
 
-// Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
-// (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which
-// drifted out of sync with the release manifest and made `compose-preview show` advertise a
-// nonexistent v0.9.0 release. Mirrors `gradle-plugin/build.gradle.kts`'s
+// Bake the build version into a resource for `Version.kt#BUNDLE_VERSION`. Mirrors the plugin's
 // `generatePluginVersionResource`.
 val generateCliVersionResource =
   tasks.register("generateCliVersionResource") {
     val outputDir = layout.buildDirectory.dir("generated/cli-version-resource")
     val cliVersion = project.version.toString()
-    // The `xr-composite` release the provisioner fetches from — a catalog PIN that moves only
-    // when the native compositor changes, NOT this CLI's version. Baked here (rather than read
-    // from the catalog at runtime, which the installed CLI has no access to) so the writer of the
-    // shared cache and the plugin-side reader resolve the same directory; the plugin bakes the
-    // same value through `generatePluginVersionResource`. See `XrCompositeProvision`.
+    // The `xr-composite` release to fetch: a catalog pin, not this CLI's version. Baked because the
+    // installed CLI can't read the catalog; the plugin bakes the same value. See
+    // `XrCompositeProvision`.
     val xrCompositeVersion = libs.versions.xr.composite.get()
-    // The version of THIS repository's Maven artifacts the CLI should ask Gradle for — the plugin
-    // coordinate it auto-injects, and the coordinate `doctor` recommends. Deliberately a separate
-    // value from `cliVersion`, for the same reason `xrCompositeVersion` is: what the CLI IS and
-    // what it
-    // RESOLVES stop being the same number the moment a release does not publish to Central.
-    //
-    // The release plan sets MAVEN_LINE_VERSION to the tag when it publishes the plugin, otherwise
-    // to the last version on Central. A CLI built at 2.5.0 can therefore keep injecting 2.4.0
-    // rather than a coordinate that 404s.
-    //
-    // `takeIf { isNotBlank() }` is load-bearing: an Actions expression that resolves to nothing
-    // sets an empty variable rather than leaving it unset. Baking that value would make every
-    // consumer ask Gradle for the plugin at version "".
+    // The version of this repository's Maven artifacts the CLI asks Gradle for (auto-injected
+    // plugin, `doctor` recommendations). Separate from `cliVersion` because a release may not
+    // publish to Central; CI sets MAVEN_LINE_VERSION to the last published version. `takeIf {
+    // isNotBlank() }` guards against an empty Actions expression.
     val mavenLineVersion =
       project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
         ?: cliVersion
-    // The compose-preview-daemon release whose sidecar archives `DaemonSidecarProvision` fetches
-    // — the desktop renderer + daemon and the Android daemon, which left this build in #5336. The
-    // catalog pin, NOT this CLI's version, for the same reason as `xrCompositeVersion`: that
-    // repository
-    // releases on its own line, and an installed CLI cannot read the catalog.
+    // The compose-preview-daemon release `DaemonSidecarProvision` fetches; a catalog pin, as above.
     val previewDaemonVersion = libs.versions.composeai.preview.daemon.get()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)

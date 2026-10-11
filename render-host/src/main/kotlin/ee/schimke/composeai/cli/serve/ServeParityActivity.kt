@@ -9,38 +9,17 @@ import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 
 /**
- * The **design-parity activity feed** a producer publishes alongside its catalog — recent code
- * commits, recent Figma file versions, recent Figma comments, and the mapping gaps only the
- * producer can see.
+ * The design-parity activity feed a producer publishes with its catalog: recent code commits, Figma
+ * file versions and comments, and producer-side mapping gaps.
  *
- * ## Why this is published data rather than a live query
+ * Published rather than queried live because the serve host holds no Figma credential and never
+ * talks to Figma (see [ServeFigmaSpec] and `docs/public-preview-server.md`), and has no checkout
+ * for `git log`; the publish pipeline snapshots it into `activity.json`, which also makes it
+ * reproducible and diffable.
  *
- * The serve host holds **no Figma credential and never talks to Figma** — the same rule that keeps
- * `source.uri` on a [DesignReference] informational (see [ServeFigmaSpec] and
- * `docs/public-preview-server.md`). A dashboard that called `GET /v1/files/:key/comments` at
- * request time would put a write-capable design-file token on a public box and make every page load
- * depend on Figma's rate limit. So the *pipeline* — which already holds `FIGMA_TOKEN` to rasterize
- * references (`emit-design-references.mjs`) — snapshots the activity at publish time into
- * `activity.json`, and the server only reads and renders it. That also makes the page reproducible:
- * the feed is a property of the published catalog, identical for every visitor, and diffable on the
- * delivery branch like everything else there.
- *
- * The same argument applies to the code lane: `git log` needs a checkout, which the publish job has
- * and the server does not.
- *
- * ## Failure posture
- *
- * Fail-soft, exactly like [ServeDesignReferenceStore]: a missing file, a wrong schema token, a
- * malformed record, or an out-of-range field drops that record (or the whole feed) and the catalog
- * serves normally. A parity dashboard is an enhancement; it must never cost a catalog its grid.
- *
- * ## Trust
- *
- * A catalog is third-party data and this file carries **free text written by other people** —
- * commit subjects and Figma comment bodies. Nothing here is trusted: every string is HTML-escaped
- * at render time by [ServeWeb], and the two outbound link shapes ([CodeEvent.url], Figma node deep
- * links) are *reassembled* from validated parts against literal origins rather than taken from the
- * file, so a catalog declaring `javascript:…` produces no link instead of an attacker-chosen href.
+ * Fail-soft like [ServeDesignReferenceStore]: bad records (or the whole feed) are dropped, never
+ * the catalog. Free text from other people is untrusted: [ServeWeb] escapes it, and outbound links
+ * ([CodeEvent.url], Figma deep links) are reassembled from validated parts against literal origins.
  */
 @Serializable
 public data class ParityActivity(
@@ -79,10 +58,7 @@ public data class CodeEvent(
   /** ISO-8601 author date. */
   val at: String,
   val author: String? = null,
-  /**
-   * Preview ids this commit touched, resolved by the producer from the changed source files. Empty
-   * is legal (a commit to a shared file) and simply renders with no inbound links.
-   */
+  /** Preview ids this commit touched, resolved by the producer; empty is legal (shared files). */
   val previewIds: List<String> = emptyList(),
   /** Catalog component ids (`Button/Filled`) the commit touched, for display. */
   val components: List<String> = emptyList(),
@@ -110,11 +86,8 @@ public data class FigmaVersionEvent(
 )
 
 /**
- * One Figma comment, anchored to a node when the commenter pinned it to one.
- *
- * [previewIds] is the payoff: the producer resolves the pinned node back through `design-map.json`
- * to the previews it specifies, so "a designer commented on this" becomes a link straight to that
- * preview's reference-vs-render comparison.
+ * One Figma comment, anchored to a node when pinned. [previewIds] links it, via `design-map.json`,
+ * to the previews that node specifies.
  */
 @Serializable
 public data class FigmaCommentEvent(
@@ -131,9 +104,8 @@ public data class FigmaCommentEvent(
 )
 
 /**
- * A mapping gap the **producer** found. Preview-side coverage ("this preview has no design
- * reference") is derived by the server from data it already has, so it is deliberately NOT a kind
- * here — publishing it would let a stale `activity.json` contradict the live catalog.
+ * A mapping gap the producer found. Preview-side coverage gaps are derived live by the server, so
+ * they are not a kind here (a stale file could contradict the catalog).
  */
 @Serializable
 public data class MappingGap(
@@ -166,12 +138,9 @@ public data class MappingGap(
 }
 
 /**
- * Validated, read-only view of a catalog's `parity/activity.json`.
- *
- * Validation is per-record and permissive about *absence* but strict about *shape*: an event with
- * no parseable timestamp is dropped (the feed is ordered by time, so an undated row has nowhere to
- * go), an over-long free-text field is truncated rather than dropped (the text is display-only),
- * and a gap with an unknown [MappingGap.Kind] is dropped.
+ * Validated, read-only view of a catalog's `parity/activity.json`. Permissive about absence, strict
+ * about shape: undated events are dropped (the feed is time-ordered), over-long text is truncated,
+ * and unknown [MappingGap.Kind]s are dropped.
  */
 public object ServeParityActivityStore {
 
@@ -214,9 +183,8 @@ public object ServeParityActivityStore {
   }
 
   /**
-   * Drop every record that cannot be rendered honestly and clamp the rest. Exposed (rather than
-   * private to [load]) because it is the whole of the trust boundary and is what the unit tests
-   * exercise — no filesystem needed.
+   * Drop every record that can't be rendered honestly and clamp the rest. Public because it is the
+   * whole trust boundary and what the tests exercise.
    */
   public fun sanitize(raw: ParityActivity): ParityActivity? {
     if (raw.schema != ParityActivity.SCHEMA) return null
@@ -308,8 +276,7 @@ public object ServeParityActivityStore {
         figma = figma?.takeIf { it.versions.isNotEmpty() || it.comments.isNotEmpty() },
         gaps = gaps,
       )
-    // An empty feed is indistinguishable from no feed, and rendering an empty dashboard is worse
-    // than not offering the tab at all.
+    // An empty feed is treated as no feed, so no empty tab is offered.
     val empty = sanitized.code == null && sanitized.figma == null && sanitized.gaps.isEmpty()
     return sanitized.takeIf { !empty }
   }
@@ -341,10 +308,8 @@ public object ServeParityActivityStore {
   }
 
   /**
-   * Whether [value] is an ISO-8601 instant we can both sort and display. Deliberately a shape check
-   * rather than a full parse: the feed is sorted as text (ISO-8601 sorts chronologically) and
-   * displayed through the same `prettyDate` the provenance strip uses, so anything that matches is
-   * safe on both paths and anything that doesn't has nowhere sensible to go.
+   * Whether [value] is an ISO-8601 instant, by shape: the feed sorts as text and displays through
+   * `prettyDate`, so a matching shape is safe for both.
    */
   private fun isTimestamp(value: String?): Boolean =
     value != null &&

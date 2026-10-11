@@ -210,8 +210,8 @@ internal object RenderClasspathDuplicates {
 
   private val SPLIT_FAMILIES =
     listOf(
-      // homeassistant-remotecompose#495: a mixed bcprov/bcutil pair fails static init with
-      // NoSuchFieldError. Only the `-jdkXX` line moves in lockstep; FIPS artifacts must not match.
+      // homeassistant-remotecompose#495: mixed bcprov/bcutil fail static init. Only the `-jdkXX`
+      // line moves together; FIPS artifacts must not match.
       SplitFamily(
         group = "org.bouncycastle",
         why = "bcprov/bcutil/bcpkix ship as one release train, no BOM",

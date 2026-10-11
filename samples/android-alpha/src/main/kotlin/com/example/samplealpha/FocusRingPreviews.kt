@@ -50,12 +50,9 @@ fun InsetFocusRingFanOutPreview() {
 }
 
 /**
- * Moving inset focus ring as a single animated GIF. `@FocusedPreview(gif = true)` drives focus
- * through the same `FocusManager.moveFocus` path the per-PNG fan-out uses and stitches the per-step
- * captures into a GIF — so the sample stays plain `Row { Button(...) }` with no
- * `MutableInteractionSource` / `LaunchedEffect` focus-emission hacks (which lose the
- * `FocusInteraction.Unfocus` pairing and leave every visited button with a stale focus ring,
- * see #1020).
+ * The moving inset focus ring as one GIF: `@FocusedPreview(gif = true)` drives real focus and
+ * stitches the steps, so the sample stays a plain `Row { Button(...) }` with no hand-emitted focus
+ * interactions (which leave stale rings).
  */
 @Preview(name = "Inset Focus Ring — moving", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [0, 1, 2, 3], gif = true)
