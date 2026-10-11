@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import java.io.File
 import java.io.InputStream
 import javax.xml.stream.XMLInputFactory

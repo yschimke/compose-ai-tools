@@ -561,7 +561,7 @@ data class PreviewParams(
   val density: Float? = null,
   /**
    * Bound a **wrapped** width is measured against, replacing the 400×800 dp sandbox
-   * ([DeviceDimensions.SANDBOX_WIDTH_DP]). Not [widthDp], which fixes the axis and disables the
+   * ([PreviewSizing.SANDBOX_WIDTH_DP]). Not [widthDp], which fixes the axis and disables the
    * intrinsic crop. Set by [PreviewDiscovery.retargetWearStickers].
    */
   val wrapSandboxWidthDp: Int? = null,

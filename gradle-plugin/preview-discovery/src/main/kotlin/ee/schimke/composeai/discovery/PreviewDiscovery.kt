@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import io.github.classgraph.AnnotationClassRef
 import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
@@ -4263,8 +4264,8 @@ object PreviewDiscovery {
 
   /**
    * Measures a Glimmer module's device-less previews against the AI-glasses display
-   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the phone sandbox. Density 1.0
-   * is a calibration, since Glimmer sizes UI in visual angle.
+   * ([PreviewSizing.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the phone sandbox. Density 1.0 is
+   * a calibration, since Glimmer sizes UI in visual angle.
    *
    * Like [retargetWearStickers], this sets the wrap sandbox, not `widthDp` / `heightDp`: pinning
    * the axes leaves small components adrift in a huge frame, while the phone sandbox gives
@@ -4276,7 +4277,7 @@ object PreviewDiscovery {
     previews: List<PreviewInfo>,
   ): List<PreviewInfo> {
     if (!isGlimmer) return previews
-    val glasses = DeviceDimensions.DEFAULT_GLASSES
+    val glasses = PreviewSizing.DEFAULT_GLASSES
     return previews.map { info ->
       val p = info.params
       if (
@@ -4348,7 +4349,7 @@ object PreviewDiscovery {
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
       return PreviewParams(
         kind = PreviewKind.NOTIFICATION,
-        widthDp = DeviceDimensions.SANDBOX_WIDTH_DP,
+        widthDp = PreviewSizing.SANDBOX_WIDTH_DP,
       )
     }
     // Glance's `Preview(widthDp, heightDp)`: the params arrived in 1.1.0-rc01, so read

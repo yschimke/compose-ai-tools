@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
