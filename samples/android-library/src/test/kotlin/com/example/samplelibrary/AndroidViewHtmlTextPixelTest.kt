@@ -6,23 +6,9 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Issue #2957 — a plain `@Preview` whose body is an `AndroidView` must emit a static PNG, including
- * from a **library** module.
- *
- * Without `composePreview { hostTheme.set("@style/Theme.SampleLibrary") }`, the preview host
- * activity has no `<application android:theme>` to inherit, so inflating [HtmlShowNotes]'s layout
- * (styled through the app-owned `?attr/sampleBodyTextAppearance`) throws
- * `UnsupportedOperationException: Failed to resolve attribute at index N`. That escapes composition
- * and aborts the render, so `renders/` carries no PNG for the preview at all — which is exactly how
- * a real consumer's `AndroidView` surface got dropped from the design-artifacts candidate join as
- * "no static PNG".
- *
- * Existence alone is the primary assertion (that is what the export's candidate join tests), but a
- * blank PNG would satisfy it, so the test also asserts the hosted `TextView` actually drew: the
- * theme's body text appearance is near-black on the preview's light background.
- *
- * Reads the file produced by `:samples:android-library:composePreviewRenderAll`, which
- * `renderBeforeUnitTests` chains ahead of this task.
+ * A plain `@Preview` whose body is an `AndroidView` must emit a PNG from a library module (which
+ * needs `composePreview { hostTheme }`; see [HtmlShowNotes]). Asserts the PNG exists and that the
+ * hosted `TextView` drew near-black text, so a blank PNG doesn't pass.
  */
 class AndroidViewHtmlTextPixelTest {
 

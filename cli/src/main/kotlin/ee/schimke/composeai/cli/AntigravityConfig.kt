@@ -4,19 +4,10 @@ import java.io.File
 
 /**
  * Where Antigravity keeps its global MCP config, and whether the `compose-preview` plugin already
- * provides the server.
- *
- * Two files are in circulation. `~/.gemini/antigravity/mcp_config.json` is the one this CLI has
- * always written. `~/.gemini/config/` is where `agy` 1.2.12 installs plugins
- * (`~/.gemini/config/plugins/<name>`, yschimke/compose-agent-plugins evidence of 2026-09-27), and
- * `~/.gemini/config/mcp_config.json` is the path given for the current Antigravity CLI/IDE. Which
- * one Antigravity reads has not been confirmed (yschimke/compose-agent-plugins#6), so neither is
- * preferred blindly: an existing file wins over a guessed one, and the legacy path stays the
- * default when nothing distinguishes them.
- *
- * When the plugin is installed it registers the server itself (namespaced
- * `compose-preview_compose-preview-mcp`), and a global entry is a second copy of the same tools —
- * the "two `compose-preview` servers" problem in compose-agent-plugins' troubleshooting guide.
+ * provides the server. Two candidate files exist (`~/.gemini/antigravity/mcp_config.json`, written
+ * historically, and `~/.gemini/config/mcp_config.json`); which one Antigravity reads is
+ * unconfirmed, so an existing file wins and the legacy path is the default. An installed plugin
+ * registers the server itself, so a global entry would duplicate its tools.
  */
 internal class AntigravityConfig(private val home: File) {
 

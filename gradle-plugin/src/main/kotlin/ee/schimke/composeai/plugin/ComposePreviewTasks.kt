@@ -20,41 +20,30 @@ import org.gradle.jvm.toolchain.JavaToolchainService
 private val previewManifestJson = Json { ignoreUnknownKeys = true }
 
 /**
- * AGP-free task wiring shared between the Android and desktop code paths. Keeping this out of
- * [ComposePreviewPlugin] (or inside [AndroidPreviewSupport], which does transitively reference AGP)
- * means the desktop path can reuse these helpers without dragging AGP onto the classpath.
+ * AGP-free task wiring shared by the Android and desktop paths, so desktop can use it without
+ * loading AGP.
  */
 internal object ComposePreviewTasks {
   /**
-   * Candidate Kotlin compile task names for the desktop / KMP-flavoured side, in priority order.
-   * The first name that resolves at configuration time is wired as the upstream of both
-   * `composePreviewDiscover` and `composePreviewCompile`.
+   * Desktop / KMP Kotlin compile task names, in priority order; wired as upstream of discovery and
+   * compile.
    */
   private val DESKTOP_COMPILE_TASK_CANDIDATES: List<String> =
     listOf("compileKotlinJvm", "compileKotlinDesktop", "compileAndroidMain", "compileKotlin")
 
   /**
-   * Candidate resource-processing task names for the desktop / KMP side. The render path links the
-   * consumer's processed resources onto the renderer classpath (so a `@Preview` can load a
-   * classpath resource — a Lottie `.json`/`.lottie` asset, a bundled font, an image — via the
-   * classloader), and those tasks are what stage `src/main/resources/` into `build/resources/main`
-   * (kotlin("jvm")) or `build/processedResources/<target>/main` (KMP). Mirrors
-   * [DESKTOP_COMPILE_TASK_CANDIDATES]; missing names are ignored by the lazy `tasks.matching`
-   * wiring.
+   * Desktop / KMP resource-processing task names. Their output is linked onto the render classpath
+   * so previews can load classpath resources (Lottie assets, fonts, images). Missing names are
+   * ignored.
    */
   private val DESKTOP_RESOURCE_TASK_CANDIDATES: List<String> =
     listOf("jvmProcessResources", "desktopProcessResources", "processResources")
 
   /**
-   * Creates (or reuses) a resolvable configuration named [configName] populated with the
-   * `:renderer-desktop` JVM renderer — the in-tree project when this build contains it (so live
-   * renderer edits land without a publish), else the published
-   * `ee.schimke.composeai:renderer-desktop` JAR, versionless through `compose-preview-daemon-bom`
-   * at [PreviewDaemonVersion] (see [PreviewDaemonModules]). Used both by the desktop render task
-   * and by the Android `composePreviewRenderLottie` task, which renders `kind=LOTTIE` assets
-   * through the JVM Compottie path (the asset is portable IR — no Android/Robolectric player). The
-   * default add is skipped when the consumer already populated [configName] themselves, so an
-   * explicit `dependencies { "<configName>"(files(...)) }` override still wins.
+   * Creates (or reuses) [configName] with the `:renderer-desktop` renderer: the in-tree project
+   * when present, else the published JAR via the daemon BOM (see [PreviewDaemonModules]). Used by
+   * the desktop render task and Android's `composePreviewRenderLottie`. A consumer-populated
+   * [configName] is left as-is.
    */
   internal fun ensureRendererDesktopConfig(
     project: Project,
@@ -99,50 +88,28 @@ internal object ComposePreviewTasks {
     Attribute.of("artifactType", String::class.java)
 
   /**
-   * Whether a desktop-routed module whose resolved runtime config is [configName] can be rendered
-   * by the JVM desktop renderer. A pure `com.android.kotlin.multiplatform.library` module with no
-   * `jvm("desktop")` target exposes only `androidRuntimeClasspath` (carrying `*-android` Compose),
-   * which the desktop renderer can't drive. Used ONLY to gate tasks that the Tooling-API model
-   * builder never realizes (the classpath guard, the daemon-start descriptor) — so it can't affect
-   * CLI module detection the way the reverted #1853 task gating did (issue #1855). Pure +
-   * `internal` for unit testing.
+   * Whether the desktop renderer can drive [configName]: a pure KMP-Android module exposes only
+   * `androidRuntimeClasspath` (`*-android` Compose). Only gates tasks the Tooling-API model builder
+   * never realizes, so CLI module detection is unaffected (#1855).
    */
   internal fun isDesktopRenderableConfig(configName: String): Boolean =
     configName != "androidRuntimeClasspath"
 
   /**
-   * Whether `composePreviewBundle` has something to pack, for the registration identified by
-   * [backendId].
-   *
-   * The renderability question is a DESKTOP question, and asking it on the Android registration is
-   * what broke wear-m3-catalog's catalog: [isDesktopRenderableConfig] rejects exactly the literal
-   * string `androidRuntimeClasspath`, and that is not only the desktop path's last-resort fallback
-   * — it is also the real, correct runtime configuration of every
-   * `com.android.kotlin.multiplatform.library` module (see [AndroidVariantNaming.kmpAndroid], which
-   * derives `<targetName>RuntimeClasspath` from the KMP target, named `android` unless the consumer
-   * renamed it). So a KMP-Android module on the Robolectric lane registered its bundle task with
-   * `backendId = "android"` and then skipped it forever, and `compose-preview bundle pack` failed
-   * with "Bundle task reported success but bundle.png is missing" after a render that had just
-   * succeeded — no error naming the task, because a skipped task is a successful build.
-   *
-   * On the Android registration the module's renderability is not in question: AGP handed us a
-   * variant and the Robolectric lane rendered against it. Only the desktop registration, which can
-   * fall through to `androidRuntimeClasspath` when a module has no JVM-flavoured runtime at all,
-   * needs the gate.
+   * Whether `composePreviewBundle` has something to pack. Renderability is a desktop question: on
+   * the Android registration `androidRuntimeClasspath` is the real runtime config of every
+   * KMP-Android module, so applying [isDesktopRenderableConfig] there silently skipped its bundle
+   * task.
    */
   internal fun bundleRenderable(backendId: String, configName: String): Boolean =
     backendId == "android" || isDesktopRenderableConfig(configName)
 
   /**
-   * The consumer runtime configuration the desktop pipeline resolves against, in preference order.
-   * `androidRuntimeClasspath` is the LAST-RESORT KMP-Android fallback — it carries `*-android`
-   * Compose AARs the JVM renderer can't load, so anything with a real JVM-flavoured runtime must
-   * win ahead of it.
+   * The consumer runtime configuration for the desktop pipeline, in preference order;
+   * `androidRuntimeClasspath` is the last-resort KMP-Android fallback.
    *
-   * MUST be called lazily (from inside a `tasks.register {}` block or an `afterEvaluate`), never
-   * from [registerDesktopTasks]'s body: a KMP-Android module reaches that body via
-   * `pluginManager.withPlugin`, which fires before the consumer's `kotlin { jvm("desktop") }` block
-   * has created `desktopRuntimeClasspath`. `internal` for unit testing.
+   * Must be called lazily: on KMP-Android, [registerDesktopTasks] runs before `kotlin {
+   * jvm("desktop") }` creates `desktopRuntimeClasspath`. `internal` for tests.
    */
   internal fun desktopDependencyConfigName(project: Project): String =
     listOf(
@@ -154,12 +121,8 @@ internal object ComposePreviewTasks {
       .firstOrNull { project.configurations.findByName(it) != null } ?: "runtimeClasspath"
 
   /**
-   * The dependency-classpath inputs [registerBundleTask] feeds `BundlePreviewTask`: the jars the
-   * closure walk sees, and the coordinate map folded into `bundle.json`'s `classpath`.
-   *
-   * Bundled together so both are derived from ONE resolution of the consumer runtime config — see
-   * the note at the [registerBundleTask] call site for the `backend: desktop` / `*-android`
-   * classpath mismatch that eager resolution produced.
+   * Dependency jars and coordinate map for [registerBundleTask], derived from one resolution so
+   * they agree.
    */
   internal class DependencyClasspathBinding(
     val configName: String,
@@ -168,31 +131,15 @@ internal object ComposePreviewTasks {
   )
 
   /**
-   * Lazily-resolved, config-cache-safe view of the consumer runtime classpath [configName], pinned
-   * to `artifactType=jar`.
-   *
-   * Issue #1852: a KMP-Android module's `androidRuntimeClasspath` exposes ~12 secondary variants,
-   * so resolving it through a bare `incoming.artifactView {}` (no attributes) fails with
-   * `AmbiguousArtifactsFailure` ("cannot choose between variants") and sinks the whole desktop
-   * render. Pinning `artifactType=jar` — exactly what `composePreviewDiscover` already does, which
-   * is why discovery survived 0.15.2 — selects a single jar variant. On JVM/desktop classpaths the
-   * jar attribute is a passthrough, so behaviour there is unchanged. `lenient(true)` is applied
-   * ONLY for the `androidRuntimeClasspath` fallback (mirroring discovery) so a strict JVM classpath
-   * still surfaces a genuinely missing dependency instead of silently dropping it.
+   * Lazy, config-cache-safe view of [configName] pinned to `artifactType=jar`. Without the
+   * attribute, `androidRuntimeClasspath`'s many variants fail with `AmbiguousArtifactsFailure`
+   * (#1852). `lenient(true)` only for that fallback, so JVM classpaths still surface missing deps.
    */
   /**
-   * Resolvable view of the [PREVIEW_SOURCE_CONFIGURATION] bucket, wearing the attributes of the
-   * module's own runtime classpath ([runtimeConfigName]).
-   *
-   * The bucket itself carries declarations and nothing else. A shared preview-source module is
-   * normally Kotlin Multiplatform, so it publishes several variants; a configuration with no
-   * attributes cannot choose between them and resolves to nothing — no error, no previews, a green
-   * build with a silently shorter sticker sheet. Copying the lane's own attributes asks for exactly
-   * the variant this module already renders against: `androidJvm` on the Robolectric lane, `jvm` on
-   * Desktop. That is also what makes one shared module serve both lanes from one declaration.
-   *
-   * Returns null when nothing was declared, or when the runtime classpath is not resolvable yet —
-   * both meaning "no shared preview sources", which is every module that does not use the feature.
+   * Resolvable view of [PREVIEW_SOURCE_CONFIGURATION] with the attributes of [runtimeConfigName].
+   * Without attributes a multi-variant (KMP) source module silently resolves to nothing; copying
+   * the lane's attributes selects `androidJvm` or `jvm` as appropriate. Null when nothing is
+   * declared or the runtime config isn't resolvable yet.
    */
   private fun previewSourceClasspath(project: Project, runtimeConfigName: String): Configuration? {
     val bucket = project.configurations.findByName(PREVIEW_SOURCE_CONFIGURATION) ?: return null
@@ -231,33 +178,14 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Maven repository base URLs [project] resolves from beyond the two every player already tries
-   * (Maven Central and Google Maven), recorded into the bundle as `BundleManifest.repositories`.
+   * Extra Maven repository URLs (beyond Central and Google) recorded as
+   * `BundleManifest.repositories`, so players can re-resolve coordinates from snapshot builds,
+   * forks or mirrors (#4259 / #4265).
    *
-   * A `coordinates` bundle only re-renders where its coordinates resolve. A module that takes a
-   * dependency from a JitPack fork, an internal mirror, or an androidx.dev snapshot build therefore
-   * records coordinates no player can find: the resolver warns, drops them, and the daemon comes up
-   * on an incomplete classpath — which is how the `remote-m3` catalog (whose entire Remote Compose
-   * runtime is an androidx.dev snapshot) served a live lane that died on its first render with
-   * `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer` (issues #4259
-   * / #4265). Carrying the URLs makes the bundle self-describing, and keeps a pinned snapshot build
-   * id honest: bump it here and the next pack records the new one.
-   *
-   * **Both** repository sources are read, because a build declares them in either place and this
-   * repo uses the one a project-level read misses: `project.repositories` holds what the build
-   * script declared, and settings' `dependencyResolutionManagement.repositories` holds what the
-   * settings script declared — under `PREFER_SETTINGS` / `FAIL_ON_PROJECT_REPOS` the project
-   * handler is simply empty, so reading it alone records nothing for exactly the builds that need
-   * this most. The settings block is reached through the one internal accessor there is
-   * (`GradleInternal.settings`, then the public `Settings.dependencyResolutionManagement`), wrapped
-   * so a Gradle that no longer offers it degrades to the project-level list rather than failing the
-   * pack.
-   *
-   * Read through a [Provider] so the list is sampled after both scripts have finished declaring
-   * repositories, while still being a configuration-time read — nothing pins `project` into the
-   * configuration cache at execution. Non-HTTP repositories (`mavenLocal()`, `file:` mirrors) are
-   * skipped: they name a path on the producing machine, which is worse than useless to a player
-   * elsewhere.
+   * Reads both `project.repositories` and settings' `dependencyResolutionManagement.repositories`
+   * (the project list is empty under `PREFER_SETTINGS` / `FAIL_ON_PROJECT_REPOS`), the latter via a
+   * guarded internal accessor. A Provider so it's sampled after both scripts run. Non-HTTP
+   * repositories are skipped, since local paths are useless to a player.
    */
   private fun extraMavenRepositoryUrls(project: Project): Provider<List<String>> =
     project.provider {
@@ -270,10 +198,9 @@ internal object ComposePreviewTasks {
     }
 
   /**
-   * The repositories declared by settings' `dependencyResolutionManagement`, or empty when this
-   * Gradle doesn't expose them (or there is no settings object at all — `ProjectBuilder` in unit
-   * tests). `Settings.getDependencyResolutionManagement()` is public API; only reaching the
-   * `Settings` from a project plugin isn't, hence the guarded cast.
+   * Settings' `dependencyResolutionManagement` repositories, or empty when unavailable (e.g.
+   * `ProjectBuilder`). Reaching `Settings` from a project plugin isn't public API, hence the
+   * guarded cast.
    */
   private fun settingsRepositories(project: Project): List<ArtifactRepository> = runCatching {
     (project.gradle as org.gradle.api.internal.GradleInternal)
@@ -285,9 +212,8 @@ internal object ComposePreviewTasks {
     .getOrElse { emptyList() }
 
   /**
-   * The repositories every player tries before consulting `BundleManifest.repositories`, so
-   * recording them again would be noise. Kept in lockstep with `CoordinateResolver`'s
-   * `DEFAULT_REMOTE_REPOSITORIES` (both host names each serves under).
+   * Repositories every player tries anyway; kept in lockstep with
+   * `CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES`.
    */
   private val DEFAULT_PLAYER_REPOSITORIES =
     listOf(
@@ -304,46 +230,21 @@ internal object ComposePreviewTasks {
     artifactTypeAttr: Attribute<String>,
   ): DependencyClasspathBinding {
     val depConfig = project.configurations.findByName(configName)
-    // Only the KMP-Android fallback (`androidRuntimeClasspath`, a `:shared` module with no
-    // `jvm("desktop")` target) needs a lenient artifact view — its single AGP `android` variant
-    // can't satisfy a forced `artifactType=jar` selection and would otherwise raise
-    // `AmbiguousArtifactsFailure` and sink the whole bundle. Normal JVM/desktop classpaths stay
-    // STRICT so an unresolved/unselectable runtime dep fails the task loudly instead of silently
-    // dropping out of the bundle's closure + coordinate map (Codex review on #1850).
+    // Lenient only for the `androidRuntimeClasspath` fallback; strict elsewhere so unresolvable
+    // deps fail loudly.
     val depViewLenient = configName == "androidRuntimeClasspath"
-    // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM consumers
-    // pass through. Either way we get real jars on the closure walk. The coordinate map below MUST
-    // be built from THIS SAME view's resolvedArtifacts, not the configuration's untransformed
-    // artifacts — otherwise an AAR dep's transformed classes.jar path (what `dependencyJars` and
-    // the
-    // closure walk see) wouldn't match the coordinate-map key (the untransformed `.aar` path), so
-    // the task would treat the Maven dep as an anonymous/project jar and inline it instead of
-    // recording a `ClasspathEntry.Maven`. On JVM this view is a passthrough, so desktop is
-    // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
+    // `artifactType=jar`: AARs become their `classes.jar`. The coordinate map below must come from
+    // this same view, so its keys match the closure walk's paths; otherwise AAR deps would be
+    // inlined instead of recorded as `ClasspathEntry.Maven`.
     val depJarView =
       depConfig?.incoming?.artifactView {
-        // Lenient ONLY for the androidRuntimeClasspath fallback (see [depViewLenient]); strict for
-        // normal JVM/desktop classpaths so a broken dep surfaces here instead of in the player.
         if (depViewLenient) lenient(true)
         attributes.attribute(artifactTypeAttr, "jar")
       }
-    // The `artifactType=jar` view extracts every AAR to its `classes.jar`, erasing the aar/jar
-    // distinction — but the player's `CoordinateResolver` needs the real packaging to find the
-    // artifact (`<artifact>-<version>.aar`) in a Maven/Gradle cache and unpack its classes. So read
-    // the *untransformed* artifacts too and key each component's packaging off its file extension
-    // (Android deps resolve to `.aar`, JVM deps to `.jar`), then stamp it into the coordinate
-    // below.
-    //
-    // This read goes through a `lenient(true)` artifactView rather than the raw
-    // `incoming.artifacts`. The raw read selects artifacts using the configuration's full runtime
-    // attributes, which a dependency exposing AGP secondary variants without the standard
-    // `org.gradle.category` / jvm-environment / `kotlin.platform.type` attributes (e.g. an Android
-    // library relying on AGP's built-in Kotlin, consumed on an app's `…RuntimeClasspath`) can't
-    // satisfy — turning packaging detection into a hard `AmbiguousArtifactsFailure` that fails the
-    // whole bundle. `lenient(true)` skips any such unselectable dep here; it simply isn't keyed in
-    // the packaging map and falls back to the `"jar"` default at the coordinate below. The
-    // `artifactType=jar` view that feeds the actual classpath/closure walk is unaffected — it
-    // selects each dep's `jar` secondary variant unambiguously.
+    // The jar view erases aar vs jar, but the player needs the real packaging, so read the
+    // untransformed artifacts too and key packaging off the file extension. Lenient, because deps
+    // exposing AGP secondary variants without standard attributes would otherwise fail with
+    // `AmbiguousArtifactsFailure`; skipped deps default to `"jar"`.
     val typeByComponent: Provider<Map<String, String>> =
       depConfig
         ?.incoming
@@ -356,16 +257,10 @@ internal object ComposePreviewTasks {
               if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
           }
         } ?: project.providers.provider { emptyMap<String, String>() }
-    // Map each resolved dependency jar to a coordinate string the task action can fold into
-    // `bundle.json`'s `classpath`:
-    // - `maven:<group>:<artifact>:<version>:<aar|jar>` for Maven-resolved deps (the player resolves
-    //   at open time — small bundle, no inlined jars).
-    // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
-    //   since they can't be re-resolved from Maven).
-    //
-    // Resolution happens via `Provider` transformations, so this stays config-cache-safe. The
-    // transformed artifact keeps its original `componentIdentifier` (the Maven module / project),
-    // so coordinates resolve correctly even though `.file` points at the extracted classes.jar.
+    // Dependency jar → coordinate for `bundle.json`:
+    // - `maven:<group>:<artifact>:<version>:<aar|jar>` — resolved by the player at open time.
+    // - `project:<gradle path>` — inlined, since it can't be re-resolved.
+    // Transformed artifacts keep their `componentIdentifier`, so this works on extracted jars.
     val coordMapProvider: Provider<Map<String, String>> =
       depJarView?.artifacts?.resolvedArtifacts?.zip(typeByComponent) { artifacts, typeByComponentMap
         ->
@@ -388,29 +283,11 @@ internal object ComposePreviewTasks {
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
 
-    // `classes/kotlin/android/main` (issue #248): the
-    // `com.android.kotlin.multiplatform.library` plugin (AGP 9's replacement
-    // for nesting `com.android.library` inside KMP) compiles its single
-    // `android` target into the canonical KMP layout
-    // `build/classes/kotlin/<targetName>/<compilationName>` — same convention
-    // as `kotlin/jvm/main` and `kotlin/desktop/main` for those targets — so
-    // adding it to the candidate list lets the desktop renderer pick up
-    // `@Preview` functions in `androidMain` without any classic-AGP wiring.
-    // [DiscoverPreviewsTask] silently skips dirs that don't exist, so listing
-    // it on JVM-only consumers is harmless.
-    // `classes/kotlin/android/main` is the issue-#248 fallback for a module whose ONLY compilation
-    // is the KMP-Android one. It must not be packed alongside a real JVM/desktop compilation: on a
-    // dual-target module (KMP-Android *plus* `jvm("desktop")`, the `samples/cmp-shared` /
-    // `:meshcore-components` shape) both dirs exist and carry the same commonMain classes compiled
-    // for different targets. Packing both mixes them — the android-compiled `MeshcoreFontsKt`
-    // facade wins and calls `MeshcoreFonts_androidKt`, while the desktop pack carries
-    // `MeshcoreFonts_desktopKt` — so the render dies with `NoClassDefFoundError` on the module's
-    // OWN class, one layer past the `*-android` dependency problem.
-    //
-    // Gate it on the same resolution the dependency classpath uses, so the classes the bundle
-    // carries and the dependencies it resolves always describe one target. Lazy for the reason
-    // given at [desktopDependencyConfigName]: `desktopRuntimeClasspath` does not exist yet while
-    // `registerDesktopTasks` runs.
+    // `classes/kotlin/android/main` is the fallback for a module whose only compilation is
+    // KMP-Android (#248). It must not be packed alongside a real JVM/desktop compilation: both dirs
+    // hold commonMain compiled for different targets, and mixing them causes `NoClassDefFoundError`
+    // on the module's own `expect`/`actual` classes. Gated lazily on the same resolution as the
+    // dependency classpath (see [desktopDependencyConfigName]).
     val sourceClassDirs =
       project.files(
         project.layout.buildDirectory.dir("classes/kotlin/main"),
@@ -423,11 +300,8 @@ internal object ComposePreviewTasks {
         },
       )
 
-    // Discovery scans every compatible layout above, but the cache-integrity guard must examine
-    // only the output of the compilation this project actually exposes. Otherwise stale classes
-    // left in an inactive fallback (for example `jvm/main` beside an active `desktop/main`) can
-    // mask a valid-but-empty cache restore. Resolve lazily so Kotlin tasks registered after this
-    // plugin still participate.
+    // The integrity guard checks only the active compilation's output; stale classes in inactive
+    // fallbacks could mask an empty cache restore. Lazy so late-registered Kotlin tasks count.
     val activeSourceClassDirs =
       project.files(
         project.provider {
@@ -470,11 +344,8 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
 
-    // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
-    // the render classpath so a `@Preview` can load a classpath resource (e.g. a Lottie `.json`
-    // asset) at render time. Non-existent dirs resolve to nothing — harmless on resource-free
-    // modules. The resource-processing tasks are wired as render dependencies below so the dirs are
-    // populated before the render subprocess launches.
+    // Processed-resource dirs in [sourceClassDirs] order, linked onto the render classpath; missing
+    // dirs contribute nothing.
     val sourceResourceDirs =
       project.files(
         project.layout.buildDirectory.dir("resources/main"),
@@ -482,25 +353,9 @@ internal object ComposePreviewTasks {
         project.layout.buildDirectory.dir("processedResources/desktop/main"),
       )
 
-    // Same single-variant story for the runtime classpath: KMP-Android
-    // exposes `androidRuntimeClasspath` (no `debug` / `release` prefix —
-    // confirmed against AGP 9's KMP migration guide). Listed BEFORE
-    // `runtimeClasspath` so a project applying both kotlin("multiplatform")
-    // *and* the KMP-Android plugin resolves AAR deps via the Android
-    // resolvable, where AGP's artifact transforms hand back the extracted
-    // `classes.jar` (dependencyJars's `android-classes` artifact view).
-    //
-    // Resolved lazily (called from inside each task's `tasks.register {}`
-    // configuration block, which Gradle invokes only when the task is
-    // realised). For KMP-Android-shared modules (`samples:cmp-shared`-shape
-    // — issue: validate task hitting `androidRuntimeClasspath`) the
-    // `kotlin { jvm("desktop") }` block runs AFTER `pluginManager.withPlugin`
-    // fires, so `desktopRuntimeClasspath` doesn't exist yet at the moment
-    // [registerDesktopTasks] is invoked. Eager resolution would fall through
-    // to `androidRuntimeClasspath` and pin the desktop renderer to
-    // `androidx.compose.ui:ui-android` AAR variants, which the new
-    // [ValidateComposePreviewClasspathTask] correctly rejects (and
-    // `ImageComposeScene` would crash on too).
+    // Resolved lazily inside each task's configuration: on KMP-Android `desktopRuntimeClasspath`
+    // doesn't exist yet when [registerDesktopTasks] runs, and eager resolution would pin the
+    // desktop renderer to `*-android` AARs.
     val resolveDependencyConfigName: () -> String = { desktopDependencyConfigName(project) }
 
     val discoverTask =
@@ -512,32 +367,24 @@ internal object ComposePreviewTasks {
         extension,
         activeSourceClassDirs = activeSourceClassDirs,
         activeCompilationSourceFiles = activeSourceFiles,
-        // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
-        // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
-        // allow discovery to go lenient *for that config only* so `compose-preview list` never
-        // aborts on such a module. JVM/desktop configs stay strict.
+        // Lenient only for the `androidRuntimeClasspath` fallback, so `compose-preview list` never
+        // aborts there.
         lenientWhenAndroidOnlyFallback = true,
-        // Desktop can't render `@ColorCatalog` sheets yet (#2135) — mark their captures optional so
-        // the render skip is consistent across the gate and VS Code consumers.
+        // Desktop can't render `@ColorCatalog` sheets yet (#2135).
         catalogRenderSupported = false,
       ) {
         onlyIf { extension.enabled.get() }
-        // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
-        // compilation (which depends on the underlying `compileAndroidMainKotlin`-shaped Kotlin
-        // compile under the hood). Use lazy matching so compile tasks registered after this plugin
-        // block are still wired into discovery.
+        // Lazy matching so compile tasks registered later are still wired.
         dependsOn(project.tasks.matching { it.name in DESKTOP_COMPILE_TASK_CANDIDATES })
-        // Lottie asset discovery scans the consumer's processed resources. Desktop-only for now —
-        // the Android discover task (AndroidPreviewSupport) doesn't wire this, so `.json`/`.lottie`
-        // assets surface as previews on the JVM/Desktop backend where Compottie renders them.
+        // Lottie assets from processed resources (desktop only).
         resourceDirs.from(sourceResourceDirs)
         dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
     val rendererConfig = ensureRendererDesktopConfig(project, "composePreviewRenderer")
-    // Resolve the renderer in the consumer's dependency graph so a single coherent Skiko / Compose
-    // version wins (issue #1844). See [alignDesktopToolWithConsumerGraph].
+    // Resolve the renderer in the consumer's graph so one Skiko / Compose version wins (#1844). See
+    // [alignDesktopToolWithConsumerGraph].
     alignDesktopToolWithConsumerGraph(
       project,
       extension,
@@ -558,47 +405,34 @@ internal object ComposePreviewTasks {
         onlyIf { extension.enabled.get() }
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         outputDir.set(previewOutputDir.map { it.dir("renders") })
-        // `@ScrollingPreview(modes = [LONG, GIF])` outputs land here (sibling of `renders/`).
-        // Declared as a tracked task output so Gradle's caching + up-to-date checks cover the
-        // long-PNG and GIF artifacts; older Android Test wiring uses the same `data/` subdir.
+        // Data products (`@ScrollingPreview(modes = [LONG, GIF])`), declared as an output for
+        // caching.
         dataProductsDir.set(previewOutputDir.map { it.dir("data") })
         renderBackend.set("desktop")
-        // Fork the render subprocess on a JDK new enough for the module's bytecode. The desktop
-        // `javaexec` otherwise runs on the Gradle daemon JVM (JDK 17 here), so a consumer compiling
-        // to Java 21 would fail every preview with UnsupportedClassVersionError. See
-        // [RenderJvmSelection]; null (no upgrade needed) leaves the daemon-JVM default.
+        // Fork on a JDK new enough for the module's bytecode; desktop `javaexec` otherwise uses the
+        // Gradle JVM. See [RenderJvmSelection]; null leaves the default.
         desktopRenderJavaExecutable(project, extension)?.let { renderJavaExecutable.set(it) }
         tier.set(tierProperty(project))
-        // `composePreview.filter` convention for the `--preview` name filter (issue #2066); the
-        // repeatable `--preview` CLI option overrides it. Comma-separated so a single `-P` can name
-        // several previews.
+        // `composePreview.filter` convention for `--preview` (#2066); comma-separated.
         previewFilters.convention(previewFilterProperty(project))
-        // `composePreview.idFilter` convention for the `--preview-id` fan-out-member filter (issue
-        // #2966); the repeatable `--preview-id` CLI option overrides it.
+        // `composePreview.idFilter` convention for `--preview-id` (#2966).
         previewIdFilters.convention(previewIdFilterProperty(project))
         previewIdExcludes.convention(previewIdExcludeProperty(project))
-        // `composePreview.rowExclude` — the `@PreviewParameter` row axis, forwarded to the render
-        // subprocess as a system property since the rows only exist once the provider is
-        // enumerated.
+        // `composePreview.rowExclude`: the `@PreviewParameter` row axis, forwarded as a system
+        // property since rows only exist after enumeration.
         previewRowExcludes.convention(previewRowExcludeProperty(project))
         permutations.convention(previewPermutationsProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
-        // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
-        // fonts, images) at render time. Depend on the resource-processing task that stages them.
+        // Processed resources for classpath assets at render time.
         renderClasspath.from(sourceResourceDirs)
-        // The consumer's runtime classpath is added on its own ONLY when the renderer config was
-        // not folded into it. When it was ([alignDesktopToolWithConsumerGraph]), `rendererConfig`
-        // already carries every consumer jar at the version the shared graph resolved, and adding
-        // the consumer's separately-resolved view as well puts a SECOND copy of each shared module
-        // first on the classpath, at the consumer's own (lower) version. That is how
-        // `samples:cmp` (kotlinx-coroutines-core 1.9.0) rendered every motion capture against
-        // 1.9.0 core while `kotlinx-coroutines-test` 1.11.0 from the renderer called
-        // `BuildersKt.runBlockingK` — a `NoSuchMethodError` inside `runComposeUiTest`. The pure
-        // KMP-Android fallback is never aligned, so it keeps the lazily-resolved view (issue
-        // #1796) pinned to `artifactType=jar` (issue #1852). See [pinnedConsumerClasspath].
+        // Add the consumer's runtime classpath separately only when the renderer config wasn't
+        // folded into it ([alignDesktopToolWithConsumerGraph]). Otherwise it would prepend a
+        // second, lower-versioned copy of shared modules (e.g. coroutines-core 1.9 against
+        // coroutines-test 1.11 → `NoSuchMethodError`). The KMP-Android fallback is never aligned.
+        // See [pinnedConsumerClasspath].
         val consumerConfigName = resolveDependencyConfigName()
         if (!isAlignedWithConsumerGraph(project, consumerConfigName)) {
           pinnedConsumerClasspath(project, consumerConfigName)?.let { renderClasspath.from(it) }
@@ -621,11 +455,7 @@ internal object ComposePreviewTasks {
       discoverTaskName = "composePreviewDiscover",
     )
 
-    // Stage-2 BTA configurations + afterEvaluate dep wiring must happen at
-    // plugin-apply / config time, BEFORE `registerDesktopDaemonStartTask`'s
-    // `task.register {…}` block (which runs at task-realization time, by which point
-    // Gradle's MutationGuard rejects `Project.afterEvaluate(...)` calls). Lifted out
-    // here so the registration block is a pure consumer of the resulting configs.
+    // Must run at apply time, before task realization, where MutationGuard rejects `afterEvaluate`.
     setupBtaConfigurations(project, extension)
 
     registerDesktopDaemonStartTask(
@@ -639,17 +469,12 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Register `composePreviewBundle` — packs the consumer module + selected previews into a portable
-   * PNG+ZIP polyglot. Inputs reuse the existing `previews.json` from `composePreviewDiscover` and
-   * the same module class dirs + runtime classpath that `composePreviewRender` consumes; the cover
-   * PNG is read from the `renders/` directory when present (lazy — task still runs in "no-render"
-   * mode and writes a stub gray PNG cover).
+   * Registers `composePreviewBundle`: packs the module and selected previews into a PNG+ZIP
+   * polyglot, from `previews.json` and the same classes/classpath the render uses. The cover comes
+   * from `renders/` when present, else a stub.
    *
-   * Selection comes from project properties (`-PbundlePreviewIds=…`) or CLI input. The bundle task
-   * does NOT depend on `composePreviewRender` — bundling without pre-rendering is the common case
-   * for the CLI's "pack and share" flow. Callers who want the cover populated should run
-   * `composePreviewRender` first (the CLI shells through `composePreviewRender
-   * composePreviewBundle` as a single Gradle invocation).
+   * Selection comes from `-PbundlePreviewIds=…` or the CLI. Doesn't depend on
+   * `composePreviewRender`; run both in one invocation for real covers.
    */
   internal fun registerBundleTask(
     project: Project,
@@ -658,25 +483,15 @@ internal object ComposePreviewTasks {
     sourceClassDirs: FileCollection,
     resolveDependencyConfigName: () -> String,
     discoverTaskName: String,
-    // Recorded into `bundle.json`'s `backend` field. "desktop" for the CMP/JVM path; the Android
-    // path (AndroidPreviewSupport) passes "android" so players know which renderer the bundle was
-    // packed for. Packing itself is backend-agnostic — the closure walk only sees JVM bytecode.
+    // Recorded as `bundle.json`'s `backend` ("desktop" or "android"); packing itself is
+    // backend-agnostic.
     backendId: String = "desktop",
-    // (v6 Android) Wired only on the Android path so a protolayout-IR bundle can carry the merged
-    // resource APK + manifest + generated R classes the tile renderer needs on a detached daemon.
-    // Null on desktop — no Android resource carriage.
+    // (v6 Android) Inputs for protolayout resource carriage; null on desktop.
     //
-    // `androidUnitTestConfigFiles` is AGP's `unit_test_config_directory` (carrying
-    // `test_config.properties`) UNIONED with the merged resource APK + merged manifest those
-    // properties point at. The pack action reads the APK/manifest by the absolute paths in
-    // `test_config.properties`, so they must also be declared here as tracked `@InputFiles`
-    // content — otherwise the cacheable task could restore a stale bundle when those generated
-    // files change while their paths stay the same. `androidUnitTestRuntimeClasspath` is a lazy
-    // supplier of the AGP unit-test `Test` task's classpath (the SAME source the render path links
-    // its resources + library R classes from) — invoked inside the task-config lambda so the
-    // `test<Variant>UnitTest` task exists by then. With non-transitive R, the tile renderer's
-    // `R$style` is generated only into that classpath's merged R.jar — a raw file dep without the
-    // `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view drops it.
+    // `androidUnitTestConfigFiles` is AGP's unit-test config dir plus the resource APK and manifest
+    // it points at, tracked as content so caching can't restore a stale bundle.
+    // `androidUnitTestRuntimeClasspath` lazily supplies AGP's test task classpath, the only place
+    // the merged R.jar with the tile renderer's `R$style` appears.
     androidUnitTestConfigFiles: FileCollection? = null,
     androidUnitTestRuntimeClasspath: (() -> FileCollection?)? = null,
   ): TaskProvider<BundlePreviewTask> {
@@ -685,31 +500,21 @@ internal object ComposePreviewTasks {
         BundlePreviewIds.parse(raw)
       }
     val outputProperty: Provider<String> = project.providers.gradleProperty("bundleOutput")
-    // `-PbundleEmbedDeps=true` → schema-v3 `resolution = "embedded"`: carry reachable third-party
-    // jars inside the bundle's `libs/` instead of referencing Maven coordinates. Larger file, but
-    // renders with no network / no consumer build system.
+    // `-PbundleEmbedDeps=true` → v3 `resolution = "embedded"`: reachable jars in `libs/` instead of
+    // coordinates.
     val embedDepsProperty: Provider<Boolean> =
       project.providers.gradleProperty("bundleEmbedDeps").map { it.toBoolean() }
-    // `-PbundleIncludeDataExtensions=true` → schema-v7: carry the aggregated per-extension data
-    // reports (a11y findings, theme tokens, …) named by `previews.json`'s `dataExtensionReports`
-    // under `extensions/<id>.json` so a detached reader can surface them without re-rendering.
+    // `-PbundleIncludeDataExtensions=true` → v7: carry per-extension reports under
+    // `extensions/<id>.json`.
     val includeDataExtensionsProperty: Provider<Boolean> =
       project.providers.gradleProperty("bundleIncludeDataExtensions").map { it.toBoolean() }
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
-    // Resolved at task-realization time, NOT here. `registerBundleTask` runs from
-    // [registerDesktopTasks], which a KMP-Android module reaches via
-    // `pluginManager.withPlugin("com.android.kotlin.multiplatform.library")` — and that fires
-    // BEFORE the consumer's `kotlin { jvm("desktop") }` block creates `desktopRuntimeClasspath`.
-    // Resolving eagerly therefore fell through to the `androidRuntimeClasspath` fallback on a
-    // `samples/cmp-shared`-shape module (KMP-Android *plus* a `jvm("desktop")` target) and packed
-    // its `*-android` Compose AARs into a bundle stamped `backend: desktop`. Nothing failed the
-    // build — the `onlyIf` renderability gate below already re-resolved lazily and so saw the
-    // correct `desktopRuntimeClasspath` — but every render of the published bundle then died on the
-    // host JVM with `NoClassDefFoundError: android/os/Parcelable` (no `android.jar` outside a
-    // Robolectric sandbox). Deferring makes the classpath the bundle *carries* agree with the
-    // config the renderability gate *checks*.
+    // Resolved at task realization: on KMP-Android this runs before `desktopRuntimeClasspath`
+    // exists, and eager resolution packed `*-android` AARs into a `backend: desktop` bundle that
+    // then failed on the host JVM. One lazy resolution keeps the carried classpath and the
+    // renderability gate in agreement.
     val depBinding: () -> DependencyClasspathBinding = {
       dependencyClasspathBinding(project, resolveDependencyConfigName(), artifactTypeAttr)
     }
@@ -717,12 +522,9 @@ internal object ComposePreviewTasks {
     val defaultOutput = previewOutputDir.map { it.file("bundle.png").asFile }
     val resolvedOutput = outputProperty.map { java.io.File(it) }.orElse(defaultOutput)
 
-    // Consumer-module resources directory. The Kotlin / Compose plugins write `src/main/resources/`
-    // (string ids referenced from bytecode via Compose Resources, fonts, etc.) into the standard
-    // `build/resources/main` (kotlin("jvm")) or `build/processedResources/<sourceSet>/main` (KMP).
-    // Wire whichever exists so packed bundles still contain classpath resources the closure walk
-    // can't introspect. Task action treats a missing dir as "no resources" (the `@Optional` +
-    // `orNull?.isDirectory` check inside `buildJar`).
+    // Processed resources dir (`build/resources/main` or
+    // `build/processedResources/<sourceSet>/main`), so bundles carry classpath resources; missing
+    // means none.
     val moduleResourcesDirProvider: Provider<Directory> =
       project.providers.provider {
         val candidates =
@@ -735,32 +537,18 @@ internal object ComposePreviewTasks {
       }
 
     return project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
-      // Skip bundling a non-renderable pure-KMP-Android module: it discovers 0 previews, and
-      // BundlePreviewTask hard-fails on an empty manifest, so a build-wide `render --bundle` (which
-      // appends `:<module>:composePreviewBundle` for every detected module) would fail on it even
-      // though composePreviewRender itself no-ops (Codex review on #1863). Computed lazily at task
-      // realization (so a cmp-shared module whose `jvm("desktop")` target configures after
-      // registerDesktopTasks isn't mis-skipped) and captured as a Boolean so `onlyIf` doesn't pin
-      // `project` into the configuration cache.
-      // ONE lazy resolution feeds both the renderability gate and the classpath the bundle carries,
-      // so the two can no longer disagree about which consumer runtime config this module has.
+      // Skip non-renderable pure KMP-Android modules: they discover 0 previews and the bundle task
+      // fails on an empty manifest, which would break build-wide `render --bundle`. Captured as a
+      // Boolean so `onlyIf` doesn't pin `project`.
       val deps = depBinding()
       val bundleRenderable = bundleRenderable(backendId, deps.configName)
       onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
       moduleResourcesDir.set(moduleResourcesDirProvider)
-      // Also wire the processed-resource dirs as an EXECUTION-time FileCollection:
-      // [moduleResourcesDir]
-      // above is resolved by a config-time `isDirectory` probe, so on a clean configuration-cached
-      // build it snapshots as null before `processResources` runs and the jar ships classes-only —
-      // fine for a baked snapshot, but a live re-render from the bundle then can't load a
-      // `@Preview`'s
-      // classpath resources (e.g. `/fonts/*.ttf`). This collection resolves at execution (after the
-      // resource-processing dependency below), so it reliably carries them into `classes/app.jar`.
-      // Non-existent candidates are skipped when packing, so this is a harmless no-op on the
-      // Android
-      // path (which wires its own source resource roots separately).
+      // Also wire resource dirs as an execution-time collection: [moduleResourcesDir] is probed at
+      // configuration time and can snapshot as null on a clean config-cached build, shipping
+      // classes only and breaking live re-renders that load fonts. Missing candidates are skipped.
       moduleResourceRoots.from(
         project.files(
           project.layout.buildDirectory.dir("resources/main"),
@@ -770,37 +558,25 @@ internal object ComposePreviewTasks {
       )
       deps.jarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(deps.coordinates)
-      // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op). The
-      // unit-test classpath supplier is invoked here (inside the task-config lambda) so AGP's
-      // `test<Variant>UnitTest` task is registered by the time we query its classpath.
+      // Invoked here so AGP's test task exists by now.
       androidUnitTestConfigFiles?.let { androidUnitTestConfig.from(it) }
       androidUnitTestRuntimeClasspath?.invoke()?.let {
         this.androidUnitTestRuntimeClasspath.from(it)
       }
-      // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
-      // contains PNGs. Use orNull semantics: missing dir = stub cover. `rendersDir` is the
-      // @Internal
-      // resolution root; `renderFiles` tracks the PNG contents as a real input so the task re-packs
-      // (and the cache key changes) when renders appear/change rather than restoring a stale
-      // bundle.
+      // Missing renders dir means a stub cover. `rendersDir` is the `@Internal` root; `renderFiles`
+      // tracks contents so the bundle re-packs when renders change.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
-      // The JVM asset passes render into disjoint sibling dirs (kept out of `renders/` so they
-      // don't
-      // fight the Robolectric render for build-cache); their covers/IR are resolved relative to the
-      // previews root, so track them as inputs too. Absent on desktop (SVG/Lottie land in
-      // `renders/`
-      // there) — an absent dir snapshots as empty, so this is a harmless no-op on that backend.
+      // Android asset renders live in sibling dirs; track them too. Absent dirs (desktop) snapshot
+      // as empty.
       renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.SVG_RENDER_SUBDIR) })
       renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.LOTTIE_RENDER_SUBDIR) })
-      // Catalog-token sidecars live under `data/catalog-tokens/` (a sibling of `renders/`), outside
-      // `renderFiles`' tree — track them as their own input so the bundle re-packs when a sidecar
-      // appears/changes (see `catalogTokenFiles` on the task).
+      // Catalog-token sidecars live outside `renderFiles`' tree; track them separately.
       catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
       // A `compose-preview guidelines` run's results, carried so a hosting server can serve them.
       guidelineResultsFiles.from(previewOutputDir.map { it.file("guidelines.json") })
-      // The two authored files a builder catalog is generated from, resolved the way
-      // `composePreviewDiscover` resolves them: the module's own first, then the repository root's.
+      // Builder-catalog inputs, resolved like `composePreviewDiscover`: module first, then
+      // repository root.
       uiBuilderPolicyCandidates.from(
         project.layout.projectDirectory.file("ui-builder.policy.json"),
         project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
@@ -813,9 +589,8 @@ internal object ComposePreviewTasks {
         project.layout.projectDirectory.file("catalog.spec.json"),
         project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
       )
-      // The template designs a policy may name, from the conventional directory rather than the
-      // whole project: `templates` entries are branch-relative paths like
-      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      // Template designs from the conventional directory that branch-relative `templates` entries
+      // resolve in.
       uiBuilderTemplateCandidates.from(
         uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
         uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
@@ -826,27 +601,21 @@ internal object ComposePreviewTasks {
       )
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
-      // (v9) Where this module's coordinates actually resolve from, for a player that has to
-      // re-attach them. See [extraMavenRepositoryUrls].
+      // (v9) See [extraMavenRepositoryUrls].
       extraMavenRepositories.set(extraMavenRepositoryUrls(project))
       includeDataExtensions.set(includeDataExtensionsProperty.orElse(false))
-      // Track the aggregated extension report sidecars (the render task writes them as top-level
-      // `*.json` under the preview output dir) so a content change re-packs the bundle. The bundle
-      // output is a `.png`, so the `*.json` filter never captures it as a circular input. Paths are
-      // resolved from the manifest at pack time; this is just the up-to-date / cache-key signal.
+      // Aggregated report sidecars, as an up-to-date signal; the `.png` output never matches
+      // `*.json`.
       dataExtensionFiles.from(previewOutputDir.map { it.asFileTree.matching { include("*.json") } })
       modulePath.set(project.path)
-      // (v6 Android) base dir for resolving test_config.properties' module-relative apk/manifest
-      // paths. Harmless on desktop. See [BundlePreviewTask.moduleProjectDir].
+      // (v6 Android) Base dir for test_config.properties' relative paths. See
+      // [BundlePreviewTask.moduleProjectDir].
       moduleProjectDir.set(project.layout.projectDirectory)
-      // The physical directory, resolved HERE because only Gradle knows it: `modulePath` above is a
-      // logical name and `projectDir` may put the project anywhere. Empty for the root project.
+      // Resolved here because only Gradle knows the physical directory. Empty for the root project.
       moduleDirectory.set(
         project.projectDir.relativeToOrNull(project.rootDir)?.invariantSeparatorsPath.orEmpty()
       )
-      // Where AGP's resource-merge blame files actually land. Read from the layout rather than
-      // assumed to be `<projectDir>/build` — a consumer that relocates `buildDirectory` would
-      // otherwise silently lose the sibling-module retain-set. See
+      // From the layout, so a relocated `buildDirectory` still finds AGP's blame files. See
       // [BundlePreviewTask.moduleBuildDir].
       moduleBuildDir.set(project.layout.buildDirectory)
       backend.set(backendId)
@@ -854,63 +623,26 @@ internal object ComposePreviewTasks {
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
       description = "Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot."
-      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). But
-      // `renderFiles` declares the renders dir (composePreviewRender's output) as an input, so when
-      // BOTH tasks are in the graph (the common `composePreviewRender composePreviewBundle` pack
-      // flow, e.g. `compose-preview bundle pack`) Gradle requires a declared ordering to avoid the
-      // implicit-dependency validation error. `mustRunAfter` supplies it WITHOUT pulling render in
-      // when only bundle is requested — render still doesn't run unless the caller asks for it.
+      // No `dependsOn` render (a stub cover is valid), but `renderFiles` reads its output, so
+      // `mustRunAfter` gives the ordering Gradle's validation requires without pulling render in.
       mustRunAfter("composePreviewRender")
-      // …and the same for the OTHER two dirs `renderFiles` declares. `composePreviewRenderSvg` and
-      // `composePreviewRenderLottie` write `svg-renders/` and `lottie-renders/`, which are wired as
-      // inputs a few lines below, so they need the ordering for exactly the reason the render task
-      // above does — and only the render task above had it. Asking for both halves in one
-      // invocation therefore failed the build outright:
-      //
-      //   $ ./gradlew :catalog:composePreviewRenderAll :catalog:composePreviewBundle
-      //   Declare an explicit dependency on ':catalog:composePreviewRenderLottie'
-      //   from ':catalog:composePreviewBundle' using Task#mustRunAfter.
-      //
-      // which is what `composePreviewRenderAll` aggregates, so the documented pack flow only
-      // survived by being two separate Gradle invocations.
-      //
-      // By type rather than by name: these two are registered on the Android path only, so naming
-      // them as strings would throw on a desktop module, and a `matching {}` predicate would
-      // realize every task to test it. A typed collection stays lazy and is empty where they do not
-      // exist. It also catches the desktop `composePreviewRender`, which is harmless — it is
-      // already named above, and an ordering declared twice is still one edge.
+      // Same for the Android asset render tasks, whose outputs are also inputs; otherwise
+      // `composePreviewRenderAll composePreviewBundle` in one invocation fails validation. By type,
+      // so it stays lazy and empty on desktop.
       mustRunAfter(project.tasks.withType(RenderPreviewsTask::class.java))
       dependsOn(discoverTaskName)
-      // Pack the module's PROCESSED resources into `classes/app.jar` ([moduleResourcesDir] points
-      // at
-      // `build/resources/main`), so a bundle carries the runtime resources a live re-render needs —
-      // e.g. a `@Preview` theme that loads `/fonts/*.ttf` from the classpath. Without this
-      // dependency
-      // the bundle task can run before `processResources` on a clean build, so `moduleResourcesDir`
-      // resolves empty and the jar ships classes-only: the baked render (which DOES depend on
-      // resource processing) is fine, but launching a daemon from the bundle then fails at
-      // composition (`ExceptionInInitializerError`: font resource missing) and the live stream
-      // falls
-      // back to a static snapshot. Same candidate set the render/daemon tasks depend on.
+      // Package processed resources into `classes/app.jar`: without this ordering, a clean build
+      // can pack before `processResources`, and a live re-render from the bundle fails on missing
+      // fonts.
       dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
     }
   }
 
   /**
-   * Phase 1, Stream A — desktop counterpart of [AndroidPreviewSupport.registerAndroidTasks]'s
-   * `composePreviewDaemonStart` registration. Wires `:daemon:desktop` (which ships
-   * [ee.schimke.composeai.daemon.DaemonMain] for the `ImageComposeScene` render path) onto a
-   * [DaemonBootstrapTask][ ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask] so the VS Code
-   * extension's `daemonProcess.ts` and the MCP server's `SubprocessDaemonClientFactory` can launch
-   * the desktop daemon JVM directly, the same way they do for Android consumers — closing the gap
-   * called out in `:daemon:desktop`'s `DaemonMain.kt` kdoc and #314 ("desktop has no
-   * `composePreviewDaemonStart`").
-   *
-   * Gated on the in-repo `:daemon:desktop` source tree; the daemon module is intentionally NOT
-   * published to Maven yet (see the kdoc on its `build.gradle.kts`), so out-of-tree consumers don't
-   * get a registration. They still get the `DaemonExtension`-default `enabled = false` and the VS
-   * Code extension's "no descriptor → don't spawn" behaviour, just like the Android side before
-   * `:daemon:android` is published.
+   * Desktop counterpart of Android's `composePreviewDaemonStart`: wires `:daemon:desktop`'s
+   * [ee.schimke.composeai.daemon.DaemonMain] onto a [DaemonBootstrapTask][
+   * ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask] so VS Code and the MCP server can
+   * launch the desktop daemon.
    */
   private fun registerDesktopDaemonStartTask(
     project: Project,
@@ -930,9 +662,8 @@ internal object ComposePreviewTasks {
         isCanBeResolved = true
         isCanBeConsumed = false
       }
-    // The daemon JVM puts the consumer's full runtime classpath on its parent `-cp` (below), so it
-    // hits the same Skiko skew as the one-shot render path — resolve it in the consumer's graph too
-    // (issue #1844). See [alignDesktopToolWithConsumerGraph].
+    // The daemon puts the consumer's runtime classpath on `-cp`, so it needs the same graph
+    // alignment (#1844).
     alignDesktopToolWithConsumerGraph(
       project,
       extension,
@@ -950,10 +681,7 @@ internal object ComposePreviewTasks {
         return
       }
     } else {
-      // External-consumer mode: pull `daemon-desktop` from Maven Central — published as part of
-      // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
-      // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
-      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
+      // External mode: `daemon-desktop` from Maven; without it the descriptor has no `DaemonMain`.
       project.dependencies.add(
         daemonRendererConfig.name,
         PreviewDaemonModules.dependency(project, daemonRendererConfig.name, "daemon-desktop"),
@@ -968,10 +696,8 @@ internal object ComposePreviewTasks {
         toolClasspath = daemonRendererConfig,
       )
 
-    // Mirror the Android registration's eager-resolved values (see
-    // AndroidPreviewSupport.kt) so each MapProperty / ListProperty entry's Provider chain
-    // captures only serialisable references — `org.gradle.configuration-cache.problems=fail`
-    // refuses anything that captures `project` / `this` task / `extension`.
+    // Eagerly resolved values so each provider captures only serialisable references (configuration
+    // cache).
     val previewsJsonProvider = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirProvider = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
     val outputFileProvider = previewOutputDir.map { it.file("daemon-launch.json") }
@@ -982,24 +708,17 @@ internal object ComposePreviewTasks {
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
     val daemonSvgBackground = composeAiSvgBackground(project)
     val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
-    // Android theme for the daemon's preview host activity — see `PreviewHostTheme`. Empty
-    // unless the consumer names one; only a library module (no `<application android:theme>` to
-    // inherit) needs to.
+    // Host activity theme for the daemon; see `PreviewHostTheme`.
     val daemonHostTheme = composeAiHostTheme(project, extension)
-    // Unlike `fixedTime` below, this one IS forwarded to the Desktop lane: the rewritten
-    // `SlotTable`
-    // is a flag on the Compose runtime both backends share, with no Robolectric-shaped interception
-    // point for it to depend on.
+    // Forwarded to desktop too (unlike `fixedTime`): it's a runtime flag both backends share.
     val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
     val daemonCheapSignalFiles =
       collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
         it.absolutePath
       }
     val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
-    // KMP / JVM / Desktop / KMP-Android compile output dirs — same set
-    // [registerDesktopTasks]'s `sourceClassDirs` searches, so the daemon's child
-    // URLClassLoader (CLASSLOADER.md) sees the user's compiled classes when a desktop module
-    // applies any of those plugins.
+    // Same compile output dirs as [registerDesktopTasks]'s `sourceClassDirs`, so the daemon's child
+    // classloader sees user classes.
     val daemonUserClassMarkers =
       listOf(
         "$consumerBuildDir/classes/kotlin/main",
@@ -1012,82 +731,50 @@ internal object ComposePreviewTasks {
       "composePreviewDaemonStart",
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
-      // A pure-KMP-Android module (only `androidRuntimeClasspath`, no `jvm("desktop")`) can't be
-      // driven by the desktop daemon — skip emitting its launch descriptor (issue #1852). This task
-      // is never realized by the Tooling-API model builder, so gating it can't affect CLI detection
-      // (unlike the reverted #1853 gating on discover/render — issue #1855). Capture a config-time
-      // Boolean so `onlyIf` doesn't pin `project` into the configuration-cache entry.
+      // Skip the descriptor for pure KMP-Android modules (#1852). Never realized by the model
+      // builder, so CLI detection is unaffected (#1855). Captured as a Boolean for the
+      // configuration cache.
       val renderable = isDesktopRenderableConfig(dependencyConfigName())
       onlyIf { renderable }
       modulePath.set(project.path)
-      // Desktop daemons have no AGP variant. The string is surfaced in `daemon-launch.json`'s
-      // `variant` field for debug/log purposes only — VS Code's `daemonProcess.ts` doesn't key
-      // off it.
+      // Informational only; desktop has no AGP variant.
       variant.set("desktop")
       daemonEnabled.set(extension.daemon.enabled)
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
       backgroundSandboxBoot.set(extension.daemon.backgroundSandboxBoot)
-      // Bake an explicit render JVM into `daemon-launch.json`. Unlike the in-Gradle `javaexec`
-      // render, the daemon is spawned by VS Code / MCP on *their* JDK, so we always pin a launcher
-      // (>= the module's bytecode target) rather than leaving it null — otherwise a JDK-17 editor
-      // spawns the daemon on Java 17 and can't load newer consumer classes. See
-      // [RenderJvmSelection.daemonDescriptorExecutable].
+      // Always pin a launcher: VS Code / MCP spawn the daemon on their own JDK, which may be too
+      // old. See [RenderJvmSelection.daemonDescriptorExecutable].
       desktopDaemonJavaExecutable(project, extension)?.let { javaLauncher.set(it) }
-      // Stage-2 BTA wiring. The configurations + dep adds are owned by
-      // `wireDesktopBtaInputs` so the registration block stays scannable. Daemon JVM
-      // lazily loads BTA only when the editor's save loop calls `compileSources` (gated
-      // by the VS Code workspace setting `composePreview.daemon.compileInProcess`), so
-      // populating the descriptor unconditionally costs only the on-disk classpath
-      // resolution at config time.
+      // Stage-2 BTA wiring; the daemon only loads BTA when in-process compile is enabled, so this
+      // costs just config-time resolution.
       wireDesktopBtaInputs(
         project = project,
         extension = extension,
         task = this,
         userRuntimeConfig = project.configurations.findByName(dependencyConfigName()),
       )
-      // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
-      // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
-      // jar is FIRST on the classpath below, so this loads the Compose-Multiplatform path.
+      // Shares its FQN with `:daemon:android`'s; the desktop jar is first on the classpath.
       mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
-      // Daemon module's classes FIRST so [mainClass] resolves before anything in the
-      // consumer's transitive graph shadows it. `:daemon:desktop` is a Kotlin-JVM module, so
-      // the default `org.gradle.usage=java-runtime` / `artifactType=jar` resolves directly to
-      // the produced JAR — no AGP-style attribute filter needed. Resolved through a lazy
-      // `incoming.artifactView {}.files` view (not the raw `Configuration`) so the classpath stays
-      // config-cache serializable — see issue #1796 and the desktop validate guards.
+      // Daemon classes first so [mainClass] resolves. A lazy artifact view keeps the classpath
+      // config-cache serializable (#1796).
       classpath.from(daemonRendererConfig.incoming.artifactView {}.files)
-      // User's compiled classes — keeps the Kotlin classloader's class-data-sharing intact for
-      // the parent classloader before `UserClassLoaderHolder` constructs its child URL loader.
+      // User classes, on the parent classpath before `UserClassLoaderHolder` builds its child
+      // loader.
       classpath.from(sourceClassDirs)
-      // Consumer's processed resources so a daemon/VS Code render can load classpath assets (a
-      // Lottie `.json`, a font, an image) — same as the one-shot `composePreviewRender` path. These
-      // land on the daemon's parent `-cp`; the `userClassDirs` filter below excludes them (they
-      // don't match the `build/classes/...` markers), so they stay parent-loaded, not child-first.
+      // Resources stay parent-loaded: they don't match the `userClassDirs` markers.
       classpath.from(sourceResourceDirs)
-      // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
-      // Lazy artifact view (not the raw `Configuration`) for config-cache serializability — #1796 —
-      // pinned to `artifactType=jar` so a KMP-Android `androidRuntimeClasspath` doesn't trip the
-      // 12-variant ambiguity (#1852). See [pinnedConsumerClasspath].
+      // Runtime classpath via the pinned view (#1796, #1852); see [pinnedConsumerClasspath].
       pinnedConsumerClasspath(project, dependencyConfigName())?.let { classpath.from(it) }
 
-      // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
-      // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
-      // ImageComposeScene-specific opens if profiling shows a need.
+      // No Robolectric `--add-opens` needed; just the heap limit.
       jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
-      // Run the long-lived desktop daemon JVM as a macOS "background agent" (LSUIElement) so it
-      // never claims a Dock icon or steals keyboard focus. The daemon renders offscreen (Skiko /
-      // ImageComposeScene, no window), but any non-headless AWT init still registers a Dock tile +
-      // focus grab on macOS — far more noticeable than a one-shot render because the daemon stays
-      // resident for the whole editing session. Passed as a launch `-D` (before AWT initializes);
-      // ignored off macOS, so it's safe unconditionally. See the twin flag on the one-shot render
-      // JavaExec in RenderPreviewsTask.
+      // macOS background agent (LSUIElement), so the resident daemon never takes a Dock icon or
+      // focus. Must be a launch `-D`; ignored elsewhere. Same as the one-shot render's flag.
       jvmArgs.add("-Dapple.awt.UIElement=true")
 
-      // Desktop sysprops are a strict subset of the Android side — no Robolectric / Roborazzi
-      // keys. Per-key `put(...)` so each Provider chain captures only serialisable references
-      // (see Bug 1 fix in `AndroidPreviewSupport.kt` for the rationale).
+      // A subset of Android's properties; per-key `put` for the configuration cache.
       systemProperties.put("composeai.daemon.protocolVersion", "1")
       systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       systemProperties.put(
@@ -1119,11 +806,8 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.svg.background", daemonSvgBackground)
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
-      // NOT forwarded here: `composeai.render.fixedTime` is Android-only. The pinned clock works by
-      // shadowing Wear's `currentTimeMillis()` under Robolectric, and this is the Desktop / CMP
-      // daemon — no Robolectric, no instrumentation, no interception point for a plain-JVM
-      // `System.currentTimeMillis()`. Forwarding it would advertise a guarantee nothing here can
-      // keep; see `PreviewExtension.fixedTime`.
+      // `composeai.render.fixedTime` isn't forwarded: it relies on Robolectric shadowing, which
+      // desktop doesn't have. See `PreviewExtension.fixedTime`.
       systemProperties.put(
         "composeai.daemon.perfettoTrace",
         AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map {
@@ -1141,26 +825,17 @@ internal object ComposePreviewTasks {
       )
       systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
       systemProperties.put("composeai.daemon.previewsJsonPath", previewsJsonProvider)
-      // Same path the daemon's `PreviewManifestRouter` reads to map the protocol-level
-      // `previewId` payload into the `RenderSpec(className, functionName)` the engine needs.
-      // Without it, `JsonRpcServer.handleRenderNow`'s `previewId=<id>` payload bottoms out in
-      // `DesktopHost.renderStubFallback` and the daemon emits a stub PNG path that doesn't
-      // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
-      // launchers used to set this); now any production-mode launcher needs it.
+      // Lets `PreviewManifestRouter` map `previewId` to a `RenderSpec`; without it renders fall
+      // back to a stub (#314). The "harness" prefix is historical.
       systemProperties.put("composeai.harness.previewsManifest", previewsJsonProvider)
-      // H1+H2 — `composeai.daemon.historyDir` is what flips daemon-side history recording from
-      // off to on. Default location is under the user-level cache root, NOT the project tree —
-      // see [composeAiHistoryDir]. Without this sysprop the daemon's `HistoryManager` stays null
-      // and the VS Code history view shows an empty drawer.
+      // Enables daemon history, under the user-level cache root ([composeAiHistoryDir]).
       systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
       systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
-      // @Optional @InputFile — see kdoc on `DaemonBootstrapTask.previewsManifest`. Matches the
-      // Android registration's wire-up so descriptor invalidation is consistent across backends.
-      // Conditional Provider returns `null` when previews.json is absent; @Optional on @InputFile
-      // requires *unset*, not "set to a missing file" (Gradle fails the task on the latter).
+      // See `DaemonBootstrapTask.previewsManifest`; a null provider leaves the `@Optional` input
+      // unset.
       previewsManifest.fileProvider(
         previewOutputDir.flatMap { dir ->
           project.providers.provider {
@@ -1169,16 +844,12 @@ internal object ComposePreviewTasks {
           }
         }
       )
-      // Ordering-only relation to the manifest's producer — same reasoning as the Android
-      // registration: that Provider carries no build dependency, so Gradle's strict validation
-      // rejects the pair once both tasks are in one graph, and `dependsOn` would break warming a
-      // daemon before anything has been discovered. Referenced by name because the desktop
-      // pipeline registers discovery separately from this block.
+      // Ordering only, as on Android: the provider carries no dependency, and `dependsOn` would
+      // prevent warming before discovery.
       mustRunAfter("composePreviewDiscover")
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
-      // Stage the consumer's resources (so `sourceResourceDirs` on the daemon `-cp` is populated)
-      // before the descriptor is emitted — mirrors the one-shot render task.
+      // Stage resources before emitting the descriptor.
       dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       group = "compose preview"
       description =
@@ -1187,33 +858,15 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Folds the desktop renderer / daemon tool configuration [toolConfig] into the SAME dependency
-   * graph as the consumer's runtime classpath, so Gradle's conflict resolution picks one coherent
-   * max-version of every shared module instead of leaving the renderer's pinned versions and the
-   * consumer's newer versions side by side on the classpath as separate JARs.
+   * Folds the desktop renderer / daemon config [toolConfig] into the consumer runtime graph so
+   * conflict resolution picks one version of each shared module. Merging raw `FileCollection`s
+   * doesn't resolve conflicts: a newer consumer Skiko's Java bindings ended up beside the
+   * renderer's older native library → `UnsatisfiedLinkError` (#1844). Mirrors Android's
+   * `extendsFrom(testConfig)`; [copyAttributes] supplies the consumer's platform attributes for KMP
+   * variant selection.
    *
-   * Issue #1844: a consumer on Compose Multiplatform 1.11 resolves a newer Skiko whose Java
-   * bindings call `org.jetbrains.skia.paragraph.TextStyleKt._nSetFontEdging`. The renderer bundles
-   * an older Skiko (pinned to CMP 1.10.3) whose native library doesn't export that symbol; merging
-   * the two configurations as raw `FileCollection`s does no cross-graph conflict resolution, so
-   * both Skikos land on the render classpath and the older native library + newer Java bindings
-   * collide at runtime with `UnsatisfiedLinkError`. `extendsFrom` makes the tool config resolve in
-   * one graph with the consumer's deps, so the higher Skiko (the consumer's) wins for both the Java
-   * bindings and the native library — and because both configs then resolve the same artifact file,
-   * the `FileCollection` (a `Set<File>`) carries it exactly once. Mirrors the Android renderer's
-   * `extendsFrom(testConfig)` (docs/RENDERER_COMPATIBILITY.md mitigation #2); [copyAttributes]
-   * hands Gradle the consumer's JVM/Kotlin platform attributes so it selects the matching variant
-   * of each KMP-published module (Skiko, the JetBrains Compose runtime) without us declaring them
-   * by hand.
-   *
-   * Scoped to genuinely JVM/desktop consumer classpaths. The pure-Android KMP fallback
-   * (`androidRuntimeClasspath`, `platform.type=androidJvm`) is left untouched: the desktop renderer
-   * has no `androidJvm` variant, so extending it would fail resolution outright — and that
-   * classpath can't feed the JVM renderer anyway ([ValidateComposePreviewClasspathTask] already
-   * rejects its AndroidX Compose artifacts). Wired in `afterEvaluate` because the KMP
-   * `jvm`/`desktop` runtime classpaths the consumer resolves against may not exist yet when
-   * [registerDesktopTasks] runs (the `kotlin { jvm("desktop") }` block can configure after
-   * `pluginManager.withPlugin` fires).
+   * Not applied to the pure-Android KMP fallback (`androidJvm`), which the desktop renderer can't
+   * use anyway. In `afterEvaluate` because the KMP `jvm`/`desktop` classpaths may not exist yet.
    */
   private fun alignDesktopToolWithConsumerGraph(
     project: Project,
@@ -1222,11 +875,8 @@ internal object ComposePreviewTasks {
     dependencyConfigName: () -> String,
   ) {
     project.afterEvaluate {
-      // Consumer-declared render-graph exclusions apply to the desktop configurations for the same
-      // reason they apply to the Android ones: this `extendsFrom` is what puts the consumer's
-      // constraints — including a strict-version platform that no renderer version can satisfy —
-      // onto a configuration we own. Read inside `afterEvaluate`, where `composePreview { … }` has
-      // been evaluated. See [RenderGraphExtension] (issue #4995).
+      // Consumer exclusions apply here too, since `extendsFrom` brings the consumer's constraints
+      // onto our config. See [RenderGraphExtension] (#4995).
       RenderGraphExclusions.applyTo(project, toolConfig, extension.renderGraph.excludes.get())
       val depName = dependencyConfigName()
       // androidJvm classpath: the desktop renderer has no matching variant — leave it alone.
@@ -1238,30 +888,18 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Whether [alignDesktopToolWithConsumerGraph] folds a tool configuration into the consumer
-   * configuration [consumerConfigName]: every desktop classpath except the pure-Android KMP
-   * fallback, provided the configuration exists. One answer for both the wiring and the render
-   * classpath, so a tool config that already carries the consumer's jars is never joined by a
-   * second, separately-resolved copy of them.
+   * Whether [alignDesktopToolWithConsumerGraph] folds a tool config into [consumerConfigName]:
+   * every desktop classpath except the KMP-Android fallback, if it exists. One answer for both the
+   * wiring and the render classpath, so consumer jars are never added twice.
    */
   internal fun isAlignedWithConsumerGraph(project: Project, consumerConfigName: String): Boolean =
     consumerConfigName != "androidRuntimeClasspath" &&
       project.configurations.findByName(consumerConfigName) != null
 
   /**
-   * Copies attributes from [source] onto [target] for variant selection, EXCEPT the consumer's
-   * bytecode-target attribute (`org.gradle.jvm.version`). AGP-free mirror of the identically named
-   * helper in [AndroidPreviewSupport] — kept here so the desktop wiring doesn't pull AGP onto its
-   * classpath. Used by [alignDesktopToolWithConsumerGraph] to give the renderer tool config the
-   * consumer classpath's JVM/Kotlin platform attributes before extending it.
-   *
-   * `org.gradle.jvm.version` is deliberately skipped: the renderer / daemon tool modules are built
-   * at the repo's Java 17 convention, so inheriting a consumer that targets a lower bytecode level
-   * (e.g. a project on a JVM 11 toolchain, whose `runtimeClasspath` carries
-   * `org.gradle.jvm.version=11`) would make Gradle demand a Java-11-compatible variant of
-   * `renderer-desktop` / `daemon-desktop` that doesn't exist and reject the dependency before
-   * rendering. The platform-type / usage attributes we DO need for KMP variant selection are
-   * copied.
+   * Copies attributes from [source] onto [target] for variant selection, except
+   * `org.gradle.jvm.version`: the tool modules target Java 17, so inheriting a consumer's lower
+   * target would reject them. AGP-free mirror of [AndroidPreviewSupport]'s helper.
    */
   private fun copyAttributes(
     target: org.gradle.api.attributes.AttributeContainer,
@@ -1283,60 +921,36 @@ internal object ComposePreviewTasks {
     toolClasspath: org.gradle.api.artifacts.Configuration,
   ): TaskProvider<ValidateComposePreviewClasspathTask> =
     project.tasks.register(taskName, ValidateComposePreviewClasspathTask::class.java) {
-      // A pure-KMP-Android module (only `androidRuntimeClasspath`, no `jvm("desktop")`) carries
-      // `*-android` Compose on its runtime classpath, which this guard would (correctly, for a
-      // renderable module) flag as "AndroidX Compose on the desktop classpath" and hard-fail. Such
-      // a module can't be desktop-rendered at all, so skip the guard instead of sinking the whole
-      // pipeline on a module that has nothing for the desktop renderer (issue #1852). This task is
-      // never realized by the Tooling-API model builder, so the skip can't affect CLI detection
-      // (issue #1855). A preview-less module like the consumer's `:meshcore-mobile` then renders 0
-      // previews and no-ops cleanly. Compute renderability at config time and capture a Boolean so
-      // `onlyIf` doesn't pin `project` into the configuration-cache entry.
+      // Skip the guard for pure KMP-Android modules, which can't be desktop-rendered and would
+      // hard-fail it (#1852). Never realized by the model builder (#1855). Captured as a Boolean
+      // for the configuration cache.
       val renderable = isDesktopRenderableConfig(dependencyConfigName())
       onlyIf { renderable }
       platform.set("desktop")
-      // Feed the @Classpath FileCollection a lazily-resolved, content-keyed FileCollection
-      // (`incoming.artifactView { }.files`) instead of the raw `Configuration`.
-      // `classpath.from(config)`
-      // pins the live `Configuration` instance into the task's `__classpath__` backing field, and
-      // the
-      // configuration cache can't serialize it — the nested TestKit bundle builds (config cache on,
-      // `org.gradle.configuration-cache.problems=fail`) fail the store step with
-      // "field `__classpath__` … error writing value" and the bundle task exits 1 (issue #1796).
-      // The empty artifact view preserves the default resolution (same files as `from(config)`)
-      // while
-      // resolving lazily through a serializable view — mirrors `composePreviewDiscover` above.
+      // A lazy artifact view, not the raw `Configuration`, which the configuration cache can't
+      // serialize (#1796). Same files.
       val toolFiles = toolClasspath.incoming.artifactView {}.files
       classpath.from(toolFiles)
       pinnedConsumerClasspath(project, dependencyConfigName())?.let { classpath.from(it) }
-      // The same files again, on their own, so the skiko check can tell the tool's resolved pair
-      // apart from the consumer's instead of reading the concatenation as one skewed classpath
-      // (#4200, fixed in #4234). `classpath` stays the union: the AndroidX-artifact check wants to
-      // see the
-      // consumer's jars, and a substring scan gives the same answer over either shape.
+      // The tool's files on their own, so the Skiko check can tell its pair from the consumer's
+      // (#4200). `classpath` stays the union.
       this.toolClasspath.from(toolFiles)
     }
 
   /**
-   * Tier-1 cheap-signal file set for the desktop daemon's [ClasspathFingerprint][
-   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Delegates to the shared
-   * [CheapSignalFiles.collect] so the Android and Desktop registrations stay in lockstep — critical
-   * because both feed the same daemon `composeai.daemon.cheapSignalFiles` sysprop and the daemon
-   * side hashes them as one logical input.
+   * Tier-1 cheap-signal files for [ClasspathFingerprint][
+   * ee.schimke.composeai.daemon.ClasspathFingerprint]; shared with Android via
+   * [CheapSignalFiles.collect] since the daemon hashes them as one input.
    */
   private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
 
   /**
-   * Plugin-apply-time setup for stage-2 BTA configurations. Creates the two detached configurations
-   * idempotently (`maybeCreate`) and schedules `afterEvaluate` to populate them with the BTA impl +
-   * Compose-plugin-embeddable coordinates against the consumer's Kotlin version. Always populated:
-   * the runtime cost lives on the daemon JVM and is paid only when the editor's save loop actually
-   * calls `compileSources` (gated by `composePreview.daemon.compileInProcess` in VS Code) — the
-   * classpath itself is small enough at config time that gating doesn't earn its UX complexity.
+   * Creates the two BTA configurations (`maybeCreate`) and populates them in `afterEvaluate` for
+   * the consumer's Kotlin version. Always populated; the cost is only paid when the daemon compiles
+   * in-process.
    *
-   * MUST be called from config time, NOT from inside `task.register {…}` — Gradle's MutationGuard
-   * refuses `Project.afterEvaluate(...)` once task realization starts.
+   * Must run at configuration time: MutationGuard rejects `afterEvaluate` during task realization.
    */
   private fun setupBtaConfigurations(project: Project, extension: PreviewExtension) {
     val _unused = extension
@@ -1367,16 +981,10 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Stage-2 BTA wiring for the CMP / desktop daemon-start task. Wires every BTA input on
-   * [DaemonBootstrapTask] from the configurations + project layout. The configurations themselves
-   * are created (and populated) by [setupBtaConfigurations], which must run BEFORE this method —
-   * see that method's KDoc for why.
+   * Stage-2 BTA wiring for the desktop daemon-start task; [setupBtaConfigurations] must run first.
    *
-   * Kotlin version sniff currently reads our `libs.versions.toml` Kotlin entry — the
-   * version-catalog convention this repo and its samples use. Out-of-repo consumers fall back to a
-   * constant matching the plugin's own bundled Kotlin (TODO: replace with KGP's
-   * `KotlinPluginWrapper.kotlinPluginVersion` once we're willing to take the compile-time dep on
-   * KGP types).
+   * The Kotlin version comes from `libs.versions.toml`; other consumers get a fallback. TODO: use
+   * KGP's `KotlinPluginWrapper.kotlinPluginVersion` once we take a compile-time KGP dependency.
    */
   private fun wireDesktopBtaInputs(
     project: Project,
@@ -1388,26 +996,13 @@ internal object ComposePreviewTasks {
     wireBtaInputs(
       project = project,
       task = task,
-      // CMP / Kotlin-JVM: the consumer's runtime classpath is the compile classpath. Empty
-      // file collection when no runtime config was found (rare; the desktop task wiring
-      // would have logged that case). Resolved through `pinnedConsumerClasspath`'s lazy
-      // `incoming.artifactView { … }.files` view so the BTA compile classpath never pins the raw
-      // `Configuration` into the daemon bootstrap task's config-cache state — see issue #1796. (The
-      // Android caller already passes AGP's config-cache-safe `Test.classpath`, so only this
-      // desktop path needs the wrap.) The view pins `artifactType=jar` (issue #1852): a KMP-Android
-      // module's `androidRuntimeClasspath` exposes ~12 secondary variants, so a bare
-      // `artifactView {}` here fails with `AmbiguousArtifactsFailure` under AGP 9.3 and sinks the
-      // whole daemon-start — the same fix the render/discover/guard consumer views already carry.
+      // The consumer runtime classpath is the compile classpath, via the pinned lazy view (#1796,
+      // #1852). Empty when no runtime config exists.
       userCompileClasspath =
         userRuntimeConfig?.let { pinnedConsumerClasspath(project, it.name) } ?: project.files(),
-      // MODULE_NAME mirrors KGP's default `compileKotlin` for non-multiplatform JVM modules
-      // — `project.name`, no path-mangling. The bta-host-fixture spike confirmed Gradle
-      // uses this exact spelling in `kotlin.Metadata.d2[]`.
+      // KGP's default module name for JVM modules, as seen in `kotlin.Metadata.d2[]`.
       moduleName = project.name,
-      // Output dir mirrors KGP's `compileKotlin` for plain Kotlin/JVM. CMP-Desktop uses
-      // `classes/kotlin/desktop/main` instead under some plugin combinations; the daemon's
-      // child classloader watches both via `userClassDirs`, so this picks the most common
-      // shape and the runtime handles the rest.
+      // KGP's plain Kotlin/JVM output dir; the daemon watches other shapes via `userClassDirs`.
       outputDirProvider =
         project.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath },
       icWorkingDirProvider =
@@ -1419,18 +1014,12 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Shared by [wireDesktopBtaInputs] (CMP path) and `AndroidPreviewSupport`'s analogous call site.
-   * Wires every BTA input on [DaemonBootstrapTask] from a per-target compile classpath
-   * + module-name + output dir + IC dir, then mirrors every value into the daemon JVM's sysprops so
-   *   `DefaultBtaCompileService.fromSysprops()` constructs the in-process service at startup. The
-   *   configurations themselves are created (and conditionally populated) by
-   *   [setupBtaConfigurations], which must run BEFORE this method.
+   * Wires BTA inputs on [DaemonBootstrapTask] (compile classpath, module name, output and IC dirs)
+   * and mirrors them into daemon system properties for `DefaultBtaCompileService.fromSysprops()`.
+   * [setupBtaConfigurations] must run first.
    *
-   * The sysprop NAMES are duplicated verbatim from `:daemon:core`'s
-   * `DefaultBtaCompileService.Companion.SYSPROP_*` constants — the gradle plugin and the daemon
-   * live in separate included builds, so we can't import the constants directly. Keep both halves
-   * in sync; the daemon's `CompileSourcesTest` and `DefaultBtaCompileServiceTest.fromSysprops*`
-   * exercise the read path against literal strings that match these.
+   * The property names duplicate `:daemon:core`'s `DefaultBtaCompileService.SYSPROP_*` (separate
+   * builds); keep in sync.
    */
   internal fun wireBtaInputs(
     project: Project,
@@ -1443,10 +1032,8 @@ internal object ComposePreviewTasks {
   ) {
     val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
     val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
-    // Lazy artifact views (not the raw `Configuration`s) so these input classpaths stay
-    // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
-    // `userCompileClasspath` arrives already config-cache-clean from both callers (a lazy view on
-    // desktop, AGP's `Test.classpath` on Android), so it's added as-is.
+    // Lazy artifact views for config-cache serializability (#1796); `userCompileClasspath` is
+    // already clean from both callers.
     task.btaImplClasspath.from(btaImplConfig.incoming.artifactView {}.files)
     task.btaCompilerPluginClasspath.from(btaPluginConfig.incoming.artifactView {}.files)
     task.btaCompileClasspath.from(userCompileClasspath)
@@ -1483,40 +1070,23 @@ internal object ComposePreviewTasks {
     )
   }
 
-  /**
-   * Public to `AndroidPreviewSupport` — the KSP/KAPT predicate is shared between CMP and Android.
-   * See [detectStageTwoIneligibility]'s docstring.
-   */
+  /** Shared with `AndroidPreviewSupport`; see [detectStageTwoIneligibility]. */
   internal fun detectStageTwoIneligibilityFor(project: Project): String? =
     detectStageTwoIneligibility(project)
 
-  /**
-   * Public to `AndroidPreviewSupport` so it can call `setupBtaConfigurations` at its apply-time
-   * hook. The Android registration calls this immediately on the apply side (before the `Variant`
-   * callback fires) so the configurations exist by the time the per-variant `tasks.register {…}`
-   * blocks read them. Idempotent — `maybeCreate`.
-   */
+  /** Shared with `AndroidPreviewSupport`, which calls it at apply time. Idempotent. */
   internal fun setupBtaConfigurationsFor(project: Project, extension: PreviewExtension) =
     setupBtaConfigurations(project, extension)
 
   /**
-   * Daemon-warm-time stage-2 eligibility predicate. Returns a human-readable string when the
-   * consumer's module is NOT eligible for in-process compile; `null` when eligible. This predicate
-   * is the single source of truth for stage-2 eligibility.
+   * Stage-2 (in-process compile) eligibility: a reason string when ineligible, `null` when
+   * eligible.
+   * - **KSP / KAPT** — generated sources need regenerating on save, which BTA doesn't drive.
+   * - **`annotationProcessor` deps** — same problem for javac APs.
+   * - **KMP** — the wiring models a single JVM source set only.
    *
-   * - **KSP** modules need their generated sources recompiled on every save. BTA doesn't drive KSP;
-   *   stage 1's `gradle --continuous` covers it because Gradle drives KSP for it.
-   * - **KAPT** is the legacy variant of the same problem.
-   * - **Plain `annotationProcessor` dependencies** (javac APs) similarly aren't BTA-driven — a save
-   *   in an AP-processed source would render with stale generated code.
-   * - **KMP** modules: the spike covered a single JVM source set only; the stage-2 wiring uses the
-   *   plain Kotlin/JVM module-name + `classes/kotlin/main` output dir, which doesn't model KMP's
-   *   per-target source-set layout. Re-evaluate when KMP support is explicitly added.
-   *
-   * Plugins are matched by id (stable across KGP versions, no classpath resolution). The
-   * annotationProcessor check reads declared dependencies on the AP configurations by name —
-   * `configurations.names` doesn't realize the container, and only the matching configs are
-   * realized — so it stays configuration-cache-safe.
+   * Plugins are matched by id; AP configurations are read by name without resolving, so it's
+   * configuration-cache-safe.
    */
   private fun detectStageTwoIneligibility(project: Project): String? =
     when {
@@ -1533,12 +1103,8 @@ internal object ComposePreviewTasks {
     }
 
   /**
-   * True when the consumer declares any dependency on an `annotationProcessor`-shaped configuration
-   * (`annotationProcessor`, `testAnnotationProcessor`, AGP's per-variant
-   * `<variant>AnnotationProcessor`, …). Reads `configurations.names` (which does not force the
-   * container to realize) and only realizes the configurations whose name matches, reading their
-   * *declared* dependencies — no classpath resolution — so the check is configuration-cache-safe at
-   * config time.
+   * True when any `annotationProcessor`-shaped configuration declares a dependency. Only matching
+   * configurations are realized; nothing is resolved.
    */
   private fun hasAnnotationProcessorDependencies(project: Project): Boolean =
     project.configurations.names
@@ -1546,16 +1112,9 @@ internal object ComposePreviewTasks {
       .any { name -> project.configurations.getByName(name).dependencies.isNotEmpty() }
 
   /**
-   * Reads the consumer's Kotlin version from their `libs.versions.toml` `kotlin` entry — the
-   * convention this repo and its samples use. The BTA impl JAR version must EXACTLY match the
-   * Kotlin compiler version (an impl 2.3.21 + compiler 2.3.20 mismatch fails at
-   * `KotlinToolchains.loadImplementation` time, not a runtime surprise) so this sniff has to be
-   * right.
-   *
-   * Falls back to [KOTLIN_VERSION_FALLBACK] when no `libs.versions.toml` exists or no `kotlin`
-   * entry is declared. The fallback matches our own plugin's bundled Kotlin — good for in-repo
-   * samples, wrong for arbitrary out-of-repo consumers. Tracked as a follow-up: switch to KGP's
-   * `KotlinPluginWrapper.kotlinPluginVersion`.
+   * The consumer's Kotlin version from `libs.versions.toml`. The BTA impl must exactly match the
+   * compiler version. Falls back to [KOTLIN_VERSION_FALLBACK] (our bundled Kotlin), which is wrong
+   * for arbitrary consumers; follow-up: use KGP's `kotlinPluginVersion`.
    */
   private fun resolveConsumerKotlinVersion(project: Project): String {
     val catalogs =
@@ -1570,11 +1129,8 @@ internal object ComposePreviewTasks {
   private const val KOTLIN_VERSION_FALLBACK = "2.3.21"
 
   /**
-   * Shared `Provider<String>` for the `composePreview.tier` Gradle property. `"fast"`
-   * (case-insensitive) tells the renderer to skip captures whose `cost` exceeds
-   * [HEAVY_COST_THRESHOLD]; anything else maps to `"full"`. Lazy + cacheable through
-   * `project.providers`, so reading `.get()` at task-execution time doesn't invalidate the
-   * configuration cache when the Gradle property flips between runs.
+   * `composePreview.tier`: `"fast"` (case-insensitive) skips captures above [HEAVY_COST_THRESHOLD];
+   * anything else is `"full"`. Lazy, so flipping it doesn't invalidate the configuration cache.
    */
   internal fun tierProperty(project: Project): Provider<String> =
     project.providers
@@ -1583,12 +1139,9 @@ internal object ComposePreviewTasks {
       .orElse("full")
 
   /**
-   * Absolute `java` path for the desktop render subprocess when the module's bytecode target
-   * outruns the Gradle daemon JVM (or `composePreview.renderJavaVersion` is pinned), else `null` to
-   * keep the default. The desktop `javaexec` inherits no launcher, so [RenderJvmSelection] treats
-   * the daemon JVM as the baseline and only ever raises it. Returns `null` when no
-   * `JavaToolchainService` is available (never on a JVM/CMP module, defensive) so the render simply
-   * stays on the daemon JVM.
+   * `java` for the desktop render subprocess when the bytecode target outruns the Gradle JVM (or
+   * `renderJavaVersion` is set), else `null`. See [RenderJvmSelection]. `null` without a toolchain
+   * service.
    */
   internal fun desktopRenderJavaExecutable(
     project: Project,
@@ -1607,10 +1160,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Like [desktopRenderJavaExecutable] but for the desktop **daemon descriptor** — always pins a
-   * launcher (never null when a toolchain service exists), because VS Code / MCP spawn the daemon
-   * on their own JDK rather than the Gradle daemon JVM, so a null launcher lets a JDK-17 editor run
-   * newer bytecode and fail. See [RenderJvmSelection.daemonDescriptorExecutable].
+   * Like [desktopRenderJavaExecutable] but always pins a launcher, since VS Code / MCP spawn the
+   * daemon on their own JDK. See [RenderJvmSelection.daemonDescriptorExecutable].
    */
   internal fun desktopDaemonJavaExecutable(
     project: Project,
@@ -1629,10 +1180,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Highest JVM bytecode target a desktop/JVM (Compose Multiplatform or plain Kotlin JVM) module
-   * compiles to — Java `targetCompatibility` off [JavaPluginExtension] plus Kotlin
-   * `compilerOptions.jvmTarget` off the JVM/desktop compile tasks — or `null` when neither reads.
-   * Feeds [desktopRenderJavaExecutable]. Fully defensive, mirroring the Android detector.
+   * Highest bytecode target from Java `targetCompatibility` and Kotlin `jvmTarget`, or `null`.
+   * Defensive, like the Android detector.
    */
   private fun detectDesktopBytecodeMajor(project: Project): Int? {
     val candidates = mutableListOf<Int>()
@@ -1652,12 +1201,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * `Provider<List<String>>` for the `composePreview.filter` Gradle property — the `--preview` name
-   * filter's project-property form (issue #2066). Comma-separated so a single
-   * `-PcomposePreview.filter=*FooPreview,BarPreview` can name several previews; blank segments are
-   * dropped. Empty/absent → an empty list, i.e. "render every preview". Lazy through
-   * `project.providers` so reading it doesn't invalidate the configuration cache when the property
-   * flips between runs. The repeatable `--preview` task option overrides this convention.
+   * `composePreview.filter`: the `--preview` name filter as a property (#2066). Comma-separated,
+   * blanks dropped; empty means render everything. The task option overrides it.
    */
   internal fun previewFilterProperty(project: Project): Provider<List<String>> =
     project.providers
@@ -1666,24 +1211,10 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
-   * `Provider<List<String>>` for the `composePreview.idFilter` Gradle property — the `--preview-id`
-   * filter's project-property form (issue #2966). Selects individual members of a `@Preview`
-   * function's fan-out by discovered **id**, which `composePreview.filter` can't: a multipreview
-   * member / `@PreviewParameter` row has its own id but shares its `functionName`.
-   *
-   * Same shape as [previewFilterProperty] — comma-separated, blanks dropped, absent ⇒ empty list
-   * ("render every preview") — so the design-artifacts pipeline can set it the same way, via
-   * `ORG_GRADLE_PROJECT_composePreview.idFilter`, and reach `composePreviewRender` through `bundle
-   * pack` with no CLI flag. Lazy through `project.providers` so reading it doesn't invalidate the
-   * configuration cache when the property flips between runs.
-   *
-   * Wired onto BOTH backends: the DESKTOP `composePreviewRender` ([RenderPreviewsTask]) applies it
-   * directly, and the Android Robolectric `Test` task ([RobolectricRenderTask], registered by
-   * [AndroidPreviewSupport]) forwards it — with [previewFilterProperty] and
-   * [previewIdExcludeProperty] — to the render JVM as the `composeai.preview.*` system properties
-   * `PreviewFilter` reads, so the same filter narrows an Android render too (issue #2977).
-   * Before #2977 it reached only desktop, leaving a catalog's render-time saving stranded on the
-   * Android modules where several catalogs actually live.
+   * `composePreview.idFilter`: the `--preview-id` filter (#2966), selecting fan-out members by id
+   * (they share `functionName`). Same shape as [previewFilterProperty]; set by the design-artifacts
+   * pipeline via `ORG_GRADLE_PROJECT_…`. Applied on desktop by [RenderPreviewsTask] and forwarded
+   * to the Android render JVM by [RobolectricRenderTask] (#2977).
    */
   internal fun previewIdFilterProperty(project: Project): Provider<List<String>> =
     previewIdFilterFileProperty(project)
@@ -1704,19 +1235,10 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
-   * `Provider<String>` for the `composePreview.idFilterFile` Gradle property — a **path** to a
-   * newline-delimited UTF-8 pattern list, the delimiter- and encoding-safe form of
-   * [previewIdFilterProperty] and the positive twin of [previewIdExcludeFileProperty].
-   *
-   * Exists for issue #5172: a JVM whose `sun.jnu.encoding` is not UTF-8 (a C/POSIX-locale
-   * container, a CI runner, a cloud agent sandbox — `ANSI_X3.4-1968`) replaces every non-ASCII
-   * character of a process argument with `?`, so `-PcomposePreview.idFilter==…_Cadence — Sync
-   * ready` reached the render as `…_Cadence ? Sync ready` and matched nothing, failing the task for
-   * exactly the previews the narrowing exists to speed up. A path is ASCII in practice and the file
-   * is read as UTF-8 here, inside the build, so the ids arrive intact — and, like the exclude file,
-   * it can carry an id containing a comma. Set by `compose-preview show --filter/--id`, which falls
-   * back to it only when the comma-joined property cannot carry the selection. When present it
-   * REPLACES `composePreview.idFilter`.
+   * `composePreview.idFilterFile`: path to a newline-delimited UTF-8 pattern list; replaces
+   * `composePreview.idFilter` when set. Needed because a non-UTF-8 `sun.jnu.encoding` mangles
+   * non-ASCII arguments to `?` (#5172), and it can carry ids containing commas. Used by
+   * `compose-preview show` when the property can't carry the selection.
    */
   internal fun previewIdFilterFileProperty(project: Project): Provider<String> =
     project.providers.gradleProperty("composePreview.idFilterFile").map(String::trim).filter {
@@ -1724,14 +1246,8 @@ internal object ComposePreviewTasks {
     }
 
   /**
-   * `Provider<List<String>>` for the `composePreview.idExclude` Gradle property — the
-   * `--exclude-preview-id` form, and the one a design catalog's deferred palettes actually use
-   * (issue #2966): the ids to *keep* aren't a matchable set, since the untagged primary stickers
-   * carry no theme suffix, so the deferral is expressed as what to skip.
-   *
-   * Set by the design-artifacts pipeline as `ORG_GRADLE_PROJECT_composePreview.idExclude` so it
-   * reaches `composePreviewRender` through `bundle pack` with no CLI flag — on either backend now
-   * (issue #2977); see [previewIdFilterProperty] for how it reaches the Android render.
+   * `composePreview.idExclude`: the `--exclude-preview-id` form, used by design catalogs to defer
+   * palettes (#2966). Reaches both backends (#2977).
    */
   internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
     previewIdExcludeFileProperty(project)
@@ -1752,14 +1268,10 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
-   * `Provider<String>` for the `composePreview.idExcludeFile` Gradle property — a **path** to a
-   * newline-delimited exclusion list, the delimiter-free form of [previewIdExcludeProperty].
-   *
-   * Exists because a preview id may contain a comma (`@Preview(widthDp = …, heightDp = …)` mints
-   * `…_width=227dp, height=100dp, dpi=320`), so the comma-separated property cannot carry one: the
-   * split shatters each id into fragments, and since a plain pattern matches on substring, a
-   * fragment like `dpi=320` then excludes the entire module. Set by `bundle pack
-   * --exclude-preview-id-file`. When present it REPLACES `composePreview.idExclude`.
+   * `composePreview.idExcludeFile`: path to a newline-delimited exclusion list; replaces
+   * `composePreview.idExclude`. Needed because ids can contain commas, and comma-split fragments
+   * then exclude by substring (`dpi=320` would exclude the whole module). Set by `bundle pack
+   * --exclude-preview-id-file`.
    */
   internal fun previewIdExcludeFileProperty(project: Project): Provider<String> =
     project.providers.gradleProperty("composePreview.idExcludeFile").map(String::trim).filter {
@@ -1767,15 +1279,8 @@ internal object ComposePreviewTasks {
     }
 
   /**
-   * `Provider<List<String>>` for the `composePreview.rowExclude` Gradle property — the
-   * `--exclude-preview-row` form, which skips `@PreviewParameter` rows by **label**.
-   *
-   * The axis the id filters can't express: discovery never sees the rows (it can't instantiate a
-   * provider), so a catalog whose palettes come from a `@PreviewParameter` provider had no way to
-   * stop rendering the ones it defers. Set by the design-artifacts pipeline as
-   * `ORG_GRADLE_PROJECT_composePreview.rowExclude`, so it reaches `composePreviewRender` through
-   * `bundle pack` with no CLI flag — on a desktop module. Inert on an Android render for the reason
-   * given on [previewIdFilterProperty].
+   * `composePreview.rowExclude`: the `--exclude-preview-row` form, skipping `@PreviewParameter`
+   * rows by label (discovery never sees rows).
    */
   internal fun previewRowExcludeProperty(project: Project): Provider<List<String>> =
     project.providers
@@ -1784,9 +1289,8 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
-   * `Provider<List<String>>` for `composePreview.permutations`. The first preset is
-   * `accessibility`, which synthesizes dark, RTL, and large-font siblings for every discovered
-   * Compose preview at render time.
+   * `composePreview.permutations`. The `accessibility` preset synthesizes dark, RTL and large-font
+   * siblings at render time.
    */
   internal fun previewPermutationsProperty(project: Project): Provider<List<String>> =
     project.providers
@@ -1795,14 +1299,9 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
-   * `Provider<String>` for the `composePreview.missingRenders` Gradle property. Controls how
-   * `composePreviewRenderAll` reacts when a preview is listed in the manifest but produced no
-   * on-disk output: `"fail"` (default — throws), `"warn"` (logs a `WARN` line + writes the
-   * validation marker), `"ignore"` (silent + writes the marker). Set via
-   * `-PcomposePreview.missingRenders=warn` or the corresponding env var
-   * (`ORG_GRADLE_PROJECT_composePreview.missingRenders=warn`) — the `apply` GitHub action exposes
-   * the same knob as the `missing-renders` input so consumers don't have to wire it into their
-   * build files. Unknown values fall through to `"fail"` so a typo can't silently widen the policy.
+   * `composePreview.missingRenders`: how `composePreviewRenderAll` handles a manifest preview with
+   * no output — `"fail"` (default), `"warn"`, or `"ignore"` (both still write the validation
+   * marker). Unknown values mean `"fail"`. Also exposed by the `apply` GitHub action.
    */
   internal fun missingRendersProperty(project: Project): Provider<String> =
     project.providers
@@ -1825,28 +1324,14 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
     activeSourceClassDirs: FileCollection = sourceClassDirs,
     activeCompilationSourceFiles: FileCollection? = null,
-    // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
-    // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
-    // `jvm("desktop")` target), whose single AGP `android` variant trips an
-    // `AmbiguousArtifactsFailure` when an `artifactType=jar` view is forced on it. When this is
-    // set AND the resolved config is exactly `androidRuntimeClasspath`, discovery's dependency
-    // jars resolve leniently so the unselectable dep is skipped instead of aborting the whole
-    // `compose-preview list` Tooling-API query — the desktop render guard still emits an
-    // actionable error if the user actually renders that module. Normal JVM/desktop classpaths
-    // (and the entire Android path, which passes `false`) stay STRICT so a genuinely unresolvable
-    // dependency still surfaces loudly.
+    // Desktop passes `true`: discovery's dependency jars resolve leniently only when the config is
+    // the `androidRuntimeClasspath` fallback, so `compose-preview list` doesn't abort on
+    // `AmbiguousArtifactsFailure`. Everything else stays strict.
     lenientWhenAndroidOnlyFallback: Boolean = false,
-    // `false` on the desktop backend, which can't render `@ColorCatalog` sheets yet (#2135): its
-    // discovered CATALOG captures are emitted `optional` so the render gate and every consumer that
-    // reads `Capture.optional` (VS Code) treat the skipped sheet as expected. Android keeps `true`.
+    // `false` on desktop, which can't render `@ColorCatalog` sheets yet (#2135).
     catalogRenderSupported: Boolean = true,
-    // Whether this backend's renderer encodes `@AnimatedPreview(format = Apng)` as APNG. `true` on
-    // both backends the plugin wires: the desktop renderer always has, and the Android renderer
-    // does from compose-preview-daemon 3.13.0 (#208). The plugin resolves both renderers through
-    // the daemon BOM at its baked `PreviewDaemonVersion` (Gradle conflict resolution can only raise
-    // that), so no
-    // Gradle consumer renders against an older one. `false` remains for a backend that writes GIF
-    // whatever was asked — discovery then records GIF and names the output `.gif`.
+    // Whether the renderer encodes `@AnimatedPreview(format = Apng)` as APNG; `true` for both
+    // backends the plugin wires (Android since daemon 3.13.0, pinned via the BOM).
     animatedPreviewApngSupported: Boolean = true,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
@@ -1858,19 +1343,11 @@ internal object ComposePreviewTasks {
       classDirs.from(sourceClassDirs)
       activeClassDirs.from(activeSourceClassDirs)
 
-      // Shared preview-source modules (`composePreviewSource(project(":catalog-shared"))`).
-      // Their classes go on `classDirs`, NOT `dependencyJars`: that is the whole point of the
-      // configuration. Discovery keeps the two apart deliberately — a dependency JAR stays on the
-      // ClassGraph classpath so a multi-preview annotation resolves, but is never method-walked,
-      // so its `@Preview` functions are invisible. Putting these on `classDirs` walks them as
-      // project classes, which is what makes the previews this module's to render. The task sorts
-      // dirs from jars: a jar put on `classDirs` is dropped silently, since discovery filters that
-      // list to existing DIRECTORIES.
+      // Shared preview-source modules go on `classDirs`, not `dependencyJars`: dependency jars are
+      // never method-walked, so their previews would be invisible. Jars are sorted from dirs
+      // because discovery drops non-directories from `classDirs`.
       //
-      // Not added to `activeClassDirs`: that set exists for the empty-compile integrity check,
-      // which asks whether THIS module's compilation produced output. A shared module's classes
-      // are not evidence about that, and letting them in would mask exactly the broken cache
-      // restore the check is there to catch.
+      // Not added to `activeClassDirs`, which is about this module's own compilation output.
       previewSourceClasspath(project, dependencyConfigName())?.let { config ->
         previewSourceClasses.from(
           config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
@@ -1888,9 +1365,8 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
       )
-      // …and their sources, so a shared preview still resolves back to the file that declares it
-      // and its `@file:CatalogGroup` default still applies. Classes alone find the preview; only
-      // the source file places it. See `composePreview.previewSourceRoots`.
+      // Their sources too, so previews map to their declaring file and `@file:CatalogGroup`
+      // applies. See `composePreview.previewSourceRoots`.
       sourceFiles.from(
         extension.previewSourceRoots.asFileTree.matching {
           include("**/*.kt")
@@ -1900,12 +1376,9 @@ internal object ComposePreviewTasks {
       activeSourceFiles.from(activeCompilationSourceFiles ?: sourceFiles)
       val configName = dependencyConfigName()
       project.configurations.findByName(configName)?.let { config ->
-        // Lenient only for the androidRuntimeClasspath KMP-Android fallback; strict everywhere
-        // else so a real resolution failure isn't masked from the discovery classpath.
+        // Lenient only for the KMP-Android fallback.
         val useLenient = lenientWhenAndroidOnlyFallback && configName == "androidRuntimeClasspath"
-        // For Android projects, dependencies resolve as AARs. Use artifact view
-        // filtering to request the extracted classes.jar (AGP registers the
-        // transform). Desktop/JVM projects already return JARs so this is a no-op.
+        // Request extracted `classes.jar` for AARs; a no-op for JVM jars.
         dependencyJars.from(
           config.incoming
             .artifactView {
@@ -1922,13 +1395,8 @@ internal object ComposePreviewTasks {
             }
             .files
         )
-        // The coordinate of every jar the two views above contribute, so the scan-classpath
-        // filter can match on what a dependency IS rather than on where its cache entry landed.
-        // Read from the SAME views, because an AAR's transformed `classes.jar` is the path the
-        // filter sees and the untransformed `.aar` is not — the mismatch
-        // [dependencyClasspathBinding] documents for the bundle's coordinate map. The transformed
-        // artifact keeps its original `componentIdentifier`, so the coordinate is still the Maven
-        // module's. Provider transformations throughout: config-cache-safe, resolved on demand.
+        // Coordinates for the jars above, from the same views so transformed paths match (see
+        // [dependencyClasspathBinding]).
         for (attributeValue in listOf("jar", "android-classes")) {
           dependencyJarCoordinates.putAll(
             config.incoming
@@ -1949,28 +1417,18 @@ internal object ComposePreviewTasks {
       moduleName.set(project.name)
       variantName.set(extension.variant)
       projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
-      // Default Lottie captures into the shared `renders/` dir (desktop, where the desktop renderer
-      // is the only writer). The Android task overrides this in [configureDeps] to a disjoint dir
-      // so
-      // its JVM Lottie render doesn't share `renders/` with the Robolectric render.
+      // Defaults to `renders/` (desktop's only writer); Android overrides it in [configureDeps].
       lottieRenderSubdir.convention("renders")
-      // Same default as Lottie: SVG stills land in the shared `renders/` dir on desktop; the
-      // Android task overrides this in [configureDeps] to a disjoint dir so its JVM SVG render
-      // doesn't share `renders/` with the Robolectric render.
+      // Same for SVG.
       svgRenderSubdir.convention("renders")
-      // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
-      // CI profiles and one-off triage runs can flip the gate without
-      // touching build.gradle(.kts). Same pattern as
-      // the preview-extension selector above.
+      // The Gradle property wins over the extension.
       failOnEmpty.set(
         project.providers
           .gradleProperty("composePreview.failOnEmpty")
           .map { it.toBooleanStrictOrNull() ?: false }
           .orElse(extension.failOnEmpty)
       )
-      // `-PcomposePreview.retargetWearPreviews=false` wins over the extension so a Wear widget
-      // module can opt out of the watch-canvas retarget for a single run without editing
-      // build.gradle(.kts). Default true keeps the historical Wear-sticker behaviour (#2670).
+      // The Gradle property wins over the extension (#2670).
       retargetWearPreviews.set(
         project.providers
           .gradleProperty("composePreview.retargetWearPreviews")
@@ -1978,9 +1436,7 @@ internal object ComposePreviewTasks {
           .orElse(extension.retargetWearPreviews)
       )
       componentLibraryPrefixes.set(extension.componentLibraryPrefixes)
-      // No per-extension opt-in plumbed here — a11y data products are produced only by the
-      // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
-      // task writes an empty `dataExtensionReports` map.
+      // No per-extension opt-in: a11y is daemon-only, so `dataExtensionReports` is empty here.
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       componentsFile.set(previewOutputDir.map { it.file("components.json") })
       uiBuilderFile.set(previewOutputDir.map { it.file("ui-builder.json") })
@@ -1989,10 +1445,7 @@ internal object ComposePreviewTasks {
       )
       // The tree the copied template designs land in, beside the catalog that names them.
       uiBuilderTemplateDir.set(previewOutputDir.map { it.dir("ui-builder") })
-      // Most specific first: the module's own authored files, then the repository root's. Both
-      // shapes exist — wear-m3-catalog keeps one cover sheet at its root for `:catalog` and another
-      // inside `remote-catalog/` for the module publishing a different system — and a file
-      // collection lets a candidate simply not be there, which is the ordinary case.
+      // Module first, then repository root; candidates may be absent.
       uiBuilderPolicyCandidates.from(
         project.layout.projectDirectory.file("ui-builder.policy.json"),
         project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
@@ -2005,9 +1458,8 @@ internal object ComposePreviewTasks {
         project.layout.projectDirectory.file("catalog.spec.json"),
         project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
       )
-      // The template designs a policy may name, from the conventional directory rather than the
-      // whole project: `templates` entries are branch-relative paths like
-      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      // Template designs from the conventional directory that branch-relative `templates` entries
+      // resolve in.
       uiBuilderTemplateCandidates.from(
         uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
         uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
@@ -2023,17 +1475,11 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Registers a `composePreviewCompile` lifecycle task whose only job is to run the same Kotlin
-   * compile task `composePreviewDiscover` depends on, without the discovery action itself. Wired so
-   * the VS Code extension can keep `.class` files fresh on save without re-walking the
-   * dependency-JAR classpath through ClassGraph — the daemon owns the metadata reconcile via its
-   * `IncrementalDiscovery` cascade and `discoveryUpdated` notification, so the editor save loop no
-   * longer needs `:composePreviewDiscover` on every keystroke.
+   * Registers `composePreviewCompile`, which runs the compile tasks `composePreviewDiscover`
+   * depends on without discovery, so VS Code can refresh `.class` files on save without a
+   * ClassGraph walk (the daemon reconciles metadata itself).
    *
-   * Caller passes the set of candidate compile task names; we wire every matching task lazily so
-   * Android variants registered after this plugin block still participate. When none are found
-   * (consumer hasn't applied a Kotlin plugin) the task is still registered but is a no-op — same
-   * `onlyIf(false)` shape as the disabled-by-extension gating below.
+   * Compile tasks are matched lazily by name; with none (no Kotlin plugin) the task is a no-op.
    */
   fun registerCompileOnlyTask(
     project: Project,
@@ -2056,22 +1502,13 @@ internal object ComposePreviewTasks {
     renderTask: TaskProvider<*>,
     previewOutputDir: Provider<Directory>,
   ) {
-    // Post-condition check: every entry in the manifest must have a PNG
-    // on disk after the render dependency ran. We ship the renderer
-    // (RobolectricRenderTest on Android, RenderPreviewsTask on desktop)
-    // so we KNOW the task should run for a non-empty manifest — a missing
-    // PNG is a wiring bug, never expected. The most common offender on
-    // Android is `composePreviewRender` reporting NO-SOURCE because the AAR's
-    // classes.jar wasn't expanded via `zipTree` before being added to
-    // `testClassesDirs`, which silently skips rendering; without this
-    // check the failure surfaces only in downstream tools (CLI / VSCode).
+    // Post-condition: every manifest entry must have its output after rendering. A missing PNG is a
+    // wiring bug, most commonly `composePreviewRender` going NO-SOURCE because the AAR classes.jar
+    // wasn't expanded into `testClassesDirs`.
     val manifestFile = previewOutputDir.map { it.file("previews.json") }
     val rendersDir = previewOutputDir.map { it.dir("renders") }
     val validationMarker = previewOutputDir.map { it.file("composePreviewRenderAll.validated") }
-    // Captured at config time so the `doLast` body doesn't reach for
-    // `project` at execution (config-cache safe). Resolves at execution
-    // to "fast" or "full"; "fast" tells the post-condition to tolerate
-    // heavy captures that legitimately weren't rendered this run.
+    // Captured at configuration time; under "fast" heavy captures may legitimately be missing.
     val tierProvider =
       project.providers
         .gradleProperty("composePreview.tier")
@@ -2079,10 +1516,8 @@ internal object ComposePreviewTasks {
         .orElse("full")
     val missingRendersProvider = missingRendersProperty(project)
     val permutationsProvider = previewPermutationsProperty(project)
-    // The same selection the render applies (issue #3730). Declared as task inputs as well as read
-    // in the action: without them a filtered run and an unfiltered run have identical inputs, so
-    // whichever ran second would be UP-TO-DATE and skip validation entirely — which is how a
-    // narrowed render appeared to "satisfy" a gate it had merely never reached.
+    // The render's selection (#3730), declared as inputs too: otherwise filtered and unfiltered
+    // runs share inputs and the second would skip validation as UP-TO-DATE.
     val nameFilterProvider = previewFilterProperty(project)
     val idFilterProvider = previewIdFilterProperty(project)
     val idExcludeProvider = previewIdExcludeProperty(project)
@@ -2116,46 +1551,21 @@ internal object ComposePreviewTasks {
           )
         if (manifest.previews.isEmpty()) return@doLast
 
-        // `build/compose-previews/renders/` is a derived artefact —
-        // the renderer rewrites it every run, and downstream tools
-        // (VS Code, CLI) compare the CURRENT manifest against on-disk
-        // state. Files left over from deleted or
-        // renamed previews confuse that comparison, so we delete
-        // anything that isn't referenced by a current manifest
-        // entry.
-        //
-        // Parameterized (`@PreviewParameter`) previews are special:
-        // the Gradle side only knows the stem (e.g.
-        // `Foo_PARAM_template.png`), not which fan-out filenames
-        // the provider will produce. The renderer itself cleans up
-        // its own stale fan-out before writing (see
-        // `deleteStaleFanoutFiles` in the renderer modules), so
-        // here we keep every `<stem>_*<ext>` match rather than
-        // second-guessing the provider values.
+        // `renders/` is derived, and downstream tools compare the manifest with what's on disk, so
+        // delete anything the current manifest doesn't reference. `@PreviewParameter` fan-out files
+        // (`<stem>_*`) are kept; the renderer cleans those itself.
         cleanStaleRenders(previewOutputDir.get().asFile.resolve("renders"), manifest, logger)
-        // Same staleness problem for the `data/catalog-tokens/` sidecars (issue #2167): the
-        // renderer
-        // writes one per current CATALOG sheet but never removes those for renamed/deleted sheets,
-        // so
-        // an importer scanning the tree would keep seeing tokens absent from the current manifest.
-        // Prune by the same manifest-derived id set.
+        // Likewise prune stale `data/catalog-tokens/` sidecars (#2167).
         cleanStaleCatalogTokens(
           previewOutputDir.get().asFile.resolve("data/catalog-tokens"),
           manifest,
           logger,
         )
-        // Each preview can produce multiple captures (`@RoboComposePreviewOptions`
-        // time fan-out, future scroll / dimension fan-outs). Verify each
-        // capture's renderOutput lands on disk — report back one missing
-        // entry per preview with at least one missing capture.
+        // Report one missing entry per preview with any missing capture.
         val outDir = previewOutputDir.get().asFile
-        // Only gate on what this run was actually asked to render. A `--preview` / `--preview-id`
-        // render deliberately leaves every other preview alone (its PNG stays at whatever the last
-        // run wrote, or absent on a clean tree), so validating the whole manifest would fail the
-        // narrowed render itself — the reason issue #3730's one-line "just pass the property" fix
-        // needed this half too. Filters are applied to the RAW previews and the result expanded,
-        // mirroring `RenderPreviewsTask.render`'s order exactly, so a permutation sibling of a
-        // selected preview is still checked.
+        // Gate only what this run rendered: a filtered render leaves other previews alone (#3730).
+        // Filters apply to raw previews before expansion, matching `RenderPreviewsTask.render`, so
+        // permutation siblings are still checked.
         val validated =
           PreviewPermutations.expand(
             selectFilteredPreviews(
@@ -2166,20 +1576,14 @@ internal object ComposePreviewTasks {
             ),
             permutationsProvider.get(),
           )
-        // Files owned by non-parameterized siblings — exclude them
-        // from the `<stem>_*` glob so a `Foo_header.png` that
-        // belongs to a different preview never gets treated as
-        // part of `Foo`'s fan-out.
+        // Non-parameterized siblings are excluded from the `<stem>_*` glob.
         val missing = missingPreviewOutputIds(manifest, outDir, isFastTier, validate = validated)
         if (missing.isNotEmpty()) {
           val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
           val message =
             formatMissingPreviewsMessage(manifest.copy(previews = validated), missing, sidecars)
-          // `composePreview.missingRenders` controls escalation: `fail` (default) preserves
-          // the historical hard error that catches whole-module classpath misconfig; `warn`
-          // and `ignore` let multi-module CI runs ride out a handful of stubborn previews
-          // without losing the rest of the report. Marker is still written so downstream
-          // tasks that wire off the validation outcome see the run as "validated".
+          // `composePreview.missingRenders`: `fail` (default) catches classpath misconfiguration;
+          // `warn` / `ignore` let multi-module CI continue. The marker is written either way.
           when (missingPolicy) {
             "warn" -> logger.warn("composePreviewRenderAll: missing-renders policy=warn — $message")
             "ignore" -> Unit
@@ -2192,24 +1596,10 @@ internal object ComposePreviewTasks {
       }
     }
 
-    // Pixel-test wiring: chain the AGP unit-test tasks behind
-    // `composePreviewRenderAll` so a consumer test class that reads the PNGs under
-    // `build/compose-previews/renders/` (e.g. `:samples:android-alpha`'s
-    // `FocusedPreviewPixelTest`) sees the rendered output by the time its
-    // assertions run. Opt-in via `composePreview { renderBeforeUnitTests =
-    // true }` — default off so consumers without pixel tests don't pay the
-    // `composePreviewRenderAll` cost on every `:check`.
-    //
-    // Targets the AGP unit-test tasks by name rather than
-    // `tasks.withType<Test>()`: the plugin's own `composePreviewRender` Test task
-    // is what `composePreviewRenderAll` already depends on, so matching it here
-    // would create a cycle. No-op on Compose Multiplatform / Desktop modules
-    // where those task names don't exist.
-    //
-    // `tasks.matching { ... }.configureEach { ... }` is the
-    // Isolated-Projects-safe lazy form: the matching predicate fires as
-    // each task is registered, and the configureEach body only fires for
-    // matches.
+    // Opt-in (`renderBeforeUnitTests`): AGP unit-test tasks run after `composePreviewRenderAll` so
+    // pixel tests see complete renders. Matched by name, not `withType<Test>()`, which would
+    // include `composePreviewRender` and create a cycle. `tasks.matching { }.configureEach { }` is
+    // the IP-safe lazy form.
     val renderBeforeUnitTests = extension.renderBeforeUnitTests
     project.tasks
       .matching { it.name in PIXEL_TEST_UNIT_TEST_TASKS }
@@ -2223,33 +1613,21 @@ internal object ComposePreviewTasks {
   private val PIXEL_TEST_UNIT_TEST_TASKS = setOf("testDebugUnitTest", "testReleaseUnitTest")
 
   /**
-   * How the renderer marks a diagnosis that only *points at* the first native failure in its JVM.
-   * Kept in sync with `renderer-desktop/.../NativeLoadDiagnosis.kt`; the plugin can't depend on the
-   * renderer module (it is resolved into the consumer's graph), and a drift here degrades to "leads
-   * with a cascade line", not to a wrong message.
+   * Prefix marking a diagnosis that only points at the first native failure. Kept in sync with
+   * `NativeLoadDiagnosis.kt`; drift only degrades which line leads.
    */
   internal const val CASCADE_DIAGNOSIS_PREFIX = "Cascade of the first native-load failure"
 
   /** The two ways a JVM reports a class that is not on the classpath. */
   private val CLASS_LOADING_EXCEPTIONS = setOf("ClassNotFoundException", "NoClassDefFoundError")
 
-  /**
-   * A class name of the shape AGP generates for Android resources — `<package>.R`, or one of its
-   * `R$id` / `R$style` nested tables — in either the dotted form `ClassNotFoundException` reports
-   * or the slashed form `NoClassDefFoundError` reports.
-   */
+  /** An AGP resource class name (`<package>.R` or `R$id` etc.), dotted or slashed. */
   private val AGP_R_CLASS = Regex("""\b\w+(?:[./]\w+)*[./]R(?:\$\w+)?\b""")
 
   /**
-   * The missing AGP resource table behind a class-loading failure, or null when the failure is
-   * something else.
-   *
-   * Worth singling out because it is never a broken preview and never looks like a classpath
-   * problem in the report: compose-ui reads `androidx.customview.poolingcontainer.R.id.*` from
-   * `PoolingContainer.<clinit>`, so on a library module whose merged unit-test `R.jar` is missing
-   * EVERY preview dies at class-init with the same `NoClassDefFoundError` and the per-preview list
-   * reads as if a thousand previews were each independently broken
-   * (yschimke/compose-preview-imports element-x, compose-ai-tools#5026).
+   * The missing AGP resource table behind a class-loading failure, or null. Singled out because a
+   * missing merged unit-test `R.jar` fails every preview at `PoolingContainer.<clinit>`, which
+   * otherwise reads as thousands of independently broken previews (#5026).
    */
   internal fun missingAgpRClass(insight: RenderErrorInsight): String? {
     val classLoadingFailure =
@@ -2260,11 +1638,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * What to check when [missingAgpRClass] fired. The mechanism is the one [AndroidPreviewSupport]
-   * relies on (issue #136) and it is invisible from the outside: the jar is a raw file dependency
-   * on `<variant>UnitTestRuntimeClasspath` with no `artifactType`, so the render's attribute-
-   * filtered artifact view drops it and only AGP's own `test<Variant>UnitTest` task classpath
-   * carries it.
+   * What to check when [missingAgpRClass] fired: the R.jar is a raw file dep without
+   * `artifactType`, so only AGP's own test task classpath carries it (#136).
    */
   internal fun missingRClassHint(rClass: String): String =
     "`$rClass` is an AGP-generated resource table, not preview code, so this is a classpath " +
@@ -2283,10 +1658,8 @@ internal object ComposePreviewTasks {
       "$rClass."
 
   /**
-   * Per-preview error-sidecar payload as the gradle plugin reads it. We mirror only the fields used
-   * by [formatMissingPreviewsMessage]; the sidecar schema itself lives next to the renderer that
-   * writes it (`renderer-android/.../RenderErrorSidecar.kt` and the desktop equivalent).
-   * `ignoreUnknownKeys` keeps us compatible with future sidecar fields without a coordinated bump.
+   * The error-sidecar fields [formatMissingPreviewsMessage] uses; the schema lives with the
+   * renderers. `ignoreUnknownKeys` tolerates new fields.
    */
   @kotlinx.serialization.Serializable
   internal data class ErrorSidecar(
@@ -2294,16 +1667,13 @@ internal object ComposePreviewTasks {
     val message: String = "",
     val topAppFrame: TopAppFrame? = null,
     /**
-     * The renderer's one-sentence explanation when the failure was a native-library load rather
-     * than the preview's own code (see `renderer-desktop/.../NativeLoadDiagnosis.kt`). Empty for an
-     * ordinary preview throw, and for sidecars written by an older renderer.
+     * The renderer's explanation when a native library failed to load; empty otherwise or from
+     * older renderers.
      */
     val diagnosis: String = "",
     /**
-     * Full `Throwable.printStackTrace()` text. Read for its `Caused by:` chain and for a stack
-     * frame in the user's own package — [exception] alone is routinely the reflective wrapper the
-     * renderer's `invoke` produced, and [topAppFrame] is derived from that wrapper's frames
-     * (issue #3741). Empty for a sidecar written by a renderer that predates the field.
+     * Full stack trace, read for its `Caused by:` chain and a user-package frame, since [exception]
+     * is often the reflective wrapper (#3741). Empty from older renderers.
      */
     val stackTrace: String = "",
   ) {
@@ -2316,14 +1686,9 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * For each missing preview, look for the `<png>.error.json` sidecar the renderer writes on a
-   * per-preview throw. The renderer catches `Throwable` around each preview's `setContent` so one
-   * broken preview doesn't fail the whole `Test` task — it writes a sidecar instead, and leaves no
-   * PNG. Without this lookup, the renderAll wrapper sees "missing PNG" and emits a generic "render
-   * was skipped" message that masks the actual exception.
-   *
-   * Returns one entry per preview that had AT LEAST one capture-or-product sidecar; preview ids
-   * without any sidecar (true silent skip / NO-SOURCE) are absent from the map.
+   * For each missing preview, read the `<png>.error.json` sidecar the renderer writes when a
+   * preview throws (it leaves no PNG), so the report shows the real exception rather than "render
+   * was skipped". Previews without any sidecar are absent from the map.
    */
   internal fun readErrorSidecarsFor(
     manifest: PreviewManifest,
@@ -2357,11 +1722,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * What one sidecar actually says, once its stack trace has been read: the deepest `Caused by:`
-   * (or the sidecar's own exception when there is no chain), the best source frame, and a compact
-   * rendering of the chain. Also the grouping key for the per-preview list — two previews are "the
-   * same failure" when all of this matches, so one broken dependency reports itself once with a
-   * count while genuinely different bugs each keep their own line.
+   * One sidecar's root cause, best source frame and compact chain. Also the grouping key, so a
+   * shared failure reports once with a count.
    */
   internal data class RenderErrorInsight(
     val exception: String,
@@ -2372,11 +1734,8 @@ internal object ComposePreviewTasks {
   )
 
   /**
-   * Read [sidecar] the way a human would: lead with the root cause rather than the reflective
-   * wrapper the renderer's `invoke` produced, and point at a frame in the preview's own package
-   * (from [previewClassName]) rather than at the tooling frame that called it. Falls back to the
-   * sidecar's own `exception` / `message` / `topAppFrame` whenever the trace offers nothing better
-   * — including for sidecars written by a renderer that predates the `stackTrace` field.
+   * Leads with the root cause rather than the reflective wrapper and points at a frame in the
+   * preview's own package; falls back to the sidecar's own fields.
    */
   internal fun renderErrorInsight(
     sidecar: ErrorSidecar,
@@ -2406,10 +1765,7 @@ internal object ComposePreviewTasks {
     val total = manifest.previews.size
     val n = missingIds.size
     return if (sidecars.isEmpty()) {
-      // No sidecars anywhere — the render task really was skipped or
-      // silently NO-SOURCE'd. Keep the original guidance so the
-      // testClassesDirs / RobolectricRenderTest.class diagnosis stays in
-      // place for the case it was written for.
+      // No sidecars: the render really was skipped or NO-SOURCE; keep the original guidance.
       val sample = missingIds.take(3).joinToString(", ")
       val andMore = if (n > 3) " (+${n - 3} more)" else ""
       "composePreviewRenderAll: render produced no output file for $n of " +
@@ -2419,10 +1775,7 @@ internal object ComposePreviewTasks {
         "RobolectricRenderTest.class wasn't discoverable on its " +
         "testClassesDirs. Run with --info to see the task outcome."
     } else {
-      // At least one sidecar exists: the render task DID run, but the
-      // preview threw. Surface the actual exception(s) so the user sees
-      // a `Class.forName` / `NoSuchMethodError` / consumer-code failure
-      // instead of a misleading "NO-SOURCE" boilerplate.
+      // The render ran but previews threw; show the actual exceptions.
       val withSidecar = missingIds.filter { it in sidecars }
       val withoutSidecar = missingIds.filterNot { it in sidecars }
       val sb = StringBuilder()
@@ -2432,10 +1785,8 @@ internal object ComposePreviewTasks {
         .append(" of ")
         .append(total)
         .append(" preview(s).")
-      // A native-library failure takes out every preview in the module with one root cause, so it
-      // leads — before the per-preview list it would otherwise be buried under (issue #3690). The
-      // renderer marks cascades ("Cascade of the first…"), so prefer a sidecar carrying the real
-      // first failure over one that only points at it.
+      // A native-library failure takes out the whole module, so it leads (#3690); prefer the real
+      // first failure over cascade markers.
       val diagnoses = withSidecar.map { sidecars.getValue(it).diagnosis }.filter { it.isNotBlank() }
       val rootCause =
         diagnoses.firstOrNull { !it.startsWith(CASCADE_DIAGNOSIS_PREFIX) }
@@ -2444,13 +1795,8 @@ internal object ComposePreviewTasks {
 
       if (withSidecar.isNotEmpty()) {
         sb.append("\n\nPer-preview render errors (from .error.json sidecars):")
-        // Grouped by exception + message + source frame: one broken dependency reports itself once
-        // with a count instead of a thousand identical lines, and genuinely distinct failures still
-        // each get a line. The frame belongs in the key — two previews throwing
-        // `IllegalStateException("missing state")` from different composables are different bugs,
-        // and printing the first one's `at Foo.kt:12` beside a count would blame a file that has
-        // nothing to do with the others. Preview order is preserved, so the first failure stays at
-        // the top.
+        // Grouped by exception + message + source frame, so one root cause reports once with a
+        // count while distinct bugs keep their own line. Preview order is preserved.
         val classNames = manifest.previews.associate { it.id to it.className }
         val insights = withSidecar.associateWith { id ->
           renderErrorInsight(sidecars.getValue(id), classNames[id].orEmpty())
@@ -2479,9 +1825,7 @@ internal object ComposePreviewTasks {
         if (withSidecar.size > shown) {
           sb.append("\n  (+").append(withSidecar.size - shown).append(" more with sidecars)")
         }
-        // One line of the list above says `NoClassDefFoundError: androidx/customview/
-        // poolingcontainer/R$id` and the reader has no way to tell that from a broken preview.
-        // Name the mechanism once, for the first such failure — the rest are the same one.
+        // Explain the missing-R-class mechanism once, for the first such failure.
         insights.values
           .firstNotNullOfOrNull { missingAgpRClass(it) }
           ?.let { sb.append("\n\n").append(missingRClassHint(it)) }
@@ -2499,15 +1843,9 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * The previews a filtered render actually renders: name filter first, then the id filter over
-   * what it kept, then the id exclusions — the same compose-in-order policy as
-   * `RenderPreviewsTask.render` and `PreviewFilter.select`.
-   *
-   * Unlike those, this **never throws on an empty result**. It exists to narrow the
-   * `composePreviewRenderAll` post-condition, where a filter matching nothing has already been
-   * reported by the render task that ran first; failing again here would replace that specific
-   * error ("--preview matched no previews for 'Fooo'. Available: …") with a confusing missing-PNG
-   * report.
+   * The previews a filtered render renders: name filter, then id filter, then id exclusions, as in
+   * `RenderPreviewsTask.render` and `PreviewFilter.select`. Never throws on an empty result: the
+   * render task already reported that.
    */
   internal fun selectFilteredPreviews(
     previews: List<PreviewInfo>,
@@ -2529,14 +1867,8 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * The ids in [validate] whose render produced no file on disk.
-   *
-   * [validate] defaults to the whole manifest and is narrowed only when the render itself was
-   * narrowed (`--preview` / `-PcomposePreview.idFilter` / …, issue #3730): a filtered run
-   * deliberately leaves every other preview unrendered, so gating on the full manifest would fail
-   * the very run the filter was asked for. [manifest] stays the **complete** set regardless,
-   * because `siblingNames` — which stops a sibling's `Foo_header.png` being counted as part of
-   * `Foo`'s `@PreviewParameter` fan-out — is only correct when it can see previews outside the
+   * Ids in [validate] whose render produced no file. [validate] is narrowed only for filtered
+   * renders (#3730); [manifest] stays complete because `siblingNames` needs previews outside the
    * filter.
    */
   internal fun missingPreviewOutputIds(
@@ -2559,9 +1891,7 @@ internal object ComposePreviewTasks {
       .filter { p ->
         val captureMissing =
           p.captures.any { c ->
-            // Optional captures are best-effort (e.g. the XR composite still baked out-of-band by
-            // the native `xr-composite` tool): shown when present, never required — so a missing
-            // one is not flagged.
+            // Optional captures are best-effort, never required.
             if (c.optional) return@any false
             if (isFastTier && isHeavyCost(c.cost)) return@any false
             val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
@@ -2606,30 +1936,15 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Deletes files inside [rendersDir] that aren't referenced by [manifest].
-   *
-   * Keeps four kinds of files:
-   * 1. Exact `renderOutput` matches from non-parameterized previews.
-   * 2. `<stem>_*.<ext>` fan-out files where `<stem>` belongs to a `@PreviewParameter` preview — the
-   *    renderer itself cleans up its own stale fan-outs (it knows the exact filenames), so the
-   *    Gradle side deliberately stays conservative and doesn't delete files it can't be sure are
-   *    stale.
-   * 3. `<stem>.a11y.png` siblings of registered renders. The renderer's `AccessibilityOverlay`
-   *    writes these next to the clean PNG when a preview produces ATF findings; the manifest
-   *    doesn't list them (the pointer lives in `accessibility.json` instead), so without this
-   *    exemption they'd be deleted between writing and publishing.
-   * 4. Non-PNG/GIF files that aren't in the plugin's output domain.
-   *
-   * Anything else (PNGs or GIFs that were produced for a now-removed preview) gets removed so
-   * downstream tools compare the manifest against a clean directory.
+   * Deletes files in [rendersDir] not referenced by [manifest], keeping:
+   * 1. Exact `renderOutput`s.
+   * 2. `<stem>_*.<ext>` fan-out files of `@PreviewParameter` previews (the renderer cleans those).
+   * 3. `<stem>.a11y.png` siblings of registered renders (not listed in the manifest).
+   * 4. Files outside the plugin's output types.
    */
   /**
-   * Prune `data/catalog-tokens/<id>.catalog.json` sidecars whose sheet is no longer in [manifest] —
-   * the data-product analogue of [cleanStaleRenders]. Keeps exactly the files the current
-   * `PreviewKind.CATALOG` previews would (re)write, so a renamed or deleted `@ColorCatalog` /
-   * `@TypographyCatalog` group doesn't leave orphaned tokens for a downstream importer. The
-   * expected filename mirrors the renderer's `CatalogTokenSidecar` (`sanitize(id) +
-   * ".catalog.json"`).
+   * Prunes `data/catalog-tokens/<id>.catalog.json` sidecars whose sheet is gone, mirroring the
+   * renderer's `CatalogTokenSidecar` naming.
    */
   internal fun cleanStaleCatalogTokens(
     catalogTokensDir: java.io.File,
@@ -2669,11 +1984,8 @@ internal object ComposePreviewTasks {
         .flatMap { it.captures.mapNotNull { c -> c.renderOutput.stripRendersPrefix() } }
         .toSet()
 
-    // `<stem>_` / `.<ext>` pairs we MUST leave alone — each one is the
-    // template filename of a `@PreviewParameter` preview. Any file in
-    // [rendersDir] whose leaf name starts with one of these prefixes
-    // and ends with the matching extension is treated as a fan-out
-    // sibling and preserved.
+    // Template prefixes of `@PreviewParameter` previews; matching files are preserved as fan-out
+    // siblings.
     val paramStems =
       manifest.previews
         .filter { it.params.previewParameterProviderClassName != null }
@@ -2694,9 +2006,7 @@ internal object ComposePreviewTasks {
 
     rendersDir
       .walkBottomUp()
-      // `.apng` joins the sweep now that a motion capture can choose its container — a stale
-      // interaction recording is exactly as misleading as a stale PNG, and one left behind by a
-      // renamed preview would keep publishing a gesture the catalog no longer declares.
+      // `.apng` too: a stale recording is as misleading as a stale PNG.
       .filter {
         it.isFile && (it.extension == "png" || it.extension == "gif" || it.extension == "apng")
       }
@@ -2712,11 +2022,8 @@ internal object ComposePreviewTasks {
       }
   }
 
-  // `<stem>.a11y.png` lives next to the clean `<stem>.png` registered in
-  // the manifest. Match by mechanical suffix-strip rather than scanning
-  // accessibility.json: the cleanup runs whether a11y is enabled or not,
-  // and a stale `.a11y.png` whose clean sibling has been removed is still
-  // garbage we want gone.
+  // Matched by suffix-strip rather than reading accessibility.json, so orphaned `.a11y.png`s are
+  // still removed.
   internal fun isA11ySiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
     if (!rel.endsWith(".a11y.png")) return false
     val cleanSibling = rel.removeSuffix(".a11y.png") + ".png"
@@ -2724,13 +2031,9 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * `<stem>.raw.<png|gif>` lives next to a clean output registered in the manifest. PNG siblings
-   * are produced by `@FocusedPreview(overlay = true)`; GIF siblings are the additive RGB source
-   * preserved by `@GlimmerEnvironmentPreview` before connector compositing. When those two PNG
-   * processors are combined, `<stem>.glimmer.raw.png` additionally preserves the overlayed,
-   * pre-environment capture. Same preservation shape as [isA11ySiblingOfExpected] — match by
-   * mechanical suffix-strip, not by re-checking manifest flags, so raw artifacts whose clean
-   * sibling has been removed are still garbage.
+   * `<stem>.raw.<png|gif>` next to a registered output: from `@FocusedPreview(overlay = true)`
+   * (PNG) or `@GlimmerEnvironmentPreview` (GIF); combined, `<stem>.glimmer.raw.png` too. Matched by
+   * suffix-strip like [isA11ySiblingOfExpected].
    */
   internal fun isRawSiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
     val (suffix, extension) =
@@ -2757,22 +2060,11 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * The authored designs under a `ui-builder/` directory, and nothing a build wrote.
-   *
-   * `ui-builder` is a *conventional* directory name, and in a repository that also has a Gradle
-   * module called `ui-builder` — compose-preview-server does — the two are the same path. Handing
-   * the whole directory to an `@InputFiles` property then snapshots that module's `build/` output
-   * as well, and Gradle refuses the build outright: `composePreviewDiscover` and
-   * `composePreviewBundle` are consuming `build/wasmDist` and `build/tmp/…/package.json` from tasks
-   * they do not depend on, which is an *"uses this output of task … without declaring an explicit
-   * or implicit dependency"* validation failure rather than a warning.
-   *
-   * A template is an authored JSON design, so restricting the tree to JSON files loses none of
-   * them, and excluding `build` directories removes every generated file that made the directory
-   * ambiguous. (Spelled as a glob in the code below rather than here: a `json` glob contains the
-   * two characters that end a KDoc block.) The roots stay the project directories
-   * ([DiscoverPreviewsTask.uiBuilderTemplateRoots]), so a branch-relative `templates` path still
-   * resolves exactly as it did.
+   * The authored designs under a `ui-builder/` directory, excluding build output. In a repo that
+   * also has a `ui-builder` Gradle module, the whole directory would snapshot that module's
+   * `build/` as undeclared inputs, which Gradle rejects. Templates are JSON, so restrict to JSON
+   * and exclude `build` dirs (the glob is in code: it would end this KDoc). Roots stay the project
+   * directories ([DiscoverPreviewsTask.uiBuilderTemplateRoots]).
    */
   private fun uiBuilderTemplateTree(dir: Directory) =
     dir.asFileTree.matching {

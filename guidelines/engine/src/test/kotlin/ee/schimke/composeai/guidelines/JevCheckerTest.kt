@@ -530,6 +530,95 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a Retry-After past the retry ceiling pauses no one`() {
+    val inner = FakeDecisions()
+    var calls = 0
+    val limited =
+      object : GuidelineModel by inner {
+        override fun decide(body: JsonObject): ModelResponse {
+          if (synchronized(this) { calls++ } == 0) {
+            return ModelResponse(429, """{"error":{"message":"rate limited"}}""").also {
+              it.retryAfterMillis = 3_600_000
+            }
+          }
+          return inner.decide(body)
+        }
+      }
+    val waits = Collections.synchronizedList(mutableListOf<Long>())
+    val engine = jev(limited)
+    engine.sleep = { waits += it }
+    val run = engine.run(guidelines, (1..3).map { subject("c$it") })
+    // The hour is not waited, by the request that met it or by any other: that one fails, the
+    // rest are asked.
+    assertThat(waits.none { it > 60_000 }).isTrue()
+    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(inner.bodies).hasSize(2)
+  }
+
+  @Test
+  fun `a host that throws for one preview fails that preview alone`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+        override fun available(previewId: String): List<String> =
+          if (previewId == "bad") error("no data for $previewId") else available
+      }
+    val model = FakeDecisions()
+    val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
+    assertThat(run.results.single { it.previewId == "good" }.pending).isFalse()
+    assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(model.bodies.map { name(it) }).containsExactly("good")
+  }
+
+  @Test
+  fun `a fetch that throws fails the previews it was for, not silently`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = listOf(PreviewGuidelineRequests.KIND_A11Y)
+
+        override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) =
+          error("daemon gone")
+      }
+    val model =
+      FakeDecisions(
+        answer = { _, rule, key ->
+          if (rule == "touch" && !isNode(key)) "needs:a11y" to 0.8 else null
+        }
+      )
+    val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
+    // One batched fetch failed: one evidence failure, however many previews it was for, and no
+    // model request is reported failed.
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.problems.joinToString("\n"))
+      .contains("the evidence host's fetch for 2 preview(s) failed: daemon gone (a, b)")
+    val result = run.results.single { it.previewId == "a" }
+    // What round 0 decided stands; the rule waiting on the fetch is unchecked, not passed.
+    assertThat(result.unchecked).contains("touch")
+    assertThat(result.record.verdicts.single { it.ruleId == "described" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
+  }
+
+  @Test
+  fun `a host summary that throws while a round is built is an evidence failure`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = emptyList<String>()
+
+        override fun summary(previewId: String): String? =
+          if (previewId == "bad") error("summary broke") else null
+      }
+    val model = FakeDecisions()
+    val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(

@@ -1,35 +1,24 @@
 #!/usr/bin/env node
 /**
- * Regenerate the checked-in Google Fonts family list the `compose-preview serve` viewer feeds into
- * the `theme.font` autocomplete (`<datalist>`), so the field offers **every** family on
- * fonts.google.com while staying fully offline at serve time (no runtime Google Fonts API call, no
- * key).
+ * Regenerate the checked-in Google Fonts family list behind the `compose-preview serve` viewer's
+ * `theme.font` autocomplete, so every fonts.google.com family is offered with no runtime API call.
  *
  *   node scripts/fonts/build-google-fonts-list.mjs           # fetch canonical source + rewrite
  *   node scripts/fonts/build-google-fonts-list.mjs --from x.csv   # build from a local CSV
  *   node scripts/fonts/build-google-fonts-list.mjs --check    # verify the checked-in file is current
  *
- * Source of truth is the official `google/fonts` repo's tag export
- * (`tags/all/families.csv`) — its first column is the family **display name** exactly as
- * fonts.google.com and a `Font(GoogleFont("<name>"))` request spell it. We read column 1, dedupe,
- * and sort case-insensitively. That endpoint is reachable where `fonts.google.com/metadata/fonts`
- * (the richer metadata the VS Code font browser uses) is egress-blocked, and it needs no API key.
- *
- * The output is a newline-delimited list (leading `#` comment lines are provenance; the Kotlin
- * loader skips them), committed at [OUT] so `serve` bundles it as a classpath resource.
+ * Source: `google/fonts`' `tags/all/families.csv`, whose first column is the display name as
+ * `Font(GoogleFont("<name>"))` spells it (reachable without an API key, unlike
+ * `fonts.google.com/metadata/fonts`). Output is newline-delimited, with `#` provenance lines.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
-// The generated list is a SERVER resource — it backs the `serve` font-picker datalist — and the
-// server left this repository in #4732. The generator stayed, because nothing in the server's build
-// fetches from the web and this is where the repo's other fetch-and-commit tooling lives, so `OUT`
-// now writes into an optional sibling checkout of yschimke/compose-preview-server
-// (`COMPOSE_PREVIEW_SERVER_ROOT`, else a `compose-preview-server` sibling). Running it produces a
-// change you commit THERE, not here. Moving this script to that repository outright is the tidier
-// end state and is follow-up, not part of the swap.
+// The list is a server resource, so `OUT` writes into a sibling compose-preview-server checkout
+// (`COMPOSE_PREVIEW_SERVER_ROOT`, else `../compose-preview-server`); commit the change there. TODO:
+// move this script to that repository.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_ROOT =
   (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
@@ -43,9 +32,8 @@ const SOURCE_URL =
   "https://raw.githubusercontent.com/google/fonts/main/tags/all/families.csv";
 
 /**
- * Extract the sorted, de-duplicated family display names from a `families.csv` body. Column 1 is
- * the family name; the file repeats each family once per tag row, so a Set collapses them. Sorted
- * case-insensitively (then by raw value for stability) so the datalist reads alphabetically.
+ * The de-duplicated family names from a `families.csv` body (one row per tag), sorted
+ * case-insensitively, then by raw value for stability.
  */
 export function familiesFromCsv(csv) {
   const names = new Set();

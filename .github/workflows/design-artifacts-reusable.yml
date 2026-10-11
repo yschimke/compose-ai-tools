@@ -617,6 +617,16 @@ on:
         required: false
         type: string
         default: '4'
+      guidelines-reasoning-effort:
+        description: >-
+          OpenRouter `reasoning.effort` for every guidelines request (the CLI's
+          `--reasoning-effort`): `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or
+          `default` to send none and leave the model at its own. Reasoning tokens are billed as
+          output and share `max_tokens` with the reply. Empty keeps the CLI's default (`low`).
+          Ignored by a CLI without the flag.
+        required: false
+        type: string
+        default: ''
     secrets:
       artifacts_token:
         description: >-
@@ -3968,6 +3978,7 @@ jobs:
           MAX_COST: ${{ inputs.guidelines-max-cost }}
           GUIDELINES_CHECKER: ${{ inputs.guidelines-checker }}
           CONCURRENCY: ${{ inputs.guidelines-concurrency }}
+          REASONING_EFFORT: ${{ inputs.guidelines-reasoning-effort }}
         run: |
           set -euo pipefail
           if [ -z "${COMPOSE_PREVIEW_OPENROUTER_KEY:-}" ]; then
@@ -3988,6 +3999,15 @@ jobs:
           if [[ "$CONCURRENCY" =~ ^[1-9][0-9]?$ ]] && grep -q -- '--concurrency' <<<"$cli_help"; then
             args+=(--concurrency "$CONCURRENCY")
           fi
+          case "${REASONING_EFFORT:-}" in
+            '') ;;
+            none|minimal|low|medium|high|xhigh|max|default)
+              if grep -q -- '--reasoning-effort' <<<"$cli_help"; then
+                args+=(--reasoning-effort "$REASONING_EFFORT")
+              fi
+              ;;
+            *) echo "::warning title=Guidelines reasoning effort::guidelines-reasoning-effort must be none, minimal, low, medium, high, xhigh, max or default; using the CLI's default." ;;
+          esac
           if [ -n "${INPUT_MODULE:-}" ]; then args+=(--module "$INPUT_MODULE"); fi
           # The same flavour the bundle renders below, or the check judges different previews.
           if [ -n "${INPUT_VARIANT:-}" ]; then args+=(--variant "$INPUT_VARIANT"); fi

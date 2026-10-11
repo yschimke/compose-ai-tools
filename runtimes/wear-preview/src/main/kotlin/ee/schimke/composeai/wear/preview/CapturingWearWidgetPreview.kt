@@ -22,37 +22,23 @@ import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
 import kotlinx.coroutines.runBlocking
 
 /**
- * Renders a Glance Wear widget preview **and preserves its encoded RemoteCompose document**.
+ * Renders a Glance Wear widget preview and preserves its encoded RemoteCompose document.
  *
- * Upstream [WearWidgetPreview] captures the widget's `RemoteDocument` but only rasters it, so the
- * widget would ride the bundle as bytecode. This wrapper captures the same document, hands the
- * bytes to [IrSidecarChannel] (drained into the `<stem>.rc` sidecar), then plays them. Outside a
- * daemon/test render the offer is a no-op and only the raster runs.
+ * Upstream [WearWidgetPreview] only rasters the captured document; this hands the bytes to
+ * [IrSidecarChannel] (the `<stem>.rc` sidecar), then plays them. Outside a render the offer is a
+ * no-op.
  *
- * ## Which player draws
+ * Player: [WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED] by default; `-PcomposePreview.rcPlayer=
+ * androidx-view` selects the View-backed lane. Falls back to upstream [WearWidgetPreview] if the
+ * embedded player is missing or capture failed.
  *
- * [WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED] by default (issue #5259); select the View-backed lane
- * with `-PcomposePreview.rcPlayer=androidx-view`. Either way the pixels come from the same captured
- * document, sized as upstream sizes it. Falls back to upstream [WearWidgetPreview] when the
- * embedded player is missing or the capture failed.
+ * Pass the widget's fill as [background], not inside [content]: the host lays [content] out inside
+ * the padded squircle container, so a full-bleed background there draws a square rectangle that
+ * can't reach the rounded corners. (As upstream `wear-os-samples/WearWidget` does.)
  *
- * ## Backgrounds belong here, not in [content]
- *
- * Pass the widget's fill as [background]. The host draws the squircle container — rounded
- * background + padding — and lays [content] out *inside* that frame, already inset by the padding.
- * Content that paints its own full-bleed background therefore paints a **square-cornered rectangle
- * inside the rounded container**: it can't reach the corners, and it isn't clipped to the corner
- * radius. Handing the fill to the document's `background` lets `WearWidgetContainer` paint it as
- * the container's own surface — corner-clipped and edge-to-edge. This mirrors upstream
- * `wear-os-samples/WearWidget`, which builds `WearWidgetDocument(background = …)` and keeps its
- * content transparent.
- *
- * ## Renderer version
- *
- * [useSafeFallbackRendererVersion] mirrors upstream's parameter and default: `true` captures
- * against `RendererVersion.SAFE_FALLBACK_VERSION` (what every host can draw), `false` against
- * `MAX_RENDERER_VERSION`. The version is written into [params] before capture, so the sidecar, the
- * raster and the upstream fallback all describe the same document.
+ * [useSafeFallbackRendererVersion] mirrors upstream: `true` captures against
+ * `RendererVersion.SAFE_FALLBACK_VERSION`, `false` against `MAX_RENDERER_VERSION`; written into
+ * [params] so sidecar, raster and fallback agree.
  */
 @Composable
 fun CapturingWearWidgetPreview(
@@ -70,10 +56,9 @@ fun CapturingWearWidgetPreview(
   )
 
 /**
- * [CapturingWearWidgetPreview] with the replay lane stated rather than read from the process-wide
- * [wearWidgetPreviewPlayer], so a test can drive both lanes in one JVM — in particular
- * [WearWidgetPreviewPlayer.ANDROIDX_VIEW], the one lane that calls upstream `WearWidgetPreview` and
- * so the one a Glance Wear binary signature change breaks (issue #5420).
+ * [CapturingWearWidgetPreview] with the replay lane passed explicitly, so a test can drive both
+ * lanes in one JVM — notably [WearWidgetPreviewPlayer.ANDROIDX_VIEW], the lane a Glance Wear
+ * signature change breaks.
  */
 @Composable
 internal fun CapturingWearWidgetPreviewOnLane(
@@ -96,11 +81,9 @@ internal fun CapturingWearWidgetPreviewOnLane(
   // `WearWidgetPreview` will, so the sidecar matches the raster.
   val captured =
     remember(versionedParams, background, content) {
-      // Best-effort: an IR capture must never fail the raster. But it must not fail *silently*
-      // either — a swallowed `NoSuchMethodError` from a coroutines version skew is precisely how
-      // this capture once degraded to "renders fine, emits no `.rc`" with a green build. Catch
-      // `Throwable` (linkage errors are not `Exception`s) and say so on stderr, so a missing
-      // sidecar is diagnosable from the render log instead of being invisible.
+      // Best-effort, but never silent: catch `Throwable` (linkage errors like a coroutines-skew
+      // `NoSuchMethodError` aren't `Exception`s) and log, so a missing sidecar shows in the render
+      // log.
       try {
         val raw = runBlocking {
           WearWidgetDocument(background, content)

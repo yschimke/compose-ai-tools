@@ -4,17 +4,12 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * A one-shot command-line entry point that renders a captured Remote Compose document to a PNG or
- * layered SVG file.
+ * One-shot entry point rendering a captured Remote Compose document to a PNG or layered SVG,
+ * spawned by the `compose-preview serve` cmp-jvm lane as a subprocess so the CLI's own runtime
+ * carries no per-OS Skiko natives.
  *
- * This is what the `compose-preview serve` cmp-jvm lane spawns as an isolated subprocess: the
- * desktop player needs Compose Desktop + Skiko's per-OS natives on its classpath, which the CLI
- * keeps out of its own runtime so a cross-platform release does not bake in one host's natives.
- *
- * Contract (kept dead simple — a file in, a file out, an exit code): the caller writes the document
- * to `--input`, names the pixel size, density and format, and reads the artifact from `--output` on
- * exit 0. Any failure prints one line to stderr and exits non-zero, so the caller distinguishes
- * "rendered" from "the player could not draw this document" without parsing stdout.
+ * File in, file out: write the document to `--input`, read the artifact from `--output` on exit 0;
+ * any failure prints one line to stderr and exits non-zero.
  *
  * ```
  * java -cp <lib-rcjvm jars + lib-daemon-desktop jars> ee.schimke.composeai.rcjvm.RcJvmRenderMainKt \

@@ -1,16 +1,10 @@
 package ee.schimke.composeai.plugin
 
 /**
- * Parses Android resource directory names like `drawable-night-xhdpi-v26` into the resource base
- * (`drawable`) and qualifier suffix (`night-xhdpi-v26`), and classifies individual qualifier tokens
- * into the dimensions the renderer cares about.
- *
- * Intentionally narrow surface — discovery uses these helpers to decide which capture-fan-out
- * dimensions to expand for a given resource; the renderer feeds
- * [ParsedResourceDirectory.qualifierSuffix] back into Robolectric verbatim via
- * `RuntimeEnvironment.setQualifiers(...)`. We don't try to canonicalise qualifier ordering — AAPT's
- * resolver is forgiving enough that preserving the consumer's original order keeps filenames stable
- * when consumers add a qualifier mid-stream.
+ * Splits Android resource directory names like `drawable-night-xhdpi-v26` into base (`drawable`)
+ * and qualifier suffix (`night-xhdpi-v26`), and classifies qualifier tokens. The renderer passes
+ * [ParsedResourceDirectory.qualifierSuffix] to `RuntimeEnvironment.setQualifiers(...)` verbatim;
+ * ordering isn't canonicalised (AAPT tolerates it, and filenames stay stable).
  */
 data class ParsedResourceDirectory(
   /** `drawable`, `mipmap`, `values`, etc. — the part before the first dash. */
@@ -77,10 +71,8 @@ object ResourceQualifierParser {
     token.length >= 2 && token[0] == 'v' && token.substring(1).all { it.isDigit() }
 
   /**
-   * Two-letter language codes (`en`, `de`, `ja`) and ISO-639-2 three-letter codes. Consumers also
-   * write `b+lang+region+variant` BCP-47 form; we recognise that as a single locale token. We
-   * deliberately treat `r<REGION>` as part of a locale rather than its own kind — AAPT pairs them
-   * positionally.
+   * Two- and three-letter language codes, plus BCP-47 `b+lang+region+variant` as one token.
+   * `r<REGION>` is treated as part of a locale since AAPT pairs them positionally.
    */
   fun isLocaleLanguageQualifier(token: String): Boolean =
     when {

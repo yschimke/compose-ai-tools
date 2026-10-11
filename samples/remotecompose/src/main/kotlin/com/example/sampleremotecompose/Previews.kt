@@ -11,36 +11,15 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
 import ee.schimke.composeai.daemon.RemoteEmbeddedPreviewWrapper
 import ee.schimke.composeai.preview.AnimatedPreview
 
-/**
- * Two ways to preview a Remote Compose component — same pixels, different export behavior. The
- * component-preview dimensions (200×200) are kept small and square so the rendered PNG frames a
- * single button cleanly; bump `widthDp` / `heightDp` if you add components that need more room.
- */
+// Two ways to preview a Remote Compose component: same pixels, different export behaviour. 200×200
+// frames a single button; enlarge for bigger components.
 
-// ---------------------------------------------------------------------------
-// Approach 1 — `RemoteContentPreview(profile = ...) { ... }` called inside the
-// `@Preview`-annotated UI composable.
-//
-// Matches the `remote-material3/samples` pattern, where each `*Preview`
-// function wraps its component with an explicit `RemoteContentPreview { Container
-// { ... } }`. Verbose for many previews but works today — no reliance on
-// the `@PreviewWrapper` tooling annotation (which only exists in
-// compose-ui 1.11.0-beta+ and isn't yet understood by Android Studio
-// releases paired with stable Compose). This renders the pixels but does not expose
-// the recorded Remote Compose document to compose-preview, so it does not emit an
-// `.rc` data product.
-//
-// It also pins the **player**, which is the other half of that cost and the more visible one.
-// `RemoteContentPreview` is upstream's, and it plays the document into an `AndroidView`-hosted
-// `RemoteComposePlayer` — one opaque view, which the a11y lane can only report as a single
-// unlabelled item (issue #5259, and the two previews below are what that looks like in the
-// report). Nothing in this pipeline can intercept a direct call to an upstream composable, so
-// `composePreview.rcPlayer` does not reach these two: naming the player in the body IS the
-// selection. Approach 2 below, and `RemoteOverridablePreview(profile) { ... }` for a body-call
-// that still wants the connector, both draw with the configured player instead — the embedded
-// Compose player by default, which composes into real nodes and carries the document's own
-// content description into semantics.
-// ---------------------------------------------------------------------------
+// Approach 1 — call `RemoteContentPreview(profile = ...) { ... }` inside the `@Preview` body, as
+// upstream's `remote-material3/samples` do. Needs no `@PreviewWrapper` support, but exposes no
+// recorded document (no `.rc` data product), and pins upstream's View-hosted `RemoteComposePlayer`,
+// which the a11y lane sees as a single unlabelled item; `composePreview.rcPlayer` can't reach a
+// direct call. Approach 2, or `RemoteOverridablePreview(profile) { ... }`, use the configured
+// player instead (by default the embedded Compose player, which carries semantics).
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
@@ -58,28 +37,14 @@ fun RemoteButtonWithShapePreview() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Approach 2 — `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a
-// `@Preview`-annotated composable that only emits remote content.
+// Approach 2 — `@PreviewWrapper(RemotePreviewWrapper::class)` (ui-tooling-preview 1.11.0-beta01+)
+// on a composable that only emits remote content; tooling wraps the body.
 //
-// Tooling (Android Studio + our discovery pipeline, once they understand the
-// annotation) invokes `RemotePreviewWrapper.Wrap` around the function body,
-// so the function itself stays as small as the component it renders. This is
-// the new path introduced in the Compose alphas — see `PreviewWrapper.kt` in
-// `androidx.compose.ui.tooling.preview` (1.11.0-beta01+).
-//
-// When `:data-remotecompose-connector` is on the runtime classpath, the
-// renderer's wrapper resolver transparently substitutes upstream
-// `RemotePreviewWrapper` with the connector's `RemoteOverridablePreviewWrapper`
-// (see `RemoteComposeWrapperSubstitution` + its `META-INF/services` file). That
-// substitution wires `renderNow.overrides.remoteCompose.namedValues` into the
-// running player's `StateUpdater`, so a binding like
-// `rememberNamedRemoteString("label", "Tap me")` flips when the daemon seeds an
-// override — no annotation change on the preview side. The substitution also
-// records the Remote Compose document as an `.rc` data product. Keep this wrapper
-// form, and add `data-remotecompose-connector` as a debug dependency, whenever the
-// document itself must be collected in addition to the rendered pixels.
-// ---------------------------------------------------------------------------
+// With `:data-remotecompose-connector` on the runtime classpath, the renderer substitutes the
+// connector's `RemoteOverridablePreviewWrapper` (`RemoteComposeWrapperSubstitution`), which wires
+// `renderNow.overrides.remoteCompose.namedValues` into the player (so
+// `rememberNamedRemoteString("label", "Tap me")` follows overrides) and records the document as an
+// `.rc` data product. Use this form when the document itself must be collected.
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
@@ -89,15 +54,10 @@ fun RemoteButtonWithBorderPreview() {
 }
 
 /**
- * Captures the Remote Material 3 indeterminate progress indicator across one second of its
- * document-driven animation. A fixed duration is required because the animation is intentionally
- * infinite, and [AnimatedPreview.showCurves] is disabled because the moving values live in the
- * Remote Compose document rather than Compose UI's animation inspector.
- *
- * With `:data-remotecompose-connector` on the render classpath, the wrapper path also emits the
- * captured `.rc` document. This variant uses the standard View-backed Remote Compose player;
- * [RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview] renders the identical remote
- * content through the embedded Compose player.
+ * One second of the Remote Material 3 indeterminate progress indicator's document-driven animation.
+ * A fixed duration because it is infinite; `showCurves` off because the moving values live in the
+ * document, not Compose's animation inspector. Uses the View-backed player;
+ * [RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview] uses the embedded Compose player.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
@@ -136,12 +96,9 @@ fun RemoteAnimatedCircularProgressIndicatorEmbeddedPreview() {
 }
 
 /**
- * Companion preview for [RemoteButtonWithNamedLabel]. Annotated with the same upstream
- * `@PreviewWrapper(RemotePreviewWrapper::class)` as [RemoteButtonWithBorderPreview]; the
- * connector's substitution provider decides at render time whether to swap to the override-aware
- * wrapper. Default render shows `"Tap me"`; the panel-side Remote Compose editor (or any caller
- * passing `renderNow.overrides.remoteCompose.namedValues = {"label": ...}`) swaps that for a live
- * label without rebuilding the document.
+ * Companion preview for [RemoteButtonWithNamedLabel]: renders `"Tap me"` by default, and
+ * `renderNow.overrides.remoteCompose.namedValues = {"label": ...}` swaps the label live without
+ * rebuilding the document.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
@@ -151,12 +108,9 @@ fun RemoteButtonWithNamedLabelPreview() {
 }
 
 /**
- * Preview for [RemoteShaderGradient] — a Remote Compose gradient-**shader** fill. Uses the same
- * `@PreviewWrapper(RemotePreviewWrapper::class)` path as the named-label preview so the connector's
- * substitution wires the `shaderColor` named value into the running player: the default render
- * shows the static gradient, and `renderNow.overrides.remoteCompose.namedValues = {"shaderColor":
- * ...}` recolours the shader live. This is the "shader control" surfaced through the existing
- * named-value override mechanism rather than a new control type.
+ * Preview for [RemoteShaderGradient], a gradient-shader fill. Like the named-label preview,
+ * `namedValues = {"shaderColor": ...}` recolours the shader live through the existing override
+ * mechanism.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)

@@ -18,15 +18,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end coverage for `composePreviewBundle`:
- * 1. Bundle output is a valid PNG (file-magic + viewer compatibility).
- * 2. Bundle output is a valid zip (every reader finds the EOCD).
- * 3. Bundle includes `bundle.json`, `previews.json`, `classes/app.jar`, `report.json`.
- * 4. Selection works — packing one preview filters the manifest to that preview only.
- * 5. **Minimization is effective** — bundling one preview from a multi-preview module drops the
- *    other preview's class file from `classes/app.jar`.
- * 6. **Size budget** — a single-preview bundle stays under 500 KB, so per-preview bundles never
- *    grow into the module's full dependency graph (the "gigabytes per preview" regression).
+ * End-to-end coverage for `composePreviewBundle`: the output is a valid PNG and a valid zip; it
+ * contains `bundle.json`, `previews.json`, `classes/app.jar`, `report.json`; selection filters the
+ * manifest; minimization drops an unselected preview's class; and a single-preview bundle stays
+ * under the size budget.
  */
 class BundleFunctionalTest {
 
@@ -34,10 +29,7 @@ class BundleFunctionalTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  /**
-   * Two preview files in different classes (`RedKt`, `BlueKt`) so we can prove minimization
-   * actually drops the un-selected class.
-   */
+  /** Previews in two classes (`RedKt`, `BlueKt`) so minimization can be shown to drop one. */
   private fun createTestProject(): File {
     val projectDir = tempDir.root
 
@@ -186,23 +178,12 @@ class BundleFunctionalTest {
   }
 
   /**
-   * Size budget for a **single-preview** bundle. Per-preview addressing only pays off if fetching
-   * one preview doesn't drag the module's whole world along — so a lone-preview `.png` must stay
-   * small.
+   * Size budget for a single-preview bundle: 500 KB. A coordinate-mode bundle is tens of KB; the
+   * guard fires when a change starts shipping the dependency graph inside every bundle (embedding
+   * Compose jars, or inlining a project jar unminimized), which at N previews means gigabytes.
    *
-   * 500 KB is the ceiling. A coordinate-mode single preview (third-party deps referenced by Maven
-   * coordinate, not embedded) is well under it — tens of KB: a minimized `classes/app.jar`, one
-   * rendered PNG, and the JSON sidecars. The guard bites the moment a change starts shipping the
-   * dependency graph *inside* every bundle: flipping `embedDeps` on so `libs/` carries the Compose
-   * jars, or inlining a project dependency whole without minimizing it (a `:daemon:core`-shaped jar
-   * is ~1.7 MB on its own, of which a preview typically reaches a few dozen classes). Either turns
-   * a ~50 KB bundle into a multi-megabyte one, and at N previews that is the difference between
-   * shipping kilobytes and shipping gigabytes.
-   *
-   * NB: this fixture has no project dependencies, so it exercises the coordinate path. The inlined-
-   * project-jar vector (the one that actually inflates the design-catalog bundles) needs a fixture
-   * with a project dep carrying bulk unreachable bytecode; that is a follow-up, tracked alongside
-   * per-class minimization of inlined project jars.
+   * This fixture has no project dependencies, so it only covers the coordinate path; an
+   * inlined-project-jar fixture is a follow-up.
    */
   @Test
   fun `single-preview bundle stays under the 500 KB budget`() {
@@ -245,9 +226,8 @@ class BundleFunctionalTest {
     assertThat(previewsJson.exists()).isTrue()
     val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
 
-    // Phase 2 — seed a distinct dummy rendered PNG for each preview's primary capture, mimicking a
-    // prior composePreviewRender. This exercises the baking path without needing the published
-    // renderer-desktop artifact (composePreviewRender resolves it from Maven; unavailable here).
+    // Seed a distinct dummy PNG per preview, mimicking a prior render (the published renderer isn't
+    // available here).
     val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
     val seeded = mutableMapOf<String, ByteArray>()
     var tint = 0
@@ -371,18 +351,15 @@ class BundleFunctionalTest {
   @Test
   fun `composePreviewBundle packs a discovered SVG as raw svg IR`() {
     val projectDir = createTestProject()
-    // Drop an SVG under the module resources — discovery turns it into a `kind=SVG` preview, and
-    // the
-    // bundle must carry the raw `.svg` as IR (self-contained, like Lottie) rather than dropping it.
+    // An SVG in module resources becomes a `kind=SVG` preview whose raw `.svg` the bundle must
+    // carry as IR.
     val svg =
       """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24"/></svg>"""
     File(projectDir, "src/main/resources/svg").apply { mkdirs() }
     File(projectDir, "src/main/resources/svg/badge.svg").writeText(svg)
     val svgId = "svg__svg_badge"
 
-    // Discover in its own invocation so `processResources` stages the `.svg` into the processed
-    // resources dir before the resource scan runs (the same dir the bundle later reads its IR
-    // from).
+    // Discover separately so `processResources` stages the `.svg` first.
     GradleRunner.create()
       .withProjectDir(projectDir)
       .withArguments("composePreviewDiscover")
@@ -455,9 +432,7 @@ class BundleFunctionalTest {
         .id
         .also { assertThat(it).isEqualTo("colorcatalog__Brand") }
 
-    // `--build-cache` so a warm cache is exercised too — assert on bundle CONTENT (not task
-    // outcome)
-    // so the assertion holds whether the second pack is SUCCESS or FROM_CACHE.
+    // `--build-cache`, asserting on content so SUCCESS and FROM_CACHE both pass.
     fun pack() {
       GradleRunner.create()
         .withProjectDir(projectDir)
@@ -471,10 +446,8 @@ class BundleFunctionalTest {
     var bundle = File(projectDir, "build/compose-previews/bundle.png")
     assertThat(listEntries(bundle)).doesNotContain("previews/$catalogId.catalog.json")
 
-    // Seed the resolved-token sidecar as the renderer's `CatalogTokenSidecar` would, under the
-    // `data/catalog-tokens/` tree (a sibling of `renders/`, keyed by the sheet id), then re-pack.
-    // Because the tree is a tracked input (`catalogTokenFiles`), the task must NOT be UP-TO-DATE /
-    // restored FROM-CACHE — it re-packs and carries the now-present sidecar.
+    // Seed a catalog-token sidecar as the renderer would, then re-pack: it's a tracked input, so
+    // the task must re-pack rather than stay UP-TO-DATE.
     val catalogJson =
       """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$catalogId",""" +
         """"tokens":[{"label":"Coral","className":"test.TokensKt","member":"Coral",""" +
@@ -494,10 +467,8 @@ class BundleFunctionalTest {
   fun `composePreviewBundle packs the per-theme catalog-token sidecar`() {
     val projectDir = createTestProject()
 
-    // Plant a `@ThemeCatalog` provider so discovery emits a real `PreviewKind.THEME_CATALOG` sheet
-    // (annotation matched by FQN, declared locally so the test needs no external artifact). Guards
-    // the regression where `resolvePreviewCatalogTokens` gated on `CATALOG` only and dropped theme
-    // sidecars — the whole point of #2179's export axis.
+    // A `@ThemeCatalog` provider (annotation declared locally) yields a THEME_CATALOG sheet; guards
+    // theme sidecars being carried, not just CATALOG ones (#2179).
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview").apply { mkdirs() }
     File(annDir, "ThemeCatalog.kt")
       .writeText(
@@ -544,9 +515,7 @@ class BundleFunctionalTest {
         .build()
     }
 
-    // Seed the per-theme resolved-token sidecar as the renderer's
-    // `CatalogTokenSidecar.writeResolved`
-    // would — keyed by the sheet id, carrying the `theme` name — then pack and assert it lands.
+    // Seed the per-theme sidecar as `CatalogTokenSidecar.writeResolved` would, then pack.
     val themeJson =
       """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$themeId",""" +
         """"theme":"Brand Light","tokens":[{"label":"primary","kind":"COLOR",""" +
@@ -567,11 +536,8 @@ class BundleFunctionalTest {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
-    // `--build-cache` so the test asserts the *cache-correctness* property the renderFiles input
-    // exists for, not just up-to-date checks. We assert on bundle CONTENT rather than task outcome:
-    // outcome flips between SUCCESS / FROM_CACHE depending on whether a prior suite run warmed the
-    // cache, but the regression (renders untracked) would leave the second pack UP_TO_DATE and the
-    // bundle render-less — which the content assertions below catch deterministically either way.
+    // `--build-cache`, asserting on content: if renders were untracked the second pack would stay
+    // render-less, which the content check catches regardless of outcome.
     fun pack() {
       GradleRunner.create()
         .withProjectDir(projectDir)
@@ -585,9 +551,7 @@ class BundleFunctionalTest {
     var bundle = File(projectDir, "build/compose-previews/bundle.png")
     assertThat(listEntries(bundle).none { it.startsWith("previews/") }).isTrue()
 
-    // Discover (for the renderOutput path), then seed a render and re-pack. Because the render PNGs
-    // are tracked inputs (renderFiles), the task must NOT be UP-TO-DATE — it re-packs and bakes the
-    // now-present PNG, rather than restoring the stale render-less bundle.
+    // Discover, seed a render, re-pack: tracked renders must invalidate the render-less bundle.
     GradleRunner.create()
       .withProjectDir(projectDir)
       .withArguments("composePreviewDiscover")
@@ -621,14 +585,9 @@ class BundleFunctionalTest {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
-    // Discover so previews.json exists, then inject a dataExtensionReports pointer + drop the
-    // report
-    // sidecar it names — mimicking what a data extension's aggregate step would have produced after
-    // discovery. (A real render isn't available here; this exercises the carriage path the same way
-    // the PNG-baking test seeds fake renders.) The pack runs exclude `composePreviewDiscover`
-    // (`-x`): discover owns previews.json, so without the exclude Gradle would treat our hand-edit
-    // as
-    // a stale output and re-run discover, reverting the injected pointer to the empty default.
+    // Discover, then inject a `dataExtensionReports` pointer and its report, mimicking an
+    // extension's aggregate step. Pack runs exclude `composePreviewDiscover`, which would otherwise
+    // regenerate `previews.json` and drop the pointer.
     GradleRunner.create()
       .withProjectDir(projectDir)
       .withArguments("composePreviewDiscover")
@@ -682,9 +641,7 @@ class BundleFunctionalTest {
 
     val bundle = File(previewOutputDir, "bundle.png")
     assertThat(listEntries(bundle)).contains("extensions/a11y.json")
-    // The carried report is sliced to the cover (red) preview: red's entry survives, blue's is
-    // gone,
-    // and the top-level `module` field is preserved.
+    // The carried report is sliced to the cover (red) preview, keeping top-level fields.
     val carriedReport =
       json
         .parseToJsonElement(readZipEntry(bundle, "extensions/a11y.json")!!.toString(Charsets.UTF_8))
@@ -707,9 +664,7 @@ class BundleFunctionalTest {
     assertThat(carried.first().jsonObject["path"]!!.jsonPrimitive.content)
       .isEqualTo("extensions/a11y.json")
 
-    // The bundled previews.json's dataExtensionReports is rewritten to the in-bundle path, so both
-    // pointers agree and resolve to a real entry — no dangling reference to the producer's
-    // module-relative `accessibility.json`.
+    // The bundled pointer is rewritten to the in-bundle path.
     val bundledPreviews =
       json.decodeFromString(
         PreviewManifest.serializer(),
@@ -723,9 +678,8 @@ class BundleFunctionalTest {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
-    // Discover writes previews.json with an EMPTY dataExtensionReports map (the standalone-plugin
-    // behaviour). The standard a11y flow drops build/compose-previews/accessibility.json without
-    // stamping a manifest pointer — so the pack must find it via the conventional-path fallback.
+    // Discover leaves `dataExtensionReports` empty; the pack must find `accessibility.json` via the
+    // conventional fallback.
     GradleRunner.create()
       .withProjectDir(projectDir)
       .withArguments("composePreviewDiscover")
@@ -802,15 +756,9 @@ class BundleFunctionalTest {
 
   @Test
   fun `module runtime resources are packed into the app jar for a live re-render`() {
-    // A bundle must carry the module's processed resources so the daemon can *re-render* a preview
-    // that loads a classpath resource at runtime (e.g. a theme reading `/fonts/*.ttf` in a static
-    // initializer). Regression guard for the config-cache trap: on a CLEAN configuration-cached
-    // build (this test's temp project — same shape) the single processed-resources dir input was
-    // resolved by a config-time `isDirectory` probe that snapshots null before `processResources`
-    // runs, dropping every resource. The baked snapshot still rendered, but launching a daemon from
-    // the bundle then failed at composition (ExceptionInInitializerError: resource missing). The
-    // fix
-    // ALSO packs resources from an execution-time file collection, so they always land in the jar.
+    // Bundles must carry processed resources so a daemon can re-render previews that load classpath
+    // resources. Guards the config-cache trap where the configuration-time probe snapshot was null
+    // on a clean build; the execution-time collection fixes it.
     val projectDir = createTestProject()
     File(projectDir, "src/main/resources/data").apply { mkdirs() }
     File(projectDir, "src/main/resources/data/marker.txt").writeText("live-resource")
@@ -855,9 +803,7 @@ class BundleFunctionalTest {
     // Deps: at least one Maven dep contributed reachable classes (compose-runtime/ui/foundation).
     val kept = report.dependencies.count { it.kept }
     assertThat(kept).isGreaterThan(0)
-    // And, crucially for the "small and shareable" goal: at least one dep was dropped — not every
-    // transitive dep of compose-desktop is reachable from a single coloured box. If this fires,
-    // closure is going way too wide.
+    // At least one dependency was dropped; otherwise the closure is far too wide.
     val dropped = report.dependencies.count { !it.kept }
     assertThat(dropped).isGreaterThan(0)
   }
@@ -908,12 +854,9 @@ class BundleFunctionalTest {
 
   @Test
   fun `bundle manifest records the extra repositories its coordinates need`() {
-    // A coordinate is only re-resolvable where its repository is known, and until v9 a bundle
-    // carried no way to say. `remote-m3`'s Remote Compose runtime resolves from an androidx.dev
-    // snapshot build, so every player looked for it on Central/Google, found nothing, and rendered
-    // on an incomplete classpath (#4259 / #4265). Scoped by `content { includeGroup }` to a group
-    // nothing here depends on, so the repository is *declared* (and therefore recorded) without
-    // ever being consulted during resolution.
+    // Repositories are recorded (v9) so players can re-resolve coordinates from non-default repos
+    // (#4259 / #4265). `content { includeGroup }` targets an unused group so the repo is declared
+    // but never consulted.
     val projectDir = createTestProject()
     val settings = File(projectDir, "settings.gradle.kts")
     settings.appendText(
@@ -970,9 +913,7 @@ class BundleFunctionalTest {
       json
         .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
         .jsonObject
-    // Assert against the current schema constant rather than a hardcoded number so a future bump
-    // doesn't make this stale (it did when v3 → v4 landed sha256). The embedded carriage + manifest
-    // fields below are the behaviour this test actually pins.
+    // Compare against the schema constant so version bumps don't stale this.
     assertThat(manifest["schemaVersion"]!!.jsonPrimitive.int).isEqualTo(BUNDLE_SCHEMA_VERSION)
     assertThat(manifest["resolution"]!!.jsonPrimitive.content).isEqualTo("embedded")
     assertThat(manifest["producer"]!!.jsonPrimitive.content).isEqualTo("gradle")

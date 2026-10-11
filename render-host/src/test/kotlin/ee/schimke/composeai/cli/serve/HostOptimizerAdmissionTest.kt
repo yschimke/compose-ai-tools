@@ -613,13 +613,8 @@ class HostOptimizerAdmissionTest {
   }
 
   /**
-   * Load average per CPU is a queue depth, not a percentage.
-   *
-   * Both load thresholds were parsed as fractions and silently discarded every value over 1.0 —
-   * which is every value that matters on a host rendering flat out. Measured on preview.coo.ee
-   * while the optimizer worked: 1.03, 1.12 and 1.74 per CPU. The stop side therefore could not be
-   * lifted off its 0.85 default, so the gate tripped on the optimizer's own load and the operator's
-   * override vanished without a word.
+   * Load average per CPU is a queue depth, not a percentage: a busy host sits above 1.0, so parsing
+   * it as a fraction silently discarded legitimate overrides.
    */
   @Test
   fun `a load threshold above one is a setting, not a typo`() {
@@ -658,8 +653,8 @@ class HostOptimizerAdmissionTest {
   }
 
   /**
-   * The limbs that ARE fractions must stay fractions — the fix above must not widen CPU or memory,
-   * where a value over 1.0 really is a percentage someone forgot to divide.
+   * The fraction limbs (CPU, memory) must stay fractions; a value over 1.0 there really is a
+   * mistake.
    */
   @Test
   fun `a cpu or memory threshold above one is still refused`() {
@@ -793,9 +788,8 @@ class HostOptimizerAdmissionTest {
   }
 
   /**
-   * `/proc/meminfo` inside a container reports the HOST's memory. The deployed profiles cap preview
-   * at 3 GiB and 6 GiB on far larger hosts, so a replica already near its own OOM limit read as
-   * having plenty of headroom and the gate kept admitting optimizer work.
+   * `/proc/meminfo` in a container reports the host's memory, so a replica near its own cgroup
+   * limit looked roomy and kept admitting work.
    */
   @Test
   fun `memory headroom is the smaller of the host and the cgroup`() {

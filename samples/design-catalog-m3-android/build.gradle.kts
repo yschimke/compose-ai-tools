@@ -1,16 +1,7 @@
-// `:samples:design-catalog-m3-android` — the **Android-only supplement** to the
-// (now Compose Multiplatform) `:samples:design-catalog-m3` catalog.
-//
-// The main catalog is desktop CMP so the public preview server can live-render it,
-// but a few M3 features only exist in the **androidx** `material3` line and have no
-// CMP equivalent yet — notably the Material 3 **inset focus ring**
-// (`RippleConfiguration.Focus.InsetRing`, material3 1.5.0-alpha). This tiny Android
-// module holds just those previews, rendered via Robolectric against the alpha
-// artifact; the `design-artifacts` generator folds their renders into the
-// `compose-m3` catalog (by function name) so the affected variants — e.g. the
-// keyboard-focus `FilledButtonFocused` — stay **selectable, with the real ring**,
-// even though the sheet itself is CMP. Keep the preview **function names** here in
-// lockstep with `catalog.spec.json` variants so the fold matches.
+// `:samples:design-catalog-m3-android` — the Android-only supplement to the CMP
+// `:samples:design-catalog-m3` catalog, for androidx `material3` features CMP lacks (the inset
+// focus ring, 1.5.0-alpha). Rendered via Robolectric and folded into the `compose-m3` catalog by
+// function name, so keep names in lockstep with `catalog.spec.json` variants.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")

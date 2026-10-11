@@ -13,12 +13,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * CLI entry point over [SubprocessRenderSessions.open] for non-Gradle build systems. A Bazel
- * `genrule` or an Amper task can shell out here to drive a render against an existing
- * `daemon-launch.json` without buying into a Kotlin/JVM client.
+ * CLI entry point over [SubprocessRenderSessions.open] for non-Gradle build systems (Bazel, Amper),
+ * driving a render against an existing `daemon-launch.json`.
  *
- * The published `ee.schimke.composeai:render-cli` JAR is a **slim library JAR** (no shaded
- * uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
+ * The published JAR is a slim library JAR, so run it on the caller-resolved runtime classpath
+ * (`java -jar` fails; see "CLI invocation" in `docs/NON_GRADLE_INTEGRATION.md`):
  * ```
  * java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli \
  *   --descriptor <daemon-launch.json> \
@@ -30,17 +29,8 @@ import kotlinx.serialization.json.jsonPrimitive
  *   [--workspace-name <name>]
  * ```
  *
- * where `<resolved-classpath>` is the runtime closure of `ee.schimke.composeai:render-cli` as
- * resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) and joined
- * with the platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar` against the bare
- * published JAR will fail with `NoClassDefFoundError` — see the "CLI invocation" section in
- * `docs/NON_GRADLE_INTEGRATION.md`.
- *
- * `--previews` accepts a comma-separated list and can be repeated. The CLI waits for one terminal
- * notification per requested preview id — `renderFinished` (success) or `renderFailed` (the
- * composition threw) — prints the resulting PNG path to stdout (`<id>\t<pngPath>`), and exits 0
- * when every render succeeded. A `renderFailed` ends the wait immediately and reports the daemon's
- * error message on stderr rather than sitting out `--timeout-seconds`.
+ * `--previews` is comma-separated and repeatable. Prints `<id>\t<pngPath>` per `renderFinished`; a
+ * `renderFailed` ends the wait immediately with the daemon's error on stderr.
  *
  * Exit codes: `0` = all renders succeeded, `1` = at least one render rejected, failed, or timed
  * out, `2` = argument parsing failure.
@@ -82,10 +72,8 @@ public object RenderCli {
             if (params == null) return@onNotification
             val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
             if (id !in pending) return@onNotification
-            // The daemon owes exactly one terminal event per queued render: `renderFinished` with a
-            // pngPath, or `renderFailed` when the composition throws. Releasing the wait on the
-            // failure too turns a broken preview into an immediate, explanatory exit 1 instead of
-            // sitting out `--timeout-seconds` for a render the daemon already reported dead.
+            // One terminal event per render: `renderFinished` or `renderFailed`. Releasing on
+            // failure gives an immediate exit 1 instead of waiting out the timeout.
             when (method) {
               "renderFinished" -> {
                 val pngPath =
@@ -192,10 +180,7 @@ public object RenderCli {
 
     val descriptorFile = descriptor ?: throw ArgError("--descriptor is required")
     val root = workspaceRoot ?: throw ArgError("--workspace-root is required")
-    // Default workspace name to the root dir's basename — matches the convention
-    // `SubprocessRenderSessions`
-    // uses when callers leave the field blank. Override with `--workspace-name` only when the
-    // build system has a stable identifier worth surfacing in daemon logs.
+    // Defaults to the root dir's basename, as `SubprocessRenderSessions` does.
     val name = workspaceName ?: root.name
     if (previewIds.isEmpty()) throw ArgError("--previews requires at least one id")
 

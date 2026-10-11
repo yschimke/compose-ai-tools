@@ -12,14 +12,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Collects one Remote Compose operation into a [JsonObject] by being the [MapSerializer] AndroidX
- * hands every operation. One instance per object (nested values get their own); reuse would merge
- * fields.
+ * Collects one Remote Compose operation into a [JsonObject] as the [MapSerializer] AndroidX hands
+ * it. One instance per object; reuse would merge fields.
  *
- * JSON has no NaN, and Remote Compose encodes ids as NaN payloads (`Utils.asNan(id)`), so
- * non-finite floats are emitted as strings: an id as `"@<id>"` (the authoring dialect's reference
- * sigil), and `Infinity` / `-Infinity` / a payload-free `NaN` by name. The id's type is left to the
- * dump's `NamedVariable` operations.
+ * Ids are NaN payloads (`Utils.asNan(id)`) and JSON has no NaN, so non-finite floats become
+ * strings: an id as `"@<id>"` (the authoring reference sigil), else `Infinity` / `-Infinity` /
+ * `NaN`.
  */
 internal class JsonMapSerializer : MapSerializer {
 

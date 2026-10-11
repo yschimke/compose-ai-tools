@@ -14,32 +14,14 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Stage-2 checkpoint #3 — bytecode validation.
+ * Bytecode checks the daemon's hot-swap needs before relying on BTA output:
  *
- * Two cheap-but-decisive checks on what BTA emits, both required before the daemon's child
- * classloader hot-swap path can rely on BTA output in place of Gradle's `compileKotlin` artefacts:
+ * 1. Determinism: same inputs → byte-identical `.class`, or every save would churn Compose state.
+ * 2. Structural fingerprint: the Compose signature transformation
+ *    (`(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;`) and a
+ *    `kotlin.Metadata` annotation readable by Kotlin reflection / ClassGraph.
  *
- * 1. **Determinism.** Same source + same inputs → byte-identical `.class`. If BTA's emission
- *    depends on iteration order in a `HashMap`, or stamps the output with a timestamp, the daemon's
- *    child-loader rotation would see the class "change" on every save even when the
- *    semantically-meaningful behaviour didn't, churning Compose state for no reason.
- *
- * 2. **Structural fingerprint.** The bytecode of an `@Composable` source must carry:
- *     - the Compose plugin's signature transformation
- *       (`(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;`), and
- *     - a `kotlin.Metadata` annotation — same shape Gradle's output uses, decodable by anything
- *       that reads Kotlin reflection (e.g. ClassGraph + DiscoverPreviewsTask).
- *
- * What this checkpoint deliberately does NOT cover:
- *
- * - Byte-by-byte parity with Gradle's `compileKotlin`. That requires a parallel Gradle invocation
- *   and a structural diff (constant-pool reordering would otherwise drown out real divergences).
- *   Tracked as the next-checkpoint item.
- * - Mangled function name parity (Compose's signature hashes). Same blocker as above.
- *
- * The structural fingerprint here is enough to answer "would the daemon's `Class.forName(...)`
- * + reflective Composer-parameter invocation succeed against BTA's output?" — which is the decisive
- *   question for the hot-swap path.
+ * Byte parity with Gradle is covered by [BtaCompilerGradleParityTest].
  */
 class BtaCompilerBytecodeTest {
 
@@ -81,11 +63,8 @@ class BtaCompilerBytecodeTest {
     val greetingClass = produced.first { it.fileName.toString() == "GreetingKt.class" }
     val bytes = Files.readAllBytes(greetingClass)
 
-    // (a) Compose's injected signature. The plugin rewrites
-    //     `fun Greeting(name: String): String`
-    // to add the `Composer $composer, int $changed` trailing parameters, with the descriptor
-    // `(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;`. That exact
-    // sequence lands in the constant pool's UTF-8 entries — substring search is enough.
+    // (a) The Compose plugin adds `Composer $composer, int $changed` to `fun Greeting(name:
+    // String): String`; the resulting descriptor appears in the constant pool's UTF-8 entries.
     val composeDescriptor =
       "(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;"
         .toByteArray(Charsets.US_ASCII)

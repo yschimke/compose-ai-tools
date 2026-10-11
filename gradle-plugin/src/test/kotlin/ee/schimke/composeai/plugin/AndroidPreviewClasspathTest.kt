@@ -10,12 +10,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the issue #1243 guards on the renderer test classpath:
- * * `buildBootClasspathFallback` recovers `android.jar` from `local.properties` / `ANDROID_HOME`
- *   when AGP's `sdkComponents.bootClasspath` is empty.
- * * `validateApplicationOnClasspath` surfaces a precise error when no entry on the resolved
- *   classpath defines `android/app/Application.class`, replacing the opaque Robolectric
- *   `Config.<clinit>` `NoClassDefFoundError` the user otherwise sees.
+ * Pins the #1243 guards: `buildBootClasspathFallback` recovers `android.jar` from
+ * `local.properties` / `ANDROID_HOME` when AGP's boot classpath is empty, and
+ * `validateApplicationOnClasspath` explains a missing `android/app/Application.class` instead of
+ * Robolectric's opaque error.
  */
 class AndroidPreviewClasspathTest {
 
@@ -94,14 +92,11 @@ class AndroidPreviewClasspathTest {
     val rootDir = tmp.newFolder("project-no-sdk")
     val project = ProjectBuilder.builder().withProjectDir(rootDir).build()
 
-    // No local.properties, and we can't set env vars from a unit test — relying on the test
-    // process's ANDROID_HOME not pointing at a valid platforms tree. This is true for the
-    // gradle-plugin test JVM in this repo (uses JDK toolchain, no Android SDK env).
+    // No `local.properties`, and env vars can't be set here; relies on this test JVM having no
+    // valid ANDROID_HOME.
     val resolved = AndroidPreviewClasspath.buildBootClasspathFallback(project).get()
 
-    // Either truly empty, or — on hosts where ANDROID_HOME points at a real SDK — a single jar.
-    // Asserting the type/shape (not the exact value) keeps the test stable on developer machines
-    // and CI alike. The exact-local-properties path is asserted by the previous test.
+    // Empty, or one jar where ANDROID_HOME is real; assert shape, not value.
     resolved.forEach {
       assertThat(it.name).isEqualTo("android.jar")
       assertThat(it.isFile).isTrue()
@@ -145,21 +140,16 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildJvmArgs opens jdk_internal_access for FileDescriptorInterceptor`() {
-    // Regression for issue #1328: Robolectric 4.16's `FileDescriptorInterceptor.setInt`
-    // reflects into `jdk.internal.access.SharedSecrets`, which the JDK refuses to expose to
-    // an unnamed module without `--add-opens=java.base/jdk.internal.access=ALL-UNNAMED`. On
-    // SDK 36 sandboxes `ApplicationSharedMemory.create()` runs during Robolectric setup and
-    // hits that interceptor, surfacing as `Failed to interact with raw FileDescriptor
-    // internals; perhaps JRE has changed?`.
+    // #1328: Robolectric's `FileDescriptorInterceptor` needs
+    // `--add-opens=java.base/jdk.internal.access=ALL-UNNAMED` on SDK 36 sandboxes.
     assertThat(AndroidPreviewClasspath.buildJvmArgs())
       .contains("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
   }
 
   @Test
   fun `buildSystemProperties forwards the svg-embed-fonts flag into the daemon jvm`() {
-    // Regression: the daemon JVM only sees the system properties this map forwards, so the
-    // `composeai.svg.embedFonts` value must land here or the Android export never honours it
-    // (the value set on the Gradle invocation wouldn't reach the daemon).
+    // The daemon only sees properties this map forwards, so `composeai.svg.embedFonts` must be
+    // here to reach it.
     val props =
       AndroidPreviewClasspath.buildSystemProperties(
         manifestPath = "m.json",
@@ -184,10 +174,7 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the svg-background opt-in into the daemon jvm`() {
-    // Same regression shape as the embed-fonts flag above: `composeai.svg.background` is read in
-    // the spawned daemon by `ComposeFigmaSvgDataProducer`, so an opt-in set on the Gradle
-    // invocation only takes effect if this map carries it — otherwise the daemon sees null and
-    // keeps exporting background-free while the user believes they turned the fill back on.
+    // `composeai.svg.background` must be forwarded, or the opt-in never reaches the daemon.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -213,10 +200,7 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the font fail-on-fallback flag into the render jvm`() {
-    // The render / daemon JVM reads `composeai.fonts.failOnFallback`; if this map doesn't forward
-    // it, `-Dcomposeai.fonts.failOnFallback=false` set on the Gradle invocation never reaches it
-    // and
-    // the opt-out (warn instead of fail) is unreachable — the P2 this regression-guards.
+    // `composeai.fonts.failOnFallback` must be forwarded, or the opt-out is unreachable.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -241,9 +225,7 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the preview host theme into the render jvm`() {
-    // `PreviewHostTheme` reads `composeai.render.hostTheme` in the forked render / daemon JVM. If
-    // this map doesn't carry it, a library module's `composePreview.hostTheme` never reaches the
-    // JVM that applies it and its `AndroidView` previews keep failing to render (issue #2957).
+    // `composeai.render.hostTheme` must reach the render JVM (#2957).
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -269,10 +251,7 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the pinned preview clock into the render jvm`() {
-    // `PreviewClock` reads `composeai.render.fixedTime` in the forked render / daemon JVM. If this
-    // map doesn't carry it, `composePreview.fixedTime` (and `-PcomposePreview.fixedTime`) never
-    // reach the JVM that pins the clock, and a preview showing the time keeps diffing every run
-    // (issue #3239).
+    // `composeai.render.fixedTime` must reach the render JVM (#3239).
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -298,11 +277,8 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the rewritten SlotTable opt-in into the render jvm`() {
-    // `LinkBufferComposer` reads `composeai.render.linkBufferComposer` inside the render /
-    // Robolectric sandbox and has to set the runtime flag before the first composition. If this map
-    // doesn't carry it, `-PcomposePreview.linkBufferComposer=true` renders a full catalog on the
-    // OLD composer while reporting that it tested the new one — the one failure mode a testing
-    // knob must not have.
+    // `composeai.render.linkBufferComposer` must be forwarded, or a catalog renders on the old
+    // composer while claiming to test the new one.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -313,9 +289,7 @@ class AndroidPreviewClasspathTest {
         )
       )
       .containsEntry("composeai.render.linkBufferComposer", "true")
-    // `auto` has to survive the trip verbatim rather than being coerced to a boolean on the way:
-    // it is the repo's own default, and the whole difference between it and `true` is what the
-    // render JVM does when the runtime has no such flag.
+    // `auto` must arrive verbatim, not coerced to a boolean.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -340,9 +314,7 @@ class AndroidPreviewClasspathTest {
 
   @Test
   fun `buildSystemProperties forwards the Remote Compose player into the render jvm`() {
-    // `RemoteComposePlayerSelection` reads `composeai.render.rcPlayer` inside the render /
-    // Robolectric sandbox, so a selection that doesn't reach this map is a selection that does
-    // nothing.
+    // `composeai.render.rcPlayer` is read inside the sandbox.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",
@@ -353,10 +325,7 @@ class AndroidPreviewClasspathTest {
         )
       )
       .containsEntry("composeai.render.rcPlayer", "view")
-    // Unlike the opt-ins above it, this one defaults to ON: the AndroidX embedded player is what
-    // stopped every Remote Compose preview reporting an unlabelled `RemoteComposePlayer` (issue
-    // #5259), so nothing asked for means `androidx-embedded` — never the retired `cmp`, which the
-    // daemon no longer accepts.
+    // Defaults to `androidx-embedded` (#5259), never the retired `cmp`.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(
           manifestPath = "m.json",

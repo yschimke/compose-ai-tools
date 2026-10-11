@@ -1,25 +1,10 @@
-// The preview-bundle *format* — reading, writing, signing, and unpacking a `.previewbundle` zip —
-// split out of `:cli` for issue #3824.
+// The preview-bundle format: reading, writing, signing and unpacking a `.previewbundle` —
+// everything a bundle reader needs, without the CLI's argument parsing and orchestration (those
+// `bundle` subcommands stay in `:cli`).
 //
-// The CLI's `bundle` subcommands (`pack`, `embed`, `render`, `repack`, `merge`, `inspect`,
-// `extract`) stay in `:cli`: they are argument parsing and process orchestration. What lives here
-// is everything a *reader* of a bundle needs and nothing a command-line does — the well-known
-// entry names, the manifest DTO, the sidecar injectors, the deterministic zip helpers, the
-// detached signature scheme, the classpath hydration, and the Android resource/launch support.
-//
-// Package note: types keep the `ee.schimke.composeai.cli` package for source-compat — they were in
-// `:cli` before the extraction, and every call site (including `:cli`'s own `serve`) already
-// imports them from there. Same pattern `:gradle-preview-driver` used for its step-B carve-out.
-//
-// Boundary: this module depends only on `:common-io` and `:preview-data-api` (plus Okio,
-// kotlinx-serialization, and the JDK). It must not grow a dependency on `:cli`, the daemon
-// protocol, or the data products — a bundle reader that needs the CLI to make sense is not a
-// format module.
-//
-// Published, and named in the preview-server contract probe: `serve` reads bundles, so an
-// extracted server has to be able to depend on this by coordinate rather than by reaching into
-// `:cli`. That is the whole point of the split, and it is why the package is
-// `ee.schimke.composeai.bundle` rather than the `…cli` package these files carried on the way out.
+// Depends only on `:common-io` and `:preview-data-api` (plus Okio, kotlinx-serialization, the JDK);
+// it must not depend on `:cli`, the daemon protocol or data products. Published, so the preview
+// server can depend on it by coordinate.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
@@ -39,11 +24,9 @@ dependencies {
   // on the consumer's compile classpath exactly as they were before the split.
   api(libs.composeai.preview.data.api)
 
-  // The Android launch facts — the `--add-opens` set, the `robolectric.*` flags, the
-  // `robolectric.properties` bodies and their packages, the SDK clamp and SDK discovery — are the
-  // daemon's, not ours. `AndroidBundleLaunch` is the bundle-shaped view of them (#5371 was the cost
-  // of keeping our own copy). Nothing from this module's public surface leaks a daemon type, so
-  // `implementation`.
+  // The Android launch facts (`--add-opens`, `robolectric.*` flags and properties, SDK range) are
+  // the daemon's; `AndroidBundleLaunch` is their bundle-shaped view. No daemon type leaks into this
+  // module's API.
   implementation(libs.composeai.daemon.client)
 
   implementation(libs.kotlinx.serialization.json)

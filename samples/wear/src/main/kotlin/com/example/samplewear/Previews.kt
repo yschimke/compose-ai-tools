@@ -74,11 +74,9 @@ private val sampleItems =
 fun WearApp() {
   MaterialTheme {
     AppScaffold(
-      // Real production app — let TimeText use the system clock. Previews that want to make the
-      // deterministic time visible in their own source supply an `AppScaffold` with a
-      // `FixedPreviewTimeSource` (see [ActivityListPreview]); previews that don't, including the
-      // activity hero and [WearAppSystemClockPreview], still render a fixed `10:10` because the
-      // renderer pins its wall clock (issue #3239).
+      // The production app uses the system clock; previews still render a fixed `10:10` because the
+      // renderer pins its wall clock, or supply a `FixedPreviewTimeSource` (see
+      // [ActivityListPreview]).
       timeText = { TimeText() }
     ) {
       ActivityListScreen()
@@ -93,10 +91,8 @@ fun ActivityListScreen() {
 
   ScreenScaffold(
     scrollState = listState,
-    // Suppress the transient scroll indicator when the renderer flips
-    // `LocalScrollCaptureInProgress = true` (e.g. for `@ScrollingPreview`).
-    // In a running app the local is always `false`, so the default
-    // indicator is drawn unchanged.
+    // Hide the transient scroll indicator while the renderer captures a scroll
+    // (`LocalScrollCaptureInProgress`); always `false` in a running app.
     scrollIndicator = {
       if (!LocalScrollCaptureInProgress.current) {
         ScrollIndicator(listState)
@@ -219,9 +215,8 @@ fun CircularProgressIndicatorPreview() {
 }
 
 /**
- * Deliberately-broken Wear preview — a tiny unlabelled clickable Box tucked into the centre of the
- * round face. Exists so the a11y pipeline produces a Wear-sized annotated PNG; exercises the
- * stacked legend layout (screenshot on top, legend below) used for square/round displays.
+ * Deliberately broken: a tiny unlabelled clickable Box, so the a11y pipeline produces a Wear-sized
+ * annotated PNG with the stacked legend layout.
  */
 @WearPreviewSmallRound
 @Composable
@@ -232,14 +227,10 @@ fun BadWearButtonPreview() {
 }
 
 /**
- * Screen-level long-scroll fixture: same `ScreenScaffold` + `TransformingLazyColumn` + `EdgeButton`
- * layout as [ActivityListScreen], but with 15 items so the content overflows the viewport. The
- * `scrollIndicator` slot reads [LocalScrollCaptureInProgress] so the `@ScrollingPreview(modes =
- * [LONG])` capture doesn't pick up a fading indicator at random opacities. The screen does NOT
- * compose its own `MaterialTheme` / `AppScaffold` — its caller (the preview, or production) does,
- * which keeps the preview free to swap in a [FixedPreviewTimeSource]. `ScreenScaffold` reveals the
- * `EdgeButton` only when the list is pinned to the bottom, so "Start workout" appears once, at the
- * final slice.
+ * Long-scroll fixture: [ActivityListScreen]'s layout with 15 items so content overflows. The scroll
+ * indicator reads [LocalScrollCaptureInProgress] so LONG captures don't catch it mid-fade. The
+ * caller supplies `MaterialTheme` / `AppScaffold` (so previews can use a [FixedPreviewTimeSource]);
+ * the `EdgeButton` appears only in the final slice.
  */
 @Composable
 fun LongActivityListScreen() {
@@ -332,13 +323,9 @@ fun ActivityListGifPreview() {
 }
 
 /**
- * Regression fixture for the Confetti `HomeListViewLongPreview` shape: LONG and GIF from ONE
- * annotation, no `reduceMotion` configuration. Each medium gets its one sensible setting
- * automatically — the LONG stitch always flattens `TransformingLazyColumn` motion (mid-scale items
- * baked into slices produce ghost/duplicate card bands the stitcher cannot collapse), while the GIF
- * always keeps the morph animation its frames can genuinely express. Confetti used to force
- * `reduceMotion = false` to keep its GIF lively and shipped ghost-banded LONG stitches for months.
- * Guarded by `LongScrollPreviewPixelTest`.
+ * Regression fixture for LONG and GIF from one annotation with no `reduceMotion` setting: the LONG
+ * stitch always flattens `TransformingLazyColumn` motion (avoiding ghost card bands), while the GIF
+ * keeps it. Guarded by `LongScrollPreviewPixelTest`.
  */
 @WearPreviewLargeRound
 @ScrollingPreview(modes = [ScrollMode.LONG, ScrollMode.GIF])
@@ -351,17 +338,10 @@ fun ActivityListMotionLongPreview() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Regression fixture for issue #2299. A settings list of plain `Button`s (icon
-// + label, `surfaceContainer` colours, `minimumVerticalContentPadding`) inside
-// a `ScreenScaffold` with NO `edgeButton` slot — the last item ("About") is an
-// ordinary list button. This is the exact shape from the report, kept so the
-// long-scroll stitch is exercised on a tail that is a dark list item rather
-// than a bright Wear `EdgeButton`: the stitcher's EdgeButton content-anchor
-// path declines (brightness / purple-cast gate), so the generic final-frame
-// overlay path composes the tail — where a stray slice fragment used to be
-// left as a ghost streak below the last item.
-// ---------------------------------------------------------------------------
+// Regression fixture: a settings list of plain `Button`s in a `ScreenScaffold` with no
+// `edgeButton`, so the long-scroll stitch's tail is a dark list item. The stitcher's EdgeButton
+// anchor path declines, exercising the generic final-frame overlay, which once left a ghost streak
+// below the last item.
 
 private data class SettingsItem(val id: Int, val title: String, val icon: ImageVector? = null)
 

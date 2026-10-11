@@ -36,12 +36,9 @@ import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
 /**
- * A realistic scrolling-GIF demo: a 24-row settings-style list with a leading colour-chip avatar +
- * two-line text, and a right-aligned scroll position indicator that tracks the visible window.
- *
- * This is the "what you'd actually screenshot in docs" fixture, sized close to a small phone
- * viewport (220×440dp ≈ 580×1155px at 2.625×). The red-to-blue pixel-test fixture in
- * [RedToBlueScrollGifPreview] stays minimal; this one is the visual showcase for PRs / READMEs.
+ * A realistic scrolling-GIF showcase: a 24-row settings list with colour-chip avatars and a scroll
+ * position indicator, at a small-phone 220×440dp. [RedToBlueScrollGifPreview] stays the minimal
+ * pixel-test fixture.
  */
 @Preview(name = "SettingsListScrollGif", showBackground = true, widthDp = 220, heightDp = 440)
 @ScrollingPreview(modes = [ScrollMode.GIF])
@@ -89,14 +86,8 @@ private fun SettingsRow(row: SettingsRowData) {
 }
 
 /**
- * A thin scrollbar-style indicator that shows the visible window as a rounded thumb on a faint
- * track. Derives the thumb's top / height fractions directly from [LazyListState.layoutInfo] —
- * wrapping in [derivedStateOf] so recomposition only triggers when the thumb actually moves, not on
- * every scroll frame.
- *
- * Rolled by hand rather than pulled from a library because (a) Compose Material3 doesn't ship a
- * `Scrollbar` today and (b) a few composables' worth of code avoids pulling `accompanist` /
- * `scrollbar` deps into the sample module.
+ * A hand-rolled scrollbar thumb (Material3 has no `Scrollbar`) derived from
+ * [LazyListState.layoutInfo] inside [derivedStateOf], so it only recomposes when the thumb moves.
  */
 @Composable
 private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = Modifier) {
@@ -122,10 +113,7 @@ private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = M
     Box(
       Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(2.dp))
     )
-    // Thumb — positioned via BoxWithConstraints so the dp math uses
-    // the parent's actual measured height. `offset(y = ...)` and
-    // `height(...)` both accept Dp, so we do the Dp arithmetic
-    // inside the constraints scope.
+    // BoxWithConstraints so the thumb's Dp math uses the parent's measured height.
     BoxWithConstraints(Modifier.fillMaxSize()) {
       val h = maxHeight
       Box(
@@ -141,13 +129,8 @@ private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = M
 private data class SettingsRowData(val title: String, val subtitle: String, val tint: Color)
 
 /**
- * 24 rows, enough that a 220×440dp viewport shows ~7 at a time and the scroll spans ~3 viewports —
- * comfortably inside `driveScrollByViewport`'s default 30-iteration budget even at GIF's
- * 20%-per-step cadence, so the last frame lands at the real end of the list rather than getting
- * clipped.
- *
- * Tint palette walks through the hue wheel so consecutive rows are visually distinct and the scroll
- * animation reads as actual motion (if every row looked the same, the scroll would feel static).
+ * 24 rows: ~3 viewports of scroll, inside `driveScrollByViewport`'s default iteration budget, so
+ * the last frame reaches the real end. Hues vary so the motion reads as motion.
  */
 private val SETTINGS_ROWS: List<SettingsRowData> =
   listOf(

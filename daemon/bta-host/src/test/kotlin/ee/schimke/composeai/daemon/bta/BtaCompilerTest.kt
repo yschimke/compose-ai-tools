@@ -16,20 +16,12 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Stage-2 spike: decisive integration test for BTA + Compose compiler plugin.
+ * Integration test for BTA + the Compose compiler plugin. The build passes the resolved
+ * `testRuntimeClasspath` as a system property; the BTA impl and Compose plugin JARs go into
+ * [BtaCompiler]'s isolated classloader and the rest onto the compile classpath.
  *
- * The Gradle build (`daemon/bta-host/build.gradle.kts`) publishes the resolved
- * `testRuntimeClasspath` into a system property; from that classpath we pluck the BTA impl JAR +
- * the Compose compiler plugin JAR for [BtaCompiler]'s isolated classloader, and everything else
- * (Compose runtime + kotlin-stdlib) for the source's compile classpath. No `./gradlew` is invoked
- * at test time.
- *
- * Assertions, in priority order:
- * 1. BTA's compile returns success.
- * 2. The expected `.class` file lands on disk.
- * 3. The bytecode contains a method whose descriptor references `androidx/compose/runtime/Composer`
- *    — i.e. the Compose plugin's signature transformation actually ran inside BTA. (3) is the
- *    decisive bit; (1) and (2) just guard against false positives.
+ * Asserts the compile succeeds, the `.class` lands, and (the decisive part) its bytecode references
+ * `androidx/compose/runtime/Composer`, proving the Compose transformation ran inside BTA.
  */
 class BtaCompilerTest {
 
@@ -65,19 +57,10 @@ class BtaCompilerTest {
   }
 
   /**
-   * Stage-2 checkpoint #1 — repeat-compile soak + classloader-leak probe.
-   *
-   * Reuses a single [BtaCompiler] across [ITERATIONS] compiles, asserts every one returns success,
-   * and prints the per-iteration wall-clock so the warm-up curve is visible. If BTA's impl carried
-   * a per-call leak — e.g. a frontend session that pinned an analysis context after each
-   * `executeOperation`, or a dispatcher thread that didn't die — the iteration tail would balloon.
-   *
-   * After the loop, the compiler reference is dropped inside a scoped helper, GC is nudged, and a
-   * [WeakReference] probe checks whether the impl-side state was actually reachable for collection.
-   * This is the same shape the daemon uses for its user-class-loader soak (see CLASSLOADER.md
-   * "WeakReference soak probe"). For the spike we LOG rather than fail on a non-collected loader —
-   * BTA's `kotlin-build-tools-cri-impl` is known to keep a few interned caches even after the outer
-   * toolchain is closed; we want the data, not a flaky red.
+   * Repeat-compile soak + classloader-leak probe: one [BtaCompiler] across [ITERATIONS] compiles,
+   * printing per-iteration timings so a per-call leak would show as a ballooning tail. A
+   * [WeakReference] probe then checks the impl can be collected (as in CLASSLOADER.md's soak
+   * probe); logged rather than failed, since BTA's impl is known to keep some interned caches.
    */
   @Test
   fun `repeated compiles do not leak the BTA compiler`() {
@@ -117,10 +100,7 @@ class BtaCompilerTest {
     )
   }
 
-  /**
-   * Container for the per-test classpath split + fixture source. Built once per test so the
-   * classpath-partitioning logic stays in one place; see [newFixture] for the algorithm.
-   */
+  /** The per-test classpath split + fixture source; see [newFixture]. */
   private class Fixture(
     val implClasspath: List<Path>,
     val compileClasspath: List<Path>,
@@ -132,14 +112,10 @@ class BtaCompilerTest {
   private fun newFixture(): Fixture {
     val runtimeClasspath = parseRuntimeClasspath()
 
-    // implClasspath = every Kotlin runtime + compiler artifact on the test
-    // runtime, all dropped into the impl's isolated classloader. The
-    // SharedApiClassesClassLoader parent only exposes
-    // `org.jetbrains.kotlin.buildtools.api.*`, so anything outside that
-    // package — `kotlin.jvm.internal.Intrinsics`, `kotlinx.coroutines.*`
-    // (referenced by the Compose plugin), `org.jetbrains.kotlin.compiler.*` —
-    // has to be loadable from the impl's own URLs. Cast wide; harmless to
-    // over-include.
+    // Everything Kotlin goes into the impl's isolated loader: its parent only exposes
+    // `org.jetbrains.kotlin.buildtools.api.*`, so `kotlin.*`, `kotlinx.coroutines.*` (used by the
+    // Compose plugin) and the compiler must load from the impl's own URLs. Over-including is
+    // harmless.
     val implPrefixes =
       listOf(
         "kotlin-", // -build-tools-*, -compiler-*, -daemon-*, -stdlib, -reflect, -script-runtime
@@ -162,12 +138,8 @@ class BtaCompilerTest {
       "Expected kotlin-compose-compiler-plugin-embeddable on the runtime classpath",
       composePluginJar,
     )
-    // compileClasspath = user-visible deps for the source under compile. We
-    // keep kotlin-stdlib + kotlin-reflect + annotations on it even though
-    // they're also in implClasspath; the compiler frontend resolves `kotlin.*`
-    // type references from this classpath, and the impl classloader's URLs
-    // serve a different need (linking the impl's own bytecode against
-    // `kotlin/jvm/internal/Intrinsics`). Same JAR, two roles, no harm.
+    // The stdlib stays on the compile classpath too: the frontend resolves `kotlin.*` types from
+    // it, while the impl loader uses the same JAR to link its own bytecode.
     val userOnlyExclusions =
       listOfNotNull(composePluginJar).toSet() +
         implClasspath
@@ -211,13 +183,8 @@ class BtaCompilerTest {
   }
 
   /**
-   * Runs the soak loop inside its own stack frame so the compiler reference is local to this
-   * function — once it returns, the JVM is free to GC the [BtaCompiler] (and its impl
-   * `URLClassLoader`). The caller probes the returned [WeakReference].
-   *
-   * Each iteration writes to a fresh output directory to avoid accidentally measuring an
-   * "everything UP-TO-DATE" path (BTA's single-shot compile re-runs unconditionally, but isolating
-   * output makes the assertion straightforward and parallels real save-loop traffic).
+   * Runs the soak in its own stack frame so the compiler is collectable once it returns; the caller
+   * probes the returned [WeakReference]. Each iteration writes to a fresh output dir.
    */
   private fun scopedSoakRun(
     fx: Fixture,

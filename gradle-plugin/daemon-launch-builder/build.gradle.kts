@@ -14,22 +14,11 @@ plugins {
 
 ktfmt { googleStyle() }
 
-// Phase A of the contrib refactor (see `contrib/README.md`): the `daemon-launch.json` schema
-// + a typed builder that takes pre-resolved classpath / sysprops / JVM args and emits the
-// canonical JSON. Non-Gradle build systems (Bazel rules, Amper task definitions in
-// `yschimke/compose-ai-contrib`) pull `ee.schimke.composeai:daemon-launch-builder` from
-// Maven Central and produce conforming descriptors without depending on Gradle or AGP.
-//
-// **Generic by design.** The Android-specific classpath layering (AGP `artifactView`
-// resolution, R.jar appending, the `--add-opens` set required by Robolectric on JDK 17+)
-// stays in `:gradle-plugin`'s `AndroidPreviewClasspath`. This library's contract is "given
-// these resolved jar lists + sysprops + JVM args, emit a valid `daemon-launch.json`" — the
-// build system that drives it is the one that knows how to walk its own dep graph.
-//
-// Lives inside the `gradle-plugin` composite build (rather than the outer build) so the
-// gradle plugin can take a normal `project(":daemon-launch-builder")` dep without
-// round-tripping through Maven Local on every dev iteration. Publish coordinate is set
-// explicitly below so the artifact lands in Maven Central under a clean module name.
+// The `daemon-launch.json` schema plus a typed builder that emits it from pre-resolved classpath /
+// sysprops / JVM args, so non-Gradle build systems (Bazel, Amper) can produce conforming
+// descriptors. Generic by design: Android classpath layering stays in `:gradle-plugin`'s
+// `AndroidPreviewClasspath`. Lives in this composite build so the plugin can depend on it as a
+// project.
 
 dependencies {
   api(libs.kotlinx.serialization.json)
@@ -48,18 +37,10 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
-// CLI entry point (`DaemonLaunchBuilderCli`) is what Bazel rules and Amper tasks shell out
-// to. Same pattern as `:preview-discovery`: slim library JAR (transitive deps —
-// kotlinx-serialization, kotlin-stdlib — are exposed as `api` and resolved by the consumer's
-// dep system), and the intended invocation is:
-//
-//     java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli ...
-//
-// The `Main-Class:` stamp is a convenience for build systems that have already materialised
-// the full runtime closure next to the artifact (Bazel `runtime_jars`, hand-rolled `lib/`);
-// `java -jar` against the bare published JAR will NOT work — no `Class-Path:` manifest
-// entry, no shaded uber-JAR. See the "CLI invocation" section in
-// `docs/NON_GRADLE_INTEGRATION.md` for the consumer-facing contract.
+// `DaemonLaunchBuilderCli` is what Bazel / Amper shell out to, as `java -cp <resolved-classpath>
+// ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli ...`. Slim JAR with `api` deps:
+// `Main-Class:` helps only when the runtime closure sits beside it; `java -jar` on the bare JAR
+// won't work. See `docs/NON_GRADLE_INTEGRATION.md`.
 tasks.named<Jar>("jar").configure {
   manifest {
     attributes("Main-Class" to "ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli")
@@ -77,12 +58,8 @@ val daemonLaunchSchemaMetadata = daemonLaunchSchemaResourcesDir.map {
 }
 val generateDaemonLaunchSchemaMetadata =
   tasks.register("generateDaemonLaunchSchemaMetadata") {
-    // Both values are read into locals of this configuration block *before* `doLast` closes over
-    // them. A top-level `val` in a Kotlin build script compiles to a property of the script object,
-    // so referring to one directly from an execution-time action captures the script itself — which
-    // the configuration cache cannot serialize ("cannot serialize Gradle script object
-    // references"), failing the build for every task in this composite. Locals are captured by
-    // value, and a `Provider` is a type the cache knows how to store.
+    // Read into locals before `doLast` captures them: a top-level script `val` would capture the
+    // script object, which the configuration cache can't serialize.
     val schemaVersion = daemonDescriptorSchemaVersion
     val outputFile = daemonLaunchSchemaMetadata
     inputs.property("schemaVersion", schemaVersion)

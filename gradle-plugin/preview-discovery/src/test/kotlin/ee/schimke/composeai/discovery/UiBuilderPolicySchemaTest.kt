@@ -13,24 +13,11 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.Test
 
 /**
- * The published policy schema and the type a catalog author writes against must agree.
- *
- * They did not, and the way they came apart is the argument for this test.
- * `UiBuilderPolicy.components` — the block the whole "a catalog describes itself" contract runs on,
- * and the one m3-catalog uses for all 26 of its entries — was never added to
- * `scripts/design-artifacts/ui-builder.policy.schema.json`. The schema declares
- * `additionalProperties: false`, so it did not merely fail to describe the block: it **forbade**
- * it. Every catalog using the feature was schema-invalid, and nothing said so, because the
- * JavaScript pre-flight validates by hand and never looks at `components` either.
- *
- * The same drift had already happened once, one level down: a builtin's `traits` and
- * `modifierCapabilities` were read by the consumer, absent from this type, and forbidden by the
- * schema — see `a builtin publishes the traits and modifiers a catalog states`. Fixing an instance
- * twice is what a test is for.
- *
- * Checked in both directions and against the SERIAL names, which are what a JSON file actually
- * carries: a field the schema forbids is a catalog that cannot validate, and a schema key no field
- * reads is a catalog author writing something nothing consumes.
+ * The published policy schema (`scripts/design-artifacts/ui-builder.policy.schema.json`) and
+ * `UiBuilderPolicy` must agree, checked both ways on SERIAL names: a field the schema forbids (it
+ * is `additionalProperties: false`) makes catalogs invalid, and a schema key no field reads is
+ * something nothing consumes. `components` and builtin `traits` / `modifierCapabilities` each
+ * drifted this way unnoticed.
  */
 class UiBuilderPolicySchemaTest {
 
@@ -54,11 +41,8 @@ class UiBuilderPolicySchemaTest {
 
   @Test
   fun `every role enum in the schema is the role set, and there are three of them`() {
-    // `container` was added to the builtin's `role` and to a slot's, and MISSED on the template
-    // keys — so a catalog declaring `code.templates.container`, which both the pre-flight and this
-    // generator accept, was rejected by the schema an editor validates against. Enumerating the
-    // enums instead of naming them is the point: a fourth one added later is covered the day it
-    // lands, which is the property the first three did not have.
+    // Every role enum, found by walking, must list the same roles, so an enum added later (as the
+    // template keys were, missing `container`) is covered automatically.
     val enums = roleEnums(schema, "")
     assertThat(enums.keys)
       .containsExactly(
@@ -78,11 +62,8 @@ class UiBuilderPolicySchemaTest {
   }
 
   /**
-   * Every `enum` in the schema that names a structural role, by JSON pointer.
-   *
-   * Found by walking rather than listed, so an enum added to the schema later is checked without
-   * anybody remembering this test exists. `screen-root` is the marker: it is in every role enum and
-   * in no other one.
+   * Every schema `enum` naming a structural role, by JSON pointer; `screen-root` marks them, as
+   * it's in every role enum and no other.
    */
   private fun roleEnums(node: JsonElement, path: String): Map<String, List<String>> =
     when (node) {

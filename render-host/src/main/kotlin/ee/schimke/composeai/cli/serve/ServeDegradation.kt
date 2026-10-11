@@ -1,59 +1,46 @@
 package ee.schimke.composeai.cli.serve
 
 /**
- * A structured, human-readable reason a served session is **degraded** — i.e. a live/interactive
- * lane the viewer would otherwise offer is unavailable and the server has fallen back to baked PNG
- * snapshots. Recorded by [ServeCatalogStore] at catalog-load time (where the fallback is decided,
- * and where it was previously only written to stderr), then surfaced by the viewer (a session-level
- * banner) and `/api/previews` (a `degradations` array) so a visitor sees *why* a session is
- * snapshot-only instead of guessing.
- *
- * [code] is a stable machine slug a programmatic client can switch on; [detail] is a one-sentence
- * explanation shown in the UI. Keep [code] values in lockstep with any downstream consumer.
+ * A structured reason a served session is degraded: a live lane the viewer would offer is
+ * unavailable and the server serves baked PNGs instead. Recorded by [ServeCatalogStore] at catalog
+ * load and surfaced as a viewer banner and `/api/previews` `degradations`. [code] is a stable slug
+ * for clients (keep in lockstep with consumers); [detail] is a one-sentence UI explanation.
  */
 public data class ServeDegradation(val code: String, val detail: String) {
   public companion object {
     /**
-     * The catalog publishes baked PNGs only — its delivery branch carries no `liveBundle` (and no
-     * source this server can build), so no device/theme/knob control can re-render. The common case
-     * for an app catalog that hasn't opted into the live tier yet.
+     * The catalog publishes baked PNGs only (no `liveBundle` or buildable source), so nothing can
+     * re-render.
      */
     public const val CATALOG_BAKED_ONLY: String = "catalog-baked-only"
 
     /**
-     * The catalog declared a `liveBundle` but the server couldn't stand a daemon up from it (the
-     * bundle or one of its externalized resources failed to fetch/verify, or the daemon didn't
-     * start), so it fell back to baked PNGs. [detail] carries the specific cause.
+     * The catalog declared a `liveBundle` but no daemon could be stood up from it; [detail] has the
+     * cause.
      */
     public const val LIVEBUNDLE_UNAVAILABLE: String = "livebundle-unavailable"
 
     /**
-     * The catalog offers a live lane (a `liveBundle` or a buildable source) but verified as
-     * `Unverified`, so the server refuses to re-render it (fail-closed) and serves baked PNGs. The
-     * trust badge already shows the amber verdict; this states the consequence.
+     * A live lane exists but the catalog verified as `Unverified`, so re-rendering is refused
+     * (fail-closed).
      */
     public const val UNVERIFIED_NO_RERENDER: String = "unverified-no-rerender"
 
     /**
-     * The catalog declares live-only (`deferred[]`) coverage this session can't produce: those
-     * previews have no baked PNG by design, and without a live daemon there is nothing to render
-     * them from — so they are omitted from the grid rather than shown as broken cards. The count
-     * rides in [detail] so a visitor knows the sheet is thinner than the catalog claims.
+     * Live-only (`deferred[]`) previews have no baked PNG and no live lane here, so they are
+     * omitted; the count is in [detail].
      */
     public const val DEFERRED_NOT_SERVED: String = "deferred-not-served"
 
     /**
-     * The session HAD a working live lane and the server has since **switched it off**: its render
-     * circuit breaker tripped (a linkage/classpath fault that can never succeed on retry, or a
-     * sustained failure rate), so live renders are refused with the underlying reason rather than
-     * retried. Distinct from [LIVEBUNDLE_UNAVAILABLE], which is a daemon that never came up.
+     * A working live lane was switched off by its render circuit breaker (fatal linkage fault or
+     * sustained failures). Distinct from [LIVEBUNDLE_UNAVAILABLE], a daemon that never started.
      */
     public const val RENDER_LANE_BROKEN: String = "render-lane-broken"
 
     /**
-     * The live render lane was disabled by its circuit breaker; [reason] is the breaker's text and
-     * [fatal] marks a linkage fault (needs a fixed bundle, not a retry). See
-     * [RenderCircuitBreaker].
+     * The live lane was disabled by its [RenderCircuitBreaker]; [fatal] marks a linkage fault that
+     * needs a fixed bundle, not a retry.
      */
     public fun renderLaneBroken(reason: String, fatal: Boolean): ServeDegradation =
       ServeDegradation(
@@ -69,9 +56,8 @@ public data class ServeDegradation(val code: String, val detail: String) {
       )
 
     /**
-     * [count] live-only previews hidden because this session has no live lane. Paired with
-     * whichever reason explains the missing live lane (no live bundle / unverified / bundle
-     * unavailable).
+     * [count] live-only previews hidden for lack of a live lane, paired with the reason that
+     * explains it.
      */
     public fun deferredNotServed(count: Int): ServeDegradation =
       ServeDegradation(

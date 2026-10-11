@@ -9,22 +9,12 @@ plugins {
 
 ktfmt { googleStyle() }
 
-// Configuration-only Compose Preview plugin + the shared `composePreview { }` DSL surface.
+// Configuration-only plugin + the shared `composePreview { }` DSL, split out so a build can apply
+// `ee.schimke.composeai.preview.config` without pinning the runtime (no tasks, AGP, renderer or
+// Gradle-version floor); the CLI injects `:gradle-plugin` at its own version.
 //
-// Split out of `:gradle-plugin` so a consumer can apply `id("ee.schimke.composeai.preview.config")`
-// to commit preview configuration WITHOUT pinning the rendering runtime: this artifact carries only
-// the DSL extension types and the `composePreviewApplied` marker — no render/discovery tasks, no
-// AGP,
-// no renderer, and (critically) no Gradle-version floor. The `compose-preview` CLI auto-injects the
-// full runtime plugin (`:gradle-plugin`, at the CLI's own version) when it drives a render, and
-// that
-// plugin reuses the extension/marker this module defines.
-//
-// Because the runtime `:gradle-plugin` depends on this module for the shared extension TYPE, this
-// is
-// the one artifact that must stay binary-stable across versions: when a consumer pins the config
-// plugin at version X and the CLI injects the runtime at version Y, both resolve this artifact and
-// Gradle conflict-resolves to a single copy. Keep the public DSL surface backwards-compatible.
+// Both plugins resolve this artifact and Gradle picks one copy, so keep the public DSL
+// backwards-compatible.
 
 gradlePlugin {
   website.set("https://github.com/yschimke/compose-ai-tools")
@@ -58,11 +48,8 @@ dependencies {
   testImplementation(gradleTestKit())
 }
 
-// Bake the config plugin's version into a module-specific resource (NOT
-// `plugin-version.properties`,
-// which the runtime plugin owns — both jars can share a buildscript classpath, so the resource
-// paths
-// must not collide). Read back by `ConfigPluginVersion`.
+// Own resource name, not `plugin-version.properties`: both jars can share a buildscript classpath.
+// Read by `ConfigPluginVersion`.
 val generateConfigPluginVersionResource =
   tasks.register("generateConfigPluginVersionResource") {
     val outputDir = layout.buildDirectory.dir("generated/config-plugin-version-resource")

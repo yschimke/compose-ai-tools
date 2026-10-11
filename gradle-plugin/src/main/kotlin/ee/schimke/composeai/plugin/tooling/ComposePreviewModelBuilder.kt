@@ -12,13 +12,9 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.tooling.provider.model.ToolingModelBuilder
 
 /**
- * Builds a build-wide [ComposePreviewModel] snapshot — resolves `${variant}RuntimeClasspath` and
- * `${variant}UnitTestRuntimeClasspath` on every project where the compose-preview plugin applied,
- * and packs the result into interfaces the CLI consumes over the Tooling API.
- *
- * Registered once per build from [ee.schimke.composeai.plugin.ComposePreviewPlugin.apply].
- * [canBuild] accepts the build-root path regardless of which project the caller hit — we always
- * return the build-wide snapshot so the CLI doesn't have to iterate.
+ * Builds the [ComposePreviewModel] snapshot (resolved runtime and unit-test classpaths per module)
+ * the CLI reads over the Tooling API. Registered once per build from
+ * [ee.schimke.composeai.plugin.ComposePreviewPlugin.apply].
  */
 internal class ComposePreviewModelBuilder : ToolingModelBuilder {
 
@@ -26,21 +22,16 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     modelName == ComposePreviewModel::class.java.name
 
   override fun buildAll(modelName: String, project: Project): Any {
-    // Builder runs per-project under Isolated Projects — we can only
-    // inspect the project we were invoked on. The CLI walks the project
-    // tree with `GradleProject` and asks for this model on each leaf;
-    // projects where the plugin wasn't applied return an empty
-    // `modules` map, which the CLI filters out.
+    // Under Isolated Projects only the invoked project is visible; the CLI asks each project, and
+    // ones without the plugin return empty `modules`.
     val hasPlugin = project.tasks.findByName("composePreviewDiscover") != null
     if (!hasPlugin) {
       return ComposePreviewModelData(PluginVersion.value, emptyMap())
     }
     val variant = resolveVariant(project)
-    // NOT `"${'$'}{variant}RuntimeClasspath"`: on a `com.android.kotlin.multiplatform.library`
-    // module that took the Robolectric lane the variant is `androidMain` while the configurations
-    // are `androidRuntimeClasspath` and `androidHostTestRuntimeClasspath`, so deriving from the
-    // variant resolves nothing and `compose-preview doctor` reports empty dependency maps —
-    // silently, since an empty map is also what a genuine non-Android module returns.
+    // Not `${variant}RuntimeClasspath`: KMP-Android on the Robolectric lane has variant
+    // `androidMain` but configurations `androidRuntimeClasspath` /
+    // `androidHostTestRuntimeClasspath`, and a wrong name silently yields empty maps.
     val naming = resolveNaming(project, variant)
     val main = resolveConfiguration(project, naming.runtimeClasspath)
     val test =
@@ -73,9 +64,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Reads AGP's embedded version constant via reflection so the plugin doesn't take a hard
-   * compile-time dependency on AGP internals. Returns `null` on any failure — doctor treats that as
-   * "unknown" rather than an error.
+   * AGP's version via reflection (no compile dependency on AGP internals); `null` means unknown.
    */
   private fun resolveAgpVersion(): String? {
     return try {
@@ -86,11 +75,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     }
   }
 
-  /**
-   * Reads the Kotlin Gradle Plugin version via its documented helper
-   * (`KotlinPluginWrapperKt.getKotlinPluginVersion(Project)`). Reflective call to avoid a hard KGP
-   * compile dep on this plugin. Returns `null` if KGP isn't applied or its API moved.
-   */
+  /** KGP's version via its reflective helper; `null` if KGP isn't applied or the API moved. */
   private fun resolveKotlinVersion(project: Project): String? {
     return try {
       Class.forName("org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt")
@@ -102,14 +87,9 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Snapshots the `composePreviewRender` Test task's forked-JVM configuration so doctor can flag
-   * the #142-class footgun (test worker silently forking on a different JDK than the Gradle
-   * daemon).
-   *
-   * `javaLauncher.isPresent` is always `true` at resolution time — Gradle fills in a convention
-   * value from the project toolchain or the daemon JVM. We can't observe "user never touched this"
-   * via the API, so we report the effective launcher and leave the mismatch check to the doctor
-   * side, which compares against the daemon JVM.
+   * Snapshots the render Test task's forked-JVM config so doctor can flag a worker forking on a
+   * different JDK (#142). `javaLauncher` always has a convention value, so the effective launcher
+   * is reported and doctor compares it with the daemon JVM.
    */
   private fun resolveRenderPreviewsTask(project: Project): RenderPreviewsTaskInfo? {
     val task = project.tasks.findByName("composePreviewRender") as? Test ?: return null
@@ -150,36 +130,20 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Reads the resolved variant — the value AndroidPreviewSupport snapped into
-   * `composePreview.variant` after picking a matching AGP variant, or the consumer's explicit
-   * `composePreview { variant = … }` setting, or the `composePreview.variant` Gradle property
-   * convention (default `"debug"`).
-   *
-   * If the resolved value doesn't correspond to an actual `${variant}RuntimeClasspath`
-   * configuration on this project (flavored modules where the consumer asked for `debug` but the
-   * real variant is `demoDebug`), falls back to the first existing `${name}RuntimeClasspath` whose
-   * name matches the build-type suffix rule from [AndroidPreviewSupport.variantMatchesTarget].
-   * Keeps the doctor's `${variant}RuntimeClasspath` / `${variant}UnitTestRuntimeClasspath` lookups
-   * pointing at real configs when the model builder runs before / outside `onVariants`.
+   * The resolved variant (snapped by AndroidPreviewSupport, set explicitly, or the `debug`
+   * default). If no `${variant}RuntimeClasspath` exists (flavored modules), falls back to the first
+   * configuration matching [AndroidPreviewSupport.variantMatchesTarget]'s build-type rule.
    */
   /**
-   * The AGP name mapping for this project, keyed on the lane it actually renders through.
-   *
-   * The KMP-Android mapping is taken ONLY when the module opted into the Robolectric lane. A
-   * KMP-Android module on the default Desktop lane is not an Android module as far as this model is
-   * concerned — its renderer resolves `jvmRuntimeClasspath` / `desktopRuntimeClasspath`, and
-   * pointing the doctor at `androidRuntimeClasspath` would both snapshot the wrong backend's
-   * dependencies and switch on the Android-only compatibility checks in
-   * [androidPreviewToolingSignals], producing findings about a classpath the renders never touch.
-   * Plugin presence alone is the wrong question; the lane is the right one.
+   * The AGP name mapping for the lane the project actually renders through. KMP-Android uses its
+   * mapping only on the Robolectric lane; on Desktop, pointing doctor at `androidRuntimeClasspath`
+   * would snapshot the wrong backend and trigger Android-only checks in
+   * [androidPreviewToolingSignals].
    */
   private fun resolveNaming(project: Project, variant: String): AndroidVariantNaming {
-    // The task, not the property. `kmpAndroidRobolectric = true` is a REQUEST, and the request is
-    // refused in two real cases — a module with no `withHostTest { }` compilation, and one where
-    // `org.jetbrains.compose` was applied first and Desktop had already committed. Both fall back
-    // to Desktop, and keying off the property would then describe a backend the renders never use.
-    // `composePreviewGenerateRobolectricProperties` is registered by `registerAndroidTasks` and
-    // nowhere else, so its presence is the lane that was actually taken.
+    // Keyed on the task, not the property: the request can be refused (no `withHostTest`, or
+    // Desktop already committed). `composePreviewGenerateRobolectricProperties` only exists on the
+    // Robolectric lane.
     val robolectricLane =
       project.tasks.findByName("composePreviewGenerateRobolectricProperties") != null
     return if (robolectricLane) AndroidVariantNaming.forProject(project, variant)
@@ -199,12 +163,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Returns the per-module Android signals feeding [CompatRules.checkUndeclaredPreviewTooling], or
-   * `(null, null)` for non-Android modules (CMP Desktop / KMP-Desktop). Android-ness is detected by
-   * the presence of a `${variant}RuntimeClasspath` configuration matching [resolveVariant]'s output
-   * — AGP's variant-specific configurations only exist when `com.android.application` /
-   * `com.android.library` is applied. CMP / Desktop projects expose `runtimeClasspath` /
-   * `desktopRuntimeClasspath` instead, so the check stays silent on them.
+   * Android signals for [CompatRules.checkUndeclaredPreviewTooling], or `(null, null)` for
+   * non-Android modules, detected by whether a `${variant}RuntimeClasspath` exists.
    */
   private fun androidPreviewToolingSignals(
     project: Project,
@@ -222,9 +182,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Reads the module's `android.defaultConfig.minSdk` reflectively (same no-hard-AGP-dep approach
-   * as [resolveAgpVersion]). Returns `null` for non-Android modules, unset minSdk, or any
-   * reflection failure — [CompatRules.checkLibraryMinSdk] treats `null` as "not checkable".
+   * `android.defaultConfig.minSdk` via reflection; `null` when unavailable, which
+   * [CompatRules.checkLibraryMinSdk] treats as not checkable.
    */
   private fun resolveModuleMinSdk(project: Project): Int? = runCatching {
     val android = project.extensions.findByName("android") ?: return kmpAndroidMinSdk(project)
@@ -234,14 +193,9 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     .getOrNull()
 
   /**
-   * `minSdk` off a `com.android.kotlin.multiplatform.library` module.
-   *
-   * There is no project-level `android` extension to read: the block is `kotlin { android { … } }`,
-   * registered on the Kotlin extension's own container, and the target it yields carries `minSdk`
-   * directly rather than behind `defaultConfig` (the same shape `AndroidPreviewSupport`'s
-   * `finalizeDsl` branch reads). Without this the classic lookup returns null, the exception is
-   * swallowed, and `compose-preview doctor` silently skips every library-minSdk conflict its
-   * task-based counterpart still reports.
+   * `minSdk` from a KMP-Android module's `kotlin { android { … } }` target (no `defaultConfig`), as
+   * `AndroidPreviewSupport`'s `finalizeDsl` reads it; otherwise doctor would skip library-minSdk
+   * checks.
    */
   private fun kmpAndroidMinSdk(project: Project): Int? = runCatching {
     val kotlin = project.extensions.findByName("kotlin") as? ExtensionAware ?: return null
@@ -250,11 +204,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
     .getOrNull()
 
-  /**
-   * Resolves the `android-manifest` artifacts on [configName] (the AAR `AndroidManifest.xml`s) and
-   * reads each library's declared `minSdkVersion`. Lenient + failure-swallowing so a single
-   * unresolvable artifact doesn't sink doctor; empty list means "nothing to check".
-   */
+  /** Each AAR manifest's `minSdkVersion` on [configName]. Lenient; empty means nothing to check. */
   private fun resolveLibraryMinSdks(project: Project, configName: String): List<LibraryMinSdk> {
     val config = project.configurations.findByName(configName) ?: return emptyList()
     if (!config.isCanBeResolved) return emptyList()
@@ -274,10 +224,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Resolves `config` on [project] and returns `group:name → version`. Swallows failures — doctor
-   * treats empty as "not checkable" rather than erroring. Uses the resolution-result API instead of
-   * `resolvedConfiguration.resolvedArtifacts` because we only need version metadata, not the
-   * downloaded artifacts.
+   * `group:name → version` for [name], via the resolution result (versions only, no downloads).
+   * Failures yield empty.
    */
   private fun resolveConfiguration(project: Project, name: String): Map<String, String> {
     val config = project.configurations.findByName(name) ?: return emptyMap()
@@ -288,8 +236,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         val resolved = dep as? org.gradle.api.artifacts.result.ResolvedDependencyResult ?: continue
         val id = resolved.selected.id
         if (id is ModuleComponentIdentifier) {
-          // First occurrence wins — resolutionResult already
-          // deduplicates to Gradle's conflict-resolved version.
+          // resolutionResult is already conflict-resolved.
           out.putIfAbsent("${id.group}:${id.module}", id.version)
         }
       }
@@ -300,11 +247,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 }
 
-// --- Wire impls ------------------------------------------------------------
-//
-// Serializable because Gradle marshals these across the daemon/tooling
-// boundary. Data classes for cheap equality/toString in tests; nothing else
-// depends on that.
+// --- Wire impls --- Serializable for the daemon/tooling boundary.
 
 private data class ComposePreviewModelData(
   override val pluginVersion: String,

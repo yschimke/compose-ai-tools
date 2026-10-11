@@ -21,30 +21,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
 /**
- * NavHost-based preview that exercises the daemon's navigation surface end-to-end.
+ * A `NavHost` (`home` and `profile/{userId}`, with a [`BackHandler`] on profile) exercising the
+ * daemon's navigation surface. Agents can read `data/navigation` (the `intent` and
+ * `onBackPressed.hasEnabledCallbacks`, true only on profile), drive `navigation.deepLink`
+ * (`app://profile/42`), `navigation.predictiveBack*` and `navigation.back`.
  *
- * **What this preview does (interactively):**
- * - Boots a `NavHost` with two destinations — `home` and `profile/{userId}` — and a [`BackHandler`]
- *   on the profile screen so an `OnBackPressedCallback` is registered with the activity's
- *   `onBackPressedDispatcher`.
- * - The home screen exposes a "Go to profile" button. The profile screen exposes a "Back" button
- *   that calls `navController.popBackStack()`.
- *
- * **Why this fixture is useful for navigation audits:**
- * - Agents can fetch `data/navigation` at any render and observe `intent` (action / data URI /
- *   simple-typed extras) plus `onBackPressed.hasEnabledCallbacks` — the latter flips between
- *   `false` (home) and `true` (profile) so the snapshot tracks where the back-stack pop will go.
- * - Agents can drive `navigation.deepLink` (`Intent(ACTION_VIEW, "app://profile/42")`) to land
- *   directly on the profile screen, then `navigation.predictiveBack*` events to verify the
- *   gesture's animation curve renders correctly, and finally `navigation.back` (or the gesture
- *   commit phase) to pop back to home.
- *
- * **Robolectric reality check.** Under `ActivityScenarioRule<ComponentActivity>`, the launch Intent
- * has `action = MAIN` / `category = LAUNCHER` and an empty extras bag — so the `data/navigation`
- * snapshot's `intent` block is sparse on the home preview. After a `navigation.deepLink` script
- * event the snapshot's `intent.action` flips to `VIEW` and `intent.dataUri` carries the deep-link
- * URI. See [`NavigationDataProducer`][ee.schimke.composeai.daemon.NavigationDataProducer] for the
- * wire shape and the Robolectric-specific extras handling.
+ * Under Robolectric the launch Intent is a bare MAIN/LAUNCHER, so the home snapshot's `intent` is
+ * sparse until a deep link sets `action = VIEW` and `dataUri`. See
+ * [`NavigationDataProducer`][ee.schimke.composeai.daemon.NavigationDataProducer].
  */
 @Preview(name = "NavHost — Home", showBackground = true, widthDp = 320, heightDp = 480)
 @Composable

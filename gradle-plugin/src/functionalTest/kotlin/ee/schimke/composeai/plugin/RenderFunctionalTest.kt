@@ -12,12 +12,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Functional coverage for `composePreviewRender` / `composePreviewRenderAll` wiring against a
- * synthetic Compose Desktop project. Real end-to-end rendering (the actual PNG produced by
- * `DesktopRendererMain`) is covered by the in-repo samples — `:samples:cmp:composePreviewRenderAll`
- * is the source-of-truth render smoke test — so these tests stay focused on the parts that don't
- * require resolving the published `ee.schimke.composeai:renderer-desktop` AAR through Maven Central
- * (which the synthetic-tempdir project can't see at functional-test time).
+ * `composePreviewRender` / `composePreviewRenderAll` wiring against a synthetic Compose Desktop
+ * project. Real rendering is covered by `:samples:cmp:composePreviewRenderAll`, since the temp
+ * project can't resolve the published `renderer-desktop` artifact.
  */
 class RenderFunctionalTest {
 
@@ -29,9 +26,8 @@ class RenderFunctionalTest {
   }
 
   /**
-   * [extraPreviewNames] adds one more `@Preview` composable per entry, in its own file. Default
-   * empty so the single-preview fixture the missing-render tests read with `previews.single()` is
-   * unchanged; a filtered render needs at least two so there is something to leave out.
+   * [extraPreviewNames] adds one `@Preview` per entry in its own file; empty by default so
+   * `previews.single()` fixtures are unchanged.
    */
   private fun createTestProject(extraPreviewNames: List<String> = emptyList()): File {
     val projectDir = tempDir.root

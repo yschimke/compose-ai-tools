@@ -6,13 +6,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * One fact about a preview, computed deterministically before any model is asked: no model, no
- * network, the same answer every time for the same render, nodes, checks and source.
- *
- * [kind] groups it ([GuidelineFacts.TOUCH_TARGET], …) so a rule can be handed the facts that bear
- * on it; [nodeId] names the accessibility node it is about, when it is about one, so a finding can
- * cite it; [decisive] marks a fact that on its own shows a likely problem (a control under 48dp, a
- * node cut off by a container that does not scroll, an ATF error), listed first.
+ * One fact about a preview, computed deterministically before any model is asked. [kind] groups it
+ * ([GuidelineFacts.TOUCH_TARGET], …) so rules get the facts that bear on them; [nodeId] names the
+ * accessibility node it's about, if any; [decisive] marks a fact that alone shows a likely problem
+ * (listed first).
  */
 public data class GuidelineFact(
   val kind: String,
@@ -22,15 +19,10 @@ public data class GuidelineFact(
 )
 
 /**
- * The facts a text-only checker can be shown in place of the picture: sizes, clipping, overlap and
- * scroll position from the accessibility nodes and the render's size; contrast ratios and target
- * sizes from the Accessibility Test Framework's results; and literal sizes, colours, button calls,
- * theme use and hard-coded strings from a Kotlin-aware scan of the source (regular expressions, not
- * a parser).
- *
- * Written in words and whole numbers where it can — Jev reads English better than hex or arithmetic
- * — and capped, so a dense screen's facts stay a few hundred tokens. Used by the experimental jev
- * checker today; nothing here is specific to it.
+ * The facts a text-only checker sees instead of the picture: sizes, clipping, overlap and scrolling
+ * from the accessibility nodes; contrast and target sizes from ATF; literal sizes, colours, button
+ * calls, theme use and hard-coded strings from a regex scan of the source. Worded in English and
+ * whole numbers where possible (Jev reads those better) and capped to a few hundred tokens.
  */
 public object GuidelineFacts {
   public const val TOUCH_TARGET: String = "touch-target"
@@ -58,9 +50,8 @@ public object GuidelineFacts {
   private const val MAX_PER_KIND = 8
 
   /**
-   * Every fact about [subject]. [round] says whether its screen is round (a Wear screen: the
-   * corners of the render are not on the display); null works it out from [platform] and the
-   * render's shape.
+   * Every fact about [subject]. [round] says whether the screen is round (Wear); null infers it
+   * from [platform] and the render's shape.
    */
   public fun of(
     subject: PreviewSubject,

@@ -7,23 +7,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency] — the config-time gate that
- * decides whether to register `composePreview*` tasks for a variant.
- *
- * The gate is intentionally cheap and IP-safe: declared `*Implementation` / `*Api` / `*RuntimeOnly`
- * inspection only, no classpath resolution, no `Project.findProject` / `evaluationDependsOn`
- * cross-project access. Two-tier:
- * 1. **Direct preview-tooling coord** → pass.
- * 2. **Compose compiler plugin applied AND any declared `project(":...")` dep** → pass. The
- *    Compose-plugin gate keeps the tier-2 path scoped to modules that actually compile Compose
- *    code, so utility / network modules that auto-inject the plugin (via the CLI's init script
- *    `withPlugin("com.android.library") { applyComposeAiPreview() }` hook) stay silent. Tasks
- *    register AND we wire [ValidatePreviewToolingPresentTask] as a `dependsOn` of the render so the
- *    authoritative check happens at task action time against `${variant}RuntimeClasspath`'s
- *    resolved graph.
- *
- * The actual transitive verification lives in [ValidatePreviewToolingPresentTaskTest] / functional
- * tests.
+ * Pins [AndroidPreviewSupport.hasPreviewDependency], the config-time gate for registering
+ * `composePreview*` tasks. Cheap and Isolated-Projects-safe: inspects declared dependencies only,
+ * no resolution or cross-project access. Passes on:
+ * 1. a direct preview-tooling coord, or
+ * 2. the Compose compiler plugin applied AND a declared `project(":...")` dep. The Compose check
+ *    keeps auto-injected utility modules silent; [ValidatePreviewToolingPresentTask] then verifies
+ *    the resolved graph at task time.
  */
 class HasPreviewDependencyTest {
 
@@ -77,14 +67,10 @@ class HasPreviewDependencyTest {
 
   @Test
   fun `tier-2 gate stays closed without the Compose plugin even when project deps exist`() {
-    // Auto-inject applies the plugin to *every* AGP module — including pure utility / network
-    // modules with `project(":...")` deps but no Compose (the nowinandroid `:core:network` failure
-    // shape). Without the Compose-plugin guard, the tier-2 path would register tasks on those
-    // modules and `registerAndroidTasks` would inject ui-test-manifest into testImplementation,
-    // leaking Compose into builds that didn't want it. The Compose Kotlin compiler plugin isn't on
-    // this test's classpath so we can't *apply* it to make the affirmative case work in a unit
-    // test (functional + integration tests cover that); what we can pin here is the
-    // no-Compose-plugin case stays closed even with declared project deps.
+    // Auto-inject applies the plugin to every AGP module; without the Compose-plugin guard, a
+    // no-Compose module with project deps (nowinandroid `:core:network`) would get tasks and leaked
+    // Compose test deps. The Compose plugin isn't on this classpath, so only the negative case is
+    // pinned here.
     val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
     val lib =
       ProjectBuilder.builder()

@@ -11,12 +11,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.Path.Companion.toPath
 
-// ---------------------------------------------------------------------------
-// Wire shape — `<module>/build/compose-previews/resources.json` from the
-// `composePreviewDiscoverAndroidResources` task. Mirrors PreviewData.kt /
-// RenderResourceManifest.kt; CLI doesn't depend on the gradle-plugin module
-// so the DTOs are duplicated here, same split the composable side uses.
-// ---------------------------------------------------------------------------
+// Wire shape of `<module>/build/compose-previews/resources.json` (from
+// `composePreviewDiscoverAndroidResources`), duplicated from the plugin's
+// RenderResourceManifest.kt.
 
 @Serializable data class ResourceVariant(val qualifiers: String? = null, val shape: String? = null)
 
@@ -53,12 +50,8 @@ data class ResourceManifest(
   val manifestReferences: List<ManifestReference> = emptyList(),
 )
 
-// ---------------------------------------------------------------------------
-// CLI output DTOs — enrich each manifest entry with the rendered PNG path,
-// its sha256, and a `changed` flag computed against the per-module sidecar
-// state. Same shape as `PreviewResult` / `CaptureResult` but typed for the
-// resource fields tooling cares about.
-// ---------------------------------------------------------------------------
+// CLI output DTOs: manifest entries enriched with PNG path, sha256 and `changed` against per-module
+// state.
 
 @Serializable
 data class ResourceCaptureResult(
@@ -72,11 +65,8 @@ data class ResourceCaptureResult(
   /** True when sha256 differs from the prior `compose-preview show-resources` run. */
   val changed: Boolean? = null,
   /**
-   * Why this capture produced no PNG, from the renderer's `resource-render-errors.json` sidecar
-   * (`failed` = the drawable couldn't be rasterised; `skipped` = a known degradation; `not-found` =
-   * the resource id didn't resolve). `null` when the capture rendered. Lets a consumer (the CI
-   * comment, the preview server, VS Code) show *why* a render is missing instead of just that it
-   * is.
+   * Why this capture produced no PNG, from `resource-render-errors.json` (`failed`, `skipped` =
+   * known degradation, `not-found`); null when it rendered.
    */
   val error: String? = null,
   /** `failed` | `skipped` | `not-found` — the [error]'s category; `null` when [error] is null. */
@@ -115,10 +105,8 @@ data class ResourcePreviewResult(
 internal fun ResourcePreviewResult.anyChanged(): Boolean = captures.any { it.changed == true }
 
 /**
- * `skipped` in [ResourceCaptureResult.errorStatus] — the renderer met a known degradation (an
- * unsupported drawable form) rather than failing. The resource-side counterpart of `Capture
- * .optional`: the missing PNG is expected, so the text tag says so instead of reading as a render
- * failure (issue #5174).
+ * `skipped` in [ResourceCaptureResult.errorStatus]: a known degradation, the resource-side
+ * counterpart of `Capture.optional`, so the missing PNG is tagged as expected.
  */
 internal const val RESOURCE_ERROR_STATUS_SKIPPED = "skipped"
 
@@ -141,9 +129,8 @@ internal fun resourceCaptureStatusTag(c: ResourceCaptureResult): String =
   }
 
 /**
- * Versioned envelope for `compose-preview show-resources --json`. Distinct schema from the
- * composable side (`compose-preview-show/v1`) so agents can dispatch on shape without inspecting
- * field names — bump the version when [ResourcePreviewResult]'s shape changes.
+ * Versioned envelope for `compose-preview show-resources --json`, distinct from the composable
+ * schema; bump when [ResourcePreviewResult]'s shape changes.
  */
 @Serializable
 data class ResourceListResponse(
@@ -198,31 +185,18 @@ private val briefResourceJson = Json {
 }
 
 /**
- * `compose-preview show-resources` — sibling of [ShowCommand] for Android XML resource previews.
- * Triggers `:<module>:composePreviewRenderAndroidResources`, walks `resources.json`, hashes the
- * rendered PNGs / GIFs against a per-module sidecar state file, and emits one row per `(resource
- * id, capture variant)` with the same id / png / sha / changed shape as the composable side.
- *
- * Kept separate from `show` (rather than folded behind a `--with-resources` flag) because the
- * workflows are disjoint: a Compose UI dev iterating on a `@Preview` doesn't want to pay the
- * resource renderer's cold-start cost, and a designer iterating on launcher icons doesn't need
- * every composable re-rendered. Two commands, two JSON envelopes, two state files — independent
- * persistence so neither path's `changed` calculation can poison the other's diff signal.
+ * `compose-preview show-resources` — [ShowCommand]'s sibling for Android XML resource previews.
+ * Runs `:<module>:composePreviewRenderAndroidResources`, walks `resources.json`, and emits one row
+ * per (resource id, capture variant) with the same id / png / sha / changed shape. Separate from
+ * `show` (own envelope and state file) because the workflows are disjoint and neither should pay
+ * for or disturb the other.
  */
 class ShowResourcesCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    // Auto-detect picks up every plugin-applied module — including CMP-only ones that never
-    // get `:<module>:composePreviewRenderAndroidResources` (the resource pipeline is gated on the
-    // Android-side
-    // `AndroidPreviewSupport` path, which CMP modules don't go through). Filter to modules
-    // that have an `AndroidManifest.xml` on disk: cheap, accurate, and the same signal the
-    // resource discovery task itself uses upstream.
-    //
-    // When the user passes an explicit `--module samples:cmp`, the filter still applies — we'd
-    // rather print a friendly "no Android modules" message than surface a gradle "task not
-    // found" stack trace.
+    // Only Android modules (with an `AndroidManifest.xml`) have the resource task, even with an
+    // explicit `--module`; a friendly message beats a "task not found" trace.
     val outcome =
       renderModules(
         silenceStdout = jsonOutput,
@@ -232,10 +206,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     if (outcome.modules.isEmpty()) {
       if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
       else println("No Android modules with the resource preview pipeline found.")
-      // Mirror ShowCommand: flush before exitProcess because System.exit doesn't drain
-      // PrintStream buffers, and the redirected stdout in
-      // `compose-preview show-resources --json > _resources.json` would otherwise see an
-      // empty file and trip the downstream JSON parser (issue #292).
+      // Flush before exitProcess, which doesn't drain stdout (a redirected `--json` would be
+      // empty).
       System.out.flush()
       exitProcess(0)
     }
@@ -250,9 +222,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     if (manifests.isEmpty() || manifests.all { it.second.resources.isEmpty() }) {
       if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
       else println("No Android resource previews found.")
-      // Resources are an opt-out feature — exit 0 (not 3) so consumers running
-      // `show-resources` against a workspace that legitimately has no XML drawables don't get
-      // a non-zero exit on every CI run.
+      // Resources are opt-out, so exit 0 rather than 3 when a workspace legitimately has none.
       System.out.flush()
       exitProcess(0)
     }
@@ -276,12 +246,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
     val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
     if (missing.isNotEmpty()) {
-      // Mirror ShowCommand: honour `--missing-renders`. The diagnostic (including the per-variant
-      // offender list) always prints so the CI log is self-diagnosing, but only the default `fail`
-      // policy bumps the exit to 2 — `warn`/`ignore` opt that down. Without this, `show-resources`
-      // hard-failed on every null-PNG resource regardless of policy (e.g. the launcher-icon
-      // rasterizer jitter), keeping the Compose Preview check red even under
-      // `missing-renders=warn`.
+      // Honour `--missing-renders` as ShowCommand does: the diagnostic always prints, but only
+      // `fail` bumps the exit to 2.
       val policy = missingRendersPolicy?.lowercase()
       val prefix =
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
@@ -308,19 +274,10 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     System.out.flush()
   }
 
-  // -------------------------------------------------------------------
-  // Filesystem + state plumbing — siblings of Command's composable
-  // helpers. Lives on this subclass rather than the base because none
-  // of the other commands consume them.
-  // -------------------------------------------------------------------
-
   /**
-   * `true` when [module] has an `AndroidManifest.xml` on disk under any of the standard locations.
-   * Coarse but reliable signal that the module participates in the Android resource preview
-   * pipeline — CMP-Desktop / pure-JVM modules don't produce a manifest, and the gradle
-   * `composePreviewRenderAndroidResources` task is registered exclusively from
-   * `AndroidPreviewSupport`. Uses a filesystem check rather than a Tooling-API task enumeration so
-   * the per-module overhead stays at a single `File.exists()` call.
+   * `true` when [module] has an `AndroidManifest.xml` in a standard location — the cheap signal
+   * that it participates in the Android resource pipeline (the task is only registered by
+   * `AndroidPreviewSupport`).
    */
   private fun isAndroidModule(module: PreviewModule): Boolean =
     sequenceOf(
@@ -338,13 +295,11 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Reads the renderer's `resource-render-errors.json` sidecar for [module], returning a
-   * `renderOutput -> error` map so [buildResourceResults] can attach the reason a capture produced
-   * no PNG. Empty when the sidecar is absent (an older renderer) or reports nothing.
+   * The renderer's `resource-render-errors.json` for [module] as `renderOutput -> error`; empty
+   * when absent.
    */
   private fun readRenderErrors(module: PreviewModule): Map<String, ResourceRenderError> {
-    // Inside the render task's declared output subtree (`renders/resources`) so up-to-date /
-    // build-cache flows carry it with the PNGs — see the renderer's `writeRenderErrorsSidecar`.
+    // Inside the task's declared output subtree so up-to-date / build-cache carry it with the PNGs.
     val sidecar =
       module.projectDir.resolve(
         "build/compose-previews/renders/resources/$RESOURCE_RENDER_ERRORS_SIDECAR"
@@ -386,9 +341,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
                 ?.let { module.projectDir.resolve("build/compose-previews/$it") }
                 ?.takeIf { it.exists() }
             val sha = pngFile?.let { sha256Hex(it) }
-            // Same `<id>` for the first capture, `<id>#<n>` for the rest —
-            // matches the composable side's keying so existing state-file
-            // conventions transfer.
+            // `<id>` for the first capture, `<id>#<n>` after, matching the composable state keys.
             val key = if (index == 0) resource.id else "${resource.id}#$index"
             val changed: Boolean? =
               when {
@@ -397,8 +350,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
                 else -> prior[key] != sha
               }
             if (sha != null) updated[key] = sha
-            // Attach the renderer's reason only when the PNG is actually missing — a stale sidecar
-            // entry for a capture that later rendered shouldn't mask a good render.
+            // Only when the PNG is missing, so a stale entry can't mask a good render.
             val renderError = if (pngFile == null) renderErrors[capture.renderOutput] else null
             ResourceCaptureResult(
               variant = capture.variant,
@@ -430,16 +382,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
   private fun applyResourceFilters(all: List<ResourcePreviewResult>): List<ResourcePreviewResult> =
     all.filter {
-      // `--preview` is honoured here too so the selector vocabulary is uniform (issue #3744), but
-      // only in its id-shaped forms: a resource capture is an XML `<vector>` / `<adaptive-icon>`,
-      // not a `@Preview` function, so there is no class or function name to reference.
-      //
-      // This filters **output**, not the render. `renderModules` above runs
-      // `composePreviewRenderAndroidResources` without `scopeToPreviewRequest`, so every Android
-      // module's resources are captured whichever selector is passed — `--id` and `--filter`
-      // included; the resource task takes no id filter and there is no resource manifest to
-      // narrow against ahead of it. `help --all` says so rather than implying the render
-      // narrowing that the preview commands do get.
+      // `--preview` is honoured in its id forms only (resources have no class or function). This
+      // filters output, not the render: the resource task takes no id filter.
       val matches =
         previewIdMatchesRequest(it.id, exactId = exactId, filter = filter, previewRef = previewRef)
       matches && (!changedOnly || it.anyChanged())
@@ -515,8 +459,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   }
 
   private fun stateFile(module: PreviewModule): File =
-    // Sibling of `.cli-state.json` (the composable state file) — separate
-    // so neither feature can poison the other's diff signal.
+    // Separate from `.cli-state.json` so neither feature disturbs the other's diff signal.
     module.projectDir.resolve("build/compose-previews/.cli-state-resources.json")
 
   private fun readResourceState(module: PreviewModule): ResourceCliState {

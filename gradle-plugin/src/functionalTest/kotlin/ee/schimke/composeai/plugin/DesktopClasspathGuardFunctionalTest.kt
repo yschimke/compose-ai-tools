@@ -10,29 +10,14 @@ import org.junit.rules.TemporaryFolder
 /**
  * Configuration-cache coverage for the desktop classpath guard
  * ([ValidateComposePreviewClasspathTask], wired by
- * `ComposePreviewTasks.registerDesktopClasspathGuard`).
+ * `ComposePreviewTasks.registerDesktopClasspathGuard`). Feeding `@Classpath` a live `Configuration`
+ * made the cache fail to serialize `__classpath__` (see #1796); it now takes a lazy
+ * `incoming.artifactView { }.files`.
  *
- * Issue #1796: the guard fed its `@Classpath` collection with `classpath.from(toolClasspath)`,
- * pinning the live `Configuration` into the task's `__classpath__` backing field. When that
- * configuration resolves the published `renderer-desktop` graph, the configuration cache can't
- * serialize the reference — the nested TestKit bundle E2E builds (config cache on) failed the store
- * step with "field `__classpath__` … error writing value" and the bundle task exited 1, breaking
- * `BundleRenderEndToEndFunctionalTest` / `BundleDaemonEndToEndFunctionalTest`. Those checks are
- * non-gating, so it had been merging red. The fix feeds a lazily-resolved `incoming.artifactView {
- * }.files` view instead, dropping the unserializable `Configuration` reference (mirrors how the
- * sibling `composePreviewDiscover` task already resolves its classpath).
- *
- * The full failure needs the published multi-module renderer graph the bundle E2E sets up, which a
- * synthetic temp project can't resolve. This gating test instead locks in that the desktop validate
- * path round-trips the configuration cache (store + reuse) for the common single-module case, so a
- * regression that breaks serialization outright fails a required check rather than only the
- * advisory bundle E2E. Both desktop guard tasks share the one helper, so the render variant covers
- * both.
- *
- * `composePreviewRenderer` is pre-seeded with a resolvable Compose artifact —
- * `ensureRendererDesktopConfig` skips its Maven add when the config already has dependencies — so
- * the guard resolves a real classpath without reaching for the unpublished
- * `ee.schimke.composeai:renderer-desktop` coordinate.
+ * The full failure needs the published renderer graph; this gating test checks the single-module
+ * case round-trips the cache (store + reuse). `composePreviewRenderer` is pre-seeded with a
+ * resolvable artifact so `ensureRendererDesktopConfig` skips the unpublished `renderer-desktop`
+ * coordinate.
  */
 class DesktopClasspathGuardFunctionalTest {
 
@@ -94,11 +79,8 @@ class DesktopClasspathGuardFunctionalTest {
           .trimIndent()
       )
 
-    // Configuration cache on — mirrors the repo + the nested bundle E2E builds. A non-serializable
-    // `__classpath__` field aborts the store outright (a store failure is a hard error regardless
-    // of
-    // the `problems` mode), so a wiring that pins an unserializable reference fails `.build()`
-    // here.
+    // Configuration cache on: a non-serializable field fails the store regardless of `problems`
+    // mode, so `.build()` fails here.
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
 
     return projectDir

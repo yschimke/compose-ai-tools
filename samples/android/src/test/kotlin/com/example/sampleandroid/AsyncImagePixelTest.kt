@@ -6,22 +6,13 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end guard for issue #2952 — a coil `AsyncImage` must actually resolve during a render.
+ * A coil `AsyncImage` must resolve during a render. Checks the rendered PNGs for both failure
+ * halves:
+ * 1. the pixels — the artwork band has several colours, not one flat fill;
+ * 2. the layout — the caption is still on screen (an unresolved painter has no intrinsic size, so
+ *    `FillWidth` grows to full height and pushes it out).
  *
- * Reads the PNGs produced by `:samples:android:composePreviewRenderAll` (wired into this module's
- * `test` task via `renderBeforeUnitTests`) and asserts the two halves of the bug independently,
- * because they fail for different reasons and a fix could plausibly address only one:
- *
- * 1. **the pixels** — the artwork band carries several distinct colours, not one flat fill. Before
- *    the fix the whole capture was a single background colour.
- * 2. **the layout** — the caption below the image is still on screen. An unresolved
- *    `AsyncImagePainter` reports no intrinsic size, so `ContentScale.FillWidth` grew it to the
- *    parent's full height and pushed the caption out of frame. Asserting "the bottom strip is not
- *    the same colour as the middle" catches that collapse even if the image itself somehow
- *    resolved.
- *
- * A third test covers the diagnostic half: a model that genuinely can't be fetched must draw its
- * request placeholder and leave a `<png>.warnings.json` naming the unresolved model.
+ * A third test: an unfetchable model draws its placeholder and writes `<png>.warnings.json`.
  */
 class AsyncImagePixelTest {
 

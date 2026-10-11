@@ -3,26 +3,13 @@ package ee.schimke.composeai.data.sharedelement
 import kotlinx.serialization.Serializable
 
 /**
- * Stable identity and wire shape of the `compose/shared-element` data product — the structured,
- * machine-readable counterpart to the pixels that Compose 1.11's
- * `LookaheadAnimationVisualDebugging` overlay paints over an in-flight shared-element transition.
+ * Identity and wire shape of the `compose/shared-element` data product: the machine-readable
+ * counterpart to Compose 1.11's `LookaheadAnimationVisualDebugging` overlay, which classifies each
+ * `rememberSharedContentState` key (matched / unmatched / multiply-matched) but only as pixels.
+ * This lets an agent or CI assert "no unmatched shared elements" without OCR'ing a GIF.
  *
- * The overlay (`androidx.compose.animation.LookaheadAnimationVisualDebugging`, gated by
- * `@ExperimentalLookaheadAnimationVisualDebugApi`) classifies every `rememberSharedContentState`
- * key into one of three states and rasterises them — target bounds in `overlayColor`, **unmatched**
- * keys in `unmatchedElementColor` (red), **multiply-matched** keys in `multipleMatchesColor`
- * (green) — but exposes none of that as data: the classification is computed inside the
- * (module-internal) `LookaheadAnimationVisualDebugHelper` at draw time and never surfaced. This
- * model is the wire shape a future producer emits so an agent or CI can *assert* "no unmatched
- * shared elements" without OCR'ing a GIF — the same role `compose/semantics` plays for the
- * layout-inspector overlay.
- *
- * This module is deliberately producer-free and dependency-light (no Compose, no Robolectric, no
- * experimental API): the three-way classification and the per-key target bounds are the *public*
- * contract of the overlay, so the shape is stable to model even though extracting the values at
- * render time is not yet in scope (it requires either reflection into the experimental internals or
- * an independent re-derivation of the match state). Mirrors `:data-layoutinspector-core` so MCP
- * clients in other languages can depend on the findings model without dragging in a renderer.
+ * Producer-free and dependency-light, like `:data-layoutinspector-core`: the classification is the
+ * overlay's public contract, though extracting it at render time isn't implemented yet.
  */
 object SharedElementProduct {
   const val KIND: String = "compose/shared-element"
@@ -31,15 +18,11 @@ object SharedElementProduct {
 }
 
 /**
- * Match classification of a single shared-element key during a transition — the three states the
- * 1.11 overlay paints.
+ * Match classification of one shared-element key, as the 1.11 overlay paints it.
  *
- * - [MATCHED] — the key has exactly one counterpart in the other `AnimatedContent` state, so the
- *   element animates its bounds between the two; the overlay draws only target bounds + label.
- * - [UNMATCHED] — the key is registered on only one side, so it has nothing to animate toward; the
- *   overlay flags it in red. The single most common shared-element bug (a key missing on one side).
- * - [MULTIPLE_MATCHES] — the same key is registered more than once in a state, leaving the match
- *   ambiguous; the overlay flags it in green.
+ * - [MATCHED] — exactly one counterpart in the other state; animates its bounds.
+ * - [UNMATCHED] — registered on one side only (flagged red); the most common shared-element bug.
+ * - [MULTIPLE_MATCHES] — registered more than once in a state, so ambiguous (flagged green).
  */
 @Serializable
 enum class SharedElementMatchStatus {
@@ -51,16 +34,12 @@ enum class SharedElementMatchStatus {
 /**
  * One shared-element key observed during the transition.
  *
- * @property key the `rememberSharedContentState(key = …)` value, as the overlay's optional key
- *   label would render it.
- * @property status the [SharedElementMatchStatus] classification for this key.
- * @property occurrences how many times the key was registered in the captured frame — `1` for a
- *   well-formed [MATCHED]/[UNMATCHED] key, `> 1` for [MULTIPLE_MATCHES].
- * @property modifier which shared modifier registered the key — `"sharedElement"` or
- *   `"sharedBounds"` — or null when the producer can't attribute it.
- * @property targetBoundsInRoot the bounds the element animates toward, as `"left,top,right,bottom"`
- *   in root pixels (matching the `boundsInRoot` convention on `compose/semantics`), or null when
- *   there is no target (an [UNMATCHED] key) or the producer didn't resolve it.
+ * @property key the `rememberSharedContentState(key = …)` value, as the overlay labels it.
+ * @property status the [SharedElementMatchStatus] for this key.
+ * @property occurrences registrations in the captured frame: `1`, or `> 1` for [MULTIPLE_MATCHES].
+ * @property modifier `"sharedElement"` or `"sharedBounds"`, or null if unattributed.
+ * @property targetBoundsInRoot target bounds as `"left,top,right,bottom"` root pixels (as in
+ *   `compose/semantics`), or null when there is none or it wasn't resolved.
  */
 @Serializable
 data class SharedElementFinding(
@@ -72,10 +51,8 @@ data class SharedElementFinding(
 )
 
 /**
- * The `compose/shared-element` payload: every shared-element key observed in the captured
- * transition frame, with convenience tallies a CLI report or CI gate reads to decide pass/fail. The
- * derived counts live in the class body (not the constructor), so they are computed on read and
- * never serialised — the JSON carries only [findings].
+ * The `compose/shared-element` payload: every key observed in the captured frame, with tallies for
+ * a report or CI gate. The tallies are body properties, so only [findings] is serialised.
  */
 @Serializable
 data class SharedElementPayload(val findings: List<SharedElementFinding> = emptyList()) {

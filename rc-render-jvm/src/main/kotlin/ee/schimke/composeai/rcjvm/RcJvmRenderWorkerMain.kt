@@ -10,21 +10,12 @@ import java.io.PrintStream
 import kotlin.system.exitProcess
 
 /**
- * The **pooled** counterpart of [main]: a long-lived worker that renders one captured Remote
- * Compose document per request frame, instead of one per process.
+ * The pooled counterpart of [main]: a long-lived worker rendering one Remote Compose document per
+ * request frame, avoiding Compose Desktop + Skiko boot per document. Possible because a `.rc`
+ * document is self-describing (unlike the `@Preview` lane, which needs the module's classloader).
  *
- * The one-shot entry point pays Compose Desktop + Skiko boot on every document (seconds), against
- * tens of milliseconds for a render on an already-warm JVM. A `.rc` document is self-describing, so
- * a worker needs nothing project-derived and can take a document from any catalog, in any order.
- * That is what makes a shared pool possible here and not for the `@Preview` lane, whose daemon must
- * hold the consumer module's classloader.
- *
- * ## Wire protocol
- *
- * Binary frames over stdin/stdout, big-endian, no external dependency. The serve side is
- * `RcJvmWorkerPool`, which mirrors these constants and refuses to use a worker whose
- * [PROTOCOL_VERSION] it does not recognise — so an install whose `lib-rcjvm/` sidecar predates this
- * file falls back to the one-shot path instead of hanging on a handshake that never comes.
+ * Binary frames over stdin/stdout, big-endian. The serve side (`RcJvmWorkerPool`) refuses a worker
+ * with an unrecognised [PROTOCOL_VERSION], so a stale `lib-rcjvm/` falls back to the one-shot path.
  *
  * ```
  * worker -> pool, once at startup:
@@ -39,8 +30,8 @@ import kotlin.system.exitProcess
  *   int32 payloadLen, <payloadLen bytes>   // artifact bytes on ok, UTF-8 reason on failure
  * ```
  *
- * The frame carries no font scale, so the serve side renders a request that scales text through the
- * one-shot path, which does. Closing the worker's stdin ends it cleanly.
+ * No font scale in the frame, so text-scaled requests use the one-shot path. Closing stdin ends the
+ * worker.
  */
 public fun rcJvmRenderWorkerMain() {
   // Claim the real stdout for frames before anything prints: one stray line from Skiko, AWT or a

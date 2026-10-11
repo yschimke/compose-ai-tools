@@ -120,31 +120,21 @@ public data class GuidelineBudget(
   val maxSourceChars: Int = 32_000,
 ) {
   /**
-   * How many verdicts one reply may be asked for: each subject's rules, summed. This bounds the
-   * reply's WORST case — every rule asked listed as a finding — rather than the request, and the
-   * reply is what takes the time: twelve Wear screens asked 24 rules each is 288 verdicts, a reply
-   * that ran past the 300 s request timeout on every try while three components in their own
-   * request answered in seconds.
+   * How many verdicts one reply may be asked for (each subject's rules, summed). Bounds the reply's
+   * worst case — every rule listed as a finding — since reply length drives latency and can blow
+   * the request timeout. Replies list only non-passes, so the expected size is held by
+   * [maxReplyTokens].
    *
-   * Replies list only what does not pass ([PreviewGuidelineRequests.SYSTEM_PROMPT]), so a reply
-   * holding every verdict asked is the exception; the expected size is held by [maxReplyTokens]. At
-   * the default, all-fail is about [maxVerdicts] × [PreviewGuidelineRequests.VERDICT_TOKENS] ≈
-   * 11.5k tokens, under three minutes at the ~70 tokens/s a flash model writes.
-   *
-   * A body property, so the constructor and `copy` keep their ABI: set it with [withMaxVerdicts],
-   * and note that `copy` resets it to [DEFAULT_MAX_VERDICTS].
+   * A body property to keep the constructor and `copy` ABI: set it with [withMaxVerdicts]; `copy`
+   * resets it to [DEFAULT_MAX_VERDICTS].
    */
   public var maxVerdicts: Int = DEFAULT_MAX_VERDICTS
     private set
 
   /**
-   * How many tokens one reply is EXPECTED to take ([PreviewGuidelineRequests.expectedReplyTokens]):
-   * an `others` statement per subject plus the share of its rules a model typically lists. Output
-   * is written one token at a time while input is read in one pass, so this, not [maxInputTokens],
-   * is what a batch's latency follows. At the default a reply takes about 45 s and a Wear screen
-   * batch of 24 rules each holds six.
-   *
-   * A body property like [maxVerdicts]: set it with [withMaxReplyTokens].
+   * How many tokens one reply is expected to take ([PreviewGuidelineRequests.expectedReplyTokens]).
+   * Output is generated token by token, so this, not [maxInputTokens], is what batch latency
+   * follows. A body property like [maxVerdicts]: set it with [withMaxReplyTokens].
    */
   public var maxReplyTokens: Int = DEFAULT_MAX_REPLY_TOKENS
     private set
@@ -239,13 +229,10 @@ public object PreviewGuidelineRequests {
       "held to the response schema."
 
   /**
-   * Splits [subjects] into batches by surface, each within [budget], before anything is asked: a
-   * batch whose reply would be slow is never formed, rather than found out by a timeout. Each batch
-   * is bounded on both sides of the request — its input (a subject's text estimated at four
-   * characters a token and a picture at [pictureTokens], [GuidelineBudget.maxInputTokens]) and its
-   * reply, expected ([expectedReplyTokens], [GuidelineBudget.maxReplyTokens]) and at worst (every
-   * rule asked listed, [GuidelineBudget.maxVerdicts]). Deterministic: the same subjects, in the
-   * same order, make the same batches.
+   * Splits [subjects] into batches by surface, each within [budget] on input
+   * ([GuidelineBudget.maxInputTokens]; text at four characters a token, pictures at
+   * [pictureTokens]), expected reply ([GuidelineBudget.maxReplyTokens]) and worst-case reply
+   * ([GuidelineBudget.maxVerdicts]), so a slow batch is never formed. Deterministic.
    */
   public fun batches(
     guidelines: CatalogGuidelinesV1,
@@ -354,10 +341,9 @@ public object PreviewGuidelineRequests {
     )
 
   /**
-   * [request], also showing under each subject the host's one-line summary of evidence it may be
-   * asked for ([subjectSummaries], by preview id; [GuidelineEvidenceHost.summary]): for
-   * accessibility data not attached up front, how many nodes, whether one scrolls, which checks
-   * reported — a few dozen tokens standing in for the hundreds the data itself would cost.
+   * [request], also showing under each subject the host's one-line evidence summary
+   * ([subjectSummaries]; [GuidelineEvidenceHost.summary]) — a few dozen tokens standing in for
+   * accessibility data not attached up front.
    */
   public fun request(
     guidelines: CatalogGuidelinesV1,
@@ -601,11 +587,8 @@ public object PreviewGuidelineRequests {
   }
 
   /**
-   * The catalog's frames for [batch]'s surface ([CatalogGuidelinesV1.frames]: a widget in each
-   * launcher's host container, a list unrolled, a fixed size) that no subject has a picture of,
-   * named as the catalog names them. A host that renders only each preview's own capture (a CI
-   * publish job) draws none of them, and a rule pointing at "the Samsung picture" must not be
-   * answered as if there were one.
+   * The catalog's frames for [batch]'s surface ([CatalogGuidelinesV1.frames]) that no subject has a
+   * picture of, so a rule about e.g. "the Samsung picture" isn't answered as if one existed.
    */
   internal fun unrenderedFrames(
     guidelines: CatalogGuidelinesV1,
@@ -776,20 +759,49 @@ public object PreviewGuidelineRequests {
     OTHERS_TOKENS + Math.ceil(rules * EXPECTED_LISTED_SHARE * VERDICT_TOKENS).toInt()
 
   /**
-   * The `max_tokens` a request for [request] is sent with: every rule asked of every subject listed
-   * at [VERDICT_TOKENS] (the reply's worst case, an over-estimate where subjects are asked
-   * different rules), an `others` statement each, and [REPLY_HEADROOM_TOKENS] for a reasoning
-   * model's thinking, which most providers count against the same limit. A reply that runs away —
-   * repeating itself, or writing far past what was asked — is cut there instead of holding its
-   * batch until the request timeout; a reply cut short is unreadable, and is asked again and then
-   * split like any other.
+   * The `max_tokens` a request for [request] is sent with at the default reasoning effort
+   * ([OpenRouterClient.DEFAULT_REASONING_EFFORT]); see the overload taking one.
    */
-  public fun replyTokenLimit(request: GuidelineRequestV1): Int {
+  public fun replyTokenLimit(request: GuidelineRequestV1): Int =
+    replyTokenLimit(request, OpenRouterClient.DEFAULT_REASONING_EFFORT)
+
+  /**
+   * The `max_tokens` a request for [request] is sent with at [reasoningEffort]: every rule asked of
+   * every subject listed at [VERDICT_TOKENS] (the reply's worst case, an over-estimate where
+   * subjects are asked different rules), an `others` statement each, and [reasoningTokenAllowance]
+   * for the model's thinking. OpenRouter counts reasoning against the same limit as the visible
+   * reply ("applies to reasoning and visible output combined"), so a limit sized for the reply
+   * alone is one a reasoning model can spend entirely on thinking and answer nothing. A reply that
+   * runs away — repeating itself, or writing far past what was asked — is still cut there instead
+   * of holding its batch until the request timeout.
+   */
+  public fun replyTokenLimit(request: GuidelineRequestV1, reasoningEffort: String?): Int {
     val subjects = request.subjects.size.coerceAtLeast(1)
     return subjects * request.rules.asked.size * VERDICT_TOKENS +
       (subjects + 1) * OTHERS_TOKENS +
-      REPLY_HEADROOM_TOKENS
+      reasoningTokenAllowance(reasoningEffort)
   }
+
+  /**
+   * The `max_tokens` allowed for thinking on top of the reply at [reasoningEffort]. Effort is not a
+   * token budget for every model: OpenRouter turns it into a share of `max_tokens` for models
+   * budgeted that way (`low` about 20%, `high` about 80%), but passes it straight to a model that
+   * takes an effort of its own, as [OpenRouterClient.DEFAULT_MODEL] does, which then thinks as long
+   * as it likes. So this is a generous allowance per level rather than a cap, at least a quarter of
+   * the whole for `low` and below, so a share-budgeted model's thinking still leaves the reply its
+   * room. Unused tokens cost nothing. Null (no `reasoning` sent, the model's own default) keeps
+   * [REPLY_HEADROOM_TOKENS], the allowance before the effort was set.
+   */
+  public fun reasoningTokenAllowance(reasoningEffort: String?): Int =
+    when (reasoningEffort) {
+      null -> REPLY_HEADROOM_TOKENS
+      OpenRouterClient.REASONING_OFF -> 1_024
+      "minimal" -> 4_096
+      "low" -> 16_384
+      "medium" -> 32_768
+      "high" -> 65_536
+      else -> 98_304
+    }
 
   /**
    * One listed verdict's tokens: `subjectId`, `ruleId`, `verdict`, `confidence`, a one-sentence
@@ -802,13 +814,15 @@ public object PreviewGuidelineRequests {
   public const val OTHERS_TOKENS: Int = 20
 
   /**
-   * The share of a subject's rules a reply is expected to list (`fail`, `needs_evidence`, the odd
-   * `not_applicable`). A catalog under review fails a handful of its two dozen rules a screen; a
-   * quarter leaves room for a bad screen without sizing every batch for the worst.
+   * The share of a subject's rules a reply is expected to list. A quarter leaves room for a bad
+   * screen without sizing every batch for the worst.
    */
   public const val EXPECTED_LISTED_SHARE: Double = 0.25
 
-  /** The `max_tokens` allowance on top of the reply itself, for a reasoning model's thinking. */
+  /**
+   * The `max_tokens` allowance on top of the reply itself when no reasoning effort is sent
+   * ([reasoningTokenAllowance] of null).
+   */
   public const val REPLY_HEADROOM_TOKENS: Int = 8_192
 
   /** An `others` statement: every rule not listed for the subject passes. */
@@ -866,21 +880,17 @@ public object PreviewGuidelineRequests {
   public const val SOURCE_MEDIA_TYPE: String = "text/x-kotlin"
 
   /**
-   * An evidence kind beside the protocol's: the long screenshot of a preview's whole scrolling
-   * content, already rendered beside its capture. A host offers it only for previews that have one
-   * ([GuidelineEvidenceHost.available]) and serves it from [GuidelineEvidenceHost.render], so a
-   * host holding no build (a CI publish job) never renders anything to answer it.
+   * Evidence kind: the already-rendered long screenshot of a preview's scrolling content. Offered
+   * only for previews that have one and served from [GuidelineEvidenceHost.render], so a host
+   * without a build never renders to answer it.
    */
   public const val KIND_SCROLL_CAPTURE: String = "scroll-capture"
 
   /**
-   * An evidence kind beside the protocol's: a preview's accessibility data — its nodes with bounds,
-   * roles, labels and states (`scrollable`, `clickable`, …) and the Accessibility Test Framework's
-   * measured checks on its render ([PreviewCheck]). Not sent with every subject: a host offers it
-   * where it has it (or can make it) and serves it in a follow-up round through
-   * [GuidelineEvidenceHost.nodes] and [GuidelineEvidenceHost.checks], showing only its
-   * [GuidelineEvidenceHost.summary] up front. A need for the protocol's `a11y-hierarchy` or
-   * `semantics` is served as this kind by a host offering it.
+   * Evidence kind: a preview's accessibility data — nodes with bounds, roles, labels and states,
+   * plus ATF checks ([PreviewCheck]). Served in a follow-up round via [GuidelineEvidenceHost.nodes]
+   * and [GuidelineEvidenceHost.checks], with only [GuidelineEvidenceHost.summary] up front. Also
+   * serves needs for the protocol's `a11y-hierarchy` / `semantics`.
    */
   public const val KIND_A11Y: String = "a11y"
 

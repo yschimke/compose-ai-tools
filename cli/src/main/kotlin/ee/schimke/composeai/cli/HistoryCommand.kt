@@ -24,25 +24,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * `compose-preview history <list|read|diff>` — inspect the render history the daemon archives.
+ * `compose-preview history <list|read|diff>`: inspect the render history the daemon archives, from
+ * the local archive (`.compose-preview-history/`, [LocalFsHistorySource]) or, with `--ref
+ * <fullRef>`, the reporting branch ([GitRefHistorySource]). Reads disk, so it works with or without
+ * a running daemon.
  *
- * Reads the local filesystem archive (`.compose-preview-history/`, the daemon's default
- * [LocalFsHistorySource]) by default, or the reporting branch ([GitRefHistorySource]) when `--ref
- * <fullRef>` is given. Both expose the same [HistorySource] read API, so the three subcommands are
- * source-agnostic. Reading off disk gives correct results whether or not a daemon is running, since
- * the daemon writes there.
- *
- * **Structured-first** (cf. #1787): human output is compact metadata; `--json` emits a versioned
- * envelope (`compose-preview-history/v1`); heavy snapshots (PNG bytes, a11y/semantics/theme data)
- * ride only on explicit opt-in (`--inline`, `--out`, `--data`).
- *
- * v1 reads on-disk / on-branch history directly. Preferring a running daemon's `history` JSON-RPC
- * methods (for live, not-yet-flushed state) needs a CLI-side daemon client — tracked as a
- * follow-up; the on-disk read is the source of truth the daemon persists to.
- *
- * `diff --mode pixel` and `--mode semantics` are computed locally via the shared [HistoryImageDiff]
- * / [SemanticsDiff] (the same code the daemon's `history/diff` runs, so results agree), reusing the
- * archived PNG bytes / captured `compose/semantics` snapshots off disk — no daemon round-trip.
+ * Structured-first: compact human output, a versioned `--json` envelope
+ * (`compose-preview-history/v1`), and heavy snapshots only on opt-in (`--inline`, `--out`,
+ * `--data`). Diff modes are computed locally with the same code the daemon's `history/diff` runs
+ * ([HistoryImageDiff], [SemanticsDiff]), so results agree.
  */
 class HistoryCommand(private val args: List<String>) {
 
@@ -59,10 +49,6 @@ class HistoryCommand(private val args: List<String>) {
       }
     }
   }
-
-  // -------------------------------------------------------------------------
-  // Subcommands
-  // -------------------------------------------------------------------------
 
   private fun list() {
     val json = "--json" in args
@@ -209,8 +195,7 @@ class HistoryCommand(private val args: List<String>) {
     val pngHashChanged = from.pngHash != to.pngHash
 
     if (pixel) {
-      // Computed locally via the shared HistoryImageDiff — same code the daemon's `history/diff
-      // mode=pixel` runs, so results agree, and it works whether or not a daemon is up.
+      // Same HistoryImageDiff as the daemon's `history/diff mode=pixel`.
       val fromBytes = fromRead.pngBytes
       val toBytes = toRead.pngBytes
       if (fromBytes == null || toBytes == null) {
@@ -252,9 +237,8 @@ class HistoryCommand(private val args: List<String>) {
     }
 
     if (mode == "semantics") {
-      // Structural diff of the two entries' captured compose/semantics trees, computed locally via
-      // the shared SemanticsDiff — the same differ the daemon's `history/diff mode=semantics` runs.
-      // Each entry's tree was snapshotted into its sidecar at record time, so this reads no PNGs.
+      // Structural diff of the entries' captured semantics trees via SemanticsDiff (as the daemon's
+      // `mode=semantics`); reads sidecars, no PNGs.
       val missing =
         when {
           from.semantics == null -> fromId
@@ -300,9 +284,7 @@ class HistoryCommand(private val args: List<String>) {
     }
 
     if (mode == "data") {
-      // Data-product roll-up (semantics + a11y + theme), computed locally via the shared
-      // HistoryDataDiff — the same code the daemon's `history/diff mode=data` runs, reading the
-      // snapshots frozen in each entry's sidecar (no PNGs, no daemon round-trip).
+      // Data-product roll-up via HistoryDataDiff (as the daemon's `mode=data`), from the sidecars.
       val delta =
         try {
           HistoryDataDiff.diff(from, to)
@@ -355,10 +337,9 @@ class HistoryCommand(private val args: List<String>) {
   }
 
   /**
-   * Writes the marked-diff [pngBytes]. `--out <path>` wins; otherwise it mirrors the daemon's
-   * `<previewDir>/.diffs/<from>__<to>.png` convention (derived from the `to` entry's PNG path) via
-   * [HistoryDiffArtifacts], so CLI- and daemon-produced artefacts land in the same place.
-   * Best-effort — returns the absolute path, or null (after reporting) if the write fails.
+   * Write the marked-diff [pngBytes] to `--out`, else the daemon's
+   * `<previewDir>/.diffs/<from>__<to>.png` convention ([HistoryDiffArtifacts]). Best-effort:
+   * returns the path, or null after reporting a failure.
    */
   private fun writeDiffArtifact(
     toPngPath: String,
@@ -387,14 +368,9 @@ class HistoryCommand(private val args: List<String>) {
       null
     }
 
-  // -------------------------------------------------------------------------
-  // Source resolution + helpers
-  // -------------------------------------------------------------------------
-
   /**
-   * Opens the history source: `--ref <fullRef>` reads the reporting branch (git), else the local
-   * archive under the user cache (see [defaultHistoryDir]). Returns null (after reporting "no
-   * history") only for the local case when the dir is absent, so callers can short-circuit.
+   * Open the history source: `--ref <fullRef>` reads the reporting branch, else the local archive
+   * ([defaultHistoryDir]). Returns null (after reporting) only when the local dir is absent.
    */
   private fun openSource(json: Boolean): HistorySource? {
     val ref = args.flagValue("--ref")
@@ -422,9 +398,7 @@ class HistoryCommand(private val args: List<String>) {
   private fun positionalAfter(sub: String): String? = positionalsAfter(sub).firstOrNull()
 
   /**
-   * Operands after the subcommand token, in order (the entry ids). Skips flag tokens *and* the
-   * value of a space-separated valued flag (e.g. `--history-dir /tmp/h e1` → `[e1]`), so options
-   * may appear before the ids.
+   * Operands after the subcommand, skipping flags and their values, so options may precede the ids.
    */
   private fun positionalsAfter(sub: String): List<String> {
     val positionals = mutableListOf<String>()
@@ -511,14 +485,10 @@ class HistoryCommand(private val args: List<String>) {
     const val HISTORY_DIRNAME = LEGACY_HISTORY_DIRNAME
 
     /**
-     * The history archive for the module rooted at [cwd], matching what the daemon writes:
-     * `<cache>/history/<workspaceSlug>/<moduleRel>` (see `common/io`'s `composeAiHistoryDir`), or
-     * the legacy `<cwd>/.compose-preview-history` when that directory still exists.
-     *
-     * The workspace root is found by walking up for a `settings.gradle[.kts]` — the same anchor
-     * Gradle uses for `project.rootDir`, which is what the plugin hands the daemon. A cwd with no
-     * settings file above it (running outside a Gradle build) is treated as its own root, which
-     * matches the single-module case and keeps the command usable standalone.
+     * The archive for the module at [cwd], matching the daemon:
+     * `<cache>/history/<workspaceSlug>/<moduleRel>` (`composeAiHistoryDir`), or a legacy
+     * `<cwd>/.compose-preview-history` when present. The workspace root is the nearest
+     * `settings.gradle[.kts]` above [cwd], else [cwd] itself.
      */
     internal fun defaultHistoryDir(cwd: Path): Path =
       composeAiHistoryDir(workspaceRootOf(cwd).toFile(), cwd.toFile()).toPath()
@@ -599,19 +569,15 @@ internal data class HistoryDiffResponse(
   val diffPx: Long? = null,
   val ssim: Double? = null,
   val diffPngPath: String? = null,
-  // Semantics-mode field (`--mode semantics`); null otherwise. The typed compose-semantics-diff/v1
-  // delta of the two entries' captured trees.
+  // `--mode semantics` only: the `compose-semantics-diff/v1` delta of the captured trees.
   val semanticsDelta: JsonElement? = null,
-  // Data-mode field (`--mode data`); null otherwise. The versioned history-data-diff/v1 roll-up
-  // (semantics + a11y + theme) of the two entries' captured data products.
+  // `--mode data` only: the `history-data-diff/v1` roll-up (semantics + a11y + theme).
   val dataDelta: JsonElement? = null,
 )
 
 /**
- * Renders a [HistoryDataDelta] for the terminal — one block per compared product. Sections that
- * weren't compared (the product wasn't captured on both entries) are reported as such, distinct
- * from a compared-but-unchanged section, so a reviewer can tell "no a11y data" from "a11y
- * unchanged".
+ * Render a [HistoryDataDelta] for the terminal, one block per product, distinguishing "not
+ * compared" (not captured on both) from "unchanged".
  */
 internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String = buildString {
   appendLine("semantics:")

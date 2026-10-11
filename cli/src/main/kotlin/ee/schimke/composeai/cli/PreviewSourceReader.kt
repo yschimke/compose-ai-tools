@@ -22,14 +22,10 @@ internal object PreviewSourceReader {
   }
 
   /**
-   * [read], followed by the bodies of the functions the preview **directly calls** that its own
-   * module defines — one level deep, at most [maxCallees] of them within [maxCalleeChars].
-   *
-   * A preview is often a single call into the catalog's frame (`WearList() = WearScreen { … }`),
-   * and the frame is where the time text, the scaffold or the theme come from. Shown only the
-   * preview's body, a model reported "ScreenScaffold's timeText is not set" for a screen whose
-   * frame supplies it. Library functions (`ScreenScaffold`, `Text`) are not in the module's source
-   * tree, so they are never pulled in.
+   * [read], plus the bodies of in-module functions the preview directly calls (one level, at most
+   * [maxCallees] within [maxCalleeChars]). Previews often delegate to a catalog frame that supplies
+   * scaffold, time text or theme; library functions aren't in the source tree and are never
+   * included.
    */
   fun readWithCallees(
     file: File,

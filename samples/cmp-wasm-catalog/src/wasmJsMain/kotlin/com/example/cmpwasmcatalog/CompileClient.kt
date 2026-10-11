@@ -19,12 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * What the builder's compile pane is showing.
- *
- * There is no "off" member on purpose: with no `?compileHost=` the caller gets **null** and renders
- * nothing at all. An empty pane would tell a user the check ran and found nothing, when in fact the
- * feature was never switched on — and the browser-only loop is the thing that works today and must
- * keep working with no server anywhere near it.
+ * What the builder's compile pane shows. No "off" state: without `?compileHost=` the caller gets
+ * null and renders nothing, rather than implying a check ran.
  */
 internal sealed interface CompilePaneState {
   /** Asking the host what it can compile. */
@@ -41,11 +37,8 @@ internal sealed interface CompilePaneState {
 }
 
 /**
- * How long the source must stop changing before it is posted.
- *
- * Every keystroke regenerates the source. Posting each one would hammer the host and mint a
- * compiled-snippet token per character. A pause this long is well inside "I stopped typing" and
- * well outside the gap between two keys.
+ * How long the source must stop changing before it is posted, so typing doesn't post (and mint a
+ * token) per keystroke.
  */
 private const val DEBOUNCE_MS = 600L
 
@@ -57,17 +50,9 @@ private const val DISCOVER_TIMEOUT_MS = 10_000
 /**
  * Runs the compile check against [host] whenever [source] settles, and reports what came back.
  *
- * ### Staleness
- *
- * Two mechanisms, and both are wanted. Keying the effect on [source] means a new edit **cancels**
- * the in-flight check, so its continuation never resumes; the [StaleGuard] sequence then makes that
- * guarantee explicit at the point the result is applied. Without either, a slow answer to an older
- * edit lands last and paints errors over source the user has already fixed.
- *
- * ### Not blocking the editor
- *
- * Nothing here is awaited by the render or code panes. A host that takes a minute — or never
- * answers — costs this pane and nothing else.
+ * Keying on [source] cancels the in-flight check on each edit, and [StaleGuard] makes that explicit
+ * where the result is applied, so a slow old answer never paints over fixed source. Nothing else
+ * awaits this, so a slow host only costs this pane.
  */
 @Composable
 internal fun rememberCompileCheck(host: String, source: String): CompilePaneState {
@@ -83,10 +68,8 @@ internal fun rememberCompileCheck(host: String, source: String): CompilePaneStat
           target != null -> CompilePaneState.Ready(target)
           catalogs.isEmpty() -> CompilePaneState.Unavailable("$host offers no compile catalogs")
           else ->
-            // The classpath question, answered by the host instead of assumed. The generated file
-            // imports `androidx.compose.material3.*`; only the `compose-m3` catalog's classpath
-            // carries it. Naming what the host *does* offer turns "it says errors" into "this host
-            // cannot compile M3", which is a different bug report.
+            // Name what the host does offer: "this host can't compile M3" is a different problem
+            // from "your screen has errors".
             CompilePaneState.Unavailable(
               "no '${CompileCheck.M3_CATALOG_SYSTEM}' catalog here — this host compiles " +
                 catalogs.joinToString(", ") { it.servedSystem } +
@@ -128,9 +111,8 @@ private fun getTextPromise(url: String, timeoutMs: Int): Promise<JsString> =
   )
 
 /**
- * The response **body is returned even on a non-2xx**, because the server answers a rejected
- * compile with a JSON body that says why. Throwing away that body and reporting the status code
- * would turn a readable "catalog not available" into "HTTP 400".
+ * Returns the body even on non-2xx: the server explains a rejected compile in JSON, which beats
+ * "HTTP 400".
  */
 private fun postJsonPromise(url: String, body: String, timeoutMs: Int): Promise<JsString> =
   js(

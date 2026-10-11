@@ -18,22 +18,13 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * [RenderSessionFactory] singleton for the in-process Compose Multiplatform Desktop backend. Builds
- * a [DaemonClientRenderSession] from a [RenderSessionConfig] by hosting `:daemon:desktop`'s
- * [runDaemon] on a background thread with piped streams. The session itself (the protocol delegate)
- * is shared with the subprocess and MCP backends — only the transport (in-process pipes vs.
- * subprocess stdio) and lifecycle (daemon-thread join vs. subprocess shutdown) differ.
+ * [RenderSessionFactory] for the in-process Compose Desktop backend: hosts `:daemon:desktop`'s
+ * [runDaemon] on a background thread over piped streams, behind the same
+ * [DaemonClientRenderSession] the subprocess backend uses.
  *
- * ## Lifecycle
- *
- * On [RenderSession.close]:
- * 1. Send `shutdown` + `exit` to the daemon via the client.
- * 2. Join the daemon thread, bounded by [SHUTDOWN_JOIN_TIMEOUT_MS]. If the thread doesn't exit
- *    cleanly within that window we interrupt it and continue — the calling thread isn't held
- *    hostage by a misbehaving renderer.
- * 3. Close both pipe pairs so neither side leaks file descriptors.
- * 4. Restore any system properties the session set during open (LIFO so nested sessions in the same
- *    JVM restore in the right order).
+ * On [RenderSession.close]: send `shutdown` + `exit`; join the daemon thread for up to
+ * [SHUTDOWN_JOIN_TIMEOUT_MS] (then interrupt); close both pipe pairs; restore the system properties
+ * set at open, LIFO so nested sessions restore correctly.
  */
 object EmbeddedDesktopRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Embedded
@@ -68,10 +59,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
           .build()
     }
 
-    // Apply the descriptor's system properties to the calling JVM. These drive PreviewIndex
-    // lookup, history paths, classpath fingerprint sources etc. — the daemon code reads them
-    // directly via `System.getProperty(...)`. The restores list is executed at close() so the
-    // calling JVM doesn't accumulate sysprops over multiple session lifetimes.
+    // The daemon reads its configuration from system properties; restored at close() so they don't
+    // accumulate across sessions.
     val restores = mutableListOf<() -> Unit>()
     for ((k, v) in descriptor.systemProperties) {
       val previous = System.getProperty(k)
@@ -91,10 +80,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
     }
       .getOrDefault(workspaceRoot.absoluteFile)
 
-    // Two piped pairs: client→server (request channel) and server→client (response channel).
-    // We don't share a single pipe because reads + writes from the same thread would deadlock
-    // — the JSON-RPC server blocks reading requests while the client blocks waiting for
-    // responses.
+    // Two pipe pairs: a single pipe would deadlock with the server blocked reading and the client
+    // blocked awaiting responses.
     val clientToServerSink = PipedOutputStream()
     val clientToServerSource = PipedInputStream(clientToServerSink)
     val serverToClientSink = PipedOutputStream()
@@ -110,11 +97,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
                 input = clientToServerSource,
                 output = serverToClientSink,
                 installSigtermHook = false,
-                // CRITICAL: embedded mode shares the JVM with the caller. The daemon's default
-                // `onExit` calls `System.exit(...)` when the JSON-RPC `exit` notification
-                // arrives — that would terminate the calling JVM (test runners, IDE plugins,
-                // etc.) mid-operation. Swallow the exit code; the calling thread joins the
-                // daemon thread shortly after sending `exit` and observes a clean termination.
+                // CRITICAL: the daemon's default `onExit` calls `System.exit`, which would kill the
+                // caller's JVM. The calling thread joins the daemon thread instead.
                 onExit = { _ -> },
               )
             } catch (t: Throwable) {
@@ -181,10 +165,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
   }
 
   /**
-   * Quick liveness check — used by tests + callers that want to surface a clearer error before
-   * paying the open cost when the daemon classpath isn't on the calling JVM (e.g. someone added the
-   * API jar but forgot the embedded-desktop coordinate). Returns `true` only when the desktop
-   * daemon entry point is reachable via reflection.
+   * Whether the desktop daemon entry point is reachable via reflection, so callers can fail clearly
+   * before paying the open cost when the embedded-desktop coordinate is missing.
    */
   fun isAvailable(): Boolean = runCatching {
     Class.forName("ee.schimke.composeai.daemon.DaemonMain")

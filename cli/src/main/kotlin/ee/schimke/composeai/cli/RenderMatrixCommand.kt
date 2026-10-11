@@ -16,16 +16,11 @@ import kotlinx.serialization.json.putJsonArray
 import okio.Path.Companion.toPath
 
 /**
- * `compose-preview render-matrix` — the CLI counterpart of the `render_matrix` MCP tool
- * (issue #1788). Render one preview across a cross-product of display axes (`--device` × `--locale`
- * × `--ui-mode` × `--font-scale`) and report a token-frugal per-cell summary (`overrides`, `label`,
- * `sha256`, dimensions, `changed` vs the first cell), optionally writing a single stitched
- * contact-sheet PNG with `--contact-sheet`.
- *
- * Drives the same daemon `RenderSession` the a11y / semantics flows use: a standard
- * `composePreviewRenderAll` build to discover previews + a `composePreviewDaemonStart` to
- * materialise the launch descriptor, then a short-lived session that renders each cell with its
- * overrides.
+ * `compose-preview render-matrix` — the CLI counterpart of the `render_matrix` MCP tool. Renders
+ * one preview across a cross-product of `--device` × `--locale` × `--ui-mode` × `--font-scale` and
+ * reports a compact per-cell summary (`overrides`, `label`, `sha256`, dimensions, `changed` vs the
+ * first cell), optionally stitching a `--contact-sheet` PNG. Uses a standard render to discover
+ * previews, `composePreviewDaemonStart` for the descriptor, then a short-lived daemon session.
  */
 class RenderMatrixCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
@@ -58,8 +53,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       return
     }
 
-    // A flag beats the shared settings file, which beats "axis not varied" — the MCP server's
-    // precedence. A setting fills only an axis no flag named, as a single value.
+    // A flag beats the settings file, which beats "axis not varied" (the MCP server's precedence).
     val settings = previewSettings
     val devices = settings.matrixAxis(CliPreviewSettings.DEVICE, axisValues("--device"))
     val locales = settings.matrixAxis(CliPreviewSettings.LOCALE, axisValues("--locale"))
@@ -98,9 +92,8 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     }
     val cells = MatrixAxes.expand(devices, locales, uiModes, fontScaleValues)
 
-    // Standard render: builds the module(s) and writes each preview manifest so we can resolve the
-    // single target preview. `--module` / `--id` / `--filter` / `--preview` narrow which modules
-    // render.
+    // Builds the modules and writes manifests so the target preview can be resolved; the selectors
+    // narrow which modules render.
     val outcome = renderAllModules(silenceStdout = jsonOutput)
     if (!outcome.buildOk) {
       System.err.println("render-matrix: render build failed.")
@@ -171,15 +164,8 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       .takeIf { it.isNotEmpty() }
 
   /**
-   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
-   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold.
-   *
-   * Deliberately **not** a precedence ladder. `renderAllModules` above already narrowed the build
-   * through `modulesMatchingPreviewRequest`, which intersects, so `--id A --filter B` has dropped
-   * every module before this predicate ever runs. A local "tightest selector wins" rule could only
-   * disagree with that by claiming to have honoured `--id A` on a candidate set the build had
-   * already emptied — one rule, applied in both passes, is the only way the two can't contradict
-   * each other.
+   * Match against `--id` / `--filter` / `--preview` with the shared [previewIdMatchesRequest]
+   * (intersection), the same rule the build narrowing used, so the two passes can't disagree.
    */
   private fun matchesPreview(preview: PreviewInfo): Boolean =
     previewIdMatchesRequest(
@@ -234,22 +220,15 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       printHuman(module, previewId, rows, contactSheetWritten)
     }
 
-    // Non-zero when no cell rendered at all; a partial render still exits 0 with the failures
-    // logged.
+    // Non-zero only when no cell rendered; partial renders exit 0 with failures logged.
     if (rows.none { it.sha != null }) exitProcess(2)
   }
 
   /**
-   * Write each rendered cell's PNG under the `--cells-dir` directory (default:
-   * `<module>/build/compose-previews/<id>-matrix-cells/`), one file per cell named from its axis
-   * values (e.g. `en--light--1.5x.png`), so agents and importers (Figma push, design-artifact
-   * bundles) get per-variant files without cropping the contact sheet.
-   *
-   * Stale `.png` files from a prior run are removed first: because each run only overwrites the
-   * cells it rendered, a later run that narrows the axes (or whose cell failed) would otherwise
-   * leave earlier variants behind, and an importer/human globbing the directory would consume them
-   * as if they belonged to the current matrix. Clearing makes the directory reflect exactly this
-   * run's cells. Only top-level `.png` files are removed — never subdirectories or other files.
+   * Write each rendered cell's PNG under `--cells-dir` (default
+   * `<module>/build/compose-previews/<id>-matrix-cells/`), named from its axis values (e.g.
+   * `en--light--1.5x.png`). Stale top-level `.png`s from earlier runs are removed first, so the
+   * directory reflects exactly this run.
    */
   private fun writeCells(
     module: PreviewModule,
@@ -284,9 +263,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       return null
     }
     val sheet = ContactSheet.stitch(tiles) ?: return null
-    // Production IO goes through the injected Okio FileSystem (docs/AGENT_GUIDE.md), so tests can
-    // drive
-    // the write through a FakeFileSystem; bridge back to File only for the reported path.
+    // IO goes through the injected Okio FileSystem so tests can use a FakeFileSystem.
     val targetPath =
       contactSheetExplicitPath?.toPath()
         ?: (module.projectDir.path.toPath() /
@@ -425,14 +402,13 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     private val matrixJson = Json { prettyPrint = true }
 
     /**
-     * Stable per-cell file name derived from the cell's axis values, e.g. `en--light--1.5x.png`,
-     * `id_pixel_5--dark.png`, `default.png`. Axis order matches [MatrixCell.label]; characters
-     * outside `[A-Za-z0-9._-]` are replaced so device specs stay filesystem-safe.
+     * Per-cell file name from the axis values (`en--light--1.5x.png`, `id_pixel_5--dark.png`,
+     * `default.png`), in [MatrixCell.label] order, with characters outside `[A-Za-z0-9._-]`
+     * replaced.
      */
     /**
-     * Remove stale top-level `.png` files from a `--cells-dir` so the directory reflects exactly
-     * the current run's cells (see [writeCells]). Only regular `.png` files at the top level are
-     * deleted — never subdirectories or non-PNG files. A missing directory is a no-op.
+     * Remove stale top-level `.png` files from a `--cells-dir` ([writeCells]); never subdirectories
+     * or other files. A missing directory is a no-op.
      */
     internal fun clearStaleCellPngs(fileSystem: okio.FileSystem, dirPath: okio.Path) {
       runCatching { fileSystem.list(dirPath) }

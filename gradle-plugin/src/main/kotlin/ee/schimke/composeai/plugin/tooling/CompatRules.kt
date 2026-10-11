@@ -3,54 +3,37 @@ package ee.schimke.composeai.plugin.tooling
 import java.time.YearMonth
 
 /**
- * Plugin-side compat-check rules. Single source of truth used by both [ComposePreviewModelBuilder]
- * (Tooling API path, consumed by the CLI) and [ComposePreviewDoctorTask] (Gradle-task path,
- * consumed by the VS Code extension and anything else that drives Gradle tasks but can't run
- * `BuildAction`s).
- *
- * Bump the thresholds here — and only here — when a new AndroidX AAR adds an R.id field that older
- * transitives don't have. Keep the catalogue in `docs/RENDERER_COMPATIBILITY.md` in sync.
+ * Plugin-side compat rules, shared by [ComposePreviewModelBuilder] (Tooling API / CLI) and
+ * [ComposePreviewDoctorTask] (task path / VS Code). Bump thresholds only here, and keep
+ * `docs/RENDERER_COMPATIBILITY.md` in sync.
  */
 internal object CompatRules {
 
   /**
-   * Effective minimum Gradle version for consumers applying the plugin.
-   *
-   * Set to the lowest Gradle line our integration matrix routinely exercises. The `agp8-min`
-   * fixture pins the bottom edge to Gradle 8.13 (Signal-Android-class consumer); the plugin's own
-   * code only reaches Gradle APIs that have been stable since the 8.x line, so this floor is a
-   * coverage statement, not a hard API requirement. Most Android consumers are gated more strictly
-   * by AGP's own floor anyway — AGP 9.0.x needs Gradle 9.1.0+, AGP 9.1.x needs 9.3.1+ — and AGP
-   * rejects older Gradle at its own version check long before our `apply()` runs.
-   *
-   * The repo wrapper (currently 9.4.1) is the dev/test toolchain — not a floor we impose on
-   * consumers. Don't conflate the two.
+   * Lowest Gradle version our integration matrix exercises (the `agp8-min` fixture). A coverage
+   * statement, not an API requirement; AGP's own floor is usually stricter. Unrelated to the repo
+   * wrapper version.
    */
   internal val GRADLE_MIN = Semver(8, 13, 0)
 
   /**
-   * activity 1.11+ transitively brought `androidx.navigationevent:1.0.0`. Consumers whose main
-   * variant has older activity end up with the `ComponentActivity` classes expecting
-   * `R.id.view_tree_…` resources that aren't in the merged APK — crashes Robolectric with
-   * `NoClassDefFoundError: androidx/navigationevent/R$id`.
+   * activity 1.11+ brings `androidx.navigationevent`; older activity on the main variant leaves
+   * `ComponentActivity` expecting R ids absent from the merged APK (`NoClassDefFoundError:
+   * androidx/navigationevent/R$id`).
    */
   private val NAVIGATIONEVENT_REQUIRES_ACTIVITY = Semver(1, 11, 0)
 
   /**
-   * compose-ui 1.10.0 added a call site that references
-   * `androidx.core.R.id.tag_compat_insets_dispatch`, added in `androidx.core:core:1.16.0`.
+   * compose-ui 1.10.0 references `androidx.core.R.id.tag_compat_insets_dispatch`, added in core
+   * 1.16.0.
    */
   private val COMPOSE_UI_NEEDS_CORE_1_16 = Semver(1, 10, 0)
   private val CORE_1_16 = Semver(1, 16, 0)
 
   /**
-   * Generic "you're well behind head" minimums for libraries whose version commonly shapes renderer
-   * behaviour. Threshold policy: roughly the second-to-last known stable at time of writing —
-   * recent enough to flag genuinely stale stacks, lenient enough that a consumer one release behind
-   * head doesn't get nagged. Bump when the paired upstream line ships a new stable minor.
-   *
-   * The specific compat rules above (navigationevent, core-vs-compose) still fire on their own when
-   * they apply — this list is the catch-all for "nothing's actively broken, but you're old".
+   * "Well behind head" minimums for libraries that shape renderer behaviour: roughly the
+   * second-to-last stable. Bump when upstream ships a new stable minor. The specific rules above
+   * still fire independently.
    */
   private val OLD_DEP_MINIMUMS: List<Pair<String, Semver>> =
     listOf(
@@ -61,27 +44,13 @@ internal object CompatRules {
     )
 
   /**
-   * Runs every rule against the given dep snapshot and returns findings ordered by severity. Pure —
-   * safe to call from tests and from the serialisation path.
+   * Runs every rule against the dependency snapshot, returning findings by severity. Pure.
    *
-   * [previewToolingDeclared], [transitivePreviewToolingDetected], and
-   * [enforcePreviewToolingDependency] are the per-module signals the Android registration captures
-   * at `onVariants` time:
-   * - `previewToolingDeclared` — `AndroidPreviewSupport.hasDirectPreviewDependency(project)`, i.e.
-   *   is one of the known `@Preview` tooling coords declared **directly** in this module's
-   *   `*Implementation` / `*Api` / `*RuntimeOnly` buckets?
-   * - `transitivePreviewToolingDetected` — `${variant}RuntimeClasspath`'s resolved graph reached a
-   *   preview-tooling coord transitively (issue #1549). The doctor task computes this at action
-   *   time via
-   *   [ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling]
-   *   walking `mainRuntimeRoot`. Independent of `previewToolingDeclared`.
-   * - `enforcePreviewToolingDependency` — `composePreview.enforcePreviewToolingDependency`, the
-   *   manual escape hatch added for the CMP-Android `:composeApp -> :shared` shape (issue #241).
-   *
-   * When the Android signals are non-null, [checkUndeclaredPreviewTooling] fires the "pin the dep
-   * locally" soft recommendation whenever the direct dep is missing AND the gate passed via either
-   * the escape hatch (enforce=false) OR auto-detection (transitive=true). CMP / Desktop callers
-   * pass `null` for all three and the check is skipped.
+   * Android-only signals (null for CMP / Desktop, which skips [checkUndeclaredPreviewTooling]):
+   * - `previewToolingDeclared` — a preview-tooling coord is declared directly in this module.
+   * - `transitivePreviewToolingDetected` — the resolved runtime graph reaches one (#1549), computed
+   *   via [ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling].
+   * - `enforcePreviewToolingDependency` — the `composePreview` escape hatch (#241).
    */
   fun evaluate(
     main: Map<String, String>,
@@ -115,24 +84,11 @@ internal object CompatRules {
   }
 
   /**
-   * Fires when the gate passed without a direct preview-tooling declaration on this module — either
-   * via the manual `composePreview.enforcePreviewToolingDependency = false` escape hatch, or via
-   * the IP-safe transitive walk added in #1549 (declared `project(":...")` sibling carries the
-   * tooling). In both cases the sibling's preview tooling is conceptually a *transitive* dep,
-   * pinned by the sibling's version policy. Restating the dep directly on this module:
-   * - locks the version in this module's view of the graph, so a sibling-only upgrade can't
-   *   silently shift the renderer's expected compose-tooling version,
-   * - makes the dep visible to `compose-preview doctor`'s version-skew checks (the renderer-vs-
-   *   `ui-tooling-preview` version compat rules walk this module's declared graph, not the
-   *   sibling's),
-   * - documents intent for the next maintainer who reads `:composeApp`'s build file looking for
-   *   "why does compose-preview see previews here?".
-   *
-   * Strongly suggested — emitted as a `warning` not an `error` because relying on transitive
-   * reachability is a defensible design choice. Returns `null` (no finding) when the signals are
-   * unset (Desktop / CMP callers), when the direct dep IS declared, or when the gate didn't pass by
-   * either fallback path (enforce=true AND transitive=false — registration wouldn't have happened,
-   * doctor wouldn't run, but pin the contract here for completeness).
+   * Recommends declaring preview tooling directly when the gate passed only via the escape hatch or
+   * transitive detection. Pinning it locally locks the version against sibling upgrades, exposes it
+   * to doctor's version-skew checks, and documents intent. A warning, since relying on transitive
+   * reachability is defensible. `null` when signals are unset, the dep is declared, or neither
+   * fallback applied.
    */
   private fun checkUndeclaredPreviewTooling(
     previewToolingDeclared: Boolean?,
@@ -178,22 +134,10 @@ internal object CompatRules {
   }
 
   /**
-   * Hamcrest 2.x's merged `org.hamcrest:hamcrest` artifact removed the explicit
-   * `AllOf.allOf(Matcher, Matcher)` overload (varargs replaced it). Espresso 3.5/3.6 compiled
-   * against Hamcrest 1.3 calls into that 2-arg method via `Matchers.java:33`, so when a consumer's
-   * classpath has both:
-   *
-   * - `org.hamcrest:hamcrest:2.x` (often pulled by `junit-jupiter:5.x` or direct test asserts), and
-   * - `org.hamcrest:hamcrest-library:1.3` (transitive of `androidx.test.espresso:espresso-core`),
-   *
-   * the JVM classloader picks `Matchers` from one jar and `AllOf` from the other — boom,
-   * `NoSuchMethodError` at `Espresso.<clinit>` the first time
-   * `RobolectricIdlingStrategy.runUntilIdle` walks through `EspressoLink`.
-   *
-   * The plugin already substitutes `hamcrest:*` → `hamcrest-core:1.3` on its own
-   * `composePreviewAndroidRenderer<Variant>` configuration so the composePreviewRender task's
-   * classpath stays clean. This finding still surfaces the latent skew so consumers know to align
-   * their own AGP unit-test runs (which use the unfiltered `${variant}UnitTestRuntimeClasspath`).
+   * Hamcrest 2.x removed the 2-arg `AllOf.allOf` that Espresso (built against 1.3) calls; with both
+   * `hamcrest:2.x` and `hamcrest-library:1.3` on the classpath, `Espresso.<clinit>` fails with
+   * `NoSuchMethodError`. The plugin already fixes its own render configuration; this surfaces the
+   * skew for the consumer's own unit-test runs.
    */
   private fun checkHamcrestSkew(test: Map<String, String>): ModuleFindingData? {
     val merged = test["org.hamcrest:hamcrest"] ?: return null
@@ -236,12 +180,9 @@ internal object CompatRules {
   }
 
   /**
-   * KMP-published AndroidX / Compose Multiplatform modules ship platform siblings under separate
-   * coordinates (`foo-android`, `foo-desktop`, sometimes `foo-jvmstubs`). Kotlin's
-   * `org.jetbrains.kotlin.platform.type` compat rule normally steers Android test classpaths to the
-   * Android sibling, but consumers that build Kotlin through AGP alone may not have that rule
-   * registered. The renderer configuration substitutes these back to `-android`; this finding
-   * surfaces the same latent skew for consumer-owned unit-test tasks.
+   * KMP siblings (`-android`, `-desktop`, `-jvmstubs`) may resolve to the wrong platform when
+   * Kotlin's platform-type rule isn't registered (AGP-only builds). The renderer config substitutes
+   * them; this surfaces the skew for consumer-owned unit tests.
    */
   private fun checkKmpAndroidSiblingMismatch(test: Map<String, String>): ModuleFindingData? {
     val mismatches =
@@ -287,19 +228,10 @@ internal object CompatRules {
   }
 
   /**
-   * Fires when a transitive library on the unit-test classpath declares a higher `minSdkVersion`
-   * than the consumer module. compose-preview renders inside a Robolectric **unit test**, which
-   * makes AGP merge the unit-test `AndroidManifest.xml` (`process<Variant>UnitTestManifest`) — and
-   * the merger rejects any library whose `uses-sdk:minSdkVersion` exceeds the module's. Absent the
-   * plugin many modules never trigger this merge (it only runs when `isIncludeAndroidResources` is
-   * on), so the opaque AGP "minSdkVersion N cannot be smaller than version M declared in library …"
-   * failure is something compose-preview surfaces; this rule turns it into an actionable finding.
-   *
-   * minSdk is meaningless for a host-side Robolectric run, so the recommended fix is the unit-test-
-   * only `tools:overrideLibrary` escape hatch (named with the exact library packages we parsed from
-   * the AAR manifests), with "raise the module minSdk" offered as the on-device alternative.
-   * Returns `null` when the module minSdk is unknown (non-Android / unset) or no library exceeds
-   * it.
+   * Fires when a library on the unit-test classpath declares a higher `minSdkVersion` than the
+   * module: rendering triggers the unit-test manifest merge, which rejects it with an opaque AGP
+   * error. Recommends the unit-test-only `tools:overrideLibrary` (naming the parsed packages), or
+   * raising minSdk. `null` when module minSdk is unknown or nothing exceeds it.
    */
   private fun checkLibraryMinSdk(
     moduleMinSdk: Int?,
@@ -340,16 +272,9 @@ internal object CompatRules {
   }
 
   /**
-   * Flags Gradle versions below [GRADLE_MIN]. Parameter is the raw version string from
-   * `GradleVersion.current().version` (e.g. `"9.3.1"`, `"9.4.1"`, `"9.5.0-rc-1"`). `null` means the
-   * caller didn't plumb the version through — keeps the pre-existing call sites and tests working
-   * without forcing every path to know about Gradle's runtime.
-   *
-   * On paper this is unreachable in an AGP build — AGP's own compat check fails the build before
-   * `apply()` runs. In practice the rule is still worth keeping for two reasons: CMP Desktop builds
-   * don't have AGP guarding the gate, and a clear "gradle-too-old" finding beats the Tooling API's
-   * opaque `Could not execute build using connection to Gradle distribution …` wrapper when
-   * something does slip through.
+   * Flags Gradle below [GRADLE_MIN]; [gradleVersion] is `GradleVersion.current().version`, `null`
+   * when not plumbed. AGP builds fail earlier, but CMP Desktop has no AGP gate, and a clear finding
+   * beats the Tooling API's opaque error.
    */
   private fun checkGradleVersion(gradleVersion: String?): ModuleFindingData? {
     val raw = gradleVersion ?: return null
@@ -438,9 +363,8 @@ internal object CompatRules {
   }
 
   /**
-   * Emits one warning per [OLD_DEP_MINIMUMS] entry whose highest resolved version (main or test
-   * classpath) is below the minimum. Libraries absent from both classpaths are silently skipped —
-   * the consumer isn't using them, so there's nothing to warn about.
+   * One warning per [OLD_DEP_MINIMUMS] entry whose highest resolved version is below the minimum;
+   * absent libraries are skipped.
    */
   private fun checkOldDeps(
     main: Map<String, Semver>,
@@ -486,10 +410,8 @@ internal object CompatRules {
   }
 
   /**
-   * Suggest the previous calendar month's BOM (`YYYY.MM.00`). Compose BOM publishes monthly with
-   * the `.00` as the initial release, so "last month's BOM" is both a real version and a safe,
-   * conservative choice — it always exists, and we're never recommending a literal that will age
-   * out the moment this file is committed.
+   * Previous month's Compose BOM (`YYYY.MM.00`), which always exists and never ages out of the
+   * code.
    */
   internal fun suggestedComposeBom(today: YearMonth = YearMonth.now()): String {
     val ym = today.minusMonths(1)
@@ -516,10 +438,7 @@ internal object CompatRules {
     "$DOCS_ROOT#a-library-declares-a-higher-minsdk-than-the-module"
 }
 
-/**
- * Minimal semver used by compat rules. Lives plugin-side so the rules can work against the
- * resolved-version strings Gradle produces, without a dependency on any external semver library.
- */
+/** Minimal semver for Gradle's resolved-version strings. */
 internal data class Semver(val major: Int, val minor: Int, val patch: Int, val extra: String = "") :
   Comparable<Semver> {
   override fun compareTo(other: Semver): Int {
@@ -559,10 +478,7 @@ internal data class Semver(val major: Int, val minor: Int, val patch: Int, val e
   }
 }
 
-/**
- * [ModuleFinding] impl used by both the model builder and the task. Named `Data` not `Impl` to
- * match the existing ModuleInfoData / ComposePreviewModelData.
- */
+/** [ModuleFinding] impl shared by the model builder and the task. */
 internal data class ModuleFindingData(
   override val id: String,
   override val severity: String,

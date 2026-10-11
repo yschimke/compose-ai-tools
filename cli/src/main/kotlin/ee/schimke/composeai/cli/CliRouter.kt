@@ -1,18 +1,10 @@
 package ee.schimke.composeai.cli
 
 /**
- * Command routing: the top-level verbs, the command *groups* (`compose-preview <group> <command>`),
- * and the pure [route] that turns argv into a [Route] decision.
- *
- * 19 flat commands had grown a wide, flat namespace. Groups give the top level a short, honest
- * shape (a few core verbs + four groups) while **every command stays callable by its original flat
- * name** — the grouped form is additive, the flat name is a permanent back-compat alias, so
- * existing scripts and the published skill keep working unchanged.
- *
- * [route] is deliberately side-effect-free (no printing, no `exitProcess`, no command construction)
- * so `CliRouterTest` can exercise every dispatch path directly. `Main` maps the [Route] onto the
- * actual command factories; `CliRouterTest` also pins that the factory table and this router agree
- * on the command set, so the two can't drift.
+ * Command routing: top-level verbs, command groups (`compose-preview <group> <command>`), and the
+ * pure [route] from argv to a [Route]. Every command stays callable by its original flat name;
+ * groups are additive. [route] is side-effect-free so `CliRouterTest` can test every path, and that
+ * test also pins `Main`'s factory table to this router.
  */
 internal object CliRouter {
   /** Top-level commands shown first and not nested under a group. */
@@ -35,29 +27,17 @@ internal object CliRouter {
           // Design-guideline findings from a model, beside `a11y`'s deterministic ones.
           "guidelines",
           "history",
-          // Sits next to `history` on purpose: different branch, different shape (see
-          // HistoryManifestCommand). Adjacency plus distinct names beats hiding it elsewhere.
+          // Next to `history` on purpose: different branch and shape (see HistoryManifestCommand).
           "history-manifest",
           "profile",
-          // `rc` sits under `inspect` because that is what two of its three subcommands do — a
-          // `.rc` document is opaque and `rc dump` / `rc header` are how you look inside one. That
-          // `rc compile` also *writes* a document is the odd one out, and splitting the three
-          // across two groups to fix that would be worse: they are one codec and a person reaching
-          // for one reaches for the others in the same session.
+          // Under `inspect` because `rc dump` / `rc header` look inside opaque `.rc` documents; `rc
+          // compile` stays with them since it is one codec.
           "rc",
         ),
       "capture" to listOf("render-matrix", "record", "bundle"),
-      // `build-host` sits beside `serve` because it exists only to serve one: it is the Gradle
-      // half of `serve`, addressed over a pipe instead of linked in-process
-      // (yschimke/compose-preview-server#180). Machine-facing rather than hidden — a command a
-      // server spawns is still a command, and one that cannot be found is one nobody can debug.
-      // `ui-builder` joins them because all three are the same binary: `serve` hosts it,
-      // `build-host` is the Gradle half it spawns, and `ui-builder` launches its `ui` command.
-      // `design` is the fourth face of that binary and the only one that does not serve: it talks
-      // to a server that is already up and writes a design's pixels or source to a file
-      // (yschimke/compose-preview-server#529).
-      // `a2ui` is the same binary's A2UI playground client: it sends a document to a server that
-      // is already up and writes the PNG it draws (yschimke/compose-preview-server#1095).
+      // `build-host`, `ui-builder`, `design` and `a2ui` sit with `serve` because they are faces of
+      // the same server binary: `build-host` is the Gradle half `serve` spawns, `ui-builder`
+      // launches its `ui` command, and `design` / `a2ui` are clients of a running server.
       "share" to listOf("serve", "ui-builder", "design", "a2ui", "build-host", "share-preview"),
       "setup" to listOf("update", "init-script", "pin", "auth"),
     )
@@ -120,13 +100,10 @@ internal object CliRouter {
   }
 
   /**
-   * Locate a command while preserving the historical unknown-command result for ordinary
-   * positionals. There is one recoverable ambiguity: an unknown option before the command may have
-   * a separate value, and [CliFlags.findCommandIndex] necessarily mistakes that value for the
-   * command because the option is absent from its value-consuming registry. When that exact shape
-   * occurs, continue to the first known command token so per-command validation can report the real
-   * problem (`--fitler Foo render` warns about `--fitler`, rather than claiming `Foo` is a
-   * command).
+   * Locate a command, keeping the unknown-command result for ordinary positionals. One recoverable
+   * ambiguity: an unknown option's value before the command looks like the command to
+   * [CliFlags.findCommandIndex], so continue to the first known command and let per-command
+   * validation report the real problem (`--fitler Foo render` warns about `--fitler`).
    */
   private fun findCommandIndex(args: Array<String>, candidates: Set<String>): Int {
     val first = CliFlags.findCommandIndex(args)

@@ -41,26 +41,13 @@ import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * Compose **1.11's shared-element visual debugging** (`LookaheadAnimationVisualDebugging`) captured
- * as GIFs.
+ * Compose 1.11's shared-element visual debugging (`LookaheadAnimationVisualDebugging`) captured as
+ * GIFs. During a transition the overlay paints target bounds ([overlayColor]), unmatched keys in
+ * [unmatchedColor] (red), multiply-matched keys in [multipleMatchesColor] (green), and optional key
+ * labels. Studio's Animation Preview can't inspect shared elements, so a paused-clock GIF is how
+ * reviewers see it. Compare with [ContainerTransformAnimatedPreview].
  *
- * 1.11 added a runtime debug composable you wrap *around* a `SharedTransitionLayout`. While a
- * shared transition is in flight it paints, into the shared overlay:
- * - the **target bounds** each element is animating toward (semi-transparent fill, [overlayColor]),
- * - **unmatched** elements — a shared key with no counterpart in the other state — in
- *   [unmatchedColor] (red), the single most common shared-element bug,
- * - **multiply-matched** keys — the same key registered more than once — in [multipleMatchesColor]
- *   (green), the other common bug,
- * - optional **key labels** so you can read which `rememberSharedContentState(key = …)` each box
- *   belongs to.
- *
- * Android Studio's Animation Preview can't inspect shared elements, and the overlay only exists
- * *during* a transition, so a paused-clock GIF is the natural way to put it in front of a reviewer
- * or an agent. These previews are the rendered, diffable proof that the overlay behaves — pair them
- * with the un-instrumented transitions in [ContainerTransformAnimatedPreview].
- *
- * Requires the `@ExperimentalLookaheadAnimationVisualDebugApi` opt-in (the debug API is still
- * experimental in 1.11 even though the shared-element APIs themselves are stable).
+ * Needs `@ExperimentalLookaheadAnimationVisualDebugApi`.
  */
 private val debugBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
 private val debugElementColor = Color(0xFF4285F4)
@@ -71,9 +58,8 @@ private enum class DebugScreen {
 }
 
 /**
- * A **well-formed** container transform under the debug overlay: every shared key (`avatar`,
- * `title`, `container`) has a matched counterpart, so the overlay only draws target-bounds
- * rectangles and key labels — no red, no green. This is the "what correct looks like" baseline.
+ * A well-formed container transform: every key (`avatar`, `title`, `container`) matches, so the
+ * overlay draws only bounds and labels — the "correct" baseline.
  */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
 @Preview(
@@ -118,10 +104,8 @@ fun SharedElementDebugMatchedAnimatedPreview() {
 }
 
 /**
- * The **broken** version: the collapsed state declares an extra `badge` shared element that the
- * expanded state never registers. During the transition the overlay flags `badge` as **unmatched**
- * in red — exactly the diagnostic you'd reach for when a shared element silently fails to animate
- * because a key is missing on one side.
+ * Broken on purpose: the collapsed state has an extra `badge` key the expanded state never
+ * registers, so the overlay flags it red as unmatched.
  */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
 @Preview(

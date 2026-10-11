@@ -16,38 +16,19 @@ import ee.schimke.composeai.preview.ColorCatalog
 import ee.schimke.composeai.preview.ShapeCatalog
 import ee.schimke.composeai.preview.TypographyCatalog
 
-/**
- * The Wear catalog's **declared design-token catalogs** — the type / colour / shape choices the
- * theme-override surface autodetects, the Wear sibling of `:samples:design-catalog-m3`'s
- * `CatalogCatalogs.kt`. Wear renders on the Android (Robolectric) backend, so these token-level
- * catalogs draw real specimen sheets (unlike the desktop M3 module, whose sheets await #2135).
- *
- * Every typeface is declared as a `@TypographyCatalog` specimen so the sheet shows each face on the
- * same type scale, and resolves as a **downloadable Google font** rather than a vendored TTF — so
- * the module ships no `res/font` faces and every packed bundle stays ~2 MB smaller while remaining
- * self-contained (the renderer fetches + caches the face; see [googleFontProvider]):
- * * **Roboto Flex** — the default, `GoogleFont("Roboto Flex")` (the variable Roboto Flex from
- *   fonts.google.com's `ofl/robotoflex`).
- * * **Google Sans Flex** — the Material 3 Expressive brand face. It is in no license directory of
- *   the [google/fonts](https://github.com/google/fonts) corpus, but the **CSS2 endpoint serves it**
- *   (see compose-preview-server's `deploy/image/README.md`, which bakes it into the image font
- *   cache for the same reason), so it resolves through the same downloadable path as every other
- *   family here rather than degrading to the platform sans as it did before.
- * * **Lobster Two** — a deliberately distinctive display face, so a font override is unmistakable.
- * * **JetBrains Mono** / **Inter** — the pair Confetti Wear's KotlinConf identity is built from
- *   (mono titles, Inter body; see `design/STYLE_GUIDE.md` in joreilly/Confetti). Declared here as
- *   selectable faces in their own right, and paired by [wearCatalogTypography] for the KotlinConf
- *   `@WearThemeCatalog`.
- */
+// The Wear catalog's declared design-token catalogs (type / colour / shape), the Wear sibling of
+// `:samples:design-catalog-m3`'s `CatalogCatalogs.kt`. Rendered on Robolectric, so these draw real
+// specimen sheets.
+//
+// Every typeface is a `@TypographyCatalog` specimen resolved as a downloadable Google font (no
+// vendored TTFs; see [googleFontProvider]): Roboto Flex (default), Google Sans Flex, Lobster Two (a
+// deliberately distinctive face), and JetBrains Mono / Inter (Confetti Wear's KotlinConf pairing,
+// combined by [wearCatalogTypography]).
 
 /**
- * The GMS Fonts provider the catalog's typefaces resolve through. On a device it reaches Google
- * Play Services; under the renderer's Robolectric harness `ShadowFontsContractCompat` intercepts
- * the request and hands back a TTF from the shared `~/.cache/composeai/fonts/` cache (downloaded
- * once from `fonts.googleapis.com`), so no font bytes are vendored or packed into the bundle. The
- * cert array is empty: the shadow short-circuits before signature verification, and this catalog is
- * only ever rendered, never shipped to a device (mirrors `:samples:android`'s
- * `FontPreviewWrapper`).
+ * The GMS Fonts provider. Under Robolectric, `ShadowFontsContractCompat` serves a TTF from the
+ * shared `~/.cache/composeai/fonts/` cache instead. The cert array is empty because the shadow
+ * skips signature verification and this catalog never ships to a device.
  */
 private val googleFontProvider =
   GoogleFont.Provider(
@@ -63,12 +44,8 @@ val RobotoFlex: FontFamily =
   )
 
 /**
- * Google Sans Flex — the Material 3 Expressive brand face, resolved as a downloadable Google font
- * like every other family here. It is absent from the `google/fonts` corpus but the CSS2 endpoint
- * serves it (`css2?family=Google%20Sans%20Flex:wght@100..1000` answers with a `format('truetype')`
- * block), which is the only thing the renderer's downloadable-font path needs; the deployed image
- * pre-bakes the same family for the same reason. It used to alias [FontFamily.SansSerif], which
- * silently rendered as plain Roboto and made the "Google Sans Flex" choice a no-op on screen.
+ * Google Sans Flex, the Material 3 Expressive brand face. Not in the `google/fonts` corpus, but the
+ * CSS2 endpoint serves it, which is all the downloadable-font path needs.
  */
 val GoogleSansFlex: FontFamily =
   FontFamily(

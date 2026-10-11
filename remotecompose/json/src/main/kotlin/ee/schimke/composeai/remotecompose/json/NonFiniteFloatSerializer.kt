@@ -14,22 +14,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * A float that may not be finite, encoded the way the rest of this codec encodes one.
- *
- * `Json` rejects a bare `NaN` or `Infinity` token — they are not JSON — so a `Float` property
- * holding one cannot be serialized by the generated serializer at all. That is a real shape here
- * rather than a hypothetical: a non-finite float in a Remote Compose document is usually an
- * *encoded id*, and a document carrying one in its header is readable in every other respect.
- *
- * So a non-finite value travels as a string, exactly as [JsonMapSerializer.float] writes it into
- * the projection: `"Infinity"`, `"-Infinity"`, `"NaN"`, or `"@42"` for an id-bearing NaN. Finite
- * values stay numbers, so the common shape is unchanged and a `jq` query written against a dump
- * reads the same field the same way here.
- *
- * The point of it being a *serializer* rather than a conversion at the call site: `toJsonObject()`
- * already emitted this representation, while the generated serializer for the same public type
- * could not represent the value at all. A consumer handed a `RemoteComposeDocumentHeader` should
- * not have to know which of the two paths produced their JSON.
+ * Encodes a possibly non-finite float as [JsonMapSerializer.float] does: finite values as numbers,
+ * others as strings (`"Infinity"`, `"-Infinity"`, `"NaN"`, or `"@42"` for an id-bearing NaN).
+ * `Json` rejects bare `NaN`/`Infinity`, and non-finite floats are real here (usually encoded ids),
+ * so the generated serializer and `toJsonObject()` must agree on this form.
  */
 internal object NonFiniteFloatSerializer : KSerializer<Float> {
 

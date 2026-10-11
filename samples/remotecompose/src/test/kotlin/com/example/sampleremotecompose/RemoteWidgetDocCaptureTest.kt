@@ -7,22 +7,10 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Regression guard for the critical invariant: **framing a Remote Compose widget in an ideal shape
- * via a `@PreviewWrapper` must not lose the encoded RemoteCompose document.**
- *
- * The `<stem>.rc` sidecar (the encoded doc that `BundlePreviewTask.resolvePreviewIr` packs) is
- * captured only through the RemoteCompose wrapper — `RemoteOverridablePreviewWrapper.Wrap` runs
- * `captureSingleRemoteDocument`. `RemoteWidgetSquirclePreview` frames the widget in a squircle via
- * [SquircleRemoteWidgetWrapper], which **extends** that wrapper rather than replacing it, so both
- * the shape and the doc survive. A shape wrapper that swapped out the RemoteCompose wrapper would
- * render the same PNG but produce no `.rc` — this test fails in that case.
- *
- * The extension is `.rc`; it was `.rcdoc` until the serve canvas lane renamed it (#2720). This test
- * kept asking for the old name and so had been failing — i.e. NOT guarding the invariant — until
- * that was corrected, which is the failure mode a guard whose subject is "a file exists" always
- * has: it cannot tell "the producer broke" from "I am looking in the wrong place".
- *
- * `renderBeforeUnitTests = true` chains `composePreviewRenderAll` before this test.
+ * Framing a Remote Compose widget in a shape via `@PreviewWrapper` must not lose its encoded
+ * document. Only `RemoteOverridablePreviewWrapper.Wrap` captures the `<stem>.rc` sidecar, and
+ * [SquircleRemoteWidgetWrapper] extends it rather than replacing it; a replacing wrapper would
+ * render the same PNG but no `.rc`, failing this test. `renderBeforeUnitTests` renders first.
  */
 class RemoteWidgetDocCaptureTest {
 

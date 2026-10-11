@@ -11,22 +11,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * The cross-repository pin for the preview-selector rule (issue #5185).
- *
- * `--id`, `--filter` and `--preview` are answered twice, by two implementations that live in two
- * repositories: [previewIdMatchesRequest] here, and `previewIdMatchesStandaloneRequest` in
- * `yschimke/compose-preview-server`, which builds `ServeCommandOptions` itself now that
- * `compose-preview serve` is a launcher (#5177) and no longer hands the CLI's rule in. They agreed
- * by inspection and nothing checked it; the failure mode is silent, because a preview that stops
- * matching produces no error anywhere.
- *
- * [FIXTURES] is the shared table, and this suite is one half of the pin — the server repository
- * vendors the same file and runs it through its own rule. Change the rule, change the table, in the
- * same PR: the other half goes red on the next sync either way.
- *
- * The table is deliberately a *table* rather than a shared implementation. The rule is small and
- * pure, and the layer split (docs/design/REPOSITORY_LAYERS.md) puts the two copies on opposite
- * sides of a boundary that a shared function would have to cross.
+ * The cross-repository pin for the preview-selector rule. `--id` / `--filter` / `--preview` are
+ * implemented twice: [previewIdMatchesRequest] here and `previewIdMatchesStandaloneRequest` in
+ * yschimke/compose-preview-server. [FIXTURES] is a shared table both suites run; change the rule
+ * and the table in the same PR. A table rather than shared code because the two copies sit on
+ * opposite sides of a layer boundary (docs/design/REPOSITORY_LAYERS.md).
  */
 class PreviewSelectorFixturesTest {
 
@@ -53,11 +42,8 @@ class PreviewSelectorFixturesTest {
   }
 
   /**
-   * Every combination of the three selectors is exercised, both ways.
-   *
-   * Without this a rule change could add a branch — a fourth selector, a precedence between two of
-   * them — and land green against a table that never reaches it. The `false` half matters as much
-   * as the `true` half: a rule that accepted everything would satisfy a `true`-only table.
+   * Every combination of the three selectors is exercised, both true and false, so a new branch
+   * can't land green against a table that never reaches it.
    */
   @Test
   fun `the table covers each selector combination in both outcomes`() {

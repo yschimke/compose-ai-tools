@@ -1,29 +1,13 @@
-// In-process Compose Multiplatform Desktop backend for the render-session library.
+// In-process Compose Desktop backend for the render-session library: hosts `:daemon:desktop`'s
+// `runDaemon(...)` on a background thread over in-memory pipes, surfaced as a `RenderSession` —
+// same protocol, no fork.
 //
-// Hosts `:daemon:desktop`'s `runDaemon(...)` on a background thread, with the JSON-RPC transport
-// wired to in-memory piped streams. The calling JVM holds the client end of those pipes via a
-// `DaemonClient` and surfaces it as a `RenderSession` — same protocol, same wire format, no
-// subprocess fork.
+// Embedded (this) saves the JVM-fork startup (~1–2s per session) at the cost of Compose Desktop +
+// Skiko + daemon on the caller's classpath — good for test rigs and IDE plugins.
+// `:render-session-subprocess` keeps the caller minimal and allows daemon JVM args.
 //
-// **When to use this vs `:render-session-subprocess`**
-//
-// - **Embedded (this module):** the calling JVM gains the full Compose Desktop + Skiko + daemon
-//   runtime at session-open time. Best for JUnit pixel-test rigs, IDE plugins, or any host that
-//   already runs Compose Desktop and wants to avoid the JVM-fork startup cost (~1–2s saved per
-//   session).
-// - **Subprocess (`:render-session-subprocess`):** the calling JVM stays minimal. The renderer runs
-//   in its own forked JVM with whatever JVM args the daemon launch descriptor prescribes. Best for
-//   thin CLIs and tooling that doesn't want the runtime footprint, or that needs JVM args
-//   (`--add-opens`, custom GC settings) that can't be applied to a running JVM.
-//
-// **Limitations**
-//
-// 1. The Android Robolectric backend has *no* embedded equivalent — the sandbox bootstrap is too
-//    invasive. Calling `EmbeddedDesktopRenderSessions.open(...)` against an Android module fails
-//    cleanly.
-// 2. Multiple embedded sessions in the same JVM share system-property state — descriptor sysprops
-//    (`composeai.daemon.previewsJsonPath`, history dir, etc.) are JVM-global. One session at a
-//    time is safe; concurrent sessions against different modules need external coordination.
+// Limitations: no Android/Robolectric equivalent (opening one fails cleanly), and descriptor system
+// properties are JVM-global, so run one session at a time.
 
 plugins {
   id("composeai.base-conventions")
@@ -36,12 +20,8 @@ dependencies {
   api(project(":render-session-api"))
   implementation(libs.composeai.common.io)
 
-  // The actual daemon entry point we run on a background thread, plus the JSON-RPC client we
-  // wrap the calling end of the pipes with. `:render-session-subprocess` is depended on for
-  // the shared `DaemonClientRenderSession` delegate (and the `NotificationFanout` helper) — the
-  // class is transport-agnostic, just needs a `DaemonClient` and a `closeAction` lambda. The
-  // subprocess module is currently the canonical home for the delegate; consumers stay light
-  // because they pull in its single transport-shared file plus the API jar, not its factory.
+  // The daemon entry point, the JSON-RPC client, and `:render-session-subprocess`'s
+  // transport-agnostic `DaemonClientRenderSession` delegate.
   implementation(project(":render-session-subprocess"))
   implementation(libs.composeai.daemon.desktop)
   implementation(libs.composeai.daemon.core)

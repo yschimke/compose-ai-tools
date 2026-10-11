@@ -4,30 +4,16 @@ import ee.schimke.composeai.previewdata.PreviewManifest
 import ee.schimke.composeai.previewdata.PreviewModule
 
 /**
- * Turns a `--id` / `--filter` / `--preview` request into the Gradle property that actually narrows
- * the render (issue #3730; `--preview` joined the selectors in #3744).
+ * Turns a `--id` / `--filter` / `--preview` request into the Gradle property that narrows the
+ * render itself, rather than rendering the whole module and filtering output.
  *
- * Before this, `--id` / `--filter` were applied **client-side**: the CLI drove
- * `:module:composePreviewRenderAll` at full width and then dropped the non-matching rows from its
- * own output. Asking for one preview therefore rendered every preview in the module — measured at
- * 317s instead of 3s on `samples/cmp` (64 previews), which also overran the CLI's own timeout and
- * made single-preview renders *fail*. The plugin has honoured `composePreview.idFilter` on both
- * backends since #2977; the CLI simply wasn't passing it.
+ * Forwards an explicit, [ANCHOR]ed id list rather than the pattern: `--filter` is case-insensitive
+ * ([previewIdMatchesRequest]) while `composePreview.idFilter` is case-sensitive
+ * (`PreviewNameFilter.matchesId`), so the CLI resolves against the discovery manifest and only one
+ * matcher ever runs. Anchoring stops a base id pulling in its variant/row siblings.
  *
- * **Why an explicit id list rather than forwarding the pattern.** `--filter` is a
- * *case-insensitive* substring match on the id ([previewIdMatchesRequest]);
- * `composePreview.idFilter` is case-**sensitive** (`PreviewNameFilter.matchesId`). Forwarding the
- * raw pattern would silently render a *narrower* set than the CLI then expects to print, so a
- * `--filter homescreen` that used to match `HomeScreenPreview` would come back with no PNG. Instead
- * the CLI resolves the request against the discovery manifest it has already read and forwards the
- * exact ids, each anchored with [ANCHOR] so a base id can't drag in its own `_VARIANT_` / row
- * fan-out siblings. The two matchers never have to agree, because only one of them ever runs.
- *
- * **Why only when it genuinely narrows.** A filtered `composePreviewRender` is not build-cacheable
- * (`RenderPreviewsTask`'s `outputs.cacheIf` — a filtered run leaves every other module PNG at
- * whatever the last run wrote, so its output dir isn't the module's complete render set).
- * Forwarding a filter that selects *everything* would therefore buy nothing and cost the build
- * cache, so [forRequest] returns no arguments in that case.
+ * Only applied when it genuinely narrows: a filtered `composePreviewRender` isn't build-cacheable,
+ * so a filter selecting everything returns no arguments ([forRequest]).
  */
 internal object PreviewRenderScope {
 
@@ -35,29 +21,23 @@ internal object PreviewRenderScope {
   const val GRADLE_PROPERTY: String = "composePreview.idFilter"
 
   /**
-   * The delimiter- and encoding-safe form of [GRADLE_PROPERTY]: a **path** to a newline-delimited
-   * UTF-8 list of the same patterns (issue #5172), the positive twin of
-   * `composePreview.idExcludeFile`. Used only when the comma-joined property cannot carry the
-   * selection — see [forRequest].
+   * Delimiter- and encoding-safe form of [GRADLE_PROPERTY]: a path to a newline-delimited UTF-8
+   * list (the positive twin of `composePreview.idExcludeFile`), used only when the comma-joined
+   * property can't carry the selection ([forRequest]).
    */
   const val FILE_GRADLE_PROPERTY: String = "composePreview.idFilterFile"
 
   /**
-   * Mirror of `PreviewNameFilter.ANCHOR` — the prefix that makes a pattern an exact match rather
-   * than a substring one. Load-bearing here: ids are hierarchical, so an unanchored `Button` would
-   * also select `Button_Dark` and every `@PreviewParameter` row under it, quietly re-widening the
-   * render this class exists to narrow.
+   * Mirror of `PreviewNameFilter.ANCHOR`: makes a pattern exact, so `Button` doesn't also select
+   * `Button_Dark` and its rows.
    */
   const val ANCHOR: String = "="
 
   /**
-   * The narrowing decision for one render invocation.
-   *
-   * [gradleArgs] are appended to the render's Gradle argument list. [renderedIds] is the set of
-   * preview ids this run will actually (re-)render, **after** permutation expansion, or `null` when
-   * the run renders everything — the CLI uses it to leave the `.cli-state.json` entries of
-   * deliberately-skipped previews alone instead of forgetting their sha. [note] is a human-readable
-   * reason the narrowing was declined, for `--verbose`; `null` when there is nothing to say.
+   * The narrowing decision for one render. [gradleArgs] are appended to the Gradle args.
+   * [renderedIds] is the set of (permutation-expanded) ids this run re-renders, or null for all, so
+   * skipped previews keep their `.cli-state.json` shas. [note] says why narrowing was declined
+   * (`--verbose`).
    */
   data class Scope(
     val gradleArgs: List<String> = emptyList(),
@@ -72,20 +52,14 @@ internal object PreviewRenderScope {
   val FULL: Scope = Scope()
 
   /**
-   * Resolve [exactId] / [filter] / [previewRef] / [ids] (`--id-file`) against the discovery
-   * [manifests] of the modules about to render. The selectors intersect — see
-   * [previewIdMatchesRequest].
+   * Resolve [exactId] / [filter] / [previewRef] / [ids] (`--id-file`) against the [manifests] about
+   * to render; the selectors intersect ([previewIdMatchesRequest]).
    *
-   * [permutations] is the active `--permutations` list: the CLI matches a request against the
-   * *expanded* ids a user sees in `show` output (`Foo_dark`), but forwards the *unexpanded* id
-   * (`Foo`) because the render applies its id filter before expanding — see
-   * `RenderPreviewsTask.render`.
+   * [permutations]: requests match the expanded ids users see (`Foo_dark`) but forward the
+   * unexpanded id (`Foo`), since the render filters before expanding (`RenderPreviewsTask.render`).
+   * [filesDir] is where the `$FILE_GRADLE_PROPERTY` fallback file goes (null = temp dir).
    *
-   * [filesDir] is where the `$FILE_GRADLE_PROPERTY` fallback file is written when the comma-joined
-   * property can't carry the selection; `null` means the JVM temp dir. Tests pass their own.
-   *
-   * Returns [FULL] when there is no request, when nothing matched (the caller renders no module at
-   * all in that case), or when the request selects every discovered preview.
+   * Returns [FULL] when there is no request, nothing matched, or everything matched.
    */
   fun forRequest(
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
@@ -103,12 +77,9 @@ internal object PreviewRenderScope {
     val selected = linkedSetOf<String>()
     val renderedIds = linkedSetOf<String>()
     var discovered = 0
-    // Issue #3786 — a selector naming a `@PreviewParameter` row (`Foo_PARAM_1`, or a bare label
-    // like `Crimson`) picks out an id that only exists once the fan-out is on disk, so it can never
-    // match a manifest entry here. Selecting the parameterized previews it *might* name keeps the
-    // #3730 narrowing working for row requests instead of falling through to
-    // `selected.isEmpty() -> FULL` and rendering the whole module. Gated on `--id` not naming a
-    // preview that really exists, so an exact request still narrows to exactly that one.
+    // A row selector (`Foo_PARAM_1`, or a label like `Crimson`) can't match a manifest entry, so
+    // narrow to the parameterized previews it might name rather than render the whole module —
+    // unless `--id` names a real preview.
     val exactIdExists = manifestsDeclareExactId(manifests, exactId)
     for ((_, manifest) in manifests) {
       for (preview in manifest.previews) {
@@ -150,25 +121,18 @@ internal object PreviewRenderScope {
     val patterns = selected.filter(String::isNotBlank).map { ANCHOR + it }
     if (patterns.isEmpty()) return FULL
 
-    // `previewIdFilterProperty` splits the property on `,`, so an id carrying a comma would be torn
-    // into two patterns that each match nothing — and a filter matching nothing *fails* the render.
-    // No discovered id should contain one (ids derive from Kotlin identifiers and are
-    // path-sanitised), so this is a guard rather than a code path.
+    // The property is comma-split, so a comma in an id would break it; discovered ids shouldn't
+    // contain one, so this is a guard.
     val joined = patterns.joinToString(",")
     val commaSafe = patterns.none { it.contains(',') }
-    // Issue #5172 — process arguments are encoded with the JVM's `sun.jnu.encoding`, so on a
-    // C/POSIX-locale JVM (`ANSI_X3.4-1968`: containers, CI runners, cloud agent sandboxes) every
-    // non-ASCII character in this argument is replaced by `?` before Gradle ever sees it. A preview
-    // named `Cadence — Sync ready` then resolves to an id the render worker can never match, so the
-    // narrowed path failed for exactly the previews it was meant to speed up.
+    // Process arguments use `sun.jnu.encoding`; under a C/POSIX locale non-ASCII characters become
+    // `?` and the ids never match.
     val argSafe = platformArgEncodable(joined)
     if (commaSafe && argSafe) {
       return Scope(gradleArgs = listOf("-P$GRADLE_PROPERTY=$joined"), renderedIds = renderedIds)
     }
 
-    // Both problems are transport problems, and a UTF-8 file behind an ASCII path solves both: the
-    // path is what crosses the argument boundary, and newlines delimit ids a comma cannot. Mirrors
-    // `composePreview.idExcludeFile`, which exists for the comma half of the same story.
+    // A UTF-8 file behind an ASCII path fixes both the comma and the encoding problem.
     val file = writeIdFilterFile(patterns, filesDir)
     if (file == null || !platformArgEncodable(file.path)) {
       val why =
@@ -187,9 +151,8 @@ internal object PreviewRenderScope {
   }
 
   /**
-   * The charset the JVM encodes process arguments (and environment) with — `sun.jnu.encoding`.
-   * Unrelated to `file.encoding`: it comes from the process locale, so a container with no locale
-   * configured runs at `ANSI_X3.4-1968` (US-ASCII) even on a JDK whose default charset is UTF-8.
+   * The charset the JVM encodes process arguments and environment with (`sun.jnu.encoding`), from
+   * the process locale and independent of `file.encoding`.
    */
   internal val PLATFORM_ARG_ENCODING: String
     get() = System.getProperty("sun.jnu.encoding") ?: System.getProperty("file.encoding") ?: "UTF-8"
@@ -202,13 +165,9 @@ internal object PreviewRenderScope {
       ?.canEncode(value) ?: true
 
   /**
-   * Write [patterns] as a newline-delimited UTF-8 file for `-P$FILE_GRADLE_PROPERTY`, or `null`
-   * when the file can't be created (a read-only temp dir — the caller then renders wide rather than
-   * failing the run).
-   *
-   * Written under the JVM temp dir rather than the project's `build/`, because the project path is
-   * exactly as likely to be un-encodable as the ids are, and the path is what has to reach Gradle
-   * intact. Deleted on exit: the Gradle invocation reads it during configuration of the same run.
+   * Write [patterns] as a newline-delimited UTF-8 file for `-P$FILE_GRADLE_PROPERTY`, or null when
+   * it can't be created (the caller then renders wide). In the temp dir, since the project path may
+   * be unencodable too; deleted on exit.
    */
   private fun writeIdFilterFile(patterns: List<String>, dir: java.io.File?): java.io.File? =
     runCatching {

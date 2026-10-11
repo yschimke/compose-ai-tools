@@ -17,46 +17,18 @@ import okio.Path.Companion.toPath
  * [--raw-base URL] [--pr-number N] [--message MSG]` `[--allow-non-preview-branch] [--serve-url URL]
  * [--serve-token TOKEN]` `[--github-token-file PATH] [--json]`
  *
- * One command for getting rendered previews somewhere an agent or reviewer can open them. It folds
- * the former `share-gist` (markdown + image attachments → a GitHub gist) and `publish-images` (a
- * directory of PNGs → a shared capture branch) into a single surface that picks the right mechanism
- * for the environment it runs in:
+ * Gets rendered previews somewhere an agent or reviewer can open them, picking the mechanism from
+ * what the environment permits (`--mechanism` forces one):
+ * - **serve** when a host is configured (`--serve-url`, `$COMPOSE_PREVIEW_SERVE_URL`, or the
+ *   project's `composePreview.serveUrl`, [resolveProjectServeUrl]). Uploads each image
+ *   ([ServeImageUploader]) and rewrites the report with absolute links, which expire (7 days by
+ *   default). Sends a GitHub credential ([AgentGithubToken]), so where it may go is checked.
+ * - **gist** when `gh` is installed and authenticated.
+ * - **branch** otherwise: push to `compose-preview/share/<current branch>` (mainline/release
+ *   refused; `--branch` overrides). Raw URLs are SHA-pinned so they survive branch moves.
  *
- * - **Permissions pick the mechanism.** A configured serve host wins — `--serve-url`,
- *   `$COMPOSE_PREVIEW_SERVE_URL`, or the project's own `composePreview.serveUrl`
- *   ([resolveProjectServeUrl]) — because naming one is a deliberate act and it is the mechanism
- *   that works where the others can't. A repository that names its preview server therefore gets
- *   this mechanism by default, for everyone working in it. Otherwise: when the GitHub CLI is
- *   installed *and* authenticated, the default is a **gist** — isolated, doesn't touch the project
- *   repo. When it isn't (e.g. Claude Code's hosted web sessions, which have no `gh` and no token
- *   but do have an authenticated git remote), it falls back to pushing a **branch** through that
- *   remote. `--mechanism` forces one.
- * - **The current branch picks the target.** For the branch mechanism the destination capture
- *   branch is derived from the branch you're on (`compose-preview/share/<branch>`), so each
- *   feature/PR branch's snapshots stay separate; mainline/release branches are refused. `--branch`
- *   overrides.
- *
- * Two input shapes:
- * - **report**: `<markdown> <image>...` — a markdown file plus image attachments. Works with either
- *   mechanism. Image references inside the markdown should use basenames (`![](before.png)`); this
- *   command does not rewrite paths.
- * - **bulk**: a single `<dir>` of PNGs — branch mechanism only (a directory of binaries isn't a
- *   gist). Mirrors what the `preview-comment` GitHub Action pushes in CI.
- *
- * Branch pushes are SHA-pinned: raw URLs reference the new commit's SHA, so they keep resolving
- * even after the capture branch moves or the PR merges.
- *
- * The third mechanism, **serve**, is for the box neither of the others runs on: no `gh`, no push
- * rights, often no checkout — a hosted agent session or a CI job that has a GitHub token and little
- * else. It uploads each image to a `compose-preview serve --accept-images` host
- * ([ServeImageUploader]) and is the only mechanism that **rewrites the report**, because the host
- * publishes images but not the markdown: the rewritten text, with absolute links, is the output.
- * Its links expire (7 days by default) where the other two are permanent, so it is the mechanism
- * for evidence that has to exist *now*, not the archive.
- *
- * What it sends is a GitHub credential with write access to the caller's repository, so both
- * [ServeImageUploader] (where it may be sent) and [AgentGithubToken] (where it may come from) are
- * about that and not about uploading.
+ * Inputs: a **report** (`<markdown> <image>...`, images referenced by basename) or a **bulk**
+ * `<dir>` of PNGs (not gist).
  */
 class SharePreviewCommand(
   args: List<String>,
@@ -75,31 +47,21 @@ class SharePreviewCommand(
   private val customMessage: String? = args.flagValue("--message")
   private val allowNonPreviewBranch = "--allow-non-preview-branch" in args
   /**
-   * The serve host to upload to: `--serve-url`, `$COMPOSE_PREVIEW_SERVE_URL`, or the project's own
-   * `composePreview.serveUrl` ([resolveProjectServeUrl]). Its presence is also the opt-in —
-   * configuring a host is a deliberate act, so `auto` prefers it, and without one the serve
-   * mechanism does not exist.
-   *
-   * Reading it from the project is what makes this the **default** in a repository that has one: an
-   * agent that clones and runs `share-preview` reaches the team's host without being told it
-   * exists, which is the difference between a mechanism that shipped and one that gets used.
+   * The serve host to upload to: `--serve-url`, `$COMPOSE_PREVIEW_SERVE_URL`, or the project's
+   * `composePreview.serveUrl` ([resolveProjectServeUrl]). Its presence is the opt-in, and reading
+   * it from the project makes serve the default for everyone in that repository.
    */
   private val resolvedServeUrl: ResolvedServeUrl? =
     resolveProjectServeUrl(findGradleProjectRoot(), args)
 
   /**
-   * Whether the resolved host may actually be sent a credential ([confirmProjectServeHost]). Null
-   * when nothing named a host at all.
-   *
-   * A project-named host that nothing outside the checkout confirms is deliberately **not** usable:
-   * `gradle.properties` is a file any pull request can edit, so acting on it unchecked would mean
-   * that reviewing somebody's branch and running the ordinary `share-preview` sends them a
-   * repository-scoped GitHub token.
+   * Whether the resolved host may be sent a credential ([confirmProjectServeHost]); null when no
+   * host was named. An unconfirmed project-named host is unusable: `gradle.properties` is editable
+   * by any pull request, so trusting it would leak a token to whoever wrote the branch.
    */
   private val serveTrust: ServeUrlTrust? = resolvedServeUrl?.let {
     val root = findGradleProjectRoot()
-    // The repo identity comes from `.git/config`, which no pull request can edit — so a
-    // repo-scoped confirmation can be matched against something the checkout doesn't control.
+    // `.git/config` can't be edited by a pull request, so it anchors repo-scoped confirmations.
     confirmProjectServeHost(it, projectRoot = root, originRepo = gitOriginRepo(root))
   }
 
@@ -107,12 +69,8 @@ class SharePreviewCommand(
     get() = (serveTrust as? ServeUrlTrust.Trusted)?.resolved?.url
 
   /**
-   * The host's own browse token, for a serve box that isn't `--public`.
-   *
-   * Falls back to an **agent access grant** for the same host ([AgentAccessStore]) when the caller
-   * named no token — so an agent that has been granted temporary access by a human simply works
-   * here, without the operator token ever being handed to it. Explicit beats ambient, as with
-   * [AgentGithubToken]: a named `--serve-token` is never silently overridden by a stored grant.
+   * The host's browse token for a non-`--public` serve box, falling back to an agent access grant
+   * for that host ([AgentAccessStore]). An explicit `--serve-token` is never overridden.
    */
   private val serveHostToken: String? by lazy {
     (args.flagValue("--serve-token") ?: System.getenv("COMPOSE_PREVIEW_SERVE_TOKEN"))
@@ -121,9 +79,8 @@ class SharePreviewCommand(
   }
   private val githubTokenFile: String? = args.flagValue("--github-token-file")
   /**
-   * Whether the caller reached for `--github-token`, which is not a flag here. Captured at
-   * construction because [args] is not retained — and worth its own refusal rather than the generic
-   * "unknown flag", since the point is to name the safe alternatives.
+   * Whether the caller passed the unsupported `--github-token`, captured because [args] isn't
+   * retained; it gets its own refusal naming the safe alternatives.
    */
   private val usedInlineTokenFlag: Boolean = args.any {
     it == "--github-token" || it.startsWith("--github-token=")
@@ -137,9 +94,7 @@ class SharePreviewCommand(
       System.err.println("invalid --mechanism '$mechanismRaw' (must be auto|gist|branch|serve)")
       exitProcess(64)
     }
-    // Caught rather than accepted: a token in argv is visible in `ps` while the upload runs and in
-    // any CI log that echoes its commands. Naming the alternatives here is what stops a caller
-    // (usually an agent) from reaching for `--serve-token` as a substitute.
+    // A token in argv leaks via `ps` and CI logs; refuse and name the alternatives.
     if (usedInlineTokenFlag) {
       System.err.println(
         "--github-token is not a flag, on purpose: an argument is visible in `ps` and in CI logs. " +
@@ -155,9 +110,8 @@ class SharePreviewCommand(
     val first = File(positional[0])
     val mode = if (positional.size == 1 && first.isDirectory) Mode.BULK else Mode.REPORT
 
-    // An unconfirmed project host never silently selects the upload mechanism. Say so once, on
-    // stderr, so the fallback to gist/branch isn't mysterious — and so the operator learns the one
-    // command that would confirm it.
+    // An unconfirmed project host never selects serve; explain the fallback once, with the
+    // confirming command.
     (serveTrust as? ServeUrlTrust.NeedsConfirmation)?.let {
       if (forcedMechanism == Mechanism.SERVE) {
         System.err.println(it.how)
@@ -184,10 +138,7 @@ class SharePreviewCommand(
         }
       }
 
-    // The serve mechanism is the one that needs no git at all — that is most of its point, since
-    // the box it exists for may have neither a checkout nor a pushable remote. The probes above
-    // tolerate a missing git on their own (a failed exec is "not available"), so this check moved
-    // below them rather than gating them.
+    // Serve needs no git; the probes above tolerate a missing git on their own.
     if (mechanism != Mechanism.SERVE) requireOnPath("git", "Install git.")
 
     when (mechanism) {
@@ -290,17 +241,9 @@ class SharePreviewCommand(
   // --- serve mechanism ----------------------------------------------------
 
   /**
-   * Upload to a `compose-preview serve --accept-images` host and hand back embeddable URLs.
-   *
-   * The third mechanism, for the box the other two can't run on: no `gh`, no push rights, often no
-   * checkout — a hosted agent session or a CI job that has a GitHub token and nothing else. It is
-   * also the only mechanism that **rewrites the report**, because there is no page to publish the
-   * markdown next to: the finished text is the deliverable, and a relative `![](before.png)` in a
-   * PR body resolves to nothing.
-   *
-   * What it sends is a GitHub credential, so where it may send it is checked first
-   * ([ServeImageUploader]), and where the credential comes from is deliberately not the command
-   * line ([AgentGithubToken]).
+   * Upload to a `compose-preview serve --accept-images` host and print embeddable URLs, rewriting
+   * the report since the host doesn't publish markdown. Credential destination is checked by
+   * [ServeImageUploader]; its source is never argv ([AgentGithubToken]).
    */
   private fun runServe(mode: Mode) {
     val url = serveUrl
@@ -315,12 +258,8 @@ class SharePreviewCommand(
       System.err.println(it)
       exitProcess(64)
     }
-    // A GitHub credential is what the host's *default* gate wants — but it is not the only way to
-    // be admitted any more. A host may let an agent access grant carry the `images` capability
-    // (see docs/design/AGENT_ACCESS_GRANTS.md), and the entire point of that is to upload without
-    // holding a GitHub token at all. So a missing credential is only fatal when there is no host
-    // credential either: with a grant in hand the host is the one entitled to decide, and refusing
-    // here would mean this client vetoing an approval a human already gave.
+    // A missing GitHub credential is fatal only without a host credential: an agent grant with the
+    // `images` capability lets the host decide (docs/design/AGENT_ACCESS_GRANTS.md).
     val hostToken = serveHostToken
     val credential =
       when (val r = AgentGithubToken.resolve(githubTokenFile, ghToken = ::ghAuthToken)) {
@@ -355,9 +294,8 @@ class SharePreviewCommand(
         }
         is ServeImageUploader.Result.Failed -> {
           System.err.println("upload of ${image.name} failed: ${result.reason}")
-          // Stop at the first failure rather than pressing on: a half-uploaded report would
-          // produce markdown with some links live and some still relative, which is worse than
-          // none — the caller cannot see which is which in a rendered PR body.
+          // Stop at the first failure: a half-rewritten report mixes live and broken links
+          // invisibly.
           exitProcess(1)
         }
       }
@@ -436,9 +374,7 @@ class SharePreviewCommand(
           }
         }
       if (relativePaths.isEmpty()) {
-        // Empty bulk batch is a successful no-op (matches the CI action). Crucially, don't require
-        // git identity here — a scratch checkout with no user.name/email shouldn't error on a batch
-        // that has nothing to commit.
+        // An empty bulk batch is a successful no-op and needs no git identity.
         emit(
           SharePreviewResponse(
             mechanism = "branch",
@@ -652,10 +588,8 @@ class SharePreviewCommand(
   private fun exec(cmd: List<String>): ExecResult {
     return try {
       val p = ProcessBuilder(cmd).redirectErrorStream(false).start()
-      // Drain stderr on a separate thread. With separate stdout/stderr pipes, reading stdout to EOF
-      // first (as this did) deadlocks when the child fills the ~64 KB stderr buffer before closing
-      // stdout — e.g. a `git push` whose server hook is chatty on stderr. Consuming both pipes
-      // concurrently is the only safe ordering, and it lets the `waitFor` timeout actually fire.
+      // Drain stderr concurrently, or a chatty child fills the stderr pipe and deadlocks the stdout
+      // read.
       val stderrHolder = arrayOfNulls<String>(1)
       val stderrThread = Thread {
         stderrHolder[0] = p.errorStream.bufferedReader().use { it.readText() }
@@ -698,8 +632,7 @@ class SharePreviewCommand(
           return
         }
         val expiry = response.expiresIn?.let { " (links expire in $it)" } ?: ""
-        // "authenticated from …" names the GitHub credential's source; with an agent grant there
-        // is no such credential, and saying so is the honest version of that sentence.
+        // With an agent grant there is no GitHub credential source to name.
         val admitted =
           response.credentialSource?.let { "authenticated from $it" }
             ?: "authenticated by the agent access grant for this host"
@@ -812,12 +745,10 @@ class SharePreviewCommand(
     private val SAFE_REFNAME = Regex("""^[A-Za-z0-9][A-Za-z0-9._/-]*$""")
 
     /**
-     * Loopback git proxy used by Claude Code's hosted (web) sessions: the container's `origin` is
-     * rewritten to `http://<user>@127.0.0.1:<port>/git/<owner>/<repo>`, with auth carried by the
-     * proxy. The proxy fronts github.com, so the bytes we push still serve from
-     * `raw.githubusercontent.com`. We only treat a remote this way when the host is loopback AND
-     * the path is `/git/<owner>/<repo>` — a real GitHub Enterprise remote (arbitrary host) must NOT
-     * be mapped onto github.com's raw host, so it falls through to the `--raw-base` override.
+     * Claude Code web sessions rewrite `origin` to a loopback proxy
+     * (`http://<user>@127.0.0.1:<port>/git/<owner>/<repo>`) fronting github.com. Only loopback
+     * hosts with that path shape map to `raw.githubusercontent.com`; GitHub Enterprise remotes need
+     * `--raw-base`.
      */
     private val LOOPBACK_GIT_PROXY =
       Regex("""^https?://(?:[^@/]*@)?(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?/git/(.+)$""")
@@ -841,13 +772,8 @@ class SharePreviewCommand(
     }
 
     /**
-     * Resolves which mechanism to use. Permissions pick it: an explicit `--mechanism` wins
-     * (erroring if that path isn't available), otherwise gist is preferred when the GitHub CLI is
-     * installed and authenticated, falling back to a branch push when a remote is reachable. BULK
-     * input (a directory) can only go to a branch.
-     *
-     * [gistAvailable] / [branchAvailable] are probed lazily so we don't, say, shell out to `gh auth
-     * status` when the caller already forced `--mechanism branch`.
+     * Resolve the mechanism: an explicit `--mechanism` wins (erroring if unavailable); otherwise
+     * serve, then gist, then branch. Bulk input can't use gist. Availability is probed lazily.
      */
     internal fun resolveMechanism(
       mode: Mode,
@@ -856,8 +782,7 @@ class SharePreviewCommand(
       branchAvailable: () -> Boolean,
       serveAvailable: () -> Boolean = { false },
     ): MechanismResult {
-      // Forced `serve` is answerable without looking at the input shape at all: the host takes a
-      // directory of images as happily as a report's attachments.
+      // Forced serve accepts either input shape.
       if (forced == Mechanism.SERVE) {
         return if (serveAvailable()) MechanismResult.Ok(Mechanism.SERVE)
         else
@@ -872,8 +797,7 @@ class SharePreviewCommand(
             "a directory can't be shared as a gist — drop --mechanism gist or pass a markdown report."
           )
         }
-        // A configured host outranks the branch push for a directory too, and for the same reason
-        // it does below: naming one was a deliberate act.
+        // A configured host outranks the branch push for a directory too.
         if (serveAvailable()) return MechanismResult.Ok(Mechanism.SERVE)
         return if (branchAvailable()) MechanismResult.Ok(Mechanism.BRANCH)
         else MechanismResult.Err("no usable git remote for the branch push.")
@@ -894,10 +818,8 @@ class SharePreviewCommand(
         Mechanism.SERVE -> MechanismResult.Ok(Mechanism.SERVE)
         null ->
           when {
-            // A configured serve host wins the auto choice. Unlike `gh` and a git remote — which
-            // are ambient facts about the machine — a `--serve-url` (or its env var) is something
-            // the caller or their environment set on purpose, and the mechanism it selects is the
-            // one that works where the other two don't.
+            // A configured serve host is a deliberate choice, unlike ambient `gh` or a remote, so
+            // it wins.
             serveAvailable() -> MechanismResult.Ok(Mechanism.SERVE)
             gistAvailable() -> MechanismResult.Ok(Mechanism.GIST)
             branchAvailable() -> MechanismResult.Ok(Mechanism.BRANCH)
@@ -912,11 +834,8 @@ class SharePreviewCommand(
     }
 
     /**
-     * Resolves the destination capture branch for the branch mechanism. An explicit `--branch`
-     * override is validated and used as-is; otherwise the branch is derived from the current branch
-     * as `compose-preview/share/<current>`, which keeps each feature/PR branch's snapshots
-     * separate. Mainline / release branches are refused as a source so renders never land next to
-     * production code, and the final name is validated the same way `--branch` would be.
+     * Resolve the capture branch: a validated `--branch`, or `compose-preview/share/<current>`.
+     * Mainline/release branches are refused as a source.
      */
     internal fun resolveTargetBranch(
       override: String?,
@@ -970,9 +889,7 @@ class SharePreviewCommand(
       return null
     }
 
-    /**
-     * Default commit message format mirrors the CI action's: `Preview renders for PR #N (sha::8)`.
-     */
+    /** Matches the CI action's format: `Preview renders for PR #N (sha::8)`. */
     internal fun defaultMessage(prNumber: String?, headSha: String?): String {
       val shortSha = headSha?.take(8)
       return when {
@@ -984,8 +901,8 @@ class SharePreviewCommand(
     }
 
     /**
-     * Maps a GitHub remote URL to its raw.githubusercontent.com prefix, minus the commit and path
-     * components. Returns null for remotes it can't confidently map (use `--raw-base`).
+     * Map a GitHub remote URL to its `raw.githubusercontent.com/<owner>/<repo>` prefix, or null
+     * when it can't be mapped confidently (use `--raw-base`).
      *
      * Examples:
      * - `https://github.com/owner/repo.git` → `https://raw.githubusercontent.com/owner/repo`
@@ -997,16 +914,9 @@ class SharePreviewCommand(
       githubOwnerRepo(remoteUrl)?.let { "https://raw.githubusercontent.com/$it" }
 
     /**
-     * `owner/repo` for a GitHub remote, in every spelling this CLI meets one: https, ssh, `git@`,
-     * and the loopback git proxy a hosted session rewrites `origin` to ([LOOPBACK_GIT_PROXY]). Null
-     * for anything that isn't recognisably a GitHub repo.
-     *
-     * Extracted from [githubRawUrlBase] when a second caller needed the identity rather than the
-     * raw-URL base: [resolveProjectServeUrl]'s trust check scopes a confirmation to the repository
-     * the checkout belongs to, and "which repo is this" must have one answer.
-     *
-     * Read from `.git/config`, which is **not** part of a checkout's committed content — a pull
-     * request cannot change it. That is what makes it usable as an identity at all.
+     * `owner/repo` for a GitHub remote in any form this CLI sees (https, ssh, `git@`, the loopback
+     * proxy [LOOPBACK_GIT_PROXY]), or null. Read from `.git/config`, which a pull request can't
+     * change, so it is usable as an identity for [resolveProjectServeUrl]'s trust check.
      */
     internal fun githubOwnerRepo(remoteUrl: String): String? {
       LOOPBACK_GIT_PROXY.find(remoteUrl)?.let { match ->
@@ -1062,24 +972,17 @@ internal data class SharePreviewResponse(
   val branch: String? = null,
   val files: List<SharePreviewFile> = emptyList(),
   /**
-   * The report's markdown with its image references rewritten to absolute URLs — the serve
-   * mechanism's actual deliverable, since it has nowhere to publish the text itself. Null for the
-   * mechanisms that publish the markdown beside its images, where the relative links already work.
+   * The report markdown with image links rewritten to absolute URLs (serve only); null otherwise.
    */
   val markdown: String? = null,
   /** How long the uploaded links live, as the host reported it (serve mechanism only). */
   val expiresIn: String? = null,
   /**
    * Where the GitHub credential came from (`$GITHUB_TOKEN`, `--github-token-file`, `gh auth
-   * token`). Names the source, never the secret — so a caller can see which of several ambient
-   * credentials was actually used.
+   * token`); never the secret.
    */
   val credentialSource: String? = null,
-  /**
-   * Which source named the host (`--serve-url`, the environment variable, or the project's
-   * `gradle.properties`) — the same "say where this came from" the version pin's `doctor` check
-   * reports, and for the same reason: a default nobody typed has to be traceable.
-   */
+  /** Which source named the host (`--serve-url`, environment, or `gradle.properties`). */
   val serveUrlSource: String? = null,
 )
 

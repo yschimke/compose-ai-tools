@@ -6,22 +6,13 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end regression for the Glance Wear widget fixture (issue #2670 + the doc-capture
- * requirement).
+ * End-to-end check of the Glance Wear widget fixture, routed through [CapturingWearWidgetPreview]:
+ * - each render is cropped to the widget's intrinsic bounds, smaller than the 227dp (≈454 px) watch
+ *   canvas;
+ * - each emits a sibling `<stem>.rc` sidecar (`IR_EXT_REMOTECOMPOSE`), so the widget travels in the
+ *   bundle as data.
  *
- * Every widget preview here is a real `WearWidgetPreview` driven by an
- * `androidx.glance.wear.tooling.preview` `@PreviewParameter` provider, routed through
- * [CapturingWearWidgetPreview]. This asserts both properties that make it a faithful widget
- * fixture:
- * - **Cropped, not the watch canvas.** Discovery's auto-detect recognises the glance-wear provider
- *   and crops each render to its intrinsic bounds at wear density — so every PNG is smaller than
- *   the 227dp (≈454 px) square watch-face canvas.
- * - **Encoded document captured.** Each render emits a sibling `<stem>.rc` sidecar — the widget's
- *   encoded RemoteCompose document (`IR_EXT_REMOTECOMPOSE`) — so the widget travels in the portable
- *   bundle as data, not as compiled `@Preview` bytecode. Upstream `WearWidgetPreview` keeps those
- *   bytes to itself; [CapturingWearWidgetPreview] is what surfaces them.
- *
- * `renderBeforeUnitTests = true` chains `composePreviewRenderAll` before this test.
+ * `renderBeforeUnitTests = true` renders first.
  */
 class WearWidgetDocCaptureTest {
 

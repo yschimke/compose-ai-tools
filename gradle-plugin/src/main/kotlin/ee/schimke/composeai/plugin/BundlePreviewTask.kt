@@ -39,66 +39,45 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Pack a portable preview bundle — a PNG+ZIP polyglot containing the selected previews' metadata,
- * the minimal set of consumer classes reachable from those previews, a **list** of Maven
- * coordinates the player resolves at open time, and a minimization report. See
- * [PreviewBundleFormat] for the on-disk layout.
+ * Packs a portable preview bundle: a PNG+ZIP polyglot with the selected previews' metadata, the
+ * minimal reachable consumer classes, the Maven coordinates the player resolves at open time, and a
+ * minimization report. See [PreviewBundleFormat].
  *
  * # Dependency strategy
  *
- * Only consumer-module bytecode is inlined into the bundle (`classes/app.jar`, minimized to classes
- * reachable from the selected previews). In the default `resolution = "coordinates"` mode every
- * Maven-resolved runtime dependency is recorded as a `ClasspathEntry.Maven` coordinate — not
- * bundled — so the bundle stays small enough to share over chat / paste into a gist, and the player
- * resolves the coordinates from the consumer's normal Gradle repos at open time. Project deps that
- * have no Maven coordinate (transitive `:my-lib` references inside the consumer's build) fall back
- * to being inlined as `ClasspathEntry.Project(inlinedAs = "libs/<name>.jar")` so the bundle is
- * still self-contained for offline use.
- *
- * With [embedDeps] (`-PbundleEmbedDeps=true`, schema-v3 `resolution = "embedded"`) the kept
- * Maven-resolved deps are instead carried inside the bundle's `libs/` as `ClasspathEntry.Embedded`,
- * producing a larger but fully self-contained artefact that a player can render with no network and
- * no consumer build system — the "pass it to a colleague" mode.
+ * Only module bytecode is inlined (`classes/app.jar`). By default (`resolution = "coordinates"`)
+ * Maven deps are recorded as `ClasspathEntry.Maven`, keeping bundles small; project deps without a
+ * coordinate are inlined as `ClasspathEntry.Project`. With [embedDeps] kept deps are carried in
+ * `libs/` as `ClasspathEntry.Embedded` for fully offline rendering.
  *
  * # Closure walk
  *
- * Classpath minimization is driven by ClassGraph's inter-class dependency map. We BFS from each
- * selected preview's enclosing class FQN through every class the closure references. Module classes
- * are repacked per-class (small, ours, safe to surgically prune); third-party deps appear in
- * `report.json` with their reachability counts but only the kept ones are recorded in the
- * manifest's classpath (deps with no reachable class don't make it to the player at all).
+ * BFS over ClassGraph's class dependency map from each selected preview's enclosing class. Module
+ * classes are repacked per class; third-party deps appear in `report.json` with reachability
+ * counts, and only reachable ones are recorded.
  */
 @org.gradle.api.tasks.CacheableTask
 abstract class BundlePreviewTask : DefaultTask() {
 
   /**
-   * `previews.json` produced by [DiscoverPreviewsTask]. The task reads it to (a) resolve the
-   * selected ids' enclosing class FQNs (the closure entry points) and (b) write a filtered copy
-   * into the bundle.
+   * Discovery's `previews.json`: source of the closure entry points and of the filtered copy in the
+   * bundle.
    */
   @get:InputFile
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val previewsJson: RegularFileProperty
 
   /**
-   * Consumer module's class dirs (`build/classes/kotlin/jvm/main`, etc.). Walked for per-class
-   * minimization — only `.class` files for reachable FQNs land in `classes/app.jar`. Module
-   * resources directory is taken separately via [moduleResourcesDir] when present.
+   * Module class dirs, minimized per class into `classes/app.jar`. Resources come via
+   * [moduleResourcesDir].
    */
   @get:Classpath abstract val moduleClassDirs: ConfigurableFileCollection
 
   /**
-   * The module's own compiled classes laid out as directories, sourced from AGP's scoped `PROJECT`
-   * `CLASSES` artifact (`variant.artifacts.forScope(PROJECT).use(bundleTask).toGet(CLASSES, …)`).
-   * Wired by the Android backend *in addition to* [moduleClassDirs], for the same reason
-   * [DiscoverPreviewsTask.projectClassDirs] is: under AGP 9.x built-in Kotlin (`built_in_kotlinc`)
-   * the compiled classes never land in the hardcoded `build/tmp/kotlin-classes/<variant>` directory
-   * the desktop/legacy path keys off. Discovery already consumes the scoped artifact (issue #1924),
-   * so packing it here keeps the bundle's class set from being *narrower* than what discovery wrote
-   * into `previews.json` — a preview whose class is resolved only from a scoped dir would otherwise
-   * appear in the manifest but be missing from `classes/app.jar` (issue #1926). These dirs are
-   * scanned for the closure walk and per-class minimization exactly like [moduleClassDirs]; any
-   * overlap dedupes by relative class path. Optional / empty on non-Android backends.
+   * The module's classes as directories from AGP's scoped `PROJECT` `CLASSES` artifact, in addition
+   * to [moduleClassDirs], matching what discovery consumes (#1924). Without it, AGP 9 built-in
+   * Kotlin previews would be in `previews.json` but missing from `classes/app.jar` (#1926). Overlap
+   * dedupes by class path. Empty off Android.
    */
   @get:InputFiles
   @get:Optional
@@ -106,14 +85,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val projectClassDirs: ListProperty<Directory>
 
   /**
-   * The module's own compiled classes packaged as jars, the jar half of AGP's scoped `PROJECT`
-   * `CLASSES` artifact (see [projectClassDirs]). Packed as *module* classes (minimized into
-   * `classes/app.jar`), NOT recorded as third-party [dependencyJars] coordinates — they are the
-   * consumer's own bytecode and can't be re-resolved from Maven. Mirrors
-   * [DiscoverPreviewsTask.projectClassJars], which method-walks the same jars, so bundling sees the
-   * identical class set discovery does. `PROJECT`-scope `CLASSES` are directories in practice, so
-   * this is usually empty, but it's wired and packed so the two paths never diverge (issue #1926).
-   * Optional / empty on non-Android backends.
+   * The jar half of the same scoped artifact, packed as module classes (not dependency
+   * coordinates), mirroring [DiscoverPreviewsTask.projectClassJars]. Usually empty. Empty off
+   * Android.
    */
   @get:InputFiles
   @get:Optional
@@ -121,9 +95,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val projectClassJars: ListProperty<RegularFile>
 
   /**
-   * Consumer module's processed resources directory (e.g. `build/processedResources/jvm/main`).
-   * Bundled wholesale alongside the minimized classes — resources are typically small, and
-   * string-id references in bytecode make them hard to prune deterministically.
+   * Processed resources dir, bundled wholesale: small, and string-id references make them hard to
+   * prune.
    */
   @get:InputDirectory
   @get:Optional
@@ -131,15 +104,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val moduleResourcesDir: DirectoryProperty
 
   /**
-   * Additional module resource ROOT dirs to resolve data-driven asset IR (`kind=LOTTIE` /
-   * `kind=SVG`) against, tried after [moduleResourcesDir]. The Android path wires its source
-   * resource roots here (`src/main/resources`, `src/commonMain/resources`,
-   * `src/androidMain/resources` — the same dirs discovery scans and the JVM render classpath
-   * links), because AGP does not stage java resources into the JVM `build/resources/main` dir
-   * [moduleResourcesDir] probes — so without this an Android bundle drops the raw `.svg` / `.json`
-   * asset even though it was discovered and rendered. Empty on desktop (the processed-resources dir
-   * handles it), so this is a no-op there. `@InputFiles @Optional` so absent roots snapshot as
-   * empty rather than failing the build.
+   * Extra resource roots for resolving asset IR (`kind=LOTTIE` / `kind=SVG`) after
+   * [moduleResourcesDir]. Android wires its source resource roots, since AGP doesn't stage java
+   * resources into `build/resources/main`. Empty on desktop.
    */
   @get:InputFiles
   @get:Optional
@@ -147,32 +114,25 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val moduleResourceRoots: ConfigurableFileCollection
 
   /**
-   * Third-party runtime classpath jars. Used to drive the ClassGraph closure walk and to look up
-   * source coordinates via [dependencyCoordinates] — jars themselves are NOT inlined into the
-   * bundle (apart from project-dep fallbacks).
+   * Third-party runtime jars for the closure walk and coordinate lookup; not inlined except
+   * project-dep fallbacks.
    */
   @get:Classpath abstract val dependencyJars: ConfigurableFileCollection
 
   /**
-   * Map of `dependencyJar absolute path → coordinate string`. Encoded as a single string so it
-   * round-trips through Gradle's MapProperty serialization. Format:
-   * - `"maven:<group>:<artifact>:<version>:<type>"` for Maven-resolved deps (`type` is `jar` /
-   *   `aar`).
-   * - `"project:<gradle path>"` for local project deps (these get inlined into the bundle).
+   * `dependencyJar absolute path → coordinate`:
+   * - `"maven:<group>:<artifact>:<version>:<jar|aar>"` for Maven deps.
+   * - `"project:<gradle path>"` for project deps (inlined).
    *
-   * Jars not present in this map are treated as anonymous file-collection inputs (rare — typically
-   * a JBR / boot-classpath jar). They're inlined as `project`-style with a synthetic `:anon` path
-   * so the player can still load them, but the manifest entry is flagged.
+   * Jars missing from the map (e.g. boot-classpath jars) are inlined under a synthetic `:anon`
+   * path.
    */
   @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
 
   /**
-   * (v6 Android) AGP's `unit_test_config_directory` contents — specifically
-   * `com/android/tools/test_config.properties`. Read at pack time **only when the bundle carries
-   * protolayout (Wear tile) IR** to locate the merged resource APK + manifest the tile renderer
-   * resolves its theme against on a detached daemon. Empty on desktop and on Android bundles
-   * without a prior render; absent input is treated as "no Android resource carriage". See
-   * [resolveAndroidResources].
+   * (v6 Android) AGP's unit-test config dir (`test_config.properties`), read only for protolayout
+   * IR bundles to locate the merged resource APK + manifest. Empty means no Android resource
+   * carriage. See [resolveAndroidResources].
    */
   @get:InputFiles
   @get:Optional
@@ -180,79 +140,44 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val androidUnitTestConfig: ConfigurableFileCollection
 
   /**
-   * (v6 Android) The variant's `${variant}UnitTestRuntimeClasspath`, resolved through a **lenient**
-   * `artifactView` (so AGP's `AmbiguousArtifactsFailure` on project deps exposing secondary
-   * variants is skipped rather than fatal). Scanned at pack time **only when protolayout IR is
-   * present** for the generated library R classes (`…/R.class`, `…/R$*.class`). With non-transitive
-   * R classes, the tile renderer's `androidx.wear.protolayout.renderer.R$style` is generated only
-   * into the unit-test **merged** R.jar — added to this classpath as a raw file dep *without* the
-   * `artifactType=jar` attribute, so the bundle's `dependencyJars` (attribute-filtered) view drops
-   * it. The collected R classes are repacked under `android/r-classes.jar` so the daemon's parent
-   * (renderer) classloader can link them. Unused by the desktop path.
+   * (v6 Android) The unit-test runtime classpath (lenient view), scanned only for protolayout IR to
+   * collect library R classes: with non-transitive R, the tile renderer's `R$style` is only in the
+   * merged unit-test R.jar, which the attribute-filtered [dependencyJars] drops. Repacked as
+   * `android/r-classes.jar`.
    */
   @get:Classpath abstract val androidUnitTestRuntimeClasspath: ConfigurableFileCollection
 
   /**
-   * (v6 Android) The consumer module's project directory. AGP writes the `android_resource_apk` /
-   * `android_merged_manifest` entries in `test_config.properties` as paths **relative to the module
-   * dir** (e.g. `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the
-   * unit-test working directory (the module dir). [resolveAndroidResources] resolves them the same
-   * way. `@Internal` — it's only a resolution base; the carried bytes are content-tracked via
-   * [androidUnitTestConfig] / [androidUnitTestRuntimeClasspath].
+   * (v6 Android) Base for the module-relative paths in `test_config.properties`, as Robolectric
+   * resolves them. `@Internal`: the carried bytes are tracked via [androidUnitTestConfig] /
+   * [androidUnitTestRuntimeClasspath].
    */
   @get:Internal abstract val moduleProjectDir: DirectoryProperty
 
   /**
-   * The producing project's directory relative to the repository root — `bundle/format` for
-   * `:bundle-format`, empty for the root project.
-   *
-   * An `@Input` string rather than a path, because it is CARRIED CONTENT: it lands in the manifest
-   * as [BundleManifest.moduleDirectory] and a consumer joins it to a component's module-relative
-   * `sourceFile` to build a repository path. Distinct from [moduleProjectDir], which is an absolute
-   * resolution base and deliberately untracked.
-   *
-   * Recorded rather than derived downstream because [modulePath] is a LOGICAL name that
-   * `project(":x").projectDir = file("a/b")` may point anywhere; only Gradle knows which.
+   * The project's directory relative to the repository root (`bundle/format` for `:bundle-format`;
+   * empty for root). An `@Input` because it's carried content ([BundleManifest.moduleDirectory]),
+   * unlike [moduleProjectDir]. Recorded because [modulePath] is a logical name.
    */
   @get:Input @get:Optional abstract val moduleDirectory: Property<String>
 
   /**
-   * (v6 Android) The consumer module's **configured** build directory — where
-   * [MergedResourceOwnership] looks for AGP's resource-merge blame files. Wired from
-   * `project.layout.buildDirectory` rather than assumed to be `<moduleProjectDir>/build`, because a
-   * consumer is free to relocate it (a shared root-level build dir is the common case) and AGP
-   * writes `intermediates/incremental/**/merger.xml` wherever it actually points. Getting this
-   * wrong is silent: the blame lookup finds nothing, the retain-set quietly narrows to the
-   * module-own source scan, and the sibling drawables this task exists to keep get pruned again.
-   * `@Internal` for the same reason as [moduleProjectDir] — a resolution base, not carried content.
+   * (v6 Android) The configured build directory, where [MergedResourceOwnership] finds AGP's blame
+   * files. From `project.layout.buildDirectory` because consumers relocate it; a wrong guess
+   * silently prunes sibling drawables. `@Internal`, like [moduleProjectDir].
    */
   @get:Internal abstract val moduleBuildDir: DirectoryProperty
 
   /**
-   * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
-   * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
-   * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
-   * bundle is still well-formed (and `file(1)` still reports PNG).
-   *
-   * Marked `@Internal` because this is the *root* used for path resolution in the action, and the
-   * dir may legitimately not exist (bundling without a prior render is a supported flow); tracking
-   * it as an `@InputDirectory @Optional` errors out when Gradle resolves the property to a path on
-   * disk that doesn't yet exist. The render *contents* are tracked separately via [renderFiles] so
-   * the task's up-to-date / cache keys do change when the PNGs appear or change.
+   * Renders from `composePreviewRender`: the cover and every `previews/<id>.png` come from here;
+   * missing falls back to a stub gray cover. `@Internal` because the dir may not exist (an
+   * `@InputDirectory` would fail); contents are tracked by [renderFiles].
    */
   @get:Internal abstract val rendersDir: DirectoryProperty
 
   /**
-   * The render products under [rendersDir] — PNGs plus portable XR scene directories — tracked as
-   * proper inputs so up-to-date checks and the build cache key reflect them. Without this, the
-   * bundle could be skipped/restored stale: someone packs before rendering (or restores such a
-   * cached bundle), then renders and re-packs with the same manifest/classes, and
-   * `composePreviewBundle` would otherwise see unchanged inputs and keep the render-less bundle
-   * despite fresh PNGs on disk (Codex review, PR #1627).
-   *
-   * Modelled as an `@InputFiles` collection rather than `@InputDirectory` precisely so an absent
-   * `renders/` dir snapshots as empty instead of failing the build — the reason [rendersDir] itself
-   * had to stay `@Internal`.
+   * Render products under [rendersDir], tracked so caching can't keep a render-less bundle after
+   * renders appear. `@InputFiles` so an absent dir snapshots as empty.
    */
   @get:InputFiles
   @get:Optional
@@ -260,13 +185,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val renderFiles: ConfigurableFileCollection
 
   /**
-   * The per-sheet catalog-token sidecars under `<rendersDir>/../data/catalog-tokens/`, tracked as a
-   * real input for the same reason as [renderFiles]: they live OUTSIDE the `renders/` tree, so
-   * without this the task could be UP-TO-DATE / restored FROM-CACHE and keep emitting a bundle with
-   * a missing or stale `previews/<id>.catalog.json` when a sidecar is created or updated after a
-   * render-less pack, with no PNG change to invalidate the cache key (Codex review, PR #2172).
-   * `@InputFiles @Optional` so an absent `data/catalog-tokens/` dir snapshots as empty rather than
-   * failing the build.
+   * Catalog-token sidecars under `data/catalog-tokens/`, outside `renders/`, tracked for the same
+   * reason as [renderFiles].
    */
   @get:InputFiles
   @get:Optional
@@ -274,21 +194,16 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val catalogTokenFiles: ConfigurableFileCollection
 
   /**
-   * `build/compose-previews/guidelines.json`, the design-guideline results `compose-preview
-   * guidelines` writes, when a run has produced one. Carried as the bundle entry
-   * [GUIDELINE_RESULTS_ENTRY] so a hosting server can serve each preview's verdicts beside its
-   * render. A file collection because "no results" is the ordinary case. The annotated
-   * `*.guidelines.png` overlays are not carried; a host draws findings from the verdicts.
+   * `build/compose-previews/guidelines.json` from `compose-preview guidelines`, carried as
+   * [GUIDELINE_RESULTS_ENTRY] so a host can serve verdicts beside renders. Overlay PNGs aren't
+   * carried.
    */
   @get:InputFiles
   @get:Optional
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val guidelineResultsFiles: ConfigurableFileCollection
 
-  /**
-   * Preview ids to include. First entry is the cover. Empty means "all previews in the manifest";
-   * passing the empty list intentionally — most callers will populate this from CLI input.
-   */
+  /** Preview ids to include; first is the cover. Empty means all. */
   @get:Input abstract val previewIds: ListProperty<String>
 
   /** Gradle module path, recorded into the bundle for forensics. */
@@ -301,50 +216,28 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input abstract val backend: Property<String>
 
   /**
-   * Embed-deps mode (`-PbundleEmbedDeps=true`, schema-v3 `resolution = "embedded"`). When true,
-   * every *kept* third-party dependency jar is carried **inside** the bundle under `libs/` as a
-   * [ClasspathEntry.Embedded] entry instead of being referenced by Maven coordinate. The result is
-   * a larger but fully self-contained bundle that a player can render with no network and no
-   * consumer build system — the "pass it to a colleague" mode. Project-local deps (no coordinate)
-   * are inlined regardless; this flag only changes how Maven-resolved deps are carried. Defaults to
-   * false so the normal pack stays small and `resolution = "coordinates"`.
+   * Embed-deps mode (`-PbundleEmbedDeps=true`, v3 `resolution = "embedded"`): kept third-party jars
+   * go in `libs/` as [ClasspathEntry.Embedded] instead of coordinates. Project deps are inlined
+   * regardless. Default false.
    */
   @get:Input @get:Optional abstract val embedDeps: Property<Boolean>
 
   /**
-   * Maven repository base URLs the producing build resolves from **beyond** Maven Central and
-   * Google Maven, recorded into the manifest as [BundleManifest.repositories] so a player can
-   * re-resolve coordinates those two don't serve.
-   *
-   * A `coordinates` bundle is only re-renderable where its coordinates resolve, and a module that
-   * takes a dependency from a JitPack fork, an internal mirror, or an androidx.dev snapshot build
-   * records coordinates no player could find — it dropped them with a warning and rendered (or
-   * failed to) on an incomplete classpath. Populated by the plugin from the project's declared
-   * repositories; empty for the common all-Central/Google module, which keeps the manifest field
-   * absent-equivalent.
+   * Repository URLs beyond Central and Google, recorded as [BundleManifest.repositories] so players
+   * can re-resolve coordinates those don't serve. Empty for most modules.
    */
   @get:Input @get:Optional abstract val extraMavenRepositories: ListProperty<String>
 
   /**
-   * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, schema-v7
-   * [BundleManifest.dataExtensions]). When true, the per-extension data reports (a11y findings,
-   * theme tokens, drawn strings, …) — those named by `previews.json`'s `dataExtensionReports` plus
-   * a conventional-path fallback for registered extensions that write a report without stamping the
-   * manifest ([CONVENTIONAL_DATA_EXTENSION_REPORTS], e.g. a11y's `accessibility.json`) — are packed
-   * under `extensions/<id>.json`, sliced to the cover preview, so a detached reader can surface
-   * them without re-rendering. Defaults to false: the normal pack carries no reports and stays
-   * small. A no-op when no report is found on disk.
+   * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, v7): pack reports named by
+   * `dataExtensionReports`, plus [CONVENTIONAL_DATA_EXTENSION_REPORTS] fallbacks, under
+   * `extensions/<id>.json`, sliced to the cover preview. Default false.
    */
   @get:Input @get:Optional abstract val includeDataExtensions: Property<Boolean>
 
   /**
-   * The data-extension report sidecars named by `previews.json`'s `dataExtensionReports`, tracked
-   * as a real input so the bundle re-packs (and its cache key changes) when a report's *content*
-   * changes, not just when the manifest pointer does. Wired to the top-level `*.json` files under
-   * the preview output dir (where the render task writes the aggregated reports); the paths are
-   * resolved from the manifest at pack time against [previewsJson]'s parent. `@Optional` because a
-   * pack with no extension reports — the common case — snapshots this as empty. Only read when
-   * [includeDataExtensions] is set.
+   * Extension report files, tracked so content changes re-pack. Paths are resolved from the
+   * manifest at pack time; only read with [includeDataExtensions].
    */
   @get:InputFiles
   @get:Optional
@@ -353,10 +246,8 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /** Output `.png` polyglot file. */
   /**
-   * `ui-builder.policy.json` candidates, most specific first: the module's own, then the repository
-   * root's. A file collection rather than an optional `@InputFile` for the reason
-   * `DiscoverPreviewsTask` uses one — "no policy" is the ordinary case, and an `@InputFile` that
-   * does not exist fails the build.
+   * `ui-builder.policy.json` candidates, module first then repository root; a file collection
+   * because "no policy" is normal.
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -376,26 +267,17 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val catalogSpecCandidates: ConfigurableFileCollection
 
   /**
-   * The `ui-builder/designs/` trees a policy's `templates` paths resolve against — module first,
-   * repository root second.
-   *
-   * The bundle has to CARRY the designs it advertises. `catalog-ui-builder.mjs` publishes out of
-   * bundle entries and nothing else, so a template named in `statusSemantics.templates` but absent
-   * from the zip cannot reach the delivery branch at all — the catalog would advertise a document
-   * that is a 404 for whoever clicks it, which is worse than not offering the template.
+   * `ui-builder/designs/` trees for a policy's `templates`, module first. The bundle must carry the
+   * designs it advertises, since `catalog-ui-builder.mjs` publishes only from bundle entries.
    */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val uiBuilderTemplateCandidates: ConfigurableFileCollection
 
   /**
-   * The directories a `templates` path resolves against — the module's, then the repository root's.
-   *
-   * `@Internal` on purpose: these are the *project* directories, and snapshotting them would make
-   * every file in the project an input to this task. Change detection is carried by
-   * [uiBuilderTemplateCandidates], which snapshots only the `ui-builder/` tree; this property
-   * exists so execution can resolve a branch-relative path without reaching for `project`, which is
-   * not available under the configuration cache.
+   * Directories `templates` paths resolve against. `@Internal`: these are project dirs; change
+   * detection comes from [uiBuilderTemplateCandidates]. Exists so execution needn't touch
+   * `project`.
    */
   @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
 
@@ -406,42 +288,25 @@ abstract class BundlePreviewTask : DefaultTask() {
     val manifestFile = previewsJson.get().asFile
     val manifest = JSON.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
     val selected = resolveSelection(manifest, previewIds.get())
-    // The raw id addresses renderer-written content on disk (render sidecars, extension reports,
-    // which are keyed by the un-sanitised id); the bundle form is used for every id that lands
-    // *inside* the bundle — entry names and both manifests. [bundleIds] is that raw→bundle mapping,
-    // computed once over the whole selection so it's collision-free and every materialisation
-    // agrees (see [assignBundleEntryIds]).
+    // Raw ids address renderer output on disk; bundle ids are used for everything inside the
+    // bundle. Computed once over the selection so it's collision-free (see [assignBundleEntryIds]).
     val bundleIds = assignBundleEntryIds(selected.map { it.id })
     val coverIdRaw = selected.first().id
     val coverId = bundleIds.getValue(coverIdRaw)
 
-    // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
-    // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
-    // their composable, so their consumer *bytecode* must not be packed. But the player still needs
-    // their third-party dependencies on the replay classpath (the Compose / protolayout / Remote
-    // Compose runtime the IR inflates against). So the minimisation runs two closures from one
-    // scan:
-    //  - the DEP closure seeds from every selected preview, so deps reachable from an IR preview
-    // are
-    //    still recorded as Maven coordinates (carriage — the bundle stays replayable);
-    //  - the PACK closure seeds only from non-IR previews, so only their module classes land in
-    //    `classes/app.jar`. An IR preview contributes no module bytecode.
-    // With no IR previews the two seeds are identical and this is byte-for-byte the old behaviour.
+    // IR-backed previews replay without their bytecode, but still need their third-party runtime.
+    // So two closures from one scan:
+    // - the DEP closure seeds from every selected preview, keeping coordinates for IR previews;
+    // - the PACK closure seeds only from non-IR previews, so only their classes enter
+    //   `classes/app.jar`.
+    // Without IR previews the two are identical.
     val irByPreview: Map<String, ResolvedIr> =
       selected.mapNotNull { p -> resolvePreviewIr(p)?.let { p.id to it } }.toMap()
 
-    // An IR preview replays through a *player* its own bytecode never references — a protolayout
-    // tile through `TileRenderer`, a Remote Compose doc through `RemoteDocumentPlayer` — so the
-    // preview's closure alone wouldn't keep the renderer/player libs. Seed the dep closure from
-    // each
-    // format's player entry points: the BFS then reaches those libs + their transitive runtime, and
-    // since deps are kept as whole coordinates whenever any class is reachable, they're recorded as
-    // carriage coordinates. The libs are on the consumer's runtime classpath already
-    // (`AndroidPreviewSupport` injects `tiles-renderer`; an RC consumer depends on the player), so
-    // their jars are in the scan; without these seeds they'd be pruned (reachable == 0) and the
-    // daemon replay would `NoClassDefFoundError`. A missing entry FQN (jar absent) seeds nothing,
-    // so
-    // each is a no-op unless that format's IR is actually present.
+    // IR replays through a player its bytecode never references (`TileRenderer`,
+    // `RemoteDocumentPlayer`), so seed the dep closure from each format's player entry points;
+    // otherwise those libs are pruned and replay fails with `NoClassDefFoundError`. Absent entry
+    // FQNs seed nothing.
     val replayEntrySeeds = buildSet {
       if (irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT })
         addAll(PROTOLAYOUT_REPLAY_ENTRY_FQNS)
@@ -452,12 +317,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds
     val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
 
-    // Union the legacy hardcoded `moduleClassDirs` with AGP's scoped PROJECT CLASSES (dirs + jars)
-    // so the packed class set matches discovery's, which already consumes the scoped artifact
-    // (#1924). Without this, a preview whose class is resolved only from a scoped element would be
-    // in `previews.json` but absent from `classes/app.jar` (#1926). Scoped project jars are the
-    // module's OWN bytecode, so they're packed as module classes — not recorded as dependency
-    // coordinates the way `dependencyJars` are.
+    // Union `moduleClassDirs` with AGP's scoped project classes so the packed set matches
+    // discovery's (#1924, #1926). Scoped jars are module classes, not dependency coordinates.
     val scopedClassDirs = projectClassDirs.getOrElse(emptyList()).map { it.asFile }
     val scopedClassJars =
       projectClassJars
@@ -467,9 +328,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     val classDirsList =
       (moduleClassDirs.files + scopedClassDirs).filter { it.exists() && it.isDirectory }.distinct()
     val jarsList = dependencyJars.files.filter { it.isFile && it.name.endsWith(".jar") }
-    // Scoped project jars join the closure scan so reachability is computed over them too, but they
-    // are kept separate from `jarsList` (dependency jars) so `buildDepDecisions` never mistakes the
-    // module's own jar for a third-party coordinate.
+    // Scoped jars join the scan but stay out of `jarsList`, so they're never treated as third-party
+    // coordinates.
     val scanPaths = (classDirsList + jarsList + scopedClassJars).map { it.absolutePath }
 
     val closure = closureWalk(scanPaths, depSeed = depSeedFqns, packSeed = packSeedFqns)
@@ -480,14 +340,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     val keptModuleClassFiles =
       packModuleClasses(classDirsList, reachableModuleClasses) +
         packModuleClassesFromJars(scopedClassJars, reachableModuleClasses)
-    // Pack the module's runtime resources into the jar so a bundle can be *re-rendered* live (the
-    // daemon composes the real `@Preview`, which may load a classpath resource — e.g.
-    // `/fonts/*.ttf`
-    // in a theme's static initializer). [moduleResourcesDir] is a single processed-resources dir
-    // resolved by a config-time filesystem probe, so on a clean configuration-cached build it can
-    // snapshot as null before `processResources` runs; [moduleResourceRoots] is an execution-time
-    // [ConfigurableFileCollection] wired to those same dirs, so it reliably carries them. Pack both
-    // (deduped) — either alone would leave the bundle classes-only and break live re-render.
+    // Pack runtime resources so the bundle can be re-rendered live (e.g. a theme loading fonts).
+    // [moduleResourcesDir] can snapshot as null on a clean config-cached build;
+    // [moduleResourceRoots] resolves at execution. Pack both, deduped.
     val appJarBytes =
       buildJar(
         keptModuleClassFiles,
@@ -515,8 +370,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         dependencies = depDecisions,
       )
 
-    // Lay out the IR artefacts under `ir/<id>.<ext>` and record a manifest entry per IR-backed
-    // preview. The companion resources proto (protolayout) lands beside the layout proto.
+    // IR artefacts go under `ir/<id>.<ext>` with a manifest entry each; protolayout's resources
+    // proto sits beside it.
     val irEntries = mutableListOf<BundleIr>()
     val irZipFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
@@ -539,35 +394,17 @@ abstract class BundlePreviewTask : DefaultTask() {
         )
     }
 
-    // Android resource carriage: pack the AGP-built merged resource APK + manifest (+ generated
-    // library R classes) under `android/` for ANY Android bundle. Both a Wear-tile IR replay (via
-    // `TileRenderer`, which links the library `R$style`) AND a classic `@Preview` that calls
-    // `stringResource(R.string.…)` need the app's `0x7f` resource table at detached-render time — a
-    // detached daemon has neither the merged table nor those R classes. Added to `irZipFiles`,
-    // written verbatim by `buildZip`. `resolveAndroidResources` no-ops (returns null) when there's
-    // no
-    // prior render / no binary resources, so desktop and render-less packs stay unchanged.
+    // Android resource carriage under `android/` for any Android bundle: both tile IR replay and
+    // `stringResource(R.string.…)` need the app's resource table and R classes on a detached
+    // daemon. Null without a prior render or binary resources.
     val androidResources =
       if (backend.get() == "android") resolveAndroidResources(irZipFiles) else null
 
-    // v7 optional data-extension carriage: when asked, pack the per-extension report sidecars (a11y
-    // findings, theme tokens, …) so a detached reader can surface that data without re-rendering.
-    // The
-    // report is sliced down to the COVER (default) preview — the one shown as the bundle's leading
-    // PNG — so the headline image carries its detailed results and the bundle doesn't drag along
-    // data
-    // for previews it doesn't even show (see [scopeReportToCoverPreview]). The set of reports is
-    // the
-    // manifest's `dataExtensionReports` pointers plus a conventional-path fallback for any
-    // registered
-    // extension the manifest names no report for ([CONVENTIONAL_DATA_EXTENSION_REPORTS]) — the
-    // standard a11y flow writes `accessibility.json` but leaves the manifest map empty, so without
-    // the fallback the flag would carry nothing. Paths are module-relative from the manifest's
-    // parent
-    // dir (where the render task writes the reports). A manifest-named report that's missing warns
-    // and
-    // skips; a fallback only contributes when its file actually exists. Sorted by id for a
-    // deterministic (reproducible) zip order. No-op when the flag is off or no report is found.
+    // v7 data-extension carriage (when enabled): reports from `dataExtensionReports` plus
+    // conventional fallbacks ([CONVENTIONAL_DATA_EXTENSION_REPORTS]), since the standard a11y flow
+    // writes `accessibility.json` without stamping the manifest. Each is sliced to the cover
+    // preview ([scopeReportToCoverPreview]). A missing named report warns and skips; fallbacks only
+    // count if present. Sorted by id for a reproducible zip.
     val dataExtensionEntries = mutableListOf<BundleDataExtension>()
     val dataExtensionZipFiles = LinkedHashMap<String, ByteArray>()
     if (includeDataExtensions.getOrElse(false)) {
@@ -603,8 +440,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         coverPreviewId = coverId,
         classpath = classpathEntries,
         modulePath = modulePath.get(),
-        // Slash-separated regardless of the packing host, so a bundle packed on Windows reads the
-        // same as one packed on CI.
+        // Slash-separated regardless of host OS.
         moduleDirectory = moduleDirectory.getOrElse("").replace('\\', '/'),
         producedBy = producedBy.get(),
         producer = PRODUCER_GRADLE,
@@ -612,28 +448,21 @@ abstract class BundlePreviewTask : DefaultTask() {
         intermediateRepresentations = irEntries,
         androidResources = androidResources,
         dataExtensions = dataExtensionEntries,
-        // Only a coordinate needs a repository to come back from; an embed-mode pack carries the
-        // bytes and would just be publishing URLs nobody reads.
+        // Only coordinate packs need repositories.
         repositories =
           if (classpathEntries.any { it is ClasspathEntry.Maven })
             extraMavenRepositories.getOrElse(emptyList())
           else emptyList(),
       )
 
-    // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
-    // from its project (see [PreviewBundleFormat]). Previews whose render is missing on disk are
-    // simply omitted — the reader treats an absent entry as "not rendered yet".
+    // One PNG per selected preview in `previews/<id>.png`; previews without a render are omitted.
     val previewPngs = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       resolvePreviewPng(preview)?.let { previewPngs[bundleIds.getValue(preview.id)] = it }
     }
 
-    // Motion captures are first-class baked artifacts too, and share the stills' id space: a
-    // capture lands at `previews/<id>[_interaction|_anim].<ext>` beside the `previews/<id>.png` it
-    // documents, which is the join every downstream consumer makes (see [resolvePreviewMotion]).
-    // Previously bundle pack carried only PNG stills, making every correctly rendered APNG/GIF
-    // disappear before publishing (issue #3922); keying them by the renderer's own leaf name got
-    // the bytes in, but left them unjoinable to the sticker they belong beside.
+    // Motion captures at `previews/<id>[_interaction|_anim].<ext>`, in the stills' id space so
+    // downstream can join them by name (see [resolvePreviewMotion]; #3922).
     val motionFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       for ((path, bytes) in resolvePreviewMotion(preview, bundleIds.getValue(preview.id))) {
@@ -644,12 +473,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
     }
 
-    // (v8) Per-preview override sidecars: the editable knobs a preview declared via
-    // `previewOverride*`,
-    // captured during the render as `renders/<stem>.overrides.json`. Packed verbatim under
-    // `previews/<id>.overrides.json` so a detached viewer can present the controls. Absent for
-    // previews
-    // that declared none.
+    // (v8) Knob sidecars (`renders/<stem>.overrides.json`), packed verbatim as
+    // `previews/<id>.overrides.json`.
     val overrideFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       val bundleId = bundleIds.getValue(preview.id)
@@ -660,24 +485,16 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewOverrides(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
       }
-      // Per-preview Remote Compose knob sidecars (`renders/<stem>.remotecompose.json`), packed
-      // under `previews/<id>.remotecompose.json` — a separate channel from the plain-Compose
-      // `overrides.json` (its edits round-trip through `renderNow.overrides.remoteCompose`). Rides
-      // the same verbatim-copied `overrideFiles` map, so no `buildZip` signature change. Absent for
-      // previews that declared no Remote Compose knobs.
+      // Remote Compose knob sidecars, packed as `previews/<id>.remotecompose.json` through the same
+      // verbatim map.
       resolvePreviewRemoteCompose(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"] = it
       }
     }
 
-    // Per-sheet catalog-token sidecars (issue #2167): the resolved `@ColorCatalog` /
-    // `@TypographyCatalog` values — and, per #2179, each `@ThemeCatalog` theme's live resolved
-    // role/type table keyed by theme — the renderer wrote under
-    // `data/catalog-tokens/<id>.catalog.json`,
-    // packed by convention under `previews/<id>.catalog.json` — same shape as the override sidecars
-    // so a detached reader (design-parity's `catalog-export`) can import the palette / type scale
-    // without re-rendering. Only `PreviewKind.CATALOG` and `THEME_CATALOG` sheets carry one (the
-    // gate lives in `resolvePreviewCatalogTokens`).
+    // Catalog-token sidecars (#2167, theme tables per #2179), packed as
+    // `previews/<id>.catalog.json` for detached importers. Only CATALOG / THEME_CATALOG sheets have
+    // one.
     val catalogTokenEntries = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {
@@ -687,23 +504,14 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
     }
 
-    // The bundled `previews.json` addresses the same in-bundle entries as `bundle.json`, and
-    // readers
-    // reconstruct `previews/<id>.png` from these ids — so its `id`s carry the bundle form too, kept
-    // in lockstep with the entry names and [BundleManifest] ids above. (`renderOutput` and other
-    // producer-side paths are irrelevant in a detached bundle, so they're left as-is.)
+    // The bundled `previews.json` uses bundle ids too, matching entry names and [BundleManifest];
+    // producer-side paths are left as-is.
     val bundlePreviews = selected.map { it.copy(id = bundleIds.getValue(it.id)) }
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
-        // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
-        // the
-        // in-bundle `extensions/<id>.json` paths (bundle-root-relative, the same convention the map
-        // documents). Otherwise the bundled `previews.json` would still name the producer's
-        // module-relative paths (e.g. `accessibility.json`) — pointers that don't resolve inside a
-        // detached bundle and disagree with `bundle.json`'s [BundleManifest.dataExtensions].
-        // Reports
-        // that were skipped (source missing) drop out of the map so nothing dangles. Left untouched
-        // in the default (non-carrying) pack, preserving the historical on-disk pointers.
+        // When carrying extension data, point `dataExtensionReports` at the in-bundle
+        // `extensions/<id>.json` paths (dropping skipped ones) so it agrees with
+        // [BundleManifest.dataExtensions]. Untouched otherwise.
         manifest.copy(
           previews = bundlePreviews,
           dataExtensionReports = dataExtensionEntries.associate { it.extensionId to it.path },
@@ -711,38 +519,21 @@ abstract class BundlePreviewTask : DefaultTask() {
       } else {
         manifest.copy(previews = bundlePreviews)
       }
-    // Generated before the zip so the designs it advertises can be looked up and carried with it.
-    // Each component's overload is chosen against the builder policy when there is one — the
-    // overload it describes, never a deprecated one — and both artifacts publish that choice.
+    // Generated before the zip so the advertised designs can be carried. Each component's overload
+    // is chosen against its builder policy (never a deprecated one), and both artifacts publish
+    // that choice.
     val overloadNames = overloadNames(manifest.module)
     val fullSelection =
       overloadNames?.let { ComponentRecords.select(manifest, it) }
         ?: ComponentRecords.Selection(ComponentRecords.from(manifest))
     val fullRecord = fullSelection.record
-    // ONE carried record, used by both artifacts.
+    // One carried record for both artifacts. Policy is component-wide, declared by whichever
+    // preview carries the annotation, so `builder` is merged from the full record — otherwise
+    // selecting a different preview silently reverts to defaults. Everything else stays the
+    // filtered view, so bindings only name previews this bundle contains.
     //
-    // The argument below — policy is a component-wide fact declared by whichever preview happens to
-    // carry the annotation, so selecting a different preview must not revert the component to
-    // defaults — was applied to `ui-builder.json` and not to `components.json`, which was built
-    // from the filtered manifest alone. So a bundle could carry a component's policy in one file
-    // and a null `builder` for the same component in the other, and a consumer reading policy from
-    // the record silently got defaults: the exact failure the argument was written about, in the
-    // artifact it was not applied to.
-    //
-    // Only `builder` is merged. Everything else about the carried record is deliberately the
-    // FILTERED view — its bindings name previews this bundle actually contains — and widening that
-    // would put preview ids in `components.json` that its own `previews.json` does not have.
-    //
-    // The merged policy's own preview ids are remapped, for the same invariant. `declaredBy` and
-    // `conflicting` name PREVIEWS, and they come from the full record, so they are raw ids while
-    // everything else in this bundle has been through `bundleIds` — an `@Preview(name = "A B")` is
-    // `a_b` inside the bundle, and a collision makes it `a_b_1`. Carrying them unmapped put ids in
-    // `components.json` that its own `previews.json` does not have, which is precisely what the
-    // paragraph above says must not happen; a raw id is also not reconstructable from the outside
-    // once a suffix is involved. A preview the bundle did not select is dropped rather than guessed
-    // at: naming a preview that is not here is what made this wrong. (`ambiguousWith` is component
-    // ids and `traits` / `malformed` are not ids at all, so those five lists are the whole set and
-    // these two are the only ones to map.)
+    // The merged policy's `declaredBy` / `conflicting` preview ids are remapped through `bundleIds`
+    // for the same invariant; unselected previews are dropped rather than guessed.
     val carriedRecord =
       (overloadNames?.let { ComponentRecords.select(filteredManifest, it).record }
           ?: ComponentRecords.from(filteredManifest))
@@ -769,15 +560,11 @@ abstract class BundlePreviewTask : DefaultTask() {
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
         previewsJson = JSON.encodeToString(PreviewManifest.serializer(), filteredManifest),
-        // Derived from the FILTERED manifest, not the producer's full one: that filters the records
-        // to the selected previews and makes every binding's previewId one the bundled manifest
-        // actually carries, by construction rather than by a parallel rewrite that could drift.
+        // From the filtered manifest, so every binding's previewId is in the bundled manifest by
+        // construction.
         componentsJson = JSON.encodeToString(ComponentRecordFile.serializer(), carriedRecord),
-        // Generated here rather than copied out of `build/compose-previews/`, and derived from
-        // BOTH records: policy is a component-wide fact declared by whichever preview happens to
-        // carry the annotation, so `bundle pack --id …` selecting a different preview of the same
-        // component must not silently revert that component to defaults. The full record supplies
-        // the declarations; the filtered one decides which components the bundle actually carries.
+        // Generated here from both records: the full one supplies policy declarations, the filtered
+        // one decides which components are carried.
         uiBuilderJson = uiBuilderJson,
         uiBuilderTemplates = uiBuilderTemplatesFor(uiBuilderJson),
         appJar = appJarBytes,
@@ -792,9 +579,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         guidelineResults = guidelineResultsBytes(bundleIds),
       )
 
-    // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
-    // when present so the front image and `previews/<coverId>.png` are byte-identical; otherwise a
-    // stub gray placeholder keeps the file a well-formed PNG.
+    // The cover reuses its baked PNG so the front image and `previews/<coverId>.png` are identical;
+    // else a stub.
     val coverPng = previewPngs[coverId] ?: STUB_GRAY_PNG
     val outFile = output.get().asFile
     writePngZipPolyglot(coverPng, zipBytes, outFile)
@@ -819,12 +605,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  deps dropped:         $depsDropped (no reachable classes)"
     )
 
-    // A recorded coordinate is a promise the bytes can be re-attached later, and a snapshot
-    // version is the one coordinate that can quietly stop being true: publications age out of the
-    // repository that served them (androidx.dev keeps a build for a few weeks), so a bundle that
-    // outlives its snapshot build becomes unrenderable with no change on either side. The manifest
-    // now records where they came from, which is what makes them resolvable at all — say so, and
-    // name the escape hatch for a bundle meant to last.
+    // Snapshot coordinates age out of their repository (androidx.dev keeps builds for weeks),
+    // making the bundle unrenderable later; warn and name the escape hatch.
     val snapshotCoords =
       classpathEntries.filterIsInstance<ClasspathEntry.Maven>().filter {
         it.version.endsWith("-SNAPSHOT")
@@ -839,11 +621,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
     }
 
-    // Bundles are meant to be small and shareable — a detached `coordinates` pack is typically
-    // ~100 KB. Embedding (`--embed-deps`) trades that for offline self-containment, but a fat
-    // bundle
-    // defeats the "paste it into a chat" point. Warn past a soft threshold so embedding stays a
-    // deliberate, rare choice rather than an accidental 50 MB artefact.
+    // Warn past a soft size threshold so embedding stays deliberate (coordinate packs are ~100 KB).
     val sizeBytes = outFile.length()
     if (sizeBytes > EMBED_SIZE_WARN_BYTES && embeddedKept > 0) {
       logger.warn(
@@ -875,26 +653,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The rendered PNG bytes for [preview]'s primary capture, or null when no render exists on disk
-   * (bundling without a prior `composePreviewRender`, or a preview that failed to render). Used
-   * both for the cover (first selected) and to bake every selected preview into
-   * `previews/<id>.png`.
-   *
-   * Only **PNG** bytes are ever returned: the result is used verbatim as the polyglot's leading
-   * cover and as `previews/<id>.png`, and [extractZipBytes] rejects a file whose leading signature
-   * is neither PNG nor ZIP. A preview whose primary capture is a GIF (`@AnimatedPreview`,
-   * `@FocusedPreview(gif = true)`) therefore must NOT have its `.gif` bytes read as the cover —
-   * that would produce an unreadable bundle. Such a preview falls through to the PNG-sibling search
-   * and, failing that, to the stub gray cover.
+   * PNG bytes for [preview]'s primary capture, or null when not rendered. Used for the cover and
+   * `previews/<id>.png`. Only PNG bytes are returned: [extractZipBytes] rejects other leading
+   * signatures, so a GIF primary capture falls through to the sibling search, then the stub.
    */
   private fun resolvePreviewPng(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
-    // `renderOutput` is relative to the compose-previews ROOT (the parent of `renders/`), e.g.
-    // `renders/<id>.png` — or `svg-renders/<id>.png` / `lottie-renders/<id>.png` for the JVM asset
-    // passes whose disjoint output dirs keep them build-cacheable. Resolve against that root (not
-    // the
-    // `renders/` leaf), the same way the renderer resolves `renderOutput`, so a cover living in a
-    // sibling subdir isn't missed and silently replaced by the stub gray cover.
+    // `renderOutput` is relative to the compose-previews root (covering `svg-renders/` /
+    // `lottie-renders/`), as the renderer resolves it.
     val previewsRoot = rendersRoot.parentFile ?: rendersRoot
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
@@ -903,14 +669,11 @@ abstract class BundlePreviewTask : DefaultTask() {
     val name = primary.name
     val base = name.substringBeforeLast('.')
 
-    // Only read the primary-capture file directly when it's a PNG. A GIF (or any non-PNG) primary
-    // capture is skipped here so its bytes never become the cover; the sibling search below is
-    // already PNG-filtered.
+    // Only PNG primaries are read directly; the sibling search is PNG-filtered.
     if (name.endsWith(".png") && primary.isFile && primary.length() > 0) return primary.readBytes()
 
-    // No usable PNG at the primary capture's path: @PreviewParameter / multi-variant previews fan
-    // out into siblings (`<base>_<param>.png`, `<base>--<dimension>.png`) in the same subdir. Bake
-    // the first sibling as a representative cover so the preview isn't silently dropped.
+    // Parameterised / multi-variant previews fan out into siblings in the same subdir; use the
+    // first as a representative cover.
     if (!subdir.isDirectory) return null
     return subdir
       .listFiles { f ->
@@ -924,23 +687,12 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Motion capture bytes for [preview], keyed by their in-bundle
-   * `previews/<bundleId>[_interaction|_anim].<ext>` path.
+   * Motion capture bytes for [preview], keyed `previews/<bundleId>[_interaction|_anim].<ext>`.
    *
-   * Named from the PREVIEW ID, exactly as [resolvePreviewPng]'s still is — not from the render's
-   * own leaf. On disk a render is `<readable>-<digest>` (docs/RENDER_FILENAMES.md), which is
-   * deliberately not the id, so keying motion by the leaf put a capture and the still it documents
-   * in two different namespaces (`previews/SwitchOn_Dark-d0f22b72.apng` beside
-   * `previews/com.example.CatalogSelectionKt.SwitchOn_Dark.png`). Everything downstream joins the
-   * two by *name*: `catalog-motion.mjs` reads a capture's theme off the still sharing its stem, and
-   * `catalog-motion-publish.mjs` names the published file after that still. Both silently declined
-   * — a capture published with no theme is pinned to every card of its component, so the light card
-   * played the dark recording, and the file landed at `motion/<slug>/<render-leaf>.apng` instead of
-   * `motion/<slug>/ideal__default__dark.apng`.
-   *
-   * The `_interaction` / `_anim` suffix discovery adds when one function owns two motion outputs is
-   * carried through, since that is what keeps them apart in a single id space — see
-   * [motionBundleEntryPath], which owns the rule.
+   * Named from the preview id like the still: renders are `<readable>-<digest>` on disk, and
+   * downstream (`catalog-motion.mjs`, `catalog-motion-publish.mjs`) joins capture and still by
+   * name, so leaf names left captures themeless and misnamed. The structural suffix is carried
+   * through; see [motionBundleEntryPath].
    */
   private fun resolvePreviewMotion(
     preview: PreviewInfo,
@@ -961,9 +713,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The renderer's structured failure for [preview], if its primary capture failed. Parameterised
-   * previews may write one sidecar per fanned-out value; keep the first deterministically, matching
-   * [resolvePreviewPng]'s representative-image rule. The bytes stay verbatim and schema-versioned.
+   * The structured failure for [preview]'s primary capture, if any; first parameterised sidecar
+   * wins, as in [resolvePreviewPng]. Bytes stay verbatim.
    */
   private fun resolvePreviewRenderError(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
@@ -998,26 +749,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   )
 
   /**
-   * Look for a captured IR sidecar emitted by the render step next to [preview]'s PNG. The render
-   * path writes the IR alongside the rendered image using the same stem: `<stem>.rc` for a Remote
-   * Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
-   * protolayout proto. Returns `null` when the preview's flavour has no IR (the common case — every
-   * plain `@Composable @Preview`), in which case the preview stays on the class-minimisation path.
-   *
-   * Resolution mirrors [resolvePreviewPng] — including its `@PreviewParameter` sibling search. A
-   * device-less param preview renders one document per value into `<stem>_<param>.<ext>` siblings
-   * (there is no un-suffixed `<stem>.<ext>`), and the bundle carries one representative artefact
-   * per preview id: [resolvePreviewPng] bakes the first (min-named) sibling PNG, so this packs the
-   * IR of that same sibling. Without the sibling fallback a param-driven Remote Compose / tile
-   * preview found its cover PNG but no IR, and silently dropped back to bytecode carriage.
+   * The IR sidecar written beside [preview]'s render: `<stem>.rc` (Remote Compose) or
+   * `<stem>.tilelayout` (+ `<stem>.tileresources`). `null` for ordinary previews. Includes
+   * [resolvePreviewPng]'s `@PreviewParameter` sibling search, packing the IR of the same
+   * representative sibling.
    */
   /**
-   * Look for the per-preview override sidecar the render step wrote next to [preview]'s PNG
-   * (`renders/<stem>.overrides.json`) — the serialized `compose/overrides` payload of the editable
-   * knobs the preview declared via `previewOverride*`. Resolution mirrors [resolvePreviewIr]: the
-   * stem comes from the primary capture's `renderOutput`, the file lives under [rendersDir].
-   * Returns the raw bytes (copied verbatim into the bundle — the producer never parses them) or
-   * `null` when the preview declared no knobs (the common case).
+   * The knob sidecar (`renders/<stem>.overrides.json`) beside [preview]'s render, verbatim, or
+   * `null`.
    */
   private fun resolvePreviewOverrides(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
@@ -1028,21 +767,13 @@ abstract class BundlePreviewTask : DefaultTask() {
     return if (f.isFile && f.length() > 0) f.readBytes() else null
   }
 
-  /**
-   * Look for the per-preview Remote Compose knob sidecar the render step wrote next to [preview]'s
-   * PNG (`renders/<stem>.remotecompose.json`) — the serialized `RemoteComposeDeclarationsPayload`
-   * of the named-value knobs the preview declared through `LocalRemoteComposeHost`. Resolution
-   * mirrors [resolvePreviewOverrides]; the bytes are copied verbatim (the producer never parses
-   * them). `null` when the preview declared no Remote Compose knobs (every non-Remote-Compose
-   * preview).
-   */
+  /** The Remote Compose knob sidecar (`renders/<stem>.remotecompose.json`), verbatim, or `null`. */
   private fun resolvePreviewRemoteCompose(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
-    // Anchor to the primary capture's leaf, stripping its actual extension the way the writer's
-    // `pngFile.nameWithoutExtension` does — so a non-PNG primary capture (e.g. an animated `.gif`
-    // still) resolves the sidecar the renderer actually wrote, not a `<leaf>.png`-shaped guess.
+    // Strip the primary capture's actual extension, as the writer does, so a non-PNG primary still
+    // finds its sidecar.
     val leaf = rel.substringAfterLast('/')
     val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
     val f = File(rendersRoot, "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT")
@@ -1050,13 +781,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Look for the per-sheet catalog-token sidecar the render step wrote for a `PreviewKind.CATALOG`
-   * (issue #2167) or `PreviewKind.THEME_CATALOG` (issue #2179) [preview]
-   * (`<rendersRoot>/../data/catalog-tokens/<id>.catalog.json`). Unlike the override / IR sidecars,
-   * it lives under the `data/` tree keyed by the sheet id (not the PNG stem), so resolution mirrors
-   * the renderer's `CatalogTokenSidecar` path + sanitize. Returns the raw bytes (copied verbatim —
-   * the producer never parses them) or `null` for previews of any other kind and sheets that
-   * resolved no tokens.
+   * The catalog-token sidecar for a CATALOG (#2167) / THEME_CATALOG (#2179) [preview]
+   * (`data/catalog-tokens/<id>.catalog.json`, keyed by sheet id, mirroring the renderer's
+   * `CatalogTokenSidecar`). Verbatim bytes, or `null`.
    */
   private fun resolvePreviewCatalogTokens(preview: PreviewInfo): ByteArray? {
     if (
@@ -1064,8 +791,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         setOf(
           PreviewKind.CATALOG,
           PreviewKind.THEME_CATALOG,
-          // The Wear theme sheet writes the same resolved-token sidecar as its mobile sibling, so
-          // a packed Wear bundle carries its palette / type scale for a detached reader too.
+          // Wear theme sheets write the same sidecar.
           PreviewKind.WEAR_THEME_CATALOG,
         )
     ) {
@@ -1083,12 +809,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     id.replace(Regex("""[/\\:*?"<>|\s]"""), "_")
 
   /**
-   * Resolve a data-driven asset preview's IR — the raw asset file itself ([PreviewKind.LOTTIE] /
-   * [PreviewKind.SVG]), read off the module resources by the path discovery recorded on
-   * [PreviewParams.assetPath]. Tries [moduleResourcesDir] (the desktop processed-resources dir)
-   * first, then each root in [moduleResourceRoots] (the Android source resource dirs), returning
-   * the first that holds a non-empty file at the asset path. Returns `null` when the asset has no
-   * path or isn't found under any root — the bundle then omits the IR rather than failing.
+   * An asset preview's IR ([PreviewKind.LOTTIE] / [PreviewKind.SVG]): the file at
+   * [PreviewParams.assetPath], looked up in [moduleResourcesDir] then each of
+   * [moduleResourceRoots]. `null` when not found; the bundle then omits the IR.
    */
   private fun resolveAssetIr(
     preview: PreviewInfo,
@@ -1114,10 +837,7 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
-    // kind=LOTTIE / kind=SVG: the IR is the discovered asset file itself (no render-time capture).
-    // Read it straight off the module resources by the path discovery recorded, so the bundle
-    // carries the animation / artwork and replays it with zero consumer bytecode — same
-    // self-contained shape as a captured Remote Compose document.
+    // Asset previews: the IR is the asset itself, replayable with no consumer bytecode.
     when (preview.params.kind) {
       PreviewKind.LOTTIE -> return resolveAssetIr(preview, IR_FORMAT_LOTTIE, defaultExt = "json")
       PreviewKind.SVG -> return resolveAssetIr(preview, IR_FORMAT_SVG, defaultExt = "svg")
@@ -1139,8 +859,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
     }
     resolveIrFile(IR_EXT_PROTOLAYOUT_LAYOUT)?.let { layout ->
-      // The tile's resources proto shares the layout's exact stem (param suffix and all), so derive
-      // the companion from the resolved layout file rather than re-searching independently.
+      // The resources proto shares the layout's exact stem.
       val layoutStem = layout.name.removeSuffix(".$IR_EXT_PROTOLAYOUT_LAYOUT")
       val resources =
         File(rendersRoot, "$layoutStem.$IR_EXT_PROTOLAYOUT_RESOURCES").takeIf {
@@ -1158,28 +877,17 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Build the v6 Android resource carriage for a protolayout-IR bundle and add its artefacts to
-   * [zipFiles] (which [buildZip] writes verbatim). Mirrors the render path's reliance on AGP's
-   * generated `com/android/tools/test_config.properties` (see `AndroidPreviewSupport`): we read it
-   * to locate the merged resource APK (`apk-for-local-test.ap_`) + merged manifest the tile
-   * renderer resolves its theme against, and pack the generated library R classes so
-   * `androidx.wear.protolayout.renderer.R$style` links on the detached daemon.
-   *
-   * Returns null (adding nothing) when the inputs aren't available — bundling without a prior
-   * render, a project that doesn't emit binary resources, etc. — so the bundle stays well-formed
-   * and the daemon simply falls back to its pre-v6 behaviour (tile replay then fails the same way
-   * it did before this carriage existed) rather than the pack crashing.
+   * Builds the v6 Android resource carriage into [zipFiles]: reads AGP's `test_config.properties`
+   * (as the render path does) to find the merged resource APK + manifest, and packs the library R
+   * classes. Returns null when inputs are missing (no prior render, no binary resources), leaving
+   * the bundle well-formed.
    */
   private fun resolveAndroidResources(
     zipFiles: LinkedHashMap<String, ByteArray>
   ): BundleAndroidResources? {
-    // `com/android/tools/test_config.properties` lives nested inside AGP's unit-test config
-    // directory, so we must walk the input as a file *tree* — a plain `ConfigurableFileCollection`
-    // `.files` returns the registered directory entry (`…/out`), never the nested file. Try the
-    // dedicated config input first (small), then fall back to the unit-test runtime classpath,
-    // which
-    // AGP also puts the config directory on and which is guaranteed built (it's a `@Classpath`
-    // input with real task dependencies).
+    // `test_config.properties` is nested in AGP's config directory, so walk the input as a file
+    // tree (`.files` only returns the directory). Try the dedicated input, then the unit-test
+    // runtime classpath, which also carries it.
     val configFile =
       sequenceOf(androidUnitTestConfig, androidUnitTestRuntimeClasspath)
         .flatMap { it.asFileTree.files.asSequence() }
@@ -1196,11 +904,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
     val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
     val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
-    // AGP writes these paths **relative to the module dir** (e.g.
-    // `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the unit-test
-    // working directory (the module dir). Resolve the same way — a plain `File(path)` resolves
-    // against the build's CWD and misses. Absolute paths (older AGP) pass through; fall back to the
-    // test_config's own module root (ancestor before `/build/`).
+    // AGP writes these relative to the module dir, as Robolectric resolves them; a plain
+    // `File(path)` would use the build's CWD. Absolute paths pass through; fall back to the module
+    // root before `/build/`.
     val baseDir =
       moduleProjectDir.asFile.orNull
         ?: configFile.absolutePath.substringBeforeLast("/build/").let(::File).takeIf {
@@ -1225,20 +931,17 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
       return null
     }
-    // Drop merged-AAR file resources a Compose render never inflates (Wear gesture-animation
-    // vectors, call icons, notification templates, …) before packing. The compiled `resources.arsc`
-    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and
-    // every file resource authored in this build (this module's AND its sibling project modules')
-    // is retained. See [AndroidResourcePruner] and [MergedResourceOwnership].
+    // Drop merged-AAR file resources a render never inflates; `resources.arsc` stays byte-identical
+    // and resources authored in this build are retained. See [AndroidResourcePruner] and
+    // [MergedResourceOwnership].
     val apkBytes = apkFile.readBytes()
     val prunableFileResources = prunableFileResourceKeys()
     val prunedApk =
       if (prunableFileResources.isNotEmpty()) {
         AndroidResourcePruner.prune(apkBytes, prunableFileResources)
       } else {
-        // Nothing was positively attributed to a dependency — either there is genuinely no AAR file
-        // payload, or the blame metadata is unavailable. Both keep the full APK: a dangling table
-        // entry kills the live render, and the saving is tens of KB.
+        // Nothing attributed to a dependency (or no blame data): keep the full APK; a dangling
+        // entry breaks the live render for a saving of tens of KB.
         AndroidResourcePruner.Result(apkBytes, droppedEntries = 0, bytesSaved = 0)
       }
     zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
@@ -1261,22 +964,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Resource identities (`"<typeBase>/<name>"`) [AndroidResourcePruner] may drop: merged **from a
-   * third-party AAR** and contributed by no project in this build. Everything else — including
-   * anything the blame data doesn't classify — is left in the APK. `values` directories never
-   * appear: those compile into `resources.arsc`, which the pruner never touches.
+   * Resource ids (`"<typeBase>/<name>"`) [AndroidResourcePruner] may drop: merged from a
+   * third-party AAR and contributed by no project in this build. Computed as AAR-attributed
+   * ([MergedResourceOwnership]) minus project-attributed minus this module's own
+   * `src/<sourceSet>/res` (a floor that needs no blame data). `values` never appear (they live in
+   * `resources.arsc`).
    *
-   * The set is what [MergedResourceOwnership] attributes to AAR data sets, minus everything
-   * attributed to a project data set, minus this module's own `src/<sourceSet>/res` as a
-   * belt-and-braces floor. That last subtraction matters when the blame file is present but
-   * incomplete: it is read straight off disk and needs no merge metadata to be right.
-   *
-   * Empty means "drop nothing", and covers both an unusable blame file and a build with no AAR file
-   * payload. Distinguishing them would buy nothing — the action is identical, and it is the safe
-   * one. Getting this backwards is what produced issue #3260 (Pocket Casts renders from
-   * `:modules:services:compose` while `ic_play` lives in `:modules:services:ui`; the sibling
-   * module's icons were pruned and the live daemon threw `NotFoundException: File
-   * res/drawable/ic_play.xml …` on the first `painterResource`) and #3299.
+   * Empty means drop nothing, the safe answer when blame data is unusable. Getting this wrong
+   * pruned sibling modules' drawables and broke `painterResource` (#3260, #3299).
    */
   private fun prunableFileResourceKeys(): Set<String> {
     val buildDir =
@@ -1286,11 +981,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     return ownership.prunable - moduleOwnSourceSetResourceKeys()
   }
 
-  /**
-   * Resource identities the module authors in its own `src/<sourceSet>/res` — subtracted from
-   * [prunableFileResourceKeys] so a resource this module demonstrably owns is never dropped, even
-   * if the merge blame also attributes the name to a dependency.
-   */
+  /** Resource ids this module authors in its own `src/<sourceSet>/res`, never dropped. */
   private fun moduleOwnSourceSetResourceKeys(): Set<String> {
     val srcDir = moduleProjectDir.asFile.orNull?.let { File(it, "src") } ?: return emptySet()
     if (!srcDir.isDirectory) return emptySet()
@@ -1310,17 +1001,11 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Collect the generated R classes from the unit-test runtime classpath (+ [dependencyJars]) and
-   * repack them into a single jar's bytes. AGP generates these (a library's R fields are non-final,
-   * so `R.style.X` compiles to a real `getstatic` on the `R$style` *class*, which an AAR's
-   * published `classes.jar` does not contain). With non-transitive R classes the tile renderer's
-   * `androidx.wear.protolayout.renderer.R$style` is generated only into the unit-test **merged**
-   * R.jar — a raw file dep on `…UnitTestRuntimeClasspath` *without* the `artifactType=jar`
-   * attribute, so the attribute-filtered [dependencyJars] view drops it; hence we also scan
-   * [androidUnitTestRuntimeClasspath] (resolved leniently to dodge AGP's
-   * `AmbiguousArtifactsFailure`). We keep every `…/R.class` and `…/R$*.class` across all jars
-   * (deduped by entry name) — R classes are tiny leaf data holders, so carrying the lot is cheaper
-   * than guessing which library the renderer needs. Returns null when none are found.
+   * Collects generated `R.class` / `R$*.class` files from the unit-test runtime classpath and
+   * [dependencyJars] into one jar. Library R fields are non-final, so code links against the
+   * `R$style` class, which AAR `classes.jar`s don't contain; with non-transitive R the tile
+   * renderer's is only in the merged unit-test R.jar (see [androidUnitTestRuntimeClasspath]). All R
+   * classes are kept (deduped) since they're tiny. Null when none.
    */
   private fun packAndroidRClasses(): ByteArray? {
     val jars =
@@ -1389,12 +1074,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     return result
   }
 
-  /**
-   * Jar-form counterpart of [collectClassFqns] for scoped PROJECT-CLASSES jars
-   * ([projectClassJars]). Returns the FQN of every `.class` entry so the caller can intersect
-   * against the closure's pack-reachable set, exactly as it does for the directory-backed module
-   * classes.
-   */
+  /** Jar-form [collectClassFqns] for scoped project-class jars. */
   private fun collectClassFqnsFromJars(jars: List<File>): Set<String> {
     val result = mutableSetOf<String>()
     for (jar in jars) {
@@ -1417,9 +1097,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Jar-form counterpart of [packModuleClasses]: extracts the `.class` entries whose FQN is in
-   * [reachable] from each scoped PROJECT-CLASSES jar, keyed by entry name (the same `pkg/Foo.class`
-   * relative path the directory packer emits) so they merge cleanly into `classes/app.jar`.
+   * Jar-form [packModuleClasses]: reachable `.class` entries, keyed by the same relative path as
+   * the directory packer.
    */
   private fun packModuleClassesFromJars(
     jars: List<File>,
@@ -1478,16 +1157,12 @@ abstract class BundlePreviewTask : DefaultTask() {
   )
 
   /**
-   * Build the manifest classpath from the kept dependency decisions.
-   * - Project-local deps (no Maven coordinate) are always inlined under `libs/` as
-   *   [ClasspathEntry.Project] — they can't be re-resolved.
-   * - Maven-resolved deps are referenced by [ClasspathEntry.Maven] coordinate (the small default),
-   *   OR, when [embed] is true, inlined under `libs/` as [ClasspathEntry.Embedded] so the bundle
-   *   needs no resolver at open time.
+   * Builds the manifest classpath from kept dependency decisions:
+   * - Project deps are inlined under `libs/` as [ClasspathEntry.Project].
+   * - Maven deps are [ClasspathEntry.Maven] coordinates, or [ClasspathEntry.Embedded] in `libs/`
+   *   when [embed].
    *
-   * `resolution` is derived honestly from the result: `embedded` when every kept Maven dep was
-   * carried in `libs/`, `mixed` when some Maven deps are embedded and others referenced (it isn't
-   * today, but the field stays accurate if that changes), else `coordinates`.
+   * `resolution` reflects the result: `embedded`, `mixed`, or `coordinates`.
    */
   internal fun assembleClasspath(
     jars: List<File>,
@@ -1505,8 +1180,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       val coord = dep.coordinate
       val src = byPath[dep.sourcePath]
       when {
-        // Maven-resolved dep, default mode: reference by coordinate (with a content hash so the
-        // detached bytes can be re-attached and verified from any source).
+        // Reference by coordinate, with a content hash for verification after re-resolution.
         coord != null && !embed -> {
           entries += parseMavenCoord(coord, src)
           mavenReferenced++
@@ -1544,33 +1218,17 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Parse `"<group>:<artifact>:<version>:<type>"` (the post-prefix shape produced by the plugin
-   * registration's `ResolvedArtifactResult` → coord encoder). Falls back to `type = "jar"` when the
-   * coordinate omits the trailing packaging. When [src] (the resolved jar on disk) is provided, its
-   * SHA-256 is recorded so a player can verify the bytes after re-resolving the coordinate from any
-   * source; [src] = null leaves the entry resolvable-but-unverifiable.
+   * Parses `"<group>:<artifact>:<version>[:<type>]"` (type defaults to `jar`). With [src], records
+   * its SHA-256 so players can verify re-resolved bytes.
    */
   /**
-   * Fails a `backend: desktop` pack that carries Android-only artifacts.
+   * Fails a `backend: desktop` pack carrying Android-only artifacts, which would fail every render
+   * on a host JVM (`NoClassDefFoundError: android/os/Parcelable`) only after publication — as
+   * happened when the runtime config was resolved eagerly on KMP-Android.
    *
-   * A desktop bundle is replayed on a plain host JVM with no `android.jar`, so an `*-android` AAR
-   * on its classpath means every render dies at class-load with `NoClassDefFoundError:
-   * android/os/Parcelable` — instantly, and only once the bundle is already published and being
-   * served. That is exactly what shipped when [ComposePreviewTasks.registerBundleTask] resolved its
-   * consumer runtime config eagerly and fell through to `androidRuntimeClasspath` on a KMP-Android
-   * module that *does* declare `jvm("desktop")`.
-   *
-   * Checked against resolved Maven coordinates rather than file-path substrings: the
-   * `artifactType=jar` view hands back AGP-transformed `…/transformed/<name>/jars/classes.jar`
-   * paths, in which nothing of the original artifact id survives — which is why the desktop
-   * classpath guard's path matcher could not have caught this.
-   *
-   * Takes [DependencyDecision]s rather than the assembled [ClasspathEntry] list so the check is
-   * mode-independent. Under `--embed-deps` / `-PbundleEmbedDeps=true`, `assembleClasspath` turns
-   * every kept Maven dep into a metadata-free [ClasspathEntry.Embedded] pointing at `libs/…`, so an
-   * entry-based filter would find no coordinates to inspect and wave the same broken bundle through
-   * — just with the AGP-transformed `classes.jar` carried inside it instead of referenced.
-   * `DependencyDecision.coordinate` is populated identically in both modes.
+   * Checked against resolved Maven coordinates, since transformed `classes.jar` paths lose the
+   * artifact id. Takes [DependencyDecision]s so it also works under `--embed-deps`, where entries
+   * carry no coordinates.
    */
   internal fun failOnAndroidClasspathInDesktopBundle(
     backendId: String,
@@ -1647,8 +1305,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
       classes.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
-      // Track written entries so a resource present in more than one root dir (or already a class)
-      // is packed exactly once — a duplicate zip entry is invalid.
+      // A duplicate zip entry is invalid; pack each resource once.
       val written = HashSet(classes.keys)
       for (resourcesDir in resourceDirs) {
         if (!resourcesDir.isDirectory) continue
@@ -1683,20 +1340,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
-      // A guidelines run's results, for a hosting server to serve per preview. Absent unless one
-      // ran.
+      // Guideline results, when a run produced them.
       guidelineResults?.let { zip.writeFile(GUIDELINE_RESULTS_ENTRY, it) }
       zip.writeFile("bundle.json", bundleJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
-      // `components.json` travels with the manifest it was derived from. A detached browser,
-      // builder or MCP consumer reads the bundle and nothing else, so a component record that only
-      // existed in the producer's build directory would be unreachable to exactly the readers the
-      // wire contract names.
+      // `components.json` travels with its manifest, since detached consumers read only the bundle.
       zip.writeFile("components.json", componentsJson.toByteArray(Charsets.UTF_8))
-      // `ui-builder.json` beside it, when this module authors a builder policy. Absent for every
-      // module that does not, which is almost all of them: a bundle entry that is not there is how
-      // a consumer is told there is no builder catalog, rather than by an empty one it has to
-      // recognise.
+      // `ui-builder.json` only when the module authors a builder policy; absence means no builder
+      // catalog.
       uiBuilderJson?.let { zip.writeFile("ui-builder.json", it.toByteArray(Charsets.UTF_8)) }
       // The catalog's own design guidance, beside the catalog it belongs to, when there is one.
       if (uiBuilderJson != null) {
@@ -1704,10 +1355,8 @@ abstract class BundlePreviewTask : DefaultTask() {
           zip.writeFile(UiBuilderGuidelinesFile.FILE_NAME, it)
         }
       }
-      // The template designs that catalog advertises, at the same branch-relative paths it names
-      // them by. `catalog-ui-builder.mjs` publishes out of bundle entries and nothing else, so a
-      // design that is not in here cannot reach the delivery branch — the catalog would offer a
-      // document that 404s for whoever picks it.
+      // The advertised template designs, at the paths the catalog names; `catalog-ui-builder.mjs`
+      // publishes only from bundle entries.
       uiBuilderTemplates.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
@@ -1729,17 +1378,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Slice an aggregated per-extension report down to just the cover (default) preview — the one
-   * shown as the bundle's leading PNG — so the carried `extensions/<id>.json` describes the
-   * headline image and not every preview the module rendered.
-   *
-   * Applied uniformly to every report: any top-level array whose elements are all JSON objects
-   * carrying a string `previewId` is filtered to the entries whose `previewId` equals [coverId];
-   * everything else in the document is left untouched. This keys on the common
-   * `entries[].previewId` convention (e.g. the a11y report's `entries`) as a generic structural
-   * transform — it is NOT per-extension logic, so a report that doesn't follow the convention is
-   * carried whole. Returns the input bytes unchanged on a parse failure, a non-object root, or when
-   * no array matched the shape (so a report with nothing to scope is byte-identical to the source).
+   * Slices a report to the cover preview: any top-level array of objects with a string `previewId`
+   * is filtered to [coverId]; everything else is untouched. A generic structural convention, not
+   * per-extension logic. Returns the input unchanged on parse failure or when nothing matched.
    */
   private fun scopeReportToCoverPreview(reportBytes: ByteArray, coverId: String): ByteArray {
     val root =
@@ -1769,12 +1410,7 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   private fun ZipOutputStream.writeFile(path: String, bytes: ByteArray) {
-    // Pin every entry to a fixed epoch so the bundle is byte-identical across builds. Without
-    // this, `ZipEntry.time` defaults to `System.currentTimeMillis()` and same-inputs-same-bundle
-    // produces different bytes every run — useless for the build cache and noisy under content
-    // hashing (e.g. when CI compares an uploaded bundle against a baseline). 1980-01-01 is the
-    // DOS-epoch floor that the ZIP format can represent; matching what most reproducible-build
-    // tooling (Bazel, mvn-shade, gradle-shadow) uses.
+    // Fixed timestamps make bundles byte-identical across builds (build cache, content hashing).
     val entry = ZipEntry(path)
     entry.time = ZIP_DOS_EPOCH_MS
     putNextEntry(entry)
@@ -1782,11 +1418,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     closeEntry()
   }
 
-  /**
-   * Two project deps can resolve to jars with the same basename; dedupe by suffixing a counter.
-   * Used only for the rare project-dep inline path — Maven coords don't collide because the
-   * resolver guarantees a unique (group, artifact, version) per file.
-   */
+  /** Dedupes project-dep jar basenames with a counter; Maven coordinates can't collide. */
   private val seenJarNames = mutableMapOf<String, Int>()
 
   private fun dedupeJarName(name: String): String {
@@ -1828,11 +1460,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       .use { scan ->
         val depReachable = bfsReachable(scan, depSeed)
         val packReachable = bfsReachable(scan, packSeed)
-        // Dependency reachability (which jars contributed a reachable class) is computed against
-        // the
-        // dep closure so an IR preview's third-party deps are still recorded — see the carriage
-        // note
-        // in `pack`.
+        // Dependency reachability uses the dep closure, so IR previews' deps are recorded (see
+        // `pack`).
         val perElementReachable = HashMap<String, IntArray>() // [reachable, total]
         for (ci in scan.allClasses) {
           val file = ci.classpathElementFile?.absolutePath ?: continue
@@ -1850,11 +1479,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * BFS over ClassGraph's inter-class dependency map from [seed]'s compilation units. Kotlin
-   * top-level functions live on `FooKt` and their generated companions
-   * (`ComposableSingletons$FooKt`, `FooKt$lambda-1`, …) share the prefix, so we seed every class
-   * whose name equals or is `$`-prefixed by an entry FQN — cheap insurance against a missing
-   * inner-class edge. Returns every reachable class name.
+   * BFS over ClassGraph's class dependency map from [seed]. Seeds include `$`-prefixed companions
+   * of each entry (`ComposableSingletons$FooKt`, `FooKt$lambda-1`, …) as insurance against missing
+   * inner-class edges.
    */
   private fun bfsReachable(scan: io.github.classgraph.ScanResult, seed: Set<String>): Set<String> {
     if (seed.isEmpty()) return emptySet()
@@ -1890,26 +1517,16 @@ abstract class BundlePreviewTask : DefaultTask() {
     }
 
     /**
-     * Player entry points seeded into the dependency closure when a bundle carries protolayout IR,
-     * so the renderer runtime the daemon replays through ([TilePreviewRenderer]'s `TileRenderer`
-     * path) is carried as coordinates even though no tile preview references it. `TileRenderer`
-     * pulls `protolayout-renderer` + the proto runtime transitively, and whole coordinates are kept
-     * when any class is reachable, so this single entry carries the lot.
+     * Seed for protolayout IR, so the `TileRenderer` runtime the daemon replays through is carried
+     * as coordinates; it pulls the rest transitively.
      */
     val PROTOLAYOUT_REPLAY_ENTRY_FQNS = setOf("androidx.wear.tiles.renderer.TileRenderer")
 
     /**
-     * Player entry points seeded when a bundle carries Remote Compose IR, so the alpha player the
-     * daemon replays through (`:data-remotecompose-connector`'s `RemoteComposeIrReplay`) is carried
-     * as coordinates. The RC preview's bytecode references the creation/tooling APIs, not the
-     * player; `RemoteDocument` (remote-player-core) + `RemoteDocumentPlayer`
-     * (remote-player-compose) pull the rest of the player runtime transitively.
-     *
-     * The rc-players entries do the same for the players the connector selects by id
-     * (`androidx-embedded`, `cmp-android`). The connector reaches their backends with
-     * `Class.forName`, which the walk cannot see, so a consumer that puts `rc-player-compose` on
-     * its runtime classpath used to have it pruned from the bundle, and a serve host never offered
-     * `cmp-android` for it. Like the AndroidX pair, each one seeds nothing when its jar is absent.
+     * Seeds for Remote Compose IR, so the player runtime (`RemoteDocument`, `RemoteDocumentPlayer`)
+     * is carried; the preview's bytecode only references creation APIs. The rc-players entries
+     * cover players the connector loads via `Class.forName`, which the walk can't see. Each seeds
+     * nothing when its jar is absent.
      */
     val REMOTECOMPOSE_REPLAY_ENTRY_FQNS =
       setOf(
@@ -1922,27 +1539,18 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
 
     /**
-     * Soft size ceiling above which an embed-deps pack warns. 25 MB is comfortably above a normal
-     * embedded Compose graph (a few MB) but well under the "nobody pastes this into a chat" range —
-     * enough to flag an accidental fat bundle without failing the build.
+     * Soft size above which an embed-deps pack warns: well above a normal embedded Compose graph.
      */
     const val EMBED_SIZE_WARN_BYTES: Long = 25_000_000L
 
     /**
-     * Fixed timestamp stamped onto every ZIP entry produced by [writeFile]. 1980-01-01T00:00:00
-     * local time is the DOS-epoch floor the ZIP format can represent (anything earlier round-trips
-     * through `ZipEntry` as a different value); matching the reproducible-build floor used by
-     * Bazel, gradle-shadow, and mvn-shade. Hardcoded rather than `0` because the ZIP format
-     * silently clamps timestamps below the DOS epoch, which would silently make the chosen constant
-     * a lie.
+     * Fixed ZIP entry timestamp: 1980-01-01, the DOS-epoch floor ZIP can represent (earlier values
+     * are clamped), as used by reproducible-build tools.
      */
     val ZIP_DOS_EPOCH_MS: Long =
       java.util.GregorianCalendar(1980, java.util.Calendar.JANUARY, 1, 0, 0, 0).timeInMillis
 
-    /**
-     * 1×1 gray PNG built on demand. Used as the cover when no rendered PNG is available — file(1)
-     * still reports PNG and viewers render a single neutral pixel, conveying "no render yet".
-     */
+    /** 1×1 gray PNG cover for when nothing was rendered. */
     val STUB_GRAY_PNG: ByteArray by lazy {
       val img = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB)
       img.setRGB(0, 0, 0x808080)
@@ -1953,18 +1561,10 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The authored pair — policy and cover sheet — resolved from ONE location.
-   *
-   * Both are looked for in the module directory first and the repository root second, but they are
-   * chosen *together*: a multi-catalog repository routinely has a root policy for its main catalog
-   * and a nested module with its own `catalog.spec.json` and deliberately no policy of its own.
-   * Picking each file independently would hand that module the root's platform, frame, builtins and
-   * templates under its own cover sheet's identity — a hybrid catalog describing a module nobody
-   * wrote a policy for, which is worse than the nothing it should publish.
-   *
-   * So: if the module has either file, the module's location wins outright and a missing policy
-   * there means this module publishes no builder catalog. Only a module with neither falls back to
-   * the root.
+   * The authored policy and cover sheet, resolved from one location: if the module has either file,
+   * the module wins (a missing policy there means no builder catalog); only a module with neither
+   * falls back to the root. Picking each independently would give a nested catalog the root's
+   * policy under its own identity.
    */
   private fun authoredPair(): AuthoredPair? {
     val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
@@ -1978,31 +1578,19 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The authored files and WHERE they came from.
-   *
-   * [moduleOwns] is not decoration: a policy resolved from the repository root names its templates
-   * relative to the root, so the template lookup has to search that side first or a module-local
-   * design shadows the one the selected policy owns.
+   * [moduleOwns] decides which side template lookup searches first, since a root policy's templates
+   * are root-relative.
    */
   private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
-   * The module's builder catalog as JSON, or null when it authors no `ui-builder.policy.json`.
-   *
-   * Two records, and the distinction is the whole point. [full] is every preview in the module, so
-   * a `@BuilderComponent` declared on one preview of a component still reaches that component when
-   * `bundle pack --id …` selected a different one — policy is a fact about the COMPONENT, not about
-   * the preview that happened to declare it, and a single-preview bundle silently reverting a
-   * component's canvas, starter and callbacks to defaults is a mismatch a consumer cannot notice.
-   * [carried] is what the bundle actually contains, so a published entry never names a component
-   * that is not in it.
+   * The module's builder catalog JSON, or null without a policy. [full] covers every preview, so a
+   * policy declared on another preview of the same component still applies (policy is
+   * component-wide); [carried] limits entries to components the bundle contains.
    */
   /**
-   * The template designs the generated catalog advertises, as bundle entries keyed by the path it
-   * names them by.
-   *
-   * Read back out of the generated JSON rather than off the policy, so what is carried is exactly
-   * what the published file points at — the two cannot drift, because there is only one list.
+   * Template designs the generated catalog advertises, read back from the generated JSON so
+   * carriage and advertisement can't drift.
    */
   private fun uiBuilderTemplatesFor(uiBuilderJson: String?): Map<String, ByteArray> {
     val catalog =
@@ -2023,10 +1611,8 @@ abstract class BundlePreviewTask : DefaultTask() {
           "and from the delivery branch."
       )
     }
-    // Parsed before it is carried. A truncated or malformed design would otherwise be counted as
-    // published, advertised on the branch, and fail only when somebody picks it out of the New
-    // design chooser — the same "reported successfully, broken later" shape the diagnostics in this
-    // file exist to prevent. A design that will not parse is not carried and is named instead.
+    // Parse before carrying, so a broken design is named now rather than advertised and failing
+    // later.
     val (usable, unreadable) =
       found.entries.partition { (_, file) ->
         runCatching { JSON.parseToJsonElement(file.readText()) }.isSuccess
@@ -2041,9 +1627,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The authored names each component's policy supplies, for [ComponentRecords.select], or null
-   * when the module authors no readable builder policy. Read from the same policy and cover-sheet
-   * pair [uiBuilderJsonFor] uses, so the overload chosen is the one that catalog describes.
+   * Authored names per component's policy for [ComponentRecords.select], or null; from the same
+   * pair [uiBuilderJsonFor] uses.
    */
   private fun overloadNames(module: String): ((ComponentRecord) -> Set<String>)? {
     val authored = authoredPair() ?: return null
@@ -2069,13 +1654,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     overloadDiagnostics: List<UiBuilderDiagnostic> = emptyList(),
   ): String? {
     val carriedIds = carried.components.map { it.canonicalId }.toSet()
-    // Components from `full`, orphans from `carried`, and the asymmetry is deliberate. A component
-    // keeps its whole record — every binding, every catalog id — because bundling one of its
-    // previews does not shrink what the component IS. An orphan is a property of a PREVIEW, so an
-    // orphan for a preview this bundle does not carry is a diagnostic about something the bundle's
-    // own previews.json and components.json do not contain. Filtering the components and carrying
-    // every orphan beside them was half the filter: `carried` already holds exactly the orphans of
-    // the previews that were selected, so there is nothing to recompute.
+    // Components from `full` (bundling one preview doesn't shrink a component's record), orphans
+    // from `carried` (an orphan is a property of a preview, so only selected previews' orphans
+    // belong here).
     val record =
       full
         .newBuilder()
@@ -2098,11 +1679,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         )
         return null
       }
-    // The cover sheet from the SAME location as the policy, which is the whole point of resolving
-    // them as a pair. Re-deriving it here independently would undo that: a module with its own
-    // policy and deliberately no local cover sheet would take the repository root's system and
-    // title, and the bundled ui-builder.json would then disagree with the one the discovery task
-    // wrote for the same module.
+    // The cover sheet from the same location as the policy; deriving it independently would
+    // disagree with discovery's ui-builder.json.
     val spec = specFile?.let {
       runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
     }
@@ -2122,9 +1700,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * The catalog's `ui-builder.guidelines.json`, from beside the policy the catalog was generated
-   * from, flattened (its included rule packs merged in), when it is well formed; null otherwise,
-   * with a warning naming what is wrong.
+   * The catalog's `ui-builder.guidelines.json` beside the policy, flattened, when well formed; else
+   * null with a warning.
    */
   private fun guidelineResultsBytes(bundleIds: Map<String, String>): ByteArray? =
     guidelineResultsEntry(guidelineResultsFiles.files, bundleIds) { file ->
@@ -2159,12 +1736,9 @@ abstract class BundlePreviewTask : DefaultTask() {
 }
 
 /**
- * Resolve the captured IR sidecar of extension [ext] for a preview whose primary render stem is
- * [stem], under [rendersRoot]. Returns the exact `<stem>.<ext>` when present, else the first
- * (lexicographically min-named) `@PreviewParameter` sibling — `<stem>_<param>.<ext>` or
- * `<stem>--<dim>.<ext>` — matching the representative cover PNG
- * `BundlePreviewTask.resolvePreviewPng` bakes for the same preview. `null` when neither exists.
- * Top-level + internal so the fan-out behaviour is unit-testable without a Gradle task instance.
+ * The IR sidecar `<stem>.<ext>` under [rendersRoot], else the min-named `@PreviewParameter` sibling
+ * (`<stem>_<param>.<ext>` / `<stem>--<dim>.<ext>`), matching the representative cover PNG. `null`
+ * when neither exists. Top-level for tests.
  */
 internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): File? {
   val exact = File(rendersRoot, "$stem.$ext")
@@ -2180,26 +1754,16 @@ internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): Fil
 }
 
 /**
- * Map a preview `id` to the form used for its file names *inside a bundle* — zip entry names
- * (`previews/<id>.png`, `ir/<id>.rc`, …) and the ids in the bundle's own `bundle.json` /
- * `previews.json`. A `@Preview(name = "Image Widget Squircle")` yields an id carrying spaces; the
- * on-disk renderer already collapses those for its file stems (`[^A-Za-z0-9._-]` → `_`), but the
- * pack step historically copied the raw id verbatim, so bundle entries alone kept the spaces. This
- * applies the *same* per-character substitution the renderer uses so the whole bundle is shell- and
- * URL-friendly and internally consistent: entry names, the ids readers reconstruct those names
- * from, and the two manifests all agree. Dots and dashes are preserved (they never need quoting and
- * keep dot-vs-underscore-distinct ids distinct). Kept top-level + internal so it's unit-testable.
+ * A preview id as used inside a bundle (entry names and both manifests), applying the renderer's
+ * file-stem substitution (`[^A-Za-z0-9._-]` → `_`) so entries are shell- and URL-safe. Dots and
+ * dashes are kept.
  */
 internal fun sanitizeBundleEntryId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
 
 /**
- * Portable WebGL/WebXR scene entries for one XR render. The XR renderer writes a directory named
- * from the raw preview id under `renders/`; the bundle gives it the collision-safe bundle id and a
- * `.spatial/` suffix so it cannot be mistaken for an ordinary preview PNG.
- *
- * The allowlist mirrors the server's ingestion boundary. A render directory is producer-owned, but
- * keeping executable or unrelated files out here makes the portable shape explicit and prevents a
- * future renderer scratch file from silently becoming public bundle content.
+ * Portable WebGL/WebXR scene entries for one XR render, renamed to the bundle id with a `.spatial/`
+ * suffix. The allowlist mirrors the server's ingestion boundary so stray renderer files never
+ * become public bundle content.
  */
 internal fun spatialBundleEntries(
   rendersDir: File?,
@@ -2242,31 +1806,14 @@ private const val SPATIAL_SCENE_FILE = "scene.json"
 private val SPATIAL_IMAGE_SUFFIXES = listOf(".png", ".jpg", ".jpeg", ".webp")
 
 /**
- * Assign a collision-free bundle-entry id to every preview in [rawIds], preserving order. Preview
- * `id`s are unique, but [sanitizeBundleEntryId] can map two distinct ones to the same form (sibling
- * `@Preview` names `"A B"` and `"A_B"` both sanitise to `A_B`). Left unchecked that would collide
- * the `previews/<id>.png` / `ir/<id>.rc` entry keys — the later capture silently overwriting the
- * earlier — and emit duplicate ids in both bundled manifests. So the first claimant of a sanitised
- * form keeps it and each subsequent collision gets a `_<n>` suffix, mirroring how discovery
- * disambiguates render stems. Computed once over the whole selection and reused for every entry
- * name and manifest so all id materialisations agree. A repeated raw id (same preview requested
- * twice) maps to the one bundle id, not a fresh disambiguated one.
+ * Collision-free bundle ids for [rawIds], in order: [sanitizeBundleEntryId] can merge distinct ids
+ * (`"A B"` and `"A_B"`), which would overwrite entries and duplicate manifest ids. Later collisions
+ * get `_<n>`. A repeated raw id maps to the same bundle id.
  */
 /**
- * A policy's own preview ids, rewritten into the bundle's namespace.
- *
- * [BuilderPolicy.declaredBy] and [BuilderPolicy.conflicting] name PREVIEWS, and the policy is
- * merged in from the FULL record while everything else in the bundle has been through
- * [assignBundleEntryIds]. Carried unmapped they are raw ids — an `@Preview(name = "A B")` is `a_b`
- * inside the bundle, and a collision makes it `a_b_1` — so `components.json` named previews its own
- * `previews.json` does not have, and a suffixed id cannot be reconstructed from the outside anyway.
- *
- * A preview this bundle did not select is DROPPED rather than guessed at, because naming a preview
- * that is not here is the thing that was wrong. `ambiguousWith` holds component ids and `traits` /
- * `malformed` are not ids, so of the policy's five lists these two are the whole set to map.
- *
- * Extracted rather than left inline so it can be tested: the bug was invisible because the merge
- * sat in the middle of a task method nothing could call.
+ * Rewrites [BuilderPolicy.declaredBy] / [BuilderPolicy.conflicting] (preview ids, merged from the
+ * full record) into the bundle's id namespace, dropping previews the bundle doesn't carry. The
+ * policy's other lists aren't preview ids. Extracted for testing.
  */
 internal fun remapPolicyPreviewIds(
   policy: BuilderPolicy?,
@@ -2298,10 +1845,8 @@ internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
 }
 
 /**
- * The bytes of the first of [candidates] that exists and reads as a guidelines report — a JSON
- * object with a `results` array, as `compose-preview guidelines` writes — or null. A stray or
- * truncated file is left out (and [onUnreadable] told) rather than shipped for every host to
- * reject.
+ * The first of [candidates] that reads as a guidelines report (an object with a `results` array),
+ * or null; unreadable files are reported via [onUnreadable].
  */
 internal fun guidelineResultsEntry(
   candidates: Iterable<File>,
@@ -2319,9 +1864,8 @@ internal fun guidelineResultsEntry(
     return null
   }
   if (bundleIds == null) return bytes
-  // Keyed as everything else inside the bundle is: the CLI writes raw preview ids, while a host
-  // looks results up by the bundle id ([assignBundleEntryIds] sanitises and de-duplicates them).
-  // A result for a preview this bundle does not carry is dropped.
+  // Keyed by bundle id like everything else in the bundle; results for previews not carried are
+  // dropped.
   val remapped = results.mapNotNull { element ->
     val result = element as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
     val raw =

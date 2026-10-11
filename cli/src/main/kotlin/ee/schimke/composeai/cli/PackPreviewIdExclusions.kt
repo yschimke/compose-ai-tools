@@ -1,23 +1,13 @@
 package ee.schimke.composeai.cli
 
 /**
- * `bundle pack --exclude-preview-id` (issue #2966): the preview **ids** a pack must neither render
- * nor semantics-capture.
+ * `bundle pack --exclude-preview-id`: preview ids a pack must neither render nor semantics-capture.
+ * One list for two consumers: the render (`-PcomposePreview.idExclude`) and the daemon-driven
+ * semantics capture, which no Gradle property reaches.
  *
- * Two consumers, one list, which is the point of collecting it here:
- * - the **render**, via `-PcomposePreview.idExclude` on the Gradle invocation (the
- *   `composePreviewRender` task's `--exclude-preview-id` convention);
- * - the **semantics capture**, which the CLI drives itself over the daemon — a Gradle property
- *   can't reach it, so filtering the render alone would leave that pass at full width and only half
- *   the deferral saving would land.
- *
- * Matching mirrors the plugin's `PreviewNameFilter.matchesId` — the authority, since it is what
- * actually skips the render: an anchored `*`/`?` glob when the pattern carries one, else equality
- * OR substring, case-sensitive. The two MUST agree, or a plain pattern would thin the render and
- * not the semantics pass (or the reverse). The logic is restated here rather than shared because
- * the plugin's `preview-discovery` module lives in a separate Gradle build the CLI does not depend
- * on — the same split the VS Code extension's `previewFilter.ts` lives with. Keep them in step:
- * both are covered by unit tests that spell the semantics out.
+ * Matching mirrors the plugin's `PreviewNameFilter.matchesId` (the authority): an anchored `*`/`?`
+ * glob when present, else equality or substring, case-sensitive. Restated here because the plugin's
+ * module is in a separate build; keep the two (and VS Code's `previewFilter.ts`) in step.
  */
 internal object PackPreviewIdExclusions {
 
@@ -28,14 +18,9 @@ internal object PackPreviewIdExclusions {
   const val ENV_VAR = "ORG_GRADLE_PROJECT_$GRADLE_PROPERTY"
 
   /**
-   * The patterns for this invocation: every `--exclude-preview-id` value (repeatable, and each
-   * value may itself be comma-separated), or — when the flag is absent entirely — the [ENV_VAR]
-   * value.
-   *
-   * The env fallback exists because a caller can already thin the *render* by exporting [ENV_VAR]
-   * alone (Gradle picks it up inside the pack's own invocation) and would otherwise silently keep
-   * paying for the full semantics pass. An explicit flag wins outright rather than merging, so a
-   * command line can narrow an inherited environment.
+   * This invocation's patterns: every `--exclude-preview-id` value (repeatable, comma-separated),
+   * or [ENV_VAR] when the flag is absent — so exporting the variable thins the semantics pass as
+   * well as the render. An explicit flag replaces the environment rather than merging.
    */
   fun fromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
     fileFromArgs(args)?.let(::linesOf) ?: patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
@@ -44,19 +29,10 @@ internal object PackPreviewIdExclusions {
   const val FILE_GRADLE_PROPERTY = "composePreview.idExcludeFile"
 
   /**
-   * `--exclude-preview-id-file <path>`, the delimiter-free form of `--exclude-preview-id`.
-   *
-   * A preview id may contain a comma — `@Preview(widthDp = …, heightDp = …)` mints
-   * `…CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320` — so the comma-separated flag
-   * cannot carry one. Joining and re-splitting shatters each id into fragments, and because a plain
-   * pattern matches on **substring**, a fragment like `dpi=320` matches every preview in the
-   * module: a list deferring 47 of 58 previews excluded all 58 and the render died with "nothing
-   * would render". One pattern per line has no such ambiguity, because a line break cannot occur
-   * inside an id.
-   *
-   * Returns the file, not its contents, because both consumers need it: the semantics capture reads
-   * the lines here, and the render is handed the PATH (via [FILE_GRADLE_PROPERTY]) so nothing
-   * re-joins them downstream.
+   * `--exclude-preview-id-file <path>`, one pattern per line. Needed because ids can contain commas
+   * (`…_width=227dp, height=100dp, dpi=320`), and re-split fragments substring-match far too much.
+   * Returns the file so the render can be handed the path ([FILE_GRADLE_PROPERTY]) and nothing
+   * re-joins the lines.
    */
   fun fileFromArgs(args: List<String>): java.io.File? =
     args
@@ -67,20 +43,9 @@ internal object PackPreviewIdExclusions {
       ?.let { java.io.File(it) }
 
   /**
-   * The ids in [file], one per line, blanks dropped. Never empty.
-   *
-   * An unreadable file throws rather than yielding an empty list, and so does a file that is
-   * present but carries no ids. Both would otherwise become "no selection", and for BOTH flags that
-   * reads as *everything* rather than nothing:
-   *
-   * * `--id-file` — an empty list leaves `-PbundlePreviewIds` unset, and `bundle pack` then packs
-   *   the whole catalog. A generated shard file that came out empty would silently pack every
-   *   preview instead of its slice, on every shard.
-   * * `--exclude-preview-id-file` — an empty list excludes nothing, so the whole sheet renders.
-   *
-   * Either way the run reports success while having done the opposite of what the file asked. A
-   * caller with legitimately nothing to select should not pass the flag; that is what the `[ -s …
-   * ]` / non-zero-count guards on the calling side already express.
+   * The ids in [file], one per line, blanks dropped. Throws when unreadable or empty: for both
+   * `--id-file` and `--exclude-preview-id-file` an empty list would mean "everything", the opposite
+   * of what the file asked. Callers with nothing to select shouldn't pass the flag.
    */
   fun linesOf(file: java.io.File): List<String> {
     check(file.isFile) {
@@ -96,19 +61,9 @@ internal object PackPreviewIdExclusions {
   }
 
   /**
-   * `bundle pack --id-file <path>`: the previews to PACK, one per line.
-   *
-   * The include-side twin of [fileFromArgs], and needed for the same reason. `--id` comma-splits
-   * every value, so an id containing a comma — `@Preview(widthDp = …, heightDp = …)` mints
-   * `…AppCardRemote_width=227dp,height=200dp,dpi=320` — is shattered into three.
-   * `composePreviewRender` survives that because it matches ids by SUBSTRING, so the fragments
-   * still select something; `composePreviewBundle` matches EXACTLY and fails with `preview id not
-   * found: …AppCardRemote_width=227dp`, naming the first fragment. Escaping does not help:
-   * `encodePreviewId` protects commas on the Gradle transport, but by then the id is already in
-   * pieces.
-   *
-   * A line break cannot occur inside an id, so a file has no such ambiguity. When present it
-   * REPLACES `--id` rather than adding to it.
+   * `bundle pack --id-file <path>`: previews to pack, one per line. `--id` comma-splits values,
+   * which shatters ids containing commas so the exact-matching bundle task fails. Replaces `--id`
+   * when present.
    */
   fun idFileFromArgs(args: List<String>): java.io.File? =
     args.flagValuesAll("--id-file").lastOrNull()?.trim()?.takeIf(String::isNotEmpty)?.let {
@@ -116,16 +71,8 @@ internal object PackPreviewIdExclusions {
     }
 
   /**
-   * The previews `bundle pack` will select: the id file when one was passed, else `--id`.
-   *
-   * Extracted so the behaviour can be *exercised* rather than restated. The shattering below is the
-   * whole reason [idFileFromArgs] exists, and it was pinned by a test that rebuilt
-   * `args.drop(2).flatMap { it.split(',') }` by hand — which keeps passing if the real `--id`
-   * parsing stops splitting, changes its trimming, or loses the file's precedence over the flag. A
-   * regression test that cannot see the code it guards is not one.
-   *
-   * The file REPLACES `--id` rather than adding to it: a caller that has both has said the same
-   * thing twice, and the file is the form that survives a comma.
+   * The previews `bundle pack` selects: the id file when passed, else `--id`. Extracted so tests
+   * exercise the real parsing rather than restating it.
    */
   fun selectedIds(args: List<String>): List<String> =
     idFileFromArgs(args)?.let(::linesOf)
@@ -142,12 +89,8 @@ internal object PackPreviewIdExclusions {
   const val ROW_ENV_VAR = "ORG_GRADLE_PROJECT_$ROW_GRADLE_PROPERTY"
 
   /**
-   * `--exclude-preview-row` labels, same flag-then-env resolution as [fromArgs].
-   *
-   * These are forwarded to the render and nowhere else: unlike an id exclusion, a row exclusion
-   * needs no matching skip in the semantics pass, because that capture is driven per *preview* over
-   * the daemon — a parameterized preview yields one capture whatever its provider fans out to, so
-   * there is no per-row cost there to save.
+   * `--exclude-preview-row` labels, resolved like [fromArgs]. Render only: semantics are captured
+   * per preview, so there is no per-row cost to save there.
    */
   fun rowsFromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
     patternsFor(args, "--exclude-preview-row", ROW_ENV_VAR, env)
@@ -164,11 +107,8 @@ internal object PackPreviewIdExclusions {
   }
 
   /**
-   * What one pattern matched, so the pack can attribute its exclusions to the pattern that caused
-   * them (issue #5064). Mirrors the plugin's `PreviewIdExclusionMatch`, deliberately — the two
-   * lanes report the same shape because a reader comparing a pack log against a render log is
-   * reading about the same patterns. [matched] is per-pattern and patterns may overlap, so the
-   * counts need not sum to the number actually dropped.
+   * What one pattern matched, mirroring the plugin's `PreviewIdExclusionMatch` so pack and render
+   * logs read alike. Patterns may overlap, so counts need not sum to the number dropped.
    */
   data class Match(val pattern: String, val matched: Int, val total: Int) {
     val line: String
@@ -181,12 +121,8 @@ internal object PackPreviewIdExclusions {
   }
 
   /**
-   * Per-pattern match counts over [ids], in the order [patterns] were given.
-   *
-   * Separate from [retain] because they answer different questions: that one yields the ids to
-   * capture (overlap irrelevant), this one says which pattern did the work — and, crucially, which
-   * did none. A pattern at zero is almost always a typo, and the pack used to say only how many
-   * previews it skipped in total, which cannot tell three patterns apart.
+   * Per-pattern match counts over [ids], in [patterns] order — separate from [retain] so a pattern
+   * matching nothing (usually a typo) is visible.
    */
   fun matches(ids: List<String>, patterns: List<String>): List<Match> =
     patterns
@@ -209,8 +145,7 @@ internal object PackPreviewIdExclusions {
 
   private fun matches(pattern: String, id: String): Boolean =
     when {
-      // Exact, deliberately not substring: a base id is a substring of its own fan-out members, so
-      // `FilledButton_Light` would otherwise also drop `FilledButton_Light_VARIANT_off`. See
+      // Exact, not substring: a base id is a substring of its fan-out ids. See
       // `PreviewNameFilter.ANCHOR`.
       pattern.startsWith(ANCHOR) -> id == pattern.substring(ANCHOR.length)
       pattern.any { it == '*' || it == '?' } -> globToRegex(pattern).matches(id)
@@ -220,11 +155,7 @@ internal object PackPreviewIdExclusions {
   /** Mirror of `PreviewNameFilter.ANCHOR`. */
   const val ANCHOR: String = "="
 
-  /**
-   * Anchored regex for a `*`/`?` glob, escaping every other character so a `.` in a
-   * package-qualified id is a literal dot. Literal runs go through [Regex.escape] so a
-   * metacharacter in an id can never leak into the pattern.
-   */
+  /** Anchored regex for a `*`/`?` glob; literal runs go through [Regex.escape]. */
   private fun globToRegex(glob: String): Regex {
     val out = StringBuilder()
     val literal = StringBuilder()

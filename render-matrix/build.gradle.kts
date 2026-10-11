@@ -1,23 +1,9 @@
-// Render-matrix axes and the contact sheet that stitches their cells into one PNG.
+// Render-matrix axes and the contact sheet stitching their cells into one PNG: `MatrixAxes` expands
+// and caps the device × locale × uiMode × fontScale product, `MatrixCell` maps a point onto
+// `PreviewOverrides`, `ContactSheet` lays out a labelled grid. Pure functions, no daemon or socket.
 //
-// `MatrixAxes` expands the device × locale × uiMode × fontScale cross-product and caps it;
-// `MatrixCell` maps one point of that product onto `PreviewOverrides` and its wire JSON;
-// `ContactSheet` lays the resulting PNGs out in a labelled grid. Pure functions over protocol
-// types and image bytes — nothing here spawns a daemon, reads a project or opens a socket.
-//
-// This module exists because these types used to live in `:mcp`, and both surfaces that use them
-// are the same code by design (issue #1788): the `render_matrix` MCP tool and the CLI's
-// `render-matrix` command. `:cli` therefore compiled against `:mcp` for an offline command,
-// which is the coupling that has to go before `:mcp` moves to compose-preview-server as layer 2
-// (#5176). Same lift, same reason, as `:daemon-client` before it (#3824 preparation item 3):
-// after the move, the MCP server consumes this as a published layer-1 coordinate rather than
-// owning it.
-//
-// The package is `ee.schimke.composeai.render.matrix`, deliberately not the old
-// `ee.schimke.composeai.mcp` — two published artifacts sharing one package is a split package,
-// which breaks JPMS and OSGi consumers. Per docs/API_STABILITY.md § 1 the published surface of
-// `:mcp` is its MCP tool names and input schemas, not its Kotlin types, so the rename needs no
-// compatibility shim.
+// Shared by the CLI's `render-matrix` and the MCP server's `render_matrix` (as a published layer-1
+// coordinate). Its own package (`…render.matrix`) to avoid a split package across artifacts.
 
 plugins {
   id("composeai.base-conventions")

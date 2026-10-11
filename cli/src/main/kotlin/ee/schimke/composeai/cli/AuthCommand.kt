@@ -19,50 +19,33 @@ import kotlinx.serialization.json.Json
  * compose-preview auth revoke
  * ```
  *
- * The shape of `request`'s output is the point of this whole feature, so it is worth being explicit
- * about who reads what. **The agent** reads the first block and relays it verbatim; **the human**
- * reads the link and the code. So the link and the code go to stdout, unadorned and on their own
- * lines, ahead of any progress chatter — an agent that pipes this into a chat message should be
- * able to hand over exactly what it received without editing.
- *
- * The token itself is never printed by `request`. It is written to [AgentAccessStore] and reported
- * only as "granted, expires in …". `auth token` exists for the case where a script genuinely needs
- * the string, and prints nothing else, so redirecting it to a file is unambiguous.
+ * `request` prints the approval link and code first, unadorned on their own lines, so an agent can
+ * relay them verbatim to the human. It never prints the token: that goes to [AgentAccessStore], and
+ * `auth token` prints only the bearer for scripts.
  */
 internal class AuthCommand(
   private val args: List<String>,
-  /**
-   * Where grants and un-collected requests live. Injected so a test can drive the collect/verify
-   * behaviour against a real server without reaching for the caller's actual credential file —
-   * production always gets the default.
-   */
+  /** Where grants and un-collected requests live; injectable for tests. */
   injectedStore: AgentAccessStore? = null,
   /**
-   * How the default store is opened when none was injected. A seam, because the one behaviour worth
-   * pinning here is what happens when this **throws** — `auth request --json` must still print the
-   * device secret rather than exiting, and a test cannot make a real machine forget where its home
-   * directory is.
+   * How the default store is opened; a seam so tests can make it throw (`auth request --json` must
+   * still print the device secret).
    */
   private val openStore: () -> AgentAccessStore = { AgentAccessStore() },
 ) {
 
   /**
-   * Opened lazily so a machine with nowhere safe to keep credentials fails with one clear sentence
-   * instead of a stack trace out of a constructor default — and only when a subcommand actually
-   * needs the store, so `auth --help` still works there.
+   * Opened lazily so a machine with nowhere safe for credentials fails with one clear sentence, and
+   * only when a subcommand needs it (`auth --help` still works).
    */
   private val store: AgentAccessStore by lazy {
     optionalStore ?: fail(storeFailure ?: "no user config directory could be determined")
   }
 
   /**
-   * The store, or null when this machine has nowhere safe to keep credentials.
-   *
-   * Separate from [store] because **one path legitimately does not need it**: `auth request --json`
-   * prints the device secret, which is the whole point of that mode — the caller polls for itself.
-   * Failing there would open a request on the server and then exit before printing the secret that
-   * could redeem it, leaving the human with an approval link that mints a credential nobody can
-   * ever collect. Every other path needs somewhere to write and says so through [store].
+   * The store, or null when there is nowhere safe to keep credentials. Only `auth request --json`
+   * may proceed without one: it prints the device secret for the caller to poll with, and failing
+   * after opening the request would leave an approval nobody can collect.
    */
   private val optionalStore: AgentAccessStore? by lazy {
     injectedStore
@@ -79,9 +62,7 @@ internal class AuthCommand(
   private val json: Boolean = "--json" in args
 
   fun run() {
-    // Before anything else: `auth --help` and `auth request --help` used to fall through to
-    // `request()`, so asking for usage on a machine with $COMPOSE_PREVIEW_SERVER set opened a real
-    // server-side request and sat there waiting for a human to approve it.
+    // First, so `--help` never opens a real server-side request.
     if ("--help" in args || "-h" in args) {
       printUsage()
       return
@@ -104,12 +85,8 @@ internal class AuthCommand(
   }
 
   /**
-   * The first positional argument, skipping any token that is a *value* of a preceding flag.
-   *
-   * A naive "first argument not starting with `-`" reads `auth --server https://x request` as a
-   * request for a subcommand called `https://x`, which is a confusing way to be told that the order
-   * of one's own arguments matters. [CliFlags.VALUE_FLAGS] already knows which flags consume the
-   * next token, so use it.
+   * The first positional argument, skipping values of preceding flags ([CliFlags.VALUE_FLAGS]), so
+   * `auth --server https://x request` works.
    */
   private fun subcommand(): String? {
     var i = 0
@@ -134,9 +111,8 @@ internal class AuthCommand(
       } catch (e: IllegalArgumentException) {
         fail(e.message ?: "invalid --server")
       }
-    // Validated here rather than left to the server: an unknown name would otherwise be read as the
-    // default, and the agent would spend a human's attention on a request for less access than it
-    // meant to ask for.
+    // Validate locally: the server would treat an unknown name as the default, and a human would
+    // approve less access than intended.
     val scope = args.flagValue("--scope")?.trim().orEmpty()
     if (scope.isNotEmpty() && AgentGrantScope.parse(scope) == null) {
       fail(
@@ -145,9 +121,7 @@ internal class AuthCommand(
         code = 64,
       )
     }
-    // Same treatment as `--scope`, for the same reason: a mistyped capability that reached the
-    // server would simply be dropped there, and the agent would learn it had less access than it
-    // asked for only when an upload was refused — after a human had already approved something.
+    // Same for capabilities, which the server would silently drop.
     val capabilities =
       args
         .flagValuesAll("--capability")
@@ -170,13 +144,9 @@ internal class AuthCommand(
         else fail("unrecognised --ttl '$ttlRaw' — try 45m, 2h, or a number of seconds", code = 64)
     val label = args.flagValue("--label")?.trim().orEmpty().ifEmpty { defaultLabel() }
 
-    // Establish that we can KEEP the result before asking the server for one.
-    //
-    // The abort for "nowhere to store credentials" used to fire after the request was opened, which
-    // left an uncollectable request sitting in the server's bounded pending map for its full ten
-    // minutes — and a caller retrying the way anyone would could exhaust the slots for everyone
-    // else. `--json` is exempt because it genuinely does not need a store: it prints the device
-    // secret, so its caller can poll for itself.
+    // Make sure the result can be kept before opening a request, or an uncollectable request
+    // occupies a slot in the server's bounded pending map. `--json` is exempt (it prints the device
+    // secret).
     if (!json && optionalStore == null) {
       fail(
         storeFailure
@@ -194,12 +164,8 @@ internal class AuthCommand(
         is AgentAccessClient.Result.Err -> fail(r.reason)
       }
 
-    // Remembered before anything is printed, and whether or not this run intends to wait. The
-    // device secret is the only thing that can redeem the approval, so a `--no-wait` that printed
-    // "re-run auth status" without persisting it was telling the user to do something impossible —
-    // and a wait interrupted by Ctrl-C would have thrown the request away just as completely.
-    // `optionalStore` rather than `store`: with `--json` the device secret is printed, so a machine
-    // with nowhere to write can still drive the flow. Handled below.
+    // Persist the device secret before printing anything, whether or not this run waits: it is the
+    // only way to redeem the approval later (`--no-wait`, or an interrupted wait).
     val remembered =
       optionalStore?.savePending(
         AgentAccessStore.Pending(
@@ -213,10 +179,8 @@ internal class AuthCommand(
         )
       )
 
-    // A store that EXISTS but could not be written to — checked after the fact, because unlike the
-    // missing-home case above it is not knowable until the write is attempted. Same conclusion:
-    // waiting would mean asking a person to approve access that is guaranteed to be lost, and the
-    // human-readable path never prints the token.
+    // The store exists but the write failed: don't ask a human to approve access that would be
+    // lost.
     if (remembered != true && !json) {
       fail(
         "opened the request, but could not save it locally (see the warning above) — so nothing " +
@@ -229,9 +193,8 @@ internal class AuthCommand(
     }
 
     if (json) {
-      // The device secret is deliberately included: `--json` exists for an agent that wants to
-      // drive the poll itself, and without it the response is a link it can never redeem. It is
-      // not printed in the human form for the same reason it is not in the link.
+      // Includes the device secret so a `--json` caller can poll itself; never in the
+      // human-readable form.
       printJson(
         RequestJson.serializer(),
         RequestJson(
@@ -255,12 +218,8 @@ internal class AuthCommand(
       println("  ${opened.approveUrl}")
       println("  verification code: ${opened.userCode}")
       println()
-      // The capabilities belong in THIS line, not just in --json. It is the sentence an agent
-      // relays into a chat window, and the approval page asks for them explicitly — so omitting
-      // them made the relayed message understate the consent being sought, on the one feature whose
-      // entire premise is that the human sees what they are agreeing to. Printed as ASKED, and the
-      // note below names any of them the server's ceiling will not offer — one sentence states the
-      // consent sought, the other states its limit, and neither silently drops a field.
+      // Print the requested capabilities in the relayed line too, so the human sees the full
+      // consent being sought; the note below names any the server's ceiling won't offer.
       val requestedCapabilities =
         if (opened.requestedCapabilities.isEmpty()) ""
         else " + ${opened.requestedCapabilities.joinToString(", ")}"
@@ -270,10 +229,8 @@ internal class AuthCommand(
           (if (label.isNotEmpty()) " · \"$label\"" else "")
       )
       println("  The code above must match what they see on that page.")
-      // The server echoes both what was asked and what its ceiling permits; the difference is a
-      // capability the approval page will never offer and the grant can never carry. Silent, that
-      // narrowing surfaced only much later — every ui-builder call refusing with no mention that
-      // the operator could change it with one flag. Named here, while the human is still reading.
+      // Capabilities above the server's ceiling can never be granted; say so now rather than at the
+      // first refused call.
       val notOffered = opened.requestedCapabilities.filterNot { it in opened.maxCapabilities }
       if (notOffered.isNotEmpty()) {
         println(
@@ -284,8 +241,7 @@ internal class AuthCommand(
       println()
       if ("--no-wait" in args) {
         println(
-          // `remembered` is guaranteed true here — an unsaved request aborts above, before anyone
-          // is asked to approve anything.
+          // `remembered` is true here: an unsaved request aborts earlier.
           "Not waiting. Run `compose-preview auth status --server ${client.origin}` after they " +
             "approve and it will collect the token — or run this without --no-wait to block " +
             "until they do."
@@ -299,12 +255,8 @@ internal class AuthCommand(
     }
 
     val outcome = awaitApproval(client, opened)
-    // Save first, drop the pending record only if that worked. The other order lost credentials on
-    // a full disk: the device secret — the one thing that can re-poll for this token — was deleted,
-    // and the human-readable path never prints the token itself, so a failed save stranded a live
-    // grant with nothing left to redeem it.
-    // The waiting path replaces this origin's entry too, and had no superseded handling at all —
-    // the previous round only taught the `--no-wait` collector to do this.
+    // Save first, drop the pending record only on success, or a failed save strands a live grant
+    // with nothing left to redeem it. Also hand over any grant this one supersedes.
     optionalStore?.let { handOverSuperseded(it, client, client.origin, outcome.token.orEmpty()) }
     val saved =
       optionalStore?.save(
@@ -353,11 +305,8 @@ internal class AuthCommand(
   }
 
   /**
-   * Poll until the human decides, the request expires, or the caller gives up.
-   *
-   * Every terminal outcome exits the process here rather than returning a sum type, because there
-   * is exactly one caller and each case has a different exit code an agent should be able to branch
-   * on: `0` granted, `1` refused/expired, `2` unreachable.
+   * Poll until the human decides, the request expires, or the caller gives up. Exits directly with
+   * a distinct code per outcome: `0` granted, `1` refused/expired, `2` unreachable.
    */
   private fun awaitApproval(
     client: AgentAccessClient,
@@ -392,18 +341,13 @@ internal class AuthCommand(
           }
         }
         is AgentAccessClient.Result.Err -> {
-          // A server that answered with `Retry-After` is not failing — it is scheduling us. Honour
-          // it, and don't spend an error on being told to wait: on a host whose
-          // `--agent-grant-rate-limit` is below this cadence, counting throttles as failures burned
-          // the whole budget before one token refilled.
+          // `Retry-After` is scheduling, not failure: honour it without counting an error.
           val backoff = r.retryAfterSeconds
           if (backoff != null) {
             Thread.sleep(backoff.coerceIn(1, 60) * 1000)
             continue
           }
-          // A transient network blip in the middle of a ten-minute wait should not throw away a
-          // request a human may be about to approve, so retry a few times before giving up. The
-          // count resets on any success, so it measures a run of failures rather than a total.
+          // Tolerate a run of transient failures during a long wait; the count resets on success.
           consecutiveErrors++
           if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
             fail("gave up polling: ${r.reason}", code = 2)
@@ -418,19 +362,9 @@ internal class AuthCommand(
   // --------------------------------------------------------------- status
 
   /**
-   * What this machine holds for each server, **checked against that server** rather than reported
-   * from local bookkeeping alone.
-   *
-   * Two things happen here, and both exist because the local file is a cache of someone else's
-   * state. A remembered-but-uncollected request is polled, so the token an approval produced is
-   * picked up by the first `status` after it (this is what makes `--no-wait` work). A stored grant
-   * is verified with `whoami`, so a grant the operator revoked, or one that died with a server
-   * restart, is reported as gone instead of being confidently listed as live until its local expiry
-   * — which would send the next command into an unexplained 404.
-   *
-   * A server that cannot be reached yields `unverified` rather than a deletion: an unreachable host
-   * is not evidence that the grant is dead, and throwing a live credential away on a flaky network
-   * is the more expensive mistake.
+   * What this machine holds per server, checked against that server: pending requests are polled
+   * (so `--no-wait` approvals get collected) and grants are verified with `whoami` (so revoked or
+   * restart-lost grants show as gone). Unreachable servers report `unverified`, never a deletion.
    */
   private fun status() {
     val explicit = namedServer()
@@ -508,8 +442,8 @@ internal class AuthCommand(
     }
     for (p in waiting) {
       if (p.windowClosed(now)) {
-        // Kept and still polled: the server holds an approved-but-uncollected request until its
-        // grant expires, so a decision made in the last seconds of the window still lands here.
+        // Still polled: the server keeps an approved-but-uncollected request until its grant
+        // expires.
         println(
           "${p.origin} — approval window closed; still checking whether it was approved in time"
         )
@@ -526,17 +460,10 @@ internal class AuthCommand(
   }
 
   /**
-   * Hand back the grant that saving [replacement] is about to make unreachable.
-   *
-   * The store keeps one entry per origin, so a second approved grant for the same server evicts the
-   * first — which stays **live on the server** with nothing left able to present or revoke it. So
-   * it is revoked here, before it is dropped.
-   *
-   * The revoke result is *read*, not merely attempted: [AgentAccessClient.revoke] reports HTTP and
-   * network failures as `Result.Err` rather than throwing, so wrapping it in `runCatching` (as the
-   * first version of this did) treated every such failure as a success and orphaned the credential
-   * anyway. When it genuinely cannot be handed back, say so and name its fingerprint, because at
-   * that point the only thing that can still end it is a human on `/status`.
+   * Revoke the grant that saving [replacement] would evict (one entry per origin), since it would
+   * otherwise stay live on the server with nothing able to present or revoke it.
+   * [AgentAccessClient.revoke] reports failures as `Result.Err`, so the result is checked; if it
+   * can't be handed back, name its fingerprint so a human can end it on `/status`.
    */
   private fun handOverSuperseded(
     store: AgentAccessStore,
@@ -558,9 +485,8 @@ internal class AuthCommand(
   }
 
   /**
-   * Poll every remembered request once and promote the approved ones into grants. Silent about a
-   * request still pending — [status] prints those itself, with the link, so the human can still be
-   * pointed at it.
+   * Poll every remembered request once and promote approved ones into grants. Silent about pending
+   * ones; [status] prints those with the link.
    */
   private fun collectPending(store: AgentAccessStore, only: String?) {
     for (pending in store.allPending()) {
@@ -576,9 +502,7 @@ internal class AuthCommand(
         "approved" -> {
           val token = polled.token
           if (token.isNullOrEmpty()) continue
-          // Save first, drop the pending record only if that worked — the same order as the
-          // waiting path, for the same reason: this record holds the only secret that can re-poll
-          // for the token, and nothing here prints the token itself.
+          // Save first, drop the pending record only on success, as in the waiting path.
           handOverSuperseded(store, client, pending.origin, token)
           val stored =
             store.save(
@@ -616,14 +540,11 @@ internal class AuthCommand(
   // ---------------------------------------------------------------- token
 
   /**
-   * Print the bearer and nothing else, so `$(compose-preview auth token)` is usable. Exits 1 with a
-   * message on stderr when there is none — a missing credential must not become an empty string
-   * that a script then sends as a token.
+   * Print the bearer and nothing else, for `$(compose-preview auth token)`. Exits 1 with a stderr
+   * message when there is none, so a script never sends an empty token.
    */
   private fun token() {
-    // Collect first: the common shape is `auth request --no-wait`, a human approving, and then a
-    // script reaching straight for the token. Making that work is the whole point of remembering
-    // the request.
+    // Collect first: `request --no-wait`, approval, then `auth token` is the common flow.
     collectPending(store, namedServer())
     val server = namedServer() ?: soleServer() ?: fail(NO_SERVER_MESSAGE)
     val entry =
@@ -638,11 +559,8 @@ internal class AuthCommand(
 
   private fun revoke() {
     val server = namedServer() ?: soleRevocableServer() ?: fail(NO_SERVER_MESSAGE)
-    // A remembered-but-uncollected request is also access this machine asked for; revoking should
-    // leave nothing behind, including the thing that could still turn into a credential. Asked
-    // before it is removed, because `forgetPending` returning false means *either* "there was none"
-    // *or* "the file could not be rewritten" — and reporting the second as the first told the user
-    // there was nothing to revoke while the device secret sat on disk, still collectable.
+    // A pending request is access too, so revoke removes it. Checked before removal because
+    // `forgetPending` returning false can also mean the file couldn't be rewritten.
     val hadPending = store.pendingFor(server) != null
     val droppedPending = store.forgetPending(server)
     if (hadPending && !droppedPending) {
@@ -665,12 +583,9 @@ internal class AuthCommand(
       } catch (e: IllegalArgumentException) {
         fail(e.message ?: "invalid server")
       }
-    // Forget locally whatever the server says. If the call failed we cannot know whether it landed,
-    // and keeping a token the user has asked us to drop is the worse of the two mistakes; the grant
-    // expires on its own regardless.
+    // Forget locally whatever the server says; the grant expires on its own anyway.
     val outcome = client.revoke(entry.token)
-    // Reported separately from the server's answer, because they fail separately — and a bearer
-    // that is still readable by the next process is not "forgotten" however the remote call went.
+    // Reported separately: the local forget can fail independently of the remote revoke.
     val dropped = store.forget(server)
     val locally =
       if (dropped) "forgotten locally"
@@ -695,8 +610,7 @@ internal class AuthCommand(
   private fun forget() {
     val server = namedServer()
     if (server == null) {
-      // The store reports a failed rewrite; saying "forgotten" over the top of one would be the
-      // same false claim `forget(origin)` was fixed for, one level up.
+      // Don't claim "forgotten" over a failed rewrite.
       if (store.clear()) {
         println(
           "Forgot every stored access grant. They remain live on their servers until they expire."
@@ -731,9 +645,8 @@ internal class AuthCommand(
   // --------------------------------------------------------------- shared
 
   /**
-   * `--server`, else `$COMPOSE_PREVIEW_SERVER`, normalised to an origin. Exits when neither is
-   * present — [namedServer] is the variant for the subcommands that can fall back to the sole
-   * stored grant.
+   * `--server`, else `$COMPOSE_PREVIEW_SERVER`, as an origin; exits when neither is set.
+   * [namedServer] is the variant that can fall back to the sole stored grant.
    */
   private fun resolveServer(): String = namedServer() ?: fail(NO_SERVER_MESSAGE)
 
@@ -747,19 +660,12 @@ internal class AuthCommand(
       ?: fail("--server must be an absolute http(s) URL with no credentials in it: $raw")
   }
 
-  /**
-   * The one server we hold a grant for, when there is exactly one — so `auth token` needs no flag.
-   */
+  /** The one server we hold a grant for, if exactly one, so `auth token` needs no flag. */
   private fun soleServer(): String? = store.all().singleOrNull()?.origin
 
   /**
-   * The one server this machine has *any* access to, granted or merely asked for — so `auth revoke`
-   * needs no flag either.
-   *
-   * Wider than [soleServer] on purpose, and only for revoke. That command already treats a pending
-   * request as revocable access (its device secret can still become a credential), so resolving the
-   * target from grants alone made the single most obvious case — one `--no-wait` request
-   * outstanding, nothing else — fail with "which server?" and skip the cleanup it was asked for.
+   * The one server with any access, granted or pending, so `auth revoke` needs no flag. Wider than
+   * [soleServer] because revoke also cleans up pending requests.
    */
   private fun soleRevocableServer(): String? =
     (store.all().map { it.origin } + store.allPending().map { it.origin }).distinct().singleOrNull()
@@ -821,12 +727,8 @@ internal class AuthCommand(
     val requestedScope: String,
     val requestedTtlSeconds: Long,
     /**
-     * What survived the server's clamp, and what it would grant at all.
-     *
-     * Both matter to `--no-wait`, which emits this record and then exits: there is no later grant
-     * object to learn from, so without these a caller cannot tell that `images` was dropped by a
-     * host that does not offer it — and would send a human through an approval that cannot
-     * authorize the upload it was opened for.
+     * What survived the server's clamp, and what it would grant at all — the only way a `--no-wait`
+     * caller learns a capability was dropped before a human approves.
      */
     val requestedCapabilities: List<String> = emptyList(),
     val maxCapabilities: List<String> = emptyList(),
@@ -837,22 +739,16 @@ internal class AuthCommand(
     val server: String,
     val scopes: List<String>,
     /**
-     * The independent permissions actually granted. Structured output that omitted these read
-     * identically whether `images` was ticked or declined, so automation could not tell an
-     * authorized upload from one that was about to be refused without attempting it.
+     * The permissions actually granted, so automation can tell a granted capability from a declined
+     * one.
      */
     val capabilities: List<String> = emptyList(),
     val approvedBy: String,
     val expiresInSeconds: Long,
     val stored: Boolean,
     /**
-     * The bearer — present **only when it could not be stored**, and otherwise omitted.
-     *
-     * Normally this response deliberately withholds it: the grant is on disk and `auth token`
-     * prints it for anything that needs the string, so putting it here would spread a credential
-     * through logs for no gain. When there is nowhere to store it, that reasoning inverts — the
-     * caller waited for a grant that is live on the server, and withholding it means they waited
-     * for nothing while the credential stays minted until it expires.
+     * The bearer, present only when it could not be stored; otherwise withheld to keep it out of
+     * logs.
      */
     val token: String? = null,
   )
@@ -887,21 +783,15 @@ internal class AuthCommand(
   private companion object {
     const val DEFAULT_TTL_SECONDS = 60 * 60L
 
-    /**
-     * Consecutive poll failures tolerated before giving up. At the default three-second interval
-     * that is half a minute of silence — long enough to ride out a proxy hiccup, short enough that
-     * a server which has genuinely gone away doesn't hold the agent for the request's whole life.
-     */
+    /** Consecutive poll failures tolerated (~30s at the default interval) before giving up. */
     const val MAX_CONSECUTIVE_POLL_ERRORS = 10
 
     const val NO_SERVER_MESSAGE =
       "which server? Pass --server https://… or set \$COMPOSE_PREVIEW_SERVER."
 
     /**
-     * Compact, one document per line. `--json` on a *waiting* `auth request` emits two documents —
-     * the request (so the agent can relay the link now) and the grant (once it lands) — and two
-     * pretty-printed objects concatenated are not parseable as anything. One object per line is
-     * JSON Lines, which every consumer already knows how to read incrementally.
+     * One document per line (JSON Lines): a waiting `auth request --json` emits the request and
+     * then the grant.
      */
     val JSON = Json { prettyPrint = false }
   }

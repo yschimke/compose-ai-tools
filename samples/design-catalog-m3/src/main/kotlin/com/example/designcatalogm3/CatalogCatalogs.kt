@@ -13,20 +13,11 @@ import ee.schimke.composeai.preview.ColorCatalog
 import ee.schimke.composeai.preview.ShapeCatalog
 import ee.schimke.composeai.preview.TypographyCatalog
 
-/**
- * The catalog's **declared theme objects**, surfaced through the whole-object catalog annotations
- * (`@TypographyCatalog` / `@ColorCatalog` / `@ShapeCatalog` on a whole `Typography` / `ColorScheme`
- * / `Shapes`). Discovery auto-detects each and synthesises a specimen sheet — no `@Preview` needed
- * — and the theme-override surface offers them as the selectable font / palette / shape scale. This
- * is how the catalog declares its font choices (Roboto Flex — the default — and Google Sans Flex)
- * without an explicit per-preview override: the choice lives at the theme level, autodetected from
- * these declarations.
- *
- * (This module renders on the **desktop** backend, which doesn't yet draw catalog specimen sheets —
- * issue #2135 — so these entries are discovered and reported but their sheets render on the Android
- * backend / once desktop catalog rendering lands. The typeface itself is already visible on every
- * rendered component sticker, since [CatalogDefaultFont] is Roboto Flex.)
- */
+// The catalog's declared theme objects (`@TypographyCatalog` / `@ColorCatalog` / `@ShapeCatalog` on
+// whole `Typography` / `ColorScheme` / `Shapes` values). Discovery synthesises a specimen sheet for
+// each and the theme-override surface offers them as choices, so font choices live at theme level.
+// The desktop backend doesn't draw specimen sheets yet (#2135), so these are discovered but
+// rendered elsewhere.
 
 /** Roboto Flex — the whole default M3 type scale re-pointed at the variable Roboto Flex face. */
 @TypographyCatalog(name = "Roboto Flex", group = "Typeface")

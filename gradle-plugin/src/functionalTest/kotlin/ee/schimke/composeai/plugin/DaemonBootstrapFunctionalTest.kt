@@ -13,15 +13,9 @@ class DaemonBootstrapFunctionalTest {
   @get:Rule val tempDir = TemporaryFolder()
 
   /**
-   * `backgroundSandboxBoot` only does anything if it reaches the descriptor's `systemProperties` —
-   * that map is the daemon JVM's whole view of the config, and `.github/ci/daemon-roundtrip.py`
-   * reads the same key to size its `initialize` budget. An extension property that stops short of
-   * it is silently inert: the build script looks configured, the daemon still boots the entire
-   * eager pool, and nothing anywhere fails.
-   *
-   * Asserted here rather than in a `ProjectBuilder` unit test on purpose — querying
-   * `systemProperties` resolves the `composePreviewDesktopDaemon` configuration, which needs a real
-   * build with repositories. Only a real `composePreviewDaemonStart` proves the wiring end to end.
+   * `backgroundSandboxBoot` only works if it reaches the descriptor's `systemProperties` (also read
+   * by `.github/ci/daemon-roundtrip.py`); stopping short is silently inert. Needs a real build
+   * because resolving `composePreviewDesktopDaemon` needs repositories.
    */
   @Test
   fun `backgroundSandboxBoot opt-out in the daemon block reaches the descriptor`() {
@@ -64,11 +58,7 @@ class DaemonBootstrapFunctionalTest {
     assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("true")
   }
 
-  /**
-   * Pulls the flag's value out of the emitted descriptor without pinning its JSON formatting — the
-   * descriptor is written pretty-printed (`"key": "value"`), and an assertion that hard-codes the
-   * spacing fails for a reason that has nothing to do with the wiring under test.
-   */
+  /** The flag's value from the descriptor, independent of JSON spacing. */
   private fun backgroundSandboxBootIn(descriptorJson: String): String? =
     Regex("\"composeai\\.daemon\\.backgroundSandboxBoot\"\\s*:\\s*\"([^\"]*)\"")
       .find(descriptorJson)
@@ -107,15 +97,9 @@ class DaemonBootstrapFunctionalTest {
 
   @Test
   fun `discover and daemonStart in one invocation pass validation, discover first`() {
-    // `previewsManifest` is an @InputFile pointing at composePreviewDiscover's `previews.json`, but
-    // it's wired from a layout directory Provider that carries no build dependency. Gradle's strict
-    // validation rejected the pair the moment both tasks were in one graph:
-    //
-    //   Task ':composePreviewDaemonStart' uses this output of task ':composePreviewDiscover'
-    //   without declaring an explicit or implicit dependency.
-    //
-    // Only reproducible with both tasks requested together, which is why it survived until a
-    // combined invocation happened to be run by hand.
+    // `previewsManifest` comes from a layout Provider with no build dependency, so requesting both
+    // tasks failed Gradle's validation ("uses this output of task ':composePreviewDiscover' without
+    // declaring an explicit or implicit dependency").
     val projectDir = createCmpTestProject()
 
     val result =
@@ -135,11 +119,8 @@ class DaemonBootstrapFunctionalTest {
 
   @Test
   fun `daemonStart alone does not drag in discovery`() {
-    // Guards the choice of `mustRunAfter` over `dependsOn`. The daemon has to be warmable before
-    // anything has been discovered — that's why `previewsManifest` is @Optional (see its kdoc, and
-    // DaemonMain's `manifestFile.isFile` check). "Fixing" the validation error with `dependsOn`
-    // would satisfy Gradle and silently make every VS Code warm pay for a full discovery pass,
-    // deleting the fresh-module path the optionality exists to serve. This fails if anyone does.
+    // Must be `mustRunAfter`, not `dependsOn`: the daemon warms before any discovery (hence
+    // `@Optional` manifest), and `dependsOn` would make every VS Code warm pay for discovery.
     val projectDir = createCmpTestProject()
 
     val result =

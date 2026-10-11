@@ -221,7 +221,9 @@ class GuidelineFailuresOnlyTest {
       .isEqualTo(
         2 * 4 * PreviewGuidelineRequests.VERDICT_TOKENS +
           3 * PreviewGuidelineRequests.OTHERS_TOKENS +
-          PreviewGuidelineRequests.REPLY_HEADROOM_TOKENS
+          PreviewGuidelineRequests.reasoningTokenAllowance(
+            OpenRouterClient.DEFAULT_REASONING_EFFORT
+          )
       )
     assertThat(body["provider"]!!.jsonObject["require_parameters"].toString()).isEqualTo("true")
   }

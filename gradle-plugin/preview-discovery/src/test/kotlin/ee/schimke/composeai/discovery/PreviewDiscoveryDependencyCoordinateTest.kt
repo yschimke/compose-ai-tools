@@ -11,24 +11,13 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 
 /**
- * The scan-classpath filter must ask what a dependency **is**, not where its cache entry landed.
+ * The scan-classpath filter must match what a dependency **is** (its coordinate), not its cache
+ * path. AGP extracts AARs to `<cache>/transforms/<hash>/transformed/<module>/jars/classes.jar`,
+ * dropping the group, so libraries like `androidx.compose.material3:material3` were filtered out on
+ * Android and their components failed to resolve.
  *
- * A JVM dependency resolves under `<cache>/modules-2/files-2.1/<group>/<module>/…`, so matching the
- * path was the same as matching the coordinate and the filter looked correct for years. An AAR does
- * not: AGP extracts it to `<cache>/transforms/<hash>/transformed/<module>/jars/ classes.jar`, which
- * keeps the module name and **drops the group**. Every Compose component library whose module name
- * does not itself say "compose" was therefore dropped from the scan classpath on every Android
- * consumer — `androidx.compose.material3:material3` and
- * `androidx.wear.compose.remote:remote-material3` among them.
- *
- * Measured on `wear-m3-catalog:remote-catalog`, whose 725 previews draw 26 distinct Remote Compose
- * components: every one of them failed to resolve, so all 49 catalog ids collapsed onto the
- * project's own `RemoteSticker` wrapper — two component records for the whole module. With the
- * coordinate supplied, the same run yields 28.
- *
- * The observable here is the cheapest one that isolates the filter: put the `@Preview` annotation
- * class itself in an AAR-shaped jar. On the classpath, discovery resolves it; dropped, discovery
- * says so in as many words.
+ * Isolated by putting the `@Preview` annotation class itself in an AAR-shaped jar: kept, discovery
+ * resolves it; dropped, discovery says so.
  */
 class PreviewDiscoveryDependencyCoordinateTest {
 

@@ -71,33 +71,33 @@ public interface GuidelineModel {
   /** The chat completion for [request], asked of [model]. */
   public fun complete(request: GuidelineRequestV1, model: String): ModelResponse
 
+  /**
+   * [request] asked again with the model's reasoning turned off: the one retry after a reply that
+   * spent its whole token budget reasoning and left no room for the answer. A model with no such
+   * switch answers it as [complete] does.
+   */
+  public fun completeWithoutReasoning(request: GuidelineRequestV1, model: String): ModelResponse =
+    complete(request, model)
+
   /** A decisions call (Jev), with [body] as OpenRouter's decisions API takes it. */
   public fun decide(body: JsonObject): ModelResponse =
     ModelResponse(501, "{\"error\":\"no decisions endpoint\"}")
 }
 
 /**
- * OpenRouter: chat completions for the verdicts and the decisions endpoint for Jev triage. Sends
- * `X-OpenRouter-Metadata: enabled`, so a routed model's choice comes back to be recorded. The
- * [apiKey] is never logged.
+ * OpenRouter: chat completions for verdicts and the decisions endpoint for Jev triage. Sends
+ * `X-OpenRouter-Metadata: enabled` so the routed model is recorded. [apiKey] is never logged.
  *
- * Each call is made once. Retrying is [GuidelineEngine]'s, which knows the cost cap and can ask
- * about fewer subjects instead; a request that got no answer comes back as
- * [ModelResponse.NO_ANSWER] with what gave up on it, and a `Retry-After` as
- * [ModelResponse.retryAfterMillis]. [http]'s call timeout bounds one request ([httpClient] builds
- * one with another).
+ * Each call is made once; retrying is [GuidelineEngine]'s job. A request with no answer returns
+ * [ModelResponse.NO_ANSWER], and a `Retry-After` is exposed as [ModelResponse.retryAfterMillis].
+ * [http]'s call timeout bounds one request.
  *
- * Completions are streamed ([stream]) and handed back assembled, shaped as a non-streamed
- * completion, so nothing downstream changes. Streaming is what makes a slow request cheap to give
- * up on: OpenRouter keeps a connection alive with `: OPENROUTER PROCESSING` comments, so no read
- * timeout ever fired, and "for non-streaming requests or unsupported providers, the model will
- * continue processing and you will be billed for the complete response" — a non-streamed request
- * abandoned at the timeout was paid for in full. A streamed one is cancelled, which stops the
- * provider (and its bill) where the provider supports it, as soon as no token has arrived for
- * [idleTimeout]: keep-alive comments do not count. [http]'s call timeout still caps the whole
- * request.
+ * Completions are streamed ([stream]) and reassembled into the non-streamed shape. Streaming makes
+ * abandoning a slow request cheap: OpenRouter's keep-alive comments defeat read timeouts, and an
+ * abandoned non-streamed request is billed in full, whereas a streamed one is cancelled after
+ * [idleTimeout] with no token.
  *
- * Calls may be made from several threads at once.
+ * Thread-safe.
  */
 public class OpenRouterClient(
   private val apiKey: String,
@@ -106,14 +106,22 @@ public class OpenRouterClient(
   private val title: String = "compose-preview guidelines",
 ) : GuidelineModel {
   /**
-   * Whether a request was routed without `provider.require_parameters`: no provider of the model
-   * honoured every parameter sent (the strict JSON schema, `max_tokens`), so OpenRouter answered
-   * 404 and the request was sent again without the requirement, as it is for the rest of this
-   * client's life. Its replies may then ignore the schema; one that does is unreadable and asked
-   * again like any other.
+   * Whether requests are routed without `provider.require_parameters`: set after OpenRouter answers
+   * 404 because no provider honours every parameter (strict schema, `max_tokens`). Replies may then
+   * ignore the schema and be retried as unreadable.
    */
   @Volatile
   public var relaxedParameters: Boolean = false
+    private set
+
+  /**
+   * Whether requests are sent without the `reasoning` object: no provider of the model honoured it
+   * with the rest (`provider.require_parameters` answered 404), as for a model that does not
+   * reason, so it is left out for the rest of this client's life and the model reasons, or not, as
+   * it does by default.
+   */
+  @Volatile
+  public var reasoningUnsupported: Boolean = false
     private set
 
   /**
@@ -129,9 +137,8 @@ public class OpenRouterClient(
   @Volatile public var idleTimeout: Duration = DEFAULT_IDLE_TIMEOUT
 
   /**
-   * OpenRouter's `provider.sort`: `price`, `throughput` or `latency`. Null (the default) keeps its
-   * load balancing across providers, weighted to price; any value turns that off and tries
-   * providers in that order instead, which buys speed with a dearer or less spread-out route.
+   * OpenRouter's `provider.sort`: `price`, `throughput` or `latency`. Null keeps its price-weighted
+   * load balancing; a value tries providers in that order instead.
    */
   @Volatile public var providerSort: String? = null
 
@@ -147,7 +154,31 @@ public class OpenRouterClient(
    */
   @Volatile public var preferredMaxLatencySeconds: Double? = null
 
-  override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
+  /**
+   * OpenRouter's unified `reasoning.effort` for every completion: `none`, `minimal`, `low`,
+   * `medium`, `high`, `xhigh` or `max` ([REASONING_EFFORTS]), or null to send no `reasoning` object
+   * and leave the model at its own default (`high` for [DEFAULT_MODEL]). A model takes only some of
+   * them (its OpenRouter model page lists `supported_efforts`). Defaults to
+   * [DEFAULT_REASONING_EFFORT].
+   *
+   * Reasoning tokens are output tokens: billed, and counted against the request's `max_tokens` with
+   * the visible reply. So `max_tokens` is sized for the effort
+   * ([PreviewGuidelineRequests.replyTokenLimit]), and a reply that spent all of it reasoning is
+   * asked once more with reasoning off ([completeWithoutReasoning]) rather than split.
+   */
+  @Volatile public var reasoningEffort: String? = DEFAULT_REASONING_EFFORT
+
+  override fun complete(request: GuidelineRequestV1, model: String): ModelResponse =
+    complete(request, model, reasoningEffort)
+
+  override fun completeWithoutReasoning(request: GuidelineRequestV1, model: String): ModelResponse =
+    complete(request, model, REASONING_OFF)
+
+  private fun complete(
+    request: GuidelineRequestV1,
+    model: String,
+    effort: String?,
+  ): ModelResponse {
     val url = "$baseUrl/api/v1/chat/completions"
     fun send(requireParameters: Boolean): ModelResponse {
       val body =
@@ -158,21 +189,28 @@ public class OpenRouterClient(
           routing =
             ProviderRouting(providerSort, preferredMinThroughput, preferredMaxLatencySeconds),
           stream = stream,
+          reasoningEffort = effort.takeUnless { reasoningUnsupported },
         )
       return if (stream) streamed(url, body.toString()) else post(url, body.toString())
     }
     if (!relaxedParameters) {
       val strict = send(requireParameters = true)
       if (!noEndpointHonours(strict)) return strict
+      // A model that takes no `reasoning` has no provider honouring it: drop that before giving
+      // up the strict reply schema, which matters more.
+      if (effort != null && !reasoningUnsupported) {
+        reasoningUnsupported = true
+        val plain = send(requireParameters = true)
+        if (!noEndpointHonours(plain)) return plain
+      }
       relaxedParameters = true
     }
     return send(requireParameters = false)
   }
 
   /**
-   * A streamed completion, assembled. Cancelled, and answered as a timeout, once [idleTimeout]
-   * passes with no data event (a keep-alive comment is not one); the socket's read timeout is the
-   * same, for a connection that sends nothing at all.
+   * A streamed completion, assembled. Cancelled and answered as a timeout after [idleTimeout] with
+   * no data event (keep-alive comments don't count).
    */
   private fun streamed(url: String, body: String): ModelResponse {
     val idleMillis = idleTimeout.toMillis().coerceAtLeast(1)
@@ -244,6 +282,22 @@ public class OpenRouterClient(
     public const val DEFAULT_MODEL: String = "deepseek/deepseek-v4.1-flash"
 
     /**
+     * [reasoningEffort] unless told otherwise. [DEFAULT_MODEL] reasons by default, at `high`, and
+     * takes `low`, `high` and `max` (no `minimal`); at `high` a batch of screens spent its whole
+     * `max_tokens` reasoning and came back with no reply at all, billed. `low` keeps a little
+     * thinking for the rules that need it — off (`none`) is the fallback for a reply that still
+     * runs out, not the default, since a judgement made with none is a guess at the harder rules.
+     */
+    public const val DEFAULT_REASONING_EFFORT: String = "low"
+
+    /** The [reasoningEffort] that turns reasoning off. */
+    public const val REASONING_OFF: String = "none"
+
+    /** Every `reasoning.effort` OpenRouter documents, least first. */
+    public val REASONING_EFFORTS: List<String> =
+      listOf(REASONING_OFF, "minimal", "low", "medium", "high", "xhigh", "max")
+
+    /**
      * The chat-completions body for [request]: the text first, then every picture in order, held to
      * the reply schema, its length bounded by [PreviewGuidelineRequests.replyTokenLimit], and
      * routed only to providers that honour all of that (`provider.require_parameters`).
@@ -251,16 +305,39 @@ public class OpenRouterClient(
     public fun chatBody(request: GuidelineRequestV1, model: String): JsonObject =
       chatBody(request, model, requireParameters = true)
 
+    /**
+     * [chatBody] at [reasoningEffort] (null: no `reasoning` object, the model's own default), its
+     * `max_tokens` sized for that effort.
+     */
+    public fun chatBody(
+      request: GuidelineRequestV1,
+      model: String,
+      reasoningEffort: String?,
+    ): JsonObject =
+      chatBody(request, model, requireParameters = true, reasoningEffort = reasoningEffort)
+
     internal fun chatBody(
       request: GuidelineRequestV1,
       model: String,
       requireParameters: Boolean,
       routing: ProviderRouting = ProviderRouting(),
       stream: Boolean = false,
+      reasoningEffort: String? = DEFAULT_REASONING_EFFORT,
     ): JsonObject = buildJsonObject {
       put("model", model)
       put("temperature", 0)
-      put("max_tokens", PreviewGuidelineRequests.replyTokenLimit(request))
+      put("max_tokens", PreviewGuidelineRequests.replyTokenLimit(request, reasoningEffort))
+      if (reasoningEffort != null) {
+        // OpenRouter's unified reasoning control (openrouter.ai/docs/use-cases/reasoning-tokens).
+        putJsonObject("reasoning") {
+          put("effort", reasoningEffort)
+          // Unread either way, and billed either way: `exclude` only keeps the text out of the
+          // reply. A stream keeps it, because its deltas are what tells a model that is thinking
+          // from a stalled one — with them excluded, a long think sends only keep-alive comments
+          // and the idle timeout cancels it. [StreamAssembler] drops them.
+          if (!stream && reasoningEffort != REASONING_OFF) put("exclude", true)
+        }
+      }
       if (stream) put("stream", true)
       if (requireParameters || !routing.isEmpty) {
         putJsonObject("provider") {
@@ -334,10 +411,9 @@ public class OpenRouterClient(
     public val DEFAULT_REQUEST_TIMEOUT: Duration = Duration.ofSeconds(300)
 
     /**
-     * An HTTP client whose calls give up after [requestTimeout], start to end: the bound on one
-     * guidelines request. The read timeout is the same, not shorter: OpenRouter keeps a slow
-     * completion's connection alive with whitespace while the model is still writing, so bytes keep
-     * arriving and the whole call is what has to be bounded.
+     * An HTTP client whose calls give up after [requestTimeout], start to end. The read timeout is
+     * the same, since OpenRouter keeps slow connections alive with whitespace and only the whole
+     * call can be bounded.
      */
     public fun httpClient(requestTimeout: Duration = DEFAULT_REQUEST_TIMEOUT): OkHttpClient =
       OkHttpClient.Builder()
@@ -349,10 +425,8 @@ public class OpenRouterClient(
     private val DEFAULT_HTTP: OkHttpClient by lazy { httpClient() }
 
     /**
-     * [e] as a request that got no answer, saying which limit of [http] gave up on it. OkHttp says
-     * only `timeout` for both its call timeout (an [InterruptedIOException]) and a read or connect
-     * timeout (a [SocketTimeoutException]), which is what reached the report as `the model answered
-     * 0: {"error":{"message":"timeout"}}`.
+     * [e] as a request that got no answer, saying which limit of [http] gave up — OkHttp reports
+     * both its call timeout and read/connect timeouts as just `timeout`.
      */
     internal fun noAnswer(e: IOException, http: OkHttpClient): ModelResponse {
       fun seconds(millis: Int) = "${millis / 1000} s"
@@ -410,11 +484,9 @@ internal data class ProviderRouting(
 }
 
 /**
- * A streamed chat completion read line by line (server-sent events), assembled into the
- * non-streamed shape [GuidelineResponse] reads: the content deltas joined into one message, the
- * last `finish_reason`, the `usage` (with its cost) from the final chunk, an `error` event
- * mid-stream, and every other top-level field (`id`, `model`, `provider`, `openrouter_metadata`) as
- * the last chunk carrying it had it.
+ * A streamed chat completion (server-sent events) assembled into the non-streamed shape
+ * [GuidelineResponse] reads: joined content deltas, the last `finish_reason`, the final `usage`,
+ * any mid-stream `error`, and other top-level fields as last seen.
  */
 internal class StreamAssembler {
   private val content = StringBuilder()

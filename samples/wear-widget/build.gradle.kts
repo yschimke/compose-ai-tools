@@ -6,17 +6,13 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Issue #2670 fixture — a **real** Glance Wear widget module. Its manifest declares the watch
-// feature, so PreviewDiscovery marks it Wear; its widget previews use `@PreviewParameter` providers
-// from `androidx.glance.wear.tooling.preview` (the `WearWidgetParams` shape #2670 is about), so the
-// discovery auto-detect crops them to their intrinsic bounds at wear density with **no config** —
-// never the 227dp watch-face canvas.
+// A real Glance Wear widget module. Its widget previews use `androidx.glance.wear.tooling.preview`
+// `@PreviewParameter` providers, so discovery crops them to their intrinsic bounds at wear density
+// with no config.
 //
-// The widgets are Remote Compose: a Wear widget's value is its **encoded RemoteCompose document**,
-// captured here as the `<stem>.rc` sidecar via `CapturingWearWidgetPreview` (see that file).
-// That
-// keeps the widget in the portable bundle as data (its `.rc`), not as compiled `@Preview`
-// bytecode — `WearWidgetDocCaptureTest` asserts it.
+// The widgets are Remote Compose: each document is captured as the `<stem>.rc` sidecar via
+// `CapturingWearWidgetPreview`, so the bundle carries data rather than `@Preview` bytecode
+// (`WearWidgetDocCaptureTest` asserts it).
 
 composePreview {
   // Pin Robolectric to SDK 35; compiles against `compileSdk = 37` (glance-wear alpha raises the AAR
@@ -24,11 +20,8 @@ composePreview {
   // `:samples:remotecompose`.
   sdkVersion.set(35)
 
-  // Auto-detect (not the flag) does the cropping here: the glance-wear `@PreviewParameter`
-  // providers
-  // are recognised as widgets, so we leave `retargetWearPreviews` at its `true` default to prove
-  // the
-  // zero-config path end-to-end.
+  // Auto-detect does the cropping; `retargetWearPreviews` stays at its default to prove the
+  // zero-config path.
 
   // `WearWidgetDocCaptureTest` / `WearWidgetCropPixelTest` read `.rc` + PNGs from
   // `build/compose-previews/renders/`; chain the unit-test tasks onto `composePreviewRenderAll`.
@@ -64,24 +57,17 @@ dependencies {
   implementation(libs.compose.remote.creation)
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
-  // Glance Wear — the Wear OS widget layer on Remote Compose. `wear` carries the widget document +
-  // brush types (`WearWidgetDocument`, `WearWidgetBrush`) whose `captureRawContent` yields the
-  // encoded `.rc`; `wear-core` the `WearWidgetParams` container spec; `wear-tooling-preview` the
-  // `WearWidgetPreview` composable + `SquircleAllWidgetPreviewParams` providers.
+  // Glance Wear: `wear` (document and brush types; `captureRawContent` yields the `.rc`),
+  // `wear-core` (`WearWidgetParams`), `wear-tooling-preview` (`WearWidgetPreview` and param
+  // providers).
   implementation(libs.glance.wear)
   implementation(libs.glance.wear.core)
   implementation(libs.glance.wear.tooling.preview)
   implementation(libs.activity.compose)
-  // `CapturingWearWidgetPreview` — the shared Wear helper that renders a widget preview AND offers
-  // its encoded RemoteCompose document to `IrSidecarChannel`, so the render lands a `<stem>.rc`
-  // sidecar next to the PNG. Shared with the `remote-m3` catalog (in yschimke/wear-m3-catalog)
-  // so both widget surfaces capture their document the same way.
+  // Renders a widget preview and emits its `.rc` sidecar; shared with the `remote-m3` catalog.
   implementation(project(":wear-preview-runtime"))
-  // The embedded Compose player, on the *runtime* classpath. `:wear-preview-runtime` declares it
-  // `compileOnly` (like its alpha `compose-remote` deps), so a consumer that wants the default CMP
-  // lane has to supply it — without it `embeddedWearWidgetPlayerAvailable` finds nothing and every
-  // widget preview quietly falls back to upstream's View-backed player, which is what issue #5259
-  // is about.
+  // The embedded Compose player at runtime: `:wear-preview-runtime` has it `compileOnly`, and
+  // without it previews fall back to upstream's View-backed player.
   implementation(libs.rcplayer.embedded.android)
   // `IrSidecarChannel` itself — `:wear-preview-runtime` keeps it `implementation`-scoped, and this
   // module's `WearWidgetDocCaptureTest` asserts on the sidecar it produces.

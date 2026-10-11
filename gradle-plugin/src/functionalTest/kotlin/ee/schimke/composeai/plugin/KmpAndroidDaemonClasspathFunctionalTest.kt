@@ -8,29 +8,15 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Issue #1852 regression: the desktop daemon-start path must resolve a KMP-Android module's
- * `androidRuntimeClasspath` through an `artifactType`-pinned artifact view.
+ * The desktop daemon-start path must resolve a KMP-Android module's `androidRuntimeClasspath`
+ * through an `artifactType`-pinned view (see #1852). Such modules publish several `artifactType`
+ * secondary variants and no default, so a bare `incoming.artifactView {}` fails with
+ * `AmbiguousArtifactsFailure` under AGP 9.3. `ComposePreviewTasks.wireDesktopBtaInputs` must pin
+ * `artifactType=jar` via `pinnedConsumerClasspath`, like the other consumer views.
  *
- * A pure `com.android.kotlin.multiplatform.library` dependency publishes an
- * `androidRuntimeElements` whose runtime graph carries ~12 secondary variants keyed by
- * `artifactType` (`android-classes-jar`, `android-aar-metadata`, … `jar`) and no unambiguous
- * default. Resolving the consumer's `androidRuntimeClasspath` through a bare `incoming.artifactView
- * {}` (no attributes) then fails with `AmbiguousArtifactsFailure` — "cannot choose between the
- * following variants" — under AGP 9.3's stricter matching, which sank `composePreviewDaemonStart`
- * (and with it the a11y pipeline that drives it) on such modules.
- * `ComposePreviewTasks.wireDesktopBtaInputs` must pin `artifactType=jar` (via
- * `pinnedConsumerClasspath`) exactly like the render / discover / guard consumer views already do —
- * this is the missing coverage for that desktop path (the existing `CliA11yEndToEndFunctionalTest`
- * exercises the classic `com.android.library` path only).
- *
- * Reproduced in plain Gradle — no AGP, Android SDK, or published renderer. The ambiguity is a pure
- * Gradle attribute-matching phenomenon: a producer subproject exposes an `androidRuntimeElements`-
- * shaped consumable configuration with multiple `artifactType` secondary variants and no base
- * artifact, and a consumer whose only runtime configuration is `androidRuntimeClasspath` (the
- * candidate the desktop path picks ahead of `runtimeClasspath`) depends on it. The build resolves
- * only `composePreviewDaemonStart.btaCompileClasspath` (the wiring under test) — never the daemon's
- * renderer closure — so the test stays hermetic and runs in the standard `functionalTest` job with
- * no `publishToMavenLocal` pre-step.
+ * Reproduced in plain Gradle (a producer with an `androidRuntimeElements`-shaped configuration),
+ * resolving only `composePreviewDaemonStart.btaCompileClasspath`, so it's hermetic and needs no
+ * `publishToMavenLocal`.
  */
 class KmpAndroidDaemonClasspathFunctionalTest {
 
@@ -52,11 +38,8 @@ class KmpAndroidDaemonClasspathFunctionalTest {
     assertThat(result.output).doesNotContain("cannot choose between")
     assertThat(result.output).doesNotContain("AmbiguousArtifactsFailure")
     assertThat(result.output).contains("BUILD SUCCESSFUL")
-    // Assert the pinned `jar` variant was actually selected — not merely that resolution didn't
-    // throw. `pinnedConsumerClasspath` applies `lenient(true)` for `androidRuntimeClasspath`, so a
-    // future regression that dropped the `artifactType=jar` pin but kept `lenient` would resolve to
-    // an *empty* collection (the ambiguous artifact silently dropped) and still pass the checks
-    // above; requiring `stub-jar.jar` keeps the pinning itself under guard.
+    // Require the `jar` variant itself: `lenient(true)` means a dropped pin would resolve empty and
+    // still pass the checks above.
     assertThat(result.output).contains("stub-jar.jar")
   }
 
@@ -112,12 +95,8 @@ class KmpAndroidDaemonClasspathFunctionalTest {
           .trimIndent()
       )
 
-    // Consumer: the desktop path picks `androidRuntimeClasspath` ahead of `runtimeClasspath`, so a
-    // Kotlin/JVM + Compose module whose `androidRuntimeClasspath` carries the multi-variant
-    // producer
-    // exercises exactly the daemon-start classpath resolution that regressed. The custom task
-    // resolves only `composePreviewDaemonStart.btaCompileClasspath` — the wiring under test — which
-    // triggers the `androidRuntimeClasspath` view without realizing the daemon's renderer closure.
+    // The desktop path prefers `androidRuntimeClasspath` over `runtimeClasspath`; the task resolves
+    // only `btaCompileClasspath`, not the renderer closure.
     File(projectDir, "build.gradle.kts")
       .writeText(
         """

@@ -145,11 +145,9 @@ class GuidelineConcurrencyTest {
   }
 
   /**
-   * wear-m3-catalog#760's twelve screens end to end, on a fake model whose latency is the length of
-   * what it writes: one token per four characters at 70 tokens a second (a flash model's pace),
-   * scaled 1:100 so the test takes a moment. Before: batches of five (#5800's 120-verdict cap),
-   * every verdict written out, one request at a time. After: batches of six, findings only (three
-   * per screen) and an `others` statement each, four at a time.
+   * Twelve screens end to end on a fake model whose latency follows output length (70 tokens/s,
+   * scaled 1:100). Before: batches of five, every verdict written, one request at a time. After:
+   * batches of six, findings only plus an `others` statement each, four at a time.
    */
   @Test
   fun `bench - the twelve-screen check, before and after`() {

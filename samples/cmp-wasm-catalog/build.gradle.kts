@@ -1,24 +1,10 @@
-// `:samples:cmp-wasm-catalog` — the **in-browser CMP tier** of the public
-// preview server (Workstream C / model 1).
-//
-// A Compose Multiplatform `wasmJs` app that consumes the shared M3 catalog app
-// (`:samples:design-catalog-m3-shared`, CMP `material3`, no Android `@Preview`
-// tooling) and mounts the component named by `?id=` via `ComposeViewport`.
-// It renders the *published* design catalogs (`design-artifacts/<system>`)
-// client-side, in the browser sandbox, with no server round-trip — so even an
-// unverified session is safe to run (execution is client-side, not on our box).
-//
-// Deliberately thin: only the multiplatform compose runtime + `material3`, so
-// `wasmJsBrowserDistribution` produces the smallest skiko-backed bundle. The
-// Android design-catalog modules can't compile to `wasmJs` (Android-only
-// `@Preview` / `Configuration` / `wear.compose`), so the shared module exposes
-// the same components through a plain id→composable registry instead.
+// `:samples:cmp-wasm-catalog` — the in-browser CMP tier of the public preview server: a `wasmJs`
+// app that mounts the shared M3 catalog component named by `?id=` via `ComposeViewport`. It runs in
+// the browser sandbox, so even an unverified session is safe. Kept thin (compose runtime +
+// `material3`) for the smallest skiko bundle.
 plugins {
   id("composeai.base-conventions")
-  // Apply KGP-multiplatform + the compose-compiler plugin by id (no version):
-  // they're already on the buildscript classpath via the AGP/Compose bundle, so
-  // `alias(libs.plugins…)` would error with "already on the classpath with an
-  // unknown version" (see the sibling `:samples:cmp-shared`).
+  // Applied by id without a version, as in `:samples:cmp-shared`.
   id("org.jetbrains.kotlin.multiplatform")
   alias(libs.plugins.compose.multiplatform)
   id("org.jetbrains.kotlin.plugin.compose")
@@ -40,10 +26,8 @@ kotlin {
       // composables the desktop `:samples:design-catalog-m3` catalog renders, so
       // the in-browser tier and the baked sticker sheet never drift.
       implementation(project(":samples:design-catalog-m3-shared"))
-      // The string-typed `compose.*` accessors are deprecated in CMP 1.10 in
-      // favour of explicit coords, but the renamed coords aren't reliably
-      // published to every mirror yet — mirror `:samples:cmp-shared` and accept
-      // the deprecation warning.
+      // The string `compose.*` accessors are deprecated in CMP 1.10, but the replacement
+      // coordinates aren't reliably published yet.
       @Suppress("DEPRECATION") implementation(compose.runtime)
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
@@ -52,15 +36,11 @@ kotlin {
   }
 }
 
-// Assemble a static, **webpack-free** distribution servable straight from disk:
-// the raw Kotlin/Wasm ES-module output plus the skiko runtime and the committed
-// `index.html` (which import-maps `@js-joda/core`). This avoids the Node / Yarn
-// / Binaryen download toolchain the Kotlin JS/Wasm plugins want — which the
-// build's `FAIL_ON_PROJECT_REPOS` mode rejects — so the bundle builds in CI and
-// offline. Uses the development executable (unoptimized); enabling the Binaryen
-// `wasm-opt` production path is a deploy-time size optimization). Output: `build/wasmDist/` → serve
-// as the preview
-// server's `web/wasm/` carriage for the `compose-m3` catalog.
+// A static, webpack-free distribution servable from disk: the raw Kotlin/Wasm ES-module output,
+// skiko runtime and the committed `index.html` (import-mapping `@js-joda/core`). Avoids the Node /
+// Yarn / Binaryen toolchain, which `FAIL_ON_PROJECT_REPOS` rejects. Uses the unoptimized
+// development executable. Output: `build/wasmDist/`, the preview server's `web/wasm/` for
+// `compose-m3`.
 tasks.register<Sync>("wasmCatalogDist") {
   description = "Assemble the webpack-free CMP Wasm catalog distribution (build/wasmDist)."
   group = "distribution"
@@ -69,13 +49,9 @@ tasks.register<Sync>("wasmCatalogDist") {
   from(layout.buildDirectory.dir("compose/skiko-runtime-processed-wasmjs")) {
     include("skiko.mjs", "skiko.wasm")
   }
-  // The Compose Resources the catalog reads at runtime (`stringResource(...)` labels live in
-  // `:samples:design-catalog-m3-shared`). `wasmJsProcessResources` aggregates this module's and its
-  // dependencies' resources into `processedResources/wasmJs/main/composeResources/…`, laid out
-  // exactly as the runtime's `./composeResources/<pkg>/values/…cvr` fetch expects. Without this the
-  // hand-assembled dist ships no resources, so the first `stringResource` throws
-  // `MissingResourceException` and the whole catalog composition renders blank (the stock
-  // `wasmJsBrowserDistribution` we skip to stay webpack-free is what would normally carry these).
+  // Compose Resources (`stringResource` labels from the shared module), laid out as the runtime's
+  // `./composeResources/…cvr` fetch expects. Without them the first `stringResource` throws and the
+  // catalog renders blank.
   dependsOn("wasmJsProcessResources")
   from(layout.buildDirectory.dir("processedResources/wasmJs/main")) {
     include("composeResources/**")

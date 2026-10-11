@@ -9,16 +9,10 @@ import javax.xml.stream.XMLStreamException
 import javax.xml.stream.XMLStreamReader
 
 /**
- * Extracts every `@drawable/...` and `@mipmap/...` reference from an `AndroidManifest.xml`'s
- * icon-bearing attributes (`android:icon`, `android:roundIcon`, `android:logo`, `android:banner`)
- * across the supported component tags. Output rows are independent — `<application>` referencing
- * `@mipmap/ic_launcher` for both `android:icon` and `android:roundIcon` produces two
- * [ManifestReference] rows so downstream tooling (CodeLens, resource grid) can label each
- * separately.
- *
- * Component-name resolution uses [packageName] when the `android:name` value starts with `.` (the
- * common short-form). Manifest placeholders (`${applicationId}`) are passed through verbatim — the
- * caller can hand the *merged* manifest in to get them resolved.
+ * Extracts `@drawable/...` / `@mipmap/...` references from a manifest's icon attributes
+ * (`android:icon`, `roundIcon`, `logo`, `banner`), one [ManifestReference] per attribute so tooling
+ * can label each. A leading-`.` `android:name` resolves against [packageName]; placeholders like
+ * `${applicationId}` pass through (use the merged manifest to resolve them).
  */
 object ManifestReferenceExtractor {
 
@@ -36,9 +30,8 @@ object ManifestReferenceExtractor {
     }
 
   /**
-   * Parses [file] and returns the manifest references it contains. [source] is recorded verbatim on
-   * each row and should be the path the caller wants surfaced to tooling (typically module-relative
-   * — e.g. `src/main/AndroidManifest.xml`).
+   * Manifest references in [file]; [source] is recorded verbatim on each row (typically
+   * module-relative, e.g. `src/main/AndroidManifest.xml`).
    */
   fun extract(file: File, source: String, packageName: String? = null): List<ManifestReference> =
     file.inputStream().use { extract(it, source, packageName) }
@@ -132,9 +125,8 @@ object ManifestReferenceExtractor {
   }
 
   /**
-   * Parses `@drawable/foo` or `@mipmap/bar` (with optional `@android:type/` namespace) into `(type,
-   * name)`. Returns `null` for theme refs (`?attr/...`), framework drawables
-   * (`@android:drawable/...`), and anything that isn't a drawable/mipmap reference.
+   * Parses `@drawable/foo` / `@mipmap/bar` (optionally `@android:type/`-namespaced) into `(type,
+   * name)`; `null` for theme refs, framework drawables and anything else.
    */
   internal fun parseResourceReference(value: String): Pair<String, String>? {
     if (!value.startsWith("@")) return null

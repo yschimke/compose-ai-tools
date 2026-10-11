@@ -81,24 +81,17 @@ public data class JevSubjectTrace(
 /**
  * EXPERIMENTAL: the text-only checker, minimal first.
  *
- * Round 0 shows Jev, per subject, a compact source excerpt (the preview's body, and only the
- * signatures of the wrappers it calls), the ~30-token accessibility summary line, and a one-line
- * list of the [GuidelineFacts] computed from what is already in hand; each structural rule is one
- * Choice whose instructions carry the rule's check, its guidance and the facts that bear on it
- * ([JevRuleShapes]), decisive ones first. Besides `cannot_tell`, `not_applicable`, `fail` and
- * `pass`, a question offers one `needs:<kind>` option per evidence kind the subject could still be
- * shown — `needs:a11y` (the full nodes and measured checks, which the host may have to fetch),
- * `needs:source` (the whole source with its wrappers), `needs:facts` (every computed fact) — and a
- * follow-up round serves what was asked, one host prefetch for all subjects, re-asking only the
- * rules that asked. `cannot_tell` while evidence is still offered counts as asking for all of it.
- * Only after the last round does `cannot_tell` become unchecked ([TEXT_ONLY_REASON]); a visual rule
- * is never asked. Nothing is passed silently.
+ * Round 0 shows Jev, per subject, a compact source excerpt (the preview body plus wrapper
+ * signatures), the accessibility summary line and the computed [GuidelineFacts]; each structural
+ * rule is one Choice carrying the rule's check, guidance and relevant facts ([JevRuleShapes]).
+ * Options are `cannot_tell`, `not_applicable`, `fail`, `pass` and one `needs:<kind>` per evidence
+ * kind still available (`a11y`, `source`, `facts`); a follow-up round serves what was asked and
+ * re-asks only those rules. `cannot_tell` while evidence remains counts as asking for all of it,
+ * and becomes unchecked ([TEXT_ONLY_REASON]) only after the last round. Visual rules are never
+ * asked; nothing is passed silently.
  *
- * Jev returns probabilities, never text, so a verdict's reason is the decisive fact it was shown,
- * and its `nodeIds` come from a Choice over the node ids in play, or from that fact's node.
- *
- * Results are cached under [GuidelineRunOptions.cacheModel], which names the checker, so a vision
- * verdict and a Jev verdict never answer for one another.
+ * Jev returns probabilities, not text, so a verdict's reason is the decisive fact it was shown.
+ * Results are cached under [GuidelineRunOptions.cacheModel], which names the checker.
  */
 internal class JevChecker(
   private val model: GuidelineModel,
@@ -113,10 +106,7 @@ internal class JevChecker(
   /** How many subjects are asked at once: the run's `--concurrency` ([GuidelineRunOptions]). */
   var parallelism: Int = options.concurrency
 
-  /**
-   * For comparison only, off by default: fetch and show every subject's full accessibility data
-   * before round 0, as the first version of this checker did, rather than minimal first.
-   */
+  /** For comparison only: show every subject's full accessibility data before round 0. */
   var a11yUpFront: Boolean = false
 
   private val jevModel: String = options.answeringModel
@@ -126,6 +116,12 @@ internal class JevChecker(
   private inner class Asked(val arrived: PreviewSubject, guidelines: CatalogGuidelinesV1) {
     /** The cache held an older result for it: asked after every never-checked subject. */
     var stale = false
+
+    /** Its [failure] is a batch fetch's, counted once for the batch rather than per subject. */
+    var fetchFailed = false
+
+    /** Its [failure] is the evidence host's, not a model request's. */
+    var evidenceFailed = false
     var subject: PreviewSubject = arrived
     val asked: List<GuidelineRuleV1> =
       guidelines.subjectRules(arrived.surface, arrived.profile, arrived.pictures.isNotEmpty())
@@ -198,6 +194,7 @@ internal class JevChecker(
   }
 
   fun run(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelineRunResult {
+    fetchFailures.clear()
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()
 
@@ -251,18 +248,38 @@ internal class JevChecker(
         }
         if (active.isEmpty()) break
         val last = round == maxRounds
+        // What each subject is offered and shown is read from the host here, on this thread: the
+        // host is never called from several threads at once.
+        // A host that throws for one preview fails that subject alone, as a worker's error does.
+        val asks =
+          active
+            .mapNotNull { state ->
+              runCatching { (if (last) emptyList() else state.offered()) to state.view() }
+                .onFailure {
+                  // Only the host is read here: an evidence failure, not a model request's.
+                  state.failure = "the evidence host failed: ${it.message}"
+                  state.evidenceFailed = true
+                  if (state.rounds > 0) state.interrupted = true
+                }
+                .getOrNull()
+                ?.let { state to it }
+            }
+            .toMap()
         // Under a cap, never-checked subjects are asked as a wave before any stale one may
         // contend for what the cap has left, so a capped run widens coverage first.
         val waves =
-          if (options.maxCostUsd == null) listOf(active)
-          else active.partition { !it.stale }.toList().filter { it.isNotEmpty() }
+          if (options.maxCostUsd == null) listOf(asks.keys.toList())
+          else asks.keys.partition { !it.stale }.toList().filter { it.isNotEmpty() }
         waves.forEach { wave ->
           wave
             .map { state ->
               pool.submit(
                 Callable {
                   // One subject's error is its own failed request, not the run's.
-                  runCatching { ask(guidelines, state, round, last, ledger) }
+                  runCatching {
+                    val (offered, view) = asks.getValue(state)
+                    ask(guidelines, state, round, offered, view, ledger)
+                  }
                     .onFailure { state.failure = "the jev checker failed: ${it.message}" }
                 }
               )
@@ -278,6 +295,7 @@ internal class JevChecker(
 
     var capped = 0
     var failedRequests = 0
+    var failedEvidence = 0
     val asking = mutableMapOf<String, Int>()
     states.forEach { state ->
       val subject = state.subject
@@ -289,12 +307,23 @@ internal class JevChecker(
           results += pendingResult(guidelines, state.arrived)
         }
         state.failure != null && !decided -> {
-          failedRequests++
-          problems += "${subject.previewId}: ${state.failure}"
+          // A failed batch fetch is counted once below, not once per preview it was for.
+          if (state.fetchFailed) {
+            // Counted once for its batch, below.
+          } else if (state.evidenceFailed) {
+            failedEvidence++
+            problems += "${subject.previewId}: ${state.failure}"
+          } else {
+            failedRequests++
+            problems += "${subject.previewId}: ${state.failure}"
+          }
           results += pendingResult(guidelines, state.arrived)
         }
         else -> {
-          if (state.failure != null) {
+          if (state.failure != null && state.evidenceFailed && !state.fetchFailed) {
+            failedEvidence++
+            problems += "${subject.previewId}: ${state.failure} (in a follow-up round)"
+          } else if (state.failure != null && !state.fetchFailed) {
             failedRequests++
             problems += "${subject.previewId}: ${state.failure} (in a follow-up round)"
           }
@@ -341,6 +370,8 @@ internal class JevChecker(
       }
     }
 
+    problems += fetchFailures
+    failedEvidence += fetchFailures.size
     // Counted over every result, cached ones included: a run answered wholly from the cache still
     // says what the checker could not judge.
     val kinds = guidelines.rules.associate { it.id to it.kind }
@@ -389,27 +420,71 @@ internal class JevChecker(
           "not checked, or not followed up (\$${money(ledger.spent)} spent)"
     }
     return GuidelineRunResult(results, ledger.spent, ledger.requests, problems, failedRequests)
+      .also { it.failedEvidence = failedEvidence }
   }
 
   /**
-   * Before round 0: the facts computable from what is already in hand. Accessibility data the host
-   * holds without fetching (it can [GuidelineEvidenceHost.summary] it: a staged
-   * `accessibility.json`, or an earlier fetch) feeds the facts and the summary line, though the
-   * node list itself waits to be asked for; data the host would have to fetch waits for
-   * `needs:a11y`. With [a11yUpFront], everything is fetched and shown at once instead.
+   * Before round 0: compute the facts from what is in hand. Accessibility data the host already
+   * holds feeds the facts and summary line; data it would have to fetch waits for `needs:a11y`
+   * (unless [a11yUpFront]).
    */
   private fun prepare(states: List<Asked>, platform: String) {
     if (a11yUpFront) {
       val wanted =
         states
           .filter {
-            servedKind(PreviewGuidelineRequests.KIND_A11Y, host.available(it.subject.previewId)) !=
-              null
+            runCatching {
+                servedKind(
+                  PreviewGuidelineRequests.KIND_A11Y,
+                  host.available(it.subject.previewId),
+                ) != null
+              }
+              .getOrDefault(false)
           }
           .associate { it.subject.previewId to listOf(A11Y_NEED) }
-      if (wanted.isNotEmpty()) host.prefetch(wanted)
+      if (wanted.isNotEmpty()) prefetch(wanted, states)
     }
-    states.forEach { state ->
+    states
+      .filter { it.failure == null }
+      .forEach { state -> guarded(state) { prepare(state, platform) } }
+  }
+
+  /**
+   * One host prefetch for [needs]; when it throws, every subject it was for fails with it, rather
+   * than going on to be judged without the evidence it was fetching.
+   */
+  private fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>, states: List<Asked>) {
+    runCatching { host.prefetch(needs) }
+      .onFailure { e ->
+        val hit = states.filter { it.subject.previewId in needs }
+        hit.forEach { state ->
+          state.failure = "the evidence host's fetch failed: ${e.message}"
+          state.fetchFailed = true
+          state.evidenceFailed = true
+          if (state.rounds > 0) state.interrupted = true
+        }
+        fetchFailures +=
+          "the evidence host's fetch for ${hit.size} preview(s) failed: ${e.message} (" +
+            hit.take(8).joinToString { it.subject.previewId } +
+            (if (hit.size > 8) " and ${hit.size - 8} more" else "") +
+            ")"
+      }
+  }
+
+  /**
+   * Runs [block] for [state], failing that subject alone when the host throws: one preview's
+   * missing evidence must not abort the run.
+   */
+  private fun guarded(state: Asked, block: () -> Unit) {
+    runCatching(block).onFailure {
+      state.failure = "the evidence host failed: ${it.message}"
+      state.evidenceFailed = true
+      if (state.rounds > 0) state.interrupted = true
+    }
+  }
+
+  private fun prepare(state: Asked, platform: String) {
+    run {
       val id = state.subject.previewId
       val offered = servedKind(PreviewGuidelineRequests.KIND_A11Y, host.available(id)) != null
       if (state.subject.nodes.isNotEmpty() || state.subject.checks.isNotEmpty()) {
@@ -439,8 +514,14 @@ internal class JevChecker(
       active
         .filter { state -> state.wants.values.any { KIND_A11Y in it } && !state.a11yInHand }
         .associate { it.subject.previewId to listOf(A11Y_NEED) }
-    if (prefetch.isNotEmpty()) host.prefetch(prefetch)
-    active.forEach { state ->
+    if (prefetch.isNotEmpty()) prefetch(prefetch, active)
+    active
+      .filter { it.failure == null }
+      .forEach { state -> guarded(state) { serve(state, platform) } }
+  }
+
+  private fun serve(state: Asked, platform: String) {
+    run {
       val asked = state.wants.values.flatten().toSet()
       var servedSomething = false
       if (KIND_A11Y in asked && !state.a11yFull) {
@@ -491,12 +572,11 @@ internal class JevChecker(
     guidelines: CatalogGuidelinesV1,
     state: Asked,
     round: Int,
-    last: Boolean,
+    offered: List<String>,
+    view: JevRuleRequests.View,
     ledger: DecisionsPool,
   ) {
     state.rounds = round + 1
-    val offered = if (last) emptyList() else state.offered()
-    val view = state.view()
     val stillOpen = mutableListOf<GuidelineRuleV1>()
     val chunks = JevRuleRequests.chunks(guidelines, view, state.open, offered)
     var asking = 0
@@ -530,6 +610,18 @@ internal class JevChecker(
         val spent = GuidelineResponse.cost(response.body) ?: 0.0
         state.cost += spent
         state.requests++
+        val refused = if (response.status in 200..299) null else FailedRequest.of(response)
+        val backoff =
+          response.retryAfterMillis
+            ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
+              options.retry.maxDelayMillis
+            )
+        // A rate limit holds every worker, and is published before this settlement wakes the
+        // workers waiting on it, whether or not this request is asked again.
+        // A wait past the retry ceiling is not waited out, by this worker or any other.
+        if (refused?.kind == FailureKind.RATE_LIMITED && backoff <= options.retry.maxDelayMillis) {
+          ledger.pauseAll(backoff)
+        }
         ledger.settle(reservation, spent, counted = true)
         val failure: FailedRequest =
           if (response.status in 200..299) {
@@ -545,12 +637,8 @@ internal class JevChecker(
               "the decisions reply answered none of its questions: ${response.body.take(200)}",
               FailureKind.UNUSABLE,
             )
-          } else FailedRequest.of(response)
-        val wait =
-          response.retryAfterMillis
-            ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
-              options.retry.maxDelayMillis
-            )
+          } else refused!!
+        val wait = backoff
         val retry =
           failure.kind != FailureKind.FATAL &&
             failure.kind != FailureKind.TOO_LARGE &&
@@ -564,8 +652,8 @@ internal class JevChecker(
         }
         when (failure.kind) {
           FailureKind.UNUSABLE -> {}
-          // The server's wait applies to the key, so every request in flight honours it.
-          FailureKind.RATE_LIMITED -> ledger.pauseAll(wait)
+          // Already published as a run-wide pause; awaited at the top of the next attempt.
+          FailureKind.RATE_LIMITED -> {}
           else -> sleep(wait)
         }
         reservation = ledger.reserve() ?: return stop(capped = true)
@@ -693,10 +781,8 @@ internal class JevChecker(
 
   /**
    * What the jev checker needs from a run's request pool: cost reservations under the cap, a
-   * run-wide pause on a rate limit, and the retry allowance. [Ledger] is this checker's
-   * own; #5805's concurrency pool (cost reservation and a global `Retry-After` pause for the vision
-   * path) is meant to implement it once it lands, through [requestPool], so both checkers share one
-   * pool and one set of rules.
+   * run-wide pause on a rate limit, and the retry allowance. TODO: share one implementation with
+   * the vision path's concurrency pool (#5805) via [requestPool].
    */
   internal interface DecisionsPool {
     val spent: Double
@@ -723,6 +809,9 @@ internal class JevChecker(
 
     fun invent(n: Int)
   }
+
+  /** Each failed batch fetch of the run, counted as one failed request. Main thread only. */
+  private val fetchFailures = mutableListOf<String>()
 
   /** A pool to use in place of this checker's own [Ledger]; null uses its own. */
   var requestPool: DecisionsPool? = null
@@ -755,11 +844,6 @@ internal class JevChecker(
     private val lock = ReentrantLock()
     private val settled = lock.newCondition()
 
-    /**
-     * A reservation for one more request, or null when the cap cannot afford it. Under a cap,
-     * nothing is started beside the first request until it has come back: before then the price is
-     * unknown, and parallel requests reserved at zero could all cross the cap.
-     */
     private var pausedUntil = 0L
 
     override fun pauseAll(millis: Long) = lock.withLock {
@@ -774,6 +858,11 @@ internal class JevChecker(
       }
     }
 
+    /**
+     * A reservation for one more request, or null when the cap cannot afford it. Under a cap only
+     * one request runs until a price is known, so parallel zero-cost reservations can't cross the
+     * cap.
+     */
     override fun reserve(): Double? = lock.withLock {
       if (cap == null) {
         started++
@@ -1190,7 +1279,8 @@ internal object JevRuleRequests {
         }
         putJsonArray("measured_checks") {
           if (subject.checks.isEmpty()) {
-            add(JsonPrimitive("the Accessibility Test Framework reported nothing on this render"))
+            // An empty list may mean ATF never ran: no claim that it measured clean.
+            add(JsonPrimitive("no Accessibility Test Framework results are attached"))
           }
           subject.checks.take(MAX_CHECKS).forEach { check ->
             add(

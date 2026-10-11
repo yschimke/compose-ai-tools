@@ -64,11 +64,8 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
 
 /**
  * The coordinates, signing and POM metadata every artifact this repository publishes carries.
- *
- * Shared by [ComposeAiMavenPublishingPlugin] and [ComposeAiPlatformPublishingPlugin] rather than
- * duplicated: the BOM describes the same release as the modules it constrains, so if the two ever
- * disagreed about the group, the licence or the SCM block, the index and the things it indexes
- * would be published under different metadata.
+ * Shared by [ComposeAiMavenPublishingPlugin] and [ComposeAiPlatformPublishingPlugin] so the BOM and
+ * the modules it indexes never disagree.
  */
 internal fun Project.configureComposeAiPublication(
   artifactId: String,
@@ -111,18 +108,9 @@ internal fun Project.configureComposeAiPublication(
 }
 
 /**
- * Publish an Android library as its single `release` variant, with real sources and an empty
- * javadoc jar — Maven Central requires *a* javadoc artifact but not a useful one for a Kotlin
- * library whose docs live in the repo.
- *
- * This used to be copy-pasted into all 25 Android modules that publish, each carrying the same
- * three imports, the same `@file:Suppress("DEPRECATION")` header, and the same nine-line
- * `mavenPublishing { configure(...) }` block. Twenty-five copies of one decision is twenty-five
- * places to miss when the plugin's API moves — which the suppression comment itself predicted
- * ("the replacement types vary between plugin versions"). Now it moves here, once.
- *
- * `withPlugin` rather than an `afterEvaluate` check so the JVM modules that share this convention
- * plugin (65 of the 90) are untouched — vanniktech's own default handles them correctly.
+ * Publish an Android library as its single `release` variant, with sources and an empty javadoc jar
+ * (Maven Central requires one). `withPlugin` so JVM modules sharing this convention keep
+ * vanniktech's default.
  */
 @Suppress("DEPRECATION") // AndroidSingleVariantLibrary(Boolean, Boolean); replacement types
 // (SourcesJar / JavadocJar) vary between plugin versions. Re-visit when bumping.
@@ -143,43 +131,23 @@ private fun Project.configureAndroidLibraryPublication() {
 /**
  * The version this module publishes at.
  *
- * Outside a release (`PLUGIN_VERSION` unset) everything is the next-patch snapshot.
+ * Outside a release (`PLUGIN_VERSION` unset), the next-patch snapshot. During a release, the tag's
+ * version if the module is in `-Pcomposeai.publishSet` (from
+ * `.github/scripts/maven-publish-plan.sh`; absent means publish everything), otherwise the version
+ * it last published at, from `publishing-manifest.json`.
  *
- * During a release the module takes the tag's version **if it is in the publish set**, and
- * otherwise the version it last published at, read from `publishing-manifest.json`. The set is
- * computed by `.github/scripts/maven-publish-plan.sh` and handed over as
- * `-Pcomposeai.publishSet=<comma separated artifact ids>`; a release that omits the property
- * publishes everything at the tag, which is the old behaviour and the safe default for a
- * `workflow_dispatch` recovery run.
- *
- * Giving a skipped module its *recorded* version rather than the tag is the whole mechanism. A
- * published POM names its project dependencies at their `project.version`, so a module built at
- * the tag names its skipped dependencies at the versions those are actually on Central, and a
- * consumer resolving it gets artifacts that exist. Stamping the tag onto a module that did not
- * publish is precisely the break this repository shipped in v2.2.1 —
- * `data-remotecompose-connector:2.2.1` requiring a `daemon-core:2.2.1` that was never uploaded
- * (yschimke/wear-m3-catalog#350).
- *
- * This replaces `CORE_LINE_VERSION`, which was the two-train split's answer to the same problem at
- * a much coarser grain: one held-back version for a whole train. The trains went to
- * compose-preview-daemon with the data modules (#5336); the per-module manifest is what is left.
+ * A skipped module must keep its recorded version: POMs name project dependencies at their
+ * `project.version`, so stamping the tag on an unpublished module would make consumers require an
+ * artifact that was never uploaded.
  */
 private fun Project.publishedVersion(): String {
   val pluginVersion =
     providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
       ?: return nextPatchSnapshotVersion()
 
-  // The `gradle-plugin` included build always publishes, so its four coordinates always carry the
-  // tag and never consult the publish set. `maven-publish-plan.sh` does `dirty.update(
-  // INCLUDED_BUILD_IDS)` unconditionally — the CLI bakes the plugin coordinate for the version it
-  // ships at, so a skipped plugin is a user-facing break on the first command anyone runs.
-  //
-  // Bypassing the lookup is not a shortcut around a rule; it is the only correct answer, because
-  // [publishedArtifactId] CANNOT name these projects. An included build's paths are its own: its
-  // root project is `:`, which flattens to the EMPTY STRING, and `:gradle-plugin-config` flattens
-  // to `gradle-plugin-config` while it publishes as `compose-preview-config`. Neither is in the
-  // publish set or the manifest, so the `error(...)` below fired while the plugin was being
-  // applied — killing v2.18.0's release job during configuration, before anything was uploaded.
+  // The `gradle-plugin` included build always publishes at the tag (the plan always includes it).
+  // It must bypass the lookup anyway: [publishedArtifactId] can't name included-build projects (its
+  // root flattens to the empty string), so the `error(...)` below would fail configuration.
   if (gradle.parent != null) return pluginVersion
 
   return PublishedVersions.resolve(
@@ -192,20 +160,16 @@ private fun Project.publishedVersion(): String {
 }
 
 /**
- * The artifact id this project publishes as: its path with the separators flattened.
- *
- * Pinned against the build files by `PublishedArtifactIdTest`, because `:bom` and the publish set
- * both address modules this way while the modules themselves declare an id in their build script.
+ * The artifact id this project publishes as: its path with separators flattened. Pinned against the
+ * build files by `PublishedArtifactIdTest`, since `:bom` and the publish set address modules this
+ * way.
  */
 internal fun Project.publishedArtifactId(): String = path.removePrefix(":").replace(':', '-')
 
 /**
- * `publishing-manifest.json`, or an empty document when there is none.
- *
- * NOT a committed file. The release job's publish plan resolves each coordinate's published version
- * from Maven Central and writes it here (`--write-manifest`) before Gradle runs, so a module the
- * release skips can name the version it is already published at. Outside a release the file is
- * absent and nothing reads it: `publishedVersion` only consults it when `PLUGIN_VERSION` is set.
+ * `publishing-manifest.json`, or an empty document when absent. Not committed: the release plan
+ * writes each coordinate's published version here before Gradle runs; only read when
+ * `PLUGIN_VERSION` is set.
  */
 internal fun Project.publishingManifestText(): String =
   generateSequence(rootDir) { it.parentFile }
@@ -214,16 +178,9 @@ internal fun Project.publishingManifestText(): String =
     ?.readText() ?: "{}"
 
 /**
- * The version a *platform* publishes at: always the tag, never a line version.
- *
- * `:bom` is the index of a release, not a member of it. A consumer resolving the BOM at the tag has
- * to find it there whether or not any given module published, so it never takes a recorded or
- * held-back version.
- *
- * Kept apart from [publishedVersion] rather than special-cased inside it — routing the BOM through
- * the module path is what broke the equivalent change in compose-preview-daemon, where its derived
- * artifact id was absent from both the publish set and the manifest and every reduced-publish
- * release died during Gradle configuration.
+ * The version a platform publishes at: always the tag. `:bom` indexes a release, so it must exist
+ * at the tag whatever else published. Kept separate from [publishedVersion] because its derived
+ * artifact id is in neither the publish set nor the manifest.
  */
 internal fun Project.platformPublishedVersion(): String =
   providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
