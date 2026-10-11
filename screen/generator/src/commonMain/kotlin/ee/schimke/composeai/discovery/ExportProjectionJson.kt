@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -138,6 +139,28 @@ object ExportProjectionJson {
             },
           )
         }
+      is ExportProjection.Codec.Unit ->
+        buildJsonObject {
+          put(
+            "unit",
+            buildJsonObject {
+              put("unit", codec.unit)
+              if (codec.positive) put("positive", true)
+            },
+          )
+        }
+      is ExportProjection.Codec.Token ->
+        buildJsonObject {
+          put(
+            "token",
+            buildJsonObject {
+              put("root", codec.rootFqn)
+              put("members", JsonArray(codec.members.map(::JsonPrimitive)))
+              put("type", codec.typeFqn)
+              codec.tokens?.let { put("tokens", JsonArray(it.sorted().map(::JsonPrimitive))) }
+            },
+          )
+        }
       is ExportProjection.Codec.Enum ->
         buildJsonObject {
           put(
@@ -174,6 +197,20 @@ object ExportProjectionJson {
       return ExportProjection.Codec.Enum(
         enum.getValue("type").jsonPrimitive.content,
         stringMap(enum.getValue("members")),
+      )
+    }
+    obj["unit"]?.jsonObject?.let { unit ->
+      return ExportProjection.Codec.Unit(
+        unit.getValue("unit").jsonPrimitive.content,
+        unit["positive"]?.jsonPrimitive?.booleanOrNull ?: false,
+      )
+    }
+    obj["token"]?.jsonObject?.let { token ->
+      return ExportProjection.Codec.Token(
+        rootFqn = token.getValue("root").jsonPrimitive.content,
+        members = token.getValue("members").jsonArray.map { it.jsonPrimitive.content },
+        typeFqn = token.getValue("type").jsonPrimitive.content,
+        tokens = token["tokens"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet(),
       )
     }
     throw IllegalArgumentException("unknown codec $element")

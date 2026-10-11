@@ -268,6 +268,10 @@
           "insertContent": {
             "type": "object",
             "description": "What the component arrives holding when inserted from the UI builder's palette: encoded `properties` and `slots` of child nodes, in the UI builder's `insertContent` shape. Carried as raw JSON for the reason `propertyCapabilities` is; the UI builder falls back to its own seed when it does not fit. Not `@BuilderComponent(starter = …)`, which is call-site argument text for the export."
+          },
+          "exportProjection": {
+            "type": "object",
+            "description": "How a saved node of this component becomes a call to the real library composable: target records chosen by a variant property, each parameter written from a property through a codec, a fixed value or a nested factory call, plus slot and event renames. Written by a typed definition on the real records (compose-ai-tools' `ExportProjectionJson`) and carried as raw JSON; a builder that cannot read it exports the component as it otherwise would. See docs/design/TYPED_REAL_RECORD_ADAPTERS.md."
           }
         }
       }

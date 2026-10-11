@@ -149,6 +149,37 @@ object AdapterValueCodecs {
         return value.content
       }
     }
+
+  /**
+   * A number of [unit] (`dp` or `sp`) as the builder stores it, a bare float; the renderer applies
+   * the unit. With [positive], zero or less is the component's own default and exports nothing.
+   */
+  fun unit(unit: String, positive: Boolean = false): AdapterValueCodec<Float> =
+    object : AdapterValueCodec<Float> by Float {
+      override val exportCodec = ExportProjection.Codec.Unit(unit, positive)
+    }
+
+  /**
+   * A theme token named by the builder (`titleLarge`), decoded to its name; the renderer reads the
+   * same member from its own theme, and the export writes [export]'s path to it.
+   */
+  fun token(export: ExportProjection.Codec.Token): AdapterValueCodec<String> =
+    object : AdapterValueCodec<String> {
+      override val jsonType = "string"
+      override val kotlinType = export.typeFqn
+      override val stateType: String? = null
+      override val exportCodec = export
+
+      override fun encode(value: String): JsonElement = JsonPrimitive(value)
+
+      override fun decode(value: JsonElement): String {
+        require(value is JsonPrimitive && value.isString) { "expected a token name" }
+        require(export.tokens == null || value.content in export.tokens) {
+          "expected one of ${export.tokens?.sorted()}"
+        }
+        return value.content
+      }
+    }
 }
 
 /** A colour as a design stores it, before a theme resolves a role. */
@@ -478,6 +509,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       projection.variantProperty?.let { name ->
         if (name !in properties) add("$id: variant property $name is not declared")
       }
+      // A declared property no projection reads would be refused by every host on every node.
+      val read = projection.properties
+      for (property in declaredProperties) {
+        if (property.name !in read) add("$id: property ${property.name} is not exported")
+      }
       val records =
         projectionRecords.associateBy { it.canonicalId } + (record.canonicalId to record)
       for (target in projection.targets) {
@@ -510,12 +546,13 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           if (!matchesCallback(parameters[name], null))
             add("$where: $name is not a () -> Unit callback")
         }
+        // Only what the projection actually writes: a declared property it leaves out is not
+        // passed by name, whatever the record calls its parameters.
         val covered =
           target.parameters.keys +
             declaredSlots.map { target.slots[it.name] ?: it.name } +
             target.events.values +
-            declaredChanges.map { it.name } +
-            declaredProperties.filterNot { it.wireOnly }.map { it.name }
+            declaredChanges.map { it.name }
         val placeholders = targetRecord.code?.call
         for (parameter in targetRecord.parameters) {
           if (parameter.hasDefault || parameter.name in covered) continue
@@ -533,7 +570,13 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     problems: MutableList<String>,
   ): String? =
     when (value) {
-      is ExportProjection.Value.Fixed -> null
+      // A scalar's Kotlin type is ambiguous (`Whole` is an Int or a Long); a typed value says it.
+      is ExportProjection.Value.Fixed ->
+        when (val fixed = value.value) {
+          is ScreenValue.Text -> "kotlin.String"
+          is ScreenValue.Bool -> "kotlin.Boolean"
+          else -> fixed.typeFqn
+        }
       is ExportProjection.Value.Call -> {
         for ((name, argument) in value.arguments) writtenType(
           argument,
@@ -556,6 +599,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             ExportProjection.Codec.Fractional32 -> "kotlin.Float"
             is ExportProjection.Codec.Color -> COLOR_TYPE
             is ExportProjection.Codec.Enum -> codec.typeFqn
+            is ExportProjection.Codec.Unit ->
+              if (codec.unit == "sp") "androidx.compose.ui.unit.TextUnit"
+              else "androidx.compose.ui.unit.Dp"
+            is ExportProjection.Codec.Token -> codec.typeFqn
           }
       }
     }
@@ -623,6 +670,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             ),
           )
         }
+        // How a node becomes the real call, for the builder's export; see [exportAs].
+        b.exportProjection = projection?.let(ExportProjectionJson::encode)
       }
       .build()
   }

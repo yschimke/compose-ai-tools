@@ -181,6 +181,9 @@ class TypedRealRecordAdapterTest {
     assertThat(shelf.getValue("wear-m3/button").excluded).isNull()
     assertThat(shelf.values.single { it.record == tonal.canonicalId }.excluded)
       .contains("export target of wear-m3/button")
+    // The builder reads the projection back from the published policy, and gets the same one.
+    val published = shelf.getValue("wear-m3/button").exportProjection
+    assertThat(ExportProjectionJson.decode(published!!).getOrThrow()).isEqualTo(adapter.projection)
   }
 
   @Test
@@ -203,6 +206,152 @@ class TypedRealRecordAdapterTest {
         "androidx.wear.compose.material3.MaterialTheme",
         "androidx.compose.ui.graphics.Color",
       )
+  }
+
+  @Test
+  fun `units and theme tokens lower to their Kotlin spelling and survive JSON`() {
+    val style =
+      ExportProjection.Codec.Token(
+        "androidx.wear.compose.material3.MaterialTheme",
+        listOf("typography"),
+        "androidx.compose.ui.text.TextStyle",
+        setOf("titleLarge", "bodySmall"),
+      )
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "catalog/androidx.wear.compose.material3.TextKt.Text",
+            mapOf(
+              "fontSize" to
+                ExportProjection.Value.Property(
+                  "fontSizeSp",
+                  AdapterValueCodecs.unit("sp", positive = true).exportCodec!!,
+                ),
+              "style" to
+                ExportProjection.Value.Property(
+                  "style",
+                  AdapterValueCodecs.token(style).exportCodec!!,
+                ),
+            ),
+          )
+        )
+      )
+    assertThat(ExportProjectionJson.decode(ExportProjectionJson.encode(projection)).getOrThrow())
+      .isEqualTo(projection)
+    val lowered =
+      projection.lower(
+        mapOf("fontSizeSp" to JsonPrimitive(14.5), "style" to JsonPrimitive("titleLarge"))
+      ) as ExportProjection.Lowered.Node
+    val size = lowered.arguments.getValue("fontSize") as ScreenValue.Chain
+    assertThat(size.receiver).isEqualTo(ScreenValue.Fractional(14.5))
+    assertThat(size.links.single().callableFqn).isEqualTo("androidx.compose.ui.unit.sp")
+    assertThat(lowered.arguments.getValue("style"))
+      .isEqualTo(
+        ScreenValue.Reference(
+          "androidx.wear.compose.material3.MaterialTheme",
+          listOf("typography", "titleLarge"),
+          typeFqn = "androidx.compose.ui.text.TextStyle",
+        )
+      )
+    // Zero is "unset" for a positive unit; an unknown token is refused, not guessed.
+    val unset =
+      projection.lower(mapOf("fontSizeSp" to JsonPrimitive(0))) as ExportProjection.Lowered.Node
+    assertThat(unset.arguments).isEmpty()
+    assertThat(projection.lower(mapOf("style" to JsonPrimitive("display"))))
+      .isInstanceOf(ExportProjection.Lowered.Refused::class.java)
+    assertThat(projection.qualifiedOwners).contains("androidx.wear.compose.material3.MaterialTheme")
+  }
+
+  @Test
+  fun `a stated variant no target lists is refused rather than exported as the default`() {
+    val projection = WearButtonAdapter().projection!!
+    val lowered = projection.lower(mapOf("variant" to JsonPrimitive("filled-tonl")))
+    assertThat(lowered).isInstanceOf(ExportProjection.Lowered.Refused::class.java)
+    // Absent or empty is the default target.
+    assertThat((projection.lower(emptyMap()) as ExportProjection.Lowered.Node).record)
+      .isEqualTo(button.canonicalId)
+    assertThat(
+        (projection.lower(mapOf("variant" to JsonPrimitive(""))) as ExportProjection.Lowered.Node)
+          .record
+      )
+      .isEqualTo(button.canonicalId)
+  }
+
+  @Test
+  fun `a malformed wrapper is refused, not read as absent`() {
+    val projection = WearButtonAdapter().projection!!
+    val lowered =
+      projection.lower(mapOf("enabled" to buildJsonObject { put("type", "bool") }))
+        as ExportProjection.Lowered.Refused
+    assertThat(lowered.reasons.single()).contains("enabled")
+  }
+
+  @Test
+  fun `a whole number keeps every digit`() {
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "r",
+            mapOf("n" to ExportProjection.Value.Property("n", ExportProjection.Codec.Whole)),
+          )
+        )
+      )
+    val lowered =
+      projection.lower(mapOf("n" to JsonPrimitive(9007199254740993L)))
+        as ExportProjection.Lowered.Node
+    assertThat(lowered.arguments.getValue("n")).isEqualTo(ScreenValue.Whole(9007199254740993L))
+    assertThat(projection.lower(mapOf("n" to JsonPrimitive(1.5))))
+      .isInstanceOf(ExportProjection.Lowered.Refused::class.java)
+  }
+
+  inner class UnexportedAdapter : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+    val enabled = property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+    val content = slot("content", required = true)
+
+    init {
+      exportAs(target(button, emptyMap(), slots = SLOTS))
+    }
+  }
+
+  @Test
+  fun `a declared property the projection leaves out is reported`() {
+    assertThat(UnexportedAdapter().validateAgainst(button).joinToString("\n"))
+      .contains("property enabled is not exported")
+  }
+
+  @Test
+  fun `a fixed value of the wrong type is reported and its owners are admitted`() {
+    val fixed =
+      ScreenValue.Reference(
+        "androidx.wear.compose.material3.ButtonDefaults",
+        listOf("shape"),
+        typeFqn = "androidx.compose.ui.graphics.Shape",
+      )
+    val adapter =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+        val enabled =
+          property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+        val content = slot("content", required = true)
+
+        init {
+          exportAs(
+            target(
+              button,
+              mapOf(
+                "enabled" to from(enabled),
+                "colors" to ExportProjection.Value.Fixed(fixed),
+              ),
+              slots = SLOTS,
+            )
+          )
+        }
+      }
+    assertThat(adapter.validateAgainst(button).joinToString("\n"))
+      .contains("writes androidx.compose.ui.graphics.Shape, parameter takes $BUTTON_COLORS")
+    assertThat(adapter.projection!!.qualifiedOwners)
+      .contains("androidx.wear.compose.material3.ButtonDefaults")
   }
 
   @Test
