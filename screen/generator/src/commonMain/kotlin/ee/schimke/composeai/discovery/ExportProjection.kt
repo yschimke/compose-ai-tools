@@ -51,6 +51,11 @@ data class ExportProjection(
    * @property synthesize composable parameters written from properties by synthesizing a child of
    *   another catalog component, which then exports through its own projection: `ListHeader`'s
    *   `content` is a `wear-m3/text` holding the header's `text`.
+   * @property items for a parameter declared through its receiver's DSL rather than composed
+   *   (`TransformingLazyColumn`'s `content: TransformingLazyColumnScope.() -> Unit`), the member
+   *   each child is wrapped in (`item`). The child is then the direct child of the `list-item`
+   *   role: its target's `list-item` context applies, and the wrapper's body composes under the
+   *   scope the catalog's `code.scopes["list-item"]` declares.
    */
   data class Target(
     val record: String,
@@ -61,8 +66,20 @@ data class ExportProjection(
     val contexts: Map<String, Context> = emptyMap(),
     val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
     val synthesize: Map<String, Synthesis> = emptyMap(),
+    val items: Map<String, String> = emptyMap(),
   ) {
     init {
+      for ((parameter, member) in items) {
+        require(ComponentSnippets.isIdentifier(member)) {
+          "`$parameter`'s item member `$member` is not a Kotlin identifier"
+        }
+      }
+      val itemsWritten = items.keys intersect parameters.keys
+      require(itemsWritten.isEmpty()) { "${itemsWritten.sorted()} are both a DSL slot and written" }
+      val itemsSynthesized = items.keys intersect synthesize.keys
+      require(itemsSynthesized.isEmpty()) {
+        "${itemsSynthesized.sorted()} are both a DSL slot and synthesized"
+      }
       val synthesizedWritten = synthesize.keys intersect parameters.keys
       require(synthesizedWritten.isEmpty()) {
         "${synthesizedWritten.sorted()} are both written and synthesized"
@@ -570,6 +587,8 @@ data class ExportProjection(
        * projection.
        */
       val synthesized: Map<String, Synthesized> = emptyMap(),
+      /** The target's [Target.items]: the member each child of a DSL parameter is wrapped in. */
+      val items: Map<String, String> = emptyMap(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
@@ -626,6 +645,7 @@ data class ExportProjection(
         target.events,
         context?.modifier.orEmpty(),
         synthesized,
+        target.items,
       )
     else Lowered.Refused(reasons)
   }

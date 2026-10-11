@@ -698,7 +698,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
    * A target for [exportAs]: the real [record], selected by [variants] (null for the default), its
    * [parameters] written from declared properties, the wire [slots] / [events] renamed onto its
    * parameters, what it writes besides when placed in a structural role ([contexts]), and how a
-   * slot's children choose the parameters they fill ([slotPatterns]).
+   * slot's children choose the parameters they fill ([slotPatterns]); and the member each child of
+   * a DSL parameter is wrapped in ([items]).
    */
   protected fun target(
     record: ComponentRecord,
@@ -709,6 +710,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     contexts: Map<String, ExportProjection.Context> = emptyMap(),
     slotPatterns: Map<String, ExportProjection.SlotPatterns> = emptyMap(),
     synthesize: Map<String, ExportProjection.Synthesis> = emptyMap(),
+    items: Map<String, String> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
@@ -721,6 +723,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         contexts,
         slotPatterns,
         synthesize,
+        items,
       ),
     )
 
@@ -898,6 +901,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           if (declaredSlots.none { it.name == slot })
             add("$where: slot pattern for undeclared slot $slot")
         }
+        // Against every way the target fills its slots: a pattern may route only one shape to the
+        // DSL parameter, and the others leave it unfilled.
+        val everyFill = fillsOf(target).flatMap { (_, fills) -> fills }.map { it.parameter }.toSet()
+        for (parameter in target.items.keys) {
+          if (parameter !in everyFill) add("$where: items for $parameter, which no slot fills")
+        }
         // Resolved as Kotlin resolves named arguments: some overload must take every argument the
         // target writes and default the rest. A record without overloads stands for its own one.
         // A patterned slot fills different parameters per pattern, and each fill is its own call.
@@ -1022,7 +1031,16 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$where.$name: writes $type, parameter takes ${parameter.typeFqn}")
     }
     for (fill in fills) {
-      if (parameters[fill.parameter]?.composableSlot != true)
+      val parameter = parameters[fill.parameter]
+      // A DSL parameter is filled through its item member, so it is no composable slot itself.
+      if (fill.parameter in target.items) {
+        // Children declared through items return nothing, so only a `Scope.() -> Unit` takes them.
+        if (parameter?.scopeDslReceiver == null || parameter.lambdaReturnTypeFqn != "kotlin.Unit")
+          add(
+            "$where: slot ${fill.slot} -> ${fill.parameter} wraps its children in " +
+              "`${target.items.getValue(fill.parameter)}`, but is not a `Scope.() -> Unit` DSL"
+          )
+      } else if (parameter?.composableSlot != true)
         add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
     }
     for ((event, name) in target.events) {
