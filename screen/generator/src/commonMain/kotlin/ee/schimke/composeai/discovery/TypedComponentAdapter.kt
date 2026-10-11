@@ -378,7 +378,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
    * A target for [exportAs]: the real [record], selected by [variants] (null for the default), its
    * [parameters] written from declared properties, the wire [slots] / [events] renamed onto its
    * parameters, what it writes besides when placed in a structural role ([contexts]), and how a
-   * slot's children choose the parameters they fill ([slotPatterns]).
+   * slot's children choose the parameters they fill ([slotPatterns]); and the member each child of
+   * a DSL parameter is wrapped in ([items]).
    */
   protected fun target(
     record: ComponentRecord,
@@ -389,6 +390,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     contexts: Map<String, ExportProjection.Context> = emptyMap(),
     slotPatterns: Map<String, ExportProjection.SlotPatterns> = emptyMap(),
     synthesize: Map<String, ExportProjection.Synthesis> = emptyMap(),
+    items: Map<String, String> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
@@ -401,6 +403,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         contexts,
         slotPatterns,
         synthesize,
+        items,
       ),
     )
 
@@ -702,8 +705,20 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$where.$name: writes $type, parameter takes ${parameter.typeFqn}")
     }
     for (fill in fills) {
-      if (parameters[fill.parameter]?.composableSlot != true)
+      val parameter = parameters[fill.parameter]
+      // A DSL parameter is filled through its item member, so it is no composable slot itself.
+      if (fill.parameter in target.items) {
+        if (parameter?.scopeDslReceiver == null)
+          add(
+            "$where: slot ${fill.slot} -> ${fill.parameter} wraps its children in " +
+              "`${target.items.getValue(fill.parameter)}`, but is not declared through a DSL"
+          )
+      } else if (parameter?.composableSlot != true)
         add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
+    }
+    for (parameter in target.items.keys) {
+      if (fills.none { it.parameter == parameter })
+        add("$where: items for ${parameter}, which no slot fills")
     }
     for ((event, name) in target.events) {
       if (declaredEvents.none { it.eventName == event }) add("$where: event $event is not declared")

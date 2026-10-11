@@ -826,6 +826,70 @@ class TypedRealRecordAdapterTest {
       .contains("content: synthesizes from property title, which is not declared")
   }
 
+  data class ListModel(val unused: String)
+
+  private val transformingList =
+    ComponentRecord.Builder(
+        canonicalId =
+          "catalog/androidx.wear.compose.foundation.lazy.TransformingLazyColumnKt.TransformingLazyColumn",
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "androidx.wear.compose.foundation.lazy.TransformingLazyColumnKt",
+              callable = "androidx.wear.compose.foundation.lazy.TransformingLazyColumn",
+              name = "TransformingLazyColumn",
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { b ->
+        b.signatureKnown = true
+        b.parameters =
+          listOf(
+            parameter("modifier", "Modifier", "androidx.compose.ui.Modifier", default = true),
+            TargetParameter.Builder(
+                name = "content",
+                type = "TransformingLazyColumnScope.() -> Unit",
+              )
+              .also {
+                it.scopeDslReceiver =
+                  "androidx.wear.compose.foundation.lazy.TransformingLazyColumnScope"
+              }
+              .build(),
+          )
+      }
+      .build()
+
+  private fun listAdapter(items: Map<String, String>) =
+    object : TypedComponentAdapter<ListModel>("wear-m3/list", transformingList) {
+      val content = slot("content", required = true)
+
+      init {
+        exportAs(target(transformingList, emptyMap(), items = items))
+      }
+    }
+
+  @Test
+  fun `a DSL slot validates when its children are wrapped in an item member`() {
+    assertThat(listAdapter(mapOf("content" to "item")).validateAgainst(transformingList)).isEmpty()
+  }
+
+  @Test
+  fun `a DSL slot without an item member, or an item member on a composable slot, is reported`() {
+    assertThat(listAdapter(emptyMap()).validateAgainst(transformingList).joinToString("\n"))
+      .contains("slot content -> content is not a composable slot")
+    assertThat(headerItems().validateAgainst(listHeader).joinToString("\n"))
+      .contains("wraps its children in `item`, but is not declared through a DSL")
+  }
+
+  private fun headerItems() =
+    object : TypedComponentAdapter<HeaderModel>("wear-m3/list-header", listHeader) {
+      val content = slot("content", required = true)
+
+      init {
+        exportAs(target(listHeader, emptyMap(), items = mapOf("content" to "item")))
+      }
+    }
+
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
 

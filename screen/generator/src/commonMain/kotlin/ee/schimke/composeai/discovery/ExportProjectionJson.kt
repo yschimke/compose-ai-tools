@@ -55,6 +55,12 @@ import kotlinx.serialization.json.put
  * ```json
  * "synthesize": { "content": { "component": "wear-m3/text", "properties": { "text": "text" } } }
  * ```
+ *
+ * A target's `items`, keyed by a parameter declared through its receiver's DSL, names the member
+ * each child is wrapped in:
+ * ```json
+ * "items": { "content": "item" }
+ * ```
  */
 object ExportProjectionJson {
   private val screenJson = Json { encodeDefaults = false }
@@ -93,6 +99,7 @@ object ExportProjectionJson {
                 JsonObject(target.slotPatterns.mapValues { (_, p) -> slotPatterns(p) }),
               )
             }
+            if (target.items.isNotEmpty()) put("items", strings(target.items))
           }
         }
       ),
@@ -127,6 +134,7 @@ object ExportProjectionJson {
                   stringMap(raw.jsonObject.getValue("properties")),
                 )
               },
+            items = target["items"]?.let(::stringMap).orEmpty(),
           )
         },
     )

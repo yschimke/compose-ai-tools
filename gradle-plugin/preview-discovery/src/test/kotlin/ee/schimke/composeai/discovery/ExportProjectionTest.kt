@@ -587,6 +587,25 @@ class ExportProjectionTest {
   }
 
   @Test
+  fun `a DSL slot's item member lowers and round trips, and must be an identifier`() {
+    val list =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target("catalog/List", emptyMap(), items = mapOf("content" to "item"))
+        )
+      )
+    assertThat((list.lower(emptyMap()) as ExportProjection.Lowered.Node).items)
+      .containsExactly("content", "item")
+    val json = ExportProjectionJson.encode(list)
+    assertThat(json.toString()).contains("\"items\":{\"content\":\"item\"}")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(list)
+    val bad = runCatching {
+      ExportProjection.Target("r", emptyMap(), items = mapOf("content" to "item(key = 1)"))
+    }
+    assertThat(bad.exceptionOrNull()?.message).contains("is not a Kotlin identifier")
+  }
+
+  @Test
   fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
     fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
     assertThat(
