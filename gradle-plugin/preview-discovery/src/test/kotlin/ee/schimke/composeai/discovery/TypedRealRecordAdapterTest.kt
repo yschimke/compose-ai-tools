@@ -527,20 +527,43 @@ class TypedRealRecordAdapterTest {
   }
 
   @Test
-  fun `the call site fills an overload's required parameter only where it has that name`() {
-    // The record's own call writes `label`, which the `content` overload has no parameter for, so
-    // printing it there would not compile.
+  fun `the record's call site belongs to its own overload, not another`() {
+    // The generator writes the chosen overload's own call, so `label` at the record's call site is
+    // never printed for the `content` overload.
     val record = overloaded(callSite = "Button(onClick = {}, label = { Text(\"a, b = c\") })")
-    val problems = contentSlotAdapter(record, "content").validateAgainst(record).joinToString("\n")
-    assertThat(problems).contains("$CONTENT_DESCRIPTOR: the call site writes label")
-    assertThat(problems).doesNotContain("writes b")
+    assertThat(contentSlotAdapter(record, "content").validateAgainst(record)).isEmpty()
   }
 
   @Test
-  fun `a required parameter neither written nor at the call site is reported per overload`() {
+  fun `a required parameter is placed as the generator would, or reported per overload`() {
+    // `onClick: () -> Unit` has a placeholder (`{}`), whatever the call site says.
     val record = overloaded(callSite = "Button()")
-    val problems = contentSlotAdapter(record, "content").validateAgainst(record).joinToString("\n")
-    assertThat(problems).contains("required parameter onClick is not written")
+    assertThat(contentSlotAdapter(record, "content").validateAgainst(record)).isEmpty()
+    // A required `ImageVector` has none, so no overload can be called without writing it.
+    val painted =
+      record
+        .newBuilder()
+        .also { b ->
+          b.overloads =
+            record.overloads.map { overload ->
+              overload
+                .newBuilder()
+                .also {
+                  it.parameters =
+                    overload.parameters +
+                      parameter(
+                        "image",
+                        "ImageVector",
+                        "androidx.compose.ui.graphics.vector.ImageVector",
+                      )
+                }
+                .build()
+            }
+        }
+        .build()
+    val problems =
+      contentSlotAdapter(painted, "content").validateAgainst(painted).joinToString("\n")
+    assertThat(problems).contains("$CONTENT_DESCRIPTOR: required parameter image is not written")
   }
 
   private fun listedAdapter(context: ExportProjection.Context) =
