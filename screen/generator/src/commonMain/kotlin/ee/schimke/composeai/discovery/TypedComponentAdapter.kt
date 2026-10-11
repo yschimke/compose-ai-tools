@@ -745,21 +745,23 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     values: Map<String, ExportProjection.Value>,
   ): Map<String, ExportProjection.Value> = values.mapValues { (name, value) ->
     if (value !is ExportProjection.Value.Call) return@mapValues value
+    fun passedAs(type: String) = projectionFactories.any {
+      it.callableFqn == value.callableFqn &&
+        it.returnTypeFqn == value.typeFqn &&
+        type in it.returnSupertypes
+    }
+    // The record's own overload decides, as the generator calls it whenever it applies; only a
+    // parameter the own overload lacks is typed from the others, and then only when they agree.
     val declared =
-      (record.parameters + record.overloads.flatMap { it.parameters })
-        .filter { it.name == name }
-        .mapNotNull { it.typeFqn }
-        .distinct()
-        .filter { it != value.typeFqn }
-        .filter { type ->
-          projectionFactories.any {
-            it.callableFqn == value.callableFqn &&
-              it.returnTypeFqn == value.typeFqn &&
-              type in it.returnSupertypes
-          }
-        }
-    // One supertype every overload agrees on; otherwise the call keeps its own type.
-    declared.singleOrNull()?.let { value.copy(typeFqn = it) } ?: value
+      record.parameters.firstOrNull { it.name == name }?.typeFqn?.let(::listOf)
+        ?: record.overloads
+          .flatMap { it.parameters }
+          .filter { it.name == name }
+          .mapNotNull { it.typeFqn }
+          .distinct()
+    val type = declared.singleOrNull()
+    if (type != null && type != value.typeFqn && passedAs(type)) value.copy(typeFqn = type)
+    else value
   }
 
   /** A declared property written through its codec, skipped when it equals [omitWhen]. */

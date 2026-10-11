@@ -506,8 +506,8 @@ class TypedRealRecordAdapterTest {
               parameter("verticalArrangement", "Arrangement.Vertical", vertical, default = true)
         }
         .build()
-    fun adapter(supertypes: Set<String>) =
-      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", record) {
+    fun adapter(supertypes: Set<String>, on: ComponentRecord = record) =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", on) {
         val enabled =
           property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
         val content = slot("content", required = true)
@@ -526,7 +526,7 @@ class TypedRealRecordAdapterTest {
             )
           exportAs(
             target(
-              record,
+              on,
               mapOf(
                 "enabled" to from(enabled),
                 "verticalArrangement" to
@@ -564,6 +564,46 @@ class TypedRealRecordAdapterTest {
       .contains("writes $both, parameter takes $vertical")
     assertThat(
         ((untyped.projection!!.lower(emptyMap()) as ExportProjection.Lowered.Node)
+            .arguments
+            .getValue("verticalArrangement") as ScreenValue.Construct)
+          .typeFqn
+      )
+      .isEqualTo(both)
+    // The record's own overload takes the exact return type: it decides, though another overload
+    // takes a supertype, so the generator keeps calling the own overload.
+    val exact =
+      record
+        .newBuilder()
+        .also { b ->
+          b.parameters =
+            button.parameters +
+              parameter(
+                "verticalArrangement",
+                "Arrangement.HorizontalOrVertical",
+                both,
+                default = true,
+              )
+          b.overloads =
+            listOf(
+              ComponentOverload.Builder().also { it.parameters = b.parameters }.build(),
+              ComponentOverload.Builder()
+                .also {
+                  it.parameters =
+                    button.parameters +
+                      parameter(
+                        "verticalArrangement",
+                        "Arrangement.Vertical",
+                        vertical,
+                        default = true,
+                      )
+                }
+                .build(),
+            )
+        }
+        .build()
+    assertThat(
+        ((adapter(setOf(vertical), exact).projection!!.lower(emptyMap())
+              as ExportProjection.Lowered.Node)
             .arguments
             .getValue("verticalArrangement") as ScreenValue.Construct)
           .typeFqn
