@@ -30,12 +30,14 @@ import okio.Path.Companion.toPath
  * for `bundle pack --with-semantics` (`previews/<id>.semantics.json`). The standalone
  * `composePreviewRender` task never produces semantics; the daemon is the only producer.
  *
- * **Windowed submission.** The daemon starts each render's `host.submit` deadline when the render
- * is queued, so handing it a whole catalog in one `renderNow` made every preview share one deadline
- * and the tail of a wide catalog failed together once it expired. Renders are instead submitted in
- * a bounded [window] per daemon, refilled as each one finishes, so a render waits behind at most
- * `window - 1` others and the daemon's per-render deadline is a real hang guard again. Older
- * daemons need nothing new for this: it is the same `renderNow`, called more often.
+ * **Windowed submission.** Released daemons start each render's `host.submit` deadline when the
+ * render is queued, so handing them a whole catalog in one `renderNow` made every preview share one
+ * deadline and the tail of a wide catalog failed together once it expired. (The desktop host times
+ * from dequeue since compose-preview-daemon#247; the daemons pinned in the wild don't.) Renders are
+ * instead submitted in a bounded [window] per daemon, refilled as each one finishes, so a render
+ * waits behind at most `window - 1` others and the per-render deadline is a real hang guard on
+ * every daemon version. Older daemons need nothing new for this: it is the same `renderNow`, called
+ * more often.
  *
  * **Parallel daemons.** With [workers] > 1, that many daemons pull ids from one shared queue (work
  * stealing, so a slow module section doesn't idle the others). Sidecars are per preview id and each
@@ -114,14 +116,12 @@ internal class DaemonSemanticsFetcher(
             workspaceRoot = workspaceRoot.absoluteFile,
             // Distinct names keep each daemon's forwarded stderr attributable.
             workspaceName = if (workerCount == 1) baseName else "$baseName-semantics-${index + 1}",
-            // Several daemons on one module would otherwise share (and prune) one history dir; a
-            // one-shot capture never reads its history anyway.
-            systemPropertyOverrides =
-              if (workerCount == 1) emptyMap() else mapOf(HISTORY_ENABLED_PROP to "false"),
+            systemPropertyOverrides = systemPropertyOverrides(workerCount),
             logSink = if (workerCount == 1) onLog else { line -> onLog("[${index + 1}] $line") },
-            // The daemon starts this deadline at submission; with windowed submission that is at
-            // most `window - 1` renders ahead, so it guards a single hung render. A long command
-            // timeout may extend it, but never below the daemon's five-minute default.
+            // Released daemons start this deadline at submission (desktop times from dequeue
+            // since compose-preview-daemon#247); windowed submission keeps that at most
+            // `window - 1` renders ahead either way, so it guards a single hung render. A long
+            // command timeout may extend it, but never below the daemon's five-minute default.
             maxRenderTime = maxOf(renderTimeout, DEFAULT_RENDER_TIMEOUT),
             // A stuck render shouldn't add the normal 15s shutdown RPC plus exit grace after the
             // inactivity timeout; shut down quickly and let the owner kill it.
@@ -221,6 +221,20 @@ internal class DaemonSemanticsFetcher(
       figmaRasterById = figmaRasterById,
       figmaFontWarningsById = figmaFontWarningsById,
     )
+  }
+
+  /**
+   * The launch system properties each daemon gets on top of its descriptor.
+   * - [POST_CAPTURE_KINDS_PROP], the post-capture allowlist, from [requestedKinds]: the desktop
+   *   daemon gates its post-capture extensions (the seconds-per-render `compose/figma-svg` export)
+   *   only when this is set; `attachDataProducts` alone doesn't turn gating on there. Daemons that
+   *   predate it ignore the unknown property.
+   * - History off when several daemons share one module: they would otherwise share (and prune) one
+   *   history dir, and a one-shot capture never reads its history anyway.
+   */
+  internal fun systemPropertyOverrides(workerCount: Int): Map<String, String> = buildMap {
+    requestedKinds?.let { put(POST_CAPTURE_KINDS_PROP, it.joinToString(",")) }
+    if (workerCount > 1) put(HISTORY_ENABLED_PROP, "false")
   }
 
   /**
@@ -397,6 +411,12 @@ internal class DaemonSemanticsFetcher(
      * The daemon's history switch (`HistoryFeature.PROP`), off when several daemons share a dir.
      */
     private const val HISTORY_ENABLED_PROP = "composeai.history.enabled"
+
+    /**
+     * The desktop daemon's post-capture allowlist (comma-separated kinds), from
+     * compose-preview-daemon#247. Unset, it runs every post-capture extension.
+     */
+    const val POST_CAPTURE_KINDS_PROP = "composeai.daemon.postCaptureKinds"
 
     private const val UNSUBMITTED_LOG_LIMIT = 20
 

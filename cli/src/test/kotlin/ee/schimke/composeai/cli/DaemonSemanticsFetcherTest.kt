@@ -336,9 +336,10 @@ class DaemonSemanticsFetcherTest {
 
   @Test
   fun `short inactivity timeout does not reduce the daemon render deadline`() {
-    // Review follow-up for #3198: host.submit starts its deadline while a render waits behind
-    // earlier previews. Forwarding a short inactivity window directly would therefore turn it
-    // back into a batch-wide cutoff for queued tail previews even when renders keep completing.
+    // Review follow-up for #3198: released daemons start host.submit's deadline while a render
+    // waits behind earlier previews (desktop times from dequeue only since compose-preview-daemon
+    // #247). Forwarding a short inactivity window directly would turn it back into a batch-wide
+    // cutoff for queued tail previews even when renders keep completing.
     val projectDir = newTempFolder("semantics-short-daemon-timeout")
     writeDescriptor(projectDir)
     val factory = FakeFactory(produced = emptyMap())
@@ -352,8 +353,9 @@ class DaemonSemanticsFetcherTest {
 
   @Test
   fun `renders are submitted in bounded windows, refilled as each finishes`() {
-    // The daemon starts a render's deadline when it is queued, so a catalog handed over in one
-    // renderNow shares one deadline and its tail fails together. Never more than the window may be
+    // Released daemons start a render's deadline when it is queued, so a catalog handed over in
+    // one renderNow shares one deadline and its tail fails together. Never more than the window may
+    // be
     // queued at once, and every preview must still be rendered.
     val projectDir = newTempFolder("semantics-window")
     writeDescriptor(projectDir)
@@ -464,7 +466,10 @@ class DaemonSemanticsFetcherTest {
       .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
 
     assertEquals(projectDir.name, factory.openedConfig?.workspaceName)
-    assertEquals(emptyMap(), factory.openedConfig?.systemPropertyOverrides)
+    assertEquals(
+      null,
+      factory.openedConfig?.systemPropertyOverrides?.get("composeai.history.enabled"),
+    )
   }
 
   @Test
@@ -549,6 +554,46 @@ class DaemonSemanticsFetcherTest {
       listOf("compose/semantics", "layout/inspector", "fonts/used"),
       factory.openedConfig?.attachDataProducts,
     )
+  }
+
+  @Test
+  fun `the desktop post-capture allowlist matches the requested kinds`() {
+    // compose-preview-daemon#247: desktop gates post-capture work only on this launch property;
+    // attachDataProducts alone leaves every extension running.
+    val projectDir = newTempFolder("semantics-post-capture-kinds")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+    val prop = "composeai.daemon.postCaptureKinds"
+
+    DaemonSemanticsFetcher(factory = factory)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      "compose/semantics,layout/inspector,fonts/used,compose/figma-svg",
+      factory.openedConfig?.systemPropertyOverrides?.get(prop),
+    )
+
+    // --no-figma-svg drops the export from the allowlist, so desktop skips it.
+    DaemonSemanticsFetcher(
+        factory = factory,
+        requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = false),
+      )
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      "compose/semantics,layout/inspector,fonts/used",
+      factory.openedConfig?.systemPropertyOverrides?.get(prop),
+    )
+
+    // Every parallel daemon gets it, alongside the history override.
+    DaemonSemanticsFetcher(factory = factory, workers = 2)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A", "B"))
+    val parallel = factory.openedConfigs.takeLast(2).map { it.systemPropertyOverrides }
+    assertTrue(parallel.all { it[prop]?.endsWith("compose/figma-svg") == true }, "got $parallel")
+    assertTrue(parallel.all { it["composeai.history.enabled"] == "false" }, "got $parallel")
+
+    // No requested kinds: no allowlist, so the daemon keeps its default (run everything).
+    DaemonSemanticsFetcher(factory = factory, requestedKinds = null)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(null, factory.openedConfig?.systemPropertyOverrides?.get(prop))
   }
 
   @Test
