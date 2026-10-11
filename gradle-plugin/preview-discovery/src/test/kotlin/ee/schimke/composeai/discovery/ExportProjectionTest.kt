@@ -204,4 +204,412 @@ class ExportProjectionTest {
         as ExportProjection.Lowered.Refused
     assertThat(lowered.reasons.single()).contains("enabled")
   }
+
+  private val listPadding =
+    ChainLink(
+      "androidx.wear.compose.material3.minimumVerticalContentPadding",
+      positional =
+        listOf(
+          ScreenValue.Reference(
+            "androidx.wear.compose.material3.ButtonDefaults",
+            listOf("minimumVerticalListContentPadding"),
+            typeFqn = "androidx.compose.ui.unit.Dp",
+          )
+        ),
+    )
+
+  private val inList =
+    ExportProjection.Context(
+      parameters =
+        mapOf(
+          "shape" to
+            ExportProjection.Value.Fixed(
+              ScreenValue.Reference(
+                "androidx.wear.compose.material3.ButtonDefaults",
+                listOf("shape"),
+                typeFqn = "androidx.compose.ui.graphics.Shape",
+              )
+            )
+        ),
+      modifier = listOf(listPadding),
+    )
+
+  private val listed =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          button.canonicalId,
+          common("buttonColors"),
+          contexts = mapOf("list-item" to inList),
+        )
+      )
+    )
+
+  @Test
+  fun `a role's context is written only when the node is placed in that role`() {
+    val alone = listed.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(alone.arguments).doesNotContainKey("shape")
+    assertThat(alone.modifier).isEmpty()
+
+    val item = listed.lower(emptyMap(), role = "list-item") as ExportProjection.Lowered.Node
+    assertThat(item.arguments.keys).containsExactly("shape")
+    assertThat(item.modifier).containsExactly(listPadding)
+
+    // A role this target says nothing about adds nothing.
+    val boxed = listed.lower(emptyMap(), role = "container") as ExportProjection.Lowered.Node
+    assertThat(boxed).isEqualTo(alone)
+  }
+
+  @Test
+  fun `contexts round trip through the published spelling`() {
+    val json = ExportProjectionJson.encode(listed)
+    assertThat(json.toString()).contains("\"contexts\":{\"list-item\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(listed)
+    // A projection without contexts keeps its exact earlier spelling.
+    assertThat(ExportProjectionJson.encode(projection).toString()).doesNotContain("contexts")
+  }
+
+  @Test
+  fun `a context's owners are allowed, and its properties are read`() {
+    val readsInList =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    mapOf(
+                      "enabled" to
+                        ExportProjection.Value.Property("listEnabled", ExportProjection.Codec.Bool)
+                    ),
+                    listOf(listPadding),
+                  )
+              ),
+          )
+        )
+      )
+    assertThat(readsInList.properties).containsExactly("listEnabled")
+    assertThat(readsInList.qualifiedOwners)
+      .containsAtLeast(
+        "androidx.wear.compose.material3",
+        "androidx.wear.compose.material3.ButtonDefaults",
+      )
+  }
+
+  @Test
+  fun `a context must name a structural role and not rewrite what the target writes`() {
+    fun target(role: String, context: ExportProjection.Context) = runCatching {
+      ExportProjection.Target(
+        button.canonicalId,
+        mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(false))),
+        contexts = mapOf(role to context),
+      )
+    }
+      .exceptionOrNull()
+      ?.message
+
+    assertThat(target("list-itme", inList)).contains("not one of")
+    assertThat(
+        target(
+          "list-item",
+          ExportProjection.Context(
+            mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(true)))
+          ),
+        )
+      )
+      .contains("rewrites [enabled]")
+    assertThat(
+        target(
+          "list-item",
+          ExportProjection.Context(
+            mapOf(
+              "modifier" to
+                ExportProjection.Value.Fixed(
+                  ScreenValue.Reference(
+                    "androidx.compose.ui.Modifier",
+                    typeFqn = "androidx.compose.ui.Modifier",
+                  )
+                )
+            ),
+            listOf(listPadding),
+          ),
+        )
+      )
+      .contains("both writes `modifier` and appends to it")
+  }
+
+  /** A child as a host sees it: its catalog id, and its lines when it is a plain column. */
+  private data class Child(val id: String, val column: List<Child>? = null)
+
+  private fun text(line: String) = Child("wear-m3/text:$line")
+
+  private val icon = Child("wear-m3/icon")
+
+  private fun lines(vararg texts: String) = Child("layout/column", texts.map(::text))
+
+  private val buttonPatterns =
+    ExportProjection.SlotPatterns(
+      listOf(
+        ExportProjection.SlotPattern(
+          listOf(
+            ExportProjection.Matcher.Component("wear-m3/icon", "icon", optional = true),
+            ExportProjection.Matcher.Lines(
+              "wear-m3/text",
+              listOf("label", "secondaryLabel"),
+              max = 2,
+            ),
+          )
+        )
+      ),
+      otherwise = "content",
+    )
+
+  private fun patterned(patterns: ExportProjection.SlotPatterns) =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          button.canonicalId,
+          emptyMap(),
+          slotPatterns = mapOf("content" to patterns),
+        )
+      )
+    )
+
+  private fun assign(patterns: ExportProjection.SlotPatterns, vararg children: Child) =
+    patterned(patterns)
+      .assignSlot(
+        button.canonicalId,
+        "content",
+        children.toList(),
+        componentId = { it.id.substringBefore(':') },
+        plainColumn = { it.column },
+      )
+
+  private fun assigned(patterns: ExportProjection.SlotPatterns, vararg children: Child) =
+    (assign(patterns, *children) as ExportProjection.SlotAssignment.Assigned).parameters
+
+  @Test
+  fun `a slot's children choose the parameters they fill, as Wear's button does`() {
+    assertThat(assigned(buttonPatterns, icon, text("Go")))
+      .containsExactly("icon", listOf(icon), "label", listOf(text("Go")))
+      .inOrder()
+    // A plain column of texts is its lines, and the column itself disappears.
+    assertThat(assigned(buttonPatterns, lines("Go", "Now")))
+      .containsExactly("label", listOf(text("Go")), "secondaryLabel", listOf(text("Now")))
+      .inOrder()
+    // Anything else is the content overload's.
+    val image = Child("wear-m3/image")
+    assertThat(assigned(buttonPatterns, image)).containsExactly("content", listOf(image))
+    assertThat(assigned(buttonPatterns, lines("a", "b", "c"))).containsKey("content")
+    assertThat(assigned(buttonPatterns, icon, text("Go"), text("Again"))).containsKey("content")
+  }
+
+  @Test
+  fun `a column with anything but text is not lines`() {
+    val mixed = Child("layout/column", listOf(text("Go"), icon))
+    assertThat(assigned(buttonPatterns, mixed)).containsExactly("content", listOf(mixed))
+    // And a column the host does not judge plain (null) is not lines either.
+    val styled = Child("layout/column")
+    assertThat(assigned(buttonPatterns, styled)).containsExactly("content", listOf(styled))
+  }
+
+  @Test
+  fun `extra lines go to rest, as a card's trailing content does`() {
+    val card =
+      ExportProjection.SlotPatterns(
+        listOf(
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Lines(
+                "wear-m3/text",
+                listOf("appName", "title"),
+                min = 2,
+                rest = "content",
+              )
+            )
+          )
+        )
+      )
+    assertThat(assigned(card, lines("App", "Title", "Body", "More")))
+      .containsExactly(
+        "appName",
+        listOf(text("App")),
+        "title",
+        listOf(text("Title")),
+        "content",
+        listOf(text("Body"), text("More")),
+      )
+      .inOrder()
+    // Without `otherwise` an unmatched slot refuses the node, naming what it held.
+    val refused = assign(card, text("Only")) as ExportProjection.SlotAssignment.Refused
+    assertThat(refused.reason)
+      .contains("no pattern of `content` matches its children [wear-m3/text]")
+  }
+
+  @Test
+  fun `any takes the remaining children, at least one`() {
+    val leading =
+      ExportProjection.SlotPatterns(
+        listOf(
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
+              ExportProjection.Matcher.Rest("content"),
+            )
+          )
+        )
+      )
+    assertThat(assigned(leading, icon, text("a"), text("b")))
+      .containsExactly("icon", listOf(icon), "content", listOf(text("a"), text("b")))
+    assertThat(assign(leading, icon))
+      .isInstanceOf(ExportProjection.SlotAssignment.Refused::class.java)
+  }
+
+  @Test
+  fun `a slot without patterns is its plain rename`() {
+    val plain =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slots = mapOf("content" to "label"),
+          )
+        )
+      )
+    val result =
+      plain.assignSlot(button.canonicalId, "content", listOf(icon), { it.id }, { it.column })
+    assertThat((result as ExportProjection.SlotAssignment.Assigned).parameters)
+      .containsExactly("label", listOf(icon))
+  }
+
+  @Test
+  fun `slot patterns round trip through the published spelling`() {
+    val projection = patterned(buttonPatterns)
+    val json = ExportProjectionJson.encode(projection)
+    assertThat(json.toString()).contains("\"slotPatterns\":{\"content\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(projection)
+    val refusing = patterned(buttonPatterns.copy(otherwise = null))
+    val refusingJson = ExportProjectionJson.encode(refusing)
+    assertThat(refusingJson.toString()).contains("\"otherwise\":\"refuse\"")
+    assertThat(ExportProjectionJson.decode(refusingJson).getOrThrow()).isEqualTo(refusing)
+  }
+
+  @Test
+  fun `slot patterns are checked when they are built`() {
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Rest("content"),
+              ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
+            )
+          )
+        }
+      )
+      .contains("last matcher")
+    assertThat(
+        failure {
+          ExportProjection.SlotPattern(
+            listOf(
+              ExportProjection.Matcher.Component("wear-m3/icon", "label"),
+              ExportProjection.Matcher.Lines("wear-m3/text", listOf("label")),
+            )
+          )
+        }
+      )
+      .contains("each parameter once")
+    assertThat(failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), max = 3) })
+      .contains("need a `rest` parameter")
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slots = mapOf("content" to "label"),
+            slotPatterns = mapOf("content" to buttonPatterns),
+          )
+        }
+      )
+      .contains("renamed and recognised")
+  }
+
+  private val header =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          "catalog/androidx.wear.compose.material3.ListHeaderKt.ListHeader",
+          emptyMap(),
+          synthesize =
+            mapOf("content" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
+        )
+      )
+    )
+
+  @Test
+  fun `a property written as a slot synthesizes a child of another component`() {
+    val lowered =
+      header.lower(mapOf("text" to wrapper("string", "Settings"))) as ExportProjection.Lowered.Node
+    assertThat(lowered.arguments).isEmpty()
+    assertThat(lowered.synthesized)
+      .containsExactly(
+        "content",
+        ExportProjection.Lowered.Synthesized(
+          "wear-m3/text",
+          mapOf("text" to wrapper("string", "Settings")),
+        ),
+      )
+    // Unset, the child is still synthesized, so a required slot is always written; its own
+    // component decides what an unset property means.
+    val unset = header.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(unset.synthesized.getValue("content").properties).isEmpty()
+    assertThat(header.properties).containsExactly("text")
+  }
+
+  @Test
+  fun `synthesized children round trip, and are never also written`() {
+    val json = ExportProjectionJson.encode(header)
+    assertThat(json.toString()).contains("\"synthesize\":{\"content\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(header)
+    val both = runCatching {
+      ExportProjection.Target(
+        "r",
+        mapOf("content" to ExportProjection.Value.Fixed(ScreenValue.Text(""))),
+        synthesize = mapOf("content" to ExportProjection.Synthesis("t", mapOf("text" to "text"))),
+      )
+    }
+      .exceptionOrNull()
+    assertThat(both?.message).contains("both written and synthesized")
+  }
+
+  @Test
+  fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
+    fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
+    assertThat(
+        failure {
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            slotPatterns = mapOf("content" to buttonPatterns),
+            synthesize =
+              mapOf("label" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
+          )
+        }
+      )
+      .contains("both filled from a wire slot and synthesized")
+    assertThat(
+        failure {
+          ExportProjection.Matcher.Lines("wear-m3/text", listOf("label", "label"), min = 2)
+        }
+      )
+      .contains("distinct parameters")
+    assertThat(
+        failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), rest = "label") }
+      )
+      .contains("also a line's parameter")
+  }
 }

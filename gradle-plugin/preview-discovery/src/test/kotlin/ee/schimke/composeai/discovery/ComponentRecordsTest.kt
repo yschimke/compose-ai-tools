@@ -789,6 +789,63 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `a record lists every overload discovery read, whichever one it chose`() {
+    val all = listOf(stateOverload, valueOverload)
+    val record =
+      ComponentRecords.select(
+          manifest(preview("a", componentTargets = listOf(calling(stateOverload, all))))
+        ) {
+          setOf("value", "singleLine")
+        }
+        .record
+        .components
+        .single()
+    assertThat(record.symbol.descriptor).isEqualTo(valueOverload.descriptor)
+    assertThat(record.overloads.map { it.descriptor })
+      .containsExactly(stateOverload.descriptor, valueOverload.descriptor)
+      .inOrder()
+    assertThat(record.overloads.map { o -> o.parameters.map { it.name } })
+      .containsExactly(
+        listOf("state", "modifier", "enabled"),
+        listOf("value", "onValueChange", "enabled", "singleLine"),
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `a library callable with one overload lists that one`() {
+    val only = calling(valueOverload, all = emptyList())
+    val record =
+      ComponentRecords.from(manifest(preview("a", componentTargets = listOf(only))))
+        .components
+        .single()
+    assertThat(record.overloads.map { it.descriptor }).containsExactly(valueOverload.descriptor)
+    assertThat(record.overloads.single().parameters).isEqualTo(valueOverload.parameters)
+  }
+
+  @Test
+  fun `overloads are left unrecorded where discovery did not read them`() {
+    val unread = target("androidx.compose.material3.CardKt", "Card")
+    val project =
+      target(
+        "com.example.HomeKt",
+        "HomeScreen",
+        descriptor = "()V",
+        signatureKnown = true,
+        sourceFile = "src/Home.kt",
+      )
+    val records =
+      ComponentRecords.from(
+          manifest(preview("a", componentTargets = listOf(unread), targets = listOf(project)))
+        )
+        .components
+    // An unread signature, and a project composable whose overloads discovery never enumerates:
+    // empty means "not recorded", never "none".
+    assertThat(records.map { it.overloads })
+      .containsExactly(emptyList<ComponentOverload>(), emptyList<ComponentOverload>())
+  }
+
+  @Test
   fun `with no policy, a deprecated overload the previews call is never the record`() {
     val deprecatedValue = valueOverload.copy(deprecated = true)
     val all = listOf(deprecatedValue, stateOverload)

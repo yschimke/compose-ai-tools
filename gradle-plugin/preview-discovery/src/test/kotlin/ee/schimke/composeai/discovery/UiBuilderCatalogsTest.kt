@@ -1759,6 +1759,193 @@ class UiBuilderCatalogsTest {
       .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD to "wear-m3/card")
   }
 
+  private val itemScope = "androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope"
+  private val spec = "androidx.wear.compose.material3.lazy.TransformationSpec"
+
+  /** A Wear button whose list-item context writes `transformedHeight(<scope>, <spec>)`. */
+  private fun listedButton(scope: ScreenValue, specRead: ScreenValue, plain: ScreenValue? = null) =
+    ExportProjectionJson.encode(
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            ":catalog/androidx.wear.compose.material3.ButtonKt.Button",
+            plain?.let { mapOf("shape" to ExportProjection.Value.Fixed(it)) }.orEmpty(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    modifier =
+                      listOf(
+                        ChainLink(
+                          "androidx.wear.compose.material3.lazy.transformedHeight",
+                          positional = listOf(scope, specRead),
+                        )
+                      )
+                  )
+              ),
+          )
+        )
+      )
+    )
+
+  private fun projectionDiagnostics(
+    projection: kotlinx.serialization.json.JsonObject,
+    code: UiBuilderCode,
+  ) =
+    UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          code = code,
+          components =
+            mapOf(
+              "wear-m3/button" to
+                UiBuilderAuthoredComponent.Builder()
+                  .also { it.exportProjection = projection }
+                  .build()
+            ),
+        ),
+      )!!
+      .diagnostics
+      .filter {
+        it.code.startsWith("component.exportProjection") || it.code.startsWith("policy.code.")
+      }
+
+  private fun wearCode(scopes: Map<String, String> = mapOf("list-item" to itemScope)) =
+    UiBuilderCode.Builder()
+      .also { b ->
+        b.strategy = "templates"
+        b.templates = mapOf("container" to "Box {\n  \${children}\n}")
+        b.locals = mapOf("spec" to spec)
+        b.scopes = scopes
+      }
+      .build()
+
+  @Test
+  fun `a projection reading the scope its role declares and a declared local is clean`() {
+    val clean =
+      projectionDiagnostics(
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
+        wearCode(),
+      )
+    assertThat(clean).isEmpty()
+  }
+
+  @Test
+  fun `a scope read is reported unless its role's declared scope is exactly that one`() {
+    val unattested =
+      projectionDiagnostics(
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
+        wearCode(scopes = emptyMap()),
+      )
+    assertThat(unattested.map { it.code to it.subject })
+      .containsExactly(
+        UiBuilderCatalogs.Diagnostics.PROJECTION_SCOPE_UNATTESTED to
+          "wear-m3/button.Button[list-item].modifier"
+      )
+    assertThat(unattested.single().message)
+      .contains("code.scopes declares no scope for `list-item`")
+
+    // Outside any context there is no role to have opened one.
+    val outside =
+      projectionDiagnostics(
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+          plain = ScreenValue.ScopeRead.Builder(itemScope).build(),
+        ),
+        wearCode(),
+      )
+    assertThat(outside.single().subject).isEqualTo("wear-m3/button.Button.shape")
+    assertThat(outside.single().message).contains("outside a role context")
+  }
+
+  @Test
+  fun `a local read is reported unless code declares it at that type`() {
+    val reported =
+      projectionDiagnostics(
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", "app.Spec").build(),
+        ),
+        wearCode(),
+      )
+    assertThat(reported.map { it.code })
+      .containsExactly(UiBuilderCatalogs.Diagnostics.PROJECTION_LOCAL_UNDECLARED)
+    assertThat(reported.single().message).contains("code.locals declares it as $spec")
+  }
+
+  @Test
+  fun `a scope for no node role and a local that is no identifier are reported`() {
+    val reported =
+      projectionDiagnostics(
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
+        wearCode(scopes = mapOf("list-item" to itemScope, "previews" to itemScope))
+          .newBuilder()
+          .also { it.locals = mapOf("spec" to spec, "2spec" to spec) }
+          .build(),
+      )
+    assertThat(reported.map { it.code to it.subject })
+      .containsExactly(
+        UiBuilderCatalogs.Diagnostics.SCOPE_ROLE_UNKNOWN to "code.scopes.previews",
+        UiBuilderCatalogs.Diagnostics.LOCAL_MALFORMED to "code.locals.2spec",
+      )
+  }
+
+  private fun scopedModifier(scope: String) =
+    ExportProjectionJson.encode(
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            ":catalog/androidx.wear.compose.material3.ButtonKt.Button",
+            emptyMap(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    modifier =
+                      listOf(
+                        ChainLink(
+                          "androidx.compose.foundation.lazy.LazyItemScope.animateItem",
+                          receiverScopeFqn = scope,
+                        )
+                      )
+                  )
+              ),
+          )
+        )
+      )
+    )
+
+  @Test
+  fun `a context's scoped modifier link must be a member of the role's declared scope`() {
+    assertThat(projectionDiagnostics(scopedModifier(itemScope), wearCode())).isEmpty()
+    val other = projectionDiagnostics(scopedModifier("app.OtherScope"), wearCode())
+    assertThat(other.map { it.code })
+      .containsExactly(UiBuilderCatalogs.Diagnostics.PROJECTION_SCOPE_UNATTESTED)
+    assertThat(other.single().message).contains("`animateItem` is a member of app.OtherScope")
+  }
+
+  @Test
+  fun `a template local named by a keyword or only underscores is reported`() {
+    val reported =
+      projectionDiagnostics(
+        scopedModifier(itemScope),
+        wearCode().newBuilder().also { it.locals = mapOf("when" to spec, "_" to spec) }.build(),
+      )
+    assertThat(reported.map { it.subject }).containsExactly("code.locals.when", "code.locals._")
+  }
+
   @Test
   fun `a template hole no role supplies is reported against the role`() {
     // `${'$'}{contnet}` is a valid name; only knowing which names the role provides catches it,

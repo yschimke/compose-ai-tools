@@ -42,6 +42,14 @@ data class ExportProjection(
    * @property slots the record's composable parameter for each wire slot whose name differs (Wear's
    *   `content` is `Button`'s `label`).
    * @property events the record's callback parameter for each wire event (`click` is `onClick`).
+   * @property contexts what this record writes besides [parameters] when its node is placed in a
+   *   structural role, keyed by role (`list-item`): the arguments its parent decides.
+   * @property slotPatterns for the one wire slot whose children decide which parameters they fill
+   *   (Wear's `Button` content: an icon, then one or two lines of text), how they are recognised.
+   *   Replaces that slot's [slots] rename.
+   * @property synthesize composable parameters written from properties by synthesizing a child of
+   *   another catalog component, which then exports through its own projection: `ListHeader`'s
+   *   `content` is a `wear-m3/text` holding the header's `text`.
    */
   data class Target(
     val record: String,
@@ -49,7 +57,240 @@ data class ExportProjection(
     val variants: Set<String>? = null,
     val slots: Map<String, String> = emptyMap(),
     val events: Map<String, String> = emptyMap(),
+    val contexts: Map<String, Context> = emptyMap(),
+    val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
+    val synthesize: Map<String, Synthesis> = emptyMap(),
+  ) {
+    init {
+      val synthesizedWritten = synthesize.keys intersect parameters.keys
+      require(synthesizedWritten.isEmpty()) {
+        "${synthesizedWritten.sorted()} are both written and synthesized"
+      }
+      // Every parameter a wire slot can fill: its rename, or each pattern's destinations and
+      // `otherwise`. A synthesized child there would be a second child for one parameter.
+      val slotFilled =
+        slots.values +
+          slotPatterns.keys +
+          slotPatterns.values.flatMap { patterns ->
+            patterns.patterns.flatMap { it.parameters.keys } + listOfNotNull(patterns.otherwise)
+          }
+      val synthesizedSlots = synthesize.keys intersect slotFilled.toSet()
+      require(synthesizedSlots.isEmpty()) {
+        "${synthesizedSlots.sorted()} are both filled from a wire slot and synthesized"
+      }
+      // One patterned slot per target, so a pattern alone decides which overload the call is.
+      require(slotPatterns.size <= 1) { "at most one slot is recognised by patterns" }
+      for (slot in slotPatterns.keys) {
+        require(slot !in slots) { "slot `$slot` is renamed and recognised by patterns" }
+      }
+      for (patterns in slotPatterns.values) {
+        val clash =
+          (patterns.patterns.flatMap { it.parameters.keys } + listOfNotNull(patterns.otherwise))
+            .toSet() intersect parameters.keys
+        require(clash.isEmpty()) { "slot patterns fill ${clash.sorted()}, already written" }
+      }
+      for ((role, context) in contexts) {
+        require(role in UI_BUILDER_STRUCTURAL_ROLES) {
+          "context role `$role` is not one of $UI_BUILDER_STRUCTURAL_ROLES"
+        }
+        val both = context.parameters.keys intersect parameters.keys
+        require(both.isEmpty()) { "`$role` context rewrites ${both.sorted()}, already written" }
+        require(MODIFIER !in context.parameters || context.modifier.isEmpty()) {
+          "`$role` context both writes `$MODIFIER` and appends to it"
+        }
+      }
+    }
+  }
+
+  /**
+   * What a target writes only when its node is the **direct** child of a structural role: Wear's
+   * `transformation = SurfaceTransformation(spec)` and `Modifier.transformedHeight(this, spec)` for
+   * an item of the screen's list. One level deep, as the hand-written exporters do.
+   *
+   * @property parameters further arguments, checked against the record exactly as [Target]'s.
+   * @property modifier links appended, in order, after the node's own modifier chain — never in
+   *   place of it.
+   */
+  data class Context(
+    val parameters: Map<String, Value> = emptyMap(),
+    val modifier: List<ChainLink> = emptyList(),
   )
+
+  /**
+   * A child node of [component] synthesized for a composable parameter, its properties copied from
+   * the parent's: [properties] maps the child's property to the parent property it is read from.
+   * The child inherits nothing else. It is synthesized on every node, with whichever of those
+   * properties the parent has set, so a required parameter such as `ListHeader`'s `content` is
+   * always written; an unset property is left to the child component's own default.
+   */
+  data class Synthesis(val component: String, val properties: Map<String, String>) {
+    init {
+      require(properties.isNotEmpty()) { "a synthesized child reads at least one property" }
+    }
+  }
+
+  /**
+   * How one wire slot's children are recognised: the first of [patterns] that matches assigns them
+   * to parameters, and those parameters pick the overload. [otherwise] is the parameter every child
+   * goes to when none matches, or null to refuse the node with the reason.
+   */
+  data class SlotPatterns(val patterns: List<SlotPattern>, val otherwise: String? = null) {
+    init {
+      require(patterns.isNotEmpty() || otherwise != null) { "slot patterns recognise something" }
+    }
+  }
+
+  /** An ordered list of [match]ers over a slot's children, every child consumed by one of them. */
+  data class SlotPattern(val match: List<Matcher>) {
+    init {
+      require(match.isNotEmpty()) { "a slot pattern has at least one matcher" }
+      val all = match.flatMap { it.parameters.keys }
+      require(all.size == all.toSet().size) { "a slot pattern fills each parameter once: $all" }
+      require(
+        match.count { it is Matcher.Rest } <= 1 &&
+          match.lastOrNull().let { m -> match.none { it is Matcher.Rest } || m is Matcher.Rest }
+      ) {
+        "`any` takes the remaining children, so it is the last matcher"
+      }
+    }
+
+    /** Every parameter this pattern may fill, and whether it fills it whenever it matches. */
+    val parameters: Map<String, Boolean>
+      get() = match.fold(emptyMap()) { acc, matcher -> acc + matcher.parameters }
+  }
+
+  /** The closed matcher vocabulary: data that can be validated, never code. */
+  sealed interface Matcher {
+    /** The parameters filled, each with whether it is filled whenever the matcher matches. */
+    val parameters: Map<String, Boolean>
+
+    /** The next child, a [componentId] node, goes to [to]; with [optional], it may be absent. */
+    data class Component(val componentId: String, val to: String, val optional: Boolean = false) :
+      Matcher {
+      override val parameters: Map<String, Boolean>
+        get() = mapOf(to to !optional)
+    }
+
+    /**
+     * The next child is lines of text: one [textComponent] node, or a column the host judges plain
+     * (no modifiers, default arrangement) holding only [textComponent] nodes, flattened. Line `k`
+     * goes to `to[k]`; [min]..[max] lines match, and lines past [to] go to [rest] when it is set.
+     */
+    data class Lines(
+      val textComponent: String,
+      val to: List<String>,
+      val min: Int = 1,
+      val max: Int? = null,
+      val rest: String? = null,
+    ) : Matcher {
+      init {
+        require(to.isNotEmpty()) { "lines go to at least one parameter" }
+        // Each line, and the overflow, is its own child; a shared destination would drop one.
+        require(to.size == to.toSet().size) { "lines go to distinct parameters: $to" }
+        require(rest == null || rest !in to) { "`rest` $rest is also a line's parameter" }
+        require(min >= 1) { "lines match at least one line" }
+        val upper = max ?: if (rest == null) to.size else Int.MAX_VALUE
+        require(upper >= min) { "lines match $min..$upper lines" }
+        require(rest != null || upper <= to.size) {
+          "lines past ${to.size} need a `rest` parameter to go to"
+        }
+      }
+
+      /** The most lines this matches. */
+      val upper: Int
+        get() = max ?: if (rest == null) to.size else Int.MAX_VALUE
+
+      override val parameters: Map<String, Boolean>
+        get() =
+          to.mapIndexed { index, name -> name to (index < min) }.toMap() +
+            listOfNotNull(rest).associateWith { false }
+    }
+
+    /** Every remaining child, at least one, goes to [to]. */
+    data class Rest(val to: String) : Matcher {
+      override val parameters: Map<String, Boolean>
+        get() = mapOf(to to true)
+    }
+  }
+
+  /** Which children of a patterned slot go to which parameter, or why none can. */
+  sealed interface SlotAssignment<out C> {
+    data class Assigned<C>(val parameters: Map<String, List<C>>) : SlotAssignment<C>
+
+    data class Refused(val reason: String) : SlotAssignment<Nothing>
+  }
+
+  /**
+   * [record]'s parameters for the children of its wire [slot], by its [Target.slotPatterns], or the
+   * plain rename when the slot has none. [componentId] names a child's catalog component;
+   * [plainColumn] is the host's judgement of a column of lines: its children when the child is a
+   * column with no modifiers and default arrangement, else null.
+   */
+  fun <C> assignSlot(
+    record: String,
+    slot: String,
+    children: List<C>,
+    componentId: (C) -> String,
+    plainColumn: (C) -> List<C>?,
+  ): SlotAssignment<C> {
+    val target =
+      targets.firstOrNull { it.record == record }
+        ?: return SlotAssignment.Refused("$record is not a target of this projection")
+    val patterns =
+      target.slotPatterns[slot]
+        ?: return SlotAssignment.Assigned(mapOf((target.slots[slot] ?: slot) to children))
+    for (pattern in patterns.patterns) {
+      match(pattern, children, componentId, plainColumn)?.let {
+        return SlotAssignment.Assigned(it)
+      }
+    }
+    return patterns.otherwise?.let { SlotAssignment.Assigned(mapOf(it to children)) }
+      ?: SlotAssignment.Refused(
+        "no pattern of `$slot` matches its children " +
+          children.joinToString(", ", "[", "]") { componentId(it) }
+      )
+  }
+
+  private fun <C> match(
+    pattern: SlotPattern,
+    children: List<C>,
+    componentId: (C) -> String,
+    plainColumn: (C) -> List<C>?,
+  ): Map<String, List<C>>? {
+    val assigned = linkedMapOf<String, List<C>>()
+    var next = 0
+    for (matcher in pattern.match) {
+      val child = children.getOrNull(next)
+      when (matcher) {
+        is Matcher.Component ->
+          if (child != null && componentId(child) == matcher.componentId) {
+            assigned[matcher.to] = listOf(child)
+            next++
+          } else if (!matcher.optional) return null
+        is Matcher.Lines -> {
+          child ?: return null
+          val lines =
+            if (componentId(child) == matcher.textComponent) listOf(child)
+            else
+              plainColumn(child)?.takeIf { column ->
+                column.isNotEmpty() && column.all { componentId(it) == matcher.textComponent }
+              } ?: return null
+          if (lines.size < matcher.min || lines.size > matcher.upper) return null
+          lines.take(matcher.to.size).forEachIndexed { k, line ->
+            assigned[matcher.to[k]] = listOf(line)
+          }
+          if (lines.size > matcher.to.size) assigned[matcher.rest!!] = lines.drop(matcher.to.size)
+          next++
+        }
+        is Matcher.Rest -> {
+          if (next >= children.size) return null
+          assigned[matcher.to] = children.drop(next)
+          next = children.size
+        }
+      }
+    }
+    return assigned.takeIf { next == children.size }
+  }
 
   /** What one parameter, or one argument of a nested call, is written from. */
   sealed interface Value {
@@ -133,7 +374,11 @@ data class ExportProjection(
           is Value.Fixed -> Unit
         }
       }
-      targets.forEach { it.parameters.values.forEach(::visit) }
+      targets.forEach { target ->
+        target.parameters.values.forEach(::visit)
+        target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+        target.synthesize.values.forEach { addAll(it.properties.values) }
+      }
     }
 
   /**
@@ -197,7 +442,19 @@ data class ExportProjection(
           is Value.Fixed -> screen(value.value)
         }
       }
-      targets.forEach { it.parameters.values.forEach(::visit) }
+      fun link(link: ChainLink) {
+        // A scope member is supplied by the receiver and never imported, so it names no owner.
+        if (link.receiverScopeFqn == null) add(link.callableFqn.substringBeforeLast('.'))
+        link.positional.forEach(::screen)
+        link.named.values.forEach(::screen)
+      }
+      for (target in targets) {
+        target.parameters.values.forEach(::visit)
+        for (context in target.contexts.values) {
+          context.parameters.values.forEach(::visit)
+          context.modifier.forEach(::link)
+        }
+      }
     }
 
   /** A node lowered onto one record, or every reason it could not be. */
@@ -211,13 +468,28 @@ data class ExportProjection(
       val arguments: Map<String, ScreenValue>,
       val slots: Map<String, String> = emptyMap(),
       val events: Map<String, String> = emptyMap(),
+      /** The role context's links, for the caller to append after the node's own modifiers. */
+      val modifier: List<ChainLink> = emptyList(),
+      /**
+       * Children to synthesize, by parameter: each a component and its properties as saved (the
+       * builder's `{type, value}` wrappers), for the caller to export through that component's own
+       * projection.
+       */
+      val synthesized: Map<String, Synthesized> = emptyMap(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
+
+    /** One synthesized child: its catalog [component] and the [properties] copied to it. */
+    data class Synthesized(val component: String, val properties: Map<String, JsonElement>)
   }
 
-  /** Lower one saved node's [properties] (the builder's `{type, value}` wrappers). */
-  fun lower(properties: Map<String, JsonElement>): Lowered {
+  /**
+   * Lower one saved node's [properties] (the builder's `{type, value}` wrappers). [role] is the
+   * structural role the node is the direct child of, if any; its context's arguments are written
+   * too, and a role with no context on the chosen target writes nothing extra.
+   */
+  fun lower(properties: Map<String, JsonElement>, role: String? = null): Lowered {
     val reasons = mutableListOf<String>()
     val statedVariant = variantProperty?.let { properties[it] }?.takeUnless { it is JsonNull }
     if (statedVariant != null && wireValue(statedVariant) == null) {
@@ -235,13 +507,32 @@ data class ExportProjection(
       if (variant == null) targets.firstOrNull { it.variants == null }
       else targets.firstOrNull { it.variants?.contains(variant) == true }
     if (target == null) return Lowered.Refused(listOf("no target for $variantProperty=$variant"))
+    val context = role?.let { target.contexts[it] }
     val arguments = buildMap {
-      for ((parameter, value) in target.parameters) {
+      for ((parameter, value) in target.parameters + context?.parameters.orEmpty()) {
         write(value, properties, "${target.record}.$parameter", reasons)?.let { put(parameter, it) }
       }
     }
+    val synthesized = buildMap {
+      for ((parameter, synthesis) in target.synthesize) {
+        val copied =
+          synthesis.properties
+            .mapNotNull { (child, parent) ->
+              properties[parent]?.takeUnless { it is JsonNull }?.let { child to it }
+            }
+            .toMap()
+        put(parameter, Lowered.Synthesized(synthesis.component, copied))
+      }
+    }
     return if (reasons.isEmpty())
-      Lowered.Node(target.record, arguments, target.slots, target.events)
+      Lowered.Node(
+        target.record,
+        arguments,
+        target.slots,
+        target.events,
+        context?.modifier.orEmpty(),
+        synthesized,
+      )
     else Lowered.Refused(reasons)
   }
 
@@ -368,6 +659,7 @@ data class ExportProjection(
 
   private companion object {
     const val COLOR = "androidx.compose.ui.graphics.Color"
+    const val MODIFIER = "modifier"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =
       mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")

@@ -125,6 +125,7 @@ object ScreenGenerator {
     packageName: String = "generated.screen",
     expressionPackages: Set<String> = emptySet(),
     preview: Preview? = null,
+    locals: Map<String, String> = emptyMap(),
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
@@ -169,6 +170,17 @@ object ScreenGenerator {
     // does not require qualification — imports resolve there as in hand-written code.
     val functionIssues = validateFunctions(document, preview)
     if (functionIssues.isNotEmpty()) return Result.Refused(functionIssues)
+    // Names a catalog's templates define around this code (`UiBuilderCode.locals`). They are read,
+    // never declared, here, so one the document also declares would be two meanings for a name.
+    val localIssues = buildList {
+      for (name in locals.keys.sorted()) {
+        if (!isUsableIdentifier(name))
+          add("template local `$name` is not a usable Kotlin identifier")
+        if (document.state.any { it.name == name })
+          add("template local `$name` is also declared as state")
+      }
+    }
+    if (localIssues.isNotEmpty()) return Result.Refused(localIssues)
     val functionNames = document.functions.map { it.name }.toSet()
     val parameterNames = document.functions.flatMap { it.parameters }.map { it.name }.toSet()
     val claimants = components.components.groupBy { it.symbol.name }
@@ -236,6 +248,22 @@ object ScreenGenerator {
     }
     val shadowedRoots =
       document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
+    // A template local is a name in scope around every call this file writes, so it shadows a
+    // component called by simple name, or a package root written qualified, just as state would.
+    val shadowingLocals =
+      locals.keys.filter { name ->
+        name in qualifiedRoots ||
+          locals.values.any { it.substringBefore('.') == name } ||
+          components.components.any { it.symbol.name == name }
+      }
+    if (shadowingLocals.isNotEmpty()) {
+      return Result.Refused(
+        shadowingLocals.sorted().map {
+          "template local `$it` has the name of a component or package root this screen writes, " +
+            "and would shadow it"
+        }
+      )
+    }
     val capturedParameters = parameterNames.filter {
       it in qualifiedRoots ||
         it in functionNames ||
@@ -265,8 +293,10 @@ object ScreenGenerator {
         // A state named `kotlin` captures the qualifier a folded run writes, so such a document is
         // simply not folded.
         foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
+        locals = locals,
         allocatedNames =
           (document.state.map(ScreenState::name) +
+              locals.keys +
               components.components.map { it.symbol.name } +
               qualifiedRoots +
               document.name +
@@ -609,6 +639,8 @@ object ScreenGenerator {
     val foldsRepeatedSiblings: Boolean = true,
     val allocatedNames: MutableSet<String> = mutableSetOf(),
     val functions: Map<String, ScreenFunction> = emptyMap(),
+    /** Template locals by name, each with its type — see [ScreenValue.LocalRead]. */
+    val locals: Map<String, String> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
     /** Kept apart from [imports] only so a conflict message can say an *extension* collided. */
@@ -998,9 +1030,10 @@ object ScreenGenerator {
               continue
             }
             val outer = slotScope
-            // Inside a wrapper the receiver is the wrapper's own, which nothing attests, so scoped
-            // links refuse.
-            slotScope = if (wrapper == null) parameter.composableSlotReceiver else null
+            // Inside a wrapper the receiver is the wrapper's own: the scope its catalog attested
+            // ([SlotItem.bodyScopeFqn]), or none, so scoped links and scope reads refuse.
+            slotScope =
+              if (wrapper == null) parameter.composableSlotReceiver else declared?.bodyScopeFqn
             // Name the lambda's parameter when the document reads it (`{ padding -> … }`). Only
             // single-parameter lambdas composed into directly can be named.
             val key = node.slotParameters[parameter.name]
@@ -1312,6 +1345,32 @@ object ScreenGenerator {
         return null
       }
       return binding.variable
+    }
+
+    /**
+     * `this`, when the innermost receiver where the value sits is exactly [ScreenValue.ScopeRead]'s
+     * type. Only the innermost: an outer receiver is reachable by Kotlin, but not as `this`.
+     */
+    private fun scopeRead(value: ScreenValue.ScopeRead, where: String): String? {
+      if (slotScope != value.typeFqn) {
+        reasons +=
+          "$where reads its receiver as ${value.typeFqn}, but " +
+            (slotScope?.let { "it composes under `$it`" } ?: "it composes under no receiver")
+        return null
+      }
+      return "this"
+    }
+
+    /** A template local, checked against the type its templates declare it at. */
+    private fun localRead(value: ScreenValue.LocalRead, where: String): String? {
+      val declared = locals[value.name]
+      if (declared != value.typeFqn) {
+        reasons +=
+          "$where reads template local `${value.name}` as ${value.typeFqn}, but " +
+            (declared?.let { "the templates declare it as $it" } ?: "no template declares it")
+        return null
+      }
+      return value.name
     }
 
     /** A document key as a Kotlin local: its identifier characters, never a keyword or empty. */
@@ -1638,6 +1697,8 @@ object ScreenGenerator {
         is ScreenValue.RowRead -> rowRead(value, where)
         is ScreenValue.SlotParameterRead -> slotParameterRead(value, where)
         is ScreenValue.ParameterRead -> parameterRead(value, where)
+        is ScreenValue.ScopeRead -> scopeRead(value, where)
+        is ScreenValue.LocalRead -> localRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
