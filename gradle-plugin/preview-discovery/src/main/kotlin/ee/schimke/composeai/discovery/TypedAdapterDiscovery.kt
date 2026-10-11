@@ -88,6 +88,124 @@ object TypedAdapterDiscovery {
   }
 
   /**
+   * A library composable a typed definition targets: its JVM file facade [owner] and source [name].
+   * Kotlin overloads it by name, as Wear's `Button` is overloaded on `label` and `content`, so
+   * [declaring] picks the overload the record's own parameters come from: the one non-deprecated
+   * overload declaring every name in it. Empty picks the only non-deprecated overload.
+   */
+  data class LibraryCallable(
+    val owner: String,
+    val name: String,
+    val declaring: Set<String> = emptySet(),
+  )
+
+  /**
+   * Metadata-only discovery of the real library composables a catalog's typed definitions target,
+   * for an export projection to call them as they are. Unlike [discover], a callable may be
+   * overloaded: every overload with readable metadata is published as [ComponentRecord.overloads],
+   * so validation resolves a projection's arguments the way Kotlin resolves named arguments, and
+   * the record's own parameters are the overload [LibraryCallable] picks. A deprecated overload is
+   * never picked, and is not published.
+   */
+  fun discoverLibrary(
+    module: String,
+    variant: String,
+    callables: List<LibraryCallable>,
+    classpath: List<File>? = null,
+  ): ComponentRecordFile {
+    require(module.isNotBlank() && variant.isNotBlank()) { "module and variant must be non-blank" }
+    require(
+      callables.isNotEmpty() && callables.distinctBy { it.owner to it.name }.size == callables.size
+    ) {
+      "declare distinct library callables"
+    }
+    require(callables.all { it.owner.contains('.') && it.name.isNotBlank() }) {
+      "callables require a qualified owner and a source name"
+    }
+    val graph =
+      ClassGraph()
+        .enableClassInfo()
+        .enableMethodInfo()
+        .enableAnnotationInfo()
+        .acceptClasses(*callables.map { it.owner }.distinct().toTypedArray())
+    if (classpath != null) graph.overrideClasspath(classpath)
+    return graph.scan().use { scan ->
+      val components =
+        callables
+          .map { selected ->
+            val where = "${selected.owner}.${selected.name}"
+            val owner =
+              requireNotNull(scan.getClassInfo(selected.owner)) {
+                "missing compiled owner ${selected.owner}"
+              }
+            require(ComposableSignature.isTopLevel(owner)) {
+              "$where: not a top-level Kotlin file facade"
+            }
+            val overloads =
+              owner.methodInfo
+                .filter { it.isStatic && !ComposableSignature.isDeprecated(it) }
+                .mapNotNull { method ->
+                  ComposableSignature.signatureOf(owner, method, scan)
+                    ?.takeIf { it.name == selected.name }
+                    ?.let { method to it }
+                }
+            require(overloads.isNotEmpty()) {
+              "$where: no non-deprecated overload with readable metadata"
+            }
+            val picked = overloads.filter { (_, signature) ->
+              selected.declaring.all { name -> signature.parameters.any { it.name == name } }
+            }
+            require(picked.size == 1) {
+              "$where: ${picked.size} non-deprecated overloads declare ${selected.declaring.sorted()}; " +
+                "name parameters that pick one of " +
+                overloads.joinToString("; ") { (_, s) ->
+                  s.parameters.joinToString(", ", "(", ")") { it.name }
+                }
+            }
+            val (method, signature) = picked.single()
+            val record =
+              ComponentRecord.Builder(
+                  "$module/${selected.owner}.${signature.name}",
+                  ComponentSymbol.Builder(
+                      selected.owner,
+                      selected.owner.substringBeforeLast('.') + "." + signature.name,
+                      signature.name,
+                      ComponentOrigin.LIBRARY,
+                    )
+                    .also {
+                      it.descriptor = method.typeDescriptorStr
+                      it.jvmName = method.name
+                      it.receiver = signature.receiver
+                    }
+                    .build(),
+                )
+                .also {
+                  it.signatureKnown = true
+                  it.parameters = signature.parameters
+                  it.slots = ComponentRecords.slotsOf(signature.parameters)
+                  it.callableFromAnotherFile = signature.callableFromAnotherFile
+                  it.hasTypeParameters = signature.hasTypeParameters
+                  it.hasContextReceivers = signature.hasContextReceivers
+                  it.requiredOptIns = signature.requiredOptIns
+                  it.androidxOptIns = signature.androidxOptIns
+                  it.overloads = overloads.map { (m, s) ->
+                    ComponentOverload.Builder()
+                      .also { o ->
+                        o.descriptor = m.typeDescriptorStr
+                        o.parameters = s.parameters
+                      }
+                      .build()
+                  }
+                }
+                .build()
+            record.newBuilder().also { it.code = ComponentSnippets.codeFor(record) }.build()
+          }
+          .sortedBy { it.canonicalId }
+      ComponentRecordFile.Builder(module, variant, components).build()
+    }
+  }
+
+  /**
    * The factories a typed definition's export projection calls — `ButtonDefaults` members such as
    * `filledTonalButtonColors` — with every overload's parameters and return type, so
    * [TypedComponentAdapter.validateAgainst] can check a `call(…)` by argument name and type rather
