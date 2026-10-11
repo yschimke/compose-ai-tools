@@ -378,7 +378,7 @@ class DoctorCommand(
         remediation =
           DoctorRemediation(
             summary =
-              "Bootstrap the CLI + skill bundle and write JAVA_HOME/PATH to \$CLAUDE_ENV_FILE.",
+              "Bootstrap the CLI + skill bundle; the compose-preview plugin puts it on PATH.",
             commands =
               listOf(
                 "curl -fsSL https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh | bash"
