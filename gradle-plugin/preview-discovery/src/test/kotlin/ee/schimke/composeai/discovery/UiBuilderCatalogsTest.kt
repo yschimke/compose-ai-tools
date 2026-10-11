@@ -1947,6 +1947,25 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `a list item's template may write its stable key`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(
+          code =
+            UiBuilderCode.Builder()
+              .also { b ->
+                b.strategy = "templates"
+                b.templates = mapOf("list-item" to "item\${key} {\n  \${children}\n}")
+              }
+              .build()
+        ),
+      )!!
+    assertThat(generated.diagnostics.filter { it.code.startsWith("policy.code.") }).isEmpty()
+  }
+
+  @Test
   fun `a template hole no role supplies is reported against the role`() {
     // `${'$'}{contnet}` is a valid name; only knowing which names the role provides catches it,
     // rather than export failing much later.
