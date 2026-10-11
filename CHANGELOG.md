@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.49.0](https://github.com/yschimke/compose-ai-tools/compare/v2.48.0...v2.49.0) (2026-10-11)
+
+
+### Features
+
+* **screen:** let a projection target wrap a DSL slot's children in an item member ([#5864](https://github.com/yschimke/compose-ai-tools/issues/5864)) ([e0ba58f](https://github.com/yschimke/compose-ai-tools/commit/e0ba58f83fad46e0a1f2ac03d3b151ebcceeecc6))
+* **screen:** write a catalog's screen-root frame around the generated root ([#5861](https://github.com/yschimke/compose-ai-tools/issues/5861)) ([6d4ca9d](https://github.com/yschimke/compose-ai-tools/commit/6d4ca9de18f5c29d0754659dd662c9397249837e))
+* **ui-builder:** list and object properties for typed adapters ([#5865](https://github.com/yschimke/compose-ai-tools/issues/5865)) ([352617d](https://github.com/yschimke/compose-ai-tools/commit/352617db7a77c14eec9a48ca8906286c254f77ff))
+
 ## [2.48.0](https://github.com/yschimke/compose-ai-tools/compare/v2.47.0...v2.48.0) (2026-10-11)
 
 
