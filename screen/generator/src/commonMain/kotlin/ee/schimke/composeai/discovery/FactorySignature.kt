@@ -11,9 +11,13 @@ package ee.schimke.composeai.discovery
  *
  * @property callableFqn the qualified call, `…material3.ButtonDefaults.filledTonalButtonColors`.
  * @property returnTypeFqn the declared return type, `…material3.ButtonColors`.
+ * @property returnSupertypes every class and interface [returnTypeFqn] extends, transitively, so a
+ *   call can be passed where a supertype is taken: `Arrangement.spacedBy` returns a
+ *   `HorizontalOrVertical` for a `verticalArrangement: Arrangement.Vertical`.
  */
 data class FactorySignature(
   val callableFqn: String,
   val returnTypeFqn: String,
   val parameters: List<TargetParameter>,
+  val returnSupertypes: Set<String> = emptySet(),
 )
