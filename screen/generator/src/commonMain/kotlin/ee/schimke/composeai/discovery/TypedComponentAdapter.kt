@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 
@@ -28,6 +29,13 @@ interface AdapterValueCodec<T> {
   val stateType: String?
     get() = jsonType.takeIf { it in STATE_TYPES }
 
+  /**
+   * How a value of this codec is written into exported source, when it can be: the same wire value
+   * lowered by an [ExportProjection]. Null for a codec the projection vocabulary cannot print.
+   */
+  val exportCodec: ExportProjection.Codec?
+    get() = null
+
   fun encode(value: T): JsonElement
 
   fun decode(value: JsonElement): T
@@ -41,6 +49,7 @@ object AdapterValueCodecs {
     object : AdapterValueCodec<String> {
       override val jsonType = "string"
       override val kotlinType = "kotlin.String"
+      override val exportCodec = ExportProjection.Codec.Text
 
       override fun encode(value: String): JsonElement = JsonPrimitive(value)
 
@@ -54,6 +63,7 @@ object AdapterValueCodecs {
     object : AdapterValueCodec<Boolean> {
       override val jsonType = "boolean"
       override val kotlinType = "kotlin.Boolean"
+      override val exportCodec = ExportProjection.Codec.Bool
 
       override fun encode(value: Boolean): JsonElement = JsonPrimitive(value)
 
@@ -67,6 +77,7 @@ object AdapterValueCodecs {
     object : AdapterValueCodec<Int> {
       override val jsonType = "integer"
       override val kotlinType = "kotlin.Int"
+      override val exportCodec = ExportProjection.Codec.Whole
 
       override fun encode(value: Int): JsonElement = JsonPrimitive(value)
 
@@ -75,6 +86,112 @@ object AdapterValueCodecs {
         return requireNotNull(value.intOrNull) { "expected a JSON integer" }
       }
     }
+
+  /** A finite float; binds to a `number` state variable. */
+  val Float: AdapterValueCodec<Float> =
+    object : AdapterValueCodec<Float> {
+      override val jsonType = "number"
+      override val kotlinType = "kotlin.Float"
+      override val stateType = "number"
+      override val exportCodec = ExportProjection.Codec.Fractional32
+
+      override fun encode(value: Float): JsonElement {
+        require(value.isFinite()) { "expected a finite number" }
+        return JsonPrimitive(value)
+      }
+
+      override fun decode(value: JsonElement): Float {
+        require(value is JsonPrimitive && !value.isString) { "expected a JSON number" }
+        return requireNotNull(value.floatOrNull?.takeIf { it.isFinite() }) {
+          "expected a finite number"
+        }
+      }
+    }
+
+  /**
+   * A colour as the builder stores it, `#RRGGBB`/`#AARRGGBB`, `transparent` or a theme role,
+   * decoded to a [WireColor] the renderer resolves against its own theme. Empty is
+   * [WireColor.Unset]: the component's own colour.
+   */
+  fun color(export: ExportProjection.Codec.Color): AdapterValueCodec<WireColor> =
+    object : AdapterValueCodec<WireColor> {
+      override val jsonType = "string"
+      override val kotlinType = "androidx.compose.ui.graphics.Color"
+      override val stateType: String? = null
+      override val exportCodec = export
+
+      override fun encode(value: WireColor): JsonElement = JsonPrimitive(value.wire)
+
+      override fun decode(value: JsonElement): WireColor {
+        require(value is JsonPrimitive && value.isString) { "expected a colour string" }
+        return WireColor.parse(value.content, export.tokens)
+          ?: throw IllegalArgumentException("`${value.content}` is not a colour")
+      }
+    }
+
+  /**
+   * One of a closed set of wire values, each naming a Kotlin member ([members]: wire value to the
+   * member's qualified name). Decodes to the wire value; the renderer maps it to the real member.
+   */
+  fun enumOf(typeFqn: String, members: Map<String, String>): AdapterValueCodec<String> =
+    object : AdapterValueCodec<String> {
+      override val jsonType = "string"
+      override val kotlinType = typeFqn
+      override val stateType: String? = null
+      override val exportCodec = ExportProjection.Codec.Enum(typeFqn, members)
+
+      override fun encode(value: String): JsonElement = JsonPrimitive(value)
+
+      override fun decode(value: JsonElement): String {
+        require(value is JsonPrimitive && value.isString && value.content in members) {
+          "expected one of ${members.keys.sorted()}"
+        }
+        return value.content
+      }
+    }
+}
+
+/** A colour as a design stores it, before a theme resolves a role. */
+sealed interface WireColor {
+  val wire: String
+
+  /** No colour authored: the component keeps its own. */
+  data object Unset : WireColor {
+    override val wire = ""
+  }
+
+  data class Argb(val argb: Long) : WireColor {
+    override val wire: String
+      get() = "#" + argb.toString(16).uppercase().padStart(8, '0')
+  }
+
+  data object Transparent : WireColor {
+    override val wire = "transparent"
+  }
+
+  /** A colour-scheme role by the catalog's token name. */
+  data class Role(val token: String) : WireColor {
+    override val wire: String
+      get() = token
+  }
+
+  companion object {
+    fun parse(value: String, tokens: Set<String>? = null): WireColor? =
+      when {
+        value.isEmpty() -> Unset
+        value == "transparent" -> Transparent
+        value.startsWith("#") -> {
+          val hex = value.removePrefix("#")
+          when (hex.length) {
+            6 -> "FF$hex".toLongOrNull(16)
+            8 -> hex.toLongOrNull(16)
+            else -> null
+          }?.let(::Argb)
+        }
+        value.all { it.isLetterOrDigit() } && (tokens == null || value in tokens) -> Role(value)
+        else -> null
+      }
+  }
 }
 
 /** A property reference and its wire identity, owned by exactly one adapter definition. */
@@ -86,6 +203,8 @@ internal constructor(
   val codec: AdapterValueCodec<T>,
   val default: T,
   val bindable: Boolean,
+  /** A builder property with no parameter of its own: lowered by the adapter's projection. */
+  val wireOnly: Boolean = false,
 ) {
   fun decode(value: JsonElement?): T = if (value == null) default else codec.decode(value)
 
@@ -144,6 +263,16 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   private val declaredSlots = mutableListOf<AdapterSlot<P>>()
   private val declaredEvents = mutableListOf<AdapterEvent<P>>()
   private val declaredChanges = mutableListOf<AdapterStateChange<P, *>>()
+  private var declaredProjection: ExportProjection? = null
+  private val projectionRecords = mutableListOf<ComponentRecord>()
+
+  /** How a design using this component is exported onto real records, when declared. */
+  val projection: ExportProjection?
+    get() = declaredProjection
+
+  /** Every record the [projection] may lower onto besides [component]: its variant targets. */
+  val variantRecords: List<ComponentRecord>
+    get() = projectionRecords.filter { it.canonicalId != component.canonicalId }
 
   init {
     require(Regex("[a-z0-9-]+/[a-z0-9/-]+").matches(id)) { "invalid adapter component id: $id" }
@@ -180,6 +309,84 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     }
     return AdapterProperty(this, reference, name, codec, default, bindable)
       .also(declaredProperties::add)
+  }
+
+  /**
+   * A builder property that is not a parameter of [component] — `variant`, `containerColor` — and
+   * reaches the real call only through this adapter's [exportAs] projection (and its renderer).
+   */
+  protected fun <T> wireProperty(
+    reference: KProperty1<P, T>,
+    codec: AdapterValueCodec<T>,
+    default: T,
+    name: String = reference.name,
+    bindable: Boolean = codec.stateType != null,
+  ): AdapterProperty<P, T> {
+    require(!bindable || codec.stateType in STATE_TYPES) {
+      "$id.$name: codec ${codec.jsonType} has no supported state type; use a literal property"
+    }
+    declare(name)
+    require(codec.decode(codec.encode(default)) == default) {
+      "$id.$name: default does not round trip"
+    }
+    return AdapterProperty(this, reference, name, codec, default, bindable, wireOnly = true)
+      .also(declaredProperties::add)
+  }
+
+  /** One record this adapter's export may become, with how its parameters are written. */
+  class ProjectionTarget
+  internal constructor(
+    internal val record: ComponentRecord,
+    internal val target: ExportProjection.Target,
+  )
+
+  /**
+   * A target for [exportAs]: the real [record], selected by [variants] (null for the default), its
+   * [parameters] written from declared properties, and the wire [slots] / [events] renamed onto its
+   * parameters.
+   */
+  protected fun target(
+    record: ComponentRecord,
+    parameters: Map<String, ExportProjection.Value>,
+    variants: Set<String>? = null,
+    slots: Map<String, String> = emptyMap(),
+    events: Map<String, String> = emptyMap(),
+  ): ProjectionTarget =
+    ProjectionTarget(
+      record,
+      ExportProjection.Target(record.canonicalId, parameters, variants, slots, events),
+    )
+
+  /** A declared property written through its codec, skipped when it equals [omitWhen]. */
+  protected fun from(property: AdapterProperty<P, *>, omitWhen: JsonPrimitive? = null) =
+    ExportProjection.Value.Property(
+      property.name,
+      requireNotNull(property.codec.exportCodec) {
+        "$id.${property.name}: codec ${property.codec.jsonType} cannot be exported"
+      },
+      omitWhen,
+    )
+
+  /** A nested factory call of declared properties, written when any argument is. */
+  protected fun call(
+    callableFqn: String,
+    typeFqn: String,
+    vararg arguments: Pair<String, ExportProjection.Value>,
+  ) = ExportProjection.Value.Call(callableFqn, typeFqn, arguments.toMap())
+
+  /**
+   * Export this component onto real records: [variant] (a declared property) picks among [targets];
+   * exactly one target may be the default. Replaces hand-written export for this id.
+   */
+  protected fun exportAs(vararg targets: ProjectionTarget, variant: AdapterProperty<P, *>? = null) {
+    check(!frozen) { "$id: adapter definition is already frozen" }
+    check(declaredProjection == null) { "$id: export projection already declared" }
+    require(variant == null || variant.owner === this) { "variant belongs to another adapter" }
+    require(targets.any { it.record.canonicalId == component.canonicalId }) {
+      "$id: the adapter's own record must be one of its export targets"
+    }
+    declaredProjection = ExportProjection(targets.map { it.target }, variant?.name)
+    projectionRecords += targets.map { it.record }
   }
 
   protected fun slot(name: String, required: Boolean = false): AdapterSlot<P> {
@@ -223,7 +430,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     if (record.canonicalId != component.canonicalId) add("$id: component record identity changed")
     if (!record.signatureKnown) add("$id: component signature is unknown")
     val parameters = record.parameters.associateBy { it.name }
+    val projected = declaredProjection?.targets?.firstOrNull { it.record == record.canonicalId }
     for (property in declaredProperties) {
+      if (property.wireOnly) {
+        if (declaredProjection == null) add("$id.${property.name}: a wire property needs exportAs")
+        continue
+      }
       val parameter = parameters[property.name]
       if (parameter == null) add("$id: unknown property ${property.name}")
       else if (parameter.typeFqn != property.codec.kotlinType || parameter.nullable) {
@@ -233,23 +445,120 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       }
     }
     for (slot in declaredSlots) {
-      if (parameters[slot.name]?.composableSlot != true)
-        add("$id: ${slot.name} is not a composable slot")
+      val name = projected?.slots?.get(slot.name) ?: slot.name
+      if (parameters[name]?.composableSlot != true) add("$id: $name is not a composable slot")
     }
     for (event in declaredEvents) {
-      if (!matchesCallback(parameters[event.name], null))
-        add("$id: ${event.name} is not a () -> Unit callback")
+      val name = projected?.events?.get(event.eventName) ?: event.name
+      if (!matchesCallback(parameters[name], null)) add("$id: $name is not a () -> Unit callback")
     }
     for (change in declaredChanges) {
       val type = change.property.codec.kotlinType.substringAfterLast('.')
       if (!matchesCallback(parameters[change.name], change.property.codec.kotlinType))
         add("$id: ${change.name} is not a ($type) -> Unit callback")
     }
-    for (parameter in record.parameters) {
-      if (!parameter.hasDefault && parameter.name !in declaredNames)
-        add("$id: required parameter ${parameter.name} is not adapted")
+    if (declaredProjection == null) {
+      for (parameter in record.parameters) {
+        if (!parameter.hasDefault && parameter.name !in declaredNames)
+          add("$id: required parameter ${parameter.name} is not adapted")
+      }
     }
+    declaredProjection?.let { projection -> addAll(validateProjection(projection, record)) }
   }
+
+  /**
+   * Every target of [projection] against its discovered record ([record] stands in for the
+   * adapter's own): parameters exist and take what is written, slots and events name real slots and
+   * callbacks, and every required parameter is written, renamed onto, or supplied by the record's
+   * own call site.
+   */
+  private fun validateProjection(projection: ExportProjection, record: ComponentRecord) =
+    buildList {
+      val properties = declaredProperties.associateBy { it.name }
+      projection.variantProperty?.let { name ->
+        if (name !in properties) add("$id: variant property $name is not declared")
+      }
+      val records =
+        projectionRecords.associateBy { it.canonicalId } + (record.canonicalId to record)
+      for (target in projection.targets) {
+        val targetRecord = records[target.record]
+        if (targetRecord == null) {
+          add("$id: export target ${target.record} has no discovered record")
+          continue
+        }
+        val where = "$id -> ${targetRecord.symbol.name}"
+        if (!targetRecord.signatureKnown) add("$where: signature is unknown")
+        val parameters = targetRecord.parameters.associateBy { it.name }
+        for ((name, value) in target.parameters) {
+          val parameter = parameters[name]
+          if (parameter == null) {
+            add("$where: no parameter $name")
+            continue
+          }
+          val written = writtenType(value, properties, "$where.$name", this)
+          if (written != null && written != parameter.typeFqn)
+            add("$where.$name: writes $written, parameter takes ${parameter.typeFqn}")
+        }
+        for (slot in declaredSlots) {
+          val name = target.slots[slot.name] ?: slot.name
+          if (parameters[name]?.composableSlot != true)
+            add("$where: slot ${slot.name} -> $name is not a composable slot")
+        }
+        for ((event, name) in target.events) {
+          if (declaredEvents.none { it.eventName == event })
+            add("$where: event $event is not declared")
+          if (!matchesCallback(parameters[name], null))
+            add("$where: $name is not a () -> Unit callback")
+        }
+        val covered =
+          target.parameters.keys +
+            declaredSlots.map { target.slots[it.name] ?: it.name } +
+            target.events.values +
+            declaredChanges.map { it.name } +
+            declaredProperties.filterNot { it.wireOnly }.map { it.name }
+        val placeholders = targetRecord.code?.call
+        for (parameter in targetRecord.parameters) {
+          if (parameter.hasDefault || parameter.name in covered) continue
+          if (placeholders != null && "${parameter.name} =" in placeholders) continue
+          add("$where: required parameter ${parameter.name} is not written")
+        }
+      }
+    }
+
+  /** The Kotlin type [value] writes, after checking the properties it reads exist and export. */
+  private fun writtenType(
+    value: ExportProjection.Value,
+    properties: Map<String, AdapterProperty<P, *>>,
+    where: String,
+    problems: MutableList<String>,
+  ): String? =
+    when (value) {
+      is ExportProjection.Value.Fixed -> null
+      is ExportProjection.Value.Call -> {
+        for ((name, argument) in value.arguments) writtenType(
+          argument,
+          properties,
+          "$where.$name",
+          problems,
+        )
+        value.typeFqn
+      }
+      is ExportProjection.Value.Property -> {
+        val property = properties[value.name]
+        if (property == null) {
+          problems += "$where: property ${value.name} is not declared"
+          null
+        } else
+          when (val codec = value.codec) {
+            ExportProjection.Codec.Text -> "kotlin.String"
+            ExportProjection.Codec.Bool -> "kotlin.Boolean"
+            ExportProjection.Codec.Whole -> "kotlin.Int"
+            ExportProjection.Codec.Fractional32 -> "kotlin.Float"
+            is ExportProjection.Codec.Color -> COLOR_TYPE
+            is ExportProjection.Codec.Enum -> codec.typeFqn
+          }
+      }
+    }
 
   // Callback input classifiers are not qualified in the current discovery contract. Check exact
   // tokens (never erase arbitrary package substrings), structural function/receiver flags and the
@@ -332,6 +641,9 @@ internal constructor(val record: ComponentRecordFile, val catalog: UiBuilderCata
  * point.
  */
 object TypedAdapterCatalog {
+  private fun variantId(adapter: TypedComponentAdapter<*>, variant: ComponentRecord) =
+    "${adapter.id}-${variant.symbol.name.lowercase()}"
+
   fun generate(
     discovered: ComponentRecordFile,
     cover: UiBuilderCatalogs.CoverSheet,
@@ -355,32 +667,59 @@ object TypedAdapterCatalog {
     }
     val byId = discovered.components.associateBy { it.canonicalId }
     adapters.forEach { adapter ->
-      val current =
-        requireNotNull(byId[adapter.component.canonicalId]) {
-          "${adapter.id}: record is absent from discovery"
+      for (expected in listOf(adapter.component) + adapter.variantRecords) {
+        val current =
+          requireNotNull(byId[expected.canonicalId]) {
+            "${adapter.id}: record ${expected.canonicalId} is absent from discovery"
+          }
+        require(current == expected) {
+          "${adapter.id}: adapter was built against a stale component record"
         }
-      require(current == adapter.component) {
-        "${adapter.id}: adapter was built against a stale component record"
       }
       adapter.freeze()
     }
+    // A projection's variant targets (`FilledTonalButton` for a `variant` of `Button`) ship in the
+    // record so export can print them, kept off the shelf: the adapter's id is their one identity.
+    val variants =
+      adapters
+        .flatMap { adapter -> adapter.variantRecords.map { adapter to it } }
+        .distinctBy { it.second.canonicalId }
+        .filter { (_, record) -> adapters.none { it.component.canonicalId == record.canonicalId } }
     val record =
       discovered
         .newBuilder()
         .also { b ->
-          b.components = adapters.map { it.recordWithPolicy() }
+          b.components = adapters.map { it.recordWithPolicy() } + variants.map { it.second }
           b.builderOrphans = emptyList()
         }
         .build()
     val authored =
       policy
         .newBuilder()
-        .also { b -> b.components = adapters.associate { it.id to it.policy() } }
+        .also { b ->
+          b.components =
+            adapters.associate { it.id to it.policy() } +
+              variants.associate { (adapter, variant) ->
+                variantId(adapter, variant) to
+                  UiBuilderAuthoredComponent.Builder()
+                    .also {
+                      it.record = variant.canonicalId
+                      it.excluded = "an export target of ${adapter.id}, selected by its variant"
+                    }
+                    .build()
+              }
+        }
         .build()
     val catalog = requireNotNull(UiBuilderCatalogs.generate(record, cover, authored))
-    require(catalog.diagnostics.isEmpty()) {
-      catalog.diagnostics.joinToString("\n") { "${it.code}: ${it.message}" }
-    }
+    // The one finding generation expects is the variant targets it kept off the shelf itself.
+    val variantIds = variants.map { (adapter, variant) -> variantId(adapter, variant) }.toSet()
+    val unexpected =
+      catalog.diagnostics.filterNot {
+        it.code == UiBuilderCatalogs.Diagnostics.COMPONENT_EXCLUDED && it.subject in variantIds
+      }
+    require(unexpected.isEmpty()) { unexpected.joinToString("\n") { "${it.code}: ${it.message}" } }
     return GeneratedAdapterCatalog(record, catalog)
   }
 }
+
+private const val COLOR_TYPE = "androidx.compose.ui.graphics.Color"

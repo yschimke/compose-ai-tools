@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.45.0](https://github.com/yschimke/compose-ai-tools/compare/v2.43.0...v2.45.0) (2026-10-11)
+
+
+### Features
+
+* **cloud:** provision every JDK the build needs, and point cloud setup at coo.ee ([#5824](https://github.com/yschimke/compose-ai-tools/issues/5824)) ([2f25a02](https://github.com/yschimke/compose-ai-tools/commit/2f25a027179c7ab5469d86513db765d892348c6e))
+* **discovery:** choose each component's overload by what its builder policy covers, never a deprecated one ([#5811](https://github.com/yschimke/compose-ai-tools/issues/5811)) ([dc30c76](https://github.com/yschimke/compose-ai-tools/commit/dc30c762e68b531d66b24f558fd8e27adfe47a36))
+* **guidelines:** an experimental text-only Jev checker behind --checker jev ([#5804](https://github.com/yschimke/compose-ai-tools/issues/5804)) ([d5d512b](https://github.com/yschimke/compose-ai-tools/commit/d5d512b5ad419f84ca66d9ab16f56a3cd8a5b63c))
+* **screen:** export projections that lower catalog properties onto real composables ([#5828](https://github.com/yschimke/compose-ai-tools/issues/5828)) ([f4ae780](https://github.com/yschimke/compose-ai-tools/commit/f4ae78065decab55d629b7d0ac7802c0499c6f7f))
+* **ui-builder:** publish a catalog's design tokens for the Theme panel ([#5813](https://github.com/yschimke/compose-ai-tools/issues/5813)) ([49b218f](https://github.com/yschimke/compose-ai-tools/commit/49b218f7cc8b883d4c1d61e7676a24d2f02cd77c))
+
+
+### Bug Fixes
+
+* **bundle:** bound inflation in canonicalDigest and readSignatures ([#5821](https://github.com/yschimke/compose-ai-tools/issues/5821)) ([b7130b9](https://github.com/yschimke/compose-ai-tools/commit/b7130b99bcab2441401af0cddd97c33ec254974a))
+* **bundle:** charge skipped zip entries to the inflation budget too ([#5822](https://github.com/yschimke/compose-ai-tools/issues/5822)) ([f80cee4](https://github.com/yschimke/compose-ai-tools/commit/f80cee4ec49978b1586ae959632d799f88f52938))
+* **ci:** give the UID design audit time to finish a 100-capture plan ([#5817](https://github.com/yschimke/compose-ai-tools/issues/5817)) ([fd0eab7](https://github.com/yschimke/compose-ai-tools/commit/fd0eab78f45b693eb5a407b189942090c79e5e0e))
+* **cli:** stage rc jvm libs whose file names collide across groups ([#5820](https://github.com/yschimke/compose-ai-tools/issues/5820)) ([b787be3](https://github.com/yschimke/compose-ai-tools/commit/b787be35919c006ee2b6a426449937c16e919fb9))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.27.0 ([#5819](https://github.com/yschimke/compose-ai-tools/issues/5819)) ([1600965](https://github.com/yschimke/compose-ai-tools/commit/1600965e58b50ce10bd22dc3fae3ce814e812204))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.5.0 ([#5801](https://github.com/yschimke/compose-ai-tools/issues/5801)) ([97faa98](https://github.com/yschimke/compose-ai-tools/commit/97faa985b5f099823d86f6f42b06994d9a582703))
+* **guidelines:** a jev prefetch that throws fails the previews it was for ([#5814](https://github.com/yschimke/compose-ai-tools/issues/5814)) ([37f6885](https://github.com/yschimke/compose-ai-tools/commit/37f68855cb10aa6d2070321cd4de32931a7b4ee7))
+* **guidelines:** control the model's reasoning, and recover a reply that spent its budget thinking ([#5815](https://github.com/yschimke/compose-ai-tools/issues/5815)) ([c1f72f0](https://github.com/yschimke/compose-ai-tools/commit/c1f72f03e8d534dedfbdb837e2b28d8a47accc3c))
+* **guidelines:** jev host calls on one thread, rate-limit pause before waking waiters, one checker per report ([#5810](https://github.com/yschimke/compose-ai-tools/issues/5810)) ([8fdb40d](https://github.com/yschimke/compose-ai-tools/commit/8fdb40db5321901b853127328e194aed1f49d559))
+* publish all four included-build coordinates together, and scan configured component libraries ([#5812](https://github.com/yschimke/compose-ai-tools/issues/5812)) ([65c4898](https://github.com/yschimke/compose-ai-tools/commit/65c4898caa83d204ee9d775b1ed30304724e1548))
+
 ## [2.44.0](https://github.com/yschimke/compose-ai-tools/compare/v2.43.0...v2.44.0) (2026-10-11)
 
 
