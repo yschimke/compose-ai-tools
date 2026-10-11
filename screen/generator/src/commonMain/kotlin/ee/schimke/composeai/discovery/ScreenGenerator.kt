@@ -239,7 +239,7 @@ object ScreenGenerator {
     // (which would recurse). A simple name is used only when exactly one component wants it and the
     // screen does not; the rest are called fully qualified. Nesting inside receiver-scoped slots
     // does not require qualification — imports resolve there as in hand-written code.
-    val functionIssues = validateFunctions(document, preview)
+    val functionIssues = validateFunctions(document, preview, output)
     if (functionIssues.isNotEmpty()) return Result.Refused(functionIssues)
     // Names a catalog's templates define around this code (`UiBuilderCode.locals`). They are read,
     // never declared, here, so one the document also declares would be two meanings for a name.
@@ -648,71 +648,75 @@ object ScreenGenerator {
     return types.flatten().size == types.flatten().toSet().size
   }
 
-  private fun validateFunctions(document: ScreenDocument, preview: Preview?): List<String> =
-    buildList {
-      val names = document.functions.map { it.name }
-      if (names.toSet().size != names.size) add("function names must be unique")
-      val reserved = buildSet {
-        addAll(document.state.map { it.name })
-        add(document.name)
-        addAll(RESERVED_BY_THE_WRAPPER)
-        if (preview != null) {
-          add(PREVIEW_SIMPLE_NAME)
-          add(previewFunctionName(document.name))
-          if (preview.screenSizes) {
-            add(PREVIEW_SCREEN_SIZES_SIMPLE_NAME)
-            add(screenSizesPreviewFunctionName(document.name))
-          }
-          if (preview.devices.isNotEmpty()) add(devicesPreviewFunctionName(document.name))
+  private fun validateFunctions(
+    document: ScreenDocument,
+    preview: Preview?,
+    output: Output,
+  ): List<String> = buildList {
+    val names = document.functions.map { it.name }
+    if (names.toSet().size != names.size) add("function names must be unique")
+    val reserved = buildSet {
+      addAll(document.state.map { it.name })
+      // A components file declares no screen, so a component may take the screen's name.
+      if (output == Output.SCREEN) add(document.name)
+      addAll(RESERVED_BY_THE_WRAPPER)
+      if (preview != null) {
+        add(PREVIEW_SIMPLE_NAME)
+        add(previewFunctionName(document.name))
+        if (preview.screenSizes) {
+          add(PREVIEW_SCREEN_SIZES_SIMPLE_NAME)
+          add(screenSizesPreviewFunctionName(document.name))
         }
+        if (preview.devices.isNotEmpty()) add(devicesPreviewFunctionName(document.name))
       }
-      document.functions.forEach { function ->
-        if (!isUsableIdentifier(function.name) || function.name in reserved) {
-          add("function `${function.name}` is not an available Kotlin function name")
-        }
-        val parameters = function.parameters.map { it.name }
-        if (parameters.toSet().size != parameters.size)
-          add("function `${function.name}` has duplicate parameters")
-        function.parameters.forEach { parameter ->
-          if (!isUsableIdentifier(parameter.name))
-            add("function `${function.name}` has an unusable parameter `${parameter.name}`")
-          if (
-            parameter is ScreenParameter.Value &&
-              (!isQualifiedName(parameter.typeFqn) ||
-                parameter.typeFqn.split('.').any { !isUsableIdentifier(it) } ||
-                parameter.typeFqn.startsWith("kotlin.Function"))
-          ) {
-            add(
-              "function `${function.name}` parameter `${parameter.name}` needs a concrete qualified value type; callbacks use Callback"
-            )
-          }
-        }
-      }
-      val definitions = document.functions.associateBy { it.name }
-      val visited = mutableSetOf<String>()
-      val active = mutableSetOf<String>()
-      fun references(node: ScreenNode, depth: Int = 0): Set<String> {
-        if (depth > 128) {
-          add("function tree exceeds 128 levels")
-          return emptySet()
-        }
-        return listOfNotNull(node.function).toSet() +
-          node.slots.values.flatten().flatMap { references(it, depth + 1) }
-      }
-      fun visit(name: String) {
-        if (name in visited) return
-        if (name in active || active.size >= 128) {
-          add("recursive or excessively nested function call `$name`")
-          return
-        }
-        val function = definitions[name] ?: return
-        active += name
-        references(function.root).forEach(::visit)
-        active -= name
-        visited += name
-      }
-      names.forEach(::visit)
     }
+    document.functions.forEach { function ->
+      if (!isUsableIdentifier(function.name) || function.name in reserved) {
+        add("function `${function.name}` is not an available Kotlin function name")
+      }
+      val parameters = function.parameters.map { it.name }
+      if (parameters.toSet().size != parameters.size)
+        add("function `${function.name}` has duplicate parameters")
+      function.parameters.forEach { parameter ->
+        if (!isUsableIdentifier(parameter.name))
+          add("function `${function.name}` has an unusable parameter `${parameter.name}`")
+        if (
+          parameter is ScreenParameter.Value &&
+            (!isQualifiedName(parameter.typeFqn) ||
+              parameter.typeFqn.split('.').any { !isUsableIdentifier(it) } ||
+              parameter.typeFqn.startsWith("kotlin.Function"))
+        ) {
+          add(
+            "function `${function.name}` parameter `${parameter.name}` needs a concrete qualified value type; callbacks use Callback"
+          )
+        }
+      }
+    }
+    val definitions = document.functions.associateBy { it.name }
+    val visited = mutableSetOf<String>()
+    val active = mutableSetOf<String>()
+    fun references(node: ScreenNode, depth: Int = 0): Set<String> {
+      if (depth > 128) {
+        add("function tree exceeds 128 levels")
+        return emptySet()
+      }
+      return listOfNotNull(node.function).toSet() +
+        node.slots.values.flatten().flatMap { references(it, depth + 1) }
+    }
+    fun visit(name: String) {
+      if (name in visited) return
+      if (name in active || active.size >= 128) {
+        add("recursive or excessively nested function call `$name`")
+        return
+      }
+      val function = definitions[name] ?: return
+      active += name
+      references(function.root).forEach(::visit)
+      active -= name
+      visited += name
+    }
+    names.forEach(::visit)
+  }
 
   /**
    * Resolves a document's component id, by canonical key or by catalog alias. Two indexes because

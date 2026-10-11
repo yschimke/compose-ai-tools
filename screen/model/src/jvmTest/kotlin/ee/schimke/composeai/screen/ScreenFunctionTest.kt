@@ -114,6 +114,20 @@ class ScreenFunctionTest {
   }
 
   @Test
+  fun `a component in a components file may take the screen's name`() {
+    val document = document().copy(state = emptyList(), root = call().copy(handlers = emptyMap()))
+    val named =
+      document.copy(
+        root = document.root.copy(function = "FunctionScreen"),
+        functions = listOf(document.functions.single().copy(name = "FunctionScreen")),
+      )
+    refused(named, "available Kotlin")
+    val result = components(named)
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
+    assertTrue("internal fun FunctionScreen(" in (result as ScreenGenerator.Result.Emitted).source)
+  }
+
+  @Test
   fun `a components file needs components and no screen state`() {
     val noFunctions = components(document().copy(state = emptyList(), functions = emptyList()))
     assertTrue(noFunctions.toString(), noFunctions is ScreenGenerator.Result.Refused)
