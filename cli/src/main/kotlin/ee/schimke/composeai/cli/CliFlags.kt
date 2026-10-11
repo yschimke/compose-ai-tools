@@ -22,6 +22,7 @@ internal object CliFlags {
       "--filter",
       // `guidelines`
       "--model",
+      "--backend",
       "--max-cost",
       "--rounds",
       "--request-timeout",
