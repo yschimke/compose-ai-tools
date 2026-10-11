@@ -342,6 +342,15 @@ inputs:
       path it was saved with. `design-artifacts-reusable.yml` saves
       `<working-directory or .>/**/build/compose-previews/guidelines`.
     default: './**/build/compose-previews/guidelines'
+  guidelines-rerun-gate:
+    description: >
+      When `true` (the default), only a PR's first revision is checked unasked. The sticky
+      `<!-- guidelines-report -->` comment ends with a "Re-check the design guidelines" box; a
+      later push (or a re-run of the workflow) is checked only when someone with write access has
+      ticked it, and the box clears once the check has run. An unticked push keeps the earlier
+      findings, marked as NOT checked at the new revision. Either way the comment keeps the PR's
+      running total of what the check has spent across its runs. `false` checks every revision.
+    default: 'true'
   guidelines-file:
     description: >
       Path to a `ui-builder.guidelines.json` to use for every module, instead
@@ -1832,7 +1841,53 @@ runs:
     - name: Clear stale guidelines comment
       if: steps.resolve.outputs.phase != 'render' && inputs.guidelines == 'true'
       shell: bash
-      run: rm -f _guidelines_comment.md _guidelines_resolved.md
+      run: |
+        rm -f _guidelines_comment.md _guidelines_resolved.md _guidelines_skipped.md \
+          _guidelines_run_usd _guidelines_prev_comment.md
+        rm -rf _guidelines_pr_cache
+
+    # The earlier sticky comment carries the PR's running total and the re-run box
+    # (`guidelines-ledger.py`). Read only the github-actions bot's own comment: a bot comment is
+    # editable only by someone with write access, so nobody else can tick the box or rewrite the
+    # totals. A PR's first revision always runs; a later one runs only when the box is ticked.
+    - name: Read guidelines PR comment
+      id: guidelines-gate
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        RERUN_GATE: ${{ inputs.guidelines-rerun-gate }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -uo pipefail
+        pr="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        [[ "$pr" =~ ^[0-9]{1,9}$ ]] || pr=""
+        echo "pr=$pr" >> "$GITHUB_OUTPUT"
+        echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+        : > _guidelines_prev_comment.md
+        if [ -n "$pr" ]; then
+          # `--jq` runs per page, so list ids and take the first, then read that one body.
+          if ids=$(gh api "repos/${REPO}/issues/${pr}/comments" --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith("<!-- guidelines-report -->")) | .id'); then
+            id=$(head -1 <<<"$ids")
+            if [ -n "$id" ] && ! gh api "repos/${REPO}/issues/comments/${id}" --jq '.body' > _guidelines_prev_comment.md; then
+              : > _guidelines_prev_comment.md
+              echo "::warning::compose-preview/apply: could not read the earlier guidelines comment; the running total restarts and this revision is checked."
+            fi
+          else
+            echo "::warning::compose-preview/apply: could not list the PR's comments; the running total restarts and this revision is checked."
+          fi
+        fi
+        decision=run
+        if [ "$RERUN_GATE" = "true" ]; then
+          decision=$(python3 "$ACTION_PATH/../lib/guidelines-ledger.py" gate --previous _guidelines_prev_comment.md)
+        fi
+        echo "guidelines: $decision (re-run gate: $RERUN_GATE)."
+        echo "run=$([ "$decision" = run ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
     # The CLI is only installed in the render phase; the publish job, which
     # holds the key, installs it here when there is something to check.
@@ -1850,7 +1905,7 @@ runs:
     # `x-release-please-version` lines and cannot compute the release commit's
     # own SHA, so a SHA pin would keep invoking the previous release's helper.
     - name: Install CLI for the design-guidelines check
-      if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && hashFiles('_guidelines/**/previews.json') != '')
+      if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.guidelines-gate.outputs.run == 'true' && hashFiles('_guidelines/**/previews.json') != '')
       # The released action intentionally composes the matching released helper.
       uses: yschimke/compose-ai-tools/.github/actions/install@v2.47.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
@@ -1864,8 +1919,22 @@ runs:
     # readable here, from a `workflow_run` job (which runs in the default branch's scope) and from
     # a `pull_request` job (whose scope includes its base and the default branch). The restored
     # files land at the publish's own paths; the check step copies them into the staged modules.
+    # The PR's own earlier results, so a push re-asks the model only about previews whose render,
+    # source, nodes, rules or model changed since a run of this PR answered them. Saved below only
+    # by this job (the one holding the key), under a key naming the PR.
+    - name: Restore this PR's guideline results
+      if: steps.guidelines-gate.outputs.run == 'true' && steps.guidelines-gate.outputs.pr != '' && hashFiles('_guidelines/**/previews.json') != ''
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: _guidelines_pr_cache
+        # Never an exact hit: the newest save of this PR's results.
+        key: compose-preview-guidelines-pr-${{ steps.guidelines-gate.outputs.pr }}-restore-only
+        restore-keys: |
+          compose-preview-guidelines-pr-${{ steps.guidelines-gate.outputs.pr }}-
+
     - name: Restore catalog guideline results
-      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && inputs.guidelines-cache-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && inputs.guidelines-cache-key != '' && steps.scope.outputs.mode == 'comment' && steps.guidelines-gate.outputs.run == 'true' && hashFiles('_guidelines/**/previews.json') != '')
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -1876,7 +1945,7 @@ runs:
           ${{ inputs.guidelines-cache-key }}
 
     - name: Check design guidelines
-      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines/**/previews.json') != '')
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && steps.scope.outputs.mode == 'comment' && steps.guidelines-gate.outputs.run != 'false' && hashFiles('_guidelines/**/previews.json') != '')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -1947,6 +2016,11 @@ runs:
           seeded=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --seed-cache .)
           echo "guidelines: seeded ${seeded:-0} cached result file(s) from the catalog publish."
         fi
+        # This PR's own earlier results (restored above from its own cache, never the handoff's).
+        if [ -d _guidelines_pr_cache ]; then
+          seeded_pr=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --seed-pr-cache _guidelines_pr_cache)
+          echo "guidelines: seeded ${seeded_pr:-0} result file(s) from this PR's earlier runs."
+        fi
         # Optional overrides of each preview's surface and profile, from the caller's own inputs.
         kind_args=()
         case "$GUIDELINES_SURFACE" in
@@ -2002,12 +2076,48 @@ runs:
             "${concurrency_args[@]+"${concurrency_args[@]}"}" \
             || echo "::warning::compose-preview/apply: the guidelines check failed for $module_dir."
         done
+        # What this run spent, for the comment's running total, and its results, for the PR's
+        # next run (saved below).
+        python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --spent > _guidelines_run_usd
+        echo "guidelines: this run spent \$$(cat _guidelines_run_usd)."
+        collected=$(python3 "$ACTION_PATH/../lib/guidelines-budget.py" --dir _guidelines --collect _guidelines_pr_cache)
+        echo "guidelines: kept ${collected:-0} result file(s) for this PR's next run."
         # Stages exactly the pictures the comment will embed (the render with its findings marked,
         # or the render itself when nothing is), for the push below; the comment is re-rendered
         # with that push's SHA, since only GitHub-hosted, commit-pinned images survive in a PR.
         python3 "$ACTION_PATH/../lib/guidelines-report.py" --dir _guidelines --out _guidelines_comment.md \
           --stage-images _guidelines_images --max-previews "$MAX_PREVIEWS" \
           ${CACHE_KEY:+--catalog-rechecks}
+
+    - name: Save this PR's guideline results
+      if: steps.guidelines-gate.outputs.run == 'true' && steps.guidelines-gate.outputs.pr != '' && hashFiles('_guidelines_pr_cache/**/*.json') != ''
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: _guidelines_pr_cache
+        key: compose-preview-guidelines-pr-${{ steps.guidelines-gate.outputs.pr }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+    # The box was not ticked: ask the model nothing, and say so on the earlier comment rather than
+    # leave its findings looking like they are about this revision.
+    - name: Mark guidelines PR comment not re-checked
+      if: steps.guidelines-gate.outputs.run == 'false' && hashFiles('_guidelines/**/previews.json') != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        HEAD_SHA: ${{ steps.guidelines-gate.outputs.sha }}
+        MAX_COST: ${{ inputs.guidelines-max-cost }}
+        PR_NUMBER: ${{ steps.guidelines-gate.outputs.pr }}
+      run: |
+        set -euo pipefail
+        python3 "$ACTION_PATH/../lib/guidelines-ledger.py" skipped --previous _guidelines_prev_comment.md \
+          --sha "$HEAD_SHA" --max-cost "$MAX_COST" --out _guidelines_skipped.md
+        echo "::notice::compose-preview/apply: design guidelines NOT re-checked at ${HEAD_SHA:0:7}: tick the box on the guidelines comment to check the next push."
+        export MARKER="<!-- guidelines-report -->"
+        export BODY_FILE="_guidelines_skipped.md"
+        export UPDATE_ONLY=1
+        bash "$ACTION_PATH/lib/post-comment.sh"
 
     # The pictures are built in this job from the check's own output, never restored from the
     # handoff, so the push metadata is written here from literals, like the other PR-render pushes.
@@ -2059,11 +2169,17 @@ runs:
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
+        HEAD_SHA: ${{ steps.guidelines-gate.outputs.sha }}
+        MAX_COST: ${{ inputs.guidelines-max-cost }}
       run: |
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- guidelines-report -->"
         export BODY_FILE="_guidelines_comment.md"
+        # The PR's running total and the re-run box, carried over from the earlier comment.
+        python3 "$ACTION_PATH/../lib/guidelines-ledger.py" finalize --body "$BODY_FILE" \
+          --previous _guidelines_prev_comment.md --sha "$HEAD_SHA" --max-cost "$MAX_COST" \
+          --run-usd "$(cat _guidelines_run_usd 2>/dev/null || echo 0)"
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     # A later revision with nothing to check (no staged previews, or zero results) writes no
@@ -2073,7 +2189,7 @@ runs:
     - name: Resolve guidelines PR comment
       # Not when the render phase could not list the PR's changed files: a source-only change may
       # then have staged nothing, which is not the same as the revision needing no check.
-      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') == '' && hashFiles('_guidelines/_lookup_failed') == '')
+      if: steps.resolve.outputs.phase != 'render' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.scope.outputs.mode == 'comment' && hashFiles('_guidelines_comment.md') == '' && hashFiles('_guidelines_skipped.md') == '' && hashFiles('_guidelines/_lookup_failed') == '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -2082,6 +2198,8 @@ runs:
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
         CACHE_KEY: ${{ inputs.guidelines-cache-key }}
+        HEAD_SHA: ${{ steps.guidelines-gate.outputs.sha }}
+        MAX_COST: ${{ inputs.guidelines-max-cost }}
       run: |
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -2102,6 +2220,9 @@ runs:
             echo "$rules_line"
           fi
         } > "$BODY_FILE"
+        # Keep the PR's running total: what earlier revisions spent did not go away.
+        python3 "$ACTION_PATH/../lib/guidelines-ledger.py" finalize --body "$BODY_FILE" \
+          --previous _guidelines_prev_comment.md --sha "$HEAD_SHA" --max-cost "$MAX_COST" --not-a-check
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     - name: Push notifications baseline / PR renders

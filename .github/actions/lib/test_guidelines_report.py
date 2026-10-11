@@ -29,6 +29,7 @@ def _load(name: str, file: str):
 gr = _load("guidelines_report", "guidelines-report.py")
 gs = _load("guidelines_stage", "guidelines-stage.py")
 gb = _load("guidelines_budget", "guidelines-budget.py")
+gl = _load("guidelines_ledger", "guidelines-ledger.py")
 
 RULES = {
     "schema": "compose-ui-builder/catalog-guidelines/v1",
@@ -940,6 +941,135 @@ class BudgetTest(unittest.TestCase):
     def test_nothing_spent_yet(self) -> None:
         root = Path(tempfile.mkdtemp())
         self.assertEqual(gb.remaining(root / "missing", 0.25), 0.25)
+
+    def test_a_cached_result_costs_this_run_nothing(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        module = root / "a"
+        module.mkdir()
+        results = [
+            {"previewId": "p0", "record": {"costUsd": 0.1}, "fromCache": True},
+            {"previewId": "p1", "record": {"costUsd": 0.02}},
+        ]
+        (module / "guidelines.json").write_text(json.dumps({"results": results}))
+        self.assertAlmostEqual(gb.spent(root), 0.02)
+        self.assertAlmostEqual(gb.remaining(root, 0.25), 0.23)
+
+    def test_the_prs_own_results_round_trip_through_its_cache(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        handoff = root / "_guidelines"
+        self._staged(handoff, "catalog", ["a"])
+        self._staged(handoff, "other", ["b"])
+        key = "ab" + "0" * 62
+        answered = handoff / "catalog" / "guidelines" / "ab"
+        answered.mkdir(parents=True)
+        (answered / f"{key}.json").write_text('{"run": 1}')
+        (answered / "notes.txt").write_text("x")
+        cache = root / "_guidelines_pr_cache"
+        self.assertEqual(gb.collect(handoff, cache), 1)
+        self.assertEqual(sorted(p.name for p in cache.rglob("*") if p.is_file()), [f"{key}.json"])
+
+        # The next run: a fresh handoff, plus a catalog result already seeded in one module.
+        fresh = root / "_next"
+        self._staged(fresh, "catalog", ["a"])
+        self._staged(fresh, "other", ["b"])
+        seeded = fresh / "catalog" / "guidelines" / "ab"
+        seeded.mkdir(parents=True)
+        (seeded / f"{key}.json").write_text('{"catalog": 1}')
+        self.assertEqual(gb.seed_pr(fresh, cache), 1)
+        # Never over a file already in place.
+        self.assertEqual((seeded / f"{key}.json").read_text(), '{"catalog": 1}')
+        self.assertEqual(
+            (fresh / "other" / "guidelines" / "ab" / f"{key}.json").read_text(), '{"run": 1}')
+        self.assertEqual(gb.seed_pr(fresh, root / "missing"), 0)
+
+
+class LedgerTest(unittest.TestCase):
+    """The running total and re-run box carried in the sticky guidelines comment."""
+
+    SHA1 = "a" * 40
+    SHA2 = "b" * 40
+
+    def _first(self, usd: float = 0.1) -> str:
+        body = gl.MARKER + "\n### Design guidelines\n\n1 changed preview(s) checked.\n"
+        return gl.finalize(body, "", self.SHA1, usd, True, "0.25")
+
+    def test_first_revision_runs_and_starts_the_total(self) -> None:
+        self.assertEqual(gl.gate(""), "run")
+        body = self._first()
+        self.assertEqual(gl.ledger(body),
+                         {"runs": 1, "usd": 0.1, "skipped": 0, "sha": self.SHA1})
+        self.assertIn("This PR so far: $0.1000", body)
+        self.assertIn("up to $0.25", body)
+
+    def test_a_later_push_runs_only_when_the_box_is_ticked(self) -> None:
+        body = self._first()
+        self.assertEqual(gl.gate(body), "skip")
+        self.assertEqual(gl.gate(body.replace("- [ ] Re-check", "- [x] Re-check")), "run")
+        # A comment from before the gate has no box: it runs once, and gains one.
+        self.assertEqual(gl.gate(gl.MARKER + "\n### Design guidelines\n"), "run")
+        # A comment that records no model check yet (a "nothing needed" revision) still runs.
+        resolved = gl.finalize(gl.MARKER + "\n## Design guidelines\n", "", self.SHA1, 0.0,
+                               False, "")
+        self.assertEqual(gl.gate(resolved), "run")
+        # The marker comment must lead; a box elsewhere decides nothing.
+        self.assertEqual(gl.gate("hello\n- [ ] x " + gl.BOX_MARKER), "run")
+
+    def test_the_total_accumulates_and_the_box_clears(self) -> None:
+        ticked = self._first().replace("- [ ] Re-check", "- [x] Re-check")
+        new = gl.MARKER + "\n### Design guidelines\n\nNew findings.\n"
+        body = gl.finalize(new, ticked, self.SHA2, 0.05, True, "0.25")
+        self.assertEqual(gl.ledger(body),
+                         {"runs": 2, "usd": 0.15, "skipped": 0, "sha": self.SHA2})
+        self.assertEqual(body.count(gl.SECTION_START), 1)
+        self.assertEqual(gl.gate(body), "skip")
+        self.assertIn("This revision (`bbbbbbb`): $0.0500", body)
+
+    def test_a_skipped_push_says_so_and_keeps_the_findings(self) -> None:
+        first = self._first()
+        body = gl.skipped(first, self.SHA2, "0.25")
+        self.assertTrue(body.startswith(gl.MARKER + "\n### Design guidelines\n"))
+        self.assertIn("Not re-checked at `bbbbbbb`", body)
+        self.assertIn("from `aaaaaaa`", body)
+        self.assertIn("1 changed preview(s) checked.", body)
+        self.assertEqual(gl.ledger(body),
+                         {"runs": 1, "usd": 0.1, "skipped": 1, "sha": self.SHA1})
+        # Skipped again: one banner, one section, two skips.
+        again = gl.skipped(body, "c" * 40, "0.25")
+        self.assertEqual(again.count(gl.BANNER_START), 1)
+        self.assertEqual(again.count(gl.SECTION_START), 1)
+        self.assertEqual(gl.ledger(again)["skipped"], 2)
+        # A ticked, checked revision drops the banner.
+        checked = gl.finalize(gl.MARKER + "\n### Design guidelines\n", again.replace(
+            "- [ ] Re-check", "- [x] Re-check"), "d" * 40, 0.01, True, "")
+        self.assertNotIn(gl.BANNER_START, checked)
+        self.assertEqual(gl.ledger(checked)["runs"], 2)
+
+    def test_a_resolution_keeps_the_total_without_counting_a_check(self) -> None:
+        resolved = gl.MARKER + "\n## Design guidelines\n\nNothing needed.\n"
+        body = gl.finalize(resolved, self._first(0.11), self.SHA2, 0.0, False, "0.25")
+        self.assertEqual(gl.ledger(body),
+                         {"runs": 1, "usd": 0.11, "skipped": 0, "sha": self.SHA1})
+        self.assertIn("asked the model nothing", body)
+
+    def test_a_garbled_ledger_starts_over(self) -> None:
+        for data in ('{"runs": -3, "usd": "nan", "sha": "zz"}', "not json", "[1]"):
+            body = gl.MARKER + f"\n<!-- guidelines-ledger {data} -->\n"
+            self.assertEqual(gl.ledger(body), {"runs": 0, "usd": 0.0, "skipped": 0, "sha": ""})
+
+    def test_cli(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        prev = root / "prev.md"
+        prev.write_text(self._first())
+        out = root / "out.md"
+        self.assertEqual(gl.main(["skipped", "--previous", str(prev), "--sha", self.SHA2,
+                                  "--out", str(out)]), 0)
+        self.assertIn("Not re-checked", out.read_text())
+        body = root / "body.md"
+        body.write_text(gl.MARKER + "\n### Design guidelines\n")
+        gl.main(["finalize", "--body", str(body), "--previous", str(root / "none.md"),
+                 "--sha", "bad sha", "--run-usd", "0.02"])
+        self.assertEqual(gl.ledger(body.read_text())["usd"], 0.02)
+        self.assertEqual(gl.ledger(body.read_text())["sha"], "")
 
 
 if __name__ == "__main__":

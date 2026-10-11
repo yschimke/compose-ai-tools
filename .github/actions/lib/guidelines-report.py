@@ -413,9 +413,10 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         nodes = node_ids(module_dir)
         results = report.get("results", [])
         # The run's own total counts replies that could not be used; older CLIs record none.
+        # A cached result's record still carries what it first cost; this run paid nothing.
         records_cost = sum(
             float((r.get("record") or {}).get("costUsd") or 0.0)
-            for r in results if isinstance(r, dict)
+            for r in results if isinstance(r, dict) and not r.get("fromCache")
         )
         try:
             run_cost = float(report.get("costUsd") or 0.0)
