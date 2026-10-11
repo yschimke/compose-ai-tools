@@ -49,8 +49,8 @@ projection today.
 
 ### Screen structure: use the templates as designed, with one change
 
-The roles (`screen-root`, `list`, `list-item`, `container`, `overlay`, `controlled`, `previews`,
-`file`) and their holes stand. The change is to `list-item`. The contract's example puts the parent's
+The roles (`screen-root`, `list`, `list-item`, `container`, `decoration`, `overlay`, `controlled`,
+`previews`, `file`; the closed `UI_BUILDER_STRUCTURAL_ROLES` set) and their holes stand. The change is to `list-item`. The contract's example puts the parent's
 arguments in the template:
 
 ```
@@ -68,6 +68,13 @@ appending to it. So the template keeps only what is the same for every item:
 
 and the per-component part moves into the projection, as data checked against each record.
 
+`${key}` is a new `list-item` hole. The contract's holes are `index` and `children` today, and
+`index` is not what the hand-written exporter writes: it writes `item(key = "<stableKey>")` when the
+node has a stable key and `item` otherwise. So `key` joins `UI_BUILDER_TEMPLATE_HOLES["list-item"]`,
+filled with `(key = "…")` or nothing, in the same change as the renderer that fills it. Until it
+does, publish-time validation rejects the template (`policy.code.template.hole.unknown`), which is
+the intended guard.
+
 ### Parent-driven arguments: `contexts`
 
 A projection target may say what it writes **when it is placed in a structural role**:
@@ -84,8 +91,17 @@ A projection target may say what it writes **when it is placed in a structural r
 - Values are the projection's existing `Value`s, so a context argument is type-checked against the
   record exactly as an ordinary one (`transformation` must exist and take `SurfaceTransformation`).
 - `modifier` links **append** after the node's authored chain, in the order the hand-written
-  exporter uses, and are `ChainLink`s the generator already prints, so `receiverScopeFqn` covers
-  `transformedHeight`'s `LazyItemScope` receiver.
+  exporter uses, and are `ChainLink`s the generator already prints.
+- **The item scope is an explicit argument, not a receiver.** Wear's `transformedHeight` is a
+  top-level `Modifier` extension that takes the `TransformingLazyColumnItemScope` as a parameter:
+  `.transformedHeight(this, spec)`. `ChainLink.receiverScopeFqn` means something else, the implicit
+  receiver of a *member* extension such as `RowScope.weight`. So a context value reads the scope
+  through a typed **role scope** reference instead. The `list-item` role declares that it opens a
+  scope of type `…TransformingLazyColumnItemScope` (`code.scopes`, beside `code.locals`), the
+  renderer threads it to the item's direct child, and the generator prints it as `this`. A value that
+  reads a scope its role does not open is refused, as is one placed outside that role. The existing
+  item-wrapper path deliberately does not attest its trailing lambda's receiver; this is where that
+  attestation comes from.
 - `spec` and `listState` are **template locals**: names a catalog's templates declare (new
   `code.locals: { "spec": "…TransformationSpec", "listState": "…TransformingLazyColumnState" }`).
   A context value reads one as a typed reference, and validation refuses a read of an undeclared
@@ -160,7 +176,9 @@ compile-the-export gates from `TYPED_REAL_RECORD_ADAPTERS.md` step 7 run beside 
 1. **Discovery: publish every overload's parameters** on a record (an additive `overloads` field,
    contracts first), so patterns resolve an overload the way Kotlin does.
 2. **Tools:**
-   - `contexts`, `slotPatterns`, `synthesize` and `code.locals` in `ExportProjection` / the policy;
+   - `contexts`, `slotPatterns`, `synthesize`, `code.locals` and `code.scopes` in `ExportProjection`
+     / the policy, and the `list-item` `key` hole;
+   - a role-scope reference in the screen document, printed as `this` inside the role's lambda;
    - JSON spelling;
    - validation against records;
    - a generator-side `lower` that returns the chosen record and child assignment.
