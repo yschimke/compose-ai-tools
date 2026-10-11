@@ -295,13 +295,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         outcome.warnings.forEach { logger.warn(it) }
         val outFile = outputFile.get().asFile
         outFile.parentFile.mkdirs()
-        outFile.writeText(json.encodeToString(outcome.manifest))
+        // Each overload list once per callable, not once per preview: the render daemon loads this
+        // file whole, and m3-catalog's repeated lists outgrew its heap.
+        val manifest = ComponentRecords.compactOverloads(outcome.manifest)
+        outFile.writeText(json.encodeToString(manifest))
         // Derived from the manifest and always written; an empty list says inference found nothing.
         val componentsOut = componentsFile.get().asFile
         componentsOut.parentFile.mkdirs()
         // The builder catalog chooses each component's overload (per its policy, never deprecated),
         // so it runs first and `components.json` publishes the chosen record.
-        val record = writeUiBuilderCatalog(outcome.manifest)
+        val record = writeUiBuilderCatalog(manifest)
         componentsOut.writeText(json.encodeToString(record))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }

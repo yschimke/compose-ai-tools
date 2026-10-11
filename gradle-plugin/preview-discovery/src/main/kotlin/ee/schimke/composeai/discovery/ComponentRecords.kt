@@ -7,6 +7,37 @@ package ee.schimke.composeai.discovery
 object ComponentRecords {
 
   /**
+   * [manifest] with each callable's [PreviewTarget.overloads] kept on its first target only.
+   *
+   * The list is a property of the callable (owner + name), not of the preview, so a catalog with
+   * dozens of previews per heavily overloaded component otherwise repeats every overload's full
+   * parameter list on each of them. That made m3-catalog's `previews.json` too large for the render
+   * daemon to load in its default heap. Records lose nothing: [from] and [select] gather overloads
+   * across the whole manifest per [canonicalId], which is the same owner + name key, and take the
+   * first list they see.
+   */
+  fun compactOverloads(manifest: PreviewManifest): PreviewManifest {
+    val carried = mutableSetOf<String>()
+    fun compact(targets: List<PreviewTarget>) =
+      targets.map { target ->
+        when {
+          target.overloads.isEmpty() -> target
+          carried.add("${target.className}.${target.functionName}") -> target
+          else -> target.copy(overloads = emptyList())
+        }
+      }
+    return manifest.copy(
+      previews =
+        manifest.previews.map { preview ->
+          preview.copy(
+            componentTargets = compact(preview.componentTargets),
+            targets = compact(preview.targets),
+          )
+        }
+    )
+  }
+
+  /**
    * Inverts previews → components into components → previews. Both [PreviewInfo.componentTargets]
    * (library components) and [PreviewInfo.targets] (project composables) contribute;
    * [ComponentSymbol.origin] tells them apart. Ordered by [ComponentRecord.canonicalId] and preview
