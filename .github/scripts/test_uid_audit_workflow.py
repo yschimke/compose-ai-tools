@@ -76,14 +76,20 @@ class AuditWorkflowTest(unittest.TestCase):
         for line in ('  problem: the model answered 402: {"error":{"message":"Insufficient credits"}}',
                      '  problem: the model answered with an error in place of a completion (code 402): Key limit exceeded'):
             with self.subTest(line=line):
-                result, status = self.run_audit_step(2, f"guidelines: screen: 3 model request(s) failed\n{line}")
+                # Other problems the engine notes (the cost cap) are not failures and do not block a skip.
+                log = f"guidelines: screen: 3 model request(s) failed\n{line}\n{line}\n  problem: the cost cap ($0.25) was reached"
+                result, status = self.run_audit_step(2, log)
                 self.assertEqual(result.returncode, 0)
                 self.assertEqual(status['status'], 'skipped')
                 self.assertIn('::warning::UI audit skipped', result.stdout)
 
     def test_other_incomplete_runs_and_findings_still_fail(self):
+        credit = '  problem: the model answered 402: {"error":{"message":"Insufficient credits"}}'
         for code, log in ((2, '  problem: the model answered 500: upstream error'),
                           (2, 'guidelines: screen: 1 evidence fetch(es) failed'),
+                          (2, f"{credit}\n  problem: the model answered 500: upstream error"),
+                          (2, f"{credit}\n  problem: the request got no answer: timeout"),
+                          (2, f"guidelines: screen: 1 evidence fetch(es) failed\n{credit}"),
                           (1, 'finding mentions 402 pixels but is a real finding')):
             with self.subTest(code=code, log=log):
                 result, status = self.run_audit_step(code, log)
