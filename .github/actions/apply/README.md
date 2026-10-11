@@ -789,6 +789,7 @@ accessibility nodes it names and a link to the developer.android.com guide it co
 | `guidelines-rules-sweep` | `false` | When the PR changes a guidelines file, also check up to 24 of the module's other previews. Off: the comment says so — that the catalog publish re-checks them when `guidelines-cache-key` is set, else that they were not re-checked. |
 | `guidelines-cache-key` | `''` | The catalog publish's result cache prefix (`guidelines-<system>-`). Restored read-only, so previews unchanged from the default branch are answered from it at no cost. |
 | `guidelines-cache-path` | `./**/build/compose-previews/guidelines` | The `path` that cache was saved under; must match `design-artifacts-reusable.yml`'s (`<working-directory>/**/build/compose-previews/guidelines`). |
+| `guidelines-rerun-gate` | `true` | Check a PR's first revision unasked, and a later push only when someone with write access has ticked the "Re-check the design guidelines" box on the comment (it clears after each check). An unticked push keeps the earlier findings, marked as not re-checked at the new revision. `false` checks every revision. |
 | `guidelines-file` | `''` | A rules file for every module, instead of each module's own. |
 | `guidelines-surface` | `''` | Judge every checked preview as `component`, `screen` or `widget` instead of what discovery recorded; for a plugin that predates the widget signal. |
 | `guidelines-profile` | `''` | With `guidelines-surface`, the Remote Compose profile every checked preview targets (`wear-widgets`, …). |
@@ -809,6 +810,18 @@ only — a PR run never saves one), so a staged preview whose render, source, no
 match the default branch's costs nothing: a split workflow's publish job runs on `workflow_run`,
 in the default branch's cache scope. The publish's CLI and this action's must agree on the
 request format (the same release line) for its results to match.
+
+**What a PR has spent, and when it is re-checked.** The sticky comment is rewritten on every run,
+so it ends with a ledger the action carries from one body to the next: the PR's total so far
+across its model checks, what this revision spent, and how many pushes were not re-checked (a
+"nothing needed" revision keeps the total too). Each check also saves its results to an Actions
+cache keyed by the PR number (`compose-preview-guidelines-pr-<N>-…`, saved only by the job holding
+the key), and the next run restores it, so a push re-asks the model only about previews whose
+render, source, nodes, rules or model changed since an earlier run of the same PR answered them; a
+cached answer counts nothing against `guidelines-max-cost` or the total. With
+`guidelines-rerun-gate` (the default) a later push is not checked at all until someone with write
+access ticks the comment's box; ticking it and re-running the publish workflow checks the current
+revision.
 
 The publish job treats the handoff as the PR's output, not its own: it restores only the entries
 the render phase stages, checks at most 20 module directories, spends one `guidelines-max-cost`

@@ -36,6 +36,20 @@ copies the catalog publish's guideline results — restored read-only from its A
 is filed under the hash of everything its verdict depends on (render bytes, source, nodes, rules,
 model), never under a module, so one pool serves every module: a PR preview whose inputs are the
 same as on the default branch is answered from it at no cost. Prints how many files it copied.
+
+    python3 guidelines-budget.py --dir _guidelines --seed-pr-cache _guidelines_pr_cache
+    python3 guidelines-budget.py --dir _guidelines --collect _guidelines_pr_cache
+
+are the PR's own cache. Without them every push re-asked the model about previews an earlier push
+of the same PR had already paid for: the catalog's results only answer what matches the default
+branch. `--seed-pr-cache` adds the results the PR's earlier runs saved (restored from an Actions
+cache keyed by the PR number, saved only by the job holding the key) to every staged module;
+`--collect` gathers this run's results back into that directory for the save.
+
+    python3 guidelines-budget.py --dir _guidelines --spent
+
+prints what this run spent, for the comment's running total. A result answered from a cache counts
+nothing, though its record still carries what it first cost.
 """
 
 from __future__ import annotations
@@ -72,7 +86,11 @@ def spent(dir_: Path) -> float:
             continue
         records = 0.0
         for result in results:
-            record = result.get("record") if isinstance(result, dict) else None
+            # A cached result keeps the record it was first answered with, cost and all; this
+            # run paid nothing for it.
+            if not isinstance(result, dict) or result.get("fromCache"):
+                continue
+            record = result.get("record")
             if isinstance(record, dict):
                 records += _cost(record.get("costUsd"))
         run = _cost(report_cost(report))
@@ -228,6 +246,67 @@ def seed(dir_: Path, root: Path) -> int:
     return copied
 
 
+def seed_pr(dir_: Path, cache: Path) -> int:
+    """Adds this PR's own earlier results (`<cache>/<shard>/<hash>.json`, restored from the
+    PR-scoped Actions cache the check saves) to each staged module's `guidelines/`, beside any
+    catalog results [seed] copied there. Never overwrites a file already in place."""
+    if not cache.is_dir() or cache.is_symlink():
+        return 0
+    results = [
+        result
+        for shard in sorted(cache.iterdir())
+        if SHARD_NAME.match(shard.name) and shard.is_dir() and not shard.is_symlink()
+        for result in sorted(shard.iterdir())
+        if RESULT_NAME.match(result.name)
+        and result.name.startswith(shard.name)
+        and result.is_file()
+        and not result.is_symlink()
+    ]
+    copied = 0
+    for module in order(dir_):
+        if not (module / "previews.json").is_file():
+            continue
+        target = module / "guidelines"
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        for result in results:
+            dest = target / result.parent.name / result.name
+            if dest.exists():
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(result, dest)
+            copied += 1
+    return copied
+
+
+def collect(dir_: Path, cache: Path) -> int:
+    """Copies every result this run's check left in a staged module's `guidelines/` into
+    [cache], the directory the PR-scoped Actions cache saves, so the PR's next run is answered
+    from it for every preview whose inputs have not changed. The engine never files a pending
+    result, so only real verdicts are kept."""
+    copied = 0
+    for module in order(dir_):
+        source = module / "guidelines"
+        if not source.is_dir() or source.is_symlink():
+            continue
+        for shard in sorted(source.iterdir()):
+            if not SHARD_NAME.match(shard.name) or shard.is_symlink() or not shard.is_dir():
+                continue
+            for result in sorted(shard.iterdir()):
+                if not (
+                    RESULT_NAME.match(result.name)
+                    and result.name.startswith(shard.name)
+                    and result.is_file()
+                    and not result.is_symlink()
+                ):
+                    continue
+                dest = cache / shard.name / result.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(result, dest)
+                copied += 1
+    return copied
+
+
 def remaining(dir_: Path, max_cost: float) -> float:
     """What is left of [max_cost] once this run's spend is taken off, never below zero."""
     return max(0.0, max_cost - spent(dir_))
@@ -241,7 +320,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--trim", type=int, metavar="N", help="keep at most N previews in total")
     parser.add_argument("--seed-cache", type=Path, metavar="ROOT",
                         help="copy the restored catalog result cache under ROOT into each module")
+    parser.add_argument("--seed-pr-cache", type=Path, metavar="CACHE",
+                        help="add this PR's own earlier results under CACHE to each module")
+    parser.add_argument("--collect", type=Path, metavar="CACHE",
+                        help="copy this run's results into CACHE for the PR's next run")
+    parser.add_argument("--spent", action="store_true", help="print what this run spent")
     args = parser.parse_args(argv)
+    if args.spent:
+        print(f"{spent(args.dir):.6f}")
+        return 0
+    if args.seed_pr_cache is not None:
+        print(seed_pr(args.dir, args.seed_pr_cache))
+        return 0
+    if args.collect is not None:
+        print(collect(args.dir, args.collect))
+        return 0
     if args.seed_cache is not None:
         print(seed(args.dir, args.seed_cache))
         return 0
