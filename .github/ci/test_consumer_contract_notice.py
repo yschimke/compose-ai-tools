@@ -49,13 +49,6 @@ class Reporting(unittest.TestCase):
         body = mod.report(hits)
         self.assertIn("compose-preview-vscode", body)
 
-    def test_device_catalog_change_names_contracts(self):
-        hits = mod.affected([
-            "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt",
-        ])
-        self.assertEqual(len(hits), 1)
-        self.assertIn("compose-preview-contracts", mod.report(hits))
-
     def test_report_carries_the_sticky_marker_first(self):
         body = mod.report(mod.affected(["schema/spatial-scene.schema.json"]))
         self.assertTrue(body.startswith("<!-- consumer-contract-notice -->"))

@@ -1,8 +1,18 @@
 package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import org.junit.Test
 
+/**
+ * Pins the contracts' [DeviceDimensions] (`ee.schimke.composeai:daemon-devices`) to the geometry
+ * this plugin's discovery and render output depend on.
+ *
+ * The plugin used to carry its own copy of the catalog and `spec:` parser; it now resolves through
+ * the published one. The contracts module has its own tests, but these cover more of the table
+ * (densities, TV, automotive, Wear real-device specs) and are what turns a contracts bump that
+ * would silently move plugin output into a failing build here.
+ */
 class DeviceDimensionsTest {
 
   @Test
@@ -348,138 +358,5 @@ class DeviceDimensionsTest {
     assertThat(pixelWatch.widthDp - galaxyWatch.widthDp).isEqualTo(14)
     assertThat(pixelWatch.widthDp * pixelWatch.density).isWithin(2.0f).of(450f)
     assertThat(galaxyWatch.widthDp * galaxyWatch.density).isWithin(2.0f).of(450f)
-  }
-
-  // -- resolveForRender (AS-parity sizing) --
-
-  @Test
-  fun `resolveForRender wraps both axes when no hints are given`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = null,
-        widthDp = null,
-        heightDp = null,
-        showSystemUi = false,
-      )
-    assertThat(spec.wrapWidth).isTrue()
-    assertThat(spec.wrapHeight).isTrue()
-    // Wrap-axes get the phone-shaped 400×800 dp sandbox so fillMaxSize
-    // composables render into a reasonable viewport before the PNG crop.
-    assertThat(spec.widthDp).isEqualTo(DeviceDimensions.SANDBOX_WIDTH_DP)
-    assertThat(spec.heightDp).isEqualTo(DeviceDimensions.SANDBOX_HEIGHT_DP)
-  }
-
-  @Test
-  fun `resolveForRender keeps device frame when device is set`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = "id:pixel_6",
-        widthDp = null,
-        heightDp = null,
-        showSystemUi = false,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.wrapHeight).isFalse()
-    // Pixel 6 = 411×914 dp after the upstream per-device density refresh.
-    assertThat(spec.widthDp).isEqualTo(411)
-    assertThat(spec.heightDp).isEqualTo(914)
-  }
-
-  @Test
-  fun `resolveForRender keeps full frame when showSystemUi is true`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = null,
-        widthDp = null,
-        heightDp = null,
-        showSystemUi = true,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.wrapHeight).isFalse()
-    assertThat(spec.widthDp).isEqualTo(400)
-    assertThat(spec.heightDp).isEqualTo(800)
-  }
-
-  @Test
-  fun `resolveForRender wraps only the axis the user left unset`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = null,
-        widthDp = 240,
-        heightDp = null,
-        showSystemUi = false,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.wrapHeight).isTrue()
-    assertThat(spec.widthDp).isEqualTo(240)
-    assertThat(spec.heightDp).isEqualTo(DeviceDimensions.SANDBOX_HEIGHT_DP)
-  }
-
-  @Test
-  fun `resolveForRender explicit dims override device frame`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = "id:pixel_6",
-        widthDp = 200,
-        heightDp = 300,
-        showSystemUi = false,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.wrapHeight).isFalse()
-    assertThat(spec.widthDp).isEqualTo(200)
-    assertThat(spec.heightDp).isEqualTo(300)
-  }
-
-  @Test
-  fun `resolveForRender narrows the wrap sandbox without fixing the axis`() {
-    // What a Wear module's device-less previews get from `retargetWearStickers`: the 227dp watch
-    // screen as the measuring bound, both axes still wrapped so the capture crops to content.
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = null,
-        widthDp = null,
-        heightDp = null,
-        showSystemUi = false,
-        wrapSandboxWidthDp = 227,
-        wrapSandboxHeightDp = 227,
-      )
-    assertThat(spec.wrapWidth).isTrue()
-    assertThat(spec.wrapHeight).isTrue()
-    assertThat(spec.widthDp).isEqualTo(227)
-    assertThat(spec.heightDp).isEqualTo(227)
-  }
-
-  @Test
-  fun `resolveForRender lets an explicit dp win over the wrap sandbox`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = null,
-        widthDp = 120,
-        heightDp = null,
-        showSystemUi = false,
-        wrapSandboxWidthDp = 227,
-        wrapSandboxHeightDp = 227,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.widthDp).isEqualTo(120)
-    assertThat(spec.wrapHeight).isTrue()
-    assertThat(spec.heightDp).isEqualTo(227)
-  }
-
-  @Test
-  fun `resolveForRender ignores the wrap sandbox on a device frame`() {
-    val spec =
-      DeviceDimensions.resolveForRender(
-        device = "id:wearos_large_round",
-        widthDp = null,
-        heightDp = null,
-        showSystemUi = false,
-        wrapSandboxWidthDp = 999,
-        wrapSandboxHeightDp = 999,
-      )
-    assertThat(spec.wrapWidth).isFalse()
-    assertThat(spec.wrapHeight).isFalse()
-    assertThat(spec.widthDp).isEqualTo(227)
-    assertThat(spec.heightDp).isEqualTo(227)
   }
 }

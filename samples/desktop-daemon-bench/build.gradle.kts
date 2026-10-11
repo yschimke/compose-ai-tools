@@ -392,7 +392,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       val widthDp = (params["widthDp"] as? Number)?.toInt() ?: 0
       val heightDp = (params["heightDp"] as? Number)?.toInt() ?: 0
       val density = (params["density"] as? Number)?.toFloat() ?: 2.625f
-      // Mirrors DeviceDimensions.resolveForRender's wrap-content sandbox (400×800dp) for previews
+      // Mirrors PreviewSizing.resolveForRender's wrap-content sandbox (400×800dp) for previews
       // with no size hints.
       val effWdp = if (widthDp > 0) widthDp else 400
       val effHdp = if (heightDp > 0) heightDp else 800

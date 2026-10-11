@@ -109,7 +109,7 @@ The samples consume the plugin through `includeBuild("gradle-plugin")` in [setti
 
 Single test:
 ```
-./gradlew :gradle-plugin:test --tests "ee.schimke.composeai.plugin.DeviceDimensionsTest"
+./gradlew :gradle-plugin:preview-discovery:test --tests "ee.schimke.composeai.discovery.PreviewSizingTest"
 ./gradlew :gradle-plugin:functionalTest --tests "ee.schimke.composeai.plugin.RenderFunctionalTest"
 ```
 

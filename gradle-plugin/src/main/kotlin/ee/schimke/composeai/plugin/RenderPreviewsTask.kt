@@ -416,7 +416,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
   ) {
     for (preview in manifest.previews) {
       val spec =
-        DeviceDimensions.resolveForRender(
+        PreviewSizing.resolveForRender(
           device = preview.params.device,
           widthDp = preview.params.widthDp,
           heightDp = preview.params.heightDp,
@@ -498,7 +498,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
   private fun invokeRenderer(
     mainClass: String,
     preview: PreviewInfo,
-    spec: DeviceDimensions.SizeSpec,
+    spec: PreviewSizing.SizeSpec,
     density: Float,
     widthPx: Int,
     heightPx: Int,
@@ -707,7 +707,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   private fun rendererArgs(
     preview: PreviewInfo,
-    spec: DeviceDimensions.SizeSpec,
+    spec: PreviewSizing.SizeSpec,
     density: Float,
     widthPx: Int,
     heightPx: Int,
