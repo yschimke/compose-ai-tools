@@ -482,6 +482,13 @@ for aid, directory in modules.items():
         print(f"  {aid}: uses a changed catalog entry; publishing", file=sys.stderr)
         dirty.add(aid)
 
+# The included build's root publish task publishes all four of its coordinates at the tag version
+# (`root-tasks.gradle.kts` adds it when any one is in the set), so the plan must name all four or
+# none: a `srcDir` change that dirties only `preview-discovery` still republishes the other three,
+# and a plan omitting them leaves `release.yml` and the BOM on their old versions.
+if dirty.intersection(INCLUDED_BUILD_IDS):
+    dirty.update(INCLUDED_BUILD_IDS)
+
 # Rule 2: anything depending on a dirty module is dirty too, transitively.
 rev = collections.defaultdict(set)
 for aid, ds in deps.items():
