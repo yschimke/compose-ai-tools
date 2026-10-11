@@ -54,7 +54,10 @@ default cannot change the cost or duration; the job's limit is 20 minutes. Insta
 closed if it cannot verify the download. It uses the same `OPENROUTER_API_KEY` name as remote-m3-catalog,
 mapped only on the model step to `COMPOSE_PREVIEW_OPENROUTER_KEY`, with the
 existing $0.25 limit and `--surface screen --annotate`. Missing keys and engine
-errors are incomplete audits, not a clean result. The output artifact retains
+errors are incomplete audits, not a clean result. The one exception is OpenRouter
+refusing requests with 402 (no credit, a key limit, or the in-flight budget the
+balance sets): the audit is skipped with a warning and `audit-status.json` reads
+`"status": "skipped"`, since a credit lapse says nothing about the designs. The output artifact retains
 capture bytes, rules, engine prompt source, run provenance, log, model response
 and annotations. This workflow posts no comments or issues.
 

@@ -140,8 +140,16 @@ jobs:
           set +e
           compose-preview guidelines --previews-json _uid_audit/previews.json --renders-dir _uid_audit --guidelines _uid_audit/ui-builder.guidelines.json --surface screen --max-cost 0.25 --concurrency 4 --reasoning-effort low --annotate > _uid_audit/audit.log 2>&1
           result=$?
-          printf '{"exitCode":%s}\n' "$result" > _uid_audit/audit-status.json
           cat _uid_audit/audit.log >> "$GITHUB_STEP_SUMMARY"
+          # An incomplete run whose requests OpenRouter refused with 402 (no credit, a key limit, or
+          # the in-flight budget the balance sets) says nothing about the designs: skip with a
+          # warning instead of failing the check. Any other incomplete run still fails.
+          if [ "$result" -eq 2 ] && grep -Eq '^ *problem: .*(answered 402|code 402)' _uid_audit/audit.log; then
+            echo '{"status":"skipped","reason":"OpenRouter refused requests for lack of credit (402)","exitCode":2}' > _uid_audit/audit-status.json
+            echo '::warning::UI audit skipped: OpenRouter refused requests for lack of credit (402). Top up or raise the OPENROUTER_API_KEY limit, then re-run.'
+            exit 0
+          fi
+          printf '{"exitCode":%s}\n' "$result" > _uid_audit/audit-status.json
           exit "$result"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
