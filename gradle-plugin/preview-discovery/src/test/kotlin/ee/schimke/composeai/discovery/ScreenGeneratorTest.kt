@@ -1613,6 +1613,69 @@ class ScreenGeneratorTest {
       .contains("but the templates declare it as app.OtherSpec")
   }
 
+  private val wearFrame =
+    ScreenGenerator.Frame(
+      template =
+        "val spec = rememberTransformationSpec()\n" +
+          "ScreenScaffold(scrollState = listState) { contentPadding ->\n" +
+          "  ${'$'}{content}\n" +
+          "}",
+      imports =
+        listOf(
+          "androidx.wear.compose.material3.ScreenScaffold",
+          "androidx.wear.compose.material3.lazy.rememberTransformationSpec",
+        ),
+    )
+
+  @Test
+  fun `a frame is written around the root, and the root reads the locals it declares`() {
+    val source =
+      (ScreenGenerator.generate(
+          transformedItem(
+            attested,
+            ScreenValue.ScopeRead.Builder(itemScope).build(),
+            ScreenValue.LocalRead.Builder("spec", spec).build(),
+          ),
+          catalog(lazyColumn, card),
+          expressionPackages = setOf("androidx.compose", "androidx.wear.compose"),
+          locals = mapOf("spec" to spec),
+          frame = wearFrame,
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+    assertThat(source)
+      .contains(
+        "    val spec = rememberTransformationSpec()\n" +
+          "    ScreenScaffold(scrollState = listState) { contentPadding ->\n" +
+          "      LazyColumn {\n"
+      )
+    assertThat(source).contains("Card(modifier = Modifier.transformedHeight(this, spec)")
+    assertThat(source).contains("import androidx.wear.compose.material3.ScreenScaffold")
+    assertThat(source)
+      .contains("import androidx.wear.compose.material3.lazy.rememberTransformationSpec")
+  }
+
+  @Test
+  fun `a frame writes the root exactly once, and through no other hole`() {
+    fun refusals(template: String, imports: List<String> = emptyList()) =
+      (ScreenGenerator.generate(
+          list(attested, textNode("a")),
+          catalog(lazyColumn, text),
+          frame = ScreenGenerator.Frame(template, imports),
+        ) as ScreenGenerator.Result.Refused)
+        .reasons
+    assertThat(refusals("Box {}")).contains("screen frame: writes `content` 0 times, not once")
+    assertThat(refusals("${'$'}{content}\n${'$'}{content}"))
+      .contains("screen frame: writes `content` 2 times, not once")
+    assertThat(refusals("${'$'}{content} ${'$'}{edgeButton}"))
+      .contains(
+        "screen frame: `edgeButton` is not a hole a frame can fill; it writes only `content`"
+      )
+    assertThat(refusals("${'$'}{call(modifier = \"Modifier\")}").joinToString())
+      .contains("a `call(…)` hole has no record to call")
+    assertThat(refusals("${'$'}{content}", listOf("not a name")))
+      .contains("screen frame: import `not a name` is not a qualified Kotlin name")
+  }
+
   @Test
   fun `a template local may not also be declared state, or be no identifier`() {
     val document =

@@ -80,6 +80,20 @@ object ScreenGenerator {
     val devices: List<String> = emptyList(),
   )
 
+  /**
+   * A catalog's `screen-root` template (`UiBuilderCode.templates`), written as the screen's body
+   * around the generated [ScreenDocument.root]: the structure no single record prints, such as
+   * Wear's `ScreenScaffold` sharing a hoisted `listState` with the list inside it.
+   *
+   * Its one hole is `${content}`, the root's call. The names it declares for the root to read are
+   * the `locals` of [generate], and [imports] are the ones its own text needs; both come from the
+   * same catalog `code` block, which is validated when the catalog is published.
+   */
+  data class Frame(val template: String, val imports: List<String> = emptyList())
+
+  /** The holes a [Frame] may write: the root, and nothing a template could leave empty. */
+  private val FRAME_HOLES = setOf("content")
+
   private const val INDENT = "    "
 
   /** How many identical siblings it takes before a `repeat` reads better than the calls. */
@@ -126,6 +140,20 @@ object ScreenGenerator {
     expressionPackages: Set<String> = emptySet(),
     preview: Preview? = null,
     locals: Map<String, String> = emptyMap(),
+  ): Result = generate(document, components, packageName, expressionPackages, preview, locals, null)
+
+  /**
+   * [generate], writing [frame] around the root. A separate overload rather than another default
+   * argument, so a builder compiled against the signature above still links against this one.
+   */
+  fun generate(
+    document: ScreenDocument,
+    components: ComponentRecordFile,
+    packageName: String = "generated.screen",
+    expressionPackages: Set<String> = emptySet(),
+    preview: Preview? = null,
+    locals: Map<String, String> = emptyMap(),
+    frame: Frame?,
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
@@ -181,6 +209,10 @@ object ScreenGenerator {
       }
     }
     if (localIssues.isNotEmpty()) return Result.Refused(localIssues)
+    if (frame != null) {
+      val frameIssues = frameRefusals(frame)
+      if (frameIssues.isNotEmpty()) return Result.Refused(frameIssues)
+    }
     val functionNames = document.functions.map { it.name }.toSet()
     val parameterNames = document.functions.flatMap { it.parameters }.map { it.name }.toSet()
     val claimants = components.components.groupBy { it.symbol.name }
@@ -370,7 +402,22 @@ object ScreenGenerator {
       }
     // The body is not an initializer: every declaration is in scope there.
     context.initializerScope = null
-    val body = context.node(document.root, depth = 1)
+    val body =
+      if (frame == null) context.node(document.root, depth = 1)
+      else
+        when (
+          val framed =
+            StructuralTemplate.render(frame.template) { _ ->
+              // Checked by frameRefusals: `content` is the only hole a frame reaches here.
+              context.node(document.root, depth = 0)
+            }
+        ) {
+          is StructuralTemplate.Result.Refused -> return Result.Refused(framed.reasons)
+          is StructuralTemplate.Result.Emitted ->
+            framed.source.trimEnd('\n').lines().joinToString("\n") {
+              if (it.isBlank()) "" else INDENT + it
+            }
+        }
     val functionBodies = context.functionBodies()
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
     val declarations = preamble.filterNotNull().flatten()
@@ -382,6 +429,7 @@ object ScreenGenerator {
     val imports =
       (context.imports +
           context.extensionImports +
+          frame?.imports.orEmpty() +
           "androidx.compose.runtime.Composable" +
           listOfNotNull(
             PREVIEW_ANNOTATION.takeIf { preview != null },
@@ -495,6 +543,26 @@ object ScreenGenerator {
       }
     }
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
+  }
+
+  /** Why [frame] cannot be written around a screen, or empty when it can. */
+  private fun frameRefusals(frame: Frame): List<String> = buildList {
+    when (val holes = StructuralTemplate.holes(frame.template)) {
+      is StructuralTemplate.Result2.Failed -> holes.reasons.forEach { add("screen frame: $it") }
+      is StructuralTemplate.Result2.Ok -> {
+        val named = holes.value.filterIsInstance<StructuralTemplate.Hole.Named>().map { it.name }
+        if (holes.value.any { it is StructuralTemplate.Hole.Call })
+          add("screen frame: a `call(…)` hole has no record to call; the root is `content`")
+        (named.toSet() - FRAME_HOLES).sorted().forEach {
+          add("screen frame: `$it` is not a hole a frame can fill; it writes only `content`")
+        }
+        if (named.count { it == "content" } != 1)
+          add("screen frame: writes `content` ${named.count { it == "content" }} times, not once")
+      }
+    }
+    frame.imports.filterNot(::isQualifiedName).forEach {
+      add("screen frame: import `$it` is not a qualified Kotlin name")
+    }
   }
 
   /**
