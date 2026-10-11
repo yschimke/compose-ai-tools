@@ -92,14 +92,17 @@ object TypedAdapterDiscovery {
    * Kotlin overloads it by name, as Wear's `Button` is overloaded on `label` and `content`, so
    * [declaring] picks the overload the record's own parameters come from: the one non-deprecated
    * overload declaring every name in it. Where overloads differ only in a type, as `Text` takes
-   * `text: String` or `text: AnnotatedString`, [types] also fixes a parameter's type by name. Both
-   * empty picks the only non-deprecated overload.
+   * `text: String` or `text: AnnotatedString`, [types] also fixes a parameter's type by name; and
+   * where one overload adds parameters to another, as the image `Button` adds `containerPainter`,
+   * [excluding] names parameters the picked overload must not declare. All empty picks the only
+   * non-deprecated overload.
    */
   data class LibraryCallable(
     val owner: String,
     val name: String,
     val declaring: Set<String> = emptySet(),
     val types: Map<String, String> = emptyMap(),
+    val excluding: Set<String> = emptySet(),
   )
 
   /**
@@ -159,11 +162,12 @@ object TypedAdapterDiscovery {
               selected.declaring.all { name -> signature.parameters.any { it.name == name } } &&
                 selected.types.all { (name, type) ->
                   signature.parameters.any { it.name == name && it.typeFqn == type }
-                }
+                } &&
+                signature.parameters.none { it.name in selected.excluding }
             }
             require(picked.size == 1) {
               "$where: ${picked.size} non-deprecated overloads declare ${selected.declaring.sorted()} " +
-                "with ${selected.types}; name parameters that pick one of " +
+                "with ${selected.types}, excluding ${selected.excluding.sorted()}; name parameters that pick one of " +
                 overloads.joinToString("; ") { (_, s) ->
                   s.parameters.joinToString(", ", "(", ")") { "${it.name}: ${it.typeFqn}" }
                 }

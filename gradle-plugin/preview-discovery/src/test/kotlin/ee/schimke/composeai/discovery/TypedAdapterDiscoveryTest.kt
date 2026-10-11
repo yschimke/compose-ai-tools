@@ -105,6 +105,28 @@ class TypedAdapterDiscoveryTest {
   }
 
   @Test
+  fun `an overload that adds a parameter to another is excluded by naming it`() {
+    val painted =
+      TypedAdapterDiscovery.LibraryCallable(
+        "ee.schimke.composeai.discovery.TypedAdapterDiscoveryTestKt",
+        "libraryPainted",
+        declaring = setOf("label"),
+      )
+    assertThrows(IllegalArgumentException::class.java) {
+      TypedAdapterDiscovery.discoverLibrary("lib", "release", listOf(painted))
+    }
+    val record =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(painted.copy(excluding = setOf("painter"))),
+        )
+        .components
+        .single()
+    assertEquals(listOf("label"), record.parameters.map { it.name })
+  }
+
+  @Test
   fun `zero argument entry points are known rather than missing metadata`() {
     val record =
       TypedAdapterDiscovery.discover(":app", "jvm", listOf(entry.copy(name = "adapterNoArgs")))
@@ -277,3 +299,8 @@ fun libraryOverloaded(onClick: () -> Unit, old: Boolean): Unit = error("not exec
 @Suppress("UNUSED_PARAMETER") fun libraryTyped(text: String): Unit = error("not executed")
 
 @Suppress("UNUSED_PARAMETER") fun libraryTyped(text: CharSequence): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER") fun libraryPainted(label: String): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER")
+fun libraryPainted(painter: Int, label: String): Unit = error("not executed")
