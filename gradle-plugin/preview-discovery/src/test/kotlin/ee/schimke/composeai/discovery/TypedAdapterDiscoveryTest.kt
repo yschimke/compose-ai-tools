@@ -38,6 +38,72 @@ class TypedAdapterDiscoveryTest {
     }
   }
 
+  private val library =
+    TypedAdapterDiscovery.LibraryCallable(
+      "ee.schimke.composeai.discovery.TypedAdapterDiscoveryTestKt",
+      "libraryOverloaded",
+    )
+
+  @Test
+  fun `a library callable publishes every overload and takes its parameters from the one named`() {
+    val record =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(library.copy(declaring = setOf("label"))),
+        )
+        .components
+        .single()
+    assertEquals(ComponentOrigin.LIBRARY, record.symbol.origin)
+    assertEquals(listOf("onClick", "label"), record.parameters.map { it.name })
+    // The deprecated overload is neither picked nor published.
+    assertEquals(
+      setOf(listOf("onClick", "label"), listOf("onClick", "content")),
+      record.overloads.map { o -> o.parameters.map { it.name } }.toSet(),
+    )
+    val content =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(library.copy(declaring = setOf("content"))),
+        )
+        .components
+        .single()
+    assertEquals(listOf("onClick", "content"), content.parameters.map { it.name })
+  }
+
+  @Test
+  fun `an overloaded library callable with no names to pick one is refused, naming its overloads`() {
+    val refused =
+      assertThrows(IllegalArgumentException::class.java) {
+        TypedAdapterDiscovery.discoverLibrary("lib", "release", listOf(library))
+      }
+    assertTrue(refused.message!!, "label: kotlin.String)" in refused.message!!)
+    assertTrue(refused.message!!, "content: kotlin.Int)" in refused.message!!)
+  }
+
+  @Test
+  fun `overloads that differ only in a type are picked by naming it`() {
+    val typed =
+      TypedAdapterDiscovery.LibraryCallable(
+        "ee.schimke.composeai.discovery.TypedAdapterDiscoveryTestKt",
+        "libraryTyped",
+      )
+    assertThrows(IllegalArgumentException::class.java) {
+      TypedAdapterDiscovery.discoverLibrary("lib", "release", listOf(typed))
+    }
+    val record =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(typed.copy(types = mapOf("text" to "kotlin.String"))),
+        )
+        .components
+        .single()
+    assertEquals("kotlin.String", record.parameters.single().typeFqn)
+    assertEquals(2, record.overloads.size)
+  }
+
   @Test
   fun `zero argument entry points are known rather than missing metadata`() {
     val record =
@@ -197,3 +263,17 @@ object AdapterFactoryFixture {
 // Discovery must read class bytes without triggering the export facade's initializer.
 @Suppress("unused")
 private val adapterFacadeInitialization: Nothing = error("discovery must never initialize app code")
+
+@Suppress("UNUSED_PARAMETER")
+fun libraryOverloaded(onClick: () -> Unit, label: String): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER")
+fun libraryOverloaded(onClick: () -> Unit, content: Int): Unit = error("not executed")
+
+@Deprecated("replaced", level = DeprecationLevel.HIDDEN)
+@Suppress("UNUSED_PARAMETER")
+fun libraryOverloaded(onClick: () -> Unit, old: Boolean): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: String): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: CharSequence): Unit = error("not executed")
