@@ -191,6 +191,26 @@ object AdapterValueCodecs {
     }
 
   /**
+   * A Material icon key (`filled/newReleases`), exported as the host's icon table writes it; see
+   * [ExportProjection.Codec.MaterialIcon]. [allowed] closes the set the shelf offers, when given.
+   */
+  fun materialIcon(allowed: Set<String>? = null): AdapterValueCodec<String> =
+    object : AdapterValueCodec<String> {
+      override val jsonType = "string"
+      override val kotlinType = IMAGE_VECTOR_TYPE
+      override val stateType: String? = null
+      override val exportCodec = ExportProjection.Codec.MaterialIcon
+      override val allowedValues = allowed
+
+      override fun encode(value: String): JsonElement = JsonPrimitive(value)
+
+      override fun decode(value: JsonElement): String {
+        require(value is JsonPrimitive && value.isString) { "expected an icon key" }
+        return value.content
+      }
+    }
+
+  /**
    * One of a closed set of wire values, each naming a Kotlin member ([members]: wire value to the
    * member's qualified name). Decodes to the wire value; the renderer maps it to the real member.
    */
@@ -1194,6 +1214,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             ExportProjection.Codec.Fractional32 -> "kotlin.Float"
             is ExportProjection.Codec.Color -> COLOR_TYPE
             is ExportProjection.Codec.Enum -> codec.typeFqn
+            ExportProjection.Codec.MaterialIcon -> IMAGE_VECTOR_TYPE
             is ExportProjection.Codec.Unit ->
               if (codec.unit == "sp") "androidx.compose.ui.unit.TextUnit"
               else "androidx.compose.ui.unit.Dp"
@@ -1428,3 +1449,5 @@ object TypedAdapterCatalog {
 private const val COLOR_TYPE = "androidx.compose.ui.graphics.Color"
 
 private const val MODIFIER_TYPE = "androidx.compose.ui.Modifier"
+
+private const val IMAGE_VECTOR_TYPE = "androidx.compose.ui.graphics.vector.ImageVector"

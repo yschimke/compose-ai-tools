@@ -364,7 +364,8 @@ data class ExportProjection(
           Text,
           is Color,
           is Enum,
-          is Token -> "string"
+          is Token,
+          MaterialIcon -> "string"
           Bool -> "bool"
           Whole -> "int"
           Fractional32,
@@ -374,6 +375,15 @@ data class ExportProjection(
         }
 
     data object Text : Codec
+
+    /**
+     * A Material icon key as the builder stores it (`filled/newReleases`), written as the host's
+     * own icon table writes it: `Icons.Filled.NewReleases`, its extension property imported. The
+     * table is the host's (compose-ui-builder ships one generated from the icon jars), so a
+     * projection names the codec rather than copying thousands of members; lowered without one, the
+     * property is refused.
+     */
+    data object MaterialIcon : Codec
 
     data object Bool : Codec
 
@@ -617,7 +627,18 @@ data class ExportProjection(
    * structural role the node is the direct child of, if any; its context's arguments are written
    * too, and a role with no context on the chosen target writes nothing extra.
    */
-  fun lower(properties: Map<String, JsonElement>, role: String? = null): Lowered {
+  fun lower(properties: Map<String, JsonElement>, role: String? = null): Lowered =
+    lower(properties, role, null)
+
+  /**
+   * [lower], with the host's [icons] table: a [Codec.MaterialIcon] property is written as whatever
+   * the host writes that icon key as (the builder's `Icons.Filled.X`), and refused without one.
+   */
+  fun lower(
+    properties: Map<String, JsonElement>,
+    role: String?,
+    icons: ((String) -> ScreenValue?)?,
+  ): Lowered {
     val reasons = mutableListOf<String>()
     val statedVariant = variantProperty?.let { properties[it] }?.takeUnless { it is JsonNull }
     if (statedVariant != null && wireValue(statedVariant) == null) {
@@ -648,7 +669,9 @@ data class ExportProjection(
     val context = role?.let { target.contexts[it] }
     val arguments = buildMap {
       for ((parameter, value) in target.parameters + context?.parameters.orEmpty()) {
-        write(value, properties, "${target.record}.$parameter", reasons)?.let { put(parameter, it) }
+        write(value, properties, "${target.record}.$parameter", reasons, icons)?.let {
+          put(parameter, it)
+        }
       }
     }
     val synthesized = buildMap {
@@ -681,6 +704,7 @@ data class ExportProjection(
     properties: Map<String, JsonElement>,
     where: String,
     reasons: MutableList<String>,
+    icons: ((String) -> ScreenValue?)?,
   ): ScreenValue? =
     when (value) {
       is Value.Fixed -> value.value
@@ -690,18 +714,25 @@ data class ExportProjection(
         if (value.codec.composite) {
           if (stated == null || stated is JsonNull) null
           else
-            nested(value.codec, value.codec.literalType, stated, "$where <- ${value.name}", reasons)
+            nested(
+              value.codec,
+              value.codec.literalType,
+              stated,
+              "$where <- ${value.name}",
+              reasons,
+              icons,
+            )
         } else if (stated != null && stated !is JsonNull && raw == null) {
           reasons += "$where <- ${value.name}: not a scalar value"
           null
         } else if (raw == null || raw is JsonNull || (raw.isString && raw.content.isEmpty())) null
         else if (value.omitWhen != null && sameScalar(raw, value.omitWhen)) null
-        else encode(value.codec, raw, "$where <- ${value.name}", reasons)
+        else encode(value.codec, raw, "$where <- ${value.name}", reasons, icons)
       }
       is Value.Call -> {
         val arguments = buildMap {
           for ((name, argument) in value.arguments) {
-            write(argument, properties, "$where.$name", reasons)?.let { put(name, it) }
+            write(argument, properties, "$where.$name", reasons, icons)?.let { put(name, it) }
           }
         }
         if (arguments.isEmpty()) null
@@ -720,6 +751,7 @@ data class ExportProjection(
     stored: JsonElement,
     where: String,
     reasons: MutableList<String>,
+    icons: ((String) -> ScreenValue?)?,
   ): ScreenValue? {
     fun refuse(message: String): ScreenValue? {
       reasons += "$where: $message"
@@ -732,7 +764,7 @@ data class ExportProjection(
             ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
         val before = reasons.size
         val written = values.mapIndexed { index, item ->
-          nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons)
+          nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons, icons)
         }
         if (reasons.size != before) null
         else
@@ -761,7 +793,7 @@ data class ExportProjection(
                   null
                 }
                 ?: continue
-            nested(field.codec, field.literalType, value, "$where.$name", reasons)?.let {
+            nested(field.codec, field.literalType, value, "$where.$name", reasons, icons)?.let {
               put(name, it)
             }
           }
@@ -786,7 +818,7 @@ data class ExportProjection(
         if (raw.isString && raw.content.isEmpty() && codec != Codec.Text)
           return refuse("an empty value cannot be written here")
         val before = reasons.size
-        encode(codec, raw, where, reasons)
+        encode(codec, raw, where, reasons, icons)
           ?: if (reasons.size == before) refuse("writes nothing, which a list or object cannot")
           else null
       }
@@ -806,6 +838,7 @@ data class ExportProjection(
     raw: JsonPrimitive,
     where: String,
     reasons: MutableList<String>,
+    icons: ((String) -> ScreenValue?)?,
   ): ScreenValue? {
     fun refuse(message: String): ScreenValue? {
       reasons += "$where: $message"
@@ -813,6 +846,13 @@ data class ExportProjection(
     }
     return when (codec) {
       Codec.Text -> if (raw.isString) ScreenValue.Text(raw.content) else refuse("expected text")
+      Codec.MaterialIcon ->
+        when {
+          !raw.isString -> refuse("expected a Material icon key")
+          icons == null ->
+            refuse("`${raw.content}` is a Material icon key, and this host writes none")
+          else -> icons(raw.content) ?: refuse("`${raw.content}` is not a Material icon key")
+        }
       Codec.Bool -> raw.booleanOrNull?.let { ScreenValue.Bool(it) } ?: refuse("expected a boolean")
       // Read as a Long token: through a Double, 9007199254740993 would export as …992.
       Codec.Whole ->
