@@ -648,7 +648,14 @@ class ExportProjectionTest {
   private val contactCodec =
     ExportProjection.Codec.Object(
       "com.example.Contact",
-      mapOf("name" to ExportProjection.Codec.Text, "unread" to ExportProjection.Codec.Whole),
+      mapOf(
+        "name" to ExportProjection.Codec.Field(ExportProjection.Codec.Text),
+        "unread" to
+          ExportProjection.Codec.Field(
+            ExportProjection.Codec.Whole,
+            default = json("""{"type":"int","value":0}""").jsonObject,
+          ),
+      ),
     )
 
   private val inboxProjection =
@@ -668,9 +675,19 @@ class ExportProjectionTest {
                 ExportProjection.Codec.Object(
                   "com.example.Profile",
                   mapOf(
-                    "owner" to contactCodec,
-                    "tags" to ExportProjection.Codec.ListOf(ExportProjection.Codec.Text),
-                    "accent" to wearColor,
+                    "owner" to ExportProjection.Codec.Field(contactCodec),
+                    "tags" to
+                      ExportProjection.Codec.Field(
+                        ExportProjection.Codec.ListOf(ExportProjection.Codec.Text),
+                        default = json("""{"type":"list","values":[]}""").jsonObject,
+                      ),
+                    // A catalog codec stored under its own wrapper type.
+                    "accent" to
+                      ExportProjection.Codec.Field(
+                        wearColor,
+                        literalType = "colorToken",
+                        default = json("""{"type":"colorToken","value":"primary"}""").jsonObject,
+                      ),
                   ),
                   callableFqn = "com.example.ProfileDefaults.profile",
                 ),
@@ -682,20 +699,24 @@ class ExportProjectionTest {
 
   private fun json(text: String) = Json.parseToJsonElement(text)
 
-  private fun contact(name: String, unread: Int? = null) =
+  private fun contact(name: String, unread: Int) =
     ScreenValue.Construct(
       "com.example.Contact",
       named =
-        listOfNotNull(
-            "name" to ScreenValue.Text(name),
-            unread?.let { "unread" to ScreenValue.Whole(it.toLong()) },
-          )
-          .toMap(),
+        mapOf("name" to ScreenValue.Text(name), "unread" to ScreenValue.Whole(unread.toLong())),
       typeFqn = "com.example.Contact",
     )
 
   private val ada =
     """{"type":"object","fields":{"name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}}"""
+
+  private fun refusals(properties: Map<String, kotlinx.serialization.json.JsonElement>) =
+    (inboxProjection.lower(properties) as ExportProjection.Lowered.Refused).reasons
+
+  private fun profile(fields: String) =
+    mapOf("profile" to json("""{"type":"object","fields":{$fields}}"""))
+
+  private val at = "app/com.example.InboxKt.Inbox"
 
   @Test
   fun `a list property is written as listOf and an object as a named-argument call`() {
@@ -707,18 +728,16 @@ class ExportProjectionTest {
               """{"type":"list","values":[$ada,
                 {"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}]}"""
             ),
-          "profile" to
-            json(
-              """{"type":"object","fields":{"owner":$ada,"tags":{"type":"list","values":[]},
-                "accent":{"type":"colorToken","value":"primary"}}}"""
-            ),
+          "profile" to json("""{"type":"object","fields":{"owner":$ada}}"""),
         )
       ) as ExportProjection.Lowered.Node
+    // Bo's omitted `unread` and the profile's omitted `tags` and `accent` write their declared
+    // defaults: the constructor need not default them.
     assertThat(lowered.arguments["contacts"])
       .isEqualTo(
         ScreenValue.Construct(
           "kotlin.collections.listOf",
-          positional = listOf(contact("Ada", 2), contact("Bo")),
+          positional = listOf(contact("Ada", 2), contact("Bo", 0)),
           typeFqn = "kotlin.collections.List",
         )
       )
@@ -765,7 +784,9 @@ class ExportProjectionTest {
     assertThat(result).isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
     val source = (result as ScreenGenerator.Result.Emitted).source
     assertThat(source)
-      .contains("contacts = listOf(Contact(name = \"Ada\", unread = 2), Contact(name = \"Bo\"))")
+      .contains(
+        "contacts = listOf(Contact(name = \"Ada\", unread = 2), Contact(name = \"Bo\", unread = 0))"
+      )
     assertThat(source)
       .contains(
         "profile = ProfileDefaults.profile(owner = Contact(name = \"Ada\", unread = 2), " +
@@ -776,11 +797,26 @@ class ExportProjectionTest {
   }
 
   @Test
-  fun `a malformed list element or object field is refused with its path`() {
-    fun reasons(properties: Map<String, kotlinx.serialization.json.JsonElement>) =
-      (inboxProjection.lower(properties) as ExportProjection.Lowered.Refused).reasons
+  fun `an omitted required field is refused rather than left to the constructor`() {
     assertThat(
-        reasons(
+        refusals(
+          mapOf(
+            "contacts" to
+              json(
+                """{"type":"list","values":[{"type":"object","fields":{"unread":{"type":"int","value":1}}}]}"""
+              )
+          )
+        )
+      )
+      .containsExactly("$at.contacts <- contacts[0].name: required field is missing")
+    assertThat(refusals(profile("")))
+      .containsExactly("$at.profile <- profile.owner: required field is missing")
+  }
+
+  @Test
+  fun `a malformed list element or object field is refused with its path`() {
+    assertThat(
+        refusals(
           mapOf(
             "contacts" to
               json(
@@ -789,49 +825,93 @@ class ExportProjectionTest {
           )
         )
       )
-      .containsExactly("${inbox.canonicalId}.contacts <- contacts[0].name: expected text")
-    assertThat(
-        reasons(
-          mapOf(
-            "profile" to
-              json(
-                """{"type":"object","fields":{"owner":$ada,"nickname":{"type":"string","value":"x"}}}"""
-              )
-          )
-        )
-      )
-      .containsExactly(
-        "${inbox.canonicalId}.profile <- profile: com.example.Profile has no field [nickname]"
-      )
-    assertThat(reasons(mapOf("contacts" to wrapper("string", "Ada"))).single())
+      .containsExactly("$at.contacts <- contacts[0].name: expected text")
+    assertThat(refusals(profile(""""owner":$ada,"nickname":{"type":"string","value":"x"}""")))
+      .containsExactly("$at.profile <- profile: com.example.Profile has no field [nickname]")
+    assertThat(refusals(mapOf("contacts" to wrapper("string", "Ada"))).single())
       .contains("expected a {\"type\": \"list\"")
-    assertThat(
-        reasons(
-          mapOf(
-            "profile" to
-              json("""{"type":"object","fields":{"accent":{"type":"colorToken","value":""}}}""")
-          )
-        )
-      )
-      .containsExactly(
-        "${inbox.canonicalId}.profile <- profile.accent: an empty value cannot be written here"
-      )
+    assertThat(refusals(profile(""""owner":$ada,"accent":{"type":"colorToken","value":""}""")))
+      .containsExactly("$at.profile <- profile.accent: an empty value cannot be written here")
     // Absent, a list or object property is simply not written.
     val unset = inboxProjection.lower(emptyMap()) as ExportProjection.Lowered.Node
     assertThat(unset.arguments).isEmpty()
   }
 
   @Test
+  fun `a nested scalar must be its codec's own literal wrapper, as unwrap requires`() {
+    fun tags(values: String) =
+      refusals(profile(""""owner":$ada,"tags":{"type":"list","values":[$values]}"""))
+    assertThat(tags(""""x""""))
+      .containsExactly("$at.profile <- profile.tags[0]: expected a `string` wrapper, found \"x\"")
+    assertThat(tags("""{"type":"int","value":"x"}"""))
+      .containsExactly("$at.profile <- profile.tags[0]: expected a `string` wrapper, found `int`")
+    assertThat(tags("""{"value":"x"}"""))
+      .containsExactly(
+        "$at.profile <- profile.tags[0]: expected a `string` wrapper, found {\"value\":\"x\"}"
+      )
+    assertThat(tags("""{"type":"string"}"""))
+      .containsExactly("$at.profile <- profile.tags[0]: a `string` wrapper has no value")
+    assertThat(tags("""{"type":"string","value":{"nested":true}}"""))
+      .containsExactly("$at.profile <- profile.tags[0]: a `string` wrapper has no value")
+    // A field stored under its catalog's own wrapper type is held to that type.
+    assertThat(refusals(profile(""""owner":$ada,"accent":{"type":"string","value":"primary"}""")))
+      .containsExactly(
+        "$at.profile <- profile.accent: expected a `colorToken` wrapper, found `string`"
+      )
+    assertThat(refusals(profile(""""owner":{"type":"object","fields":{"name":"Ada"}}""")))
+      .containsExactly(
+        "$at.profile <- profile.owner.name: expected a `string` wrapper, found \"Ada\""
+      )
+    // At the top level a scalar property stays as lenient as it always was.
+    assertThat(projection.lower(mapOf("enabled" to JsonPrimitive(false))))
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+  }
+
+  @Test
   fun `list and object codecs round trip through the published spelling`() {
     val encoded = ExportProjectionJson.encode(inboxProjection)
     assertThat(ExportProjectionJson.decode(encoded).getOrThrow()).isEqualTo(inboxProjection)
-    val contacts =
-      encoded["targets"]!!.jsonArray.single().jsonObject["parameters"]!!.jsonObject["contacts"]!!
-    assertThat(contacts)
+    val parameters = encoded["targets"]!!.jsonArray.single().jsonObject["parameters"]!!.jsonObject
+    assertThat(parameters["contacts"])
       .isEqualTo(
         json(
           """{"property":"contacts","codec":{"list":{"element":{"object":{
-            "type":"com.example.Contact","fields":{"name":"text","unread":"whole"}}}}}}"""
+            "type":"com.example.Contact","fields":{"name":"text",
+            "unread":{"codec":"whole","default":{"type":"int","value":0}}}}}}}}"""
+        )
+      )
+    val accent =
+      parameters["profile"]!!
+        .jsonObject["codec"]!!
+        .jsonObject["object"]!!
+        .jsonObject["fields"]!!
+        .jsonObject["accent"]!!
+        .jsonObject
+    assertThat(accent["literalType"]).isEqualTo(JsonPrimitive("colorToken"))
+    // The first spelling, a field as its bare codec, still reads: required, default wrapper type.
+    assertThat(
+        ExportProjectionJson.decode(
+            json(
+              """{"targets":[{"record":"$at","parameters":{"contacts":{"property":"contacts",
+                "codec":{"list":{"element":{"object":{"type":"com.example.Contact",
+                "fields":{"name":"text"}}}}}}}}]}"""
+            )
+          )
+          .getOrThrow()
+          .targets
+          .single()
+          .parameters["contacts"]
+      )
+      .isEqualTo(
+        ExportProjection.Value.Property(
+          "contacts",
+          ExportProjection.Codec.ListOf(
+            ExportProjection.Codec.Object(
+              "com.example.Contact",
+              mapOf("name" to ExportProjection.Codec.Field(ExportProjection.Codec.Text, "string")),
+            ),
+            "object",
+          ),
         )
       )
     // The scalar spellings are unchanged.

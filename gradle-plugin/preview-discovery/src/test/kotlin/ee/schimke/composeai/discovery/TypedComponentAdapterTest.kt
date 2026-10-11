@@ -690,8 +690,14 @@ class TypedComponentAdapterTest {
           ExportProjection.Codec.Object(
             CONTACT,
             mapOf(
-              "name" to ExportProjection.Codec.Text,
-              "unread" to ExportProjection.Codec.Whole,
+              "name" to ExportProjection.Codec.Field(ExportProjection.Codec.Text),
+              // The adapter's default travels with the export, for an object that omits it.
+              "unread" to
+                ExportProjection.Codec.Field(
+                  ExportProjection.Codec.Whole,
+                  "int",
+                  default = json("""{"type":"int","value":0}"""),
+                ),
             ),
           )
         )

@@ -131,8 +131,12 @@ Validation compares a list property with the parameter's erased classifier
 (`kotlin.collections.List`; the element type is the property reference's compile-time check) and an
 object property with the class the codec names; nullable parameters are refused as before. Exported
 through `from(property)`, a list is written `listOf(…)` and an object as a named-argument call to its
-class (or the `callableFqn` given to `obj`), recursively; a host's `expressionPackages` must admit
-`kotlin.collections` and the object's package, which the projection's `qualifiedOwners` lists.
+class (or the `callableFqn` given to `obj`), recursively. Every field is written: one a stored
+object omits takes the default declared with `field(…, default = …)`, which the export codec carries,
+since the class's constructor need not share it, and an omitted required field is refused. A nested
+scalar must be exactly its codec's literal wrapper, as `unwrap` requires. A host's
+`expressionPackages` must admit `kotlin.collections` and the object's package, which the
+projection's `qualifiedOwners` lists.
 
 ## Generate and publish
 

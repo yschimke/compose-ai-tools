@@ -257,7 +257,8 @@ object AdapterValueCodecs {
       override val kotlinType = LIST_TYPE
       override val literalType = "list"
       override val stateType: String? = null
-      override val exportCodec = element.exportCodec?.let { ExportProjection.Codec.ListOf(it) }
+      override val exportCodec =
+        element.exportCodec?.let { ExportProjection.Codec.ListOf(it, element.literalType) }
       override val editor: JsonObject = buildJsonObject {
         put("control", "list")
         put("element", element.shape())
@@ -342,6 +343,12 @@ internal constructor(
       throw IllegalArgumentException("`$name`: ${e.message}", e)
     }
   }
+
+  /** How an export writes this field: its codec, stored type, and default for an omitted one. */
+  internal fun exported(): ExportProjection.Codec.Field? =
+    codec.exportCodec?.let { export ->
+      ExportProjection.Codec.Field(export, codec.literalType, fallback?.let { codec.wrap(it()) })
+    }
 
   internal fun shape(): JsonObject = buildJsonObject {
     put("name", name)
@@ -435,9 +442,7 @@ internal constructor(
 
   /** Null unless every field's codec can be exported. */
   override val exportCodec: ExportProjection.Codec? = run {
-    val exported = fields.map { field ->
-      field.name to (field.codec.exportCodec ?: return@run null)
-    }
+    val exported = fields.map { field -> field.name to (field.exported() ?: return@run null) }
     ExportProjection.Codec.Object(typeFqn, exported.toMap(), callableFqn)
   }
 

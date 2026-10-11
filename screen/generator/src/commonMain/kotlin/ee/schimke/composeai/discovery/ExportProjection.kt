@@ -326,6 +326,26 @@ data class ExportProjection(
     val composite: Boolean
       get() = this is ListOf || this is Object
 
+    /**
+     * The wrapper `type` a value of this codec is stored under by default, as the typed adapters'
+     * own codecs spell it (`AdapterValueCodec.literalType`): what a list element or object field
+     * must state, unless its [ListOf.elementLiteralType] / [Field.literalType] says otherwise.
+     */
+    val literalType: String
+      get() =
+        when (this) {
+          Text,
+          is Color,
+          is Enum,
+          is Token -> "string"
+          Bool -> "bool"
+          Whole -> "int"
+          Fractional32,
+          is Unit -> "number"
+          is ListOf -> "list"
+          is Object -> "object"
+        }
+
     data object Text : Codec
 
     data object Bool : Codec
@@ -373,24 +393,56 @@ data class ExportProjection(
 
     /**
      * A `{"type": "list", "values": [<wrapper>…]}`, each value through [element], written
-     * `listOf(a, b)`. An empty list is `listOf()`, the parameter's type inferring the element.
+     * `listOf(a, b)`. An empty list is `listOf()`, the parameter's type inferring the element. Each
+     * value must be exactly the wrapper the element's codec reads back: a scalar's `{"type":
+     * [elementLiteralType], "value": …}`, a nested list's or object's own wrapper.
      */
-    data class ListOf(val element: Codec) : Codec
+    data class ListOf(
+      val element: Codec,
+      val elementLiteralType: String = element.literalType,
+    ) : Codec {
+      init {
+        require(!element.composite || elementLiteralType == element.literalType) {
+          "a nested ${element.literalType} is stored as `${element.literalType}`"
+        }
+      }
+    }
 
     /**
      * A `{"type": "object", "fields": {"<name>": <wrapper>}}` of the class [typeFqn], written as a
-     * call to [callableFqn] (its constructor, by default) with each stored field as a named
-     * argument through its codec, in [fields] order. A field left out is left to the callable's own
-     * default; a field the object does not declare is refused.
+     * call to [callableFqn] (its constructor, by default) with every field as a named argument
+     * through its codec, in [fields] order. A field left out writes its [Field.default], or is
+     * refused when it has none; a field the object does not declare is refused. Every field is
+     * written because the callable need not default the parameters the adapter does.
      */
     data class Object(
       val typeFqn: String,
-      val fields: Map<String, Codec>,
+      val fields: Map<String, Field>,
       val callableFqn: String = typeFqn,
     ) : Codec {
       init {
         require(fields.isNotEmpty()) { "an object codec writes at least one field" }
       }
+    }
+
+    /**
+     * One field of an [Object]: its [codec], the wrapper [literalType] it is stored under, and the
+     * stored wrapper of its [default], written when an object leaves the field out. Null makes the
+     * field required.
+     */
+    data class Field(
+      val codec: Codec,
+      val literalType: String = codec.literalType,
+      val default: JsonObject? = null,
+    ) {
+      init {
+        require(!codec.composite || literalType == codec.literalType) {
+          "a nested ${codec.literalType} is stored as `${codec.literalType}`"
+        }
+      }
+
+      val required: Boolean
+        get() = default == null
     }
   }
 
@@ -449,7 +501,7 @@ data class ExportProjection(
           }
           is Codec.Object -> {
             add(owned.callableFqn.substringBeforeLast('.'))
-            owned.fields.values.forEach(::codec)
+            owned.fields.values.forEach { codec(it.codec) }
           }
           else -> Unit
         }
@@ -591,7 +643,8 @@ data class ExportProjection(
         val raw = if (value.codec.composite) null else wireValue(stated)
         if (value.codec.composite) {
           if (stated == null || stated is JsonNull) null
-          else nested(value.codec, stated, "$where <- ${value.name}", reasons)
+          else
+            nested(value.codec, value.codec.literalType, stated, "$where <- ${value.name}", reasons)
         } else if (stated != null && stated !is JsonNull && raw == null) {
           reasons += "$where <- ${value.name}: not a scalar value"
           null
@@ -617,6 +670,7 @@ data class ExportProjection(
    */
   private fun nested(
     codec: Codec,
+    literalType: String,
     stored: JsonElement,
     where: String,
     reasons: MutableList<String>,
@@ -632,7 +686,7 @@ data class ExportProjection(
             ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
         val before = reasons.size
         val written = values.mapIndexed { index, item ->
-          nested(codec.element, item, "$where[$index]", reasons)
+          nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons)
         }
         if (reasons.size != before) null
         else
@@ -651,15 +705,36 @@ data class ExportProjection(
         val before = reasons.size
         val named = buildMap {
           for ((name, field) in codec.fields) {
-            val value = fields[name]?.takeUnless { it is JsonNull } ?: continue
-            nested(field, value, "$where.$name", reasons)?.let { put(name, it) }
+            // An omitted field writes the default the adapter declared, which the class's own
+            // constructor need not share; one without a default cannot be written at all.
+            val value =
+              fields[name]?.takeUnless { it is JsonNull }
+                ?: field.default
+                ?: run {
+                  reasons += "$where.$name: required field is missing"
+                  null
+                }
+                ?: continue
+            nested(field.codec, field.literalType, value, "$where.$name", reasons)?.let {
+              put(name, it)
+            }
           }
         }
         if (reasons.size != before) null
         else ScreenValue.Construct(codec.callableFqn, named = named, typeFqn = codec.typeFqn)
       }
       else -> {
-        val raw = wireValue(stored) ?: return refuse("not a scalar value")
+        // Exactly what the adapter's codec unwraps: its own literal wrapper, never a bare value or
+        // a wrapper of another type (a top-level property stays as lenient as it always was).
+        val wrapper = stored as? JsonObject
+        val stated = (wrapper?.get("type") as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (wrapper == null || stated != literalType)
+          return refuse(
+            "expected a `$literalType` wrapper, found ${stated?.let { "`$it`" } ?: stored}"
+          )
+        val raw =
+          wrapper["value"] as? JsonPrimitive
+            ?: return refuse("a `$literalType` wrapper has no value")
         if (raw is JsonNull) return refuse("has no value")
         // An empty string is the top-level "unset"; nested, only text can mean it literally.
         if (raw.isString && raw.content.isEmpty() && codec != Codec.Text)
