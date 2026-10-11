@@ -371,11 +371,20 @@ public class GuidelineEngine(
     val learned = ledger?.get(options.cacheModel)
     val started = clock()
     val client = model as? OpenRouterClient
-    val presetRelaxed = learned?.fresh(learned.relaxedAt, started) == true
-    val presetNoReasoning = learned?.fresh(learned.noReasoningAt, started) == true
-    if (client != null && (presetRelaxed || presetNoReasoning)) {
-      client.learned(presetRelaxed && !client.relaxedParameters, presetNoReasoning)
-    }
+    // Each run starts from its own model's record, not from what the client a host shares between
+    // runs learned for another: a refusal still fresh is acted on, a stale one is tested again.
+    // The newest still-fresh refusal of the record or of the client wins; a stale one is dropped.
+    fun freshest(vararg at: Long?): Long? =
+      at.filterNotNull().filter { GuidelineModelRecord().fresh(it, started) }.maxOrNull()
+    val relaxedAt =
+      freshest(learned?.relaxedAt, client?.relaxedSince?.takeIf { client.relaxedParameters })
+    val noReasoningAt =
+      freshest(
+        learned?.noReasoningAt,
+        client?.noReasoningSince?.takeIf { client.reasoningUnsupported },
+      )
+    val presetRelaxed = relaxedAt != null
+    client?.learned(relaxedAt, noReasoningAt)
     val learnedRatio = learned?.costRatio?.takeIf { options.price != null }
     // The cap: the lower of the cost cap and what the key has left.
     val cap = options.effectiveCapUsd
@@ -1215,7 +1224,7 @@ public class GuidelineEngine(
     if (ledger != null && requests > 0 && (observedRatio != null || client != null)) {
       ledger.put(
         options.cacheModel,
-        learn(learned, observedRatio, client, presetRelaxed, presetNoReasoning, started),
+        learn(learned, observedRatio, client),
       )
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
@@ -1234,16 +1243,13 @@ public class GuidelineEngine(
 
   /**
    * [learned] moved by what this run saw: the cost ratio half way to [observedRatio], and each
-   * parameter refusal stamped [now] when this run met it, kept as it was when this run started from
-   * it (so it is tested again once stale), and cleared when strict routing answered.
+   * parameter refusal as [client] holds it — when it was met, or the earlier record this run
+   * started from (so it is tested again once stale) — and cleared when strict routing answered.
    */
   private fun learn(
     learned: GuidelineModelRecord?,
     observedRatio: Double?,
     client: OpenRouterClient?,
-    presetRelaxed: Boolean,
-    presetNoReasoning: Boolean,
-    now: Long,
   ): GuidelineModelRecord {
     val before = learned ?: GuidelineModelRecord()
     val ratio =
@@ -1261,18 +1267,8 @@ public class GuidelineEngine(
     return GuidelineModelRecord(
       costRatio = ratio ?: before.costRatio,
       pricedRuns = before.pricedRuns + if (ratio != null) 1 else 0,
-      relaxedAt =
-        when {
-          !client.relaxedParameters -> null
-          presetRelaxed -> before.relaxedAt
-          else -> now
-        },
-      noReasoningAt =
-        when {
-          !client.reasoningUnsupported -> null
-          presetNoReasoning -> before.noReasoningAt
-          else -> now
-        },
+      relaxedAt = client.relaxedSince.takeIf { client.relaxedParameters },
+      noReasoningAt = client.noReasoningSince.takeIf { client.reasoningUnsupported },
     )
   }
 

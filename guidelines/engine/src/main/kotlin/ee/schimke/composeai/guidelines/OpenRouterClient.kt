@@ -210,10 +210,12 @@ public class OpenRouterClient(
       // up the strict reply schema, which matters more.
       if (effort != null && !reasoningUnsupported) {
         reasoningUnsupported = true
+        noReasoningSince = System.currentTimeMillis()
         val plain = send(requireParameters = true)
         if (!noEndpointHonours(plain)) return plain
       }
       relaxedParameters = true
+      relaxedSince = System.currentTimeMillis()
     }
     return send(requireParameters = false)
   }
@@ -301,10 +303,26 @@ public class OpenRouterClient(
    * `provider.require_parameters` when no provider honoured them, and without `reasoning` when that
    * was what none honoured, so the run does not pay a rejected request to learn it again.
    */
-  internal fun learned(relaxed: Boolean, noReasoning: Boolean) {
-    if (relaxed) relaxedParameters = true
-    if (noReasoning) reasoningUnsupported = true
+  internal fun learned(relaxedAt: Long?, noReasoningAt: Long?) {
+    relaxedParameters = relaxedAt != null
+    relaxedSince = relaxedAt
+    reasoningUnsupported = noReasoningAt != null
+    noReasoningSince = noReasoningAt
   }
+
+  /**
+   * When [relaxedParameters] was learned (epoch millis): when OpenRouter refused, or the refusal an
+   * earlier run recorded ([learned]). A client shared by several runs carries it between them, so a
+   * run that never met a refusal does not record one as new.
+   */
+  @Volatile
+  internal var relaxedSince: Long? = null
+    private set
+
+  /** As [relaxedSince], for [reasoningUnsupported]. */
+  @Volatile
+  internal var noReasoningSince: Long? = null
+    private set
 
   private fun post(url: String, body: String): ModelResponse =
     try {

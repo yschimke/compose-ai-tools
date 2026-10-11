@@ -276,6 +276,9 @@ public object GuidelineResponse {
         code == 402 && metadata?.text("limit_source") == IN_FLIGHT_BUDGET ->
           FailureKind.RATE_LIMITED
         code == 413 -> FailureKind.TOO_LARGE
+        // A stream's 200 came before OpenRouter found the key at its limit: the key's, as a 402 or
+        // 403 status would be.
+        code == 402 || (code == 403 && keyLimit(message)) -> FailureKind.KEY_LIMIT
         // OpenRouter answers these with their status rather than in a 200's body; said here, they
         // still mean the key, the balance or the request, which no retry changes.
         code == 400 || code == 401 || code == 402 || code == 403 || code == 404 -> FailureKind.FATAL

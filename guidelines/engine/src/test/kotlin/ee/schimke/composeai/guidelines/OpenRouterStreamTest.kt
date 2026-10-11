@@ -267,9 +267,35 @@ class OpenRouterStreamTest {
   fun `a client that learned no provider honours the parameters asks relaxed from the start`() {
     val (server, bodies) = serve { exchange, _ -> exchange.sse(events) }
     try {
-      val client = client(server).also { it.learned(relaxed = true, noReasoning = false) }
+      val client =
+        client(server).also {
+          it.learned(relaxedAt = System.currentTimeMillis(), noReasoningAt = null)
+        }
       assertThat(client.complete(request, "m").status).isEqualTo(200)
       assertThat(bodies.single()).doesNotContain("require_parameters")
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `a client shared by runs starts each from its own record, not another run's stale one`() {
+    val (server, bodies) = serve { exchange, _ -> exchange.sse(events) }
+    try {
+      val week = GuidelineModelRecord.RELEARN_AFTER_MILLIS
+      val client = client(server).also { it.learned(System.currentTimeMillis() - 2 * week, null) }
+      // A run whose model has no record: the client's stale refusal is dropped, strict is tried.
+      val dir = java.nio.file.Files.createTempDirectory("guidelines-shared").toFile()
+      GuidelineEngine(
+          client,
+          cache = GuidelineResultCache(dir),
+          options = GuidelineRunOptions(triage = false),
+        )
+        .run(guidelines, listOf(subject))
+      assertThat(bodies.first()).contains("require_parameters")
+      assertThat(client.relaxedParameters).isFalse()
+      assertThat(GuidelineResultCache(dir).ledger.get(OpenRouterClient.DEFAULT_MODEL)!!.relaxedAt)
+        .isNull()
     } finally {
       server.stop(0)
     }
@@ -321,6 +347,10 @@ class OpenRouterStreamTest {
     assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.KEY_LIMIT)
     val forbidden = """{"error":{"code":403,"message":"Forbidden"}}"""
     assertThat(FailedRequest.of(ModelResponse(403, forbidden)).kind).isEqualTo(FailureKind.FATAL)
+    // A stream's 200 sent before the limit was found: the same reading from the body.
+    assertThat(GuidelineResponse.failure(limit)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
+    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
+    assertThat(GuidelineResponse.failure(forbidden)!!.kind).isEqualTo(FailureKind.FATAL)
   }
 
   private fun HttpExchange.noEndpoints() {

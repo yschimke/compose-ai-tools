@@ -352,7 +352,7 @@ class GuidelineRetryTest {
     assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.KEY_LIMIT)
     // Said in a 200's body instead: the same reading.
     assertThat(GuidelineResponse.failure(inFlight)!!.kind).isEqualTo(FailureKind.RATE_LIMITED)
-    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.FATAL)
+    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
     assertThat(
         GuidelineResponse.failure(
             """{"error":{"code":"server_error","message":"Provider disconnected unexpectedly"},""" +

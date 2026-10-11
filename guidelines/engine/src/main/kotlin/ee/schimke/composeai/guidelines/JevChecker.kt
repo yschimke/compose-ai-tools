@@ -414,13 +414,21 @@ internal class JevChecker(
       problems +=
         "${ledger.retried} decisions request(s) were asked again after a failure that may pass"
     }
-    if (capped > 0) {
+    if (capped > 0 && ledger.keyLimitReached) {
+      problems +=
+        "OpenRouter refused a request because the key's spending limit is reached; $capped " +
+          "previews were not checked, or not followed up, and nothing more was asked " +
+          "(\$${money(ledger.spent)} spent)"
+    } else if (capped > 0) {
       problems +=
         "the cost cap (\$${money(options.maxCostUsd ?: 0.0)}) was reached; $capped previews were " +
           "not checked, or not followed up (\$${money(ledger.spent)} spent)"
     }
     return GuidelineRunResult(results, ledger.spent, ledger.requests, problems, failedRequests)
-      .also { it.failedEvidence = failedEvidence }
+      .also {
+        it.failedEvidence = failedEvidence
+        it.keyLimitReached = ledger.keyLimitReached
+      }
   }
 
   /**
@@ -638,6 +646,11 @@ internal class JevChecker(
               FailureKind.UNUSABLE,
             )
           } else refused!!
+        // The key's limit, not this request's: no request after it is reserved.
+        if (failure.kind == FailureKind.KEY_LIMIT) {
+          ledger.keyLimit()
+          return stop(capped = true)
+        }
         val wait = backoff
         val retry =
           failure.kind != FailureKind.FATAL &&
@@ -809,6 +822,13 @@ internal class JevChecker(
     fun tryRetry(): Boolean
 
     fun invent(n: Int)
+
+    /** Whether a request met the key's spending limit: nothing more is reserved. */
+    val keyLimitReached: Boolean
+      get() = false
+
+    /** Records that a request met the key's spending limit. */
+    fun keyLimit() {}
   }
 
   /** Each failed batch fetch of the run, counted as one failed request. Main thread only. */
@@ -865,11 +885,13 @@ internal class JevChecker(
      * cap.
      */
     override fun reserve(): Double? = lock.withLock {
+      if (keyLimitReached) return null
       if (cap == null) {
         started++
         return 0.0
       }
-      while (!priced && started > 0) settled.await()
+      while (!priced && started > 0 && !keyLimitReached) settled.await()
+      if (keyLimitReached) return null
       val committed = spent + inFlight
       if (committed >= cap || committed + dearest > cap) return null
       started++
@@ -891,6 +913,15 @@ internal class JevChecker(
     }
 
     override fun invent(n: Int) = lock.withLock { invented += n }
+
+    @Volatile
+    override var keyLimitReached: Boolean = false
+      private set
+
+    override fun keyLimit() = lock.withLock {
+      keyLimitReached = true
+      settled.signalAll()
+    }
 
     override fun tryRetry(): Boolean = lock.withLock {
       if (failed >= maxFailed) return false
