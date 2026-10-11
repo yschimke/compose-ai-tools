@@ -1269,11 +1269,14 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         b.canvas = id
         b.propertyCapabilities = declaredProperties.map { it.capability() }
         b.slotCapabilities = declaredSlots.map { it.capability() }
+        // A refused property's default is not seeded: a new node setting it would be refused.
         b.insertContent = buildJsonObject {
           put(
             "properties",
             JsonObject(
-              declaredProperties.associate { property -> property.name to defaultValue(property) }
+              declaredProperties
+                .filter { it.name !in refusedOnExport }
+                .associate { property -> property.name to defaultValue(property) }
             ),
           )
         }

@@ -347,6 +347,8 @@ class TypedRealRecordAdapterTest {
     val refused = RefusingAdapter()
     assertThat(refused.validateAgainst(button).joinToString("\n")).doesNotContain("enabled")
     assertThat(refused.projection!!.properties).doesNotContain("enabled")
+    // A new node is not seeded with it, or every inserted component would be refused on export.
+    assertThat(refused.policy().insertContent.toString()).doesNotContain("enabled")
     assertThat(RefusingAdapter(refuseWritten = true).validateAgainst(button).joinToString("\n"))
       .contains("property enabled is refused on export but the projection writes it")
   }
