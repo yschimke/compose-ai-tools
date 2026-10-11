@@ -162,6 +162,8 @@ data class ExportProjection(
           }
           is Codec.Enum -> codec.members.values.mapTo(this) { it.substringBeforeLast('.') }
           is Codec.Token -> add(codec.rootFqn)
+          // A top-level extension: the allowlist admits the callable itself.
+          is Codec.Unit -> add("androidx.compose.ui.unit.${codec.unit}")
           else -> Unit
         }
       }
@@ -217,6 +219,10 @@ data class ExportProjection(
   /** Lower one saved node's [properties] (the builder's `{type, value}` wrappers). */
   fun lower(properties: Map<String, JsonElement>): Lowered {
     val reasons = mutableListOf<String>()
+    val statedVariant = variantProperty?.let { properties[it] }?.takeUnless { it is JsonNull }
+    if (statedVariant != null && wireValue(statedVariant) == null) {
+      return Lowered.Refused(listOf("$variantProperty: not a scalar value"))
+    }
     val variant =
       variantProperty
         ?.let { wireValue(properties[it]) }

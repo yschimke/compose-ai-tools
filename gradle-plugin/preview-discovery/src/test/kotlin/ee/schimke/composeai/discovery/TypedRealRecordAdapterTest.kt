@@ -260,7 +260,13 @@ class TypedRealRecordAdapterTest {
     assertThat(unset.arguments).isEmpty()
     assertThat(projection.lower(mapOf("style" to JsonPrimitive("display"))))
       .isInstanceOf(ExportProjection.Lowered.Refused::class.java)
-    assertThat(projection.qualifiedOwners).contains("androidx.wear.compose.material3.MaterialTheme")
+    assertThat(projection.qualifiedOwners)
+      .containsAtLeast(
+        "androidx.wear.compose.material3.MaterialTheme",
+        "androidx.compose.ui.unit.sp",
+      )
+    // A bound number would skip the `.sp`, so a unit property is literal-only.
+    assertThat(AdapterValueCodecs.unit("sp").stateType).isNull()
   }
 
   @Test
@@ -268,6 +274,8 @@ class TypedRealRecordAdapterTest {
     val projection = WearButtonAdapter().projection!!
     val lowered = projection.lower(mapOf("variant" to JsonPrimitive("filled-tonl")))
     assertThat(lowered).isInstanceOf(ExportProjection.Lowered.Refused::class.java)
+    assertThat(projection.lower(mapOf("variant" to buildJsonObject { put("type", "enum") })))
+      .isInstanceOf(ExportProjection.Lowered.Refused::class.java)
     // Absent or empty is the default target.
     assertThat((projection.lower(emptyMap()) as ExportProjection.Lowered.Node).record)
       .isEqualTo(button.canonicalId)

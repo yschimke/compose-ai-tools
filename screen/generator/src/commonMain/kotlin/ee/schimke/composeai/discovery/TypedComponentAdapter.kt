@@ -157,6 +157,8 @@ object AdapterValueCodecs {
   fun unit(unit: String, positive: Boolean = false): AdapterValueCodec<Float> =
     object : AdapterValueCodec<Float> by Float {
       override val exportCodec = ExportProjection.Codec.Unit(unit, positive)
+      // A bound number would reach a `Dp`/`TextUnit` parameter without its `.dp`/`.sp`.
+      override val stateType: String? = null
     }
 
   /**
