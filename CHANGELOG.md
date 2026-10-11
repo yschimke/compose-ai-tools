@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.47.0](https://github.com/yschimke/compose-ai-tools/compare/v2.46.0...v2.47.0) (2026-10-11)
+
+
+### Features
+
+* **screen:** structural export projections: overloads, role contexts, slot patterns and synthesized slots ([#5847](https://github.com/yschimke/compose-ai-tools/issues/5847)) ([ad9b0ab](https://github.com/yschimke/compose-ai-tools/commit/ad9b0ab44882003ee00e994d2fcab1b695c4f56a))
+
+
+### Bug Fixes
+
+* **doctor:** stop promising the installer writes $CLAUDE_ENV_FILE ([#5849](https://github.com/yschimke/compose-ai-tools/issues/5849)) ([b64afaf](https://github.com/yschimke/compose-ai-tools/commit/b64afaf69d7144f5e6004a329f239006933bb144))
+
 ## [2.46.0](https://github.com/yschimke/compose-ai-tools/compare/v2.45.0...v2.46.0) (2026-10-11)
 
 
