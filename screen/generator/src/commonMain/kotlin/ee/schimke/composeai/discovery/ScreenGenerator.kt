@@ -955,30 +955,58 @@ object ScreenGenerator {
     }
 
     /**
-     * The parameters of the overload of [record] that [node] calls. The record's own when they take
-     * every argument, slot and handler the node writes; otherwise the one published
-     * [ComponentRecord.overloads] entry that does, as Kotlin resolves named arguments and as a
-     * typed projection's validation already resolved it (Wear `Button`'s `content` overload, beside
-     * its `label` record). Several such overloads is a call Kotlin refuses too, so it is reported;
-     * with none, the record's own parameters stand and their own refusals name what is missing.
+     * The parameters of the overload of [record] that [node] calls: the record's own when they
+     * apply to everything the node writes, otherwise the one published [ComponentRecord.overloads]
+     * entry that does, as Kotlin resolves named arguments and as a typed projection's validation
+     * already resolved it (Wear `Button`'s `content` overload, beside its `label` record). Applying
+     * is [applies], not a name match. Several applicable overloads is a call Kotlin refuses too, so
+     * it is reported; with none, the record's own parameters stand and their refusals name what is
+     * missing.
      */
     private fun overloadParameters(
       record: ComponentRecord,
       node: ScreenNode,
     ): List<TargetParameter> {
-      val written = node.arguments.keys + node.slots.keys + node.handlers.keys
-      fun takes(candidate: List<TargetParameter>) = written.all { name ->
-        candidate.any { it.name == name }
-      }
-      if (takes(record.parameters) || record.overloads.isEmpty()) return record.parameters
-      val candidates = record.overloads.map { it.parameters }.filter(::takes)
+      if (applies(record.parameters, node) || record.overloads.isEmpty()) return record.parameters
+      val candidates = record.overloads.map { it.parameters }.filter { applies(it, node) }
       if (candidates.size > 1) {
         reasons +=
-          "`${record.symbol.name}` has ${candidates.size} overloads taking " +
-            written.sorted().joinToString(", ") { "`$it`" } +
+          "`${record.symbol.name}` has ${candidates.size} overloads this node could call with " +
+            (node.arguments.keys + node.slots.keys + node.handlers.keys).sorted().joinToString(
+              ", "
+            ) {
+              "`$it`"
+            } +
             ", and Kotlin would pick none"
       }
       return candidates.singleOrNull() ?: record.parameters
+    }
+
+    /**
+     * Whether [node] can call an overload declaring [candidate]: every argument names a parameter
+     * of its declared type (where the value states one), every slot a parameter its children can
+     * fill, every handler a function-typed parameter, and every required parameter it leaves out
+     * has a call-site placeholder.
+     */
+    private fun applies(candidate: List<TargetParameter>, node: ScreenNode): Boolean {
+      val byName = candidate.associateBy { it.name }
+      for ((name, value) in node.arguments) {
+        val parameter = byName[name] ?: return false
+        val stated = value.typeFqn ?: continue
+        val declared = parameter.typeFqn ?: continue
+        if (stated.removeSuffix("?") != declared.removeSuffix("?")) return false
+      }
+      for (name in node.slots.keys) {
+        val parameter = byName[name] ?: return false
+        if (!fillable(parameter, node.slotItems[name])) return false
+      }
+      for (name in node.handlers.keys) {
+        if (byName[name]?.lambdaReturnTypeFqn == null) return false
+      }
+      val written = node.arguments.keys + node.slots.keys + node.handlers.keys
+      return candidate
+        .filter { !it.hasDefault && it.name !in written }
+        .all { ComponentSnippets.placeholderFor(it) != null }
     }
 
     private fun nodeCall(node: ScreenNode, depth: Int): String {
@@ -1019,6 +1047,11 @@ object ScreenGenerator {
       // placeholder this node supplies is re-checked with the node's own arguments counted as
       // present, but only when the record's own fields reproduce the stored refusal — a producer's
       // refusal is never overridden.
+      // Resolved first: which overload is called decides whether the call site can be written.
+      val parameters = overloadParameters(record, node)
+      val callee =
+        if (parameters === record.parameters) record
+        else record.newBuilder().also { it.parameters = parameters }.build()
       val recorded = record.code
       val code =
         if (recorded?.call != null || recorded == null) recorded
@@ -1028,7 +1061,7 @@ object ScreenGenerator {
           if (
             rederived != null &&
               rederived == recorded.refusedReason &&
-              ComponentSnippets.refusalWith(record, supplied) == null
+              ComponentSnippets.refusalWith(callee, supplied) == null
           )
             ComponentCode.Builder()
               .also { b ->
@@ -1056,8 +1089,6 @@ object ScreenGenerator {
       markers(code.requiredOptIns, optIns, "`${record.symbol.name}`")
       markers(code.androidxOptIns, androidxOptIns, "`${record.symbol.name}`")
 
-      // The overload this node calls: the parameters every later check and argument is read from.
-      val parameters = overloadParameters(record, node)
       val byName = parameters.associateBy { it.name }
       node.arguments.keys.filterNot(byName::containsKey).forEach {
         reasons += "`${record.symbol.name}` has no parameter `$it`"

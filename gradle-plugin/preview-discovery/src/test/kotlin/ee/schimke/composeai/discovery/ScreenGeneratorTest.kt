@@ -136,6 +136,52 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `an overload naming the slot as a value parameter is not one the children can fill`() {
+    val valueContent =
+      TargetParameter.Builder(name = "content", type = "String")
+        .also { b -> b.typeFqn = "kotlin.String" }
+        .build()
+    val source =
+      emitted(
+          buttonWith("content"),
+          catalog(overloadedButton(overload(onClick, valueContent)), text),
+        )
+        .source
+    assertThat(source).contains("Button(onClick = {}) {")
+  }
+
+  @Test
+  fun `an alternate overload is callable though the record's own needs what has no placeholder`() {
+    val state =
+      TargetParameter.Builder(name = "state", type = "ButtonState")
+        .also { b -> b.typeFqn = "app.ButtonState" }
+        .build()
+    val own = overloadedButton()
+    val unplaceable =
+      own
+        .newBuilder()
+        .also { b -> b.parameters = own.parameters + state }
+        .build()
+        .let { record ->
+          record
+            .newBuilder()
+            .also { b ->
+              b.code =
+                ComponentCode.Builder()
+                  .also { c ->
+                    c.refusedReason = ComponentSnippets.refusalWith(record, emptySet())
+                    c.imports = listOf(record.symbol.callable)
+                  }
+                  .build()
+            }
+            .build()
+        }
+    assertThat(unplaceable.code!!.refusedReason).isNotNull()
+    val source = emitted(buttonWith("content"), catalog(unplaceable, text)).source
+    assertThat(source).contains("Button(onClick = {}) {")
+  }
+
+  @Test
   fun `a node two overloads equally take is refused as Kotlin would refuse it`() {
     val reasons =
       refusal(
@@ -147,7 +193,8 @@ class ScreenGeneratorTest {
           text,
         ),
       )
-    assertThat(reasons.joinToString()).contains("has 2 overloads taking `content`")
+    assertThat(reasons.joinToString())
+      .contains("has 2 overloads this node could call with `content`")
   }
 
   private fun catalog(vararg records: ComponentRecord) =
