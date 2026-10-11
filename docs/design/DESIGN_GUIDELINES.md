@@ -166,8 +166,8 @@ The two reply bounds: the expected size (`GuidelineBudget.maxReplyTokens`,
 `PreviewGuidelineRequests.expectedReplyTokens`: a 20-token statement plus a quarter of the rules
 listed at 80 tokens each) keeps a batch fast; the worst case (`maxVerdicts`, every rule asked
 listed, ~11.5k tokens) keeps a bad batch under the timeout. Both put six of those screens in a
-batch. Each request is sent with `max_tokens` at that worst case plus 8k for a reasoning model's
-thinking, so a runaway reply is cut rather than held to the timeout, and with
+batch. Each request is sent with `max_tokens` at that worst case plus an allowance for the model's
+thinking (see *Reasoning* below), so a runaway reply is cut rather than held to the timeout, and with
 `provider.require_parameters` so it is routed only to providers honouring the strict schema
 (OpenRouter's structured-outputs guidance); a model none of whose providers do is retried without
 it, once per client, and the run's `problems` say so. A picture counts 1,200 tokens, or its pixels
@@ -264,6 +264,32 @@ well inside the in-flight budget of a funded key; a 402 from that budget pauses 
 `GuidelineConcurrencyTest` measures it on a fake model whose latency is what it writes, at 70
 tokens/s: the twelve-screen check that timed out wrote ~16.5k tokens in three sequential requests
 (~4 min); now it writes ~2.2k tokens in two concurrent ones (~16 s).
+
+**Reasoning** is set, not left to the model. The default model reasons by default, at `high`
+(its OpenRouter page lists `supported_efforts: max, high, low`), and OpenRouter counts reasoning
+against the same `max_tokens` as the reply: "if the limit is small enough that the model spends all
+of it reasoning, the response returns `finish_reason: 'length'` with an empty `content`, and the
+reasoning tokens are still billed". A publish that left it at `high` did exactly that, batch after
+batch, and splitting a batch did not help, since each half reasoned as much. So every request
+carries OpenRouter's unified `reasoning: {effort}` — `low` unless `--reasoning-effort` (the
+workflows' `guidelines-reasoning-effort`) says otherwise; `default` sends none — with `max_tokens`
+sized for it (`PreviewGuidelineRequests.reasoningTokenAllowance`: 16k at `low`, 64k at `high`,
+the old 8k when none is sent; unused tokens cost nothing). `exclude: true` keeps the unread
+reasoning text out of a non-streamed reply (it is billed either way); a stream keeps it, because
+its deltas are what tells a thinking model from a stalled one under the idle timeout. A model none
+of whose providers take `reasoning` is asked without it, once per client, before the strict schema
+is given up.
+
+A reply that still runs out is told apart from one that is merely long by
+`usage.completion_tokens_details.reasoning_tokens`: cut at `max_tokens` with reasoning counted and
+nothing (or less than the reasoning) written, it is reported as "the model spent its whole token
+budget reasoning (N reasoning tokens, billed)", and asked **once** more with reasoning off
+(`GuidelineModel.completeWithoutReasoning`, `effort: none`) — not split, and not paid from the run's
+`maxFailedAttempts`, so it cannot starve the other batches' retries. Every run reports its
+reasoning and output tokens (`GuidelineRunResult.reasoningTokens` / `completionTokens`, the report's
+`reasoningTokens`) for tuning. A reply cut at `max_tokens` that still parses keeps its findings but
+not its `others: pass` statement: it may have been about to list the very rules that statement
+would pass, so they stay unchecked.
 
 **Provider routing for speed** is opt-in: `--provider-sort throughput|latency|price` sends
 OpenRouter's `provider.sort`, which turns off its price-weighted load balancing and tries providers

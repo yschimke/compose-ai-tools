@@ -146,6 +146,7 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.checker = checker
       it.concurrency = concurrency
+      it.reasoningEffort = reasoningEffort
     }
 
   /**
@@ -162,6 +163,7 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
+      it.reasoningEffort = reasoningEffort
     }
 
   /**
@@ -176,13 +178,16 @@ public data class GuidelineRunOptions(
 
   /**
    * The model identity a result is cached under ([GuidelineResultCache.get]): [model] for the
-   * vision checker, as before, and one naming the checker for any other, so a vision verdict and a
-   * Jev verdict never answer for one another.
+   * vision checker at the default [reasoningEffort], [model] naming its effort at any other, and
+   * one naming the checker for any other checker, so a vision verdict and a Jev verdict — or two
+   * verdicts reached at different efforts — never answer for one another.
    */
   public val cacheModel: String
     get() =
       when (checker) {
-        GuidelineChecker.VISION -> model
+        GuidelineChecker.VISION ->
+          if (reasoningEffort == OpenRouterClient.DEFAULT_REASONING_EFFORT) model
+          else "$model#reasoning=${reasoningEffort ?: "default"}"
         else -> "checker:${checker.id}@${JevChecker.FORMAT}/$answeringModel"
       }
 
@@ -192,6 +197,25 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.concurrency = concurrency.coerceAtLeast(1)
       it.checker = checker
+      it.reasoningEffort = reasoningEffort
+    }
+
+  /**
+   * The reasoning effort the model is asked at ([OpenRouterClient.reasoningEffort]; null: the
+   * model's own default), as far as the cache is concerned: a verdict reached at one effort is not
+   * reused at another ([cacheModel]). The run does not send it — the model does — so a host sets
+   * both. A body property like [retry]: set it with [withReasoningEffort].
+   */
+  public var reasoningEffort: String? = OpenRouterClient.DEFAULT_REASONING_EFFORT
+    private set
+
+  /** These options, for a model asked at [reasoningEffort]. */
+  public fun withReasoningEffort(reasoningEffort: String?): GuidelineRunOptions =
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency
+      it.checker = checker
+      it.reasoningEffort = reasoningEffort
     }
 
   public companion object {
@@ -216,7 +240,29 @@ public data class GuidelineRunResult(
    * is incomplete, unlike stopping at the cost cap, which is a limit the caller chose.
    */
   val failedRequests: Int = 0,
-)
+) {
+  /**
+   * The output tokens the run's requests were billed for, replies that could not be used included
+   * (`usage.completion_tokens`). A body property, so the constructor and `copy` keep their ABI.
+   */
+  public var completionTokens: Long = 0
+    internal set
+
+  /**
+   * How many of [completionTokens] were the model's reasoning
+   * (`usage.completion_tokens_details.reasoning_tokens`): billed, never shown. What to watch when
+   * tuning the reasoning effort.
+   */
+  public var reasoningTokens: Long = 0
+    internal set
+
+  /**
+   * Requests whose reply spent its whole token budget reasoning and were asked once more with
+   * reasoning off ([GuidelineModel.completeWithoutReasoning]).
+   */
+  public var reasoningRetries: Int = 0
+    internal set
+}
 
 /**
  * Checks rendered previews against a catalog's guidelines.
@@ -279,6 +325,15 @@ public class GuidelineEngine(
     // against the cap at what the dearest request cost, though not reported as spent.
     var unpriced = 0.0
     var abandoned = 0
+    // Output tokens billed, how many of them were reasoning, and the replies that spent the whole
+    // budget reasoning: asked again with reasoning off, which no other failure's allowance pays.
+    var completionTokens = 0L
+    var reasoningTokens = 0L
+    var reasoningExhausted = 0
+    var reasoningRetries = 0
+    var reasoningOffAnswered = 0
+    // Replies cut at max_tokens that were still read: their `others` statements were not taken.
+    var cutReplies = 0
     // Batches split after their request kept failing, as "<n> previews (<why>)".
     // Verdicts dropped because they answer a question nobody asked: rule ids the request never
     // listed for that subject (by id, counted), and subjects outside the request.
@@ -393,7 +448,7 @@ public class GuidelineEngine(
       }
 
     val pending = askable.filter { subject ->
-      val hit = cache?.get(subject, guidelines, options.model)
+      val hit = cache?.get(subject, guidelines, options.cacheModel)
       if (hit != null) results += hit
       hit == null
     }
@@ -525,11 +580,14 @@ public class GuidelineEngine(
         var kept: List<GuidelineVerdictV1>
         var answer: GuidelineReply
         var held = reservation
+        // Set once a reply spent its whole budget reasoning: the next try turns reasoning off.
+        var reasoningOff = false
         while (true) {
           attempt++
           pause()
           val response = runCatching {
-            model.complete(request, options.model)
+            if (reasoningOff) model.completeWithoutReasoning(request, options.model)
+            else model.complete(request, options.model)
           }
             .getOrElse {
               settle(held, 0.0, unanswered = false)
@@ -538,7 +596,14 @@ public class GuidelineEngine(
           // Paid for whether or not the answer can be used; an error in place of a completion can
           // carry a cost too.
           val cost = GuidelineResponse.cost(response.body) ?: 0.0
-          lock.withLock { requests++ }
+          val tokens = GuidelineResponse.tokens(response.body)
+          lock.withLock {
+            requests++
+            tokens?.let {
+              completionTokens += it.completion
+              reasoningTokens += it.reasoning
+            }
+          }
           settle(held, cost, unanswered = response.status == ModelResponse.NO_ANSWER)
           batchSpent += cost
           val failure: FailedRequest =
@@ -569,6 +634,10 @@ public class GuidelineEngine(
                   if (valid.isNotEmpty() || reply.othersPass.isNotEmpty()) {
                     kept = valid
                     answer = reply
+                    lock.withLock {
+                      if (reply.truncated) cutReplies++
+                      if (reasoningOff) reasoningOffAnswered++
+                    }
                     break
                   }
                   FailedRequest(
@@ -578,15 +647,34 @@ public class GuidelineEngine(
                     FailureKind.UNUSABLE,
                   )
                 } else {
-                  FailedRequest(
-                    "unreadable reply: ${parsed.exceptionOrNull()?.message}",
-                    FailureKind.UNUSABLE,
-                  )
+                  GuidelineResponse.reasoningExhausted(response.body)
+                    ?: FailedRequest(
+                      "unreadable reply: ${parsed.exceptionOrNull()?.message}",
+                      FailureKind.UNUSABLE,
+                    )
                 }
               }
             } else {
               FailedRequest.of(response)
             }
+          if (failure.kind == FailureKind.REASONING_EXHAUSTED) {
+            // Not this request's size, so not split, and not the provider failing, so not paid
+            // from the run's allowance for retries: one more try with reasoning off, which
+            // leaves the whole budget to the reply. Bounded at one, so it cannot starve the rest.
+            lock.withLock { reasoningExhausted++ }
+            if (reasoningOff) {
+              return failure.copy(problem = failure.problem + ", even with reasoning off")
+            }
+            val noRoomLeft =
+              failure.copy(
+                problem = failure.problem + "; not asked again: the cost cap left no room"
+              )
+            if (lock.withLock { fitsLocked() } == Fit.NO) return noRoomLeft
+            reasoningOff = true
+            lock.withLock { reasoningRetries++ }
+            held = reserve() ?: return noRoomLeft
+            continue
+          }
           lock.withLock { failedAttempts++ }
           val tries = if (attempt > 1) " (after $attempt tries)" else ""
           val wait =
@@ -855,7 +943,9 @@ public class GuidelineEngine(
             !(subject.previewId in uncovered && unchecked.isNotEmpty()) &&
             !setUncovered
         )
-          cache?.let { synchronized(it) { it.put(result, arrived, guidelines, options.model) } }
+          cache?.let {
+            synchronized(it) { it.put(result, arrived, guidelines, options.cacheModel) }
+          }
       }
     }
 
@@ -933,6 +1023,18 @@ public class GuidelineEngine(
     if (retried > 0) {
       problems += "$retried request(s) were asked again after a reply with no usable verdict"
     }
+    if (reasoningExhausted > 0) {
+      problems +=
+        "$reasoningExhausted reply(ies) spent the whole token budget reasoning and wrote no " +
+          "usable reply ($reasoningTokens reasoning token(s) billed in all); $reasoningRetries " +
+          "request(s) were asked again with reasoning off, and $reasoningOffAnswered answered. " +
+          "A lower reasoning effort leaves more of max_tokens to the reply"
+    }
+    if (cutReplies > 0) {
+      problems +=
+        "$cutReplies reply(ies) were cut at max_tokens: their findings were kept, but not their " +
+          "statement that every other rule passes, so those rules are reported unchecked"
+    }
     if (retriedTransient > 0) {
       problems +=
         "$retriedTransient request(s) were asked again after a failure that may pass (no " +
@@ -955,7 +1057,11 @@ public class GuidelineEngine(
         "$abandoned request(s) got no answer and may still have been billed; the cost cap " +
           "counted \$${money(unpriced)} for them"
     }
-    return GuidelineRunResult(results, spent, requests, problems, failedRequests)
+    return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
+      it.completionTokens = completionTokens
+      it.reasoningTokens = reasoningTokens
+      it.reasoningRetries = reasoningRetries
+    }
   }
 
   /** [ruleId] passed by a reply's `others` statement for [subjectId] (null: the set). */
@@ -1145,6 +1251,12 @@ internal enum class FailureKind {
   TOO_LARGE,
   /** A reply with no usable verdict. Asked again at once, then split. */
   UNUSABLE,
+  /**
+   * The reply spent its token budget reasoning and left none for the answer. Asked once more with
+   * reasoning off; never split, since each half would reason as much, and never counted against
+   * [GuidelineRetry.maxFailedAttempts].
+   */
+  REASONING_EXHAUSTED,
   /** Nothing to retry: an invalid key (401), no credit (402), forbidden (403), a bad request. */
   FATAL,
 }
@@ -1159,7 +1271,10 @@ internal const val IN_FLIGHT_BUDGET: String = "openrouter_in_flight_budget"
 internal data class FailedRequest(val problem: String, val kind: FailureKind) {
   /** Whether asking about fewer subjects at once might succeed. */
   val splittable: Boolean
-    get() = kind != FailureKind.FATAL && kind != FailureKind.RATE_LIMITED
+    get() =
+      kind != FailureKind.FATAL &&
+        kind != FailureKind.RATE_LIMITED &&
+        kind != FailureKind.REASONING_EXHAUSTED
 
   companion object {
     /** [response], not a 2xx, as a failure. */
