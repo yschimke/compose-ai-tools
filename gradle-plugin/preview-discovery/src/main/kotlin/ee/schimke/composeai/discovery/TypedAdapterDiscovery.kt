@@ -5,6 +5,8 @@ import java.io.File
 
 /** Metadata-only discovery for explicitly selected top-level Kotlin adapter entry points. */
 object TypedAdapterDiscovery {
+  private const val COMPOSABLE = "androidx.compose.runtime.Composable"
+
   /** JVM file-facade owner and method name, for example `com.acme.ButtonKt` / `BrandButton`. */
   data class Callable(val owner: String, val name: String)
 
@@ -149,14 +151,19 @@ object TypedAdapterDiscovery {
             }
             val overloads =
               owner.methodInfo
-                .filter { it.isStatic && !ComposableSignature.isDeprecated(it) }
+                // A composable only: a plain helper of the same name is never a component.
+                .filter {
+                  it.isStatic &&
+                    it.hasAnnotation(COMPOSABLE) &&
+                    !ComposableSignature.isDeprecated(it)
+                }
                 .mapNotNull { method ->
                   ComposableSignature.signatureOf(owner, method, scan)
                     ?.takeIf { it.name == selected.name }
                     ?.let { method to it }
                 }
             require(overloads.isNotEmpty()) {
-              "$where: no non-deprecated overload with readable metadata"
+              "$where: no non-deprecated composable overload with readable metadata"
             }
             val picked = overloads.filter { (_, signature) ->
               selected.declaring.all { name -> signature.parameters.any { it.name == name } } &&

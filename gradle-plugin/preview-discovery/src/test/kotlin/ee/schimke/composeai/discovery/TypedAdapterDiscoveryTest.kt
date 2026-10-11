@@ -127,6 +127,26 @@ class TypedAdapterDiscoveryTest {
   }
 
   @Test
+  fun `only composable overloads are candidates, never a plain helper of the same name`() {
+    val record =
+      TypedAdapterDiscovery.discoverLibrary(
+          "lib",
+          "release",
+          listOf(
+            TypedAdapterDiscovery.LibraryCallable(
+              "ee.schimke.composeai.discovery.TypedAdapterDiscoveryTestKt",
+              "libraryPainted",
+              declaring = setOf("label"),
+              excluding = setOf("painter"),
+            )
+          ),
+        )
+        .components
+        .single()
+    assertTrue(record.overloads.none { o -> o.parameters.any { it.name == "helper" } })
+  }
+
+  @Test
   fun `zero argument entry points are known rather than missing metadata`() {
     val record =
       TypedAdapterDiscovery.discover(":app", "jvm", listOf(entry.copy(name = "adapterNoArgs")))
@@ -287,20 +307,33 @@ object AdapterFactoryFixture {
 private val adapterFacadeInitialization: Nothing = error("discovery must never initialize app code")
 
 @Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
 fun libraryOverloaded(onClick: () -> Unit, label: String): Unit = error("not executed")
 
 @Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
 fun libraryOverloaded(onClick: () -> Unit, content: Int): Unit = error("not executed")
 
 @Deprecated("replaced", level = DeprecationLevel.HIDDEN)
 @Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
 fun libraryOverloaded(onClick: () -> Unit, old: Boolean): Unit = error("not executed")
 
-@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: String): Unit = error("not executed")
-
-@Suppress("UNUSED_PARAMETER") fun libraryTyped(text: CharSequence): Unit = error("not executed")
-
-@Suppress("UNUSED_PARAMETER") fun libraryPainted(label: String): Unit = error("not executed")
+@Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
+fun libraryTyped(text: String): Unit = error("not executed")
 
 @Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
+fun libraryTyped(text: CharSequence): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
+fun libraryPainted(label: String): Unit = error("not executed")
+
+@Suppress("UNUSED_PARAMETER")
+@androidx.compose.runtime.Composable
 fun libraryPainted(painter: Int, label: String): Unit = error("not executed")
+
+/** A plain helper beside a composable of the same name: never a component. */
+@Suppress("UNUSED_PARAMETER") fun libraryPainted(helper: Long): Unit = error("not executed")
