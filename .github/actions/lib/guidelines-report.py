@@ -378,6 +378,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     sections: list[str] = []
     total_checked = total_findings = images = from_cache = 0
     total_cost = 0.0
+    total_predicted: float | None = None
     models: set[str] = set()
     # The EXPERIMENTAL text-only checker (`--checker jev`): rules it could not judge without the
     # picture, counted for the header rather than listed under every preview.
@@ -423,6 +424,10 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         except (TypeError, ValueError):
             run_cost = 0.0
         total_cost += max(records_cost, run_cost)
+        # What the CLI predicted before asking, when it had a price: shown beside the spend.
+        predicted = report.get("predictedCostUsd")
+        if isinstance(predicted, (int, float)) and not isinstance(predicted, bool) and predicted >= 0:
+            total_predicted = (total_predicted or 0.0) + float(predicted)
         for result in results:
             record = result.get("record", {})
             preview_id = result.get("previewId", "?")
@@ -534,6 +539,9 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             else ""
         )
         noun = "preview(s)" if by_rules.checked else "changed preview(s)"
+        predicted_text = (
+            f" (predicted ${total_predicted:.4f})" if total_predicted is not None else ""
+        )
         cached = (
             f" ({from_cache} answered from the catalog publish's results at no cost)"
             if from_cache
@@ -542,7 +550,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         header += [
             f"{total_checked} {noun} checked against their catalog's design guidelines{split}; "
             f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}"
-            f"{cached}.",
+            f"{predicted_text}{cached}.",
             "",
         ]
         if text_only_unchecked:

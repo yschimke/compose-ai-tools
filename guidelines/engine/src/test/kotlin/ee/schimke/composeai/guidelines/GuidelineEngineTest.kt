@@ -19,6 +19,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Test
 
+/** A reply passing one subject's every rule. */
+private const val PASS_ONE: String =
+  """{"verdicts":[{"subjectId":"s1","ruleId":"any","verdict":"pass","confidence":0.9,"nodeIds":[],"reason":"","needs":[],"regions":[]}],"others":[{"subjectId":null,"verdict":"pass","confidence":0.9},{"subjectId":"s1","verdict":"pass","confidence":0.9}]}"""
+
 class GuidelineEngineTest {
   private val guidelines: CatalogGuidelinesV1 =
     CatalogGuidelinesLoader.parse(
@@ -522,6 +526,152 @@ class GuidelineEngineTest {
     assertThat(run.problems.single()).contains("cost cap")
     assertThat(run.problems.single()).contains("2 previews were not checked")
   }
+
+  @Test
+  fun `breadth first puts each composable's first variant ahead of any second`() {
+    fun variant(id: String, composable: String) = subject(id).copy(label = composable)
+    val ordered =
+      PreviewGuidelineRequests.breadthFirst(
+        listOf(
+          variant("a1", "A"),
+          variant("a2", "A"),
+          variant("a3", "A"),
+          variant("b1", "B"),
+          variant("c1", "C"),
+          variant("b2", "B"),
+        )
+      )
+    assertThat(ordered.map { it.previewId })
+      .containsExactly("a1", "b1", "c1", "a2", "b2", "a3")
+      .inOrder()
+    // Distinct composables keep their order.
+    val plain = (1..4).map { subject("p$it") }
+    assertThat(PreviewGuidelineRequests.breadthFirst(plain)).isEqualTo(plain)
+  }
+
+  @Test
+  fun `a capped run checks every composable once before a second size of any`() {
+    val model = FakeModel().apply { repeat(4) { replies += PASS_ONE } }
+    fun size(dp: Int, composable: String) =
+      subject("${composable}_${dp}dp").copy(label = composable)
+    val run =
+      GuidelineEngine(
+          model,
+          options =
+            GuidelineRunOptions(
+              triage = false,
+              budget = GuidelineBudget(maxSubjects = 1),
+              maxCostUsd = 0.0025,
+            ),
+        )
+        .run(
+          guidelines,
+          listOf(
+            size(192, "WearList"),
+            size(204, "WearList"),
+            size(216, "WearList"),
+            size(192, "WearScaffold"),
+          ),
+        )
+    assertThat(model.requests).hasSize(2)
+    assertThat(run.results.filter { !it.pending }.map { it.previewId })
+      .containsExactly("WearList_192dp", "WearScaffold_192dp")
+  }
+
+  @Test
+  fun `a price keeps even the first request inside the cap`() {
+    val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
+    val options = GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+    val predicted = predictedOne(price, options)
+    val model = FakeModel().apply { repeat(2) { replies += PASS_ONE } }
+    val run =
+      GuidelineEngine(model, options = options.copy(maxCostUsd = predicted / 2).withPrice(price))
+        .run(guidelines, listOf(subject("p1"), subject("p2")))
+    // Without a price the first request goes out on nothing to expect, and can cross the cap.
+    assertThat(model.requests).isEmpty()
+    assertThat(run.results.all { it.pending }).isTrue()
+    assertThat(run.problems.single()).contains("cost cap")
+    assertThat(run.predictedCostUsd).isWithin(1e-12).of(predicted * 2)
+  }
+
+  @Test
+  fun `a request that cost more than predicted scales every later prediction`() {
+    val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
+    val options = GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+    val predicted = predictedOne(price, options)
+    val model =
+      FakeModel().apply {
+        repeat(4) {
+          replies += PASS_ONE
+          costs += predicted * 2
+        }
+      }
+    val cap = predicted * 5.5
+    val run =
+      GuidelineEngine(model, options = options.copy(maxCostUsd = cap).withPrice(price))
+        .run(guidelines, (1..4).map { subject("p$it") })
+    // Two answers at twice their prediction leave 1.5 predictions: a third, now expected to cost
+    // two, would cross the cap; at its unscaled prediction it would have been asked.
+    assertThat(model.requests).hasSize(2)
+    assertThat(run.costUsd).isAtMost(cap)
+  }
+
+  @Test
+  fun `a plan predicts the run without asking the model`() {
+    val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
+    val options = GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+    val predicted = predictedOne(price, options)
+    val model = FakeModel()
+    val subjects = (1..4).map { subject("p$it") }
+
+    val capped =
+      GuidelineEngine(model, options = options.copy(maxCostUsd = predicted * 2.5).withPrice(price))
+        .plan(guidelines, subjects)
+    assertThat(model.requests).isEmpty()
+    assertThat(capped.previews).isEqualTo(4)
+    assertThat(capped.requests).isEqualTo(4)
+    assertThat(capped.predictedCostUsd!!).isWithin(1e-12).of(predicted * 4)
+    assertThat(capped.predictedChecked).isEqualTo(2)
+
+    val uncapped =
+      GuidelineEngine(model, options = options.withPrice(price)).plan(guidelines, subjects)
+    assertThat(uncapped.predictedChecked).isEqualTo(4)
+
+    val unpriced = GuidelineEngine(model, options = options).plan(guidelines, subjects)
+    assertThat(unpriced.predictedCostUsd).isNull()
+    assertThat(unpriced.predictedChecked).isNull()
+    assertThat(unpriced.requests).isEqualTo(4)
+  }
+
+  @Test
+  fun `a price comes from OpenRouter's model list`() {
+    val models =
+      listOf(
+        OpenRouterModels.Model("m", "M", null, 0.3, 2.5, vision = true, structuredOutputs = true),
+        OpenRouterModels.Model(
+          "free",
+          "F",
+          null,
+          null,
+          null,
+          vision = true,
+          structuredOutputs = true,
+        ),
+      )
+    assertThat(GuidelinePrice.of(models, "m")).isEqualTo(GuidelinePrice(0.3, 2.5))
+    assertThat(GuidelinePrice.of(models, "free")).isNull()
+    assertThat(GuidelinePrice.of(models, "missing")).isNull()
+    assertThat(GuidelinePrice(1.0, 4.0).costUsd(1_000_000, 500_000)).isWithin(1e-12).of(3.0)
+  }
+
+  /** What asking about one [subject] alone is predicted to cost under [options]. */
+  private fun predictedOne(price: GuidelinePrice, options: GuidelineRunOptions): Double =
+    PreviewGuidelineRequests.predictedCostUsd(
+      guidelines,
+      GuidelineBatch(GuidelineSurfaces.COMPONENT, listOf(subject("p1"))),
+      price,
+      options.reasoningEffort,
+    )
 
   @Test
   fun `the prompt lists each subject's rule ids and says no other id is valid`() {

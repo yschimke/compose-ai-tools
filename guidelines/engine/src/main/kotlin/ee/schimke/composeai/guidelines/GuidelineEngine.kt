@@ -125,13 +125,7 @@ public data class GuidelineRunOptions(
 
   /** These options, retrying as [retry] says. */
   public fun withRetry(retry: GuidelineRetry): GuidelineRunOptions =
-    copy().also {
-      it.retry = retry
-      it.checker = checker
-      it.concurrency = concurrency
-      it.reasoningEffort = reasoningEffort
-      it.judge = judge
-    }
+    carry().also { it.retry = retry }
 
   /**
    * Which model answers the rules: [GuidelineChecker.VISION] (default) or the EXPERIMENTAL
@@ -142,13 +136,7 @@ public data class GuidelineRunOptions(
 
   /** These options, answered by [checker]. */
   public fun withChecker(checker: GuidelineChecker): GuidelineRunOptions =
-    copy().also {
-      it.retry = retry
-      it.concurrency = concurrency
-      it.checker = checker
-      it.reasoningEffort = reasoningEffort
-      it.judge = judge
-    }
+    carry().also { it.checker = checker }
 
   /**
    * The model that answers: [model], except that the jev checker asked with the vision default left
@@ -186,24 +174,11 @@ public data class GuidelineRunOptions(
     private set
 
   /** These options, answered by [judge]. */
-  public fun withJudge(judge: String?): GuidelineRunOptions =
-    copy().also {
-      it.retry = retry
-      it.concurrency = concurrency
-      it.checker = checker
-      it.reasoningEffort = reasoningEffort
-      it.judge = judge
-    }
+  public fun withJudge(judge: String?): GuidelineRunOptions = carry().also { it.judge = judge }
 
   /** These options, with up to [concurrency] requests in flight at once. */
   public fun withConcurrency(concurrency: Int): GuidelineRunOptions =
-    copy().also {
-      it.retry = retry
-      it.concurrency = concurrency.coerceAtLeast(1)
-      it.checker = checker
-      it.reasoningEffort = reasoningEffort
-      it.judge = judge
-    }
+    carry().also { it.concurrency = concurrency.coerceAtLeast(1) }
 
   /**
    * The reasoning effort the model is asked at ([OpenRouterClient.reasoningEffort]; null: the
@@ -216,12 +191,31 @@ public data class GuidelineRunOptions(
 
   /** These options, for a model asked at [reasoningEffort]. */
   public fun withReasoningEffort(reasoningEffort: String?): GuidelineRunOptions =
+    carry().also { it.reasoningEffort = reasoningEffort }
+
+  /**
+   * What [model] charges, so each request's cost is predicted before it is asked
+   * ([PreviewGuidelineRequests.predictedCostUsd]): the cap reserves that prediction, scaled by how
+   * far the answers so far ran past theirs, and [GuidelineRunResult.predictedCostUsd] reports the
+   * whole run's. Null (the default) keeps the cap expecting each request to cost what the dearest
+   * so far did. A body property like [retry]: set it with [withPrice].
+   */
+  public var price: GuidelinePrice? = null
+    private set
+
+  /** These options, predicting costs at [price]. */
+  public fun withPrice(price: GuidelinePrice?): GuidelineRunOptions =
+    carry().also { it.price = price }
+
+  /** A copy carrying every body property, which `copy` would reset. */
+  private fun carry(): GuidelineRunOptions =
     copy().also {
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
       it.reasoningEffort = reasoningEffort
       it.judge = judge
+      it.price = price
     }
 
   public companion object {
@@ -283,16 +277,25 @@ public data class GuidelineRunResult(
    */
   public var deferredRequests: Int = 0
     internal set
+
+  /**
+   * What the run's requests were predicted to cost before any was asked, at
+   * [GuidelineRunOptions.price]; null without one. Set beside [costUsd] to see how far the
+   * prediction was off.
+   */
+  public var predictedCostUsd: Double? = null
+    internal set
 }
 
 /**
  * Checks rendered previews against a catalog's guidelines.
  *
  * Unchanged renders are answered from [cache]. The rest are batched, unseen previews before stale
- * ones ([PreviewGuidelineRequests.batches]); an optional Jev triage picks extra evidence per
- * subject and the [host] fetches only that. Rules answered `needs_evidence` are re-asked with that
- * evidence up to [GuidelineRunOptions.maxRounds]; a rule still undecided is reported unchecked,
- * never passed.
+ * ones and each composable's first variant before any composable's second
+ * ([PreviewGuidelineRequests.breadthFirst], [PreviewGuidelineRequests.batches]); an optional Jev
+ * triage picks extra evidence per subject and the [host] fetches only that. Rules answered
+ * `needs_evidence` are re-asked with that evidence up to [GuidelineRunOptions.maxRounds]; a rule
+ * still undecided is reported unchecked, never passed.
  */
 public class GuidelineEngine(
   private val model: GuidelineModel,
@@ -334,6 +337,11 @@ public class GuidelineEngine(
     // The dearest request so far: what the next one is expected to cost, so the cap is not crossed
     // by a request started just under it. Before the first answer there is nothing to go on.
     var dearest = 0.0
+    // With a price: how far the dearest answer so far ran past its prediction, which scales every
+    // later prediction. Null until a priced request has come back, when predictions stand as made.
+    var dearestRatio: Double? = null
+    // What the request the cap last turned away was expected to cost, for the report.
+    var lastExpected = 0.0
     var capped = 0
     var retried = 0
     // Requests asked again after a failure that may pass (no answer, 408, 429, 5xx, a provider
@@ -386,37 +394,54 @@ public class GuidelineEngine(
     /** The run-wide allowance for retries and splits: whether a failed try may be followed up. */
     fun mayRecover(): Boolean = lock.withLock { failedAttempts <= options.retry.maxFailedAttempts }
 
+    /** [batch]'s predicted cost at [GuidelineRunOptions.price]; null without one. */
+    fun predict(batch: GuidelineBatch): Double? =
+      options.price?.let {
+        PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, it, options.reasoningEffort)
+      }
+
     /**
-     * Whether one more request fits the cap, expected to cost what the dearest so far did, on top
-     * of what is spent and what the requests in flight are expected to cost. Holding [lock].
+     * What a request [predicted] to cost that much is expected to: the prediction scaled by how far
+     * the dearest answer so far ran past its own, or — with no prediction — what the dearest
+     * request so far cost. Holding [lock].
      */
-    fun fitsLocked(): Fit {
+    fun expectedLocked(predicted: Double?): Double =
+      if (predicted == null || predicted <= 0.0) dearest else predicted * (dearestRatio ?: 1.0)
+
+    /**
+     * Whether one more request, expected to cost [expected], fits the cap on top of what is spent
+     * and what the requests in flight are expected to cost. Holding [lock].
+     */
+    fun fitsLocked(expected: Double): Fit {
       val cap = options.maxCostUsd ?: return Fit.YES
       val committed = spent + unpriced + reserved
       return when {
-        // Before any request has come back there is nothing to expect a cost from: one at a
-        // time, so concurrent starts cannot jointly cross the cap.
+        // Before any request has come back nothing has tested an expectation: one at a time, so
+        // concurrent starts cannot jointly cross the cap.
         settledRequests == 0 && inFlight > 0 -> Fit.WAIT
-        committed < cap && committed + dearest <= cap -> Fit.YES
+        committed < cap && committed + expected <= cap -> Fit.YES
         // A request in flight may come back cheaper than reserved and leave room.
         inFlight > 0 -> Fit.WAIT
-        else -> Fit.NO
+        else -> Fit.NO.also { lastExpected = expected }
       }
     }
 
-    /** Reserves [dearest] for a request about to start. Holding [lock]. */
-    fun reserveLocked(): Reservation {
-      val amount = if (options.maxCostUsd == null) 0.0 else dearest
+    /** Reserves what a request [predicted] to cost is expected to, as it starts. Holding [lock]. */
+    fun reserveLocked(predicted: Double?): Reservation {
+      val amount = if (options.maxCostUsd == null) 0.0 else expectedLocked(predicted)
       reserved += amount
       inFlight++
-      return Reservation(amount)
+      return Reservation(amount, predicted)
     }
 
-    /** A reservation for one more request, waiting for room; null when the cap has none. */
-    fun reserve(): Reservation? = lock.withLock {
+    /**
+     * A reservation for one more request [predicted] to cost that much, waiting for room; null when
+     * the cap has none.
+     */
+    fun reserve(predicted: Double?): Reservation? = lock.withLock {
       while (true) {
-        when (fitsLocked()) {
-          Fit.YES -> return@withLock reserveLocked()
+        when (fitsLocked(expectedLocked(predicted))) {
+          Fit.YES -> return@withLock reserveLocked(predicted)
           Fit.WAIT -> changed.await()
           Fit.NO -> return@withLock null
         }
@@ -431,6 +456,10 @@ public class GuidelineEngine(
       settledRequests++
       spent += cost
       dearest = maxOf(dearest, cost)
+      val predicted = reservation.predicted
+      if (predicted != null && predicted > 0.0 && cost > 0.0) {
+        dearestRatio = maxOf(dearestRatio ?: 0.0, cost / predicted)
+      }
       // Abandoned without an answer: it may still have been billed, so it counts against the
       // cap at what the dearest request cost, though not reported as spent.
       if (unanswered && cost == 0.0) {
@@ -452,35 +481,19 @@ public class GuidelineEngine(
       }
     }
 
-    // A subject no rule applies to costs no request: asked about nothing, a model can only answer
-    // nothing, which reads as an unreadable reply at best and a clean pass at worst.
-    val askable = subjects.filter { subject ->
-      val reason = guidelines.noRulesFor(subject) ?: return@filter true
-      results += noRules(guidelines, subject, reason)
-      false
-    }
-    results
-      .filter { it.noRules != null }
+    val prepared = prepare(guidelines, subjects)
+    results += prepared.skipped
+    prepared.skipped
       .groupBy { it.noRules!! }
       .forEach { (reason, skipped) ->
         problems += "${skipped.size} preview(s) were not checked: $reason"
       }
+    results += prepared.cached
 
-    val pending = askable.filter { subject ->
-      val hit = cache?.get(subject, guidelines, options.cacheModel)
-      if (hit != null) results += hit
-      hit == null
-    }
-
-    // Never-checked previews first, so a capped run widens coverage before re-asking stale ones.
-    // Batched apart, since surface grouping would otherwise interleave them.
-    val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
     // A queue, not a list: a batch whose request keeps failing comes back as its two halves, asked
     // next, already triaged.
     val queue = ArrayDeque<QueuedBatch>()
-    val formed =
-      PreviewGuidelineRequests.batches(guidelines, unseen, options.budget) +
-        PreviewGuidelineRequests.batches(guidelines, stale, options.budget)
+    val formed = prepared.formed
     formed.forEachIndexed { index, batch ->
       queue.addLast(QueuedBatch(batch, triaged = false, key = "%06d".format(index)))
     }
@@ -506,10 +519,11 @@ public class GuidelineEngine(
           changed.await()
           continue
         }
-        when (fitsLocked()) {
+        val predicted = predict(queue.first().batch)
+        when (fitsLocked(expectedLocked(predicted))) {
           Fit.YES -> {
             active++
-            return@withLock queue.removeFirst() to reserveLocked()
+            return@withLock queue.removeFirst() to reserveLocked(predicted)
           }
           Fit.WAIT -> changed.await()
           Fit.NO -> {
@@ -692,10 +706,11 @@ public class GuidelineEngine(
               failure.copy(
                 problem = failure.problem + "; not asked again: the cost cap left no room"
               )
-            if (lock.withLock { fitsLocked() } == Fit.NO) return noRoomLeft
+            val again = predict(target)
+            if (lock.withLock { fitsLocked(expectedLocked(again)) } == Fit.NO) return noRoomLeft
             reasoningOff = true
             lock.withLock { reasoningRetries++ }
-            held = reserve() ?: return noRoomLeft
+            held = reserve(again) ?: return noRoomLeft
             continue
           }
           lock.withLock { failedAttempts++ }
@@ -726,7 +741,8 @@ public class GuidelineEngine(
               problem = failure.problem + tries + "; not asked again: the cost cap left no room"
             )
           // Not waited for when the cap has no room for it whatever comes back.
-          if (lock.withLock { fitsLocked() } == Fit.NO) return noRoom
+          val again = predict(target)
+          if (lock.withLock { fitsLocked(expectedLocked(again)) } == Fit.NO) return noRoom
           when (failure.kind) {
             // A reply with nothing usable is usually a bad draw, not a bad question: ask at once.
             FailureKind.UNUSABLE -> lock.withLock { retried++ }
@@ -741,7 +757,7 @@ public class GuidelineEngine(
               sleep(wait)
             }
           }
-          held = reserve() ?: return noRoom
+          held = reserve(again) ?: return noRoom
         }
         served += answer.served
         // A region belongs to the subject whose picture it is drawn on, which may differ from the
@@ -889,8 +905,10 @@ public class GuidelineEngine(
             }
             .filterValues { it.isNotEmpty() }
         if (undecided.isEmpty() || synchronized(hostLock) { host.available }.isEmpty()) break
-        // A follow-up is a request like any other: it waits its turn under the cap.
-        val slot = reserve()
+        // A follow-up is a request like any other: it waits its turn under the cap, expected to
+        // cost
+        // at most what asking the whole batch again would.
+        val slot = reserve(predict(current))
         if (slot == null) {
           interrupted = undecided.keys
           break
@@ -976,7 +994,7 @@ public class GuidelineEngine(
         lock.withLock { batchResults[subject.previewId] = result }
         // Keyed on the subject as the caller passed it: batching may truncate source and rounds
         // attach evidence, which the next run's lookup won't have.
-        val arrived = pending.firstOrNull { it.previewId == subject.previewId } ?: subject
+        val arrived = prepared.pending.firstOrNull { it.previewId == subject.previewId } ?: subject
         // A reply that left rules of it unanswered is not kept either: the next run asks again
         // rather than reuse a result that is part unchecked for no reason of the rules'.
         if (
@@ -1033,7 +1051,7 @@ public class GuidelineEngine(
       problems +=
         "the cost cap (\$${money(options.maxCostUsd ?: 0.0)}) was reached; $capped previews were " +
           "not checked (\$${money(spent)} spent; the next request was expected to cost about " +
-          "\$${money(dearest)})"
+          "\$${money(lastExpected)})"
     }
     if (invented.isNotEmpty()) {
       problems +=
@@ -1099,11 +1117,84 @@ public class GuidelineEngine(
           "counted \$${money(unpriced)} for them"
     }
     return GuidelineRunResult(results, spent, requests, problems, failedRequests).also {
+      it.predictedCostUsd = options.price?.let { formed.sumOf { batch -> predict(batch) ?: 0.0 } }
       it.completionTokens = completionTokens
       it.reasoningTokens = reasoningTokens
       it.reasoningRetries = reasoningRetries
       it.deferredRequests = deferredRequests
     }
+  }
+
+  /**
+   * What [run] would ask about [subjects], without asking: how many previews and requests, and —
+   * with a [GuidelineRunOptions.price] — what they are predicted to cost and how many the cost cap
+   * is expected to reach. Reads the [cache]; never calls the model or the [host].
+   */
+  public fun plan(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelinePlan {
+    val prepared = prepare(guidelines, subjects)
+    val price = options.price
+    val predictions = price?.let { p ->
+      prepared.formed.map { batch ->
+        PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, p, options.reasoningEffort)
+      }
+    }
+    val previews = prepared.formed.sumOf { it.subjects.size }
+    // As the run's cap does: a request that would cross it is skipped and the next one tried.
+    val reached = predictions?.let {
+      val cap = options.maxCostUsd ?: return@let previews
+      var committed = 0.0
+      prepared.formed.zip(it).sumOf { (batch, cost) ->
+        if (committed + cost <= cap) {
+          committed += cost
+          batch.subjects.size
+        } else 0
+      }
+    }
+    return GuidelinePlan(
+      previews = previews,
+      cached = prepared.cached.size,
+      requests = prepared.formed.size,
+      predictedCostUsd = predictions?.sum(),
+      predictedChecked = reached,
+    )
+  }
+
+  /**
+   * [subjects] sorted for a run: [Prepared.skipped] when no rule applies to them, [Prepared.cached]
+   * when the [cache] answers them, and the rest batched into [Prepared.formed] in the order they
+   * are asked — never-checked previews before stale ones, so a capped run widens coverage before
+   * re-asking, and each composable's first variant before any composable's second
+   * ([PreviewGuidelineRequests.breadthFirst]).
+   */
+  private fun prepare(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): Prepared {
+    // A subject no rule applies to costs no request: asked about nothing, a model can only answer
+    // nothing, which reads as an unreadable reply at best and a clean pass at worst.
+    val skipped = mutableListOf<PreviewGuidelineResult>()
+    val askable = subjects.filter { subject ->
+      val reason = guidelines.noRulesFor(subject) ?: return@filter true
+      skipped += noRules(guidelines, subject, reason)
+      false
+    }
+    val cached = mutableListOf<PreviewGuidelineResult>()
+    val pending = askable.filter { subject ->
+      val hit = cache?.get(subject, guidelines, options.cacheModel)
+      if (hit != null) cached += hit
+      hit == null
+    }
+    // Batched apart, since surface grouping would otherwise interleave them.
+    val (unseen, stale) = pending.partition { cache?.checked(it.previewId) != true }
+    val formed =
+      PreviewGuidelineRequests.batches(
+        guidelines,
+        PreviewGuidelineRequests.breadthFirst(unseen),
+        options.budget,
+      ) +
+        PreviewGuidelineRequests.batches(
+          guidelines,
+          PreviewGuidelineRequests.breadthFirst(stale),
+          options.budget,
+        )
+    return Prepared(skipped, cached, pending, formed)
   }
 
   /** [ruleId] passed by a reply's `others` statement for [subjectId] (null: the set). */
@@ -1265,10 +1356,19 @@ public const val IMPLICIT_PASS_REASON: String =
   "Passed implicitly: not among the reply's findings, which stated every other rule passes."
 
 /** A batch waiting to be asked; [triaged] once Jev has already been asked about its subjects. */
+/** A run's subjects sorted before any is asked ([GuidelineEngine.prepare]). */
+private class Prepared(
+  val skipped: List<PreviewGuidelineResult>,
+  val cached: List<PreviewGuidelineResult>,
+  /** The subjects left to ask, as the caller passed them: what their results are cached under. */
+  val pending: List<PreviewSubject>,
+  val formed: List<GuidelineBatch>,
+)
+
 private data class QueuedBatch(val batch: GuidelineBatch, val triaged: Boolean, val key: String)
 
 /** What a request in flight was expected to cost when it started, held against the cap. */
-private class Reservation(val amount: Double)
+private class Reservation(val amount: Double, val predicted: Double? = null)
 
 /** Whether one more request fits the cost cap now, may once a request in flight is back, or not. */
 private enum class Fit {

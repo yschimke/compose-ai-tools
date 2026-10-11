@@ -572,11 +572,21 @@ on (`GuidelineResultCache.inputsKey`: preview id, surface, profile, every pictur
 nodes and checks the subject carries (none, now that they are evidence), source, the rules' full
 content, model): an unchanged preview is not asked again, so a re-run after a
 small change pays only for what changed. `--changed-only` narrows to previews whose capture changed;
-`--max-cost` stops asking before a request expected to cross it (one costing as much as the
-dearest request so far), reporting the rest `pending`; a reply that could not be used still counts
-against it — and the run asks first about
-previews the cache has never held a result for, before those whose earlier verdict went stale. A
-run over the whole module prunes the cache to the verdicts it read or wrote.
+`--max-cost` stops asking before a request expected to cross it, reporting the rest `pending`; a
+reply that could not be used still counts against it. On OpenRouter the CLI reads the model's price
+from its model list, so each request is **predicted** before it is asked: its input as the batch is
+sized (prompt, rules, pictures, nodes, source) and its expected output (a quarter of its rules
+listed, a quarter of the reasoning allowance). The cap reserves that prediction, scaled by how far
+the dearest answer so far ran past its own, so even the first request stays inside the cap; without
+a price it expects each request to cost what the dearest so far did. The report shows the predicted
+cost beside what was spent, and `--estimate` prints the plan — previews, requests, predicted cost,
+and how many previews the cap is expected to reach — without asking any model or needing a key.
+
+The run asks first about previews the cache has never held a result for, before those whose earlier
+verdict went stale, and within each, **breadth first by composable**: every composable's first
+variant (device size, scroll capture, named variant) before any composable's second, so a capped
+run checks each composable once before spending on a second size of any. A run over the whole
+module prunes the cache to the verdicts it read or wrote.
 
 At the default model (`deepseek/deepseek-v4.1-flash`, called directly) a screen costs roughly
 $0.003–0.007; batching shares the rules and system prompt across subjects, so a component batch

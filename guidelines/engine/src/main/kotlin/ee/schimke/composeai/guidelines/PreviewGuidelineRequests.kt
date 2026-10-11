@@ -244,9 +244,7 @@ public object PreviewGuidelineRequests {
     subjects
       .groupBy { it.surface }
       .flatMap { (surface, group) ->
-        val rulesTokens =
-          guidelines.subjectRules(surface).sumOf { (it.guidance.length + it.check.length) / 4 } +
-            guidelines.setRules().sumOf { (it.guidance.length + it.check.length) / 4 }
+        val rulesTokens = rulesTokens(guidelines, surface)
         val out = mutableListOf<GuidelineBatch>()
         var current = mutableListOf<PreviewSubject>()
         var pictures = 0
@@ -302,6 +300,65 @@ public object PreviewGuidelineRequests {
         if (current.isNotEmpty()) out += GuidelineBatch(surface, current)
         out
       }
+
+  /** The input tokens [surface]'s rules and the set-wide rules take, as [batches] counts them. */
+  private fun rulesTokens(guidelines: CatalogGuidelinesV1, surface: String): Int =
+    guidelines.subjectRules(surface).sumOf { (it.guidance.length + it.check.length) / 4 } +
+      guidelines.setRules().sumOf { (it.guidance.length + it.check.length) / 4 }
+
+  /**
+   * [subjects] reordered breadth first by composable ([PreviewSubject.label]): the first variant of
+   * every composable, then each one's second, and so on, every composable keeping its own order and
+   * its place of first appearance. A capped run asks a prefix of what is batched from this, so it
+   * checks each composable once before it spends on a second size of any. Subjects whose labels all
+   * differ keep their order.
+   */
+  public fun breadthFirst(subjects: List<PreviewSubject>): List<PreviewSubject> {
+    val families = subjects.groupBy { it.label }.values
+    val out = ArrayList<PreviewSubject>(subjects.size)
+    var round = 0
+    while (out.size < subjects.size) {
+      families.forEach { family -> family.getOrNull(round)?.let { out += it } }
+      round++
+    }
+    return out
+  }
+
+  /**
+   * What asking [batch] once is expected to cost at [price]: its input as [batches] sizes it (the
+   * system prompt, the rules, each subject's pictures, nodes, checks and source) and its expected
+   * output (the verdicts [expectedReplyTokens] expects listed, and [expectedReasoningTokens] at
+   * [reasoningEffort]). An estimate, not a bound: a run scales it by how far the answers so far ran
+   * past their own.
+   */
+  public fun predictedCostUsd(
+    guidelines: CatalogGuidelinesV1,
+    batch: GuidelineBatch,
+    price: GuidelinePrice,
+    reasoningEffort: String?,
+  ): Double {
+    val input =
+      SYSTEM_PROMPT.length / 4 +
+        rulesTokens(guidelines, batch.surface) +
+        batch.subjects.sumOf { estimateTokens(it) }
+    val output =
+      batch.subjects.sumOf { subject ->
+        expectedReplyTokens(
+          guidelines
+            .subjectRules(batch.surface, subject.profile, subject.pictures.isNotEmpty())
+            .size
+        )
+      } + OTHERS_TOKENS + expectedReasoningTokens(reasoningEffort)
+    return price.costUsd(input, output)
+  }
+
+  /**
+   * The reasoning tokens one request is expected to spend at [reasoningEffort]:
+   * [EXPECTED_REASONING_SHARE] of its [reasoningTokenAllowance], none with reasoning off.
+   */
+  public fun expectedReasoningTokens(reasoningEffort: String?): Int =
+    if (reasoningEffort == OpenRouterClient.REASONING_OFF) 0
+    else (reasoningTokenAllowance(reasoningEffort) * EXPECTED_REASONING_SHARE).toInt()
 
   /**
    * The request for [batch]. [onlyRules], for a follow-up round, narrows each subject to the rules
@@ -811,6 +868,12 @@ public object PreviewGuidelineRequests {
    * about 70 a verdict; a listed one is mostly a `fail`, which carries the region.
    */
   public const val VERDICT_TOKENS: Int = 80
+
+  /**
+   * The share of its [reasoningTokenAllowance] a request is expected to spend reasoning: the
+   * allowance is a ceiling sized so a reply is never starved, not what a batch usually takes.
+   */
+  public const val EXPECTED_REASONING_SHARE: Double = 0.25
 
   /** One `others` statement's tokens. */
   public const val OTHERS_TOKENS: Int = 20
