@@ -79,10 +79,14 @@ public object BundleSigning {
       while (true) {
         val entry = zin.nextEntry ?: break
         budget.countEntry()
+        // Drain every entry through the budget, hashed or not: `closeEntry()` would otherwise
+        // inflate a skipped entry (a directory or `signatures.json`) with no limit at all.
         if (!entry.isDirectory && entry.name != SIGNATURES_PATH) {
           val digest = MessageDigest.getInstance("SHA-256")
           budget.drain(zin) { buffer, n -> digest.update(buffer, 0, n) }
           lines.add("${entry.name}:${hex(digest.digest())}")
+        } else {
+          budget.drain(zin) { _, _ -> }
         }
         zin.closeEntry()
       }
@@ -118,6 +122,8 @@ public object BundleSigning {
             out.write(buffer, 0, n)
           }
           bytes = out.toByteArray()
+        } else {
+          budget.drain(zin) { _, _ -> }
         }
         zin.closeEntry()
       }
@@ -213,9 +219,8 @@ public object BundleSigning {
   // --- inflation budget -------------------------------------------------------------------------
 
   /**
-   * Cumulative inflated bytes [canonicalDigest] / [readSignatures] will read from one archive.
-   * Far above any real bundle (whose jars are minimized), and far below what a zip bomb inflates
-   * to.
+   * Cumulative inflated bytes [canonicalDigest] / [readSignatures] will read from one archive. Far
+   * above any real bundle (whose jars are minimized), and far below what a zip bomb inflates to.
    */
   internal const val MAX_UNCOMPRESSED_BYTES: Long = 1L shl 30 // 1 GiB
 
