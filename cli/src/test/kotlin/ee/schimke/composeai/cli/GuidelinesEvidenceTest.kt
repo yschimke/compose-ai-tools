@@ -8,6 +8,7 @@ import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.ModelResponse
+import ee.schimke.composeai.guidelines.PreviewGuidelineRequests
 import ee.schimke.composeai.guidelines.PreviewSubject
 import ee.schimke.composeai.guidelines.SubjectPicture
 import ee.schimke.composeai.guidelines.failures
@@ -485,6 +486,66 @@ class GuidelinesEvidenceTest {
       HandoffInputs.describeCapture(192, 192, null),
     )
     assertNull(HandoffInputs.describeCapture(0, 0, null))
+  }
+
+  @Test
+  fun `a long capture stopped at its scroll limit says its bottom edge may be mid-scroll`() {
+    val whole = HandoffInputs.describeCapture(192, 192, "LONG")!!
+    assertTrue("whole scrolling content" in whole && "SCROLL LIMIT" !in whole, whole)
+    // Uncapped, or capped but the renderer recorded reaching the content's end: the whole thing.
+    assertEquals(whole, HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit()))
+    assertEquals(
+      whole,
+      HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit(4000, atEnd = true, 2100)),
+    )
+    // Capped with no recorded outcome: it may have stopped before the end.
+    val maybe = HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit(4000))!!
+    assertTrue("STOPPED AT ITS SCROLL LIMIT" in maybe && "maxScrollPx 4000" in maybe, maybe)
+    assertTrue("may be mid-scroll" in maybe && "whole scrolling content" !in maybe, maybe)
+    // Capped, and the renderer recorded stopping short of the end.
+    val stopped =
+      HandoffInputs.describeCapture(192, 192, "LONG", ScrollLimit(4000, atEnd = false, 4000))!!
+    assertTrue("STOPPED AT ITS SCROLL LIMIT" in stopped && "is mid-scroll" in stopped, stopped)
+    // The prompt reads content cut at a long screenshot's end as clipped only without that line.
+    assertTrue(
+      "unless the screenshot's description says it STOPPED AT ITS SCROLL LIMIT" in
+        PreviewGuidelineRequests.SYSTEM_PROMPT
+    )
+  }
+
+  @Test
+  fun `handoff carries a long capture's scroll limit to the picture it describes`() {
+    val dir = Files.createTempDirectory("guidelines-handoff-capped").toFile()
+    val renders = dir.resolve("renders").apply { mkdirs() }
+    renders.resolve("List-1.png").writeBytes(png())
+    renders.resolve("List-1_SCROLL_long.png").writeBytes(png())
+    renders.resolve("Wide-3_SCROLL_long.png").writeBytes(png())
+    dir
+      .resolve("previews.json")
+      .writeText(
+        """
+        {"module": "catalog", "previews": [
+          {"id": "x.List", "functionName": "List",
+           "params": {"widthDp": 192, "heightDp": 192},
+           "dataProducts": [{"kind": "render/scroll/long", "output": "data/x.png",
+             "scroll": {"mode": "LONG", "maxScrollPx": 4000}}],
+           "captures": [{"renderOutput": "renders/List-1.png",
+             "scroll": {"mode": "END", "maxScrollPx": 4000}}]},
+          {"id": "x.Wide", "functionName": "Wide",
+           "params": {"widthDp": 192, "heightDp": 192},
+           "captures": [{"renderOutput": "renders/Wide-3_SCROLL_long.png",
+             "scroll": {"mode": "LONG", "maxScrollPx": 4000, "reachedPx": 4000}}]}
+        ]}
+        """
+      )
+    val inputs = HandoffInputs.read(dir.resolve("previews.json"), null, null, null, null)
+    // The long screenshot a follow-up round serves is described from its data product's limit.
+    val long =
+      inputs.host.render("x.List", GuidelineEvidenceNeedV1.Builder("scroll-capture").build())!!
+    assertTrue(long.description!!.contains("STOPPED AT ITS SCROLL LIMIT"), long.description)
+    // A LONG-only preview's capture (as `guidelines-stage.py` stages it) carries its own limit.
+    val wide = inputs.subjects.single { it.previewId == "x.Wide" }.pictures.single()
+    assertTrue(wide.description!!.contains("is mid-scroll"), wide.description)
   }
 
   @Test

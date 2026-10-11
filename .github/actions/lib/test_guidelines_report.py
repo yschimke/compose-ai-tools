@@ -554,6 +554,29 @@ class StageTest(unittest.TestCase):
         self.assertEqual(wide["captures"], [
             {"renderOutput": "renders/Wide-3_SCROLL_long.png", "scroll": {"mode": "LONG"}}])
 
+    def test_a_long_only_capture_keeps_its_scroll_limit(self) -> None:
+        # A capture stopped by `maxScrollPx` can end mid-scroll; the check is told so only if the
+        # limit (and any outcome the renderer recorded) survives staging.
+        root = self._two_previews()
+        previews = root / "catalog" / "build" / "compose-previews"
+        (previews / "data" / "render-scroll-long").mkdir(parents=True)
+        (previews / "data" / "render-scroll-long" / "Wide-3_SCROLL_long.png").write_bytes(b"wide")
+        manifest = json.loads((previews / "previews.json").read_text())
+        manifest["previews"].append(
+            {"id": "x.Wide", "dataProducts": [
+                {"kind": "render/scroll/long",
+                 "output": "data/render-scroll-long/Wide-3_SCROLL_long.png",
+                 "scroll": {"mode": "LONG", "maxScrollPx": 4000, "atEnd": False,
+                            "reachedPx": 4000}}], "captures": []})
+        (previews / "previews.json").write_text(json.dumps(manifest))
+        out = root / "_guidelines"
+        self.assertEqual(gs.stage(root, {"x.Wide"}, out, None), 1)
+        staged = json.loads((out / "catalog" / "previews.json").read_text())
+        wide = next(p for p in staged["previews"] if p["id"] == "x.Wide")
+        self.assertEqual(wide["captures"], [
+            {"renderOutput": "renders/Wide-3_SCROLL_long.png",
+             "scroll": {"mode": "LONG", "maxScrollPx": 4000, "atEnd": False, "reachedPx": 4000}}])
+
     def test_a_long_data_product_escaping_the_build_dir_is_ignored(self) -> None:
         root = self._two_previews()
         previews = root / "catalog" / "build" / "compose-previews"

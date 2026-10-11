@@ -576,6 +576,8 @@ class GuidelineEngineTest {
     assertThat(request.systemPrompt)
       .contains("only while the container can still scroll towards it")
     assertThat(request.systemPrompt).contains("the last item cut at the end edge")
+    assertThat(request.systemPrompt)
+      .contains("unless the screenshot's description says it STOPPED AT ITS SCROLL LIMIT")
     assertThat(request.systemPrompt).contains("measured accessibility checks")
   }
 

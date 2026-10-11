@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
@@ -34,13 +35,15 @@ internal data class HandoffInputs(
   val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
   /** Each preview's measured accessibility checks, served with its [nodes] as `a11y` evidence. */
   val checks: Map<String, List<PreviewCheck>> = emptyMap(),
+  /** Each preview's long screenshot's scroll state, so a capped one is described as such. */
+  val longScrolls: Map<String, ScrollLimit> = emptyMap(),
 ) {
   /**
    * What a follow-up round may ask for in handoff mode: only what the render job staged (the long
    * scrolling screenshot and `a11y` data). The job holding the key never renders.
    */
   val host: GuidelineEvidenceHost
-    get() = HandoffEvidenceHost(renders, sizes, nodes, checks)
+    get() = HandoffEvidenceHost(renders, sizes, nodes, checks, longScrolls)
 
   companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
@@ -79,7 +82,8 @@ internal data class HandoffInputs(
                 (it as? JsonObject)?.takeIf { c -> c.text("renderOutput") != null }
               }
             val output = capture?.text("renderOutput")
-            val scrollMode = (capture?.get("scroll") as? JsonObject)?.text("mode")
+            val scroll = capture?.get("scroll") as? JsonObject
+            val scrollMode = scroll?.text("mode")
             val render = output?.let { path ->
               within(base, path)?.takeIf { it.isFile }
                 ?: rendersDir?.let { within(it, File(path).name) }?.takeIf { it.isFile }
@@ -95,6 +99,8 @@ internal data class HandoffInputs(
               scrollMode = scrollMode,
               widthDp = (params?.get("widthDp") as? JsonPrimitive)?.intOrNull ?: 0,
               heightDp = (params?.get("heightDp") as? JsonPrimitive)?.intOrNull ?: 0,
+              scrollLimit = scroll?.let(::scrollLimit),
+              longScroll = longScrollOf(preview),
             )
           }
         } else {
@@ -151,7 +157,13 @@ internal data class HandoffInputs(
                 bytes,
                 entry.widthDp,
                 entry.heightDp,
-                description = describeCapture(entry.widthDp, entry.heightDp, entry.scrollMode),
+                description =
+                  describeCapture(
+                    entry.widthDp,
+                    entry.heightDp,
+                    entry.scrollMode,
+                    entry.scrollLimit,
+                  ),
               )
             ),
           // `a11y` data is served on request from the host; derived from the same render, so it
@@ -165,8 +177,26 @@ internal data class HandoffInputs(
         entries.associate { it.id to it.render },
         entries.associate { it.id to (it.widthDp to it.heightDp) },
         checks,
+        entries.mapNotNull { entry -> entry.longScroll?.let { entry.id to it } }.toMap(),
       )
     }
+
+    /** A manifest `scroll` object's limit and outcome. */
+    private fun scrollLimit(scroll: JsonObject): ScrollLimit =
+      ScrollLimit(
+        maxScrollPx = (scroll["maxScrollPx"] as? JsonPrimitive)?.intOrNull ?: 0,
+        atEnd = (scroll["atEnd"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        reachedPx = (scroll["reachedPx"] as? JsonPrimitive)?.intOrNull,
+      )
+
+    /** The scroll state of [preview]'s `render/scroll/long` data product, or null. */
+    private fun longScrollOf(preview: JsonObject): ScrollLimit? =
+      (preview["dataProducts"] as? JsonArray)
+        ?.firstNotNullOfOrNull { product ->
+          (product as? JsonObject)?.takeIf { it.text("kind") == LONG_KIND }
+        }
+        ?.let { it["scroll"] as? JsonObject }
+        ?.let(::scrollLimit)
 
     /**
      * Each preview's surface and profile ([GuidelineSurfaces.of]) by id, from a module's
@@ -276,21 +306,33 @@ internal data class HandoffInputs(
       }
 
     /** [file], a long screenshot, as the picture a scroll-capture need is answered with. */
-    internal fun longPicture(file: File, widthDp: Int, heightDp: Int): SubjectPicture =
+    internal fun longPicture(
+      file: File,
+      widthDp: Int,
+      heightDp: Int,
+      limit: ScrollLimit? = null,
+    ): SubjectPicture =
       SubjectPicture(
         PreviewGuidelineRequests.KIND_SCROLL_CAPTURE,
         file.readBytes(),
         widthDp,
         heightDp,
-        description = describeCapture(widthDp, heightDp, "LONG"),
+        description = describeCapture(widthDp, heightDp, "LONG", limit),
       )
 
     /**
      * How the picture was captured, so the model does not read a scrolled frame as the first one:
      * at the END of a scroll, content that scrolls away with the list (time text, a list header) is
-     * out of view, not missing.
+     * out of view, not missing. A LONG capture stopped by its `maxScrollPx` ([limit]) before the
+     * content ended is not the whole content: its bottom edge may be mid-scroll, and the prompt
+     * reads content cut there as clipped only when the description does not say so.
      */
-    internal fun describeCapture(widthDp: Int, heightDp: Int, scrollMode: String?): String? {
+    internal fun describeCapture(
+      widthDp: Int,
+      heightDp: Int,
+      scrollMode: String?,
+      limit: ScrollLimit? = null,
+    ): String? {
       val size = if (widthDp > 0 && heightDp > 0) " at ${widthDp}×${heightDp}dp" else ""
       return when (scrollMode?.uppercase()) {
         null -> if (size.isEmpty()) null else "device render$size, its first frame"
@@ -299,8 +341,22 @@ internal data class HandoffInputs(
             "that scrolls away with the content (time text, list headers) is out of view here, " +
             "not missing"
         "LONG" ->
-          "a stitched long screenshot$size of the whole scrolling content, top to bottom; it is " +
-            "taller than any screen, so judge content, not what fits on one screen"
+          when {
+            limit == null || limit.maxScrollPx <= 0 || limit.atEnd ->
+              "a stitched long screenshot$size of the whole scrolling content, top to bottom; " +
+                "it is taller than any screen, so judge content, not what fits on one screen"
+            limit.reachedPx != null ->
+              "a stitched long screenshot$size from the top of the scrolling content, STOPPED " +
+                "AT ITS SCROLL LIMIT (maxScrollPx ${limit.maxScrollPx}, scrolled " +
+                "${limit.reachedPx}px) before the content ended: its bottom edge is mid-scroll, " +
+                "so content cut there scrolls on into view and is not clipped; judge content, " +
+                "not what fits on one screen"
+            else ->
+              "a stitched long screenshot$size from the top of the scrolling content, STOPPED " +
+                "AT ITS SCROLL LIMIT (maxScrollPx ${limit.maxScrollPx}), which may be before " +
+                "the content ends: its bottom edge may be mid-scroll, so content cut there is " +
+                "not clipped; judge content, not what fits on one screen"
+          }
         else -> "device render$size, captured at scroll mode $scrollMode"
       }
     }
@@ -335,8 +391,21 @@ internal data class HandoffInputs(
     val widthDp: Int = 0,
     val heightDp: Int = 0,
     val scrollMode: String? = null,
+    val scrollLimit: ScrollLimit? = null,
+    val longScroll: ScrollLimit? = null,
   )
 }
+
+/**
+ * A scrolled capture's limit and outcome: the `@ScrollingPreview` `maxScrollPx` it was capped at
+ * (0, none), whether the renderer recorded reaching the content's end ([atEnd]), and how far it
+ * scrolled ([reachedPx], null when not reported).
+ */
+internal data class ScrollLimit(
+  val maxScrollPx: Int = 0,
+  val atEnd: Boolean = false,
+  val reachedPx: Int? = null,
+)
 
 /**
  * Handoff mode's evidence: a preview's long screenshot, when the render job staged one beside its
@@ -347,6 +416,7 @@ internal class HandoffEvidenceHost(
   private val sizes: Map<String, Pair<Int, Int>> = emptyMap(),
   nodes: Map<String, List<AccessibilityNode>> = emptyMap(),
   private val checks: Map<String, List<PreviewCheck>> = emptyMap(),
+  private val longScrolls: Map<String, ScrollLimit> = emptyMap(),
 ) : GuidelineEvidenceHost {
   private val captures: Map<String, File> =
     renders
@@ -388,7 +458,7 @@ internal class HandoffEvidenceHost(
     if (need.kind != PreviewGuidelineRequests.KIND_SCROLL_CAPTURE) return null
     val file = captures[previewId] ?: return null
     val (width, height) = sizes[previewId] ?: (0 to 0)
-    return HandoffInputs.longPicture(file, width, height)
+    return HandoffInputs.longPicture(file, width, height, longScrolls[previewId])
   }
 }
 
