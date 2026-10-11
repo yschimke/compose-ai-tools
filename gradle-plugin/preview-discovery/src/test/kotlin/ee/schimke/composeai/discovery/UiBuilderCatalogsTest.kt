@@ -230,6 +230,29 @@ class UiBuilderCatalogsTest {
   }
 
   /**
+   * The Theme panel's tokens travel from the policy to `statusSemantics.designTokens` as written.
+   */
+  @Test
+  fun `a catalog publishes its declared design tokens verbatim`() {
+    val tokens =
+      kotlinx.serialization.json.Json.parseToJsonElement(
+        """{"tokens":[{"id":"space.list","label":"List spacing","kind":"number","default":null,""" +
+          """"minimum":0,"maximum":24,"components":[{"component":"layout/column",""" +
+          """"property":"verticalSpacingDp"}]}]}"""
+      )
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button")),
+        cover,
+        UiBuilderPolicyFile.Builder(schema = UI_BUILDER_POLICY_SCHEMA, platform = "wear")
+          .also { b -> b.designTokens = tokens }
+          .build(),
+      )
+
+    assertThat(file!!.statusSemantics.designTokens).isEqualTo(tokens)
+  }
+
+  /**
    * A catalog's stable public noun can differ from the current callable's; the explicit record join
    * makes the policy's vocabulary authoritative.
    */
