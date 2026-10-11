@@ -30,6 +30,31 @@ import kotlinx.serialization.json.put
  *
  * A scalar codec is its name (`text`, `bool`, `whole`, `float`); a colour or enum codec is an
  * object naming its kind. A fixed value is a `ScreenValue` in screen-document's own JSON.
+ *
+ * A target's `contexts`, keyed by structural role, carry the further `parameters` it writes there
+ * and the `modifier` links (screen-document `ChainLink`s) appended after the node's own chain:
+ * ```json
+ * "contexts": { "list-item": {
+ *   "parameters": { "transformation": { "fixed": … } },
+ *   "modifier": [ { "callableFqn": "…minimumVerticalContentPadding", "positional": [ … ] } ] } }
+ * ```
+ *
+ * A target's `slotPatterns`, keyed by wire slot, recognise its children: matchers are a `component`
+ * (optionally `optional`), `lines` of a text component (`min`, `max`, extra lines to `rest`) or
+ * `any` remaining children, and `otherwise` is `"refuse"` or `{ "to": parameter }`:
+ * ```json
+ * "slotPatterns": { "content": {
+ *   "patterns": [ { "match": [
+ *     { "component": "wear-m3/icon", "optional": true, "to": "icon" },
+ *     { "lines": { "text": "wear-m3/text", "min": 1, "max": 2 }, "to": ["label", "secondaryLabel"] } ] } ],
+ *   "otherwise": { "to": "content" } } }
+ * ```
+ *
+ * A target's `synthesize`, keyed by composable parameter, writes it as a child of another catalog
+ * component whose properties are copied from the parent's:
+ * ```json
+ * "synthesize": { "content": { "component": "wear-m3/text", "properties": { "text": "text" } } }
+ * ```
  */
 object ExportProjectionJson {
   private val screenJson = Json { encodeDefaults = false }
@@ -46,6 +71,28 @@ object ExportProjectionJson {
             if (target.slots.isNotEmpty()) put("slots", strings(target.slots))
             if (target.events.isNotEmpty()) put("events", strings(target.events))
             put("parameters", JsonObject(target.parameters.mapValues { (_, v) -> value(v) }))
+            if (target.contexts.isNotEmpty()) {
+              put("contexts", JsonObject(target.contexts.mapValues { (_, c) -> context(c) }))
+            }
+            if (target.synthesize.isNotEmpty()) {
+              put(
+                "synthesize",
+                JsonObject(
+                  target.synthesize.mapValues { (_, synthesis) ->
+                    buildJsonObject {
+                      put("component", synthesis.component)
+                      put("properties", strings(synthesis.properties))
+                    }
+                  }
+                ),
+              )
+            }
+            if (target.slotPatterns.isNotEmpty()) {
+              put(
+                "slotPatterns",
+                JsonObject(target.slotPatterns.mapValues { (_, p) -> slotPatterns(p) }),
+              )
+            }
           }
         }
       ),
@@ -67,10 +114,132 @@ object ExportProjectionJson {
             events = target["events"]?.let(::stringMap).orEmpty(),
             parameters =
               target["parameters"]?.jsonObject.orEmpty().mapValues { (_, v) -> readValue(v) },
+            contexts =
+              target["contexts"]?.jsonObject.orEmpty().mapValues { (_, c) -> readContext(c) },
+            slotPatterns =
+              target["slotPatterns"]?.jsonObject.orEmpty().mapValues { (_, p) ->
+                readSlotPatterns(p)
+              },
+            synthesize =
+              target["synthesize"]?.jsonObject.orEmpty().mapValues { (_, raw) ->
+                ExportProjection.Synthesis(
+                  raw.jsonObject.getValue("component").jsonPrimitive.content,
+                  stringMap(raw.jsonObject.getValue("properties")),
+                )
+              },
           )
         },
     )
   }
+
+  private fun context(context: ExportProjection.Context): JsonObject = buildJsonObject {
+    if (context.parameters.isNotEmpty()) {
+      put("parameters", JsonObject(context.parameters.mapValues { (_, v) -> value(v) }))
+    }
+    if (context.modifier.isNotEmpty()) {
+      put(
+        "modifier",
+        JsonArray(
+          context.modifier.map { screenJson.encodeToJsonElement(ChainLink.serializer(), it) }
+        ),
+      )
+    }
+  }
+
+  private fun readContext(element: JsonElement): ExportProjection.Context {
+    val obj = element.jsonObject
+    return ExportProjection.Context(
+      parameters = obj["parameters"]?.jsonObject.orEmpty().mapValues { (_, v) -> readValue(v) },
+      modifier =
+        obj["modifier"]?.jsonArray.orEmpty().map {
+          screenJson.decodeFromJsonElement(ChainLink.serializer(), it)
+        },
+    )
+  }
+
+  private fun slotPatterns(patterns: ExportProjection.SlotPatterns): JsonObject = buildJsonObject {
+    put(
+      "patterns",
+      JsonArray(
+        patterns.patterns.map { pattern ->
+          buildJsonObject { put("match", JsonArray(pattern.match.map(::matcher))) }
+        }
+      ),
+    )
+    put(
+      "otherwise",
+      patterns.otherwise?.let { buildJsonObject { put("to", it) } } ?: JsonPrimitive("refuse"),
+    )
+  }
+
+  private fun matcher(matcher: ExportProjection.Matcher): JsonObject = buildJsonObject {
+    when (matcher) {
+      is ExportProjection.Matcher.Component -> {
+        put("component", matcher.componentId)
+        if (matcher.optional) put("optional", true)
+        put("to", matcher.to)
+      }
+      is ExportProjection.Matcher.Lines -> {
+        put(
+          "lines",
+          buildJsonObject {
+            put("text", matcher.textComponent)
+            put("min", matcher.min)
+            matcher.max?.let { put("max", it) }
+          },
+        )
+        put("to", JsonArray(matcher.to.map(::JsonPrimitive)))
+        matcher.rest?.let { put("rest", it) }
+      }
+      is ExportProjection.Matcher.Rest -> {
+        put("any", true)
+        put("to", matcher.to)
+      }
+    }
+  }
+
+  private fun readSlotPatterns(element: JsonElement): ExportProjection.SlotPatterns {
+    val obj = element.jsonObject
+    val otherwise =
+      when (val raw = obj["otherwise"]) {
+        null -> null
+        is JsonPrimitive ->
+          if (raw.content == "refuse") null
+          else throw IllegalArgumentException("`otherwise` is \"refuse\" or {\"to\": …}")
+        else -> raw.jsonObject.getValue("to").jsonPrimitive.content
+      }
+    return ExportProjection.SlotPatterns(
+      patterns =
+        obj["patterns"]?.jsonArray.orEmpty().map { pattern ->
+          ExportProjection.SlotPattern(
+            pattern.jsonObject.getValue("match").jsonArray.map { readMatcher(it.jsonObject) }
+          )
+        },
+      otherwise = otherwise,
+    )
+  }
+
+  private fun readMatcher(obj: JsonObject): ExportProjection.Matcher =
+    when {
+      "component" in obj ->
+        ExportProjection.Matcher.Component(
+          obj.getValue("component").jsonPrimitive.content,
+          obj.getValue("to").jsonPrimitive.content,
+          obj["optional"]?.jsonPrimitive?.booleanOrNull ?: false,
+        )
+      "lines" in obj -> {
+        val lines = obj.getValue("lines").jsonObject
+        ExportProjection.Matcher.Lines(
+          textComponent = lines.getValue("text").jsonPrimitive.content,
+          to = obj.getValue("to").jsonArray.map { it.jsonPrimitive.content },
+          min = lines["min"]?.jsonPrimitive?.content?.toInt() ?: 1,
+          max = lines["max"]?.jsonPrimitive?.content?.toInt(),
+          rest = obj["rest"]?.jsonPrimitive?.contentOrNull,
+        )
+      }
+      "any" in obj -> ExportProjection.Matcher.Rest(obj.getValue("to").jsonPrimitive.content)
+      else -> throw IllegalArgumentException("a slot matcher is component, lines or any")
+    }
 
   private fun strings(map: Map<String, String>) =
     JsonObject(map.mapValues { JsonPrimitive(it.value) })

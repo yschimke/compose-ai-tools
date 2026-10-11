@@ -354,7 +354,10 @@ coil3 = "3.5.0"
 # daemon line below carries the same lesson and the same shape.
 # 3.29.0 carries `exportProjection` on the authored and published component policy, which typed
 # definitions on real records publish (docs/design/TYPED_REAL_RECORD_ADAPTERS.md).
-composeai-contracts = "3.29.0"
+# 3.30.0 carries every overload on a component record (`ComponentRecord.overloads`), and the item
+# scope, scope and template-local reads and `UiBuilderCode.locals`/`scopes` that structural
+# projections write (docs/design/TYPED_STRUCTURAL_TEMPLATES.md).
+composeai-contracts = "3.30.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this

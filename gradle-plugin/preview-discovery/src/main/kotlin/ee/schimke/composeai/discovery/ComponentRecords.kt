@@ -452,6 +452,34 @@ object ComponentRecords {
       return build()
     }
 
+    /**
+     * [ComponentRecord.overloads]: every overload discovery read, or the one signature when it read
+     * a library callable's overloads and found only that one. Empty for a project composable, whose
+     * overloads discovery does not enumerate, and for a signature it could not read.
+     */
+    private fun recordedOverloads(): List<ComponentOverload> {
+      if (known.isNotEmpty()) return known.values.map { overload(it.descriptor, it.parameters) }
+      val single = descriptor
+      return if (
+        symbol.origin == ComponentOrigin.LIBRARY &&
+          signatureKnown &&
+          single != null &&
+          !overloadsCollided
+      ) {
+        listOf(overload(single, parameters))
+      } else {
+        emptyList()
+      }
+    }
+
+    private fun overload(descriptor: String, parameters: List<TargetParameter>) =
+      ComponentOverload.Builder()
+        .also { b ->
+          b.descriptor = descriptor
+          b.parameters = parameters
+        }
+        .build()
+
     private fun build(): ComponentRecord {
       adoptMajorityOverload()
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
@@ -483,6 +511,7 @@ object ComponentRecords {
             b.requiredOptIns = requiredOptIns
             b.androidxOptIns = androidxOptIns
             b.builder = mergedBuilderPolicy()
+            b.overloads = recordedOverloads()
           }
           .build()
       // Printed from the finished record so the snippet matches what consumers read.

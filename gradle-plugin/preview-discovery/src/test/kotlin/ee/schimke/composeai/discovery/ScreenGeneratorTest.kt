@@ -1537,6 +1537,112 @@ class ScreenGeneratorTest {
     assertThat(source).doesNotContain("import androidx.compose.foundation.lazy.item")
   }
 
+  private val itemScope = "androidx.compose.foundation.lazy.LazyItemScope"
+  private val spec = "androidx.wear.compose.material3.lazy.TransformationSpec"
+
+  /** `Card(modifier = Modifier.transformedHeight(<scope>, <spec>))` in one list item. */
+  private fun transformedItem(item: SlotItem, scope: ScreenValue, specValue: ScreenValue) =
+    list(
+      item,
+      ScreenNode(
+        card.canonicalId,
+        arguments =
+          mapOf(
+            "modifier" to
+              ScreenValue.Chain(
+                ScreenValue.Reference(
+                  "androidx.compose.ui.Modifier",
+                  typeFqn = "androidx.compose.ui.Modifier",
+                ),
+                listOf(
+                  ChainLink(
+                    "androidx.wear.compose.material3.lazy.transformedHeight",
+                    positional = listOf(scope, specValue),
+                  )
+                ),
+                "androidx.compose.ui.Modifier",
+              )
+          ),
+      ),
+    )
+
+  private fun generateItem(
+    item: SlotItem,
+    scope: ScreenValue = ScreenValue.ScopeRead.Builder(itemScope).build(),
+    specValue: ScreenValue = ScreenValue.LocalRead.Builder("spec", spec).build(),
+    locals: Map<String, String> = mapOf("spec" to spec),
+  ) =
+    ScreenGenerator.generate(
+      transformedItem(item, scope, specValue),
+      catalog(lazyColumn, card),
+      expressionPackages = setOf("androidx.compose", "androidx.wear.compose"),
+      locals = locals,
+    )
+
+  private val attested =
+    SlotItem.Builder("item", lazyListScope).also { it.bodyScopeFqn = itemScope }.build()
+
+  @Test
+  fun `an attested item scope is read as this, and a template local by its name`() {
+    val result = generateItem(attested)
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertThat(source).contains("item {")
+    assertThat(source).contains("Card(modifier = Modifier.transformedHeight(this, spec)")
+    assertThat(source).contains("import androidx.wear.compose.material3.lazy.transformedHeight")
+  }
+
+  @Test
+  fun `a scope read is refused where the item's scope is unattested or another`() {
+    val unattested = generateItem(SlotItem("item", lazyListScope))
+    assertThat((unattested as ScreenGenerator.Result.Refused).reasons.joinToString())
+      .contains("reads its receiver as $itemScope, but it composes under no receiver")
+
+    val other = generateItem(attested, scope = ScreenValue.ScopeRead.Builder(columnScope).build())
+    assertThat((other as ScreenGenerator.Result.Refused).reasons.joinToString())
+      .contains("reads its receiver as $columnScope, but it composes under `$itemScope`")
+  }
+
+  @Test
+  fun `a template local must be declared, at the type it is read as`() {
+    val undeclared = generateItem(attested, locals = emptyMap())
+    assertThat((undeclared as ScreenGenerator.Result.Refused).reasons.joinToString())
+      .contains("reads template local `spec` as $spec, but no template declares it")
+
+    val mistyped = generateItem(attested, locals = mapOf("spec" to "app.OtherSpec"))
+    assertThat((mistyped as ScreenGenerator.Result.Refused).reasons.joinToString())
+      .contains("but the templates declare it as app.OtherSpec")
+  }
+
+  @Test
+  fun `a template local may not also be declared state, or be no identifier`() {
+    val document =
+      transformedItem(
+          attested,
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        )
+        .copy(state = listOf(ScreenState("spec", "kotlin.Int", ScreenValue.Whole(0))))
+    val refused =
+      ScreenGenerator.generate(document, catalog(lazyColumn, card), locals = mapOf("spec" to spec))
+    assertThat((refused as ScreenGenerator.Result.Refused).reasons)
+      .contains("template local `spec` is also declared as state")
+    val badName = generateItem(attested, locals = mapOf("spec" to spec, "not a name" to spec))
+    assertThat((badName as ScreenGenerator.Result.Refused).reasons)
+      .contains("template local `not a name` is not a usable Kotlin identifier")
+  }
+
+  @Test
+  fun `a template local may not shadow a component or a package root the screen writes`() {
+    for (name in listOf("Card", "androidx")) {
+      val refused = generateItem(attested, locals = mapOf("spec" to spec, name to spec))
+      assertThat((refused as ScreenGenerator.Result.Refused).reasons)
+        .contains(
+          "template local `$name` has the name of a component or package root this screen " +
+            "writes, and would shadow it"
+        )
+    }
+  }
+
   @Test
   fun `a slot item may carry arguments, and takes no parentheses without them`() {
     val keyed = SlotItem("item", lazyListScope, named = mapOf("key" to ScreenValue.Text("row")))
