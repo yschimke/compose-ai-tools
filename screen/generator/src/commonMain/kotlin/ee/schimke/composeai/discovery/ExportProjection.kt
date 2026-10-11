@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.longOrNull
 
 /**
  * How a catalog component's wire properties become a call to the REAL library composable.
@@ -94,6 +95,28 @@ data class ExportProjection(
 
     /** A closed set of wire values, each written as the qualified member it names. */
     data class Enum(val typeFqn: String, val members: Map<String, String>) : Codec
+
+    /**
+     * A number in [unit] (`dp` or `sp`), written `16.dp`. With [positive], zero or less writes
+     * nothing — the "unset" a Wear text's `fontSizeSp = 0` means.
+     */
+    data class Unit(val unit: String, val positive: Boolean = false) : Codec {
+      init {
+        require(unit in UNITS) { "a unit codec writes one of $UNITS" }
+      }
+    }
+
+    /**
+     * A theme token written as a member path from [rootFqn]: `titleLarge` through
+     * `MaterialTheme.typography` is `MaterialTheme.typography.titleLarge`. [tokens] closes the set
+     * when the catalog publishes one.
+     */
+    data class Token(
+      val rootFqn: String,
+      val members: List<String>,
+      val typeFqn: String,
+      val tokens: Set<String>? = null,
+    ) : Codec
   }
 
   /**
@@ -138,6 +161,29 @@ data class ExportProjection(
             add(COLOR)
           }
           is Codec.Enum -> codec.members.values.mapTo(this) { it.substringBeforeLast('.') }
+          is Codec.Token -> add(codec.rootFqn)
+          // A top-level extension: the allowlist admits the callable itself.
+          is Codec.Unit -> add("androidx.compose.ui.unit.${codec.unit}")
+          else -> Unit
+        }
+      }
+      fun screen(value: ScreenValue) {
+        when (value) {
+          is ScreenValue.Reference -> add(value.rootFqn)
+          is ScreenValue.Construct -> {
+            add(value.callableFqn.substringBeforeLast('.'))
+            value.positional.forEach(::screen)
+            value.named.values.forEach(::screen)
+          }
+          is ScreenValue.Chain -> {
+            screen(value.receiver)
+            value.links.forEach { link ->
+              add(link.callableFqn.substringBeforeLast('.'))
+              link.positional.forEach(::screen)
+              link.named.values.forEach(::screen)
+            }
+          }
+          is ScreenValue.Lambda -> screen(value.result)
           else -> Unit
         }
       }
@@ -148,7 +194,7 @@ data class ExportProjection(
             add(value.callableFqn.substringBeforeLast('.'))
             value.arguments.values.forEach(::visit)
           }
-          is Value.Fixed -> Unit
+          is Value.Fixed -> screen(value.value)
         }
       }
       targets.forEach { it.parameters.values.forEach(::visit) }
@@ -173,10 +219,21 @@ data class ExportProjection(
   /** Lower one saved node's [properties] (the builder's `{type, value}` wrappers). */
   fun lower(properties: Map<String, JsonElement>): Lowered {
     val reasons = mutableListOf<String>()
-    val variant = variantProperty?.let { wireValue(properties[it])?.contentOrNull }
+    val statedVariant = variantProperty?.let { properties[it] }?.takeUnless { it is JsonNull }
+    if (statedVariant != null && wireValue(statedVariant) == null) {
+      return Lowered.Refused(listOf("$variantProperty: not a scalar value"))
+    }
+    val variant =
+      variantProperty
+        ?.let { wireValue(properties[it]) }
+        ?.takeUnless { it is JsonNull }
+        ?.contentOrNull
+        ?.takeIf { it.isNotEmpty() }
+    // An absent variant is the default target; a stated one must be listed, or a stale or misspelt
+    // value would silently export a different composable.
     val target =
-      targets.firstOrNull { variant != null && it.variants?.contains(variant) == true }
-        ?: targets.firstOrNull { it.variants == null }
+      if (variant == null) targets.firstOrNull { it.variants == null }
+      else targets.firstOrNull { it.variants?.contains(variant) == true }
     if (target == null) return Lowered.Refused(listOf("no target for $variantProperty=$variant"))
     val arguments = buildMap {
       for ((parameter, value) in target.parameters) {
@@ -197,8 +254,12 @@ data class ExportProjection(
     when (value) {
       is Value.Fixed -> value.value
       is Value.Property -> {
-        val raw = wireValue(properties[value.name])
-        if (raw == null || raw is JsonNull || (raw.isString && raw.content.isEmpty())) null
+        val stated = properties[value.name]
+        val raw = wireValue(stated)
+        if (stated != null && stated !is JsonNull && raw == null) {
+          reasons += "$where <- ${value.name}: not a scalar value"
+          null
+        } else if (raw == null || raw is JsonNull || (raw.isString && raw.content.isEmpty())) null
         else if (value.omitWhen != null && sameScalar(raw, value.omitWhen)) null
         else encode(value.codec, raw, "$where <- ${value.name}", reasons)
       }
@@ -226,10 +287,10 @@ data class ExportProjection(
     return when (codec) {
       Codec.Text -> if (raw.isString) ScreenValue.Text(raw.content) else refuse("expected text")
       Codec.Bool -> raw.booleanOrNull?.let { ScreenValue.Bool(it) } ?: refuse("expected a boolean")
+      // Read as a Long token: through a Double, 9007199254740993 would export as …992.
       Codec.Whole ->
-        raw.doubleOrNull
-          ?.takeIf { !raw.isString && it % 1.0 == 0.0 }
-          ?.let { ScreenValue.Whole(it.toLong()) } ?: refuse("expected a whole number")
+        raw.longOrNull?.takeIf { !raw.isString }?.let { ScreenValue.Whole(it) }
+          ?: refuse("expected a whole number")
       Codec.Fractional32 ->
         raw.doubleOrNull
           ?.takeIf { !raw.isString && it.isFinite() }
@@ -243,6 +304,30 @@ data class ExportProjection(
           )
         } ?: refuse("`${raw.content}` is not one of ${codec.members.keys.sorted()}")
       is Codec.Color -> color(codec, raw.content) ?: refuse("`${raw.content}` is not a colour")
+      is Codec.Unit -> {
+        val number = raw.doubleOrNull?.takeIf { !raw.isString && it.isFinite() }
+        when {
+          number == null -> refuse("expected a number of ${codec.unit}")
+          codec.positive && number <= 0.0 -> null
+          else -> {
+            val whole = number.toLong()
+            ScreenValue.Chain(
+              receiver =
+                if (number == whole.toDouble() && whole in Int.MIN_VALUE..Int.MAX_VALUE)
+                  ScreenValue.Whole(whole)
+                else ScreenValue.Fractional(number),
+              links = listOf(ChainLink("androidx.compose.ui.unit.${codec.unit}", property = true)),
+              typeFqn = UNIT_TYPES.getValue(codec.unit),
+            )
+          }
+        }
+      }
+      is Codec.Token ->
+        raw.content
+          .takeIf { (codec.tokens == null || it in codec.tokens) && it.isIdentifier() }
+          ?.let {
+            ScreenValue.Reference(codec.rootFqn, codec.members + it, typeFqn = codec.typeFqn)
+          } ?: refuse("`${raw.content}` is not a token of ${codec.members.joinToString(".")}")
     }
   }
 
@@ -283,5 +368,10 @@ data class ExportProjection(
 
   private companion object {
     const val COLOR = "androidx.compose.ui.graphics.Color"
+    val UNITS = setOf("dp", "sp")
+    val UNIT_TYPES =
+      mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")
+
+    fun String.isIdentifier() = isNotEmpty() && first().isLetter() && all { it.isLetterOrDigit() }
   }
 }

@@ -30,6 +30,7 @@ internal fun UiBuilderComponentPolicy.mergedWith(
       b.modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities
       b.insertContent = authored.insertContent ?: insertContent
       b.shelfRole = authored.shelfRole ?: shelfRole
+      b.exportProjection = authored.exportProjection ?: exportProjection
     }
     .build()
 }

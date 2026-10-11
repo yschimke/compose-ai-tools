@@ -102,14 +102,7 @@
       }
     }
   },
-  "writerOnlyFields": {
-    "btaCompile": {
-      "invisibleTo": [
-        "jvm"
-      ],
-      "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block \u2014 so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
-    }
-  },
+  "writerOnlyFields": {},
   "constantRegistries": {},
   "mirroredConstants": {},
   "versionStampAliases": {
