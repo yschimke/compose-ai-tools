@@ -47,33 +47,41 @@ projection today.
 | 2 child recognition | **new:** a target's `slotPatterns` | this document |
 | 3 property → slot | **new:** a slot `synthesize` binding | this document |
 
-### Screen structure: use the templates as designed, with one change
+### Screen structure: real records inside, one frame around them
 
-The roles (`screen-root`, `list`, `list-item`, `container`, `decoration`, `overlay`, `controlled`,
-`previews`, `file`; the closed `UI_BUILDER_STRUCTURAL_ROLES` set) and their holes stand. The change is to `list-item`. The contract's example puts the parent's
-arguments in the template:
+**Decided (2026-10-11): everything a record can print is a record; only the frame is text.**
 
-```
-"list-item": "item {\n  ${call(modifier = \"Modifier.transformedHeight(this, spec)\", transformation = \"SurfaceTransformation(spec)\")}\n}"
-```
+An earlier draft kept a text template per role (`screen-root`, `list`, `list-item`) and asked the
+generator for each item's call as a fragment to splice into them. That splits import, name and
+scope resolution between two systems, and every check the generator makes (a component called by
+simple name, a local that would shadow it, a scoped link under the wrong receiver) would have to be
+remade for the text around it. Most of the structure does not need text:
 
-That is wrong for Wear in three ways the inventory shows: `transformation` must be written only to
-components that declare it (an `IconButton` does not); the minimum list padding is a different
-`…Defaults` per component; and a modifier override *replaces* the node's own chain rather than
-appending to it. So the template keeps only what is the same for every item:
+- **The list is a record.** Wear's `TransformingLazyColumn(state = listState, contentPadding =
+  contentPadding)` is the design root's projection, its arguments read through
+  `ScreenValue.LocalRead`.
+- **Each item is a `SlotItem`.** The list's DSL slot wraps every child in `item { … }`, and the item
+  scope the catalog declares (`code.scopes["list-item"]`) is that wrapper's attested `bodyScopeFqn`,
+  so `Modifier.transformedHeight(this, spec)` inside it is checked like any other scoped read.
+- **The frame is the `screen-root` template**, written by `ScreenGenerator.generate(…, frame)`
+  around the root, with one hole: `${content}`. It declares what the records read and no record
+  declares: `val listState = rememberTransformingLazyColumnState()`, `val spec = …`, and
+  `ScreenScaffold(scrollState = listState) { contentPadding -> … }`. Those names are the catalog's
+  `code.locals`, and the frame's own imports are `code.imports`. The generator refuses a frame that
+  writes `content` other than once, names any other hole, or carries a `call(…)` hole.
 
-```
-"list-item": "item${key} {\n  ${children}\n}"
-```
+`list` and `list-item` templates are not read by this path; they remain in the vocabulary for the
+catalogs that publish them until the hand-written exporters are retired.
 
-and the per-component part moves into the projection, as data checked against each record.
+Two things stay open, each refused by name rather than approximated until done:
 
-`${key}` is a new `list-item` hole. The contract's holes are `index` and `children` today, and
-`index` is not what the hand-written exporter writes: it writes `item(key = "<stableKey>")` when the
-node has a stable key and `item` otherwise. So `key` joins `UI_BUILDER_TEMPLATE_HOLES["list-item"]`,
-filled with `(key = "…")` or nothing, in the same change as the renderer that fills it. Until it
-does, publish-time validation rejects the template (`policy.code.template.hole.unknown`), which is
-the intended guard.
+- **Per-item keys.** The hand-written exporter writes `item(key = "<stableKey>")` when a node has a
+  stable key. A `SlotItem` is per slot, so the key needs a per-child argument on the wrapper (a
+  screen-document addition, through a Builder). The `list-item` `key` hole added for the text
+  draft is unused here.
+- **The frame's other slots.** `edgeButton` and overlays are children of the screen, not the list.
+  They become further frame holes rendered from generator nodes, the same way `content` is, once
+  the first screens export.
 
 ### Parent-driven arguments: `contexts`
 
@@ -166,7 +174,9 @@ exporter's behaviour, and the equivalence gate below holds the new path to it.
 ## Proof before cutover
 
 For every committed design and template in the catalog, export it through the hand-written path and
-the projection path, normalise imports and whitespace, and require identical source. Where the
+the projection path and compare their structure: the calls, in order, with their arguments,
+ignoring imports, whitespace and how a name is qualified. The generator writes some names
+qualified where the hand-written exporter imports them, so byte-identical source is not the bar. Where the
 difference is deliberate (the new path refusing what the old silently dropped), the gate lists it by
 design and reason, and each listed difference is reviewed. The rendered-parity and
 compile-the-export gates from `TYPED_REAL_RECORD_ADAPTERS.md` step 7 run beside it.
@@ -182,10 +192,14 @@ compile-the-export gates from `TYPED_REAL_RECORD_ADAPTERS.md` step 7 run beside 
    - JSON spelling;
    - validation against records;
    - a generator-side `lower` that returns the chosen record and child assignment.
-3. **Builder:** a template-driven screen exporter that uses projections for calls and
-   `code.templates` for structure, selected by `composeSourceExport` (a new adapter id). Also the
-   equivalence harness against `WearScreenCodeExporter`.
-4. **Wear:**
+3. **Tools, for the frame:** `ScreenGenerator.generate(…, frame)` (the `screen-root` template
+   around the root); then a projection target's DSL slot naming its item wrapper (`item`), with the
+   wrapper's body scope taken from `code.scopes["list-item"]`.
+4. **Builder:** export a projection catalog's screen through those (projected slots and synthesized
+   children landed in compose-ui-builder#712), selected by `composeSourceExport` (a new adapter
+   id), with role contexts applied to the list's direct children. Also the structural equivalence
+   harness against `WearScreenCodeExporter`.
+5. **Wear:**
    - real-record definitions with projections, patterns and templates;
    - green on all three gates;
    - switch `composeSourceExport`, then delete `WearContentEmitter`'s per-component branches.
