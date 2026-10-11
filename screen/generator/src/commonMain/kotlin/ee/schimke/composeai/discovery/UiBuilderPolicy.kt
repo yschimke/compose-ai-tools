@@ -47,7 +47,9 @@ val UI_BUILDER_TEMPLATE_HOLES: Map<String, Set<String>> =
     // and the items.
     "list" to setOf("listState", "contentPadding", "items"),
     // One item, wrapped in whatever scope its parent requires. `${'$'}{call(...)}` does the work.
-    "list-item" to setOf("index", "children"),
+    // `key` is `(key = "<stable key>")` for a node that has one and empty otherwise, so the
+    // template writes `item${'$'}{key} { … }` as the hand-written exporters do.
+    "list-item" to setOf("index", "key", "children"),
     // Not `list`'s holes: a container writes no repetition, so no list state or padding to thread.
     "container" to setOf("children"),
     // A sibling of the screen rather than a child, shown by a hoisted state.

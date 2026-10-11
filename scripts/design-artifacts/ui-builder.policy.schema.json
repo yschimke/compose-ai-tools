@@ -499,6 +499,16 @@
               "file"
             ]
           }
+        },
+        "locals": {
+          "type": "object",
+          "description": "Names the templates define and the code they wrap may read, each with its fully-qualified type (Wear's `spec`: `androidx.wear.compose.material3.lazy.TransformationSpec`). A projection's template-local read must name one at this type.",
+          "additionalProperties": { "type": "string" }
+        },
+        "scopes": {
+          "type": "object",
+          "description": "The receiver each structural role's lambda opens around the code it wraps, by role (`list-item`: `androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope`). It attests the item's scope, so a projection may read it as `this` in that role.",
+          "additionalProperties": { "type": "string" }
         }
       }
     },
