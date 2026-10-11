@@ -35,7 +35,7 @@ jobs:
 
   validate:
     needs: changes
-    if: ${{ needs.changes.outputs.validate == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.validate == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: Validate published report schemas
     runs-on: ubuntu-latest
     steps:

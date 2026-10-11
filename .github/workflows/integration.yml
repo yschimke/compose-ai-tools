@@ -91,7 +91,7 @@ jobs:
   # path — never skip work that could hide a regression.
   changes:
     name: Determine integration scope
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     outputs:
       run: ${{ steps.scope.outputs.run }}
@@ -130,7 +130,7 @@ jobs:
     # bundle (the matrix is skipped too, and integration-scope-gate reports the
     # required legs), so the expensive publish/installDist/bundle is pure waste.
     needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: Build plugin + CLI
     runs-on: ubuntu-latest
     steps:
@@ -255,7 +255,7 @@ jobs:
   # real matrix on normal PRs / pushes / the nightly cron, this gate on release
   # PRs. Keep the two names in lockstep with the `pr_blocking: true` matrix cells.
   release-please-gate:
-    if: ${{ startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]' }}
+    if: ${{ startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]' }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
@@ -288,7 +288,7 @@ jobs:
     if: >-
       ${{ github.event_name == 'pull_request'
       && needs.changes.outputs.run == 'false'
-      && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+      && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
@@ -308,7 +308,7 @@ jobs:
           echo "satisfy branch protection without an admin bypass."
 
   integration:
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
     name: ${{ matrix.name }}
     needs: [changes, build-plugin]
     runs-on: ubuntu-latest
