@@ -892,7 +892,14 @@ public class GuidelineEngine(
               failedRequests++
             }
           }
-          interrupted = undecided.keys
+          interrupted =
+            if (followUpFailure.kind == FailureKind.DEFERRED) {
+              // Replayed from its answers next run, which only works if the next run batches the
+              // same previews: none of this batch is cached until all of it is answered.
+              batch.subjects.map { it.previewId }.toSet()
+            } else {
+              undecided.keys
+            }
           break
         }
         current = gathered

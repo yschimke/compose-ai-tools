@@ -66,7 +66,8 @@ class DeferredReplyModelTest {
   }
 
   private fun run(
-    host: GuidelineEvidenceHost = A11yHost()
+    host: GuidelineEvidenceHost = A11yHost(),
+    subjects: List<PreviewSubject> = listOf(subject),
   ): Pair<GuidelineRunResult, DeferredReplyModel> {
     val model = DeferredReplyModel(requests, rerun = "compose-preview review --filter Stop")
     val result =
@@ -81,7 +82,7 @@ class DeferredReplyModelTest {
               )
               .withRetry(GuidelineRetry(maxAttempts = 1, split = false)),
         )
-        .run(guidelines, listOf(subject))
+        .run(guidelines, subjects)
     return result to model
   }
 
@@ -174,5 +175,36 @@ class DeferredReplyModelTest {
     // Kept here because prompt mode offers whatever the CLI host offers: nothing more.
     assertThat(servedKind(GuidelineEvidenceNeedV1.KIND_SEMANTICS, listOf("a11y"))).isEqualTo("a11y")
     assertThat(servedKind("render", emptyList())).isNull()
+  }
+
+  @Test
+  fun `a batch waiting on a follow-up caches none of its previews, so the next run replays it`() {
+    val other = subject.copy(previewId = "com.example.Go", label = "Go", renderHash = "g")
+    val both = listOf(subject, other)
+    val first = run(subjects = both).second.waiting.single()
+    // s1 is decided at once; s2 needs its accessibility data.
+    reply(
+      first,
+      """{"verdicts":[{"subjectId":"s2","ruleId":"touch","verdict":"needs_evidence",
+        "confidence":0.3,"nodeIds":[],"reason":"","needs":[{"kind":"a11y","theme":null,
+        "fontScale":null,"device":null,"reason":"size"}],"regions":[]}],
+        "others":[{"subjectId":"s1","verdict":"pass","confidence":0.9},
+                  {"subjectId":"s2","verdict":"pass","confidence":0.9}]}""",
+    )
+    val (second, secondModel) = run(subjects = both)
+    // s1's verdicts are reported, but not cached while its batch waits.
+    assertThat(second.results.single { it.previewId == subject.previewId }.unchecked).isEmpty()
+    assertThat(GuidelineResultCache(cacheDir).checked(subject.previewId)).isFalse()
+    val followUp = secondModel.waiting.single()
+
+    reply(
+      followUp,
+      """{"verdicts":[],"others":[{"subjectId":"s1","verdict":"pass","confidence":0.8}]}""",
+    )
+    val (third, thirdModel) = run(subjects = both)
+    // Round 0 replayed from the first reply, round 1 from the second: nothing new to answer.
+    assertThat(thirdModel.waiting).isEmpty()
+    assertThat(third.results.all { it.unchecked.isEmpty() && !it.pending }).isTrue()
+    assertThat(GuidelineResultCache(cacheDir).checked(other.previewId)).isTrue()
   }
 }
