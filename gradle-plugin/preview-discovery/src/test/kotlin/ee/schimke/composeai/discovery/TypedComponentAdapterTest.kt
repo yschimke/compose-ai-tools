@@ -5,6 +5,7 @@ import io.github.classgraph.ClassGraph
 import java.nio.file.Files
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -373,7 +374,383 @@ class TypedComponentAdapterTest {
       root.toFile().deleteRecursively()
     }
   }
+
+  private data class InboxProps(
+    val contacts: List<TypedFixtureContact>,
+    val profile: TypedFixtureProfile,
+  )
+
+  private class InboxAdapter(component: ComponentRecord) :
+    TypedComponentAdapter<InboxProps>("acme/inbox", component) {
+    val contacts =
+      property(
+        InboxProps::contacts,
+        AdapterValueCodecs.list(fixtureContactCodec),
+        listOf(TypedFixtureContact("Ada", 2)),
+      )
+    val profile = property(InboxProps::profile, fixtureProfileCodec, fixtureProfile)
+  }
+
+  private fun inbox(
+    contacts: TargetParameter = parameter("contacts", "List<Contact>", LIST),
+    profile: TargetParameter = parameter("profile", "Profile", PROFILE),
+  ) = component("Inbox").newBuilder().also { it.parameters = listOf(contacts, profile) }.build()
+
+  private fun json(text: String) = Json.parseToJsonElement(text).jsonObject
+
+  @Test
+  fun `a list of scalars wraps each element in its own literal wrapper`() {
+    val codec = AdapterValueCodecs.list(AdapterValueCodecs.String)
+    val wrapped = codec.wrap(listOf("a", "b"))
+    assertThat(wrapped)
+      .isEqualTo(
+        json(
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}"""
+        )
+      )
+    assertThat(codec.unwrap(wrapped)).containsExactly("a", "b").inOrder()
+    assertThat(codec.decode(codec.encode(listOf("x")))).containsExactly("x")
+    assertThat(codec.unwrap(json("""{"type":"list","values":[]}"""))).isEmpty()
+    assertThat(codec.jsonType).isEqualTo("array")
+    assertThat(codec.literalType).isEqualTo("list")
+    assertThat(codec.kotlinType).isEqualTo("kotlin.collections.List")
+    assertThat(codec.stateType).isNull()
+    for (bad in
+      listOf(
+        """{"type":"string","value":"a"}""",
+        """{"type":"list","values":[{"type":"int","value":1}]}""",
+        """{"type":"list","values":[{"type":"string","value":1}]}""",
+        """{"type":"list","values":["a"]}""",
+        """{"type":"list","values":[],"extra":true}""",
+      )) {
+      assertThrows(bad, IllegalArgumentException::class.java) { codec.unwrap(json(bad)) }
+    }
+  }
+
+  @Test
+  fun `scalar wrappers keep today's literal spelling`() {
+    assertThat(AdapterValueCodecs.Int.wrap(3)).isEqualTo(json("""{"type":"int","value":3}"""))
+    assertThat(AdapterValueCodecs.Boolean.wrap(true))
+      .isEqualTo(json("""{"type":"bool","value":true}"""))
+    assertThat(AdapterValueCodecs.unit("dp").wrap(4f).getValue("type"))
+      .isEqualTo(JsonPrimitive("number"))
+    assertThat(AdapterValueCodecs.Int.unwrap(json("""{"type":"int","value":3}"""))).isEqualTo(3)
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.Int.unwrap(json("""{"type":"string","value":3}"""))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.Int.unwrap(json("""{"type":"int"}"""))
+    }
+  }
+
+  @Test
+  fun `an object wraps its fields, defaults absent ones and refuses unknown ones`() {
+    val ada = TypedFixtureContact("Ada", 2)
+    val wrapped = fixtureContactCodec.wrap(ada)
+    assertThat(wrapped)
+      .isEqualTo(
+        json(
+          """{"type":"object","fields":{"name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}}"""
+        )
+      )
+    assertThat(fixtureContactCodec.unwrap(wrapped)).isEqualTo(ada)
+    assertThat(
+        fixtureContactCodec.unwrap(
+          json("""{"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}""")
+        )
+      )
+      .isEqualTo(TypedFixtureContact("Bo", 0))
+    val missing =
+      assertThrows(IllegalArgumentException::class.java) {
+        fixtureContactCodec.unwrap(
+          json("""{"type":"object","fields":{"unread":{"type":"int","value":1}}}""")
+        )
+      }
+    assertThat(missing).hasMessageThat().contains("missing field `name`")
+    assertThrows(IllegalArgumentException::class.java) {
+      fixtureContactCodec.unwrap(
+        json(
+          """{"type":"object","fields":{"name":{"type":"string","value":"Bo"},"age":{"type":"int","value":1}}}"""
+        )
+      )
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      fixtureContactCodec.unwrap(json("""{"type":"list","values":[]}"""))
+    }
+    assertThat(fixtureContactCodec.kotlinType).isEqualTo(CONTACT)
+    assertThat(fixtureContactCodec.stateType).isNull()
+  }
+
+  @Test
+  fun `lists of objects and objects holding lists and objects round trip`() {
+    val contacts = AdapterValueCodecs.list(fixtureContactCodec)
+    val people = listOf(TypedFixtureContact("Ada", 2), TypedFixtureContact("Bo", 0))
+    val wrappedPeople = contacts.wrap(people)
+    assertThat(wrappedPeople.getValue("values").jsonArray.map { it.jsonObject.getValue("type") })
+      .containsExactly(JsonPrimitive("object"), JsonPrimitive("object"))
+    assertThat(contacts.unwrap(wrappedPeople)).isEqualTo(people)
+
+    val wrappedProfile = fixtureProfileCodec.wrap(fixtureProfile)
+    assertThat(wrappedProfile)
+      .isEqualTo(
+        json(
+          """
+          {"type":"object","fields":{
+            "owner":{"type":"object","fields":{
+              "name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}},
+            "address":{"type":"object","fields":{"city":{"type":"string","value":"Tallinn"}}},
+            "tags":{"type":"list","values":[{"type":"string","value":"vip"}]}}}
+          """
+        )
+      )
+    assertThat(fixtureProfileCodec.unwrap(wrappedProfile)).isEqualTo(fixtureProfile)
+    val nestedError =
+      assertThrows(IllegalArgumentException::class.java) {
+        fixtureProfileCodec.unwrap(
+          json(
+            """
+            {"type":"object","fields":{
+              "owner":{"type":"object","fields":{"name":{"type":"string","value":"Ada"}}},
+              "address":{"type":"object","fields":{"city":{"type":"int","value":1}}}}}
+            """
+          )
+        )
+      }
+    assertThat(nestedError).hasMessageThat().contains("`address`: `city`")
+  }
+
+  @Test
+  fun `an object codec needs fields, distinct names and one construct`() {
+    assertThrows(IllegalStateException::class.java) {
+      AdapterValueCodecs.obj<TypedFixtureAddress>(ADDRESS) {
+        field(TypedFixtureAddress::city, AdapterValueCodecs.String)
+      }
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.obj<TypedFixtureAddress>(ADDRESS) {
+        construct { TypedFixtureAddress("x") }
+      }
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.obj<TypedFixtureAddress>(ADDRESS) {
+        val city = field(TypedFixtureAddress::city, AdapterValueCodecs.String)
+        field(TypedFixtureAddress::city, AdapterValueCodecs.String)
+        construct { TypedFixtureAddress(it[city]) }
+      }
+    }
+  }
+
+  @Test
+  fun `list and object properties publish a recursive editor and their wrapped defaults`() {
+    val record = inbox()
+    val adapter = InboxAdapter(record)
+    assertThat(adapter.contacts.bindable).isFalse()
+    val generated = generate(adapter, listOf(record))
+    assertThat(generated.catalog.diagnostics).isEmpty()
+    val published = generated.catalog.statusSemantics.components.getValue("acme/inbox")
+    val contact =
+      """
+      {"jsonType":"object","literalType":"object","editor":{"control":"object",
+        "objectType":"$CONTACT","fields":[
+          {"name":"name","required":true,"jsonType":"string","literalType":"string"},
+          {"name":"unread","required":false,"default":{"type":"int","value":0},
+           "jsonType":"integer","literalType":"int"}]}}
+      """
+    assertThat(published.propertyCapabilities)
+      .containsExactly(
+        json(
+          """
+          {"name":"contacts","jsonType":"array","required":false,
+           "editor":{"control":"list","element":$contact}}
+          """
+        ),
+        json(
+          """
+          {"name":"profile","jsonType":"object","required":false,
+           "editor":{"control":"object","objectType":"$PROFILE","fields":[
+             ${contact.trim().removeSuffix("}")},"name":"owner","required":true},
+             {"name":"address","required":true,"jsonType":"object","literalType":"object",
+              "editor":{"control":"object","objectType":"$ADDRESS","fields":[
+                {"name":"city","required":true,"jsonType":"string","literalType":"string"}]}},
+             {"name":"tags","required":false,"default":{"type":"list","values":[]},
+              "jsonType":"array","literalType":"list",
+              "editor":{"control":"list","element":{"jsonType":"string","literalType":"string"}}}]}}
+          """
+        ),
+      )
+      .inOrder()
+    val insert = published.insertContent!!.jsonObject.getValue("properties").jsonObject
+    assertThat(insert.getValue("contacts"))
+      .isEqualTo(adapter.contacts.codec.wrap(adapter.contacts.default))
+    assertThat(adapter.profile.unwrap(insert.getValue("profile").jsonObject))
+      .isEqualTo(fixtureProfile)
+    assertThat(adapter.profile.unwrap(null)).isEqualTo(fixtureProfile)
+  }
+
+  @Test
+  fun `scalar adapters keep their insert content and capabilities byte for byte`() {
+    val published = generate().catalog.statusSemantics.components.getValue("acme/button")
+    assertThat(published.insertContent)
+      .isEqualTo(
+        json(
+          """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}"""
+        )
+      )
+    assertThat(published.insertContent.toString())
+      .isEqualTo(
+        """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}"""
+      )
+    assertThat(published.propertyCapabilities!!.map { it.toString() })
+      .containsExactly(
+        """{"name":"label","jsonType":["string","object"],"required":false}""",
+        """{"name":"enabled","jsonType":["boolean","object"],"required":false}""",
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `an enum element publishes its allowed values`() {
+    val tone =
+      AdapterValueCodecs.enumOf(
+        "acme.Tone",
+        mapOf("loud" to "acme.Tone.Loud", "soft" to "acme.Tone.Soft"),
+      )
+    assertThat(AdapterValueCodecs.list(tone).editor)
+      .isEqualTo(
+        json(
+          """
+          {"control":"list","element":{"jsonType":"string","literalType":"string",
+            "allowedValues":["loud","soft"]}}
+          """
+        )
+      )
+  }
+
+  @Test
+  fun `list and object parameters validate against the erased classifier and the class`() {
+    assertThat(InboxAdapter(inbox()).validateAgainst(inbox())).isEmpty()
+    val javaList = inbox(contacts = parameter("contacts", "List<Contact>", "java.util.List"))
+    assertThat(InboxAdapter(inbox()).validateAgainst(javaList))
+      .containsExactly(
+        "acme/inbox.contacts: expected kotlin.collections.List, discovered java.util.List"
+      )
+    val nullable =
+      inbox(
+        contacts =
+          parameter("contacts", "List<Contact>?", LIST)
+            .newBuilder()
+            .also { it.nullable = true }
+            .build()
+      )
+    assertThat(InboxAdapter(inbox()).validateAgainst(nullable))
+      .containsExactly(
+        "acme/inbox.contacts: expected kotlin.collections.List, discovered kotlin.collections.List?"
+      )
+    val otherClass = inbox(profile = parameter("profile", "Profile", "acme.OtherProfile"))
+    assertThat(InboxAdapter(inbox()).validateAgainst(otherClass))
+      .containsExactly("acme/inbox.profile: expected $PROFILE, discovered acme.OtherProfile")
+  }
+
+  @Test
+  fun `compiled list and object parameters are discovered as the erased classifier`() {
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .ignoreMethodVisibility()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        val owner = scan.getClassInfo("ee.schimke.composeai.discovery.TypedComponentAdapterTestKt")
+        val method = owner.methodInfo.single { it.name == "typedCollectionFixture" }
+        val parameters = ComposableSignature.parametersOf(owner, method)
+        assertThat(parameters.map { it.typeFqn }).containsExactly(LIST, PROFILE).inOrder()
+        val record = inbox().newBuilder().also { it.parameters = parameters }.build()
+        assertThat(InboxAdapter(record).validateAgainst(record)).isEmpty()
+      }
+  }
+
+  @Test
+  fun `a projection writes list and object properties as their erased and class types`() {
+    val record = inbox()
+    val adapter =
+      object : TypedComponentAdapter<InboxProps>("acme/inbox", record) {
+        val contacts =
+          property(InboxProps::contacts, AdapterValueCodecs.list(fixtureContactCodec), emptyList())
+        val profile = property(InboxProps::profile, fixtureProfileCodec, fixtureProfile)
+
+        init {
+          exportAs(target(record, mapOf("contacts" to from(contacts), "profile" to from(profile))))
+        }
+      }
+    assertThat(adapter.validateAgainst(record)).isEmpty()
+    val codec = adapter.contacts.codec.exportCodec
+    assertThat(codec)
+      .isEqualTo(
+        ExportProjection.Codec.ListOf(
+          ExportProjection.Codec.Object(
+            CONTACT,
+            mapOf(
+              "name" to ExportProjection.Codec.Text,
+              "unread" to ExportProjection.Codec.Whole,
+            ),
+          )
+        )
+      )
+    val swapped = inbox(contacts = parameter("contacts", "Profile", PROFILE))
+    assertThat(adapter.validateAgainst(swapped).joinToString("\n"))
+      .contains("writes kotlin.collections.List, parameter takes $PROFILE")
+  }
 }
+
+private const val LIST = "kotlin.collections.List"
+private const val CONTACT = "ee.schimke.composeai.discovery.TypedFixtureContact"
+private const val ADDRESS = "ee.schimke.composeai.discovery.TypedFixtureAddress"
+private const val PROFILE = "ee.schimke.composeai.discovery.TypedFixtureProfile"
+
+internal data class TypedFixtureContact(val name: String, val unread: Int)
+
+internal data class TypedFixtureAddress(val city: String)
+
+internal data class TypedFixtureProfile(
+  val owner: TypedFixtureContact,
+  val address: TypedFixtureAddress,
+  val tags: List<String>,
+)
+
+private val fixtureContactCodec: AdapterObjectCodec<TypedFixtureContact> =
+  AdapterValueCodecs.obj(CONTACT) {
+    val name = field(TypedFixtureContact::name, AdapterValueCodecs.String)
+    val unread = field(TypedFixtureContact::unread, AdapterValueCodecs.Int, default = 0)
+    construct { TypedFixtureContact(name = it[name], unread = it[unread]) }
+  }
+
+private val fixtureAddressCodec: AdapterObjectCodec<TypedFixtureAddress> =
+  AdapterValueCodecs.obj(ADDRESS) {
+    val city = field(TypedFixtureAddress::city, AdapterValueCodecs.String)
+    construct { TypedFixtureAddress(it[city]) }
+  }
+
+private val fixtureProfileCodec: AdapterObjectCodec<TypedFixtureProfile> =
+  AdapterValueCodecs.obj(PROFILE) {
+    val owner = field(TypedFixtureProfile::owner, fixtureContactCodec)
+    val address = field(TypedFixtureProfile::address, fixtureAddressCodec)
+    val tags =
+      field(
+        TypedFixtureProfile::tags,
+        AdapterValueCodecs.list(AdapterValueCodecs.String),
+        default = emptyList(),
+      )
+    construct { TypedFixtureProfile(it[owner], it[address], it[tags]) }
+  }
+
+private val fixtureProfile =
+  TypedFixtureProfile(TypedFixtureContact("Ada", 2), TypedFixtureAddress("Tallinn"), listOf("vip"))
 
 @Suppress("UNUSED_PARAMETER")
 private fun typedAdapterFixture(label: String, enabled: Boolean, onClick: () -> Unit) {}
+
+@Suppress("UNUSED_PARAMETER")
+private fun typedCollectionFixture(
+  contacts: List<TypedFixtureContact>,
+  profile: TypedFixtureProfile,
+) {}

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -294,9 +295,16 @@ data class ExportProjection(
 
   /** What one parameter, or one argument of a nested call, is written from. */
   sealed interface Value {
-    /** A wire property through a codec; absent, empty or equal to [omitWhen] writes nothing. */
+    /**
+     * A wire property through a codec; absent, empty or equal to [omitWhen] writes nothing. A list
+     * or object codec reads the whole stored wrapper and takes no [omitWhen].
+     */
     data class Property(val name: String, val codec: Codec, val omitWhen: JsonPrimitive? = null) :
-      Value
+      Value {
+      init {
+        require(omitWhen == null || !codec.composite) { "`$name`: a $codec has no omitWhen" }
+      }
+    }
 
     /** A fixed value the call always needs, such as `onClick = {}` for a design without one. */
     data class Fixed(val value: ScreenValue) : Value
@@ -314,6 +322,10 @@ data class ExportProjection(
 
   /** How a wire value is read and written as a Kotlin expression. */
   sealed interface Codec {
+    /** Whether this codec reads a `list` / `object` wrapper rather than a scalar's `value`. */
+    val composite: Boolean
+      get() = this is ListOf || this is Object
+
     data object Text : Codec
 
     data object Bool : Codec
@@ -358,6 +370,28 @@ data class ExportProjection(
       val typeFqn: String,
       val tokens: Set<String>? = null,
     ) : Codec
+
+    /**
+     * A `{"type": "list", "values": [<wrapper>…]}`, each value through [element], written
+     * `listOf(a, b)`. An empty list is `listOf()`, the parameter's type inferring the element.
+     */
+    data class ListOf(val element: Codec) : Codec
+
+    /**
+     * A `{"type": "object", "fields": {"<name>": <wrapper>}}` of the class [typeFqn], written as a
+     * call to [callableFqn] (its constructor, by default) with each stored field as a named
+     * argument through its codec, in [fields] order. A field left out is left to the callable's own
+     * default; a field the object does not declare is refused.
+     */
+    data class Object(
+      val typeFqn: String,
+      val fields: Map<String, Codec>,
+      val callableFqn: String = typeFqn,
+    ) : Codec {
+      init {
+        require(fields.isNotEmpty()) { "an object codec writes at least one field" }
+      }
+    }
   }
 
   /**
@@ -399,16 +433,24 @@ data class ExportProjection(
    */
   val qualifiedOwners: Set<String>
     get() = buildSet {
-      fun codec(codec: Codec) {
-        when (codec) {
+      fun codec(owned: Codec) {
+        when (owned) {
           is Codec.Color -> {
-            add(codec.schemeRootFqn)
+            add(owned.schemeRootFqn)
             add(COLOR)
           }
-          is Codec.Enum -> codec.members.values.mapTo(this) { it.substringBeforeLast('.') }
-          is Codec.Token -> add(codec.rootFqn)
+          is Codec.Enum -> owned.members.values.mapTo(this) { it.substringBeforeLast('.') }
+          is Codec.Token -> add(owned.rootFqn)
           // A top-level extension: the allowlist admits the callable itself.
-          is Codec.Unit -> add("androidx.compose.ui.unit.${codec.unit}")
+          is Codec.Unit -> add("androidx.compose.ui.unit.${owned.unit}")
+          is Codec.ListOf -> {
+            add(LIST_OF.substringBeforeLast('.'))
+            codec(owned.element)
+          }
+          is Codec.Object -> {
+            add(owned.callableFqn.substringBeforeLast('.'))
+            owned.fields.values.forEach(::codec)
+          }
           else -> Unit
         }
       }
@@ -546,8 +588,11 @@ data class ExportProjection(
       is Value.Fixed -> value.value
       is Value.Property -> {
         val stated = properties[value.name]
-        val raw = wireValue(stated)
-        if (stated != null && stated !is JsonNull && raw == null) {
+        val raw = if (value.codec.composite) null else wireValue(stated)
+        if (value.codec.composite) {
+          if (stated == null || stated is JsonNull) null
+          else nested(value.codec, stated, "$where <- ${value.name}", reasons)
+        } else if (stated != null && stated !is JsonNull && raw == null) {
           reasons += "$where <- ${value.name}: not a scalar value"
           null
         } else if (raw == null || raw is JsonNull || (raw.isString && raw.content.isEmpty())) null
@@ -564,6 +609,76 @@ data class ExportProjection(
         else ScreenValue.Construct(value.callableFqn, named = arguments, typeFqn = value.typeFqn)
       }
     }
+
+  /**
+   * One stored wrapper inside a list or object (or a list or object property itself), written
+   * through [codec]. Unlike a top-level scalar, a nested value cannot be "unset": an element or
+   * field that would write nothing is refused, since dropping it would change the list or object.
+   */
+  private fun nested(
+    codec: Codec,
+    stored: JsonElement,
+    where: String,
+    reasons: MutableList<String>,
+  ): ScreenValue? {
+    fun refuse(message: String): ScreenValue? {
+      reasons += "$where: $message"
+      return null
+    }
+    return when (codec) {
+      is Codec.ListOf -> {
+        val values =
+          composite(stored, "list", "values") as? JsonArray
+            ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
+        val before = reasons.size
+        val written = values.mapIndexed { index, item ->
+          nested(codec.element, item, "$where[$index]", reasons)
+        }
+        if (reasons.size != before) null
+        else
+          ScreenValue.Construct(
+            LIST_OF,
+            positional = written.filterNotNull(),
+            typeFqn = LIST,
+          )
+      }
+      is Codec.Object -> {
+        val fields =
+          composite(stored, "object", "fields") as? JsonObject
+            ?: return refuse("expected a {\"type\": \"object\", \"fields\": {…}} wrapper")
+        val unknown = fields.keys - codec.fields.keys
+        if (unknown.isNotEmpty()) return refuse("${codec.typeFqn} has no field ${unknown.sorted()}")
+        val before = reasons.size
+        val named = buildMap {
+          for ((name, field) in codec.fields) {
+            val value = fields[name]?.takeUnless { it is JsonNull } ?: continue
+            nested(field, value, "$where.$name", reasons)?.let { put(name, it) }
+          }
+        }
+        if (reasons.size != before) null
+        else ScreenValue.Construct(codec.callableFqn, named = named, typeFqn = codec.typeFqn)
+      }
+      else -> {
+        val raw = wireValue(stored) ?: return refuse("not a scalar value")
+        if (raw is JsonNull) return refuse("has no value")
+        // An empty string is the top-level "unset"; nested, only text can mean it literally.
+        if (raw.isString && raw.content.isEmpty() && codec != Codec.Text)
+          return refuse("an empty value cannot be written here")
+        val before = reasons.size
+        encode(codec, raw, where, reasons)
+          ?: if (reasons.size == before) refuse("writes nothing, which a list or object cannot")
+          else null
+      }
+    }
+  }
+
+  /** The [content] of a `{"type": [type], [content]: …}` wrapper, or null when it is not one. */
+  private fun composite(stored: JsonElement, type: String, content: String): JsonElement? {
+    if (stored !is JsonObject) return null
+    val stated = (stored["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (stated != type || stored.keys != setOf("type", content)) return null
+    return stored[content]
+  }
 
   private fun encode(
     codec: Codec,
@@ -619,6 +734,8 @@ data class ExportProjection(
           ?.let {
             ScreenValue.Reference(codec.rootFqn, codec.members + it, typeFqn = codec.typeFqn)
           } ?: refuse("`${raw.content}` is not a token of ${codec.members.joinToString(".")}")
+      is Codec.ListOf,
+      is Codec.Object -> refuse("expected a list or object wrapper, not a scalar")
     }
   }
 
@@ -660,6 +777,8 @@ data class ExportProjection(
   private companion object {
     const val COLOR = "androidx.compose.ui.graphics.Color"
     const val MODIFIER = "modifier"
+    const val LIST = "kotlin.collections.List"
+    const val LIST_OF = "kotlin.collections.listOf"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =
       mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")

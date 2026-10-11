@@ -31,6 +31,13 @@ import kotlinx.serialization.json.put
  * A scalar codec is its name (`text`, `bool`, `whole`, `float`); a colour or enum codec is an
  * object naming its kind. A fixed value is a `ScreenValue` in screen-document's own JSON.
  *
+ * A list codec names its element codec, and an object codec its class, its fields' codecs in order
+ * and, only when it is not the class's constructor, the callable it writes; both recurse:
+ * ```json
+ * { "list": { "element": { "object": { "type": "com.example.Contact",
+ *                                      "fields": { "name": "text", "unread": "whole" } } } } }
+ * ```
+ *
  * A target's `contexts`, keyed by structural role, carry the further `parameters` it writes there
  * and the `modifier` links (screen-document `ChainLink`s) appended after the node's own chain:
  * ```json
@@ -340,6 +347,26 @@ object ExportProjectionJson {
             },
           )
         }
+      is ExportProjection.Codec.ListOf ->
+        buildJsonObject {
+          put("list", buildJsonObject { put("element", ExportProjectionJson.codec(codec.element)) })
+        }
+      is ExportProjection.Codec.Object ->
+        buildJsonObject {
+          put(
+            "object",
+            buildJsonObject {
+              put("type", codec.typeFqn)
+              put(
+                "fields",
+                JsonObject(
+                  codec.fields.mapValues { (_, field) -> ExportProjectionJson.codec(field) }
+                ),
+              )
+              if (codec.callableFqn != codec.typeFqn) put("callable", codec.callableFqn)
+            },
+          )
+        }
     }
 
   private fun readCodec(element: JsonElement): ExportProjection.Codec {
@@ -380,6 +407,17 @@ object ExportProjectionJson {
         members = token.getValue("members").jsonArray.map { it.jsonPrimitive.content },
         typeFqn = token.getValue("type").jsonPrimitive.content,
         tokens = token["tokens"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet(),
+      )
+    }
+    obj["list"]?.jsonObject?.let { list ->
+      return ExportProjection.Codec.ListOf(readCodec(list.getValue("element")))
+    }
+    obj["object"]?.jsonObject?.let { record ->
+      val type = record.getValue("type").jsonPrimitive.content
+      return ExportProjection.Codec.Object(
+        typeFqn = type,
+        fields = record.getValue("fields").jsonObject.mapValues { (_, field) -> readCodec(field) },
+        callableFqn = record["callable"]?.jsonPrimitive?.contentOrNull ?: type,
       )
     }
     throw IllegalArgumentException("unknown codec $element")
