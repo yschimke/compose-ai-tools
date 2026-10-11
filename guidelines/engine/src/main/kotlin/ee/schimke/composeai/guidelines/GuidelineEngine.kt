@@ -146,6 +146,7 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.checker = checker
       it.concurrency = concurrency
+      it.reasoningEffort = reasoningEffort
     }
 
   /**
@@ -162,6 +163,7 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
+      it.reasoningEffort = reasoningEffort
     }
 
   /**
@@ -176,13 +178,16 @@ public data class GuidelineRunOptions(
 
   /**
    * The model identity a result is cached under ([GuidelineResultCache.get]): [model] for the
-   * vision checker, as before, and one naming the checker for any other, so a vision verdict and a
-   * Jev verdict never answer for one another.
+   * vision checker at the default [reasoningEffort], [model] naming its effort at any other, and
+   * one naming the checker for any other checker, so a vision verdict and a Jev verdict — or two
+   * verdicts reached at different efforts — never answer for one another.
    */
   public val cacheModel: String
     get() =
       when (checker) {
-        GuidelineChecker.VISION -> model
+        GuidelineChecker.VISION ->
+          if (reasoningEffort == OpenRouterClient.DEFAULT_REASONING_EFFORT) model
+          else "$model#reasoning=${reasoningEffort ?: "default"}"
         else -> "checker:${checker.id}@${JevChecker.FORMAT}/$answeringModel"
       }
 
@@ -192,6 +197,25 @@ public data class GuidelineRunOptions(
       it.retry = retry
       it.concurrency = concurrency.coerceAtLeast(1)
       it.checker = checker
+      it.reasoningEffort = reasoningEffort
+    }
+
+  /**
+   * The reasoning effort the model is asked at ([OpenRouterClient.reasoningEffort]; null: the
+   * model's own default), as far as the cache is concerned: a verdict reached at one effort is not
+   * reused at another ([cacheModel]). The run does not send it — the model does — so a host sets
+   * both. A body property like [retry]: set it with [withReasoningEffort].
+   */
+  public var reasoningEffort: String? = OpenRouterClient.DEFAULT_REASONING_EFFORT
+    private set
+
+  /** These options, for a model asked at [reasoningEffort]. */
+  public fun withReasoningEffort(reasoningEffort: String?): GuidelineRunOptions =
+    copy().also {
+      it.retry = retry
+      it.concurrency = concurrency
+      it.checker = checker
+      it.reasoningEffort = reasoningEffort
     }
 
   public companion object {
@@ -424,7 +448,7 @@ public class GuidelineEngine(
       }
 
     val pending = askable.filter { subject ->
-      val hit = cache?.get(subject, guidelines, options.model)
+      val hit = cache?.get(subject, guidelines, options.cacheModel)
       if (hit != null) results += hit
       hit == null
     }
@@ -919,7 +943,9 @@ public class GuidelineEngine(
             !(subject.previewId in uncovered && unchecked.isNotEmpty()) &&
             !setUncovered
         )
-          cache?.let { synchronized(it) { it.put(result, arrived, guidelines, options.model) } }
+          cache?.let {
+            synchronized(it) { it.put(result, arrived, guidelines, options.cacheModel) }
+          }
       }
     }
 

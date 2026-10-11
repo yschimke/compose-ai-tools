@@ -296,6 +296,34 @@ class GuidelineReasoningTest {
   }
 
   @Test
+  fun `a verdict reached at one reasoning effort is not reused at another`() {
+    val dir = kotlin.io.path.createTempDirectory("reasoning-cache").toFile()
+    try {
+      val model =
+        ReasoningModel(reasoning = { request, _ -> passing(request) }, withoutReasoning = ::passing)
+      fun run(options: GuidelineRunOptions) =
+        GuidelineEngine(
+            model,
+            cache = GuidelineResultCache(dir),
+            options = options.withConcurrency(1),
+          )
+          .run(guidelines, listOf(subject("a")))
+      val low = GuidelineRunOptions(triage = false)
+      assertThat(low.cacheModel).isEqualTo(OpenRouterClient.DEFAULT_MODEL)
+
+      run(low)
+      assertThat(run(low).results.single().fromCache).isTrue()
+      val high = low.withReasoningEffort("high")
+      assertThat(high.withConcurrency(2).cacheModel).isEqualTo(high.cacheModel)
+      assertThat(run(high).results.single().fromCache).isFalse()
+      assertThat(run(low.withReasoningEffort(null)).results.single().fromCache).isFalse()
+      assertThat(model.asked).hasSize(3)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `the request body's usage is read for reasoning tokens`() {
     val tokens = GuidelineResponse.tokens(exhausted.body)!!
     assertThat(tokens).isEqualTo(CompletionTokens(24_576, 24_576))

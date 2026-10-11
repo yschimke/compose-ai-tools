@@ -140,6 +140,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       )
       .withConcurrency(concurrency)
       .withChecker(checker ?: GuidelineChecker.VISION)
+      // The cache's half of the effort the client sends: a verdict at one is not reused at another.
+      .withReasoningEffort(reasoningEffort)
 
   /** The model a report names: the one that answers under this checker. */
   private val reportModel: String
