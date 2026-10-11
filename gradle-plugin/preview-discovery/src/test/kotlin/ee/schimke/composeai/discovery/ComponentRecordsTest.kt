@@ -813,6 +813,38 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `a manifest carries each callable's overloads once, and its records are unchanged`() {
+    // The list belongs to the callable, so repeating it on every preview of it only grows the file
+    // the render daemon has to load.
+    val all = listOf(stateOverload, valueOverload)
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val full =
+      manifest(
+        preview("a", componentTargets = listOf(calling(stateOverload, all), card)),
+        preview("b", componentTargets = listOf(calling(valueOverload, all))),
+        preview("c", componentTargets = listOf(calling(stateOverload, all))),
+      )
+
+    val compact = ComponentRecords.compactOverloads(full)
+
+    assertThat(
+        compact.previews.map { p ->
+          p.componentTargets.map { it.overloads.map { o -> o.descriptor } }
+        }
+      )
+      .containsExactly(
+        listOf(listOf(stateOverload.descriptor, valueOverload.descriptor), emptyList<String>()),
+        listOf(emptyList<String>()),
+        listOf(emptyList<String>()),
+      )
+      .inOrder()
+    assertThat(ComponentRecords.from(compact)).isEqualTo(ComponentRecords.from(full))
+    val policy: (ComponentRecord) -> Set<String> = { setOf("value", "singleLine") }
+    assertThat(ComponentRecords.select(compact, policy))
+      .isEqualTo(ComponentRecords.select(full, policy))
+  }
+
+  @Test
   fun `a library callable with one overload lists that one`() {
     val only = calling(valueOverload, all = emptyList())
     val record =
