@@ -302,6 +302,26 @@ object ScreenGenerator {
         it == document.name ||
         it in RESERVED_BY_THE_WRAPPER
     }
+    // A frame import is written by simple name inside the screen, so a state, local, function or
+    // parameter of the same name would shadow it, exactly as one would a component.
+    if (frame != null) {
+      val taken =
+        document.state.map(ScreenState::name).toSet() +
+          locals.keys +
+          functionNames +
+          parameterNames +
+          document.name +
+          RESERVED_BY_THE_WRAPPER
+      val shadowedFrameImports =
+        frame.imports.map { it.substringAfterLast('.') }.filter { it in taken }.distinct()
+      if (shadowedFrameImports.isNotEmpty()) {
+        return Result.Refused(
+          shadowedFrameImports.sorted().map {
+            "screen frame: import `$it` would be shadowed by a name this screen declares"
+          }
+        )
+      }
+    }
     if (capturedParameters.isNotEmpty())
       return Result.Refused(
         capturedParameters.map {
@@ -1431,6 +1451,14 @@ object ScreenGenerator {
 
     /** A template local, checked against the type its templates declare it at. */
     private fun localRead(value: ScreenValue.LocalRead, where: String): String? {
+      // An extracted function is top level, outside every template, so no template local is in
+      // scope there whatever the templates declare.
+      if (parameterScope != null) {
+        reasons +=
+          "$where reads template local `${value.name}` inside a function, which is written " +
+            "outside the templates that declare it"
+        return null
+      }
       val declared = locals[value.name]
       if (declared != value.typeFqn) {
         reasons +=

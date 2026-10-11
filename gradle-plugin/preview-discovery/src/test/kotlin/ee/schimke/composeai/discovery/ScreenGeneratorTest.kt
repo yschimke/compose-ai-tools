@@ -1677,6 +1677,49 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `an extracted function cannot read a template local, which is out of its scope`() {
+    val label = ScreenValue.LocalRead.Builder("label", "kotlin.String").build()
+    val document =
+      ScreenDocument(
+        name = "HomeScreen",
+        root = ScreenNode("", function = "Label"),
+        functions =
+          listOf(
+            ScreenFunction(
+              "Label",
+              emptyList(),
+              ScreenNode(text.canonicalId, arguments = mapOf("text" to label)),
+            )
+          ),
+      )
+    val refused =
+      ScreenGenerator.generate(
+        document,
+        catalog(text),
+        locals = mapOf("label" to "kotlin.String"),
+        frame = ScreenGenerator.Frame("val label = \"x\"\n${'$'}{content}"),
+      )
+    assertThat((refused as ScreenGenerator.Result.Refused).reasons.joinToString())
+      .contains("reads template local `label` inside a function")
+  }
+
+  @Test
+  fun `a frame import a declared name would shadow is refused`() {
+    val document =
+      list(attested, textNode("a"))
+        .copy(
+          state =
+            listOf(ScreenState("rememberTransformationSpec", "kotlin.Int", ScreenValue.Whole(0)))
+        )
+    val refused = ScreenGenerator.generate(document, catalog(lazyColumn, text), frame = wearFrame)
+    assertThat((refused as ScreenGenerator.Result.Refused).reasons)
+      .contains(
+        "screen frame: import `rememberTransformationSpec` would be shadowed by a name this " +
+          "screen declares"
+      )
+  }
+
+  @Test
   fun `a template local may not also be declared state, or be no identifier`() {
     val document =
       transformedItem(
