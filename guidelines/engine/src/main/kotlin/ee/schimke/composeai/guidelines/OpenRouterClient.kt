@@ -276,6 +276,36 @@ public class OpenRouterClient(
   override fun decide(body: JsonObject): ModelResponse =
     post("$baseUrl/api/alpha/decisions", body.toString())
 
+  /**
+   * What this key may still spend (`GET /api/v1/key`); null when OpenRouter cannot be asked or does
+   * not say, and the run is capped by its own cost cap only.
+   */
+  public fun keyStatus(): OpenRouterKeyStatus? =
+    try {
+      val request =
+        Request.Builder()
+          .url("$baseUrl/api/v1/key")
+          .header("Authorization", "Bearer $apiKey")
+          .header("X-Title", title)
+          .get()
+          .build()
+      http.newCall(request).execute().use { response ->
+        if (response.isSuccessful) OpenRouterKeyStatus.parse(response.body.string()) else null
+      }
+    } catch (e: IOException) {
+      null
+    }
+
+  /**
+   * Starts this client where an earlier run's left off ([GuidelineModelLedger]): routed without
+   * `provider.require_parameters` when no provider honoured them, and without `reasoning` when that
+   * was what none honoured, so the run does not pay a rejected request to learn it again.
+   */
+  internal fun learned(relaxed: Boolean, noReasoning: Boolean) {
+    if (relaxed) relaxedParameters = true
+    if (noReasoning) reasoningUnsupported = true
+  }
+
   private fun post(url: String, body: String): ModelResponse =
     try {
       http.newCall(request(url, body)).execute().use { response ->

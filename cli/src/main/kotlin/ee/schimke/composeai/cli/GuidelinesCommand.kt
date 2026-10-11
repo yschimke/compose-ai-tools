@@ -19,6 +19,7 @@ import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.OpenAiCompatibleClient
 import ee.schimke.composeai.guidelines.OpenRouterClient
+import ee.schimke.composeai.guidelines.OpenRouterKeyStatus
 import ee.schimke.composeai.guidelines.OpenRouterModels
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.PreviewNode
@@ -405,6 +406,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
             host,
           )
           .run(guidelines, subjects)
+      spentWithKey(run)
       // A verdict kept under `+a11y` while the a11y fetch was failing was reached without that
       // evidence: forget it, so a run with a working daemon asks again.
       run.results
@@ -653,9 +655,39 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
         model = client,
         host = host,
         cache = cache,
-        options = runOptions(rulesSource),
+        options = runOptions(rulesSource).withKeyStatus(keyLeft(client)),
       )
       .also { if (guidelines.rules.isEmpty()) System.err.println("guidelines: no rules to ask") }
+
+  /** What the OpenRouter key had left when first asked, read once per command. */
+  private val keyStatusAtStart: OpenRouterKeyStatus? by lazy {
+    openRouterKeyClient?.keyStatus()?.also { status ->
+      if (status.remainingUsd != null) System.err.println("guidelines: ${status.describe()}")
+    }
+  }
+  private var openRouterKeyClient: OpenRouterClient? = null
+  /** What this command's runs have spent with the key so far, across modules. */
+  private var keySpent = 0.0
+  /** Set once a run met the key's spending limit: later modules ask nothing. */
+  private var keyLimitReached = false
+
+  /**
+   * What the key [client] asks with has left for the next run: what it had at the start, less what
+   * this command spent since; null for any other backend, or when OpenRouter does not say.
+   */
+  private fun keyLeft(client: GuidelineModel): OpenRouterKeyStatus? {
+    openRouterKeyClient = client as? OpenRouterClient ?: return null
+    val status = keyStatusAtStart ?: return null
+    if (keyLimitReached) return status.copy(remainingUsd = 0.0)
+    val remaining = status.remainingUsd ?: return status
+    return status.copy(remainingUsd = (remaining - keySpent).coerceAtLeast(0.0))
+  }
+
+  /** Counts [run] against the key, so the next module's run is capped at what is left. */
+  private fun spentWithKey(run: GuidelineRunResult) {
+    keySpent += run.costUsd
+    if (run.keyLimitReached) keyLimitReached = true
+  }
 
   /**
    * Handoff mode: no Gradle or daemon. Renders come from `--renders-dir` or `--previews-json` (an
@@ -699,6 +731,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     val run =
       engine(client, GuidelineResultCache(outDir.resolve("guidelines")), guidelines, location)
         .run(guidelines, inputs.subjects)
+    spentWithKey(run)
     val report = ModuleGuidelines.of("handoff", guidelines.catalog, reportModel, run, reportChecker)
     outDir
       .resolve("guidelines.json")

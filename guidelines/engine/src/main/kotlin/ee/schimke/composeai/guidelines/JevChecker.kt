@@ -235,7 +235,7 @@ internal class JevChecker(
         stale.map { Asked(it, guidelines).also { state -> state.stale = true } }
     prepare(states, guidelines.platform)
 
-    val ledger = requestPool ?: Ledger(options.maxCostUsd, options.retry.maxFailedAttempts)
+    val ledger = requestPool ?: Ledger(options.effectiveCapUsd, options.retry.maxFailedAttempts)
     val maxRounds = options.maxRounds.coerceAtLeast(0)
     val pool =
       Executors.newFixedThreadPool(parallelism.coerceIn(1, MAX_PARALLELISM)) { runnable ->
@@ -268,7 +268,7 @@ internal class JevChecker(
         // Under a cap, never-checked subjects are asked as a wave before any stale one may
         // contend for what the cap has left, so a capped run widens coverage first.
         val waves =
-          if (options.maxCostUsd == null) listOf(asks.keys.toList())
+          if (options.effectiveCapUsd == null) listOf(asks.keys.toList())
           else asks.keys.partition { !it.stale }.toList().filter { it.isNotEmpty() }
         waves.forEach { wave ->
           wave
@@ -641,6 +641,7 @@ internal class JevChecker(
         val wait = backoff
         val retry =
           failure.kind != FailureKind.FATAL &&
+            failure.kind != FailureKind.KEY_LIMIT &&
             failure.kind != FailureKind.TOO_LARGE &&
             attempt < options.retry.maxAttempts &&
             wait <= options.retry.maxDelayMillis &&
