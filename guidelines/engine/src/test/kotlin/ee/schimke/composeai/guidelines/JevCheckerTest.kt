@@ -603,6 +603,22 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a host summary that throws while a round is built is an evidence failure`() {
+    val host =
+      object : GuidelineEvidenceHost {
+        override val available = emptyList<String>()
+
+        override fun summary(previewId: String): String? =
+          if (previewId == "bad") error("summary broke") else null
+      }
+    val model = FakeDecisions()
+    val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
+  }
+
+  @Test
   fun `subjects are asked in parallel and each gets its own answers`() {
     val model =
       FakeDecisions(

@@ -265,7 +265,12 @@ internal class JevChecker(
           active
             .mapNotNull { state ->
               runCatching { (if (last) emptyList() else state.offered()) to state.view() }
-                .onFailure { state.failure = "the jev checker failed: ${it.message}" }
+                .onFailure {
+                  // Only the host is read here: an evidence failure, not a model request's.
+                  state.failure = "the evidence host failed: ${it.message}"
+                  state.evidenceFailed = true
+                  if (state.rounds > 0) state.interrupted = true
+                }
                 .getOrNull()
                 ?.let { state to it }
             }
