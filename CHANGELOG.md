@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.51.0](https://github.com/yschimke/compose-ai-tools/compare/v2.50.0...v2.51.0) (2026-10-11)
+
+
+### Features
+
+* **discovery:** exclude a library overload by a parameter it adds, and admit only composables ([#5872](https://github.com/yschimke/compose-ai-tools/issues/5872)) ([5835aab](https://github.com/yschimke/compose-ai-tools/commit/5835aabcc7fcabbca839ff3e2fe4c9239c2bb6ba))
+* **guidelines:** ask breadth first by composable, and predict each request's cost ([#5878](https://github.com/yschimke/compose-ai-tools/issues/5878)) ([8f484f0](https://github.com/yschimke/compose-ai-tools/commit/8f484f024e177949d0cf29a967d3cd05414dc55b))
+* **screen-generator:** write a design's components alone, as internal functions ([#5883](https://github.com/yschimke/compose-ai-tools/issues/5883)) ([594c722](https://github.com/yschimke/compose-ai-tools/commit/594c72231a33a8cbddc9d15f9d864dfe4922fe5d))
+* **screen:** item roles per DSL slot and properties the export refuses ([#5877](https://github.com/yschimke/compose-ai-tools/issues/5877)) ([16bca08](https://github.com/yschimke/compose-ai-tools/commit/16bca08b7a04be859b24dbfcc6efeda8cf443879))
+* **screen:** pass a factory call where its return type's supertype is taken ([#5880](https://github.com/yschimke/compose-ai-tools/issues/5880)) ([58b6b3c](https://github.com/yschimke/compose-ai-tools/commit/58b6b3ca92d9fc1f22766e73bc2d0c6757e5490e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.15.3 ([#5870](https://github.com/yschimke/compose-ai-tools/issues/5870)) ([93ad39d](https://github.com/yschimke/compose-ai-tools/commit/93ad39dd38d7e92ccdffe8772c770bc61945b34a))
+* **discovery:** carry each callable's overloads once in previews.json, not on every preview ([#5876](https://github.com/yschimke/compose-ai-tools/issues/5876)) ([2ba42f4](https://github.com/yschimke/compose-ai-tools/commit/2ba42f45836e7fdc95cbad71040034ca31a01a8b))
+* **screen:** call a record through the overload that takes what the node writes ([#5874](https://github.com/yschimke/compose-ai-tools/issues/5874)) ([ff7028f](https://github.com/yschimke/compose-ai-tools/commit/ff7028fb936150df816c9dd74fbf786032cb9683))
+* **screen:** resolve a projection target's overload as the generator does ([#5881](https://github.com/yschimke/compose-ai-tools/issues/5881)) ([7521b23](https://github.com/yschimke/compose-ai-tools/commit/7521b2369b0f04a5d33a7c709b2a9abb72770f6e))
+* **screen:** validate a projection target's overload as the generator calls it ([#5879](https://github.com/yschimke/compose-ai-tools/issues/5879)) ([858cc46](https://github.com/yschimke/compose-ai-tools/commit/858cc46fc2ca64e967a988353da56cabf74fad33))
+
 ## [2.50.0](https://github.com/yschimke/compose-ai-tools/compare/v2.49.0...v2.50.0) (2026-10-11)
 
 
