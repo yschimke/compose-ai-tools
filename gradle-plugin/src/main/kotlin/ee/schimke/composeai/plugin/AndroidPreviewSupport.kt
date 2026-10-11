@@ -8,7 +8,6 @@ import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.HasUnitTest
 import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
-import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -2583,7 +2582,7 @@ internal object AndroidPreviewSupport {
       )
 
     // Preview daemon bootstrap descriptor. Registered unconditionally so VS Code can read it even
-    // when `daemon.enabled = false` (see [DaemonClasspathDescriptor]). Inputs mirror
+    // when `daemon.enabled = false` (see `DaemonLaunchDescriptor`). Inputs mirror
     // composePreviewRender so the daemon JVM matches. See `docs/daemon/DESIGN.md` § 4 / § 6.
     val daemonFontsCacheDir = composeAiFontsCacheDir(project)
     val daemonHistoryDir = composeAiHistoryDir(project)
@@ -2652,7 +2651,7 @@ internal object AndroidPreviewSupport {
           },
         ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
       )
-      // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
+      // See [DaemonBootstrapTask] / `DaemonLaunchDescriptor`.
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks. Load-bearing:
       // when unset, the VS Code extension uses its own bundled JDK, which may be too old for the

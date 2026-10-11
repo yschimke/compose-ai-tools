@@ -22,7 +22,7 @@
 #
 # The DaemonExtension `enabled` flag defaults to true; when the descriptor
 # reports `enabled: false` we still spawn the JVM (the rest of the
-# descriptor's fields are populated honestly per DaemonClasspathDescriptor
+# descriptor's fields are populated honestly per DaemonLaunchDescriptor
 # kdoc) and print a one-line note on stderr. Flip
 # `composePreview { daemon { enabled = true } }` in the module's build script
 # to silence the note.

@@ -11,7 +11,9 @@ tree, which must be green and must have every
 registered site still present — the allowlist has to keep describing the code.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
@@ -26,8 +28,8 @@ _spec = importlib.util.spec_from_file_location(
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
-# Same again for the JVM reader, which moved to yschimke/compose-preview-contracts. The checker
-# itself skips the JVM half without a checkout; these tests reach past `check()` into
+# Same again for the JVM reader — and, since contracts 3.28.0, the writer — which live in
+# yschimke/compose-preview-contracts. The checker itself skips that half without a checkout; these tests reach past `check()` into
 # `kotlin_data_class` / `emitted_shape` / `kotlin_consts` directly, so the guard has to be
 # repeated here or the documented standalone run ends in IsADirectoryError rather than a skip.
 requires_contracts_checkout = unittest.skipIf(
@@ -98,12 +100,56 @@ class StripComments(unittest.TestCase):
 
 
 class Parsers(unittest.TestCase):
+    @requires_contracts_checkout
     def test_the_writer_parses_to_the_fields_the_descriptor_documents(self):
-        w = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        w = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         self.assertEqual(w["systemProperties"][0], "Map<String, String>")
         self.assertEqual(w["javaLauncher"][0], "String?")
         self.assertFalse(w["schemaVersion"][1], "schemaVersion must have no default")
         self.assertTrue(w["btaCompile"][1], "btaCompile must default to null")
+
+    def test_the_writer_is_the_contracts_type(self):
+        # Since contracts 3.28.0 the plugin writes the type every reader parses; its former
+        # `DaemonClasspathDescriptor` is a deprecated facade and is not what the gate reads.
+        self.assertEqual(mod.WRITER_REL, mod.JVM_READER_REL)
+        self.assertEqual(mod.WRITER_DTO, "DaemonLaunchDescriptor")
+        self.assertIn(mod.LEGACY_FACADE, mod.DECLARING)
+
+    def test_a_builder_construction_is_a_construction_site(self):
+        # The constructor is internal since contracts 3.0.0, so the builder is the only public way
+        # to make a descriptor — matching the class name alone saw no writer at all.
+        text = "val d = DaemonLaunchDescriptor.Builder(\n  schemaVersion = SCHEMA,\n).build()"
+        m = mod.DESCRIPTOR_CTOR.search(text)
+        self.assertIsNotNone(m)
+        body = mod.balanced(text, m.end() - 1, "(", ")")
+        self.assertEqual(["SCHEMA"], [a.group(1) for a in mod.SCHEMA_ARG.finditer(body)])
+
+    def test_a_qualified_stamp_is_captured_whole(self):
+        self.assertEqual(
+            ["DaemonLaunchDescriptor.SCHEMA_VERSION"],
+            [
+                a.group(1)
+                for a in mod.SCHEMA_ARG.finditer(
+                    "schemaVersion = DaemonLaunchDescriptor.SCHEMA_VERSION,"
+                )
+            ],
+        )
+
+    def test_body_properties_ignore_a_nested_builder_and_companion(self):
+        # The contracts DTOs carry a `Builder` whose `var`s mirror every field and a companion with
+        # the parser's `Json`; neither is a serialised property of the DTO.
+        text = (
+            "data class D internal constructor(val a: Int) {\n"
+            "  public class Builder(a: Int) {\n"
+            "    public var a: Int = a\n"
+            "  }\n"
+            "  public companion object {\n"
+            "    private val json = Json { ignoreUnknownKeys = true }\n"
+            "  }\n"
+            "  val leaked: Int = 1\n"
+            "}\n"
+        )
+        self.assertEqual(["leaked"], mod.BODY_PROPERTY.findall(mod.top_level(text[text.index("{") + 1 : -2])))
 
 
 class BuilderShapedDeclarations(unittest.TestCase):
@@ -172,9 +218,10 @@ class BuilderShapedDeclarations(unittest.TestCase):
         src = self.BUILDER_SHAPED.replace("class D", "class DaemonClasspathDescriptor").replace(
             "D(schemaVersion", "DaemonClasspathDescriptor(schemaVersion"
         )
-        (root / mod.WRITER).parent.mkdir(parents=True, exist_ok=True)
-        (root / mod.WRITER).write_text(src, encoding="utf-8")
-        self.assertEqual([], [s for s in mod.discover_version_stamps() if s[0] == mod.WRITER])
+        rel = mod.LEGACY_FACADE
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(src, encoding="utf-8")
+        self.assertEqual([], [s for s in mod.discover_version_stamps() if s[0] == rel])
 
     def test_a_consumer_constructing_positionally_is_still_reported(self):
         """The skip is the declaring file, not the shape — an ordinary caller stays covered."""
@@ -231,10 +278,11 @@ class WireFingerprint(unittest.TestCase):
         b = {"repositories": ("List<String>", True)}
         self.assertNotEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(b))
 
+    @requires_contracts_checkout
     def test_a_nested_dto_rename_changes_the_digest(self):
         # The top-level shape is identical either way — `btaCompile: BtaCompileConfig?` — so this
         # only holds because the nested DTO is part of the hashed shape.
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         before = mod.wire_shape(writer)
         self.assertIn("BtaCompileConfig{", before)
         self.assertIn("moduleName", before)
@@ -357,16 +405,44 @@ class RealTree(unittest.TestCase):
     def test_repo_is_green(self):
         self.assertEqual(mod.check(), 0)
 
+    def test_without_a_contracts_checkout_the_gate_checks_what_it_can_read(self):
+        # Every contributor runs `check`, and most have no contracts checkout beside this one.
+        saved = (mod._contracts_root, mod.JVM_READER, mod.WRITER)
+        self.addCleanup(lambda: setattr(mod, "_contracts_root", saved[0]))
+        self.addCleanup(lambda: setattr(mod, "JVM_READER", saved[1]))
+        self.addCleanup(lambda: setattr(mod, "WRITER", saved[2]))
+        mod._contracts_root, mod.JVM_READER, mod.WRITER = None, "", ""
+        out = io.StringIO()
+        # Captured: CI fails the step if this suite's output mentions a skip, and the summary for
+        # this deliberately checkout-less run says SKIPPED.
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(mod.check(), 0)
+        self.assertIn("SKIPPED", out.getvalue())
+
+    @requires_contracts_checkout
     def test_every_registered_version_site_still_declares_its_symbol(self):
         for site in self.allowlist["schemaVersionSites"]:
             rel, symbol = site["file"], site["symbol"]
             self.assertIn(symbol, mod.kotlin_consts(rel), f"{rel} no longer declares {symbol}")
 
+    def test_the_deprecated_facade_forwards_rather_than_mirrors(self):
+        # The plugin's old constant stays for source and binary consumers, but as a forward of the
+        # contracts constant: a second literal is exactly the drift this gate exists for.
+        value = mod.kotlin_consts(mod.LEGACY_FACADE)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+        self.assertEqual("DaemonLaunchDescriptor.SCHEMA_VERSION", value)
+        self.assertEqual(
+            mod.WRITER_REL, self.allowlist["constantRegistries"]["DaemonLaunchDescriptor"]
+        )
+
     def test_discovery_finds_every_registered_site(self):
         # If discovery stopped seeing a site, rule 1's "unregistered mirror" arm would go blind
-        # while everything still reported green.
+        # while everything still reported green. The writer's own `SCHEMA_VERSION` is not a
+        # `*DESCRIPTOR_SCHEMA_VERSION` spelling; it is found by use (the builder stamps it), so the
+        # name scan is asserted for the mirrors only.
         found = set(mod.discover_version_mirrors())
         for site in self.allowlist["schemaVersionSites"]:
+            if site["role"] == "writer":
+                continue
             self.assertIn(
                 (site["file"], site["symbol"]),
                 found,
@@ -401,7 +477,57 @@ class RealTree(unittest.TestCase):
         self.assertTrue(stamps, "no descriptor construction sites found — discovery went blind")
         for rel, expr in stamps:
             self.assertFalse(expr.isdigit(), f"{rel} stamps a bare literal {expr}")
-            self.assertIn(expr, known, f"{rel} stamps unregistered {expr}")
+            qualifier, _, symbol = expr.rpartition(".")
+            if qualifier:
+                self.assertIn(qualifier, self.allowlist["constantRegistries"], f"{rel}: {expr}")
+            self.assertIn(symbol, known, f"{rel} stamps unregistered {expr}")
+
+    def test_every_production_writer_is_seen_by_use(self):
+        # The builder-shaped writers were invisible to discovery-by-use until it matched
+        # `DaemonLaunchDescriptor.Builder(`; pin that the plugin's writers are seen.
+        stamped = {rel for rel, _ in mod.discover_version_stamps()}
+        for rel in (
+            "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/"
+            "DaemonLaunchBuilder.kt",
+            "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt",
+            "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/"
+            "subprocess/SubprocessRenderSession.kt",
+        ):
+            self.assertIn(rel, stamped)
+
+    def test_a_qualified_stamp_needs_a_registered_registry_and_site(self):
+        sites = self.allowlist["schemaVersionSites"]
+        builder = (
+            "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/"
+            "DaemonLaunchBuilder.kt"
+        )
+        self.assertIn(
+            "not a registered constant registry",
+            mod.qualified_stamp_problem(builder, "Other.SCHEMA_VERSION", sites, {}),
+        )
+        registries = self.allowlist["constantRegistries"]
+        self.assertIn(
+            "not a registered schema-version site",
+            mod.qualified_stamp_problem(
+                builder, "DaemonLaunchDescriptor.OTHER_VERSION", sites, registries
+            ),
+        )
+        if mod._contracts_root is not None:
+            self.assertIsNone(
+                mod.qualified_stamp_problem(
+                    builder, "DaemonLaunchDescriptor.SCHEMA_VERSION", sites, registries
+                )
+            )
+            # A file that names `DaemonLaunchDescriptor` without importing the contracts one.
+            self.assertIn(
+                "neither imports",
+                mod.qualified_stamp_problem(
+                    "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
+                    "DaemonLaunchDescriptor.SCHEMA_VERSION",
+                    sites,
+                    registries,
+                ),
+            )
 
     def test_the_second_writer_is_registered(self):
         # Pinned by name, because a second writer is exactly what the first cut of this check
@@ -419,36 +545,45 @@ class RealTree(unittest.TestCase):
             {(s["file"], s["symbol"]) for s in self.allowlist["schemaVersionSites"]},
         )
 
+    def test_the_writer_site_is_the_contracts_constant(self):
+        writers = [s for s in self.allowlist["schemaVersionSites"] if s["role"] == "writer"]
+        self.assertEqual(
+            [(mod.WRITER_REL, mod.WRITER_VERSION_SYMBOL)], [(s["file"], s["symbol"]) for s in writers]
+        )
+
     def test_no_registered_site_names_a_file_that_left_the_repository(self):
         # The allowlist is only a gate while every path in it resolves: a site whose file is gone is
         # checked vacuously, which is how serve's entry would have rotted after #4732 had it been
         # left behind. The JVM reader legitimately lives in the contracts checkout and is exempt —
         # the check resolves it through `contracts_root()` and reports it as SKIPPED when no
         # checkout is present, which is a stated outcome rather than silent rot.
-        external = {mod.JVM_READER_REL}
         for site in self.allowlist["schemaVersionSites"]:
-            if site["file"] in external:
+            if site["file"].startswith(mod.CONTRACTS_PREFIX):
                 continue
             self.assertTrue(
                 (mod.REPO_ROOT / site["file"]).is_file(),
                 f"{site['file']} is registered but not in the tree",
             )
 
+    @requires_contracts_checkout
     def test_every_raw_key_the_doctor_reads_is_a_writer_field(self):
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         for rel in self.allowlist["rawKeyReaders"]:
             keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.strip_comments(mod.read(rel)))}
             self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
             self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
 
+    @requires_contracts_checkout
     def test_no_dto_declares_a_serialised_body_property(self):
         # kotlinx emits an initialised body property like any constructor field, but every rule
         # here reads the constructor — so it would be invisible to all of them at once.
-        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
-            self.assertEqual([], mod.body_properties(mod.WRITER, dto), dto)
+        for dto in (mod.WRITER_DTO,) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.body_properties(mod.dto_file(dto), dto), dto)
 
+    @requires_contracts_checkout
     def test_no_dto_uses_a_custom_serializer(self):
-        self.assertEqual([], mod.class_level_serializer_overrides(mod.WRITER))
+        for dto in (mod.WRITER_DTO,) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.class_level_serializer_overrides(mod.dto_file(dto)), dto)
 
     def test_each_version_stamp_alias_is_scoped_to_a_file(self):
         # A bare name set would let any writer's local `schemaVersion` through purely because
@@ -459,13 +594,34 @@ class RealTree(unittest.TestCase):
 
     @requires_contracts_checkout
     def test_the_writer_version_has_an_immutable_recorded_fingerprint(self):
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
-        version = mod.kotlin_consts(mod.WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
+        version = mod.kotlin_consts(mod.WRITER)[mod.WRITER_VERSION_SYMBOL]
         history = self.allowlist["wireFingerprint"]["history"]
         self.assertIn(version, history)
         self.assertEqual(
             history[version], mod.wire_fingerprint(mod.emitted_shape(writer, self.allowlist))
         )
+
+    def test_every_amended_fingerprint_says_why_and_ends_at_the_recorded_digest(self):
+        history = self.allowlist["wireFingerprint"]["history"]
+        for amendment in self.allowlist["wireFingerprint"].get("amendments", []):
+            self.assertTrue(amendment["why"].strip(), amendment)
+            self.assertNotEqual(amendment["from"], amendment["to"], amendment)
+        last = {a["version"]: a["to"] for a in self.allowlist["wireFingerprint"].get("amendments", [])}
+        for version, to in last.items():
+            self.assertEqual(history[version], to, version)
+
+    def test_a_digest_moved_without_an_amendment_fails(self):
+        failures: list = []
+        allowlist = json.loads(json.dumps(self.allowlist))
+        allowlist["wireFingerprint"]["amendments"] = [
+            {"version": "2", "from": "a", "to": "b", "why": "because"}
+        ]
+        if mod.WRITER:
+            mod.check_wire_fingerprint(
+                mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO), allowlist, failures
+            )
+            self.assertTrue(any("amendment ends at b" in f for f in failures), failures)
 
     def test_every_writer_encoder_matches_its_recorded_contract(self):
         # The plugin's two writers, recorded per file because they genuinely differ in
@@ -478,11 +634,13 @@ class RealTree(unittest.TestCase):
             self.assertIsNotNone(call, rel)
 
     @requires_contracts_checkout
-    def test_the_fingerprint_covers_fields_only_serve_emits(self):
-        # `jailCommand` / `hardTtlSeconds` are on the wire but absent from the plugin's DTO.
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+    def test_the_fingerprint_covers_the_sandbox_fields(self):
+        # `jailCommand` / `hardTtlSeconds` used to be folded in from the reader because the
+        # plugin's own DTO lacked them. The writer is the contracts type now, so they are its own.
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         emitted = mod.emitted_shape(writer, self.allowlist)
-        self.assertEqual({"jailCommand", "hardTtlSeconds"}, set(emitted) - set(writer))
+        self.assertLessEqual({"jailCommand", "hardTtlSeconds", "btaCompile"}, set(writer))
+        self.assertEqual(set(), set(emitted) - set(writer))
 
     def test_no_production_path_restamps_a_version_through_copy(self):
         for rel, expr in mod.discover_version_stamps():
@@ -494,18 +652,19 @@ class RealTree(unittest.TestCase):
 
     def test_the_dto_declarations_are_not_mistaken_for_constructions(self):
         # The first cut of the positional rule reported the two files that DEFINE the descriptor.
-        declaring = {mod.WRITER, mod.JVM_READER}
-        self.assertEqual(set(), declaring & {rel for rel, _ in mod.discover_version_stamps()})
+        self.assertEqual(set(), mod.DECLARING & {rel for rel, _ in mod.discover_version_stamps()})
 
+    @requires_contracts_checkout
     def test_no_dto_property_carries_an_unvetted_annotation(self):
         # Refused as a class rather than one annotation at a time: `@Transient` drops a field and
         # `@EncodeDefault` changes whether a default is written, both invisible to a checker that
         # reads declarations. Nothing is allowed unless it has been considered.
-        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
-            self.assertEqual([], mod.annotated_properties(mod.WRITER, dto), dto)
+        for dto in (mod.WRITER_DTO,) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.annotated_properties(mod.dto_file(dto), dto), dto)
 
+    @requires_contracts_checkout
     def test_no_reader_only_entry_is_stale(self):
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         for label, fields in self.allowlist["readerOnlyFields"].items():
             self.assertEqual(
                 set(),
@@ -513,14 +672,16 @@ class RealTree(unittest.TestCase):
                 f"{label}: reader-only entries the writer now emits must be pruned",
             )
 
+    @requires_contracts_checkout
     def test_no_descriptor_dto_uses_serial_name(self):
         # `@SerialName` moves the JSON key while the identifier — which every rule here reads —
         # stays put. The checker refuses it rather than half-supporting it.
-        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
-            self.assertEqual([], mod.serial_name_renames(mod.WRITER, dto), dto)
+        for dto in (mod.WRITER_DTO,) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.serial_name_renames(mod.dto_file(dto), dto), dto)
 
+    @requires_contracts_checkout
     def test_every_raw_key_records_the_type_it_assumes(self):
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        writer = mod.kotlin_data_class(mod.WRITER, mod.WRITER_DTO)
         for rel, spec in self.allowlist["rawKeyReaders"].items():
             keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.stripped(rel))}
             assumed = spec.get("assumedTypes", {})
@@ -529,15 +690,16 @@ class RealTree(unittest.TestCase):
                 self.assertEqual(writer[key][0], expected, f"{rel}: {key}")
 
     def test_a_stamp_resolves_by_package_not_by_bare_name(self):
-        # `DaemonLaunchBuilder.kt` stamps a constant declared in a sibling file of the same
-        # package, which must pass; a same-named symbol in an unrelated package must not.
+        # A file in the facade's package may stamp its constant unqualified, which must pass; a
+        # same-named symbol in an unrelated package must not.
         by_package = {}
         for s in self.allowlist["schemaVersionSites"]:
-            by_package.setdefault(s["symbol"], set()).add(mod.package_declared_in(s["file"]))
+            if mod.available(s["file"]):
+                by_package.setdefault(s["symbol"], set()).add(mod.package_declared_in(s["file"]))
         self.assertTrue(
             mod.resolves_to_registered(
                 "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/"
-                "daemonlaunch/DaemonLaunchBuilder.kt",
+                "daemonlaunch/DaemonLaunchBuilderCli.kt",
                 "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
                 by_package,
             )

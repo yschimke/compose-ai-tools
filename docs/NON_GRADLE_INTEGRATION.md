@@ -11,7 +11,7 @@ The two contracts you implement against:
 
 | Artifact | Schema | Wire-stable | Producer |
 | --- | --- | --- | --- |
-| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 2` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its [`java -cp` CLI](#cli-invocation) |
+| `daemon-launch.json` | [`DaemonLaunchDescriptor.kt`](https://github.com/yschimke/compose-preview-contracts/blob/main/daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt) (published as `ee.schimke.composeai:daemon-protocol`, an `api` dependency of `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 2` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its [`java -cp` CLI](#cli-invocation) |
 | `previews.json` | [`PreviewData.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt) (published as `ee.schimke.composeai:preview-discovery`) | `schema = "compose-previews/v1"` | You — or [`PreviewDiscovery`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) / its [`java -cp` CLI](#cli-invocation) |
 
 The consumer of both is the daemon JVM (`daemon/desktop` or `daemon/android`),
@@ -67,8 +67,8 @@ implementation. Add Android later when the Desktop path is green.
 
 ## The `daemon-launch.json` contract
 
-Wire shape (lifted from `DaemonClasspathDescriptor.kt`; field order matters
-for the classpath but not the rest):
+Wire shape (as `DaemonLaunchBuilder.encode` writes the contracts'
+`DaemonLaunchDescriptor`; field order matters for the classpath but not the rest):
 
 ```json
 {
@@ -102,7 +102,10 @@ for the classpath but not the rest):
     "composeai.daemon.idleTimeoutMs": "5000"
   },
   "workingDirectory": "/abs/path/to/<module>",
-  "manifestPath": "/abs/path/to/previews.json"
+  "manifestPath": "/abs/path/to/previews.json",
+  "jailCommand": [],
+  "hardTtlSeconds": null,
+  "btaCompile": null
 }
 ```
 
@@ -121,6 +124,16 @@ for the classpath but not the rest):
 | `systemProperties` | yes | See [System properties](#system-properties). |
 | `workingDirectory` | yes | Daemon JVM `cwd`. Module project dir. |
 | `manifestPath` | yes | Absolute path to `previews.json`. Same as `composeai.daemon.previewsJsonPath` in sysprops. |
+| `jailCommand` | no (default `[]`) | Argv prefix the daemon JVM is launched behind (an OS jail such as `bwrap`). Empty launches the JVM directly; the Gradle plugin always writes `[]`. |
+| `hardTtlSeconds` | no (default `null`) | Hard wall-clock lifetime after which the spawner force-kills the JVM. `null` means no watchdog. |
+| `btaCompile` | no (default `null`) | Stage-2 in-process compile inputs (Build Tools API classpath, module name, output and IC directories). `null` means `compileSources` answers `result=fallback`. |
+
+From Kotlin, `DaemonLaunchBuilder.newDescriptorBuilder(...)` returns a
+`DaemonLaunchDescriptor.Builder` stamped with the current `schemaVersion`; set the optional fields on
+it, `build()`, and write `DaemonLaunchBuilder.encode(descriptor)`. The older API
+(`DaemonLaunchBuilder.build` returning `DaemonClasspathDescriptor`, and
+`DAEMON_DESCRIPTOR_SCHEMA_VERSION`) still works but is deprecated and forwards to the contracts type,
+so its output is the same JSON.
 
 ### Classpath layering
 
@@ -327,11 +340,11 @@ Pass `--help` to any of them for the full flag list.
 
 ## Reference
 
-- Descriptor schema source: [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`)
+- Descriptor schema source: [`DaemonLaunchDescriptor.kt`](https://github.com/yschimke/compose-preview-contracts/blob/main/daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt) in compose-preview-contracts (published as `ee.schimke.composeai:daemon-protocol`)
 - Wire protocol: [`docs/daemon/PROTOCOL.md`](daemon/PROTOCOL.md)
 - Data products catalogue: [`docs/daemon/DATA-PRODUCTS.md`](daemon/DATA-PRODUCTS.md)
 - `RenderSession` API: [`render-session/api/.../RenderSession.kt`](../render-session/api/src/main/kotlin/ee/schimke/composeai/render/session/RenderSession.kt)
-- Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt) — now a thin adapter over `DaemonLaunchBuilder`
+- Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt) — builds the same contracts `DaemonLaunchDescriptor` through its `Builder`
 - Standalone preview-discovery library + CLI: [`PreviewDiscovery.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) + [`PreviewDiscoveryCli.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscoveryCli.kt)
 - Standalone daemon-launch-builder library + CLI: [`DaemonLaunchBuilder.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) + [`DaemonLaunchBuilderCli.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilderCli.kt)
 - Render CLI driving `SubprocessRenderSessions`: [`RenderCli.kt`](../render-session/cli/src/main/kotlin/ee/schimke/composeai/render/cli/RenderCli.kt)

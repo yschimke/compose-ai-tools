@@ -10,9 +10,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /**
- * [BundleSigning.canonicalDigest] and [BundleSigning.readSignatures] read client-controlled zips
- * on the server's upload path. Every member — including ones the server's extraction ignores —
- * must be charged to one inflation budget and streamed, never inflated whole into memory.
+ * [BundleSigning.canonicalDigest] and [BundleSigning.readSignatures] read client-controlled zips on
+ * the server's upload path. Every member — including ones the server's extraction ignores — must be
+ * charged to one inflation budget and streamed, never inflated whole into memory.
  */
 class BundleSigningInflateBudgetTest {
 

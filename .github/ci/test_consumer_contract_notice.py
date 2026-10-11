@@ -75,6 +75,25 @@ class Reporting(unittest.TestCase):
 class SurfaceMapIsCurrent(unittest.TestCase):
     """Every path in the map must still exist, or the notice covers nothing."""
 
+    def test_the_launch_descriptor_surface_names_the_shape_it_writes(self):
+        # Since contracts 3.28.0 the builder writes the contracts' `DaemonLaunchDescriptor`
+        # rather than its own `DaemonClasspathDescriptor`; the notice must say where the shape is.
+        surface = next(s for s in mod.SURFACES if s["name"] == "Daemon launch descriptor")
+        self.assertIn("DaemonLaunchDescriptor", surface["why"])
+        builder = REPO / "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch"
+        self.assertIn(
+            "ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor",
+            (builder / "DaemonLaunchBuilder.kt").read_text(encoding="utf-8"),
+        )
+
+    def test_the_launch_descriptor_notice_names_no_gate_that_does_not_exist(self):
+        # It used to promise that `checkDaemonLaunchSchema` checked the TypeScript reader when
+        # `COMPOSE_PREVIEW_VSCODE_ROOT` was set. Neither the variable nor that check exists, and a
+        # notice that points at a gate nobody runs is worse than none.
+        surface = next(s for s in mod.SURFACES if s["name"] == "Daemon launch descriptor")
+        for text in surface["consumers"].values():
+            self.assertNotIn("COMPOSE_PREVIEW_VSCODE_ROOT", text)
+
     def test_every_pattern_resolves_to_something_in_the_tree(self):
         missing = []
         for surface in mod.SURFACES:

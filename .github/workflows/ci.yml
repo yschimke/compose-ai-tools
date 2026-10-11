@@ -852,7 +852,7 @@ jobs:
       # the reader actually on the classpath, and fails unrelated pull requests when external
       # `main` moves.
       #
-      # FETCHED, not checked out, and only the one file the gate reads — the same arrangement, for
+      # FETCHED, not checked out, and only the files the gate reads — the same arrangement, for
       # the same reason, as the preview-server mirror sources in Design Artifacts Driver Tests
       # below. `actions/checkout` of another repository at a ref read from
       # `gradle/libs.versions.toml`, in a job that runs ~35 script tests after it, makes every one
@@ -862,7 +862,7 @@ jobs:
       # suppressing the finding: nothing from that repository is executed, and the worst a
       # rewritten catalog line can do is point the gate at a different published tag, which fails
       # loudly below.
-      - name: Fetch the pinned contracts JVM reader
+      - name: Fetch the pinned contracts descriptor sources
         run: |
           set -euo pipefail
           version=$(sed -n 's/^composeai-contracts = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
@@ -870,12 +870,15 @@ jobs:
             echo "::error::could not read composeai-contracts from gradle/libs.versions.toml"
             exit 1
           fi
-          # The half of the daemon-launch mirror that lives in the contracts repository; the gate
-          # exits non-zero if COMPOSE_PREVIEW_CONTRACTS_ROOT does not contain exactly this path.
-          rel="daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
-          mkdir -p ".compose-preview-contracts/$(dirname "$rel")"
-          curl -fsSL --retry 3 -o ".compose-preview-contracts/$rel" \
-            "https://raw.githubusercontent.com/yschimke/compose-preview-contracts/v$version/$rel"
+          # The daemon-launch descriptor's declaration, which since contracts 3.28.0 is both the
+          # writer and the JVM reader, and the BtaCompileConfig block it nests. The gate exits
+          # non-zero if COMPOSE_PREVIEW_CONTRACTS_ROOT does not contain DaemonLaunchDescriptor.kt.
+          dir="daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol"
+          mkdir -p ".compose-preview-contracts/$dir"
+          for file in DaemonLaunchDescriptor.kt BtaCompileConfig.kt; do
+            curl -fsSL --retry 3 -o ".compose-preview-contracts/$dir/$file" \
+              "https://raw.githubusercontent.com/yschimke/compose-preview-contracts/v$version/$dir/$file"
+          done
       - name: Install perceptual-diff libraries
         run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests

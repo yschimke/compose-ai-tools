@@ -5,6 +5,18 @@ daemon JVM, `compose-preview doctor`, and the VS Code extension — several repr
 file, spread across separate Gradle builds, with nothing in the build knowing they describe the same
 thing. `./gradlew :cli:checkDaemonLaunchSchema` is what knows.
 
+**One shape, since contracts 3.28.0.** The plugin's `daemon-launch-builder` used to declare its own
+`DaemonClasspathDescriptor`, and the contracts' `DaemonLaunchDescriptor` was only the reader; the two
+drifted (the writer's `btaCompile` was invisible to the reader, the reader's `jailCommand` /
+`hardTtlSeconds` to the writer). Contracts 3.28.0 added `btaCompile` and `SCHEMA_VERSION` to the
+contracts type, and the builder now constructs and encodes that type. The gate's writer is
+therefore the same declaration as its JVM reader, resolved from the contracts checkout, so the
+structural rules hold by construction and what remains live is the version copies, the encoders,
+the raw-key reads and the fingerprint. `DaemonClasspathDescriptor` and
+`DAEMON_DESCRIPTOR_SCHEMA_VERSION` survive as a deprecated facade for source and binary consumers
+until a major (`docs/VERSIONING.md` § 5); the constant forwards `DaemonLaunchDescriptor.SCHEMA_VERSION`,
+which the gate follows through `constantRegistries`, and nothing writes through the class.
+
 **Its scope is Kotlin.** The task's inputs are `**/*.kt` and `walk_sources()` reads nothing else, so
 what it covers is this repository's Kotlin representations plus the ones in a
 `compose-preview-contracts` checkout when `COMPOSE_PREVIEW_CONTRACTS_ROOT` resolves one. The VS Code
@@ -37,7 +49,11 @@ links against, so that is not a same-commit mistake but cross-repo version skew 
   which is the moment someone can ask whether it should exist at all. Discovery works **by use**
   as well as by name: every `schemaVersion = …` at a descriptor construction site must be a
   registered constant named as `schemaVersion = …` (a positional argument names nothing, so
-  neither scan can see it), never a bare literal. That arm exists because name matching alone was not
+  neither scan can see it), never a bare literal. A construction site is `DaemonLaunchDescriptor(`,
+  `DaemonClasspathDescriptor(` or `DaemonLaunchDescriptor.Builder(` — the builder is the only public
+  construction since contracts 3.0.0, and every writer had moved to it unseen. A qualified stamp
+  (`DaemonLaunchDescriptor.SCHEMA_VERSION`) resolves through `constantRegistries` to a registered
+  site and must import that declaration. That arm exists because name matching alone was not
   enough — `ServeBundleDaemon` calls its copy `DAEMON_LAUNCH_SCHEMA_VERSION` rather than
   `…DESCRIPTOR_SCHEMA_VERSION`, and stamps real descriptors with it, so a fifth mirror sat outside
   a check whose entire claim was that every mirror is registered;
@@ -45,9 +61,10 @@ links against, so that is not a same-commit mistake but cross-repo version skew 
   carry corresponding types across the registered Kotlin copies, and a reader-only field is
   optional;
 - **`BtaCompileConfig` field-for-field** across the copies that declare it, which its KDoc claimed
-  and nothing enforced;
-- **unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`, the single line that
-  makes the writer's `btaCompile` (which that reader does not declare) safe rather than fatal;
+  and nothing enforced — one copy since contracts 3.28.0, hashed into the fingerprint;
+- **unknown-key tolerance** — while the writer emits a field the JVM reader does not declare, that
+  reader must keep `ignoreUnknownKeys = true`. This was what made the plugin's `btaCompile` safe
+  rather than fatal; since contracts 3.28.0 declared it, nothing is writer-only;
 - **mirrored constants** — sysprop keys the descriptor carries that other modules re-declare
   privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree". Not only
   Kotlin ones: the production image passes that key as a literal in `deploy/image/Dockerfile`'s
@@ -82,13 +99,18 @@ links against, so that is not a same-commit mistake but cross-repo version skew 
   wire contract while the digest held steady. Immutability is the other half: while the digest was
   editable in place, a breaking rename could pass by updating the writer, the readers *and* the
   record together, leaving released v2 consumers accepting a v2 descriptor they now misread.
-  Changing the shape means adding a version, never refreshing the entry for an existing one.
+  Changing the shape means adding a version, never refreshing the entry for an existing one. The
+  one sanctioned exception is an amendment recorded in `wireFingerprint.amendments` with its reason,
+  for a change no released reader can see; the check fails a digest that moved without one. v2 has
+  one: moving the writer to the contracts type re-ordered `btaCompile` after the sandbox fields and
+  gave `javaLauncher` a decode default — no key renamed, retyped or dropped.
 
 Divergences that are correct by design live in `scripts/daemon-launch-schema-allowlist.json` with
 the reason written down — the same debt-register discipline as the seam allowlist, not an exemption
-list. The three that exist today: serve's sandbox-only `jailCommand` and `hardTtlSeconds` (which
-the plugin never writes, so both must default), and the writer's `btaCompile` (which the daemon JVM
-does consume, but through flattened system properties rather than the nested block).
+list. There used to be three field-level ones — serve's sandbox-only `jailCommand` and
+`hardTtlSeconds`, and the plugin's `btaCompile` — and all three closed when the writer became the
+contracts type, which declares every one of them. The plugin's descriptor now carries
+`"jailCommand": []` and `"hardTtlSeconds": null` too, as serve's always did.
 
 Every rule was falsified — each made to fail on purpose, then restored — and the gate is
 unit-tested by `scripts/test_check_daemon_launch_schema.py`.

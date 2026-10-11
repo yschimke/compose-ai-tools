@@ -1,7 +1,7 @@
 package ee.schimke.composeai.plugin.daemon
 
-import ee.schimke.composeai.daemonlaunch.*
-import kotlinx.serialization.encodeToString
+import ee.schimke.composeai.daemon.protocol.BtaCompileConfig
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -37,7 +37,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
    */
   @get:Input
   val schemaVersion: Int
-    get() = DAEMON_DESCRIPTOR_SCHEMA_VERSION
+    get() = DaemonLaunchDescriptor.SCHEMA_VERSION
 
   /** `:samples:android` — the Gradle path of the consumer module. */
   @get:Input abstract val modulePath: Property<String>
@@ -165,25 +165,28 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   @TaskAction
   fun emit() {
     val descriptor =
-      DaemonClasspathDescriptor(
-        schemaVersion = schemaVersion,
-        modulePath = modulePath.get(),
-        variant = variant.get(),
-        enabled = daemonEnabled.get(),
-        mainClass = mainClass.get(),
-        javaLauncher = javaLauncher.orNull,
-        classpath = classpathPaths,
-        jvmArgs = jvmArgs.get().toList(),
-        // Stable order keeps golden-output comparisons simple.
-        systemProperties = LinkedHashMap(systemProperties.get()),
-        workingDirectory = workingDirectory.get(),
-        manifestPath = manifestPath.get(),
-        btaCompile = assembleBtaCompileConfig(),
-      )
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = schemaVersion,
+          modulePath = modulePath.get(),
+          variant = variant.get(),
+          enabled = daemonEnabled.get(),
+          mainClass = mainClass.get(),
+          classpath = classpathPaths,
+          jvmArgs = jvmArgs.get().toList(),
+          // Stable order keeps golden-output comparisons simple.
+          systemProperties = LinkedHashMap(systemProperties.get()),
+          workingDirectory = workingDirectory.get(),
+          manifestPath = manifestPath.get(),
+        )
+        .also {
+          it.javaLauncher = javaLauncher.orNull
+          it.btaCompile = assembleBtaCompileConfig()
+        }
+        .build()
 
     val out = outputFile.get().asFile
     out.parentFile?.mkdirs()
-    out.writeText(JSON.encodeToString(descriptor))
+    out.writeText(JSON.encodeToString(DaemonLaunchDescriptor.serializer(), descriptor))
   }
 
   /**
@@ -196,15 +199,16 @@ abstract class DaemonBootstrapTask : DefaultTask() {
     val outputDir = btaOutputDir.orNull
     val icDir = btaIcWorkingDir.orNull
     if (implCp.isEmpty() || moduleName == null || outputDir == null || icDir == null) return null
-    return BtaCompileConfig(
-      implClasspath = implCp,
-      compileClasspath = btaCompileClasspathPaths,
-      compilerPlugins = btaCompilerPluginClasspathPaths,
-      outputDir = outputDir,
-      moduleName = moduleName,
-      icWorkingDir = icDir,
-      ineligibilityReason = btaIneligibilityReason.orNull,
-    )
+    return BtaCompileConfig.Builder(
+        implClasspath = implCp,
+        compileClasspath = btaCompileClasspathPaths,
+        compilerPlugins = btaCompilerPluginClasspathPaths,
+        outputDir = outputDir,
+        moduleName = moduleName,
+        icWorkingDir = icDir,
+      )
+      .also { it.ineligibilityReason = btaIneligibilityReason.orNull }
+      .build()
   }
 
   internal companion object {

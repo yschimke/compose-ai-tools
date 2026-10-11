@@ -55,20 +55,26 @@ SURFACES: list[dict] = [
     {
         "name": "Daemon launch descriptor",
         # The `DaemonLaunchDescriptor.kt` pattern was here too, until `daemon/protocol` moved to
-        # compose-preview-contracts. The builder that writes the descriptor is still here.
+        # compose-preview-contracts. Since contracts 3.28.0 that type is the writer's shape as
+        # well, so a shape change is announced by the contracts release and arrives here as a
+        # `composeai-contracts` bump. What this module still decides is the bytes the plugin
+        # writes: the schema-version stamp, the canonical encoder, and the deprecated
+        # `DaemonClasspathDescriptor` facade that external callers still compile against.
         "patterns": [
             "gradle-plugin/daemon-launch-builder/src/main/**",
         ],
         "why": (
-            "Three copies of the schema, and the TypeScript one is the only reader that "
-            "*gates* on the version."
+            "The descriptor's shape is the contracts' `DaemonLaunchDescriptor`; this module stamps "
+            "its schema version and encodes it, so a change here moves the bytes every reader "
+            "parses. The TypeScript reader is the only one that *gates* on the version."
         ),
         "consumers": {
             EXT: (
-                "carries that reader. `checkDaemonLaunchSchema` here already checks it when a "
-                "checkout is present (CI sets `COMPOSE_PREVIEW_VSCODE_ROOT`), so a mismatch "
-                "should have failed this PR — if it did not, the checkout step is the thing to "
-                "look at."
+                "carries that reader, which checks `schemaVersion` against the schema metadata "
+                "published with the plugin release it pins "
+                "(`daemon-launch-builder-<version>-schema.json`). Nothing in this repository runs "
+                "it, so a version or encoder change reaches it only when that pin is bumped — "
+                "check its daemon-launch tests against this change before the next release."
             ),
         },
     },

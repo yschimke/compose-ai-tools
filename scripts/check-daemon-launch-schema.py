@@ -2,18 +2,19 @@
 """Keep this repository's `daemon-launch.json` representations from drifting apart.
 
 `<module>/build/compose-previews/daemon-launch.json` is written by the Gradle
-plugin and read by the daemon JVM and the CLI doctor. Nothing in the build knows
-those are the same file. Each side declares its own copy of the shape and its
-own copy of the schema version, and two of them carry
-a comment asking a human to remember:
+plugin and read by the daemon JVM and the CLI doctor. Since contracts 3.28.0 the
+shape is declared once, by the contracts' `DaemonLaunchDescriptor` (plus its
+nested `BtaCompileConfig`), which the plugin's `daemon-launch-builder` writes
+through and every JVM reader parses. What is still duplicated is the schema
+version, the encoder configuration and the raw-key reads, and two of the version
+copies carry a comment asking a human to remember:
 
     render-session/subprocess/.../SubprocessRenderSession.kt
         /** ... mirrors the gradle plugin's writer. */
         private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
 
     cli/.../McpCommand.kt
-        // Pinned to DAEMON_DESCRIPTOR_SCHEMA_VERSION in
-        // gradle-plugin/.../DaemonClasspathDescriptor.kt. Keep in sync — bump together.
+        // Pinned to the writer's schema version. Keep in sync — bump together.
         internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 
 A comment is not a gate. Bumping the writer alone leaves those two writing and
@@ -29,18 +30,19 @@ What this checks
 ----------------
 
 1. **Version agreement** — every declaration of the descriptor schema version
-   equals the writer's `DAEMON_DESCRIPTOR_SCHEMA_VERSION`, and every site is
+   equals the writer's `DaemonLaunchDescriptor.SCHEMA_VERSION`, and every site is
    registered. An unregistered copy fails: a new mirror must be declared here,
    which is the point at which someone can ask whether it should exist at all.
 
 2. **Structural agreement** — for the JVM reader (`DaemonLaunchDescriptor`):
    every field the reader *requires* is emitted by the writer, shared fields
-   carry corresponding types, and any reader-only field is optional. A required
-   field the writer never writes is a parse failure at runtime.
+   carry corresponding types, and any reader-only field is optional. Since the
+   writer IS that type this holds by construction; the rule stays so that a
+   writer moving off it again is compared rather than trusted.
 
-3. **Unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`.
-   That is the single line making the writer's `btaCompile` (which the JVM
-   reader does not declare) safe rather than fatal.
+3. **Unknown-key tolerance** — while the writer emits a field the JVM reader
+   does not declare (`writerOnlyFields`), that reader must keep
+   `ignoreUnknownKeys = true`. Nothing is writer-only today.
 
 4. **Sysprop key mirrors** — string constants the descriptor carries that are
    re-declared elsewhere, e.g. `SANDBOX_COUNT_PROP`, whose own KDoc says "both
@@ -69,11 +71,34 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.json"
 
-WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
 # The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts. It remains
 # part of this check because this repository resolves that exact published contracts release.
 JVM_READER_REL = (
     "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+)
+# Since contracts 3.28.0 the writer is the same declaration: `daemon-launch-builder` constructs and
+# encodes the contracts' `DaemonLaunchDescriptor` rather than declaring its own
+# `DaemonClasspathDescriptor`. The shape therefore lives in the contracts checkout, and so does the
+# version constant the writer stamps.
+WRITER_REL = JVM_READER_REL
+WRITER_DTO = "DaemonLaunchDescriptor"
+WRITER_VERSION_SYMBOL = "SCHEMA_VERSION"
+# The DTOs the descriptor nests, and the contracts file each is declared in.
+NESTED_DTO_FILES = {
+    "BtaCompileConfig": (
+        "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/BtaCompileConfig.kt"
+    ),
+}
+NESTED_DTOS = tuple(NESTED_DTO_FILES)
+# Paths under the contracts' `:daemon-protocol` module resolve against the contracts checkout.
+CONTRACTS_PREFIX = "daemon/protocol/"
+# The plugin's former DTO, now a deprecated facade kept for source and binary consumers until a
+# major release (`docs/VERSIONING.md` § 5). Nothing writes through it: its conversions copy an
+# existing descriptor's version rather than stamping one, so it is a declaring file below, not a
+# construction site.
+LEGACY_FACADE = (
+    "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/"
+    "DaemonClasspathDescriptor.kt"
 )
 
 
@@ -93,17 +118,24 @@ def contracts_root() -> Path | None:
 
 _contracts_root = contracts_root()
 JVM_READER = JVM_READER_REL if _contracts_root is not None else ""
+WRITER = WRITER_REL if _contracts_root is not None else ""
+
+
+def dto_file(dto: str) -> str:
+    """The file declaring `dto`: the writer itself, or one of the DTOs it nests."""
+    return WRITER_REL if dto == WRITER_DTO else NESTED_DTO_FILES[dto]
 
 
 def resolve(rel: str) -> Path | None:
     """Map a path from this script or the allowlist onto disk.
 
-    The JVM reader moved to compose-preview-contracts with the wire contracts. It resolves against
-    the pinned checkout when present and is unavailable otherwise, so a missing sibling SKIPS that
+    The JVM reader (and, since contracts 3.28.0, the writer and its nested DTOs) moved to
+    compose-preview-contracts with the wire contracts. They resolve against the pinned checkout when
+    present and is unavailable otherwise, so a missing sibling SKIPS that
     half rather than failing: "the other repository is not checked out" is not a drift signal, and
     this script is wired into `check`, which every contributor runs.
     """
-    if rel == JVM_READER_REL:
+    if rel.startswith(CONTRACTS_PREFIX):
         return (_contracts_root / rel) if _contracts_root is not None else None
     return REPO_ROOT / rel
 
@@ -277,7 +309,11 @@ def serial_name_renames(rel: str, name: str) -> list[str]:
     return found
 
 
-CLASS_SERIALIZABLE = re.compile(r"@Serializable\s*\(([^)]*)\)\s*(?:public\s+)?data class\s+(\w+)")
+# Other annotations may sit between `@Serializable(...)` and the class, as `@ConsistentCopyVisibility`
+# does on every builder-shaped contracts DTO.
+CLASS_SERIALIZABLE = re.compile(
+    r"@Serializable\s*\(([^)]*)\)\s*(?:@\w+\s*)*(?:public\s+)?data class\s+(\w+)"
+)
 BODY_PROPERTY = re.compile(r"^\s*(?:public|internal|private)?\s*(?:val|var)\s+(\w+)\s*[:=]", re.M)
 
 
@@ -306,7 +342,28 @@ def body_properties(rel: str, name: str) -> list[str]:
     rest = after[ctor_end:].lstrip()
     if not rest.startswith("{"):
         return []  # no class body at all
-    return BODY_PROPERTY.findall(balanced(rest, 0, "{", "}"))
+    return BODY_PROPERTY.findall(top_level(balanced(rest, 0, "{", "}")))
+
+
+def top_level(body: str) -> str:
+    """`body` with everything nested in braces or parentheses blanked out.
+
+    The contracts DTOs have class bodies: a `Builder` whose `var`s mirror every field, and a
+    companion holding the parser's `Json`. Neither is a serialised property of the DTO, and
+    matching the whole body reported each as one. Only what sits directly in the class body is.
+    """
+    out, depth = [], 0
+    for c in body:
+        if c in "{(":
+            depth += 1
+        elif c in "})":
+            depth -= 1
+        elif depth == 0:
+            out.append(c)
+            continue
+        if c == "\n":
+            out.append(c)
+    return "".join(out)
 
 
 def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
@@ -417,13 +474,21 @@ def resolve_const(value: str, registries: dict[str, str]) -> tuple[str | None, s
 # --------------------------------------------------------------------------
 
 
+def writer_version() -> str | None:
+    """The schema version the writer stamps, or None without a contracts checkout."""
+    return kotlin_consts(WRITER)[WRITER_VERSION_SYMBOL] if WRITER else None
+
+
 def check_versions(allowlist: dict, failures: list[str]) -> None:
     """Every declared copy of the schema version agrees, and every copy is registered."""
     sites = allowlist["schemaVersionSites"]
-    writer_version = kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+    registries = allowlist.get("constantRegistries", {})
+    written = writer_version()
 
     for site in sites:
         rel, symbol = site["file"], site["symbol"]
+        if not available(rel):
+            continue  # the writer's own constant, without a contracts checkout
         consts = kotlin_consts(rel)
         if symbol not in consts:
             failures.append(
@@ -432,10 +497,18 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"gone — that is progress, not a failure to hide."
             )
             continue
-        if consts[symbol] != writer_version:
+        # A site that forwards the writer's constant (`= DaemonLaunchDescriptor.SCHEMA_VERSION`)
+        # rather than re-typing the number is followed to the literal behind it, as mirrored
+        # constants are.
+        value, why = resolve_const(consts[symbol], registries)
+        if value is None:
+            if why is not None:
+                failures.append(f"  {rel}: `{symbol}` {why}")
+            continue
+        if written is not None and value != written:
             failures.append(
-                f"  {rel}: `{symbol}` = {consts[symbol]}, but the writer "
-                f"({WRITER.split('/')[-1]}) says {writer_version}.\n"
+                f"  {rel}: `{symbol}` = {value}, but the writer "
+                f"({WRITER.split('/')[-1]}) says {written}.\n"
                 f"    All copies of the descriptor schema version bump together, or the VS Code "
                 f"reader rejects every descriptor the plugin writes."
             )
@@ -459,7 +532,8 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
     # does (no import needed), or imports it by name.
     by_package: dict[str, set[str]] = {}
     for s in sites:
-        by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
+        if available(s["file"]):
+            by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
     # Scoped, not global. Binding `schemaVersionSites` by package while leaving aliases as a bare
     # name set was an inconsistency in my own fix: any writer with a local `schemaVersion` property
     # would have been accepted purely because `DaemonBootstrapTask` registered that spelling.
@@ -479,6 +553,10 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"literal.\n    That is a mirror with no name, which no name-based scan can find. "
                 f"Stamp a registered constant instead."
             )
+        elif "." in expr:
+            why = qualified_stamp_problem(found_rel, expr, sites, registries)
+            if why is not None:
+                failures.append(f"  {found_rel}: `schemaVersion = {expr}` {why}")
         elif (found_rel, expr) not in aliases and not resolves_to_registered(
             found_rel, expr, by_package
         ):
@@ -489,6 +567,46 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"in `versionStampAliases`, in {ALLOWLIST.name}. Name matching alone would let a "
                 f"stale local `val` of the same name pass in an unrelated package."
             )
+
+
+def qualified_stamp_problem(
+    rel: str, expr: str, sites: list[dict], registries: dict[str, str]
+) -> str | None:
+    """Why a qualified stamp such as `DaemonLaunchDescriptor.SCHEMA_VERSION` is not legitimate.
+
+    The writer stamps the contracts' own constant through its class, so the stamp is a dotted
+    reference rather than a bare name. It is legitimate when the qualifier is a registered constant
+    registry, the symbol is a registered schema-version site *in that registry's file*, and Kotlin
+    would resolve the qualifier here to that declaration (same package, or imported by name).
+    Returns None when legitimate, or when the registry lives in an absent contracts checkout.
+    """
+    qualifier, symbol = expr.rsplit(".", 1)
+    target = registries.get(qualifier)
+    if target is None:
+        return (
+            f"stamps through `{qualifier}`, which is not a registered constant registry.\n"
+            f"    Add `\"{qualifier}\": \"<path to the file declaring it>\"` to `constantRegistries` "
+            f"in {ALLOWLIST.name}, and register the constant in `schemaVersionSites`."
+        )
+    if (target, symbol) not in {(s["file"], s["symbol"]) for s in sites}:
+        return (
+            f"reads `{symbol}` from {target}, which is not a registered schema-version site.\n"
+            f"    Register it in `schemaVersionSites` in {ALLOWLIST.name}."
+        )
+    if not available(target):
+        return None
+    pkg = package_declared_in(target)
+    simple = qualifier.split(".")[0]
+    if package_declared_in(rel) == pkg:
+        return None
+    if re.search(
+        r"^\s*import\s+" + re.escape(f"{pkg}.{simple}") + r"\s*$", stripped(rel), re.M
+    ):
+        return None
+    return (
+        f"names `{simple}`, but this file neither imports `{pkg}.{simple}` nor sits in `{pkg}`, "
+        f"so it is not the registered declaration."
+    )
 
 
 RAW_KEY = re.compile(r"\bobj\[\"(\w+)\"\]")
@@ -541,16 +659,15 @@ def check_raw_key_readers(
             )
 
 
-NESTED_DTOS = ("BtaCompileConfig",)
-
-
 def emitted_shape(writer: dict[str, tuple[str, bool]], allowlist: dict) -> dict:
     """The writer's fields plus the reader-only fields a registered writer actually emits.
 
-    `jailCommand` and `hardTtlSeconds` are absent from the Gradle plugin's DTO but written by
-    serve, so they are on the wire even though they are not in `DaemonClasspathDescriptor`.
-    Fingerprinting the plugin's DTO alone meant renaming one of them moved the wire format while
-    the digest held steady — the same hole the nested DTOs had, one field-set over.
+    `jailCommand` and `hardTtlSeconds` were absent from the Gradle plugin's former DTO
+    (`DaemonClasspathDescriptor`) but written by serve, so they were on the wire without being in
+    the writer. Fingerprinting the plugin's DTO alone meant renaming one of them moved the wire
+    format while the digest held steady — the same hole the nested DTOs had, one field-set over.
+    Since the writer became the contracts type it declares them itself and `readerOnlyFields` is
+    empty; the fold stays for the next reader-only field.
     """
     reader = kotlin_data_class(JVM_READER, "DaemonLaunchDescriptor")
     shape = dict(writer)
@@ -575,7 +692,7 @@ def wire_shape(writer: dict[str, tuple[str, bool]]) -> str:
         )
     ]
     for dto in NESTED_DTOS:
-        nested = kotlin_data_class(WRITER, dto)
+        nested = kotlin_data_class(dto_file(dto), dto)
         parts.append(
             dto
             + "{"
@@ -606,8 +723,26 @@ def check_wire_fingerprint(
 ) -> None:
     actual = wire_fingerprint(emitted_shape(writer, allowlist))
     history = allowlist["wireFingerprint"]["history"]
-    writer_version = kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+    writer_version = kotlin_consts(WRITER)[WRITER_VERSION_SYMBOL]
     recorded = history.get(writer_version)
+
+    # An amended entry must say so. `amendments` is the audit trail for the rare deliberate edit
+    # (a change invisible to every released reader); a digest that moved without one is a refresh.
+    last_amended: dict[str, str] = {}
+    for amendment in allowlist["wireFingerprint"].get("amendments", []):
+        if not amendment.get("why", "").strip():
+            failures.append(
+                f"  wireFingerprint.amendments: the v{amendment.get('version')} amendment "
+                f"{amendment.get('from')} -> {amendment.get('to')} records no `why`."
+            )
+        last_amended[amendment["version"]] = amendment["to"]
+    for version, to in last_amended.items():
+        if history.get(version) != to:
+            failures.append(
+                f"  wireFingerprint.amendments: the last v{version} amendment ends at {to}, but "
+                f"`history` records {history.get(version)}. An entry changes only through an "
+                f"amendment that says why."
+            )
 
     if recorded is None:
         failures.append(
@@ -624,10 +759,10 @@ def check_wire_fingerprint(
             f"  the descriptor's wire shape changed under schema v{writer_version}: "
             f"{recorded} -> {actual}.\n"
             f"    A version's shape is immutable once recorded, so this is not fixed by editing "
-            f"the digest: bump `DAEMON_DESCRIPTOR_SCHEMA_VERSION` at every registered site and add "
-            f"the new version to `history`, leaving the old entry in place. If you are certain the "
-            f"change is invisible to every released reader, say so in the PR and amend the entry "
-            f"deliberately — but that is a decision, not a refresh."
+            f"the digest: bump `DaemonLaunchDescriptor.SCHEMA_VERSION` and every registered site and "
+            f"add the new version to `history`, leaving the old entry in place. If you are certain "
+            f"the change is invisible to every released reader, say so in the PR and amend the "
+            f"entry deliberately, recording it in `amendments` — a decision, not a refresh."
         )
 
 
@@ -654,15 +789,21 @@ def is_test_source(rel: str) -> bool:
 # `(?<!class )` keeps the DTOs' own `data class …(` declarations out: they open a parameter list
 # that looks exactly like a construction, and counting them made the checker report the two files
 # that DEFINE the descriptor as constructing one without naming its version.
+#
+# `DaemonLaunchDescriptor.Builder(` is a construction too, and since contracts 3.0.0 the only public
+# one: the constructor is internal. Matching the class name alone saw none of them, so the gate's
+# discovery-by-use was blind to every writer that moved to the builder — the plugin's included.
 DESCRIPTOR_CTOR = re.compile(
-    r"(?<!class )\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\("
+    r"(?<!class )\b(?:DaemonLaunchDescriptor(?:\s*\.\s*Builder)?|DaemonClasspathDescriptor)\s*\("
 )
 
 # `descriptor.copy(schemaVersion = …)` re-stamps an existing instance without naming a class, so
 # the constructor scan cannot see it. `schemaVersion` is a descriptor field name, so matching it on
 # any `copy(` is precise enough in practice.
-COPY_STAMP = re.compile(r"\.copy\s*\(\s*schemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
-SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
+# The stamped expression may be qualified (`DaemonLaunchDescriptor.SCHEMA_VERSION`): capturing only
+# the first identifier read that as a stamp of `DaemonLaunchDescriptor`.
+COPY_STAMP = re.compile(r"\.copy\s*\(\s*schemaVersion\s*=\s*([A-Za-z_][\w.]*\w|[A-Za-z_]|\d+)")
+SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_][\w.]*\w|[A-Za-z_]|\d+)")
 
 # Sentinel for a construction site that passes its arguments positionally.
 POSITIONAL = "<positional>"
@@ -730,7 +871,7 @@ def discover_version_stamps() -> list[tuple[str, str]]:
 # caller's `schemaVersion` through positionally in `Builder.build()`, inside the very file the
 # reader is parsed from. `(?<!class )` used to keep the declarations out on its own, and stopped
 # doing so the moment a declaration grew a builder that constructs the type by name.
-DECLARING = {WRITER, JVM_READER_REL}
+DECLARING = {WRITER_REL, JVM_READER_REL, LEGACY_FACADE, *NESTED_DTO_FILES.values()}
 
 
 PRUNE = {"build", "node_modules", ".git", ".gradle", "out", "dist", "scripts"}
@@ -975,14 +1116,66 @@ def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
                 )
 
 
+def check_dto_declarations(failures: list[str]) -> None:
+    """Refuse what would make the declaration stop describing what is emitted."""
+    for dto in (WRITER_DTO,) + NESTED_DTOS:
+        rel = dto_file(dto)
+        # A custom serializer replaces the generated one entirely and can emit any keys and types
+        # it likes, with every parsed field and the fingerprint unmoved.
+        for name, argument in class_level_serializer_overrides(rel):
+            if name != dto:
+                continue
+            failures.append(
+                f"  {rel}: `{dto}` is annotated `@Serializable({argument})`.\n    A custom "
+                f"serializer decides the wire format itself, so nothing this checker reads from the "
+                f"declaration describes what is emitted any more. Drop it, or model it here — do "
+                f"not leave it unexamined."
+            )
+        # Annotations on these properties change what is emitted without changing the declaration
+        # that every rule here reads. Refused as a class rather than one at a time.
+        for rename in serial_name_renames(rel, dto):
+            failures.append(
+                f"  {rel}: `{dto}.{rename}` uses `@SerialName`, so the JSON key no longer "
+                f"matches the Kotlin identifier.\n    Every rule here compares identifiers, so a "
+                f"wire rename this way would be invisible to all of them. Either drop the "
+                f"annotation, or teach this checker to read it — do not leave it unhandled."
+            )
+        for field in body_properties(rel, dto):
+            failures.append(
+                f"  {rel}: `{dto}.{field}` is declared in the class body, not the primary "
+                f"constructor.\n    kotlinx.serialization emits an initialised body property like "
+                f"any other field, but every rule here reads the constructor — so it would be "
+                f"invisible to the structural comparison, the annotation check and the fingerprint "
+                f"at once. Move it into the constructor, or make it non-serialised."
+            )
+        for field, annotation in annotated_properties(rel, dto):
+            if annotation == "SerialName":
+                continue  # reported above, with a better message
+            failures.append(
+                f"  {rel}: `{dto}.{field}` carries `@{annotation}`, which is not in "
+                f"`ALLOWED_DTO_ANNOTATIONS`.\n    An annotation can change what "
+                f"kotlinx.serialization emits (`@Transient` drops the field, `@EncodeDefault` "
+                f"changes whether a default is written) while the declaration this checker reads "
+                f"stays identical. Decide what it means for the wire format and record it, rather "
+                f"than letting it through unexamined."
+            )
+
+
 def check() -> int:
     allowlist = json.loads(ALLOWLIST.read_text(encoding="utf-8"))
     failures: list[str] = []
 
-    writer = kotlin_data_class(WRITER, "DaemonClasspathDescriptor")
-
     check_versions(allowlist, failures)
-    if JVM_READER:
+    check_mirrored_constants(allowlist, failures)
+    check_writer_encoders(allowlist, failures)
+
+    # Everything below reads the writer's declaration, which lives in the contracts checkout since
+    # 3.28.0. Without one it is skipped rather than failed: "the other repository is not checked
+    # out" is not a drift signal. CI fetches the pinned contracts sources, and its schema-gate step
+    # fails if any test reports a skip, so it is enforced where it counts.
+    writer: dict[str, tuple[str, bool]] = {}
+    if WRITER:
+        writer = kotlin_data_class(WRITER, WRITER_DTO)
         check_reader(
             "jvm",
             JVM_READER,
@@ -991,56 +1184,10 @@ def check() -> int:
             allowlist,
             failures,
         )
-    check_unknown_key_tolerance(allowlist, failures)
-    check_mirrored_constants(allowlist, failures)
-    check_raw_key_readers(writer, allowlist, failures)
-    check_writer_encoders(allowlist, failures)
-    # The emitted shape folds in the JVM reader's reader-only fields, so without that checkout the
-    # digest would be computed from a shape the wire never has — reporting a shape change that did
-    # not happen. Skipping is the honest answer; CI checks the contracts repository out, so the
-    # fingerprint is still enforced where it counts.
-    if JVM_READER:
+        check_unknown_key_tolerance(allowlist, failures)
+        check_raw_key_readers(writer, allowlist, failures)
         check_wire_fingerprint(writer, allowlist, failures)
-
-    # A custom serializer replaces the generated one entirely and can emit any keys and types it
-    # likes, with every parsed field and the fingerprint unmoved.
-    for dto, argument in class_level_serializer_overrides(WRITER):
-        failures.append(
-            f"  {WRITER}: `{dto}` is annotated `@Serializable({argument})`.\n    A custom "
-            f"serializer decides the wire format itself, so nothing this checker reads from the "
-            f"declaration describes what is emitted any more. Drop it, or model it here — do not "
-            f"leave it unexamined."
-        )
-
-    # Annotations on these properties change what is emitted without changing the declaration that
-    # every rule here reads. Refused as a class rather than one at a time.
-    for dto in ("DaemonClasspathDescriptor",) + NESTED_DTOS:
-        for rename in serial_name_renames(WRITER, dto):
-            failures.append(
-                f"  {WRITER}: `{dto}.{rename}` uses `@SerialName`, so the JSON key no longer "
-                f"matches the Kotlin identifier.\n    Every rule here compares identifiers, so a "
-                f"wire rename this way would be invisible to all of them. Either drop the "
-                f"annotation, or teach this checker to read it — do not leave it unhandled."
-            )
-        for field in body_properties(WRITER, dto):
-            failures.append(
-                f"  {WRITER}: `{dto}.{field}` is declared in the class body, not the primary "
-                f"constructor.\n    kotlinx.serialization emits an initialised body property like "
-                f"any other field, but every rule here reads the constructor — so it would be "
-                f"invisible to the structural comparison, the annotation check and the fingerprint "
-                f"at once. Move it into the constructor, or make it non-serialised."
-            )
-        for field, annotation in annotated_properties(WRITER, dto):
-            if annotation == "SerialName":
-                continue  # reported above, with a better message
-            failures.append(
-                f"  {WRITER}: `{dto}.{field}` carries `@{annotation}`, which is not in "
-                f"`ALLOWED_DTO_ANNOTATIONS`.\n    An annotation can change what "
-                f"kotlinx.serialization emits (`@Transient` drops the field, `@EncodeDefault` "
-                f"changes whether a default is written) while the declaration this checker reads "
-                f"stays identical. Decide what it means for the wire format and record it, rather "
-                f"than letting it through unexamined."
-            )
+        check_dto_declarations(failures)
 
     if failures:
         print("check-daemon-launch-schema: FAILED", file=sys.stderr)
@@ -1049,19 +1196,19 @@ def check() -> int:
         return 1
 
     sites = len(allowlist["schemaVersionSites"])
-    # Name the readers actually compared, and say which were skipped. A fixed "2 readers agree"
-    # was fine while both lived here; now either can be absent, and a summary that claims two
-    # while checking one is the failure this gate exists to prevent, printed in its own output.
-    checked = ["jvm"] if JVM_READER else []
-    skipped = [] if JVM_READER else ["jvm"]
-    readers = f"{len(checked)} reader(s) agree ({', '.join(checked) or 'none'})"
-    if skipped:
-        readers += f", {len(skipped)} SKIPPED ({', '.join(skipped)}) — no checkout"
-    print(
-        f"check-daemon-launch-schema: OK — {len(writer)} writer field(s), {readers}, "
-        f"{sites} schema-version site(s) at v"
-        + kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
-    )
+    # Say what was skipped. A summary that claims a comparison it did not make is the failure this
+    # gate exists to prevent, printed in its own output.
+    if WRITER:
+        print(
+            f"check-daemon-launch-schema: OK — writer {WRITER_DTO} ({len(writer)} field(s)), "
+            f"1 reader(s) agree (jvm), {sites} schema-version site(s) at v{writer_version()}"
+        )
+    else:
+        print(
+            f"check-daemon-launch-schema: OK — {sites} schema-version site(s) registered; writer "
+            f"shape, jvm reader, raw-key reads and wire fingerprint SKIPPED — no "
+            f"compose-preview-contracts checkout (set COMPOSE_PREVIEW_CONTRACTS_ROOT)"
+        )
     return 0
 
 

@@ -14,14 +14,23 @@ plugins {
 
 ktfmt { googleStyle() }
 
-// The `daemon-launch.json` schema plus a typed builder that emits it from pre-resolved classpath /
-// sysprops / JVM args, so non-Gradle build systems (Bazel, Amper) can produce conforming
-// descriptors. Generic by design: Android classpath layering stays in `:gradle-plugin`'s
+// A typed builder that emits `daemon-launch.json` (the contracts' `DaemonLaunchDescriptor`) from
+// pre-resolved classpath / sysprops / JVM args, so non-Gradle build systems (Bazel, Amper) can
+// produce conforming descriptors. The shape is the contracts'; this module stamps the schema
+// version
+// and owns the canonical encoder. Generic by design: Android classpath layering stays in
+// `:gradle-plugin`'s
 // `AndroidPreviewClasspath`. Lives in this composite build so the plugin can depend on it as a
 // project.
 
 dependencies {
   api(libs.kotlinx.serialization.json)
+  // The descriptor's shape is the contracts' `DaemonLaunchDescriptor`; this module adds the
+  // schema-version stamp and the canonical encoder. The BOM supplies the version, declared here
+  // because this module doesn't apply `composeai.base-conventions` (same as `:preview-discovery`).
+  // `api` because the builder's public signatures return and accept the contracts types.
+  api(platform(libs.composeai.contracts.bom))
+  api(libs.composeai.daemon.protocol)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

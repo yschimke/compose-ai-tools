@@ -10,19 +10,23 @@
     "if any disagrees with the writer, and fails again if a `*DESCRIPTOR_SCHEMA_VERSION` appears",
     "anywhere that is not listed \u2014 a new mirror has to be declared here, which is the moment",
     "someone can ask whether it should exist at all. The extension owns its TypeScript registry",
-    "and checks the published schema metadata for the plugin release it pins. The right long-term",
-    "number of entries here is 1: the other two are Kotlin and could read the writer's constant",
-    "directly if `:render-session-subprocess` and `:cli`",
-    "took a dependency on `:gradle-plugin:daemon-launch-builder`. Until then they are mirrors,",
-    "and mirrors need a gate rather than a comment asking a human to remember.",
+    "and checks the published schema metadata for the plugin release it pins. Since contracts 3.28.0",
+    "the writer's constant is the contracts' `DaemonLaunchDescriptor.SCHEMA_VERSION`, which lives in",
+    "the contracts checkout; a site that forwards it (`= DaemonLaunchDescriptor.SCHEMA_VERSION`) is",
+    "followed through `constantRegistries` and cannot disagree. The remaining literal mirrors are",
+    "Kotlin and could forward it the same way, since `:render-session-subprocess`, `:render-host` and",
+    "`:cli` all resolve `daemon-protocol`. Until then they are mirrors, and mirrors need a gate rather",
+    "than a comment asking a human to remember.",
     "",
     "readerOnlyFields: a field a reader declares that the plugin's writer never emits. Each must",
-    "carry a Kotlin default, because a plugin-written descriptor will",
-    "not contain it. The check enforces that.",
+    "carry a Kotlin default, because a plugin-written descriptor will not contain it. The check",
+    "enforces that. Empty since the writer became the contracts type the reader is (contracts",
+    "3.28.0): `jailCommand` and `hardTtlSeconds` are now declared, and written as their defaults, by",
+    "the plugin too.",
     "",
     "writerOnlyFields: a field the writer emits that a reader does not declare. Safe only while",
     "that reader tolerates unknown keys, which the check verifies separately against the JVM",
-    "reader's `Json { ignoreUnknownKeys = true }`.",
+    "reader's `Json { ignoreUnknownKeys = true }`. Empty since contracts 3.28.0 declared `btaCompile`.",
     "",
     "mirroredConstants: string constants carried inside the descriptor that another module",
     "re-declares privately. Same hazard as the schema version, one level down.",
@@ -60,16 +64,24 @@
     "contract rather than a formatting preference.",
     "",
     "wireFingerprint.history maps schema version -> shape digest, and entries are immutable. Changing",
-    "the shape means adding a version, never editing the digest recorded for an existing one.",
+    "the shape means adding a version, never editing the digest recorded for an existing one. The one",
+    "exception is a change invisible to every released reader, decided deliberately and recorded in",
+    "`wireFingerprint.amendments` with its reason; the check fails a digest that moved without one.",
     "",
-    "mirroredConstants and constantRegistries are empty since compose-ai-tools#5336: the one mirror registered here (`SANDBOX_COUNT_PROP`, re-declared by the Android daemon's `DaemonMain.kt` and `SandboxProcessPool.kt`) and the `DaemonProperties.Names` registry it read moved to yschimke/compose-preview-daemon with the daemon. That repository's copy of this gate is where they are checked now; a mirror that reappears in THIS tree is registered here again."
+    "mirroredConstants is empty since compose-ai-tools#5336: the one mirror registered here (`SANDBOX_COUNT_PROP`, re-declared by the Android daemon's `DaemonMain.kt` and `SandboxProcessPool.kt`) and the `DaemonProperties.Names` registry it read moved to yschimke/compose-preview-daemon with the daemon. That repository's copy of this gate is where they are checked now; a mirror that reappears in THIS tree is registered here again. constantRegistries holds one entry since contracts 3.28.0: `DaemonLaunchDescriptor`, through which the plugin's deprecated `DAEMON_DESCRIPTOR_SCHEMA_VERSION` forwards, and the builder stamps, the writer's `SCHEMA_VERSION`."
   ],
   "schemaVersionSites": [
     {
+      "file": "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
+      "symbol": "SCHEMA_VERSION",
+      "role": "writer",
+      "why": "The source of truth, declared with the shape it versions in compose-preview-contracts (`DaemonLaunchDescriptor.SCHEMA_VERSION`, contracts 3.28.0). `DaemonLaunchBuilder.newDescriptorBuilder` stamps it into every descriptor the plugin and the non-Gradle builders write, and it participates in `DaemonBootstrapTask`'s up-to-date fingerprint. Resolved from the contracts checkout; skipped without one."
+    },
+    {
       "file": "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt",
       "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
-      "role": "writer",
-      "why": "The source of truth. `DaemonLaunchBuilder` stamps it into every descriptor it writes, and it participates in `DaemonBootstrapTask`'s up-to-date fingerprint."
+      "role": "deprecated facade",
+      "why": "The plugin's former source of truth, kept as a deprecated `const` for source and binary consumers (e.g. compose-ai-contrib) until a major release, per docs/VERSIONING.md \u00a7 5. It forwards `DaemonLaunchDescriptor.SCHEMA_VERSION` rather than re-typing the number, so it cannot drift; registered because the name scan finds it, and followed through `constantRegistries`."
     },
     {
       "file": "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt",
@@ -91,31 +103,17 @@
     }
   ],
   "readerOnlyFields": {
-    "jvm": {
-      "jailCommand": {
-        "writtenBy": "the CLI's serve path (ServeBundleDaemon.kt, ServeCommand.kt) via DaemonLaunchDescriptor.jailed()",
-        "why": "The playground sandbox launches the daemon JVM behind an argv prefix. The Gradle plugin has no sandbox and never writes this; :daemon-client reads it when spawning. Defaults to an empty list, so a plugin-written descriptor parses unchanged."
-      },
-      "hardTtlSeconds": {
-        "writtenBy": "the CLI's serve path (ServeBundleDaemon.kt, ServeCommand.kt) via DaemonLaunchDescriptor.jailed()",
-        "why": "Wall-clock deadline after which the spawner force-kills a sandboxed daemon. Same sandbox-only origin as jailCommand; null by default."
-      }
-    }
+    "jvm": {}
   },
-  "writerOnlyFields": {
-    "btaCompile": {
-      "invisibleTo": [
-        "jvm"
-      ],
-      "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block \u2014 so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
-    }
+  "writerOnlyFields": {},
+  "constantRegistries": {
+    "DaemonLaunchDescriptor": "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
   },
-  "constantRegistries": {},
   "mirroredConstants": {},
   "versionStampAliases": {
     "schemaVersion": {
       "file": "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt",
-      "why": "`DaemonBootstrapTask.schemaVersion`, an `@Input` property whose getter returns DAEMON_DESCRIPTOR_SCHEMA_VERSION. The indirection is deliberate: it puts the version into the task's up-to-date fingerprint so a bump re-runs the task. Scoped to this file \u2014 a bare name would let any writer's local `schemaVersion` through."
+      "why": "`DaemonBootstrapTask.schemaVersion`, an `@Input` property whose getter returns `DaemonLaunchDescriptor.SCHEMA_VERSION`. The indirection is deliberate: it puts the version into the task's up-to-date fingerprint so a bump re-runs the task. Scoped to this file \u2014 a bare name would let any writer's local `schemaVersion` through."
     }
   },
   "rawKeyReaders": {
@@ -131,9 +129,17 @@
   },
   "wireFingerprint": {
     "history": {
-      "2": "61a2ff3d4f32b16b"
+      "2": "76fb350c90d8d572"
     },
-    "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one."
+    "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds, until the writer became the contracts type that declares them). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one.",
+    "amendments": [
+      {
+        "version": "2",
+        "from": "61a2ff3d4f32b16b",
+        "to": "76fb350c90d8d572",
+        "why": "The writer moved from the plugin's own `DaemonClasspathDescriptor` to the contracts' `DaemonLaunchDescriptor` (contracts 3.28.0), so the digest is now taken from the one declaration every reader shares. No key was renamed, retyped or removed. Two things moved, and neither is visible to a released v2 reader: (1) `btaCompile` is declared after `jailCommand` / `hardTtlSeconds` rather than before them, so the plugin's JSON lists it later \u2014 every reader looks keys up by name; (2) `javaLauncher` carries a `= null` default in the contracts type, so a reader now tolerates its absence \u2014 the writer still emits it explicitly (`explicitNulls = true`). The plugin's descriptor also gains `\"jailCommand\": []` and `\"hardTtlSeconds\": null`, which serve-written v2 descriptors already carried and every released reader already accepted: the JVM reader declares both with defaults, and the VS Code reader checks only `schemaVersion`."
+      }
+    ]
   },
   "writerEncoders": {
     "declaredBy": {

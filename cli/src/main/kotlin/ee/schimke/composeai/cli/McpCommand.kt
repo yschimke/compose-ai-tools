@@ -1069,7 +1069,7 @@ internal class McpCommand(
   }
 }
 
-// Must equal DAEMON_DESCRIPTOR_SCHEMA_VERSION in DaemonClasspathDescriptor.kt;
+// Must equal the contracts' DaemonLaunchDescriptor.SCHEMA_VERSION, which the plugin stamps;
 // `checkDaemonLaunchSchema` enforces it.
 internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 

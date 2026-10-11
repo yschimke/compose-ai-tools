@@ -1,7 +1,7 @@
 package ee.schimke.composeai.plugin.daemon
 
 import com.google.common.truth.Truth.assertThat
-import ee.schimke.composeai.daemonlaunch.*
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.api.Project
@@ -43,10 +43,10 @@ class DaemonBootstrapTaskTest {
       project.tasks.register("bootstrapSchema", DaemonBootstrapTask::class.java) {
         baseInputs(outFile)
       }
-    assertThat(task.get().schemaVersion).isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+    assertThat(task.get().schemaVersion).isEqualTo(DaemonLaunchDescriptor.SCHEMA_VERSION)
     task.get().emit()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
-    assertThat(descriptor.schemaVersion).isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
+    assertThat(descriptor.schemaVersion).isEqualTo(DaemonLaunchDescriptor.SCHEMA_VERSION)
   }
 
   @Test
@@ -137,9 +137,9 @@ class DaemonBootstrapTaskTest {
     task.get().emit()
 
     assertThat(outFile.exists()).isTrue()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
 
-    assertThat(descriptor.schemaVersion).isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+    assertThat(descriptor.schemaVersion).isEqualTo(DaemonLaunchDescriptor.SCHEMA_VERSION)
     assertThat(descriptor.modulePath).isEqualTo(":samples:fake")
     assertThat(descriptor.variant).isEqualTo("debug")
     assertThat(descriptor.enabled).isFalse()
@@ -183,7 +183,7 @@ class DaemonBootstrapTaskTest {
 
     task.get().emit()
 
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     assertThat(descriptor.systemProperties).containsKey("composeai.daemon.userClassDirs")
     assertThat(descriptor.systemProperties["composeai.daemon.userClassDirs"])
       .contains("/abs/build/intermediates/built_in_kotlinc/debug/classes")
@@ -225,7 +225,7 @@ class DaemonBootstrapTaskTest {
 
     task.get().emit()
 
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     assertThat(descriptor.systemProperties).containsKey("composeai.daemon.cheapSignalFiles")
     val emitted = descriptor.systemProperties["composeai.daemon.cheapSignalFiles"] ?: ""
     cheapPaths.forEach { assertThat(emitted).contains(it) }
@@ -256,7 +256,7 @@ class DaemonBootstrapTaskTest {
 
     task.get().emit()
 
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     assertThat(descriptor.systemProperties).containsKey("composeai.daemon.previewsJsonPath")
     assertThat(descriptor.systemProperties["composeai.daemon.previewsJsonPath"])
       .isEqualTo(previewsJsonAbs)
@@ -285,7 +285,7 @@ class DaemonBootstrapTaskTest {
 
     task.get().emit()
 
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     assertThat(descriptor.enabled).isTrue()
     // No launcher: null, not "". VS Code treats missing/null as "fall back to extension JDK
     // detection".
@@ -305,7 +305,7 @@ class DaemonBootstrapTaskTest {
         // unset.
       }
     task.get().emit()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     assertThat(descriptor.btaCompile).isNull()
   }
 
@@ -332,7 +332,7 @@ class DaemonBootstrapTaskTest {
         // unset, meaning eligible.
       }
     task.get().emit()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     val bta = descriptor.btaCompile
     assertThat(bta).isNotNull()
     assertThat(bta!!.implClasspath.single()).endsWith("kotlin-build-tools-impl-2.3.21.jar")
@@ -368,10 +368,10 @@ class DaemonBootstrapTaskTest {
         previewsManifest.set(manifestFile)
       }
     task.get().emit()
-    val first = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val first = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     manifestFile.writeText("{\"previews\":[{\"id\":\"app.Foo\"}]}")
     task.get().emit()
-    val second = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val second = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     // The path is unchanged; what matters is that `emit()` re-ran (bumping the file's mtime, which
     // the extension watches) because the manifest is an `@InputFile`.
     assertThat(second.manifestPath).isEqualTo(first.manifestPath)
@@ -392,7 +392,7 @@ class DaemonBootstrapTaskTest {
         btaIneligibilityReason.set("com.google.devtools.ksp plugin applied")
       }
     task.get().emit()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val descriptor = json.decodeFromString<DaemonLaunchDescriptor>(outFile.readText())
     val bta = descriptor.btaCompile
     assertThat(bta).isNotNull()
     assertThat(bta!!.ineligibilityReason).isEqualTo("com.google.devtools.ksp plugin applied")

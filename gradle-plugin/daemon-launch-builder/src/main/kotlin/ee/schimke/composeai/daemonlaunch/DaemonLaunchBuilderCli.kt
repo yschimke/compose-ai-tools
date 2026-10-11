@@ -4,9 +4,9 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * CLI over [DaemonLaunchBuilder.build] for non-Gradle build systems (Bazel, Amper). The published
- * JAR is slim, so run it with the caller-resolved runtime closure; `java -jar` fails with
- * `NoClassDefFoundError` (see `docs/NON_GRADLE_INTEGRATION.md`):
+ * CLI over [DaemonLaunchBuilder.newDescriptorBuilder] for non-Gradle build systems (Bazel, Amper).
+ * The published JAR is slim, so run it with the caller-resolved runtime closure; `java -jar` fails
+ * with `NoClassDefFoundError` (see `docs/NON_GRADLE_INTEGRATION.md`):
  * ```
  * java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli \
  *   --module-path <path> \
@@ -41,18 +41,19 @@ public object DaemonLaunchBuilderCli {
       }
 
     val descriptor =
-      DaemonLaunchBuilder.build(
-        modulePath = parsed.modulePath,
-        variant = parsed.variant,
-        mainClass = parsed.mainClass,
-        classpath = parsed.classpath,
-        jvmArgs = parsed.jvmArgs,
-        systemProperties = parsed.systemProperties,
-        workingDirectory = parsed.workingDirectory,
-        manifestPath = parsed.manifestPath,
-        enabled = parsed.enabled,
-        javaLauncher = parsed.javaLauncher,
-      )
+      DaemonLaunchBuilder.newDescriptorBuilder(
+          modulePath = parsed.modulePath,
+          variant = parsed.variant,
+          mainClass = parsed.mainClass,
+          classpath = parsed.classpath,
+          jvmArgs = parsed.jvmArgs,
+          systemProperties = parsed.systemProperties,
+          workingDirectory = parsed.workingDirectory,
+          manifestPath = parsed.manifestPath,
+          enabled = parsed.enabled,
+        )
+        .also { it.javaLauncher = parsed.javaLauncher }
+        .build()
 
     parsed.outFile.parentFile?.mkdirs()
     parsed.outFile.writeText(DaemonLaunchBuilder.encode(descriptor))
