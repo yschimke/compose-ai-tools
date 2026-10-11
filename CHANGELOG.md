@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.48.0](https://github.com/yschimke/compose-ai-tools/compare/v2.47.0...v2.48.0) (2026-10-11)
+
+
+### Features
+
+* **apply:** PR-scoped guideline result cache, running spend total and a re-run gate ([#5859](https://github.com/yschimke/compose-ai-tools/issues/5859)) ([ee5ca8f](https://github.com/yschimke/compose-ai-tools/commit/ee5ca8fe64f0627a00f7fdae48dceacc7db4acf9))
+* **catalog:** declare code.locals and code.scopes in the policy schema, and a list item's key hole ([#5858](https://github.com/yschimke/compose-ai-tools/issues/5858)) ([22df77d](https://github.com/yschimke/compose-ai-tools/commit/22df77dd91721d92feed1f07ae12ab5956198bd1))
+
+
+### Bug Fixes
+
+* **apply:** keep the guidelines ledger through truncation and read and write one bot comment ([#5860](https://github.com/yschimke/compose-ai-tools/issues/5860)) ([353ce04](https://github.com/yschimke/compose-ai-tools/commit/353ce040e76c5b24e3b9916feb54758776cc80d9))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.7.1 ([#5853](https://github.com/yschimke/compose-ai-tools/issues/5853)) ([1613792](https://github.com/yschimke/compose-ai-tools/commit/1613792ad3e5a61c0575cdea441734f989237216))
+* skip the UID audit only when every failed request is a 402 ([#5855](https://github.com/yschimke/compose-ai-tools/issues/5855)) ([35a1943](https://github.com/yschimke/compose-ai-tools/commit/35a19439718d4ec13115c65b7921646a3fba2796))
+* skip the UID audit with a warning when OpenRouter is out of credit ([#5854](https://github.com/yschimke/compose-ai-tools/issues/5854)) ([599f65b](https://github.com/yschimke/compose-ai-tools/commit/599f65be251805843694e7042c2d0d841f166534))
+
 ## [2.47.0](https://github.com/yschimke/compose-ai-tools/compare/v2.46.0...v2.47.0) (2026-10-11)
 
 
