@@ -60,6 +60,18 @@ class BundleSigningInflateBudgetTest {
   }
 
   @Test
+  fun `a bomb hidden in signatures json or a directory entry is still charged to the digest`() {
+    val inSignatures = zip {
+      entry("previews/probe.png", 8)
+      entry(BundleSigning.SIGNATURES_PATH, BundleSigning.MAX_UNCOMPRESSED_BYTES + 1)
+    }
+    assertFailsWith<ZipException> { BundleSigning.canonicalDigest(inSignatures) }
+    val inDirectory = zip { entry("previews/", BundleSigning.MAX_UNCOMPRESSED_BYTES + 1) }
+    assertFailsWith<ZipException> { BundleSigning.canonicalDigest(inDirectory) }
+    assertFailsWith<ZipException> { BundleSigning.readSignatures(inDirectory) }
+  }
+
+  @Test
   fun `too many entries are rejected`() {
     val many = zip { repeat(BundleSigning.MAX_ENTRIES + 1) { entry("e/$it", 0) } }
     assertFailsWith<ZipException> { BundleSigning.canonicalDigest(many) }
