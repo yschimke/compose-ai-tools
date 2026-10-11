@@ -143,8 +143,12 @@ jobs:
           cat _uid_audit/audit.log >> "$GITHUB_STEP_SUMMARY"
           # An incomplete run whose requests OpenRouter refused with 402 (no credit, a key limit, or
           # the in-flight budget the balance sets) says nothing about the designs: skip with a
-          # warning instead of failing the check. Any other incomplete run still fails.
-          if [ "$result" -eq 2 ] && grep -Eq '^ *problem: .*(answered 402|code 402)' _uid_audit/audit.log; then
+          # warning instead of failing the check. Only when every failed request is a 402 and no
+          # evidence fetch failed; a run mixing in any other failure still fails.
+          failed=$(grep -E '^ *problem: the (model answered|request got no answer)' _uid_audit/audit.log || true)
+          if [ "$result" -eq 2 ] && [ -n "$failed" ] \
+            && ! grep -vEq '(answered 402|code 402)' <<<"$failed" \
+            && ! grep -q 'evidence fetch(es) failed' _uid_audit/audit.log; then
             echo '{"status":"skipped","reason":"OpenRouter refused requests for lack of credit (402)","exitCode":2}' > _uid_audit/audit-status.json
             echo '::warning::UI audit skipped: OpenRouter refused requests for lack of credit (402). Top up or raise the OPENROUTER_API_KEY limit, then re-run.'
             exit 0
