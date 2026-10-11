@@ -776,20 +776,49 @@ public object PreviewGuidelineRequests {
     OTHERS_TOKENS + Math.ceil(rules * EXPECTED_LISTED_SHARE * VERDICT_TOKENS).toInt()
 
   /**
-   * The `max_tokens` a request for [request] is sent with: every rule asked of every subject listed
-   * at [VERDICT_TOKENS] (the reply's worst case, an over-estimate where subjects are asked
-   * different rules), an `others` statement each, and [REPLY_HEADROOM_TOKENS] for a reasoning
-   * model's thinking, which most providers count against the same limit. A reply that runs away —
-   * repeating itself, or writing far past what was asked — is cut there instead of holding its
-   * batch until the request timeout; a reply cut short is unreadable, and is asked again and then
-   * split like any other.
+   * The `max_tokens` a request for [request] is sent with at the default reasoning effort
+   * ([OpenRouterClient.DEFAULT_REASONING_EFFORT]); see the overload taking one.
    */
-  public fun replyTokenLimit(request: GuidelineRequestV1): Int {
+  public fun replyTokenLimit(request: GuidelineRequestV1): Int =
+    replyTokenLimit(request, OpenRouterClient.DEFAULT_REASONING_EFFORT)
+
+  /**
+   * The `max_tokens` a request for [request] is sent with at [reasoningEffort]: every rule asked of
+   * every subject listed at [VERDICT_TOKENS] (the reply's worst case, an over-estimate where
+   * subjects are asked different rules), an `others` statement each, and [reasoningTokenAllowance]
+   * for the model's thinking. OpenRouter counts reasoning against the same limit as the visible
+   * reply ("applies to reasoning and visible output combined"), so a limit sized for the reply
+   * alone is one a reasoning model can spend entirely on thinking and answer nothing. A reply that
+   * runs away — repeating itself, or writing far past what was asked — is still cut there instead
+   * of holding its batch until the request timeout.
+   */
+  public fun replyTokenLimit(request: GuidelineRequestV1, reasoningEffort: String?): Int {
     val subjects = request.subjects.size.coerceAtLeast(1)
     return subjects * request.rules.asked.size * VERDICT_TOKENS +
       (subjects + 1) * OTHERS_TOKENS +
-      REPLY_HEADROOM_TOKENS
+      reasoningTokenAllowance(reasoningEffort)
   }
+
+  /**
+   * The `max_tokens` allowed for thinking on top of the reply at [reasoningEffort]. Effort is not a
+   * token budget for every model: OpenRouter turns it into a share of `max_tokens` for models
+   * budgeted that way (`low` about 20%, `high` about 80%), but passes it straight to a model that
+   * takes an effort of its own, as [OpenRouterClient.DEFAULT_MODEL] does, which then thinks as long
+   * as it likes. So this is a generous allowance per level rather than a cap, at least a quarter of
+   * the whole for `low` and below, so a share-budgeted model's thinking still leaves the reply its
+   * room. Unused tokens cost nothing. Null (no `reasoning` sent, the model's own default) keeps
+   * [REPLY_HEADROOM_TOKENS], the allowance before the effort was set.
+   */
+  public fun reasoningTokenAllowance(reasoningEffort: String?): Int =
+    when (reasoningEffort) {
+      null -> REPLY_HEADROOM_TOKENS
+      OpenRouterClient.REASONING_OFF -> 1_024
+      "minimal" -> 4_096
+      "low" -> 16_384
+      "medium" -> 32_768
+      "high" -> 65_536
+      else -> 98_304
+    }
 
   /**
    * One listed verdict's tokens: `subjectId`, `ruleId`, `verdict`, `confidence`, a one-sentence
@@ -808,7 +837,10 @@ public object PreviewGuidelineRequests {
    */
   public const val EXPECTED_LISTED_SHARE: Double = 0.25
 
-  /** The `max_tokens` allowance on top of the reply itself, for a reasoning model's thinking. */
+  /**
+   * The `max_tokens` allowance on top of the reply itself when no reasoning effort is sent
+   * ([reasoningTokenAllowance] of null).
+   */
   public const val REPLY_HEADROOM_TOKENS: Int = 8_192
 
   /** An `others` statement: every rule not listed for the subject passes. */

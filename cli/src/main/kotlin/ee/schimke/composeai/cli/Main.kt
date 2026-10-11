@@ -203,6 +203,8 @@ private fun printFullUsage() {
                        time), --idle-timeout <seconds> (a stream with no token, default
                        120), --no-stream, --provider-sort price|throughput|latency,
                        --preferred-max-latency <s>, --preferred-min-throughput <tok/s>,
+                       --reasoning-effort none|minimal|low|medium|high|xhigh|max|default
+                       (default low; default sends none, the model's own),
                        --no-triage, --annotate, --guidelines <file|url>,
                        --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
                        decides structural rules from text only, starting minimal and
