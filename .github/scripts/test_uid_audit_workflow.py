@@ -65,7 +65,7 @@ class AuditWorkflowTest(unittest.TestCase):
         text = WORKFLOW.read_text()
         self.assertIn(f'cli={version}\\n', text)
         # Parallel requests and bounded reasoning keep a 100-capture plan inside the job limit.
-        self.assertIn('--concurrency 4 --reasoning-effort low', text)
+        self.assertIn('--concurrency 2 --reasoning-effort low', text)
         self.assertLessEqual(self.job['timeout-minutes'], 20)
 
     def test_audit_artifact_can_be_replaced_on_retry(self):

@@ -54,7 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     # CLI 2.45.0 runs model requests in parallel (#5805) and sets the model's reasoning effort
     # (#5815), so a 100-capture plan no longer needs the 45-minute stopgap 2.40.0's one-at-a-time
-    # requests did.
+    # requests did. Two requests at a time, not four: the first 2.45.0 audits at four left previews
+    # unchecked (exit 2) after failed model requests, in about ten minutes.
     timeout-minutes: 20
     steps:
       # Only trusted default-branch code runs in the job holding the model key.
@@ -138,7 +139,7 @@ jobs:
             exit 1
           fi
           set +e
-          compose-preview guidelines --previews-json _uid_audit/previews.json --renders-dir _uid_audit --guidelines _uid_audit/ui-builder.guidelines.json --surface screen --max-cost 0.25 --concurrency 4 --reasoning-effort low --annotate > _uid_audit/audit.log 2>&1
+          compose-preview guidelines --previews-json _uid_audit/previews.json --renders-dir _uid_audit --guidelines _uid_audit/ui-builder.guidelines.json --surface screen --max-cost 0.25 --concurrency 2 --reasoning-effort low --annotate > _uid_audit/audit.log 2>&1
           result=$?
           printf '{"exitCode":%s}\n' "$result" > _uid_audit/audit-status.json
           cat _uid_audit/audit.log >> "$GITHUB_STEP_SUMMARY"
