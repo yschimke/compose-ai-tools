@@ -78,6 +78,7 @@ class TypedRealRecordAdapterTest {
     own: ComponentRecord = button,
     variantRecord: ComponentRecord = tonal,
     private val colorsParameter: String = "colors",
+    private val colorsArgument: String = "containerColor",
   ) : TypedComponentAdapter<ButtonModel>("wear-m3/button", own) {
     val variant =
       wireProperty(ButtonModel::variant, AdapterValueCodecs.String, "", bindable = false)
@@ -96,9 +97,8 @@ class TypedRealRecordAdapterTest {
         "enabled" to from(enabled, omitWhen = JsonPrimitive(true)),
         colorsParameter to
           call(
-            "androidx.wear.compose.material3.ButtonDefaults.$factory",
-            BUTTON_COLORS,
-            "containerColor" to from(containerColor),
+            FACTORIES.named("androidx.wear.compose.material3.ButtonDefaults.$factory"),
+            colorsArgument to from(containerColor),
           ),
       )
 
@@ -174,6 +174,7 @@ class TypedRealRecordAdapterTest {
         UiBuilderCatalogs.CoverSheet("wear-m3", "Wear"),
         UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear").build(),
         listOf(adapter),
+        FACTORIES,
       )
     assertThat(pair.record.components.map { it.symbol.name })
       .containsExactly("Button", "FilledTonalButton")
@@ -363,6 +364,60 @@ class TypedRealRecordAdapterTest {
   }
 
   @Test
+  fun `a factory argument no overload declares is reported`() {
+    val problems = WearButtonAdapter(colorsArgument = "containerColour").validateAgainst(button)
+    assertThat(problems.joinToString("\n"))
+      .contains("no overload of androidx.wear.compose.material3.ButtonDefaults.buttonColors")
+    assertThat(problems.joinToString("\n")).contains("no parameter containerColour")
+  }
+
+  @Test
+  fun `a factory argument of the wrong type is reported`() {
+    val problems = WearButtonAdapter(colorsArgument = "contentColor").validateAgainst(button)
+    // `contentColor` is a Color too, so this one is valid; a Boolean into it is not.
+    assertThat(problems).isEmpty()
+    val adapter =
+      object : TypedComponentAdapter<ButtonModel>("wear-m3/button", button) {
+        val enabled =
+          property(ButtonModel::enabled, AdapterValueCodecs.Boolean, true, bindable = false)
+        val content = slot("content", required = true)
+
+        init {
+          exportAs(
+            target(
+              button,
+              mapOf(
+                "enabled" to from(enabled),
+                "colors" to
+                  call(
+                    FACTORIES.named("androidx.wear.compose.material3.ButtonDefaults.buttonColors"),
+                    "containerColor" to from(enabled),
+                  ),
+              ),
+              slots = SLOTS,
+            )
+          )
+        }
+      }
+    assertThat(adapter.validateAgainst(button).joinToString("\n"))
+      .contains("containerColor takes androidx.compose.ui.graphics.Color, written kotlin.Boolean")
+  }
+
+  @Test
+  fun `generation refuses a factory discovery did not return`() {
+    val error = runCatching {
+      TypedAdapterCatalog.generate(
+        ComponentRecordFile.Builder("catalog", "debug", listOf(button, tonal)).build(),
+        UiBuilderCatalogs.CoverSheet("wear-m3", "Wear"),
+        UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear").build(),
+        listOf(WearButtonAdapter()),
+      )
+    }
+      .exceptionOrNull()
+    assertThat(error?.message).contains("absent from discovery")
+  }
+
+  @Test
   fun `a colour decodes to what the renderer resolves`() {
     val codec = AdapterValueCodecs.color(wearColor)
     assertThat(codec.decode(JsonPrimitive("#336699"))).isEqualTo(WireColor.Argb(0xFF336699))
@@ -372,6 +427,27 @@ class TypedRealRecordAdapterTest {
 
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
+
+    /** As `TypedAdapterDiscovery.discoverFactories` reads Wear's `ButtonDefaults`. */
+    val FACTORIES =
+      listOf("buttonColors", "filledTonalButtonColors").flatMap { name ->
+        val fqn = "androidx.wear.compose.material3.ButtonDefaults.$name"
+        listOf(
+          FactorySignature(fqn, BUTTON_COLORS, emptyList()),
+          FactorySignature(
+            fqn,
+            BUTTON_COLORS,
+            listOf("containerColor", "contentColor").map {
+              TargetParameter.Builder(it, "Color")
+                .also { b ->
+                  b.typeFqn = "androidx.compose.ui.graphics.Color"
+                  b.hasDefault = true
+                }
+                .build()
+            },
+          ),
+        )
+      }
     val SLOTS = mapOf("content" to "label")
     val EVENTS = mapOf("click" to "onClick")
   }

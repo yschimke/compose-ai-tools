@@ -89,9 +89,14 @@ exactly this; leaves inside them are projected records.
 Status: 1 is compose-preview-contracts#170 (3.29.0). 2 is in: `wireProperty`, `exportAs`,
 `target`/`from`/`call`, the `Float`/`color`/`enumOf` codecs, `WireColor`, projection validation
 in `validateAgainst`, variant records shipped excluded from the shelf, and `ExportProjectionJson`
-for the published spelling. Still to do: `policy()` writing `exportProjection` once this repository
-is on contracts 3.29.0, and discovering `…Defaults` factories so a factory's arguments are checked
-as well as its return type.
+for the published spelling. `policy()` publishes `exportProjection` (contracts 3.29.0).
+
+Factories are discovered, not named: `TypedAdapterDiscovery.discoverFactories` reads every overload
+of a `…Defaults` member from metadata as a `FactorySignature` (parameters, defaults, declared return
+type), and `call(overloads, …)` takes those rather than strings. Validation resolves each call the
+way Kotlin resolves named arguments — some overload must declare every argument written, with the
+written type, and default every one left out — and `TypedAdapterCatalog.generate` refuses a factory
+its caller did not freshly discover, as it refuses a stale component record.
 
 **compose-ui-builder**
 

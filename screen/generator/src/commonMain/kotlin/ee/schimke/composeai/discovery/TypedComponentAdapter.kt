@@ -298,6 +298,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   private val declaredChanges = mutableListOf<AdapterStateChange<P, *>>()
   private var declaredProjection: ExportProjection? = null
   private val projectionRecords = mutableListOf<ComponentRecord>()
+  private val projectionFactories = mutableListOf<FactorySignature>()
 
   /** How a design using this component is exported onto real records, when declared. */
   val projection: ExportProjection?
@@ -400,12 +401,32 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       omitWhen,
     )
 
-  /** A nested factory call of declared properties, written when any argument is. */
+  /**
+   * A nested factory call of declared properties, written when any argument is. [overloads] are the
+   * factory's discovered signatures (`TypedAdapterDiscovery.discoverFactories`, narrowed with
+   * [named]), so validation checks every argument by name and type against a real overload and the
+   * call writes the factory's declared return type.
+   */
   protected fun call(
-    callableFqn: String,
-    typeFqn: String,
+    overloads: Collection<FactorySignature>,
     vararg arguments: Pair<String, ExportProjection.Value>,
-  ) = ExportProjection.Value.Call(callableFqn, typeFqn, arguments.toMap())
+  ): ExportProjection.Value.Call {
+    require(overloads.isNotEmpty()) { "$id: a factory call needs its discovered signatures" }
+    val callable =
+      requireNotNull(overloads.map { it.callableFqn }.distinct().singleOrNull()) {
+        "$id: overloads of more than one factory: ${overloads.map { it.callableFqn }.distinct()}"
+      }
+    val returns =
+      requireNotNull(overloads.map { it.returnTypeFqn }.distinct().singleOrNull()) {
+        "$id: $callable overloads return different types"
+      }
+    projectionFactories += overloads.filterNot { it in projectionFactories }
+    return ExportProjection.Value.Call(callable, returns, arguments.toMap())
+  }
+
+  /** Every discovered factory this adapter's projection calls. */
+  val factories: List<FactorySignature>
+    get() = projectionFactories.toList()
 
   /**
    * Export this component onto real records: [variant] (a declared property) picks among [targets];
@@ -580,12 +601,27 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           else -> fixed.typeFqn
         }
       is ExportProjection.Value.Call -> {
-        for ((name, argument) in value.arguments) writtenType(
-          argument,
-          properties,
-          "$where.$name",
-          problems,
-        )
+        val written =
+          value.arguments.mapValues { (name, argument) ->
+            writtenType(argument, properties, "$where.$name", problems)
+          }
+        val overloads = projectionFactories.filter { it.callableFqn == value.callableFqn }
+        if (overloads.isEmpty()) {
+          problems +=
+            "$where: factory ${value.callableFqn} was not discovered; call it through its FactorySignature"
+        } else {
+          if (overloads.none { it.returnTypeFqn == value.typeFqn })
+            problems +=
+              "$where: ${value.callableFqn} returns ${overloads.first().returnTypeFqn}, not ${value.typeFqn}"
+          val mismatches = overloads.map { overloadMismatch(it, written) }
+          if (mismatches.none { it == null }) {
+            problems +=
+              "$where: no overload of ${value.callableFqn} takes " +
+                written.keys.sorted().joinToString(", ", "(", ")") +
+                ": " +
+                mismatches.filterNotNull().joinToString("; ")
+          }
+        }
         value.typeFqn
       }
       is ExportProjection.Value.Property -> {
@@ -608,6 +644,30 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           }
       }
     }
+
+  /**
+   * Why [overload] cannot take [written] (argument name to the type written, null when unknown), or
+   * null when it can: Kotlin resolves named arguments against the overload whose parameters they
+   * name and whose other parameters are all defaulted.
+   */
+  private fun overloadMismatch(overload: FactorySignature, written: Map<String, String?>): String? {
+    val parameters = overload.parameters.associateBy { it.name }
+    val reasons = buildList {
+      for ((name, type) in written) {
+        val parameter = parameters[name]
+        when {
+          parameter == null -> add("no parameter $name")
+          type != null && parameter.typeFqn != null && type != parameter.typeFqn ->
+            add("$name takes ${parameter.typeFqn}, written $type")
+        }
+      }
+      for (parameter in overload.parameters) {
+        if (!parameter.hasDefault && parameter.name !in written)
+          add("required ${parameter.name} is not written")
+      }
+    }
+    return reasons.takeIf { it.isNotEmpty() }?.joinToString(", ")
+  }
 
   // Callback input classifiers are not qualified in the current discovery contract. Check exact
   // tokens (never erase arbitrary package substrings), structural function/receiver flags and the
@@ -682,6 +742,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     property.codec.encode(property.default)
 }
 
+/** The overloads of [callableFqn] among these discovered factories. */
+fun Collection<FactorySignature>.named(callableFqn: String): List<FactorySignature> = filter {
+  it.callableFqn == callableFqn
+}
+
 /** A portable pair, encoded using the existing serializers and consumed by existing builders. */
 class GeneratedAdapterCatalog
 internal constructor(val record: ComponentRecordFile, val catalog: UiBuilderCatalogFile)
@@ -700,6 +765,12 @@ object TypedAdapterCatalog {
     cover: UiBuilderCatalogs.CoverSheet,
     policy: UiBuilderPolicyFile,
     adapters: List<TypedComponentAdapter<*>>,
+    /**
+     * Every factory the adapters' projections call, freshly discovered
+     * (`TypedAdapterDiscovery.discoverFactories`); an adapter built against other signatures is
+     * stale, exactly as a stale component record is.
+     */
+    factories: List<FactorySignature> = emptyList(),
   ): GeneratedAdapterCatalog {
     require(adapters.isNotEmpty()) { "declare at least one adapter" }
     require(adapters.map { it.id }.distinct().size == adapters.size) {
@@ -725,6 +796,11 @@ object TypedAdapterCatalog {
           }
         require(current == expected) {
           "${adapter.id}: adapter was built against a stale component record"
+        }
+      }
+      for (factory in adapter.factories) {
+        require(factory in factories) {
+          "${adapter.id}: factory ${factory.callableFqn} is absent from discovery, or stale"
         }
       }
       adapter.freeze()
