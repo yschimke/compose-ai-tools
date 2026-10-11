@@ -1568,8 +1568,8 @@ class ScreenGeneratorTest {
 
   private fun generateItem(
     item: SlotItem,
-    scope: ScreenValue = ScreenValue.ScopeRead(itemScope),
-    specValue: ScreenValue = ScreenValue.LocalRead("spec", spec),
+    scope: ScreenValue = ScreenValue.ScopeRead.Builder(itemScope).build(),
+    specValue: ScreenValue = ScreenValue.LocalRead.Builder("spec", spec).build(),
     locals: Map<String, String> = mapOf("spec" to spec),
   ) =
     ScreenGenerator.generate(
@@ -1597,7 +1597,7 @@ class ScreenGeneratorTest {
     assertThat((unattested as ScreenGenerator.Result.Refused).reasons.joinToString())
       .contains("reads its receiver as $itemScope, but it composes under no receiver")
 
-    val other = generateItem(attested, scope = ScreenValue.ScopeRead(columnScope))
+    val other = generateItem(attested, scope = ScreenValue.ScopeRead.Builder(columnScope).build())
     assertThat((other as ScreenGenerator.Result.Refused).reasons.joinToString())
       .contains("reads its receiver as $columnScope, but it composes under `$itemScope`")
   }
@@ -1618,8 +1618,8 @@ class ScreenGeneratorTest {
     val document =
       transformedItem(
           attested,
-          ScreenValue.ScopeRead(itemScope),
-          ScreenValue.LocalRead("spec", spec),
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
         )
         .copy(state = listOf(ScreenState("spec", "kotlin.Int", ScreenValue.Whole(0))))
     val refused =

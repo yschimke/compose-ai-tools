@@ -1826,7 +1826,10 @@ class UiBuilderCatalogsTest {
   fun `a projection reading the scope its role declares and a declared local is clean`() {
     val clean =
       projectionDiagnostics(
-        listedButton(ScreenValue.ScopeRead(itemScope), ScreenValue.LocalRead("spec", spec)),
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
         wearCode(),
       )
     assertThat(clean).isEmpty()
@@ -1836,7 +1839,10 @@ class UiBuilderCatalogsTest {
   fun `a scope read is reported unless its role's declared scope is exactly that one`() {
     val unattested =
       projectionDiagnostics(
-        listedButton(ScreenValue.ScopeRead(itemScope), ScreenValue.LocalRead("spec", spec)),
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
         wearCode(scopes = emptyMap()),
       )
     assertThat(unattested.map { it.code to it.subject })
@@ -1851,9 +1857,9 @@ class UiBuilderCatalogsTest {
     val outside =
       projectionDiagnostics(
         listedButton(
-          ScreenValue.ScopeRead(itemScope),
-          ScreenValue.LocalRead("spec", spec),
-          plain = ScreenValue.ScopeRead(itemScope),
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+          plain = ScreenValue.ScopeRead.Builder(itemScope).build(),
         ),
         wearCode(),
       )
@@ -1865,7 +1871,10 @@ class UiBuilderCatalogsTest {
   fun `a local read is reported unless code declares it at that type`() {
     val reported =
       projectionDiagnostics(
-        listedButton(ScreenValue.ScopeRead(itemScope), ScreenValue.LocalRead("spec", "app.Spec")),
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", "app.Spec").build(),
+        ),
         wearCode(),
       )
     assertThat(reported.map { it.code })
@@ -1877,7 +1886,10 @@ class UiBuilderCatalogsTest {
   fun `a scope for no node role and a local that is no identifier are reported`() {
     val reported =
       projectionDiagnostics(
-        listedButton(ScreenValue.ScopeRead(itemScope), ScreenValue.LocalRead("spec", spec)),
+        listedButton(
+          ScreenValue.ScopeRead.Builder(itemScope).build(),
+          ScreenValue.LocalRead.Builder("spec", spec).build(),
+        ),
         wearCode(scopes = mapOf("list-item" to itemScope, "previews" to itemScope))
           .newBuilder()
           .also { it.locals = mapOf("spec" to spec, "2spec" to spec) }
