@@ -568,7 +568,8 @@ class JevCheckerTest {
     val run = jev(model, host).run(guidelines, listOf(subject("good"), subject("bad")))
     assertThat(run.results.single { it.previewId == "good" }.pending).isFalse()
     assertThat(run.results.single { it.previewId == "bad" }.pending).isTrue()
-    assertThat(run.failedRequests).isEqualTo(1)
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
     assertThat(model.bodies.map { name(it) }).containsExactly("good")
   }
 
@@ -588,8 +589,10 @@ class JevCheckerTest {
         }
       )
     val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
-    // One batched fetch failed: one failed request, however many previews it was for.
-    assertThat(run.failedRequests).isEqualTo(1)
+    // One batched fetch failed: one evidence failure, however many previews it was for, and no
+    // model request is reported failed.
+    assertThat(run.failedEvidence).isEqualTo(1)
+    assertThat(run.failedRequests).isEqualTo(0)
     assertThat(run.problems.joinToString("\n"))
       .contains("the evidence host's fetch for 2 preview(s) failed: daemon gone (a, b)")
     val result = run.results.single { it.previewId == "a" }

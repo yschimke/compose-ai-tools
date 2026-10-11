@@ -129,6 +129,9 @@ internal class JevChecker(
 
     /** Its [failure] is a batch fetch's, counted once for the batch rather than per subject. */
     var fetchFailed = false
+
+    /** Its [failure] is the evidence host's, not a model request's. */
+    var evidenceFailed = false
     var subject: PreviewSubject = arrived
     val asked: List<GuidelineRuleV1> =
       guidelines.subjectRules(arrived.surface, arrived.profile, arrived.pictures.isNotEmpty())
@@ -297,6 +300,7 @@ internal class JevChecker(
 
     var capped = 0
     var failedRequests = 0
+    var failedEvidence = 0
     val asking = mutableMapOf<String, Int>()
     states.forEach { state ->
       val subject = state.subject
@@ -309,14 +313,22 @@ internal class JevChecker(
         }
         state.failure != null && !decided -> {
           // A failed batch fetch is counted once below, not once per preview it was for.
-          if (!state.fetchFailed) {
+          if (state.fetchFailed) {
+            // Counted once for its batch, below.
+          } else if (state.evidenceFailed) {
+            failedEvidence++
+            problems += "${subject.previewId}: ${state.failure}"
+          } else {
             failedRequests++
             problems += "${subject.previewId}: ${state.failure}"
           }
           results += pendingResult(guidelines, state.arrived)
         }
         else -> {
-          if (state.failure != null && !state.fetchFailed) {
+          if (state.failure != null && state.evidenceFailed && !state.fetchFailed) {
+            failedEvidence++
+            problems += "${subject.previewId}: ${state.failure} (in a follow-up round)"
+          } else if (state.failure != null && !state.fetchFailed) {
             failedRequests++
             problems += "${subject.previewId}: ${state.failure} (in a follow-up round)"
           }
@@ -363,8 +375,8 @@ internal class JevChecker(
       }
     }
 
-    failedRequests += fetchFailures.size
     problems += fetchFailures
+    failedEvidence += fetchFailures.size
     // Counted over every result, cached ones included: a run answered wholly from the cache still
     // says what the checker could not judge.
     val kinds = guidelines.rules.associate { it.id to it.kind }
@@ -413,6 +425,7 @@ internal class JevChecker(
           "not checked, or not followed up (\$${money(ledger.spent)} spent)"
     }
     return GuidelineRunResult(results, ledger.spent, ledger.requests, problems, failedRequests)
+      .also { it.failedEvidence = failedEvidence }
   }
 
   /**
@@ -454,6 +467,7 @@ internal class JevChecker(
         hit.forEach { state ->
           state.failure = "the evidence host's fetch failed: ${e.message}"
           state.fetchFailed = true
+          state.evidenceFailed = true
           if (state.rounds > 0) state.interrupted = true
         }
         fetchFailures +=
@@ -471,6 +485,7 @@ internal class JevChecker(
   private fun guarded(state: Asked, block: () -> Unit) {
     runCatching(block).onFailure {
       state.failure = "the evidence host failed: ${it.message}"
+      state.evidenceFailed = true
       if (state.rounds > 0) state.interrupted = true
     }
   }
