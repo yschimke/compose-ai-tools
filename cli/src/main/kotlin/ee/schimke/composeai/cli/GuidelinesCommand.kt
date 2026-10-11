@@ -9,6 +9,8 @@ import ee.schimke.composeai.guidelines.GuidelineCredentials
 import ee.schimke.composeai.guidelines.GuidelineEngine
 import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineModel
+import ee.schimke.composeai.guidelines.GuidelinePlan
+import ee.schimke.composeai.guidelines.GuidelinePrice
 import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRetry
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
@@ -17,6 +19,7 @@ import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
 import ee.schimke.composeai.guidelines.OpenAiCompatibleClient
 import ee.schimke.composeai.guidelines.OpenRouterClient
+import ee.schimke.composeai.guidelines.OpenRouterModels
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.PreviewNode
 import ee.schimke.composeai.guidelines.PreviewSubject
@@ -138,6 +141,29 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
   private var handoffHost: GuidelineEvidenceHost? = null
   private val triage: Boolean = "--no-triage" !in args
   private val annotate: Boolean = "--annotate" in args
+  /**
+   * `--estimate`: say what a run would ask and what it is predicted to cost
+   * ([GuidelineEngine.plan]), and stop. Asks no model, so it needs no key.
+   */
+  private val estimateOnly: Boolean = "--estimate" in args
+
+  /**
+   * What the answering model costs on OpenRouter, so a run predicts each request before asking it
+   * and the cap reserves that ([GuidelineRunOptions.price]); null on another backend or when the
+   * model list cannot be read, and the cap falls back to the dearest request so far.
+   */
+  private val price: GuidelinePrice? by lazy {
+    // The Jev checker caps its own requests, which a price does not predict.
+    if (backend != GuidelinesBackend.OPENROUTER || checker == GuidelineChecker.JEV) return@lazy null
+    // Not [reportModel]: that reads [runOptions], which reads this.
+    val answering =
+      GuidelineRunOptions(model = model).withChecker(checker ?: GuidelineChecker.VISION)
+    runCatching { GuidelinePrice.of(OpenRouterModels.fetch(), answering.answeringModel) }
+      .onFailure {
+        System.err.println("guidelines: no price to predict costs with (${it.message})")
+      }
+      .getOrNull()
+  }
   private val guidelinesLocation: String? = args.flagValue("--guidelines")
   private val surfaceOverride: String? = args.flagValue("--surface")
   private val profileOverride: String? = args.flagValue("--profile")
@@ -180,6 +206,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       // Who answered, beyond the model name: a verdict from one backend or endpoint never answers
       // for another that happens to share a --model.
       .withJudge(judge)
+      .withPrice(price)
 
   /** [GuidelineRunOptions.judge] for this run's backend; null for OpenRouter, as before. */
   private val judge: String?
@@ -264,9 +291,11 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           }
     }
     val client: GuidelineModel? =
-      when (backend) {
-        GuidelinesBackend.OPENROUTER -> openRouterClient()
-        GuidelinesBackend.OPENAI -> openAiClient()
+      when {
+        // A plan asks nothing, so it needs no key.
+        estimateOnly -> NoModel
+        backend == GuidelinesBackend.OPENROUTER -> openRouterClient()
+        backend == GuidelinesBackend.OPENAI -> openAiClient()
         else -> null
       }
     if (handoff) exitProcess(runHandoff(client!!))
@@ -355,6 +384,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
             },
         )
       val cache = GuidelineResultCache(buildDir.resolve("guidelines"))
+      if (estimateOnly) {
+        val rulesSource = guidelinesLocation ?: "${buildDir.path}/" + CatalogGuidelinesV1.FILE_NAME
+        printPlan(
+          module,
+          engine(client!!, cache, guidelines, rulesSource, host).plan(guidelines, subjects),
+        )
+        continue
+      }
       // Prompt mode: requests are written under the module for the agent, answers read back.
       val deferred =
         if (prompted) DeferredReplyModel(buildDir.resolve(REVIEW_DIR), model, rerunCommand())
@@ -651,6 +688,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       )
     handoffHost = inputs.host
     val outDir = File(rendersDir ?: previewsJson?.let { File(it).absoluteFile.parent } ?: ".")
+    if (estimateOnly) {
+      val cache = GuidelineResultCache(outDir.resolve("guidelines"))
+      printPlan(
+        "handoff",
+        engine(client, cache, guidelines, location).plan(guidelines, inputs.subjects),
+      )
+      return 0
+    }
     val run =
       engine(client, GuidelineResultCache(outDir.resolve("guidelines")), guidelines, location)
         .run(guidelines, inputs.subjects)
@@ -668,6 +713,30 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       incomplete = incomplete("handoff", run),
       failed = tripped(run.results, guidelines),
       buildOk = true,
+    )
+  }
+
+  /** `--estimate`'s answer for [module]: what a run would ask, and what it is predicted to cost. */
+  private fun printPlan(module: String, plan: GuidelinePlan) {
+    val cap = maxCost
+    val cost =
+      plan.predictedCostUsd?.let { predicted ->
+        ", predicted about $" +
+          "%.4f".format(predicted) +
+          (cap?.let { limit ->
+            val reached = plan.predictedChecked ?: plan.previews
+            if (reached >= plan.previews)
+              "; the $" + "%.2f".format(limit) + " cap covers all of them"
+            else "; the $" + "%.2f".format(limit) + " cap is expected to reach $reached of them"
+          } ?: "")
+      }
+        ?: if (checker == GuidelineChecker.JEV)
+          " (vision batching; the Jev checker asks per subject and predicts no cost)"
+        else ", no price to predict a cost with"
+    println(
+      "$module: ${plan.previews} preview(s) to ask in ${plan.requests} request(s)" +
+        (plan.cached.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
+        cost
     )
   }
 
@@ -879,6 +948,11 @@ data class ModuleGuidelines(
   val reasoningTokens: Long? = null,
   /** The output tokens the run was billed for, reasoning included. Null as [reasoningTokens]. */
   val completionTokens: Long? = null,
+  /**
+   * What the run's requests were predicted to cost before any was asked
+   * ([GuidelineRunResult.predictedCostUsd]); null without a price, and in older files.
+   */
+  val predictedCostUsd: Double? = null,
 ) {
   companion object {
     fun of(
@@ -901,6 +975,7 @@ data class ModuleGuidelines(
         failedEvidence = run.failedEvidence,
         reasoningTokens = run.reasoningTokens.takeIf { it > 0 },
         completionTokens = run.completionTokens.takeIf { it > 0 },
+        predictedCostUsd = run.predictedCostUsd,
       )
   }
 }
@@ -930,6 +1005,7 @@ internal object GuidelinesReportRenderer {
         "guidelines v${guidelines.version} — ${run.requests} request(s), " +
         "$" +
         "%.4f".format(run.costUsd) +
+        (run.predictedCostUsd?.let { " (predicted $" + "%.4f".format(it) + ")" } ?: "") +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
         (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
@@ -1010,4 +1086,12 @@ internal fun writeGuidelinesReport(buildDir: File, report: ModuleGuidelines, nar
   file.writeText(
     GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), merged)
   )
+}
+
+/** `--estimate`'s model: a plan asks nothing, so nothing here is ever called. */
+private object NoModel : GuidelineModel {
+  override fun complete(
+    request: ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1,
+    model: String,
+  ): ee.schimke.composeai.guidelines.ModelResponse = error("--estimate asks no model")
 }

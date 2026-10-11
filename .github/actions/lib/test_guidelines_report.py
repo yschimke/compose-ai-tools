@@ -459,6 +459,21 @@ class ReportTest(unittest.TestCase):
         # 0.0034 × 2 in the PR's module's records, and the rules tier's run total of 0.05.
         self.assertIn("$0.0568", body)
 
+    def test_the_predicted_cost_sits_beside_the_spend(self) -> None:
+        module = self._rules_tier([_result("x.CardKt.Card", [])], cost=0.05)
+        report = json.loads((module / "guidelines.json").read_text())
+        report["predictedCostUsd"] = 0.04
+        (module / "guidelines.json").write_text(json.dumps(report))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("$0.0568 (predicted $0.0400)", body)
+
+    def test_no_prediction_says_nothing_of_one(self) -> None:
+        self._rules_tier([_result("x.CardKt.Card", [])], cost=0.05)
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertNotIn("predicted", body)
+
     def test_a_problem_line_cannot_break_out_of_its_block(self) -> None:
         pending = _result("x.WidgetKt.Widget", [])
         pending["pending"] = True

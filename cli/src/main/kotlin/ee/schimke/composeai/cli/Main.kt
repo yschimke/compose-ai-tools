@@ -219,6 +219,8 @@ private fun printFullUsage() {
                        --reasoning-effort none|minimal|low|medium|high|xhigh|max|default
                        (default low; default sends none, the model's own),
                        --no-triage, --annotate, --guidelines <file|url>,
+                       --estimate (print the requests and their predicted cost, and how
+                       many previews --max-cost reaches; asks no model and needs no key),
                        --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
                        decides structural rules from text only, starting minimal and
                        asking for a11y/source/facts over --rounds (default 3), and
