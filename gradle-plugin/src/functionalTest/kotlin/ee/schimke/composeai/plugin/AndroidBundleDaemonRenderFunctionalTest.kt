@@ -22,29 +22,18 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end coverage for `compose-preview bundle daemon` against **Android** bundles, driven
- * through the actual CLI binary + the Robolectric daemon.
+ * End-to-end `compose-preview bundle daemon` against **Android** bundles through the real CLI and
+ * Robolectric daemon. Guards:
+ * 1. **The Android daemon runtime is available to the CLI** ([locateCli]); otherwise launch fails
+ *    with a packaging diagnostic or `ClassNotFoundException`.
+ * 2. **`BundleDaemonCommand.composeDaemonClasspath` puts carried IR-replay libs on the parent
+ *    `-cp`**, without which tile and Remote Compose replay fail with `NoClassDefFoundError`.
+ *    Renders a protolayout IR, a Remote Compose IR and a classic preview and asserts fresh PNGs
+ *    with no such errors.
  *
- * This is the test that guards the two halves of Phase 2 that unit/desktop coverage can't reach:
- *
- * 1. **`lib-daemon-android/` is packaged in the CLI dist.** [locateCli] asserts `:cli:installDist`
- *    populated the sidecar (regression: the Android daemon launch dies with an "not packaged yet"
- *    diagnostic, or `ClassNotFoundException` on a half-staged dir).
- * 2. **`BundleDaemonCommand.composeDaemonClasspath` puts the carried IR-replay libs on the parent
- *    `-cp`.** For an IR-backed preview the parent-loaded replay host (`:renderer-android`'s
- *    `TileIrReplayComposable` / the connector's `RemoteComposeIrReplay`) links
- *    `androidx.wear.tiles.renderer.*` / `androidx.compose.remote.player.*`, which live only in the
- *    bundle's carried deps. If those aren't appended to the daemon `-cp`, replay blows up with
- *    `NoClassDefFoundError` at render time — so we render a protolayout (Wear tile) IR preview, a
- *    Remote Compose IR preview, and a classic (non-IR) Compose preview to PNG and assert all three
- *    produce fresh, valid PNGs with no `NoClassDefFoundError` on the daemon's stderr.
- *
- * The bundles are pre-built from the real samples (`:samples:wear`, `:samples:remotecompose`) by
- * the root build's `functionalTestWithAndroidBundleDaemon` task and handed over as paths; the test
- * reads `bundle.json` from each to learn which preview ids are IR-backed (and their format) vs
- * classic. Opt-in via `-Pbundle.daemon.android.e2e=true` (cold-starts a Robolectric daemon JVM and
- * needs a local Android SDK for `android.jar`), keyed to
- * `composeai.functionalTest.androidBundleDaemon`.
+ * Bundles are pre-built from `:samples:wear` / `:samples:remotecompose` by
+ * `functionalTestWithAndroidBundleDaemon`. Opt-in via `-Pbundle.daemon.android.e2e=true` (needs an
+ * SDK).
  */
 class AndroidBundleDaemonRenderFunctionalTest {
 
@@ -58,12 +47,10 @@ class AndroidBundleDaemonRenderFunctionalTest {
   private val remoteComposeBundle: String =
     System.getProperty("composeai.functionalTest.remoteComposeBundle", "")
 
-  // The Android (Robolectric) daemon runtime is not in the CLI install (it ballooned the tarball
-  // to ~382 MB): the CLI fetches `compose-preview-android-daemon-<v>.zip` from the
-  // compose-preview-daemon release on first use and caches it. Left empty, this e2e exercises that
-  // path; `-Pbundle.daemon.android.libDir=<dir>/lib-daemon-android` points the CLI at an unpacked
-  // copy instead via the documented `-Dcomposeai.cli.libDaemonAndroidDir` override (set as
-  // JAVA_OPTS on the daemon subprocess below).
+  // The Android daemon runtime isn't in the CLI install; the CLI fetches it from the
+  // compose-preview-daemon release on first use, which is what this exercises by default.
+  // `-Pbundle.daemon.android.libDir=…` points it at an unpacked copy via
+  // `-Dcomposeai.cli.libDaemonAndroidDir` (set in JAVA_OPTS below).
   private val libDaemonAndroidDir: String =
     System.getProperty("composeai.functionalTest.libDaemonAndroidDir", "")
 
@@ -91,9 +78,8 @@ class AndroidBundleDaemonRenderFunctionalTest {
   }
 
   /**
-   * Drive one bundle through the daemon: pick one preview per IR format present plus one classic
-   * preview, render them via `renderNow`, and assert each produces a fresh, valid PNG. Records the
-   * rendered formats into [formatsSeen].
+   * Renders one preview per IR format present plus one classic preview and asserts fresh, valid
+   * PNGs; records formats in [formatsSeen].
    */
   private fun renderBundle(cli: File, bundle: File, formatsSeen: MutableSet<String>) {
     assertWithMessage(
@@ -125,10 +111,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
       ProcessBuilder(cli.absolutePath, "bundle", "daemon", bundle.absolutePath, "--verbose")
         .directory(tempDir.root)
         .redirectError(ProcessBuilder.Redirect.to(stderrFile))
-    // With an unpacked copy given, point the CLI at it via the documented override. The Gradle
-    // application start script forwards `JAVA_OPTS` to the CLI JVM, where `locateSidecarJars` reads
-    // `composeai.cli.libDaemonAndroidDir` to assemble the Android daemon `-cp`. Without one the
-    // CLI fetches the release archive itself.
+    // The start script forwards `JAVA_OPTS`, where `locateSidecarJars` reads the override.
     if (libDaemonAndroidDir.isNotEmpty()) {
       processBuilder.environment()["JAVA_OPTS"] =
         "-Dcomposeai.cli.libDaemonAndroidDir=$libDaemonAndroidDir"
@@ -235,9 +218,8 @@ class AndroidBundleDaemonRenderFunctionalTest {
         .containsAtLeastElementsIn(selected)
       for ((id, pngPath) in finished) {
         val png = File(pngPath)
-        // Rich diagnostics for the "daemon reported renderFinished but the PNG isn't there" failure
-        // (see #1687): the reported path, the preview's IR format, what the daemon actually wrote
-        // into the output dir, and the daemon stderr tail (which logs each render's pngPath).
+        // Diagnostics for "renderFinished but no PNG" (#1687): reported path, IR format, output dir
+        // contents, daemon stderr tail.
         val parent = png.parentFile
         val dirListing =
           parent
@@ -322,9 +304,8 @@ class AndroidBundleDaemonRenderFunctionalTest {
   }
 
   /**
-   * Read the bundle's `bundle.json` — a PNG+ZIP polyglot, so [ZipFile] reads the central directory
-   * from the file's tail, ignoring the PNG prefix. Returns the backend, the full preview-id list,
-   * and a `previewId → IR format` map (`protolayout` / `remotecompose`) for the IR-backed previews.
+   * Reads `bundle.json` from the PNG+ZIP polyglot ([ZipFile] reads the central directory from the
+   * tail): backend, preview ids, and IR format per IR-backed preview.
    */
   private fun readBundleManifest(bundle: File): BundleManifestInfo {
     val json = Json { ignoreUnknownKeys = true }

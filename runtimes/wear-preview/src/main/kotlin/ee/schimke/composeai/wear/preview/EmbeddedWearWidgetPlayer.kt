@@ -3,28 +3,19 @@ package ee.schimke.composeai.wear.preview
 import java.lang.reflect.Modifier
 
 /**
- * The lane [CapturingWearWidgetPreview] draws through in this JVM, resolved once.
- *
- * Read from the system property rather than passed in, because the choice is a property of the
- * *render*, not of any one preview: the Gradle plugin forwards `-PcomposePreview.rcPlayer=…` onto
- * the render / daemon JVM as [WearWidgetPreviewPlayer.PROPERTY], and every widget preview in that
- * JVM then draws through the same player. Resolved lazily (not at class-init) so a host that sets
- * the property programmatically before the first render is still honoured, and once so a bad value
- * is reported once rather than once per composition.
+ * The lane [CapturingWearWidgetPreview] draws through in this JVM. A property of the render (the
+ * plugin forwards `-PcomposePreview.rcPlayer=…` as [WearWidgetPreviewPlayer.PROPERTY]), read lazily
+ * so a programmatic setting is honoured, and once so a bad value is reported once.
  */
 internal val wearWidgetPreviewPlayer: WearWidgetPreviewPlayer by lazy {
   WearWidgetPreviewPlayer.resolve(System.getProperty(WearWidgetPreviewPlayer.PROPERTY))
 }
 
 /**
- * Whether an embedded player this module can actually call is on the runtime classpath. Resolved
- * once per JVM.
- *
- * `:wear-preview-runtime` takes the embedded player as `compileOnly` — a consumer that doesn't ship
- * it still loads this helper — so the embedded lane has to ask before it calls. A consumer without
- * the player (or with one whose entry point has drifted) draws through upstream `WearWidgetPreview`
- * instead of dying with `NoClassDefFoundError` / `NoSuchMethodError`. Same gate, and the same
- * reasoning, as `isEmbeddedPlayerAvailable` in `:data-remotecompose-connector`.
+ * Whether a callable embedded player is on the runtime classpath (resolved once). It's
+ * `compileOnly`, so without it (or with a drifted entry point) the lane falls back to upstream
+ * `WearWidgetPreview` rather than failing to link. Same gate as `isEmbeddedPlayerAvailable` in
+ * `:data-remotecompose-connector`.
  */
 internal val embeddedWearWidgetPlayerAvailable: Boolean by lazy {
   embeddedPlayerEntryPointPresent(WearWidgetPreviewPlayer::class.java.classLoader)
@@ -36,19 +27,10 @@ internal const val EMBEDDED_PLAYER_FACADE =
 internal const val EMBEDDED_PLAYER_ENTRY_POINT = "ExperimentalRemoteDocumentPlayer"
 
 /**
- * The parameter types of the [EMBEDDED_PLAYER_ENTRY_POINT] overload this module's call site
- * compiles down to, in declaration order.
- *
- * The tail — `Composer, int, int` — is Compose's own ABI (composer, changed mask, defaults mask); a
- * Kotlin call site that omits defaults still invokes this full method rather than a `$default`
- * bridge, which is why a signature change upstream is a *link* error at render time and not
- * something the compiler can see here.
- *
- * Pinned as strings rather than `Class` literals on purpose: the point is to answer "is the method
- * this code was compiled against on the runtime classpath" without loading a single one of those
- * types, so a classpath missing them answers `false` instead of throwing. Kept honest by
- * `EmbeddedWearWidgetPlayerTest`, which resolves the real facade off the test classpath and asserts
- * this list still describes it.
+ * Parameter types of the [EMBEDDED_PLAYER_ENTRY_POINT] overload this module's call site links
+ * against, in order; the `Composer, int, int` tail is Compose's ABI. Strings rather than `Class`
+ * literals so a missing type answers `false` instead of throwing. `EmbeddedWearWidgetPlayerTest`
+ * checks this against the real facade.
  */
 internal val EMBEDDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
   listOf(
@@ -67,14 +49,8 @@ internal val EMBEDDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
 
 /**
  * Whether [EMBEDDED_PLAYER_FACADE] on [classLoader] declares the exact entry point this module was
- * compiled against.
- *
- * It resolves the *method* rather than the class because the two are not the same question, and the
- * gap between them once cost a production render lane: while the vendored player still lived in
- * upstream's package, an androidx-main build began publishing an embedded player of its own under
- * the same names, `Class.forName` happily returned it, and the call failed to link. The player has
- * since moved to a package nobody else publishes into; this stays as the seatbelt for a re-vendor
- * whose entry point drifts.
+ * compiled against. Checks the method, not just the class: a same-named class from another
+ * publisher once resolved but failed to link.
  */
 internal fun embeddedPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean = runCatching {
   declaresEntryPoint(
@@ -85,12 +61,8 @@ internal fun embeddedPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean
   .getOrDefault(false)
 
 /**
- * Whether [facade] declares [EMBEDDED_PLAYER_ENTRY_POINT] in the exact shape the call site links
- * against: `public static void` taking exactly [parameters].
- *
- * The modifiers and return type are checked alongside the signature because they are separately
- * load-bearing — the compiled call is an `invokestatic …(…)V`, so a same-named method that is
- * non-static, non-public or returns something else fails to link just as hard.
+ * Whether [facade] declares [EMBEDDED_PLAYER_ENTRY_POINT] as `public static void` taking exactly
+ * [parameters] — the compiled `invokestatic …V` call fails to link otherwise.
  */
 internal fun declaresEntryPoint(facade: Class<*>, parameters: List<String>): Boolean =
   facade.declaredMethods.any { method ->

@@ -1,11 +1,7 @@
-// Standalone Kotlin Build Tools API (BTA) parity/soak harness. Began as the stage-2 spike
-// proving BTA can compile a `@Composable` source file with the Compose compiler plugin loaded,
-// in-process, with no Gradle — that work has SHIPPED in `:daemon:core` (bta/BtaCompileSession,
-// the `compileSources` JSON-RPC method) behind `composePreview.daemon.compileInProcess`.
-//
-// NOT published. Nothing in production depends on this module; it's retained for its BTA-impl
-// parity, incremental-compile, and classloader-leak soak tests against Kotlin 2.3.21. These
-// tests guard the production in-process compile path in `:daemon:core`.
+// Standalone Kotlin Build Tools API (BTA) parity/soak harness. The in-process compile it proved out
+// ships in `:daemon:core` (`BtaCompileSession`, behind `composePreview.daemon.compileInProcess`).
+// Not published; kept for its parity, incremental-compile and classloader-leak tests guarding that
+// path.
 
 plugins {
   id("composeai.base-conventions")
@@ -18,16 +14,12 @@ plugins {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
 
 dependencies {
-  // BTA public interface — what the spike code compiles against. Experimental in 2.3.x
-  // (requires `@OptIn(ExperimentalBuildToolsApi::class)`); KGP 2.3.20 uses BTA by default
-  // for Kotlin/JVM, so the impl side is well-exercised even if the public API surface
-  // hasn't stabilised. See https://kotlinlang.org/docs/build-tools-api.html.
+  // BTA public API (experimental in 2.3.x, needs `@OptIn(ExperimentalBuildToolsApi::class)`). See
+  // https://kotlinlang.org/docs/build-tools-api.html.
   implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
 
-  // BTA implementation — loaded into an isolated classloader by `KotlinToolchain
-  // .loadImplementation(...)`. Version MUST match the Kotlin compiler version we want
-  // BTA to drive; the artifact is only resolved at runtime, but having it on the test
-  // classpath is what makes that classloader lookup work.
+  // BTA implementation, loaded into an isolated classloader at runtime; its version must match the
+  // Kotlin compiler BTA should drive.
   testRuntimeOnly("org.jetbrains.kotlin:kotlin-build-tools-impl:${libs.versions.kotlin.get()}")
 
   // Compose compiler plugin — same JAR `org.jetbrains.kotlin.plugin.compose` resolves
@@ -37,32 +29,20 @@ dependencies {
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}"
   )
 
-  // Compose runtime — needed on the *compile* classpath the spike feeds to BTA so
-  // that `@Composable` and `Composer` resolve. We don't link against it from the
-  // spike's own code, hence `testRuntimeOnly`. Pinned to whatever the compose-bom-stable
-  // BOM is currently on; the spike doesn't care about version-skew across the runtime
-  // line because it only compiles toy fixtures.
+  // Compose runtime on the classpath fed to BTA, so `@Composable` and `Composer` resolve in
+  // fixtures.
   testRuntimeOnly(platform(libs.compose.bom.stable))
   testRuntimeOnly("androidx.compose.runtime:runtime")
 
   testImplementation(libs.junit)
 }
 
-// Companion fixture — compiled by Gradle's standard `compileKotlin` so the spike's
-// Gradle-parity test (`BtaCompilerGradleParityTest`) has a reference artefact to diff against.
-// `:daemon:bta-host-fixture` is a single-source module that holds nothing but the same
-// `fixture/Greeting.kt` the BTA tests rewrite into a `tmp` folder. Wired as `testImplementation`
-// so Gradle compiles it before the test runs; we don't actually link against the fixture
-// classes, only read its `.class` output off disk.
+// `:daemon:bta-host-fixture` compiles the same fixture with Gradle's `compileKotlin`, giving
+// `BtaCompilerGradleParityTest` a reference `.class` output to diff against.
 dependencies { testImplementation(project(":daemon:bta-host-fixture")) }
 
-// Surface where to find the BTA impl JAR + Compose compiler plugin JAR + Compose runtime
-// classpath at test time so `BtaCompilerTest` can hand them to the in-process BTA
-// session without re-resolving the same coordinates. We resolve eagerly here so the
-// configuration-cache serialiser sees a plain file collection instead of a
-// `NamedDomainObjectProvider`. The `joinToString` runs at task-action time (lazy
-// `Provider.map`) so artifact downloads on a fresh cache still happen during the
-// task graph, not at configuration time.
+// Pass the BTA impl, Compose plugin and runtime classpaths to the tests as a plain file collection
+// (configuration-cache friendly), joined lazily at execution so downloads happen in the task graph.
 tasks.named<Test>("test") {
   val testRuntime =
     configurations.named("testRuntimeClasspath").map {

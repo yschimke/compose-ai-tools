@@ -6,15 +6,9 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification that `@CaptureGutter` extends the capture bounds on the Android
- * (Robolectric) lane, and extends them by exactly the declared gutter — m3-catalog#179.
- *
- * Reads the PNGs `:samples:android:composePreviewRenderAll` produced for the pair in
- * `CaptureGutterPreviews.kt`: one composable, rendered with and without the annotation. Asserting
- * the *difference* rather than either canvas on its own is what makes this a regression test for
- * the promise the annotation makes — the component measures the same and only the canvas grows, so
- * a gutter that shrank the component (padding inside the tree) would leave the two canvases the
- * same size and fail here.
+ * `@CaptureGutter` extends the capture bounds on the Android lane by exactly the declared gutter.
+ * Compares the pair in `CaptureGutterPreviews.kt`: the canvas must grow while the component doesn't
+ * (a gutter applied as inner padding would fail).
  */
 class CaptureGutterPixelTest {
 
@@ -43,14 +37,9 @@ class CaptureGutterPixelTest {
   }
 
   /**
-   * The promise, at a fractional density: a `fillMaxWidth` child on a fixed 400dp frame measures
-   * the *same pixels* with and without a gutter.
-   *
-   * At 2.625 the window grows by a dp figure that doesn't divide evenly into the rounded per-edge
-   * pixels, so deriving the child's viewport by subtracting those edges from the enlarged window
-   * loses a pixel — enough for fill-width content to lay out differently from the un-guttered
-   * render. The green band's drawn width is the component's own measure, so comparing it across the
-   * pair is the assertion that the gutter changed the canvas and nothing else.
+   * At a fractional density (2.625), a `fillMaxWidth` child on a fixed 400dp frame must measure the
+   * same pixels with and without a gutter; deriving the viewport by subtracting rounded edges would
+   * lose a pixel.
    */
   @Test
   fun `a fill-width component measures identically with and without a gutter`() {

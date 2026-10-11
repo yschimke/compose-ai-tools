@@ -6,24 +6,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The set of producers a verifier ([BundleVerifier]) trusts, loaded from a JSON file the operator
- * controls (`trust/producers.json`). Three independent bases, matching the three trust mechanisms a
- * public preview server supports:
+ * The producers a verifier ([BundleVerifier]) trusts, from an operator-controlled
+ * `trust/producers.json`:
  *
- * - [keys] — pinned Ed25519 public keys. A bundle signature whose `keyId` is here and that
- *   cryptographically verifies is **trusted by signature** (the strongest, fully offline basis).
- * - [branches] — GitHub `repo` + `branch` globs the server is willing to fetch design-system
- *   catalogs from. A bundle the server itself pulled from such a branch is **trusted by origin**
- *   (TLS trust in the source, no per-bundle crypto needed). This is how the published
- *   `design-artifacts` catalogs are trusted.
- * - [oidc] — GitHub Actions / Sigstore workload-identity globs. These do **not** by themselves
- *   grant trust: provenance is self-asserted data, so a real keyless proof needs Fulcio
- *   cert-chain + Rekor verification (a follow-up). Until that lands, a trusted `oidc` identity only
- *   *annotates* a signature a pinned [keys] entry already verified — it never expands the trust
- *   decision, so it can't be a bypass. See [BundleVerifier].
+ * - [keys] — pinned Ed25519 public keys; a verifying signature by one is trusted (fully offline).
+ * - [branches] — GitHub `repo` + `branch` globs the server fetches catalogs from; bundles pulled
+ *   from them are trusted by origin (how `design-artifacts` catalogs are trusted).
+ * - [oidc] — workload-identity globs. These never grant trust on their own (self-asserted until
+ *   Fulcio/Rekor verification exists); they only annotate a signature a pinned key already
+ *   verified.
  *
- * An empty store trusts nothing (fail-closed): every bundle verifies as `Unverified`, so a public
- * server with no trust store still serves data tiers but never re-renders untrusted Compose.
+ * An empty store trusts nothing (fail-closed): data tiers are served, untrusted Compose is never
+ * re-rendered.
  */
 @Serializable
 public data class TrustStore(
@@ -54,11 +48,8 @@ public data class TrustStore(
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Writer JSON. Distinct from [json] because rewriting the operator's producers.json has
-     * different needs from reading it: the file stays hand-editable, so it's pretty-printed, and
-     * defaults are written out rather than elided (a [TrustedBranch] that defaults `branch` to `*`
-     * must say so on disk — an operator reading back a bare `{"repo": …}` would have no way to see
-     * that it trusts every branch).
+     * Writer JSON: pretty-printed so the file stays hand-editable, with defaults written out (a
+     * [TrustedBranch]'s default `branch = *` must be visible on disk).
      */
     private val writerJson = Json {
       ignoreUnknownKeys = true
@@ -79,21 +70,17 @@ public data class TrustStore(
       writerJson.encodeToString(serializer(), store) + "\n"
 
     /**
-     * Producer patterns are globs, so this is deliberately looser than a catalog repo slug — but
-     * still a slug alphabet, because a pattern with a newline or a space is a typo that would
-     * silently never match.
+     * Producer patterns are globs but still a slug alphabet, so a typo with a space or newline is
+     * rejected rather than silently never matching.
      */
     private val REPO_PATTERN_RE = Regex("[A-Za-z0-9._*-]{1,64}/[A-Za-z0-9._*-]{1,64}")
     private val BRANCH_PATTERN_RE = Regex("[A-Za-z0-9._*/-]{1,128}")
 
     /**
-     * Why [branch] is unusable as a trust entry, or null when it's well-formed.
+     * Why [branch] is unusable as a trust entry, or null when well-formed.
      *
-     * A repo pattern whose every non-slash character is a wildcard is rejected outright. Branch
-     * trust is not only a badge — with `--allow-render-trusted` it gates server-side execution of
-     * the producer's Compose — so a match-everything pattern would hand code execution to any repo
-     * on GitHub. There is no legitimate use for it, and the failure mode is bad enough that a typo
-     * shouldn't be able to reach it.
+     * SECURITY: a repo pattern that is all wildcards is rejected — with `--allow-render-trusted`,
+     * branch trust gates server-side execution of the producer's Compose.
      */
     public fun validateBranch(branch: TrustedBranch): String? =
       when {
@@ -121,10 +108,8 @@ public data class TrustStore(
       if (identity.identity.isBlank()) "oidc entry needs an identity" else null
 
     /**
-     * Glob match supporting `*` (any run of chars, including `/`) — enough for `repo`/`branch`/
-     * `identity` patterns like `design-artifacts/<glob>` or
-     * `repo:yschimke/compose-ai-tools:ref:...`. Anchored (full-string) and case-sensitive. A
-     * literal pattern with no `*` is exact-match.
+     * Anchored, case-sensitive glob match where `*` matches any run of characters (including `/`);
+     * a pattern without `*` is an exact match.
      */
     public fun globMatch(pattern: String, value: String): Boolean {
       if (!pattern.contains('*')) return pattern == value

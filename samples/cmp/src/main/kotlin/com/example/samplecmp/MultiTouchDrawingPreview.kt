@@ -23,33 +23,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.tooling.preview.Preview
 
 /**
- * Drawing canvas exercising three different gestures on the same surface so a single live session
- * proves all of them dispatch end-to-end:
+ * Drawing canvas exercising three gestures on one surface, so a live session proves each
+ * dispatches:
+ * - Tap (no travel past `touchSlop`) drops a pink circle.
+ * - Drag (one pointer past slop) draws a stroke, committed to [strokes] on lift.
+ * - Pinch (≥ 2 pointers) scales everything by [calculateZoom], clamped to [[MIN_SCALE],
+ *   [MAX_SCALE]].
  *
- * - **Tap** (down + up, no travel past `viewConfiguration.touchSlop`) — drops a pink circle at the
- *   tap position.
- * - **Drag** (single pointer that moves past slop) — accumulates positions into a path; on lift,
- *   the path is committed to [strokes] and rendered as a black polyline.
- * - **Pinch** (≥ 2 pressed pointers) — multiplies the canvas-wide scale by [calculateZoom] each
- *   frame, clamped to [[MIN_SCALE], [MAX_SCALE]]. The scale wraps every committed circle and stroke
- *   via `DrawScope.scale(..., pivot = centre)`.
+ * One `awaitEachGesture { }` switching on pointer count, rather than stacked `detectXGestures`
+ * modifiers that race on `change.consume()`.
  *
- * The tap-vs-drag-vs-pinch FSM lives in one `awaitEachGesture { }` block rather than three stacked
- * `pointerInput { detectXGestures { } }` modifiers. Stacking would race on `change.consume()` —
- * `detectDragGestures` waits past touch slop before consuming, but `detectTapGestures` consumes on
- * up, and either can shadow the transform detector once a pointer is in flight. A single explicit
- * pointer-count switch dodges that and keeps the decision tree visible in source.
- *
- * Pairs with the `LiveTouchOverlay` data extension: enabling `overrides.touchOverlay = true` on a
- * recording / interactive session paints cyan rings under the dispatched pointer coords, so a
- * single captured frame proves both "the daemon sent the right input" (overlay rings match expected
- * positions) and "the composition reacted appropriately" (a tap at that ring drops a circle; a drag
- * between two rings leaves a stroke; two-finger pinch shrinks/grows everything else).
- *
- * The recording-time fixture in `daemon/desktop/.../TouchOverlayDrawingRecordingTest.kt` is
- * deliberately a different (and simpler) shape — a 4-colour-per-pointer dot trail — because that
- * test exercises a narrower invariant (multi-pointer dispatch packing all pointers into a single
- * `sendPointerEvent` call). Treat the two as siblings rather than mirror images.
+ * With the `LiveTouchOverlay` extension (`overrides.touchOverlay = true`), cyan rings mark
+ * dispatched pointers, so one frame shows both the input sent and the composition's reaction. The
+ * desktop daemon's `TouchOverlayDrawingRecordingTest` uses a simpler fixture for a narrower
+ * invariant.
  */
 @Preview(name = "Multi-Touch Drawing", widthDp = 240, heightDp = 240)
 @Composable
@@ -58,8 +45,7 @@ fun MultiTouchDrawingPreview() {
 }
 
 /**
- * Static counterpart with pre-seeded circles and a stroke so the rendered `@Preview` PNG isn't a
- * blank canvas. Same composable, same FSM — only the initial state differs.
+ * Static counterpart with pre-seeded circles and a stroke, so the PNG isn't a blank canvas.
  */
 @Preview(name = "Multi-Touch Drawing — seeded", widthDp = 240, heightDp = 240)
 @Composable

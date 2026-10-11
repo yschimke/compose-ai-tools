@@ -10,14 +10,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Covers [DesktopRenderWorkerPool] against [DesktopRenderWorkerPoolStub] — a worker speaking the
- * real frames without Compose or Skiko, so the protocol, warm reuse and every failure path are
- * asserted on machines with no native render stack.
- *
- * The distinction these are built around is the pool's whole failure posture: `Failed` means the
- * *renderer* answered "I cannot draw this capture" and the caller must not fork a retry (that would
- * double the cost of every broken preview), while `Unusable` means the *pool* could not serve and
- * forking that capture is correct.
+ * [DesktopRenderWorkerPool] against [DesktopRenderWorkerPoolStub], which speaks the real frames
+ * without Compose or Skiko. Key distinction: `Failed` means the renderer can't draw that capture
+ * (don't fork a retry), `Unusable` means the pool couldn't serve (forking is correct).
  */
 class DesktopRenderWorkerPoolTest {
 

@@ -36,10 +36,8 @@ internal data class HandoffInputs(
   val checks: Map<String, List<PreviewCheck>> = emptyMap(),
 ) {
   /**
-   * What a follow-up round may ask for in handoff mode: only what the render job already made and
-   * staged — the long screenshot of a preview's scrolling content, and its accessibility data
-   * (nodes and ATF checks, `a11y`). The job holding the key never builds or renders, so nothing
-   * else is fetchable.
+   * What a follow-up round may ask for in handoff mode: only what the render job staged (the long
+   * scrolling screenshot and `a11y` data). The job holding the key never renders.
    */
   val host: GuidelineEvidenceHost
     get() = HandoffEvidenceHost(renders, sizes, nodes, checks)
@@ -137,9 +135,8 @@ internal data class HandoffInputs(
           label = entry.label,
           surface = surfaceOverride ?: entry.kind.surface,
           profile = profileOverride ?: entry.kind.profile,
-          // The long screenshot is served later, from the host, so the subject's pictures do not
-          // carry it; its bytes join the identity the result is cached under, or a changed (or
-          // newly staged) capture would be answered from a verdict that never saw it.
+          // The long screenshot is served from the host later, so its bytes join the cache identity
+          // here, or a changed capture would reuse a verdict that never saw it.
           renderHash =
             renderHash(
               sha256(bytes),
@@ -157,9 +154,8 @@ internal data class HandoffInputs(
                 description = describeCapture(entry.widthDp, entry.heightDp, entry.scrollMode),
               )
             ),
-          // Accessibility data is evidence the model asks for (`a11y`), served from the host,
-          // not sent with every subject; the request shows only the host's one-line summary.
-          // It is derived from the same render, so it does not join the cache identity.
+          // `a11y` data is served on request from the host; derived from the same render, so it
+          // doesn't join the cache identity.
           source = source,
         )
       }
@@ -233,9 +229,8 @@ internal data class HandoffInputs(
     internal fun renderHash(renderSha256: String, long: File?, a11y: Boolean = false): String =
       renderSha256 +
         (long?.let { "+scroll:" + sha256(it.readBytes()) } ?: "") +
-        // Whether accessibility evidence could be asked for: a verdict reached without it (no
-        // a11y pipeline, a daemon that failed) must not answer a run that has it. The data itself
-        // is derived from the render, so its availability, not its bytes, is what differs.
+        // Whether a11y evidence was available: a verdict reached without it must not answer a run
+        // that has it.
         (if (a11y) "+a11y" else "")
 
     /** The `render/scroll/long` data product's kind, as the manifest names it. */
@@ -404,18 +399,13 @@ internal data class A11yEvidence(
 )
 
 /**
- * What a live CLI run can fetch when the model asks for more: the source it already read, a render
- * at other settings (theme, font scale, device, locale) through the module's render daemon, and a
- * preview's accessibility data (`a11y`: nodes and ATF checks).
+ * What a live CLI run can fetch when the model asks: the source, renders at other settings (theme,
+ * font scale, device, locale) via the render daemon, and `a11y` data (nodes and ATF checks).
  *
- * Accessibility data is fetched on request, for the previews that ask, through [a11yFetch] (the
- * `a11y` command's daemon fetch narrowed to those ids) — not for every preview before the first
- * request, which on a catalog costs one ATF render per preview whether or not any rule needed it.
- * [GuidelineEvidenceHost.prefetch] hands it every preview a round asks about at once, so a round
- * costs one fetch, not one per preview. [nodes] are nodes already in hand, served without a fetch.
- *
- * Each render opens a short session ([MatrixRenderFetcher]); follow-up renders are few, so that is
- * cheaper to keep simple than a session held for the whole run.
+ * `a11y` is fetched on request through [a11yFetch], not for every preview up front (one ATF render
+ * each); [GuidelineEvidenceHost.prefetch] batches a round into one fetch. [nodes] are served
+ * without a fetch. Each follow-up render opens a short session ([MatrixRenderFetcher]); they are
+ * few.
  */
 internal class CliEvidenceHost(
   private val projectDir: File,
@@ -438,9 +428,8 @@ internal class CliEvidenceHost(
     )
 
   /**
-   * Once a fetch has produced nothing at all (a desktop module, whose daemon has no ATF; a daemon
-   * that would not start), `a11y` is no longer offered, so later rounds and batches do not ask for
-   * what cannot come. A preview fetched without data is not offered it again either.
+   * Once a fetch produces nothing (desktop module, daemon down), stop offering `a11y`; a preview
+   * that came back empty isn't offered it again either.
    */
   private var a11yUnavailable = false
 

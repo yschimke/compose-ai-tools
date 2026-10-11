@@ -29,27 +29,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * Confirms the soft-keyboard data extension publishes real `WindowInsetsCompat.Type.ime()` insets —
- * not just a painted-on overlay. A `LazyColumn` with `Modifier.imePadding()` should shrink so its
- * last row sits **above** the band, not behind it. Pair-rendered against
- * [ImeAwareListHiddenPreview] as a same-content/different-IME-state diff: both show a 30-row list
- * under the same heading; only this one raises the IME (and thus shrinks the list to the
- * band-relative viewport).
+ * Confirms the soft-keyboard extension publishes real `WindowInsetsCompat.Type.ime()` insets, not
+ * just a painted band: a `LazyColumn` with `Modifier.imePadding()` shrinks so its last row sits
+ * above the keyboard. Diff against [ImeAwareListHiddenPreview].
  *
- * Compose's IME inset story:
- *
- * - `WindowInsetsCompat.Type.ime()` is the canonical Android IME inset type.
- * - Compose's `WindowInsets.ime` (in `androidx.compose.foundation.layout`) surfaces that type to
- *   composable code via `WindowInsetsHolder`, which subscribes to the host view's
- *   `dispatchApplyWindowInsets` callback.
- * - `Modifier.imePadding()` is shorthand for `Modifier.windowInsetsPadding(WindowInsets.ime)`;
- *   `Modifier.consumeWindowInsets(WindowInsets.ime)` lets a parent that already padded for the IME
- *   tell its children to ignore it. `WindowInsets.ime.asPaddingValues()` plugs the inset into a
- *   `LazyColumn`'s `contentPadding` instead of stealing layout space.
- *
- * The connector dispatches synthetic `WindowInsetsCompat.Type.ime()` to the renderer's host view
- * whenever `KeyboardController.softInputVisible` flips, so all three of those code paths "just
- * work" inside the preview — same as on a real Android device with a real IME up.
+ * The connector dispatches synthetic IME insets to the host view when
+ * `KeyboardController.softInputVisible` flips, so `WindowInsets.ime`, `imePadding()`,
+ * `consumeWindowInsets` and `asPaddingValues()` all behave as on a device.
  */
 @Preview(name = "IME-aware list — keyboard up", widthDp = 360, heightDp = 640)
 @Composable
@@ -63,10 +49,7 @@ fun ImeAwareListShownPreview() {
 }
 
 /**
- * Companion preview with the IME hidden. Same list, same scroll state, no
- * `keyboardController.show()` — the band stays down and the list runs to the bottom of the canvas.
- * Diffing this against [ImeAwareListShownPreview] makes the inset-driven viewport adaptation
- * visible at a glance.
+ * Companion with the IME hidden: the list runs to the bottom of the canvas.
  */
 @Preview(name = "IME-aware list — keyboard hidden", widthDp = 360, heightDp = 640)
 @Composable
@@ -135,9 +118,7 @@ private fun ListRow(row: ListEntry) {
 private data class ListEntry(val index: Int, val title: String)
 
 /**
- * 30 rows. The hidden-keyboard preview runs the canvas full-bleed so the last visible row hits
- * around row 12-14 (depending on font metrics); the keyboard-up preview shrinks the viewport by the
- * band's 240dp, which knocks the visible window down by ~4-5 rows. The diff is the proof the inset
- * is actually flowing through `WindowInsets.ime` and not just a painted-on overlay.
+ * 30 rows: with the keyboard up the 240dp band removes ~4-5 visible rows, which proves the inset
+ * flows through `WindowInsets.ime`.
  */
 private val LIST_ROWS: List<ListEntry> = (1..30).map { ListEntry(index = it, title = "Item $it") }

@@ -15,16 +15,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Ed25519 bundle signing + verification — the reference implementation shared by
- * [KeygenSubcommand], [SignSubcommand], and [VerifySubcommand], exposed as `compose-preview bundle
- * keygen|sign|verify`, and the public-server trust gate ([BundleVerifier]).
+ * Ed25519 bundle signing + verification, behind `compose-preview bundle keygen|sign|verify` and the
+ * public-server trust gate ([BundleVerifier]).
  *
- * The signed bytes are the bundle's **canonical digest**, not the raw `.png` file: zip ordering /
- * compression aren't byte-stable and `signatures.json` itself must be excluded so a second producer
- * can append a signature without invalidating the first. See [canonicalDigest] for the exact recipe
- * (it mirrors the contract documented on `BundleSignatures` in `:gradle-plugin`'s
- * `PreviewBundleFormat.kt` — the CLI re-declares the wire shape here rather than depend on that
- * module, same pattern as [BundleReader]).
+ * Signs the bundle's [canonicalDigest], not the raw file: zip order and compression aren't
+ * byte-stable, and `signatures.json` is excluded so further signatures can be appended. Mirrors the
+ * `BundleSignatures` contract in `:gradle-plugin`'s `PreviewBundleFormat.kt`.
  */
 public object BundleSigning {
 
@@ -68,11 +64,8 @@ public object BundleSigning {
   // --- canonical digest -------------------------------------------------------------------------
 
   /**
-   * The SHA-256 over the bundle's logical content (see the class kdoc). Every zip entry except
-   * [SIGNATURES_PATH] and directory entries contributes a `"<path>:<hex-sha256>"` line; the lines
-   * are sorted by path and joined with `\n`, and the digest is the SHA-256 of that string.
-   * Deterministic regardless of zip ordering or compression, and stable when signatures are
-   * appended.
+   * SHA-256 over the bundle's logical content: one `"<path>:<hex-sha256>"` line per non-directory
+   * zip entry except [SIGNATURES_PATH], sorted by path and `\n`-joined.
    */
   public fun canonicalDigest(zipBytes: ByteArray): ByteArray {
     val lines = ArrayList<String>()
@@ -206,11 +199,8 @@ public object BundleSigning {
     MessageDigest.getInstance("SHA-256").digest(bytes)
 
   /**
-   * Normalize raw bundle bytes to the appended ZIP portion: a plain zip (`PK\x03\x04`) is returned
-   * as-is; a PNG+ZIP polyglot has its leading PNG stripped (seek past the IEND chunk). The
-   * byte-array twin of [BundleReader.extractZipBytes] for the in-memory upload path. Returns the
-   * input unchanged when it matches neither signature (best effort — callers treat it as zip
-   * bytes).
+   * Normalize raw bundle bytes to the ZIP portion: a plain zip is returned as-is, a PNG+ZIP
+   * polyglot has its PNG stripped. Unrecognised input is returned unchanged.
    */
   public fun zipBytesOf(raw: ByteArray): ByteArray {
     if (raw.size >= 2 && raw[0] == 0x50.toByte() && raw[1] == 0x4B.toByte()) return raw
@@ -223,13 +213,8 @@ public object BundleSigning {
           ((raw[offset + 1].toInt() and 0xff) shl 16) or
           ((raw[offset + 2].toInt() and 0xff) shl 8) or
           (raw[offset + 3].toInt() and 0xff)
-      // These bytes are client-controlled (the token-gated upload path). A negative length — e.g. a
-      // hostile chunk header like 0xfffffff4, which reads as a negative signed Int — would make the
-      // advance below stall or move backwards (spin forever / throw on a bad index). A real PNG
-      // chunk
-      // length is < 2^31, so reject anything negative and bail (treat as not-a-polyglot → the
-      // caller
-      // hands the bytes to ZipInputStream, which yields nothing → the upload fails cleanly).
+      // SECURITY: these bytes are client-controlled; a negative chunk length (e.g. 0xfffffff4)
+      // would stall or reverse the scan. Treat as not-a-polyglot, so the upload fails cleanly.
       if (length < 0) return raw
       val type = String(raw, offset + 4, 4, Charsets.US_ASCII)
       // 12 = 4 (length) + 4 (type) + 4 (crc). Compute in Long so a huge length can't overflow Int

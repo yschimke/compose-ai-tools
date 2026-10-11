@@ -336,10 +336,8 @@ public class CoordinateResolver(
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
     /**
-     * Attempts per URL, the first included. Only a transient answer is retried — a 404 is final —
-     * so a coordinate that really is gone costs one request whatever this says; the extra attempts
-     * buy a dropped connection a 7s window (1s, 2s, 4s) instead of 3s, which a brief network blip
-     * on a laptop outlasted.
+     * Attempts per URL, the first included. Only transient answers are retried (a 404 is final);
+     * four attempts give a dropped connection a 7s window (1s, 2s, 4s).
      */
     internal const val MAX_ATTEMPTS: Int = 4
 
@@ -351,11 +349,8 @@ public class CoordinateResolver(
       retryAfterMs?.coerceIn(0L, MAX_RETRY_AFTER_MS) ?: (1_000L shl (attempt - 1))
 
     /**
-     * A transport failure as an operator can act on it. ktor surfaces a body the OkHttp engine
-     * abandoned as `ClosedByteChannelException`, which says only THAT the stream closed; why — a
-     * timeout, a reset, an early end of stream, TLS — is its cause. So the deepest cause is named
-     * beside it, or a dropped download reads `dl.google.com answered ClosedByteChannelException`
-     * and nothing in it says what to fix.
+     * A transport failure an operator can act on. ktor's `ClosedByteChannelException` only says the
+     * stream closed, so the deepest cause (timeout, reset, TLS…) is named beside it.
      */
     internal fun transportReason(e: Throwable): String {
       fun describe(t: Throwable) = "${t.javaClass.simpleName}: ${t.message ?: "no message"}"

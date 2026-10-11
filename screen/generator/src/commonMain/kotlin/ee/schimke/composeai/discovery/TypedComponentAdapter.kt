@@ -132,12 +132,9 @@ internal constructor(
 )
 
 /**
- * Subclass beside the real component adapter. The model's property references are compile checked;
- * the compiled composable call belongs in the renderer SDK. The discovered record remains the
- * source of callable names, parameter types, defaults and export imports.
- *
- * Construct all handles in the subclass initializer. Publishing or registering freezes the
- * definition, preventing metadata and runtime behavior from diverging through later mutation.
+ * Subclass beside the real component adapter: property references are compile-checked, while the
+ * discovered record stays the source of callable names, types, defaults and imports. Construct all
+ * handles in the subclass initializer; publishing or registering freezes the definition.
  */
 open class TypedComponentAdapter<P>(val id: String, val component: ComponentRecord) {
   private var frozen = false

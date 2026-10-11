@@ -1,18 +1,9 @@
-// Desktop latency baseline harness for the preview daemon work — see compose-preview-daemon's
-// docs/daemon/DESIGN.md § 13.
+// Desktop latency baseline harness for the preview daemon (compose-preview-daemon's
+// docs/daemon/DESIGN.md § 13). Mirrors :samples:android-daemon-bench through the Compose-Desktop
+// renderer: five trivial @Previews, so rows in baseline-latency.csv compare like-for-like.
 //
-// Mirrors :samples:android-daemon-bench (P0.1) but renders through the
-// Compose-Desktop path (`renderer-desktop`) instead of the Robolectric
-// path. Five trivial @Preview functions, no animations / scrolls /
-// @PreviewParameter — same shapes as the Android bench so the per-render
-// row in baseline-latency.csv compares like-for-like across targets.
-//
-// `benchPreviewLatency` shells out to `./gradlew` repeatedly under
-// different scenarios (cold / warm-no-edit / warm-after-1-line-edit) and
-// appends desktop rows to build/daemon-bench/baseline-latency.csv (extending the
-// schema with a leading `target` column the first time it sees the file
-// in the legacy P0.1 layout). See README.md in this module for the
-// scenario definitions and the desktop divergence in `render` accounting.
+// `benchPreviewLatency` runs `./gradlew` under cold / warm-no-edit / warm-after-1-line-edit
+// scenarios and appends desktop rows to build/daemon-bench/baseline-latency.csv. See README.md.
 @file:Suppress("UnstableApiUsage", "DEPRECATION")
 
 import java.io.File
@@ -40,28 +31,16 @@ dependencies {
 
 // --- Bench task ---------------------------------------------------------
 
-// One row per (target, phase, scenario, run). Captured to build/daemon-bench/baseline-latency.csv.
-// Phases mirror P0.1's Android table; the desktop equivalents are:
-//   config       — `:bench:composePreviewRender --dry-run` wall (same as Android).
-//   compile      — `compileKotlin` wall (kotlin.jvm; no `compileDebugKotlin`).
-//   discovery    — `composePreviewDiscover` wall (renderer-agnostic).
-//   forkAndInit  — derived: composePreviewRender wall - sum(per-preview javaexec walls).
-//                  Desktop forks ONE JVM PER PREVIEW (RenderPreviewsTask.renderWithCompose
-//                  iterates `execOperations.javaexec` per preview) — so this captures
-//                  Gradle's orchestration overhead BETWEEN those forks, not the forks
-//                  themselves. The per-fork cost lives inside `render` on desktop.
-//   render       — sum of per-preview javaexec walls, captured by the bench probing
-//                  the renderer directly (same args RenderPreviewsTask passes), one
-//                  process per preview. Includes JVM startup + Skiko/Compose-Desktop
-//                  init + actual draw. This is the desktop counterpart to Android's
-//                  "sum of JUnit testcase time= attrs" — except every row pays its
-//                  own JVM cost because there's no shared sandbox.
+// One row per (target, phase, scenario, run). Desktop phases:
+//   config       — `:bench:composePreviewRender --dry-run` wall.
+//   compile      — `compileKotlin` wall.
+//   discovery    — `composePreviewDiscover` wall.
+//   forkAndInit  — composePreviewRender wall minus the per-preview javaexec walls: Gradle's
+//                  orchestration between forks (desktop forks one JVM per preview).
+//   render       — sum of per-preview renderer probes, each including JVM + Skiko init + draw.
 //
-// The desktop divergence from P0.1's accounting: Android shares a Robolectric sandbox
-// across previews inside one Test JVM, so `render` is pure draw time and `forkAndInit`
-// is the one-time JVM+sandbox bootstrap. Desktop has no shared sandbox — each preview
-// process bootstraps Skiko + Compose-Desktop runtime independently — so the daemon's
-// addressable surface on desktop is literally `render` itself, not just `forkAndInit`.
+// Unlike Android (one shared Robolectric sandbox), every desktop preview bootstraps its own
+// runtime, so the daemon's addressable surface on desktop is `render` itself.
 
 abstract class BenchPreviewLatencyTask : DefaultTask() {
 
@@ -101,11 +80,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       .directoryProperty()
       .convention(project.layout.buildDirectory.dir("compose-previews/renders"))
 
-  // Snapshot of the renderer classpath at config time. Bench probes invoke
-  // `java -cp <this> ee.schimke.composeai.renderer.DesktopRendererMainKt`
-  // directly so per-preview wall times are observable. We resolve it eagerly
-  // here (rather than re-resolving inside the task action) so the bench
-  // doesn't need its own resolvable configuration at execution time.
+  // Renderer classpath resolved at config time, so probes can `java -cp` the renderer directly
+  // without a resolvable configuration at execution time.
   @get:Internal abstract val rendererClasspath: org.gradle.api.file.ConfigurableFileCollection
 
   @get:Internal
@@ -153,11 +129,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       gradle("$benchPath:clean")
     }
 
-    // Same string-literal swap rationale as P0.1: kotlinc strips comments,
-    // so a comment-only edit leaves bytecode unchanged and downstream
-    // `.class`-hashing tasks (composePreviewRender, composePreviewDiscover) stay
-    // UP-TO-DATE. A varying string literal is the smallest input mutation
-    // that propagates all the way through.
+    // A string-literal change, since comment-only edits leave bytecode (and downstream
+    // class-hashing tasks) unchanged.
     val literalMarker = "\"three\""
     fun <T> withPreviewEdit(block: () -> T): T {
       val originalText = previewFile.readText()
@@ -184,18 +157,14 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           !suffix.startsWith("SKIPPED")
     }
 
-    // Per-preview probe: read previews.json, spawn DesktopRendererMainKt
-    // once per preview (same args shape as RenderPreviewsTask.renderWithCompose
-    // builds), wall-time each call. Returns sum of probe walls + count.
+    // Spawn the renderer once per preview (args as RenderPreviewsTask builds them) and time each
+    // call.
     fun probeRenders(): Pair<Long, Int> {
       val previewsJson = previewsJsonFile.get().asFile
       check(previewsJson.exists()) {
         "previews.json missing at $previewsJson — discovery hasn't run"
       }
-      // Minimal hand-parse: we only need className, functionName, and the
-      // params we forward to the renderer. Avoid a serialization dep here
-      // because BenchPreviewLatencyTask runs in the build script's
-      // classloader, not the plugin's.
+      // Hand-parsed: this task runs in the build script's classloader, without a serialization dep.
       val text = previewsJson.readText()
       val previews = parsePreviewsJson(text)
       val outDir = rendersDir.get().asFile
@@ -348,13 +317,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   }
 
   /**
-   * Append rows to the shared CSV. If the file is in the legacy P0.1 layout (header
-   * `phase,scenario,run,milliseconds,notes` — no `target` column), migrate every existing row by
-   * prepending `android,`. The migration is idempotent and run-once: subsequent appends see the new
-   * header and skip straight to the append branch.
-   *
-   * The file is shared with :samples:android-daemon-bench:benchPreviewLatency, which writes android
-   * rows. Either bench can be run independently or back-to-back; the order doesn't matter.
+   * Append rows to the CSV shared with :samples:android-daemon-bench, first migrating a legacy file
+   * (no `target` column) by prepending `android,` to each row. Idempotent.
    */
   private fun appendCsv(csv: java.io.File, rows: List<Row>, target: String) {
     val newHeader = "target,phase,scenario,run,milliseconds,notes"
@@ -403,10 +367,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     csv.writeText(sb.toString())
   }
 
-  // Tiny hand-parser: previews.json is a known shape (PreviewManifest +
-  // PreviewInfo from the plugin). We deliberately avoid a kotlinx.serialization
-  // dep on the bench script classpath — keeping this task self-contained
-  // makes it easier to copy into other branches without extra wiring.
+  // Hand-parsed previews.json, keeping the bench script free of a kotlinx.serialization dep.
   private data class ProbePreview(
     val id: String,
     val className: String,
@@ -431,11 +392,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       val widthDp = (params["widthDp"] as? Number)?.toInt() ?: 0
       val heightDp = (params["heightDp"] as? Number)?.toInt() ?: 0
       val density = (params["density"] as? Number)?.toFloat() ?: 2.625f
-      // Mirror DeviceDimensions.resolveForRender's wrap-content branch for
-      // previews with no device / showSystemUi / widthDp / heightDp:
-      // sandbox = 400dp × 800dp at default density. The renderer wraps to
-      // intrinsic size on the unset axes; the bench just needs a sandbox
-      // big enough to host the trivial widgets.
+      // Mirrors DeviceDimensions.resolveForRender's wrap-content sandbox (400×800dp) for previews
+      // with no size hints.
       val effWdp = if (widthDp > 0) widthDp else 400
       val effHdp = if (heightDp > 0) heightDp else 800
       val widthPx = (effWdp * density).toInt().coerceAtLeast(1)
@@ -477,9 +435,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   private data class RunResult(val wallMs: Long, val output: String)
 }
 
-// Renderer classpath: same configuration the desktop composePreviewRender task uses
-// (`composePreviewRenderer` includes :renderer-desktop) plus this module's
-// classes + runtime classpath. Resolved at config time.
+// The desktop `composePreviewRenderer` configuration plus this module's classes and runtime
+// classpath, resolved at config time.
 val rendererCp = configurations.named("composePreviewRenderer")
 val mainClasses = files(layout.buildDirectory.dir("classes/kotlin/main"))
 val runtimeCp = configurations.named("runtimeClasspath")
@@ -498,24 +455,17 @@ tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   outputs.upToDateWhen { false }
 }
 
-// --- Stage-1 + stage-2 compile-leg bench (issue #1586) --------------------------------------
+// Stage-1 + stage-2 compile-leg bench (#1586). `benchPreviewLatency` measures stage 0 (a per-save
+// `./gradlew`); this times the two faster save loops and prints a promote/demote verdict:
 //
-// `benchPreviewLatency` (above) measures stage 0 — the per-save `./gradlew` invocation. This
-// sibling task drives the two faster save loops that shipped behind experimental flags and emits
-// per-stage compile-leg medians, then evaluates the promote/demote thresholds and prints a verdict:
+//   * stage 1 (`composePreview.daemon.continuousCompile`): a resident `gradle --continuous`, timing
+//     edit → `BUILD SUCCESSFUL in N`, the leg `ContinuousCompileWorker.waitForNextBuild()` awaits.
+//   * stage 2 (`composePreview.daemon.compileInProcess`): `javaexec`s `:daemon:core`'s
+//     `BtaBenchMain` with the daemon's `btaCompile` block, driving the real
+//     `BtaCompileSession.compileIncremental()` plus classloader rotation.
 //
-//   * stage 1 (`composePreview.daemon.continuousCompile`): a resident `gradle --continuous`
-//     invocation. We launch one, prime its warm-up build, then time edit→`BUILD SUCCESSFUL in N`
-//     for each rep — exactly the leg `ContinuousCompileWorker.waitForNextBuild()` resolves on.
-//   * stage 2 (`composePreview.daemon.compileInProcess`): the in-process Build Tools API compile.
-//     We read the `btaCompile` block the daemon would consume from `daemon-launch.json` and
-//     `javaexec` `:daemon:core`'s `BtaBenchMain`, which drives the real
-//     `BtaCompileSession.compileIncremental()` — the same call the daemon's `compileSources`
-//     handler runs — plus the child-classloader rotation that follows it.
-//
-// The render leg is unchanged from stage 0 (the daemon hot-swaps into the same renderer), so the
-// verdict reuses the stage-0 `render,warm-after-1-line-edit` median already in the CSV rather than
-// re-measuring it here — run `benchPreviewLatency` first so that baseline exists.
+// The render leg is unchanged, so the verdict reuses the stage-0 warm-edit render median from the
+// CSV — run `benchPreviewLatency` first.
 
 abstract class BenchCompileStagesTask : DefaultTask() {
 
@@ -559,9 +509,8 @@ abstract class BenchCompileStagesTask : DefaultTask() {
       .fileProperty()
       .convention(project.layout.buildDirectory.file("compose-previews/daemon-launch.json"))
 
-  // `:daemon:core`'s runtime classpath — carries `BtaBenchMain`, `BtaCompileSession`, and the
-  // kotlin-build-tools-api the driver links against. Resolved at config time; see the
-  // `daemonBench` configuration below.
+  // `:daemon:core`'s runtime classpath (`BtaBenchMain`, `BtaCompileSession`, build-tools-api); see
+  // the `daemonBench` configuration below.
   @get:Internal abstract val daemonCoreClasspath: org.gradle.api.file.ConfigurableFileCollection
 
   @get:Internal
@@ -878,10 +827,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     return total
   }
 
-  /**
-   * Append rows to the shared CSV, migrating the legacy P0.1 layout (no `target` column) on first
-   * sight. Same logic as [BenchPreviewLatencyTask.appendCsv] so the two tasks interleave cleanly.
-   */
+  /** As [BenchPreviewLatencyTask.appendCsv], so the two tasks interleave cleanly. */
   private fun appendCsv(csv: java.io.File, rows: List<StageRow>, target: String) {
     val newHeader = "target,phase,scenario,run,milliseconds,notes"
     val existing = if (csv.exists()) csv.readText() else ""
@@ -941,9 +887,8 @@ configurations.create("daemonBench") {
 }
 
 dependencies {
-  // `daemonBench` is a resolvable configuration of its own, so it does not inherit the daemon BOM
-  // that `ComposeAiBaseConventionsPlugin` puts on `api` and `implementation`. Without the platform
-  // here, `daemon-core` has no version at all -- the catalog entry deliberately carries none.
+  // A standalone resolvable configuration doesn't inherit the daemon BOM, and the catalog entry
+  // carries no version.
   add("daemonBench", platform(libs.composeai.daemon.bom))
   add("daemonBench", libs.composeai.daemon.core)
 }
@@ -961,19 +906,7 @@ tasks.register<BenchCompileStagesTask>("benchCompileStages") {
   outputs.upToDateWhen { false }
 }
 
-// --- CI smoke (issue #1586) -----------------------------------------------------------------
-// The full benches are deliberately slow (run on the reference machine, not per-PR). To keep this
-// module from bit-rotting, the five trivial previews are rendered — a cheap proof the module
-// builds, discovery wires up, and the renderer path is intact.
-//
-// CI does that by **naming `composePreviewRender` directly**, in ci.yml's `build-samples-full`
-// job, which is gated `if: github.event_name != 'pull_request'` because these render-heavy checks
-// "routinely make Build Samples the slowest CI leg". It is not reached through `check`: nothing in
-// CI invokes `check` at all (see `:mcp` and `:renderer-desktop` for the two guards that had to be
-// moved onto `test` for exactly that reason), and this module has no `test` task to move it to —
-// only a `main` source set, and `affected-gradle-tests.py` ignores `samples/**` outright.
-//
-// So the hook below is a local convenience: `./gradlew :samples:<this>:check` renders. Deliberately
-// NOT wired onto a PR-path task — that would drag a Robolectric/Compose-Desktop render onto every
-// pull request, which is the cost `build-samples-full` exists to keep off it.
+// CI smoke: ci.yml's `build-samples-full` (non-PR) runs `composePreviewRender` directly to keep
+// this module from bit-rotting; nothing in CI invokes `check`. This hook is a local convenience
+// only — don't wire it onto a PR-path task.
 tasks.named("check") { dependsOn("composePreviewRender") }

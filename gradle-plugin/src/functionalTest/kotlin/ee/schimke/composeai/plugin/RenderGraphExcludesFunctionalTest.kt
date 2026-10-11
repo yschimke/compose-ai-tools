@@ -8,21 +8,11 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Real-Gradle proof for `composePreview { renderGraph { exclude(…) } }` (issue #4995): a consumer
- * whose graph carries a strict-version platform can keep that platform off the render graph, with
- * no build-script access to the plugin's internal configuration names.
- *
- * The reported shape, reproduced here: a `java-platform` project whose constraints are
- * `strictly(v)` + `reject("(v,")`, applied to `implementation` so every module in the build is
- * pinned. The render configuration `extendsFrom` the consumer's own classpath on purpose — that
- * single graph is what keeps one coherent version of each shared module in front of the render
- * classloader — so it inherits those constraints too, and a renderer dependency newer than one of
- * them is a conflict Gradle cannot solve. Before this DSL existed, the only way out was
- * `configurations.matching { it.name.startsWith("composePreview") }`, which depends on names the
- * consumer cannot see and cannot rely on.
- *
- * Guava stands in for "a renderer dependency newer than the consumer's pin": the platform strictly
- * pins 31.1-jre and rejects anything above it, while the renderer config asks for 33.0.0-jre.
+ * `composePreview { renderGraph { exclude(…) } }` lets a consumer keep a strict-version platform
+ * off the render graph without touching internal configuration names (see #4995). The render
+ * configuration deliberately `extendsFrom` the consumer's classpath, so it inherits `strictly(v)` +
+ * `reject("(v,")` constraints that a newer renderer dependency can't satisfy. Guava stands in: the
+ * platform pins 31.1-jre, the renderer config asks for 33.0.0-jre.
  */
 class RenderGraphExcludesFunctionalTest {
 

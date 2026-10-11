@@ -32,23 +32,13 @@ import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
 import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.buttonSizeModifier
 
-/**
- * Pure-remote composables — each one is the kind of component a real Remote Compose screen is built
- * from. Mirrors the upstream `wear/compose/remote/remote-material3/samples` set, reduced to the
- * three button variants that don't need image-vector / bitmap fixtures.
- *
- * Exposed as the "unit of content" that the two preview approaches in `Previews.kt` wrap
- * differently:
- * 1. wrapper call inside the `@Preview`-annotated UI composable (see [RemoteButtonEnabledPreview]),
- *    and
- * 2. `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a `@Preview`-annotated composable
- *    that only emits remote content (see [RemoteButtonWithBorderPreview]).
- */
+// Pure-remote composables mirroring upstream's `remote-material3/samples` (the button variants that
+// need no image fixtures). `Previews.kt` wraps them both ways: a wrapper call inside the `@Preview`
+// ([RemoteButtonEnabledPreview]) and `@PreviewWrapper(RemotePreviewWrapper::class)`
+// ([RemoteButtonWithBorderPreview]).
 
-// A shared action used by every sample button — `hostAction(...)` is the Remote
-// Compose equivalent of `onClick = { ... }`. The two arguments are a remote
-// string payload and a remote-float handler id, both hoisted out so the
-// per-button code stays focused on layout.
+// `hostAction(...)` is Remote Compose's `onClick = { ... }`: a remote string payload and a
+// remote-float handler id.
 private val testAction = hostAction("testAction".rs, 1.rf)
 
 @Composable
@@ -76,11 +66,8 @@ fun RemoteButtonWithBorder() {
 }
 
 /**
- * Reads its label from a Remote Compose named-value binding declared via
- * [rememberNamedRemoteString]. The panel-side Remote Compose editor sets the `label` named value
- * via `interactive/setRemoteCompose` / `renderNow.overrides.remoteCompose`, and the next render
- * picks it up here. Without an override the default `"Tap me"` shows, so the preview is still a
- * useful static screenshot in agent-driven `composePreviewRenderAll` runs.
+ * Reads its label from a [rememberNamedRemoteString] binding, which the panel editor or
+ * `renderNow.overrides.remoteCompose` can set; defaults to `"Tap me"`.
  */
 @Composable
 @RemoteComposable
@@ -105,14 +92,10 @@ fun RemoteButtonWithShape() {
 }
 
 /**
- * The indeterminate Remote Material 3 progress indicator. Unlike a normal Compose animation, its
- * motion is encoded into the [androidx.compose.remote.player.core.RemoteDocument]: the indicator
- * reads Remote Compose's continuous-time variable and each player evaluates the arc expressions
- * while replaying the document.
- *
- * Keeping this as a pure [RemoteComposable] lets the animated preview exercise both replay
- * implementations — the standard View-backed Remote Compose player and the embedded Compose player
- * — without an app-side animation masking a stalled document clock.
+ * The indeterminate Remote Material 3 progress indicator, whose motion is encoded in the
+ * [androidx.compose.remote.player.core.RemoteDocument] (arc expressions over Remote Compose's
+ * continuous-time variable). Kept pure-remote so both players are exercised without an app-side
+ * animation masking a stalled document clock.
  */
 @Composable
 @RemoteComposable
@@ -121,9 +104,8 @@ fun RemoteIndeterminateCircularProgressIndicator() {
 }
 
 /**
- * The interaction-driven animation technique from AndroidX's
- * `RemoteCircularProgressIndicatorAnimatedSample`: clicking changes a mutable value in the remote
- * document, and [animateRemoteFloat] interpolates the determinate indicator to its next quarter.
+ * AndroidX's `RemoteCircularProgressIndicatorAnimatedSample` technique: a click changes a remote
+ * value and [animateRemoteFloat] animates the indicator to its next quarter.
  */
 @Composable
 @RemoteComposable
@@ -139,19 +121,9 @@ fun RemoteAnimatedCircularProgressIndicator() {
 }
 
 /**
- * A Remote Compose **shader** component: a full-size box painted with a [RemoteBrush] gradient
- * shader (Remote Compose's `shaders` package — `RemoteLinearGradient`/`RemoteRadialGradient`/etc.
- * are the document-level equivalents of Compose's `Brush.linearGradient`). The gradient serialises
- * into the `RemoteDocument` byte stream and is rasterised by the player, not by an app-side
- * `ShaderBrush`.
- *
- * **Shader control** — the middle gradient stop is a [rememberNamedRemoteColor] binding named
- * `shaderColor`, so the panel-side Remote Compose editor (or any caller seeding
- * `renderNow.overrides.remoteCompose.namedValues = {"shaderColor": ColorValue(...)}`) recolours the
- * shader live, without rebuilding the document — the same override path
- * [RemoteButtonWithNamedLabel]'s string label uses, here driving a shader uniform. Without an
- * override the default cyan stop shows, so the preview is a useful static capture in
- * `composePreviewRenderAll` runs.
+ * A full-size box painted with a [RemoteBrush] gradient shader, serialised into the document and
+ * rasterised by the player. The middle stop is a [rememberNamedRemoteColor] named `shaderColor`, so
+ * `namedValues = {"shaderColor": ColorValue(...)}` recolours it live; defaults to cyan.
  */
 @Composable
 @RemoteComposable
@@ -168,10 +140,7 @@ fun RemoteShaderGradient() {
   )
 }
 
-/**
- * Centers [content] inside a remote full-size box. Equivalent to the upstream sample's `Container`;
- * kept private to emphasise that its purpose is preview framing, not production composition.
- */
+/** Centers [content] in a remote full-size box (upstream's `Container`), for preview framing. */
 @Composable
 @RemoteComposable
 fun Container(content: @Composable @RemoteComposable () -> Unit) {

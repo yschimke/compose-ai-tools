@@ -10,32 +10,18 @@ import kotlin.math.roundToInt
 import org.junit.Test
 
 /**
- * Pins [SharedElementFilmstripPreview] to the fractions its labels claim (issue #4097).
- *
- * The filmstrip's whole value is being the *static, diffable* counterpart to the GIF preview, and
- * it lost that: each panel used to seek its own `SeekableTransitionState` to a constant fraction,
- * and `seekTo` takes a fraction of a **total duration that shared-element transitions keep
- * changing** — so every run froze the panels somewhere slightly different and the visual-diff bot
- * reported a change on PRs that touch nothing near this file. Ten renders across five unrelated
- * PRs, and run-to-run variation (up to 11% of the image) larger than the base→head difference the
- * bot attributed to the PR.
- *
- * What is asserted is the invariant that broke, not the bytes: the five container widths must sit
- * where the transition's own easing puts them at 0/25/50/75/100% of the way through. A panel frozen
- * at the wrong point in the transition — the failure mode — moves its container by far more than
- * [WIDTH_TOLERANCE_PX], while an intentional restyle of the filmstrip moves *every* panel and is
- * meant to be reviewed as a diff rather than caught here.
- *
- * Reads the PNG `:samples:android:composePreviewRenderAll` produced (`renderBeforeUnitTests`), the
- * same way the other pixel tests in this module do.
+ * Pins [SharedElementFilmstripPreview] to the fractions its labels claim. Asserts the invariant,
+ * not the bytes: the five container widths sit where the transition's easing puts them at
+ * 0/25/50/75/100%. A panel frozen at the wrong point moves far more than [WIDTH_TOLERANCE_PX]; an
+ * intentional restyle moves every panel and belongs in a reviewed diff. Reads the rendered PNG
+ * (`renderBeforeUnitTests`).
  */
 class SharedElementFilmstripPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
   /**
-   * The capture is time-pinned, so its filename carries the structural `_TIME_<ms>ms` suffix — the
-   * evidence in the render tree that this preview is frozen by the clock rather than by a seek.
+   * The capture is time-pinned, so its filename carries the `_TIME_<ms>ms` suffix.
    */
   private val timeSuffix = "_TIME_${FILMSTRIP_CAPTURE_MS}ms"
 
@@ -74,22 +60,16 @@ class SharedElementFilmstripPixelTest {
 
   private companion object {
     /**
-     * How far a panel's container may sit from where the easing puts it, in device pixels.
-     *
-     * The image is 893px wide at 2.625x density, and the seek-driven version moved panels by 100px
-     * and more between runs of the same commit. 14px is roughly 3% of the collapsed→expanded
-     * travel: wide enough for the antialiased edge the scan below picks up and for a rounding hair
-     * in the easing, far too narrow for a panel frozen at the wrong point.
+     * How far a panel's container may sit from its eased position, in device pixels: ~3% of the
+     * collapsed→expanded travel, enough for antialiasing and rounding, far too little for a panel
+     * frozen at the wrong point.
      */
     const val WIDTH_TOLERANCE_PX = 14
 
     /** `Color(0xFFE8DEF8)` — the container fill both poses paint. */
     val CONTAINER_RGB = Triple(0xE8, 0xDE, 0xF8)
 
-    /**
-     * Channel slack for the antialiased edges and the cross-fade the panels are captured mid-way
-     * through.
-     */
+    /** Channel slack for antialiased edges and the mid-capture cross-fade. */
     const val CHANNEL_TOLERANCE = 6
 
     /** A row with fewer container pixels than this is a label row or the gap between panels. */
@@ -97,12 +77,9 @@ class SharedElementFilmstripPixelTest {
   }
 
   /**
-   * Width of each panel's container, top to bottom.
-   *
-   * Scans for rows carrying the container fill and groups contiguous rows into panels — the panels
-   * are separated by bands of pure surface, so the grouping is unambiguous without knowing any
-   * panel's y coordinate. The widest row of a band is the container's own width (a narrower row
-   * would be one clipped by the rounded corners).
+   * Width of each panel's container, top to bottom: rows carrying the container fill grouped into
+   * contiguous bands (panels are separated by plain surface); the widest row of a band avoids
+   * rounded-corner rows.
    */
   private fun containerWidths(image: BufferedImage): List<Int> {
     val widths = mutableListOf<Int>()

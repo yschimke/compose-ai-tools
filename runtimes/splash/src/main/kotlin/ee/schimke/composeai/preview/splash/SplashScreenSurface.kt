@@ -23,54 +23,26 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 
 /**
- * Recreates the Android 12+ SplashScreen window appearance inside a regular `@Preview`.
+ * Recreates the Android 12+ SplashScreen window appearance inside a regular `@Preview`; stack
+ * `@Preview`s to fan out over `uiMode`, `locale`, `widthDp`, `fontScale`.
  *
- * Pairs with a stacked `@Preview` (multi-preview meta-annotations) so authors can fan out the
- * splash across the existing knobs `@Preview` already owns — `uiMode`, `locale`, `widthDp`,
- * `fontScale`. The fan-out is driven by Compose tooling: discovery + the renderer's COMPOSE path
- * pick each `@Preview` up as a separate entry, so no splash-specific plumbing is required.
- *
- * Layout mirrors the SplashScreen spec
+ * Layout follows the SplashScreen spec
  * (https://developer.android.com/develop/ui/views/launch/splash-screen#elements):
+ * - [background] fills the whole window, like `windowSplashScreenBackground`.
+ * - [icon] is centred and circle-masked at ~75% of the icon canvas (the spec's 240dp-in-320dp),
+ *   computed against the available footprint so it tracks preview dp overrides.
+ * - [iconBackground], if set, is a slightly larger circle behind the icon
+ *   (`windowSplashScreenIconBackgroundColor`).
+ * - [brandingImage] is bottom-centred, capped at ~200×80dp with ~60dp bottom inset.
  *
- * - Full-bleed [background] fills the surrounding `@Preview` window so the rendered PNG looks like
- *   a single uninterrupted splash surface, the same way the platform paints
- *   `windowSplashScreenBackground` across the entire splash window.
- * - [icon] is centred, masked to a circle, and sized to ~75% of the splash-icon canvas's short
- *   edge. The spec talks about a 240dp visible icon inside a 320dp canvas (≈ 75%); we apply the
- *   same ratio against the available footprint so the rendered icon reads the right size on a
- *   phone-shaped `@Preview(widthDp = 360, heightDp = 800)` window without us having to hard-code a
- *   px size that won't track preview dp overrides. Clipping to `CircleShape` matches the way the
- *   platform's `SplashScreenView` masks the icon for the Android 12+ visual.
- * - When [iconBackground] is non-null the icon sits on top of a filled circle of that colour — this
- *   is the `windowSplashScreenIconBackgroundColor` attribute the spec describes as an optional
- *   "circular backdrop" behind the icon. The backdrop is slightly larger than the icon so the
- *   colour reads as a ring around the masked icon, matching the on-device appearance.
- * - [brandingImage] is centred along the bottom edge, capped at ~200dp wide / ~80dp tall (the
- *   spec's documented branding footprint), with ~60dp of bottom inset so it doesn't crowd the
- *   canvas edge. Pass `null` to omit it entirely.
+ * Qualitative, not a byte-match of SystemUI's compositor. The caller picks colours (no
+ * `isSystemInDarkTheme()`), so night-mode variants come from the surrounding multipreview.
  *
- * Reproduction is qualitative — the rendered tree reads like the real splash on a phone-shaped
- * canvas; it does not byte-match what `SystemUI`'s splash compositor draws on-device (window
- * shadows, the icon-fade animation frames, OEM corner-radius chrome). Authors who need
- * pixel-accurate captures should snapshot the actual launch animation off a device.
- *
- * The composable deliberately doesn't read `isSystemInDarkTheme()` — the caller picks the colours
- * so a `@Preview(uiMode = UI_MODE_NIGHT_YES)` driver controls the variant entirely by passing
- * different [background] / [iconBackground] values per night-mode branch. This keeps the helper
- * symmetric with `NotificationContent`: it draws what you hand it and leaves the theme-switching to
- * the surrounding multi-preview meta-annotation.
- *
- * @param icon the foreground drawable rendered at the centre. Typically the app's
- *   `windowSplashScreenAnimatedIcon` (the same monochrome / adaptive-icon foreground the launcher
- *   uses on Android 12+).
- * @param background full-bleed colour drawn behind everything. Defaults to opaque white.
- * @param iconBackground optional colour for the circular backdrop behind the icon. `null` (default)
- *   skips the backdrop entirely so the icon sits directly on top of [background] — the SplashScreen
- *   attribute is itself opt-in on-device.
- * @param brandingImage optional bottom-centre branding asset. `null` (default) omits it.
- * @param modifier modifier applied to the outer full-bleed `Box`. Use this to override the size of
- *   the splash surface for an inset preview; by default the helper fills the available space.
+ * @param icon the centre drawable, typically the app's `windowSplashScreenAnimatedIcon`.
+ * @param background full-bleed colour behind everything. Defaults to opaque white.
+ * @param iconBackground optional circular backdrop colour; `null` omits it, as on-device.
+ * @param brandingImage optional bottom-centre branding asset; `null` omits it.
+ * @param modifier applied to the outer full-bleed `Box`; by default it fills the available space.
  */
 @Composable
 fun SplashScreenSurface(
@@ -91,13 +63,9 @@ fun SplashScreenSurface(
 }
 
 /**
- * Shared layout behind [SplashScreenSurface] and [AnimatedSplashScreenSurface].
- *
- * [iconScale] is the one axis the two entry points disagree on. `null` means "no scale at all" —
- * not "scale of 1f" — and the distinction is load-bearing: a `graphicsLayer` promotes the icon into
- * its own render layer, which can shift anti-aliasing on the masked circle by a pixel. Passing
- * `null` skips the modifier entirely so the static previews that existed before animation support
- * keep rendering byte-identical PNGs and don't light up the visual-diff bot.
+ * Shared layout behind [SplashScreenSurface] and [AnimatedSplashScreenSurface]. A null [iconScale]
+ * skips the `graphicsLayer` entirely (rather than scale 1f), since a layer can shift anti-aliasing
+ * and would change static PNGs.
  */
 @Composable
 internal fun SplashSurfaceLayout(
@@ -121,19 +89,10 @@ internal fun SplashSurfaceLayout(
 }
 
 /**
- * Centre icon — the optional [iconBackground] ring is drawn underneath via a sibling `Box` so both
- * layers share the [Alignment.Center] anchor without us having to compute an offset.
+ * Centre icon over the optional [iconBackground] ring, sized against the spec's 320dp icon canvas.
  *
- * Both the icon and the backdrop are sized in `dp` against a notional 320dp canvas (the
- * SplashScreen spec's icon canvas). Inside a phone-shaped `@Preview` (360×800dp) the icon ends up
- * at ~192dp visible, with a ~256dp backdrop — the same ~75% / 80% ratio the platform applies.
- *
- * [iconScale] scales only the icon, never the backdrop ring — on-device the AVD the platform runs
- * for `windowSplashScreenAnimatedIcon` animates the icon's own vector groups, while
- * `windowSplashScreenIconBackgroundColor` paints a static circle underneath it. Scaling both would
- * read as the whole badge breathing, which is not what a launch looks like. The scale is read
- * inside the `graphicsLayer` lambda so a per-frame change re-runs the layer block rather than
- * recomposing the icon.
+ * [iconScale] scales only the icon, not the ring, as on-device the animated icon moves over a
+ * static backdrop. Read inside `graphicsLayer` so per-frame changes skip recomposition.
  */
 @Composable
 private fun BoxScope.SplashIcon(
@@ -174,9 +133,7 @@ private fun BoxScope.SplashIcon(
 }
 
 /**
- * Bottom-centre branding image. Capped at ~200dp × ~80dp per the SplashScreen spec; the 60dp bottom
- * inset matches the documented gap between the branding asset and the bottom edge of the splash
- * window so the rendered PNG reads the same as an on-device launch.
+ * Bottom-centre branding image, capped at ~200dp × ~80dp with the spec's 60dp bottom inset.
  */
 @Composable
 private fun BoxScope.SplashBranding(brandingImage: Painter) {
@@ -196,11 +153,8 @@ private fun BoxScope.SplashBranding(brandingImage: Painter) {
 }
 
 /**
- * Test tags exposed on the surface, icon, optional iconBackground ring, and optional branding
- * image. The renderer doesn't read them at all; they're here so unit tests
- * (`SplashScreenSurfaceTest`) and downstream Compose UI tests can locate the parts of the splash
- * without relying on string content descriptions, which are intentionally minimal so the helper
- * plays well with `@Preview(locale = ...)` fan-out.
+ * Test tags for the surface, icon, ring and branding image, so tests can locate parts without
+ * relying on (intentionally minimal) content descriptions.
  */
 const val SPLASH_SURFACE_TEST_TAG: String = "SplashScreenSurface"
 const val SPLASH_ICON_TEST_TAG: String = "SplashScreenSurface.icon"

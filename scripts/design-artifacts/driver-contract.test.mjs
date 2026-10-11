@@ -1,11 +1,7 @@
-// The checks that the export driver agrees with THIS repository: its workflow, its Kotlin, its
-// sample catalogs and fonts, the lock it installs the driver from, and the two schemas it serves at
-// public `$schema` URLs. The driver's source and its own tests live in design-parity's
-// packages/export-driver; these are the few that need this checkout to mean anything, so they run
-// here, against the installed package.
-//
-// DRIVER_DIR names the installed driver. `.github/scripts/install-export-driver.sh` exports it in
-// CI; locally:
+// Checks that the export driver (from design-parity's packages/export-driver) agrees with this
+// repository: workflow, Kotlin, sample catalogs, fonts, the install lock, and the served schemas.
+// DRIVER_DIR names the installed driver (exported in CI by
+// `.github/scripts/install-export-driver.sh`); locally:
 //
 //   DRIVER_DIR=$(.github/scripts/install-export-driver.sh "$(mktemp -d)") \
 //     node --test scripts/design-artifacts/driver-contract.test.mjs
@@ -40,11 +36,9 @@ const {
 } = await driver("catalog-spec.mjs");
 const { moduleToDir, collectKotlinSources } = await driver("catalog-spec-io.mjs");
 
-// The schemas are served from this repository's `main` — both sample specs, and every catalog
-// repository that copied one, name `raw.githubusercontent.com/yschimke/compose-ai-tools/main/
-// scripts/design-artifacts/catalog.spec.schema.json` — and the driver validates against its own
-// copy. Two copies of one contract: they must be the same bytes, so a schema change lands in
-// design-parity and is copied here in the PR that bumps the lock.
+// The schemas are served from this repository's `main` (catalog specs reference those URLs) and the
+// driver validates against its own copy; they must be byte-identical, so changes land in
+// design-parity and are copied here when the lock is bumped.
 for (const schema of ["catalog.spec.schema.json", "ui-builder.policy.schema.json"]) {
   test(`${schema} is the installed driver's copy`, () => {
     assert.equal(

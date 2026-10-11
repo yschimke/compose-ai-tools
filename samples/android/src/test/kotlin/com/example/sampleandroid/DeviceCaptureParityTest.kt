@@ -10,61 +10,26 @@ import org.junit.Test
 
 /**
  * Device-capture parity: does the UI-builder design in
- * `samples/android/design/home-screen.uibuilder.json` still look like the app it was authored
- * against?
+ * `samples/android/design/home-screen.uibuilder.json` still look like the app it was authored from?
  *
- * The **reference** is the real app. `kind=ACTIVITY` previews launch `MainActivity` for real, with
- * its full lifecycle, its own `setContent` and its own theme, and capture the resumed screen to
- * `renders/activity__MainActivity.png` (see docs/APP_TOURS.md). That is the extraction half of
- * `docs/design/DEVICE_CAPTURE.md` already built and shipping; this test consumes it rather than
- * adding a second capture path.
+ * The reference is the real app: a `kind=ACTIVITY` preview launches `MainActivity` and captures
+ * `renders/activity__MainActivity.png` (docs/APP_TOURS.md). The candidate is
+ * [HomeScreenDesignPreview], the design rendered through the preview lane.
  *
- * The **candidate** is [HomeScreenDesignPreview], the design rendered through the ordinary preview
- * lane.
+ * Report-only: writes `build/device-capture-parity/report.json` and asserts only that both inputs
+ * are comparable. A threshold should be chosen from measured history, not invented up front.
  *
- * ## Report-only, on purpose
- *
- * This test never fails on a difference. It writes `build/device-capture-parity/report.json` and
- * asserts only that both inputs exist and are comparable. Two reasons, and neither is temporary
- * timidity:
- *
- * 1. **Nobody has measured the real drift yet.** A threshold invented before the first run is a
- *    number someone made up, and the usual fate of a gate like that is to be muted. The daily job
- *    exists to produce the measurement a threshold could later be chosen from.
- * 2. It matches how this repository already treats parity findings — advisory, severity being the
- *    agent's signal, per `site/reference/a11y.md`.
- *
- * Turning it into a gate is a deliberate follow-up, once `report.json` has a few weeks of history.
- *
- * ## The floor, measured
- *
- * At the commit that added this lane the two frames were **pixel-identical over 99.79% of the
- * frame**: `meanAbsoluteDifference` 0.002183, `differingPixelFraction` 0.0021, and every differing
- * pixel inside rows `18-43` and `2069-2079`. Those two bands are the status-bar glyphs and the
- * navigation pill: the design preview draws system chrome, and the ACTIVITY capture does not, *even
- * though both previews declare `showSystemUi = true`*. The content itself does not differ by a
- * single pixel.
- *
- * So a non-zero score is expected, and `differingRowBands` is the field that makes it readable —
- * two thin bands at the extremes are the known floor, anything inside the content area is drift.
- * That is why the bands are reported rather than just a number: a score alone cannot tell the two
- * apart, and a reviewer should not have to open the PNGs to find out.
- *
- * ## What a difference here means
- *
- * The app is the reference, so a difference is the *design* being out of date — someone changed
- * `HomeScreen` and the design was not re-authored. It can also be a real fidelity gap in what the
- * builder can express, which is the more interesting case and the reason the score is recorded
- * rather than just eyeballed.
+ * The known floor is two thin row bands (status-bar glyphs and nav pill: the design preview draws
+ * system chrome, the ACTIVITY capture doesn't); `differingRowBands` makes that readable, and
+ * anything inside the content area is real drift — usually the design being out of date, sometimes
+ * a gap in what the builder can express.
  */
 class DeviceCaptureParityTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
   /**
-   * Locale-independent fixed-point. `"%.6f".format(x)` uses the default locale, which in a
-   * comma-decimal locale writes `0,123456` — invalid JSON, and a CI runner is exactly where an
-   * unexpected default locale shows up.
+   * Locale-independent fixed-point, so a comma-decimal default locale can't produce invalid JSON.
    */
   private fun fixed(value: Double): String = String.format(Locale.ROOT, "%.6f", value)
 
@@ -79,14 +44,9 @@ class DeviceCaptureParityTest {
   )
 
   /**
-   * [Scores.meanAbsoluteDifference] is the mean per-channel difference, 0.0 (identical) to 1.0.
-   * [Scores.differingFraction] is the fraction of pixels differing by more than [tolerance] on any
-   * channel — the two answer different questions, and a design that is right but shifted by one
-   * pixel scores very differently on them.
-   *
-   * Compared over the overlap so a size mismatch degrades rather than throws; `sameSize` in the
-   * report says whether that happened, because a score over an overlap is not comparable to one
-   * over the whole frame.
+   * [Scores.meanAbsoluteDifference] is the mean per-channel difference (0.0–1.0);
+   * [Scores.differingFraction] the fraction of pixels differing by more than [tolerance] on any
+   * channel. Compared over the overlap so a size mismatch degrades (reported as `sameSize`).
    */
   private fun score(a: BufferedImage, b: BufferedImage, tolerance: Int = 8): Scores {
     val w = minOf(a.width, b.width)
@@ -138,13 +98,9 @@ class DeviceCaptureParityTest {
 
   @Test
   fun designMatchesCapturedApp() {
-    // Two different filename conventions meet here, and neither is guesswork:
-    //   * a `@Preview` render is `<function>_<previewName>-<8 hex digest>.png`
-    //     (docs/RENDER_FILENAMES.md), which is what `renderFile` matches;
-    //   * a synthetic ACTIVITY capture is the bare `activity__<SimpleName>.png` —
-    //     `AppTourDiscovery` sets `renderOutput` to exactly that, with no digest.
-    // `renderFile` happens to fall back to the bare name when its pattern misses, but relying on a
-    // fallback for the primary input would be luck, so the activity is resolved directly.
+    // A `@Preview` render is `<function>_<previewName>-<8 hex digest>.png`
+    // (docs/RENDER_FILENAMES.md), but an ACTIVITY capture is the bare `activity__<SimpleName>.png`,
+    // so resolve it directly.
     val captured =
       File(rendersDir, "activity__MainActivity.png").takeIf { it.exists() }
         ?: renderFile(rendersDir, "activity__MainActivity")

@@ -12,10 +12,9 @@ import kotlin.test.assertNull
 import kotlinx.serialization.json.Json
 
 /**
- * The split-Skiko repair from #4220: a bundle's recorded coordinates name the bindings but not the
- * platform native they link against, and serve promotes those bindings ahead of its own daemon
- * sidecar. Unpaired, they link against the server's older `libskiko` and every render dies with
- * `UnsatisfiedLinkError`.
+ * The split-Skiko repair: recorded coordinates name the bindings but not their platform native, and
+ * serve promotes the bindings ahead of its sidecar, so unpaired they link against an older
+ * `libskiko`.
  */
 class SkikoNativePairingTest {
 
@@ -60,9 +59,8 @@ class SkikoNativePairingTest {
   private fun String.suffix() = removePrefix("skiko-awt-runtime-")
 
   /**
-   * The exact m3-catalog shape that took the public server's live lane down: `skiko-awt:0.148.2`
-   * and no runtime artifact at all, because the six platform natives reach a Gradle-resolved
-   * classpath through `strictly` constraints rather than as recorded coordinates.
+   * `skiko-awt:0.148.2` with no runtime artifact, since natives reach a Gradle classpath via
+   * `strictly` constraints rather than recorded coordinates.
    */
   @Test
   fun `bindings recorded without their native synthesize the host runtime coordinate`() {
@@ -92,8 +90,7 @@ class SkikoNativePairingTest {
   }
 
   /**
-   * A native for the *wrong* platform (a bundle packed on a mac, served on Linux) is not the pair
-   * this host needs — that is the same skew wearing a matching version number, and it must still be
+   * A native for the wrong platform (packed on mac, served on Linux) is the same skew and must be
    * repaired.
    */
   @Test
@@ -133,10 +130,8 @@ class SkikoNativePairingTest {
   }
 
   /**
-   * The backstop reads the pair that will actually LOAD, which classpath order decides — the
-   * bindings are classes and `libskiko-<target>.so` is a root resource, both plain classloader
-   * lookups. A promoted 0.148.2 bindings jar ahead of the server sidecar's 0.144.6 native is
-   * exactly the m3-catalog outage.
+   * The backstop reads the pair that will actually load, decided by classpath order (both halves
+   * are classloader lookups).
    */
   @Test
   fun `classpath skew names the pair that will actually load`() {

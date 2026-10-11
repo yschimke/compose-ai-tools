@@ -8,51 +8,33 @@ import okio.Path
 import okio.Path.Companion.toPath
 
 /**
- * Shared helpers for serving a catalog's baked `compose/figma-svg` exports. A hybrid export
- * references its per-node raster crops as **external** hrefs (`figma-raster/<node>.png`, or the
- * delivery branch's slug-prefixed `<slug>.figma-raster/<node>.png`), so both fetching (enumerate
- * the crops to download) and serving (inline them so the SVG is self-contained, since Figma's
- * importer can't resolve external hrefs) walk those hrefs. Used by both the daemon path
- * ([ServeRenderHost]) and the static catalog path ([ServeCatalogStore] / [ServeBundleHost]).
+ * Shared helpers for serving a catalog's baked `compose/figma-svg` exports. Hybrid exports
+ * reference per-node raster crops as external hrefs (`figma-raster/<node>.png`, or slug-prefixed on
+ * a delivery branch), which fetching and serving (inlining, since Figma's importer can't resolve
+ * external refs) both walk. Used by [ServeRenderHost], [ServeCatalogStore] and [ServeBundleHost].
  */
 
-/**
- * `<image href="…figma-raster/<node>.png">` refs a hybrid figma-svg carries (bare or
- * slug-prefixed).
- */
+/** `<image href="…figma-raster/<node>.png">` refs (bare or slug-prefixed). */
 private val FIGMA_RASTER_HREF = Regex("href=\"([^\"]*figma-raster/[^\"]+)\"")
 
-/**
- * The figma-raster hrefs a hybrid SVG references (external crop paths, relative to the SVG's dir).
- */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
+/** The figma-raster hrefs a hybrid SVG references, relative to the SVG's dir. */
+// Public because `:server` call sites live in another module; not a widened API by intent.
 public fun figmaRasterHrefs(svg: String): List<String> =
   FIGMA_RASTER_HREF.findAll(svg).map { it.groupValues[1] }.toList()
 
 /**
- * Longest-edge cap (px) for a raster crop inlined into a self-contained figma-svg. A hybrid
- * sticker's crop is captured at device resolution, so a full-screen photo/`TextField` region can
- * run to megabytes — and the base64 embedding adds a third on top, ballooning the "paste into
- * Figma" SVG. A crop whose longest edge exceeds this is downscaled (aspect preserved) before
- * embedding; the SVG's `<image x y width height>` box is unchanged, so the bitmap still fills the
- * layer exactly, just at a bounded density.
- *
- * Aliases the shared [MAX_FIGMA_RASTER_EDGE_PX], which `bundle pack` now applies when it *writes* a
- * crop — the two must stay equal or the pack-time bound would either discard pixels this path still
- * wanted, or leave bytes it is about to throw away.
+ * Longest-edge cap for crops inlined into a self-contained figma-svg; larger device-resolution
+ * crops are downscaled (aspect kept, `<image>` box unchanged) so base64 doesn't balloon the SVG.
+ * Must equal [MAX_FIGMA_RASTER_EDGE_PX], which `bundle pack` applies when writing crops.
  */
 internal const val MAX_INLINE_RASTER_EDGE_PX: Int = MAX_FIGMA_RASTER_EDGE_PX
 
 /**
- * Inline an SVG's `figma-raster/<node>.png` crops as `data:image/png;base64` URIs, reading each
- * crop (relative to [dir], where its href resolves) via [fileSystem], so the served SVG is
- * self-contained. A crop whose longest edge exceeds [maxEdgePx] is downscaled before embedding (see
- * [MAX_INLINE_RASTER_EDGE_PX]); pass [Int.MAX_VALUE] to embed full-resolution bytes. A vector-only
- * SVG passes through; a crop missing on disk is left as a plain ref.
+ * Inline an SVG's `figma-raster/<node>.png` crops (relative to [dir]) as base64 `data:` URIs so it
+ * is self-contained. Crops over [maxEdgePx] are downscaled ([MAX_INLINE_RASTER_EDGE_PX]; pass
+ * [Int.MAX_VALUE] for full resolution). Vector-only SVGs pass through; missing crops stay plain
+ * refs.
  */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
 public fun inlineFigmaRasters(
   fileSystem: FileSystem,
   dir: Path,
@@ -63,8 +45,7 @@ public fun inlineFigmaRasters(
   val root = dir.normalized()
   return FIGMA_RASTER_HREF.replace(svg) { match ->
     val href = match.groupValues[1]
-    // Resolve + contain: an untrusted catalog SVG must not read outside `dir` via `..`/absolute
-    // hrefs — a crop that would escape is left as a plain ref, never followed.
+    // Untrusted SVG: a `..` or absolute href that escapes `dir` is left as a plain ref.
     val cropPath = "$dir/$href".toPath().normalized()
     if (!cropPath.isUnder(root) || !fileSystem.exists(cropPath)) return@replace match.value
     val crop = fileSystem.read(cropPath) { readByteArray() }
@@ -74,15 +55,10 @@ public fun inlineFigmaRasters(
 }
 
 /**
- * Rewrite an SVG's `figma-raster/<node>.png` hrefs to absolute URLs under [baseUrl] (the crops'
- * public home — e.g. the catalog's delivery branch on `raw.githubusercontent.com`), so a
- * web/document-served SVG *links* its rasters instead of carrying their bytes. The href's own
- * relative path is preserved under the base, mirroring how it resolves next to the SVG on disk. A
- * traversing href (`..` / absolute) is left untouched, exactly like [inlineFigmaRasters]'s
- * containment. A vector-only SVG passes through.
+ * Rewrite `figma-raster/<node>.png` hrefs to absolute URLs under [baseUrl] (e.g. the delivery
+ * branch on `raw.githubusercontent.com`), so web-served SVGs link rather than embed rasters.
+ * Traversing hrefs are left untouched, as in [inlineFigmaRasters].
  */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
 public fun linkFigmaRasters(svg: String, baseUrl: String): String {
   if (!svg.contains("figma-raster/")) return svg
   val base = baseUrl.trimEnd('/')
@@ -94,21 +70,10 @@ public fun linkFigmaRasters(svg: String, baseUrl: String): String {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Web mode (`?mode=web`)
-//
-// The default served figma-svg is self-contained: fonts base64-embedded as `@font-face`, rasters
-// inlined as `data:` URIs — right for pasting into Figma (its importer resolves fonts by family
-// name and can't fetch external hrefs) but heavy, and it duplicates the font bytes into every
-// sticker. A **web/document** viewer that opens the `.svg` URL directly (not as an `<img>`, where
-// browsers block external refs in secure-static mode) can instead pull the faces from Google Fonts.
-//
-// [webModeSvg] rewrites an embedded SVG for that context: it strips the base64 `@font-face` blocks
-// and injects a single `@import url('https://fonts.googleapis.com/css2?family=…')` covering exactly
-// the families/weights/italics the SVG uses (the `<text>` still carry those family names, so the
-// browser resolves them from the imported sheet). Rasters are left as-is (still inlined) for now —
-// referencing the per-node crops needs an HTTP route to serve them, a separate step.
-// ─────────────────────────────────────────────────────────────────────────────
+// Web mode (`?mode=web`): the default figma-svg embeds fonts and rasters for pasting into Figma. A
+// browser opening the `.svg` directly can load fonts from Google Fonts instead, so [webModeSvg]
+// strips the base64 `@font-face` blocks and adds one `@import` for the families/weights used.
+// Rasters stay inlined for now.
 
 /** One `@font-face` the SVG embeds, reduced to what a Google Fonts `css2` request needs. */
 internal data class WebFontFace(val family: String, val weight: Int, val italic: Boolean)
@@ -116,24 +81,17 @@ internal data class WebFontFace(val family: String, val weight: Int, val italic:
 private val FONT_FACE_BLOCK = Regex("@font-face\\{[^}]*\\}")
 
 /**
- * Rewrite an embedded figma-svg for web/document viewing: replace the base64 `@font-face` blocks
- * with an external Google Fonts `@import`, so the browser fetches the faces instead of the SVG
- * carrying their bytes. A vector-only SVG, or one with no parseable `@font-face`, passes through
- * unchanged. Rasters are untouched (still inlined). Pure — unit-testable without a served host.
+ * Rewrite an embedded figma-svg for web viewing: replace base64 `@font-face` blocks with a Google
+ * Fonts `@import`. Passes through when there are no parseable faces. Pure.
  */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
 public fun webModeSvg(svg: String): String {
   val faces = FONT_FACE_BLOCK.findAll(svg).mapNotNull { parseWebFontFace(it.value) }.toList()
   if (faces.isEmpty()) return svg
   val importUrl = googleFontsImportUrl(faces) ?: return svg
-  // The URL's `&` separators (`&family=`, `&display=swap`) are XML entity starts inside the
-  // `<style>` text of an `image/svg+xml` document, so escape them — the XML parser decodes `&amp;`
-  // back to `&` before the CSS parser sees the `@import`, keeping the served SVG well-formed.
+  // Escape `&` for the XML `<style>` text; the XML parser decodes it before CSS sees the `@import`.
   val importUrlXml = importUrl.replace("&", "&amp;")
-  // Drop every embedded face, then put the @import at the head of the first <style> (CSS requires
-  // `@import` before other rules; the base64 bytes are what bloated the sticker, so this is the
-  // win).
+  // Drop embedded faces, then put the `@import` at the head of the first `<style>` (CSS requires it
+  // first).
   val stripped = FONT_FACE_BLOCK.replace(svg, "")
   return stripped.replaceFirst("<style>", "<style>@import url('$importUrlXml');")
 }
@@ -151,10 +109,8 @@ private fun parseWebFontFace(block: String): WebFontFace? {
 }
 
 /**
- * Build a single Google Fonts `css2` URL for [faces], grouped by family with sorted, de-duplicated
- * weights (and the `ital,wght` axis when a family carries any italic). Generic families
- * (`sans-serif` / `serif` / `monospace` / …) are skipped — they aren't Google Fonts. Null when
- * nothing references a real family.
+ * One Google Fonts `css2` URL for [faces], grouped by family with sorted, deduplicated weights (and
+ * `ital,wght` when italic is used). Generic families are skipped; null when none remain.
  */
 internal fun googleFontsImportUrl(faces: List<WebFontFace>): String? {
   val generics = setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
@@ -182,9 +138,7 @@ internal fun googleFontsImportUrl(faces: List<WebFontFace>): String? {
 private fun googleFontsWeight(weight: Int): Int =
   (((weight.coerceIn(1, 1000) + 50) / 100) * 100).coerceIn(100, 900)
 
-/**
- * True when this path is [root] or a descendant of it (both normalized) — traversal containment.
- */
+/** True when this path is [root] or under it (both normalized). */
 private fun Path.isUnder(root: Path): Boolean {
   var p: Path? = this
   while (p != null) {

@@ -7,32 +7,13 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Fails when an HTTP server engine reaches the runtime classpath of a project that is not one of the
- * two named exemptions.
+ * Fails when an HTTP server engine reaches the runtime classpath of a project not in
+ * [httpServerProjects] — layer 1's "no HTTP server" rule from `docs/design/REPOSITORY_LAYERS.md`,
+ * mechanised.
  *
- * This is layer 1's own test, mechanised. `docs/design/REPOSITORY_LAYERS.md` places a module by
- * *does it need an HTTP server, a browser, or the UI builder to do its job?*, and compose-ai-tools
- * had no gate asserting the "no HTTP server" half of it — `checkRenderHostIsServerFree` makes that
- * claim for one module, and nothing made it for the rest.
- *
- * **The allowlist is empty, and that is what finishing #5176 looks like.** It held `:mcp` and the
- * `:cli` that bundled it while the MCP server was still here; both went when that module moved to
- * compose-preview-server and `compose-preview mcp serve` became a launcher over the published
- * binary. An empty positive allowlist means any HTTP server engine reaching any runtime classpath
- * in this build fails, with no exceptions to argue from — the same shape, and the same proof, as
- * [CheckLayerBoundary]'s allowlist emptying when the `serve` edge closed.
- *
- * **Resolved identity, not declared dependencies**, for the reason `:cli` proves: it declares no
- * `ktor-server-*` line at all — the five artifacts arrive through `:mcp` and the MCP Kotlin SDK.
- * Reading `dependencies {}` blocks would have found nothing to check, which is how "the Ktor floor
- * left with `serve`" survived as a claim until someone measured the built distribution.
- *
- * **Prefixes, not coordinates**, following `checkRenderHostIsServerFree`: the invariant is "no web
- * server", and an exact list of today's Ktor artifacts would pass the first time someone swaps CIO
- * for Netty or Jetty.
- *
- * Scope is [CheckLayerBoundary]'s: projects with a `runtimeClasspath`, so Android modules — which
- * resolve per-variant — are not covered. None of them serves anything.
+ * Checks resolved identity, not declared dependencies (server engines arrive transitively), and
+ * matches prefixes rather than exact coordinates, so swapping CIO for Netty or Jetty still fails.
+ * Scope matches [CheckLayerBoundary]: Android per-variant classpaths aren't covered.
  */
 abstract class CheckHttpServerFloor : DefaultTask() {
 
@@ -61,20 +42,14 @@ abstract class CheckHttpServerFloor : DefaultTask() {
 
   companion object {
     /**
-     * The projects allowed a server engine on their runtime classpath: **none**.
-     *
-     * It held `:mcp` and `:cli` for exactly as long as the move took. `:mcp` is
-     * compose-preview-server's now, `compose-preview mcp serve` execs the binary published from
-     * there, and nothing in this repository binds a port. A new entry here is a diff someone has
-     * to justify against the layer rule rather than a dependency that arrives.
+     * The projects allowed a server engine on their runtime classpath: none. A new entry must be
+     * justified against the layer rule.
      */
     val httpServerProjects: List<String> = emptyList()
 
     /**
-     * What counts as a server. Ktor is what is here today; Jetty and Undertow are named because the
-     * cheapest way for this floor to stop meaning anything is for the next embedded server to be a
-     * different one. An HTTP *client* is deliberately absent — `:render-host` resolves the Ktor
-     * client through `:bundle-coordinates` and opens no listening socket for it.
+     * What counts as a server: Ktor today, plus Jetty and Undertow so a different embedded server
+     * can't slip past. HTTP clients are deliberately excluded.
      */
     val serverPrefixes: List<String> =
       listOf("io.ktor:ktor-server", "org.eclipse.jetty:", "io.undertow:")

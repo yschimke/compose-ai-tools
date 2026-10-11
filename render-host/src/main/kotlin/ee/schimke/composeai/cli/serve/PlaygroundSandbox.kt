@@ -5,26 +5,17 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * The playground's **per-session sandbox** policy — Phase 4 of
- * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md) §6, the gate
- * between a token-gated internal tool and a playground open under `--public`.
+ * The playground's per-session sandbox policy
+ * ([docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md) §6).
  *
- * Every playground lane already runs a snippet in its **own child JVM** (the first-frame render,
- * the remote-compose capture, and the Stage-2 live session each spawn a fresh daemon subprocess
- * over that snippet's classes — never a hot-swap into a shared, long-lived daemon). What this type
- * adds is the containment around that child:
- * - **an argv prefix** ([command]) that launches the JVM inside an OS jail — no network namespace,
- *   a read-only view of the host — and, on every profile, with a minimal environment;
- * - **JVM-level caps** ([jvmArgs]) that bound heap, CPU parallelism and temp files even on a
- *   profile whose jail carries no cgroup;
- * - **a hard wall-clock TTL** ([ttlSeconds]) the spawner arms as a `destroyForcibly` watchdog, so a
- *   snippet that wedges its JVM is killed rather than lingering to its token's expiry.
+ * Each playground lane already runs a snippet in its own child JVM; this adds containment around
+ * it:
+ * - an argv prefix ([command]) launching the JVM in an OS jail with a minimal environment;
+ * - JVM-level caps ([jvmArgs]) bounding heap, CPU parallelism and temp files even without cgroups;
+ * - a hard wall-clock TTL ([ttlSeconds]) enforced by a `destroyForcibly` watchdog.
  *
- * The type is pure: it computes argv and never spawns anything, so every profile's containment is
- * unit-testable without the tool being installed. Whether a configured sandbox *actually* contains
- * anything is a separate, empirical question answered by [PlaygroundSandboxProbe] — and under
- * `--public` a passing probe is mandatory ([PlaygroundPublicGate]), because a profile's advertised
- * properties are a claim and the probe is the evidence.
+ * Pure: computes argv, never spawns. Whether a sandbox actually contains anything is checked by
+ * [PlaygroundSandboxProbe], which is mandatory under `--public` ([PlaygroundPublicGate]).
  */
 public data class PlaygroundSandbox(
   val profile: Profile,
@@ -37,26 +28,22 @@ public data class PlaygroundSandbox(
   /** Hard wall-clock lifetime of one snippet JVM, enforced by kill — not by cooperation. */
   val ttlSeconds: Long = DEFAULT_TTL_SECONDS,
   /**
-   * Extra host paths the jail binds **read-only**, on top of the snippet's classpath and the JDK.
-   * The escape hatch for caches a render legitimately reads with no network to fetch them (the
-   * Robolectric `android-all` cache, the downloadable-font cache).
+   * Extra host paths bound read-only, for caches a render reads with no network (Robolectric
+   * `android-all`, downloadable fonts).
    */
   val extraReadOnlyPaths: List<String> = emptyList(),
   /** Operator-supplied argv for [Profile.CUSTOM]; ignored by every other profile. */
   val customCommand: List<String> = emptyList(),
   /**
-   * Set by [droppingJail] when the configured jail **cannot launch on this host** and the lane was
-   * admitted on something other than containment. [command] then yields no argv while every other
-   * cap stays on — see that function for why this state exists at all.
+   * Set by [droppingJail] when the configured jail can't launch on this host; [command] then emits
+   * no jail argv while every other cap stays on.
    */
   val jailDropped: Boolean = false,
 ) {
 
   /**
-   * How the child JVM is jailed. The `declares…` flags are the profile's **claim** about what its
-   * jail provides — used for startup logging and for the "you asked for `--public` with no
-   * containment at all" refusal. They are never a substitute for [PlaygroundSandboxProbe]; a
-   * `--public` host must still prove the claim empirically.
+   * How the child JVM is jailed. The `declares…` flags are claims, used for logging and the
+   * "`--public` with no containment" refusal; never a substitute for [PlaygroundSandboxProbe].
    */
   public enum class Profile(
     public val id: String,
@@ -64,48 +51,38 @@ public data class PlaygroundSandbox(
     public val declaresFilesystemContained: Boolean,
     public val declaresResourceCaps: Boolean,
   ) {
-    /**
-     * No jail — the pre-Phase-4 behaviour. Fine for a token-gated dev host; never for `--public`.
-     */
+    /** No jail. Fine for a token-gated dev host; never for `--public`. */
     NONE("none", false, false, false),
 
     /**
-     * `unshare(1)`: a fresh user + network + pid namespace, child killed with the parent. Blocks
-     * egress and process visibility with no privileges and no extra package, but leaves the host
-     * filesystem visible — so it is a good local default and **not** enough for `--public`.
+     * `unshare(1)`: fresh user + network + pid namespaces, no privileges needed. The host
+     * filesystem stays visible, so not enough for `--public`.
      */
     UNSHARE("unshare", true, false, false),
 
     /**
-     * `bwrap(1)` (bubblewrap): network unshared, environment cleared, the host bound **read-only**
-     * with a tmpfs `/tmp` and exactly one writable path (the snippet's work dir). Containment
-     * without cgroups — heap/CPU come from [jvmArgs].
+     * `bwrap(1)`: network unshared, environment cleared, host bound read-only with a tmpfs `/tmp`
+     * and only the work dir writable. No cgroups; heap/CPU come from [jvmArgs].
      */
     BWRAP("bwrap", true, true, false),
 
     /**
-     * `systemd-run --scope` with `MemoryMax` / `MemorySwapMax` / `CPUQuota` / `TasksMax`. Real
-     * cgroup caps — and **only** cgroup caps.
-     *
-     * A transient **scope** takes cgroup resource properties but *not* service execution settings
-     * (`PrivateNetwork`, `PrivateTmp`, `ProtectSystem`, `NoNewPrivileges`): those live in a service
-     * unit's exec context, and passing them to `--scope` fails unit creation outright. Rather than
-     * move the daemon into a transient service — which would put systemd between us and the JVM's
-     * stdio, the JSON-RPC transport — this profile owns resource control alone and delegates
-     * isolation to [STRICT]'s `bwrap` half. Hence: no egress or filesystem claim here.
+     * `systemd-run --scope` with `MemoryMax` / `MemorySwapMax` / `CPUQuota` / `TasksMax`: cgroup
+     * caps only. A scope can't take exec-context settings (`PrivateNetwork` etc.), and a transient
+     * service would sit between us and the JVM's stdio (the JSON-RPC transport), so isolation is
+     * left to [STRICT]'s bwrap half.
      */
     SYSTEMD("systemd", false, false, true),
 
     /**
-     * `systemd-run --scope … bwrap …` — [SYSTEMD]'s cgroup caps around [BWRAP]'s namespace and
-     * filesystem containment. The profile a `--public` host should run: it is the only built-in
-     * that provides every property [PlaygroundPublicGate] requires.
+     * [SYSTEMD]'s cgroup caps around [BWRAP]'s containment — the only built-in that satisfies every
+     * [PlaygroundPublicGate] requirement.
      */
     STRICT("strict", true, true, true),
 
     /**
-     * An operator-supplied argv prefix. Claims nothing — a `--public` host running `custom` is
-     * admitted purely on its probe result.
+     * An operator-supplied argv prefix. Claims nothing; under `--public` it is admitted on its
+     * probe alone.
      */
     CUSTOM("custom", false, false, false),
   }
@@ -118,48 +95,23 @@ public data class PlaygroundSandbox(
     get() = profile != Profile.NONE
 
   /**
-   * Drop the jail argv but keep every other cap — the recovery for a configured jail that cannot
-   * launch on this host (`unshare` under a seccomp/AppArmor policy that forbids user namespaces,
-   * `bwrap` absent from the image).
+   * Drop the jail argv but keep every other cap, for a configured jail that can't launch on this
+   * host (user namespaces forbidden, `bwrap` missing). Otherwise every snippet spawn fails with
+   * EPERM and nobody is told. Better than [Profile.NONE], which would also drop `-Xmx`, CPU caps
+   * and the TTL.
    *
-   * Without this, that host is *silently broken*: [PlaygroundPublicGate] admits the lane on the
-   * repo-access posture, `/playground` answers normally, and then every snippet JVM and every
-   * jailed compile fails to spawn because they all launch behind an argv that returns EPERM. The
-   * failure surfaces to a user as a compile that never produces an image, and to an operator as
-   * nothing at all.
-   *
-   * Dropping the jail is better than both alternatives *for a profile whose caps are JVM-level*.
-   * Against *keeping* it: a jail that cannot launch contains nothing, so there is no isolation to
-   * lose. Against *disabling the sandbox entirely* ([Profile.NONE]): that would also discard
-   * `-Xmx`, the CPU cap, `ExitOnOutOfMemoryError`, the temp-dir confinement and the hard TTL — and
-   * on a host with a large cgroup limit an uncapped snippet JVM sizes its default heap at a quarter
-   * of that limit, which is the more dangerous failure of the two.
-   *
-   * **Not for [Profile.SYSTEMD] or [Profile.STRICT].** Their `MemoryMax` / `CPUQuota` / `TasksMax`
-   * are enforced by the `systemd-run` prefix that [command] emits, so dropping the argv drops the
-   * enforcement with it, leaving only heap and JVM pool sizing — no native-memory bound, no CPU
-   * quota, no pid cap. `ServeCommand` therefore refuses the lane outright for any profile with
-   * [Profile.declaresResourceCaps] rather than calling this. A [Profile.CUSTOM] argv may also have
-   * supplied caps we cannot see; it is dropped anyway (the alternative is a lane that cannot run at
-   * all) and the startup warning says so.
-   *
-   * Deliberately **not** reachable when containment is what admitted the lane: an anonymous
-   * `--public` host whose probe never ran is refused outright by [PlaygroundPublicGate], so the
-   * caller never gets far enough to call this.
+   * Not for [Profile.SYSTEMD] / [Profile.STRICT]: their caps live in the dropped prefix, so
+   * `ServeCommand` refuses those lanes instead. A [Profile.CUSTOM] argv is dropped anyway (with a
+   * warning). Never reached when containment is what admitted the lane.
    */
   public fun droppingJail(): PlaygroundSandbox = copy(jailDropped = true)
 
   /**
-   * The argv prefix the snippet JVM launches behind. Paths are bound with the `-try` variants where
-   * a host may legitimately lack them, so one missing `/lib64` can't turn a containment profile
-   * into a failed spawn.
+   * The argv prefix the snippet JVM launches behind. `-try` binds tolerate paths a host may lack.
    *
-   * Every prefix ends by starting the JVM with a minimal environment. `bwrap` (and so `strict`)
-   * does that itself with `--clearenv`; every other case — [Profile.NONE], `unshare`, `systemd`,
-   * `custom`, and any profile once [jailDropped] — ends in an `env -i` that keeps only
-   * [retainChildEnvironment]'s allowlist. The spawner (`daemon-client`) starts the process with the
-   * serve JVM's full environment, which holds the host's own tokens and API keys, so the narrowing
-   * has to live in the argv. Non-Unix hosts have no `env(1)` and get the jail argv alone.
+   * Every prefix starts the JVM with a minimal environment — `bwrap --clearenv`, or a trailing `env
+   * -i` keeping [retainChildEnvironment]'s allowlist — because the spawner passes the serve JVM's
+   * full environment, including host secrets. Non-Unix hosts (no `env(1)`) get the jail argv alone.
    */
   public fun command(paths: Paths): List<String> = command(paths, System.getenv())
 
@@ -184,11 +136,9 @@ public data class PlaygroundSandbox(
     !jailDropped && (profile == Profile.BWRAP || profile == Profile.STRICT)
 
   /**
-   * JVM-level caps applied to **every** active profile, so heap and CPU are bounded even where the
-   * jail carries no cgroup (`unshare`, `bwrap`): a heap ceiling under the sandbox's memory budget,
-   * a CPU-parallelism ceiling matching its CPU budget, OOM as a *process exit* rather than a
-   * thrashing JVM, and a temp dir inside the one writable path. Empty for [Profile.NONE], which
-   * keeps the pre-Phase-4 launch byte-identical.
+   * JVM-level caps for every active profile: heap under the memory budget, CPU parallelism matching
+   * the CPU budget, OOM as a process exit, and the temp dir inside the one writable path. Empty for
+   * [Profile.NONE].
    */
   public fun jvmArgs(workDir: File): List<String> {
     if (!isActive) return emptyList()
@@ -196,21 +146,16 @@ public data class PlaygroundSandbox(
       "-Xmx${heapMb()}m",
       "-XX:ActiveProcessorCount=${activeProcessorCount()}",
       "-XX:+ExitOnOutOfMemoryError",
-      // The session work dir is the one writable path in the jail — and it is deleted with the
-      // snippet's token, so a snippet's temp files are ephemeral by construction.
+      // The work dir is the only writable path and is deleted with the token, so temp files are
+      // ephemeral.
       "-Djava.io.tmpdir=${workDir.absolutePath}",
     )
   }
 
   /**
-   * Add the host Maven repository to a jailed Robolectric launch explicitly. Bwrap replaces `HOME`
-   * with [Paths.workDir], so Robolectric's default `user.home/.m2/repository` lookup points at an
-   * empty ephemeral directory even when the operator exposed the real cache with
-   * `--playground-sandbox-ro`. `maven.repo.local` is Robolectric's supported override and remains
-   * readable through that read-only bind.
-   *
-   * Inactive sandboxes return [base] unchanged, preserving the pre-sandbox launch byte-for-byte.
-   * Relative `maven.repo.local` overrides are made absolute before the jail changes directory.
+   * Point a jailed Robolectric at the host Maven repository via `maven.repo.local`, since bwrap
+   * replaces `HOME` and the default `~/.m2` lookup would hit an empty dir. Relative overrides are
+   * made absolute. Inactive sandboxes return [base] unchanged.
    */
   public fun robolectricSystemProperties(
     base: Map<String, String>,
@@ -226,9 +171,8 @@ public data class PlaygroundSandbox(
   }
 
   /**
-   * Heap ceiling: three quarters of the memory budget, leaving room for the JVM's own non-heap
-   * footprint (metaspace, code cache, Skiko/Robolectric native allocations) under a cgroup that
-   * would otherwise OOM-kill the process before the heap limit ever bit.
+   * Heap ceiling: three quarters of the memory budget, leaving room for non-heap and native memory
+   * under a cgroup limit.
    */
   internal fun heapMb(): Int = (memoryMb * 3 / 4).coerceAtLeast(MIN_HEAP_MB)
 
@@ -264,8 +208,7 @@ public data class PlaygroundSandbox(
     // Redundant under --unshare-all, but egress is the property we most want to be explicit about.
     add("--unshare-net")
     add("--new-session")
-    // The serve JVM's environment carries operator secrets (--admin-token, cloud credentials); a
-    // snippet must not be able to read them out of /proc/self/environ.
+    // The serve JVM's environment holds operator secrets; keep them out of `/proc/self/environ`.
     add("--clearenv")
     add("--setenv")
     add("HOME")
@@ -284,9 +227,8 @@ public data class PlaygroundSandbox(
     add("/tmp")
     SYSTEM_READ_ONLY_PATHS.forEach { roBindTry(it) }
     roBindTry(paths.javaHome.absolutePath)
-    // The classpath (catalog jars + the compiled snippet) and any operator-declared cache. Bound
-    // one entry at a time rather than by common ancestor: an ancestor bind would hand the snippet
-    // every *other* jar in the Gradle/Maven cache too.
+    // Bind each classpath entry individually; an ancestor bind would expose the whole Gradle/Maven
+    // cache.
     (paths.readOnly.map { it.absolutePath } + extraReadOnlyPaths).distinct().forEach {
       roBindTry(it)
     }
@@ -319,12 +261,8 @@ public data class PlaygroundSandbox(
       "CPUQuota=${(cpus * 100).roundToInt()}%",
       "-p",
       "TasksMax=$pids",
-      // Deliberately cgroup properties only. `PrivateNetwork` / `PrivateTmp` / `ProtectSystem` /
-      // `NoNewPrivileges` are service exec-context settings that a transient *scope* cannot take —
-      // passing them fails unit creation, so a profile that advertised them would fail preflight on
-      // every host. Isolation is bwrap's job (STRICT); the wall-clock deadline is the spawner's
-      // kill watchdog, which needs no systemd version floor (`RuntimeMaxSec` on a scope wants
-      // systemd 244+).
+      // Cgroup properties only: a scope can't take exec-context settings. Isolation is bwrap's job
+      // (STRICT), and the deadline is the spawner's watchdog (no systemd version floor needed).
     )
 
   public companion object {
@@ -333,9 +271,8 @@ public data class PlaygroundSandbox(
     public const val DEFAULT_PIDS: Int = 256
 
     /**
-     * 15 minutes: comfortably longer than [PlaygroundTokenStore.DEFAULT_TTL_SECONDS] (so an
-     * ordinary session ends by its token expiring, not by being shot), short enough that a wedged
-     * JVM is reclaimed the same hour.
+     * 15 minutes: longer than [PlaygroundTokenStore.DEFAULT_TTL_SECONDS] so sessions normally end
+     * by token expiry, short enough to reclaim a wedged JVM within the hour.
      */
     public const val DEFAULT_TTL_SECONDS: Long = 900L
 
@@ -345,13 +282,8 @@ public data class PlaygroundSandbox(
     private const val MIN_MEMORY_MB = 384
 
     /**
-     * Host paths a JVM needs to exec at all; `-try` because layouts differ (usr-merge, musl…).
-     *
-     * `/nix/store` is on the list for a reason worth writing down: a Nix-provisioned JDK's
-     * `bin/java` resolves its ELF interpreter and libc out of *other* store paths, so binding only
-     * `java.home` produces `execvp … No such file or directory` inside the jail. The store is
-     * immutable and world-readable, so binding it read-only costs nothing where it exists and is a
-     * no-op everywhere else.
+     * Host paths a JVM needs to exec; `-try` because layouts differ. `/nix/store` is included
+     * because a Nix JDK resolves its ELF interpreter and libc from other store paths.
      */
     private val SYSTEM_READ_ONLY_PATHS =
       listOf(
@@ -368,9 +300,8 @@ public data class PlaygroundSandbox(
     public val NONE: PlaygroundSandbox = PlaygroundSandbox(profile = Profile.NONE)
 
     /**
-     * Environment variables a snippet JVM keeps from the serve host, plus every `LC_*` locale
-     * variable. Nothing else is needed to render: `java` is an absolute path, and the classpath,
-     * system properties and work dir all arrive through argv.
+     * Environment variables a snippet JVM keeps (plus every `LC_*`); everything else arrives via
+     * argv.
      */
     internal val CHILD_ENVIRONMENT: Set<String> =
       setOf("PATH", "HOME", "LANG", "TZ", "TMPDIR", "JAVA_HOME")
@@ -379,16 +310,16 @@ public data class PlaygroundSandbox(
       name in CHILD_ENVIRONMENT || name.startsWith("LC_")
 
     /**
-     * Narrow [environment] — typically a `ProcessBuilder.environment()` — to the variables a
-     * snippet JVM (or its compile step) is allowed to see.
+     * Narrow [environment] (e.g. `ProcessBuilder.environment()`) to the variables a snippet JVM or
+     * its compile step may see.
      */
     public fun retainChildEnvironment(environment: MutableMap<String, String>) {
       environment.keys.retainAll(::isChildEnvironmentName)
     }
 
     /**
-     * `env -i NAME=value… ` for the allowlisted subset of [parentEnvironment], in a stable order;
-     * empty on hosts without `env(1)`.
+     * `env -i NAME=value… ` for the allowlisted subset of [parentEnvironment], stably ordered;
+     * empty without `env(1)`.
      */
     internal fun environmentCommand(
       parentEnvironment: Map<String, String>,
@@ -400,9 +331,8 @@ public data class PlaygroundSandbox(
     }
 
     /**
-     * Parse a `--playground-sandbox` value: a profile id (`none`, `unshare`, `bwrap`, `systemd`,
-     * `strict`) or `custom:<argv>` where `<argv>` is a whitespace-separated command prefix. Null or
-     * blank ⇒ [NONE], the pre-Phase-4 default.
+     * Parse `--playground-sandbox`: a profile id (`none`, `unshare`, `bwrap`, `systemd`, `strict`)
+     * or `custom:<argv>` (whitespace-separated prefix). Null or blank ⇒ [NONE].
      */
     public fun parseProfile(spec: String?): Result<PlaygroundSandbox> {
       val raw = spec?.trim().orEmpty()
@@ -430,8 +360,8 @@ public data class PlaygroundSandbox(
     }
 
     /**
-     * Validate the resource knobs, so a typo (`--playground-sandbox-memory-mb 15`) fails at startup
-     * rather than as an unexplained daemon that never comes up.
+     * Validate the resource knobs so a typo fails at startup rather than as a daemon that never
+     * starts.
      */
     public fun validate(sandbox: PlaygroundSandbox): Result<PlaygroundSandbox> {
       if (!sandbox.isActive) return Result.success(sandbox)
@@ -467,47 +397,21 @@ public data class PlaygroundSandbox(
 }
 
 /**
- * The `--public` admission decision for the playground lane — the literal "gate" of PLAYGROUND.md
- * §6 and issue #3016.
+ * The `--public` admission decision for the playground lane (PLAYGROUND.md §6).
  *
- * Before Phase 4 this was a flat refusal: `--playground-bundle` under `--public` disabled the lane,
- * because the serve host's founding constraint is that it never runs untrusted code. The constraint
- * has not moved; what changed is that a snippet can now be run somewhere that *isn't* the host. So
- * the gate opens on evidence, never on configuration alone:
- * 1. a sandbox profile must be configured (`none` is still a flat refusal),
- * 2. the startup [probe][PlaygroundSandboxProbe] must have run **inside that jail** and come back
- *    with egress blocked, the host filesystem contained, and the process namespace isolated, and
- * 3. the jail must actually **cap CPU and process count**, which the probe cannot measure. A
- *    snippet inside a perfectly sealed `bwrap` can still spawn CPU-bound threads until it starves
- *    the box: `-Xmx` bounds heap and `-XX:ActiveProcessorCount` only sizes JVM pools. So a built-in
- *    profile with no cgroup behind it (`unshare`, `bwrap`) is refused under `--public` and pointed
- *    at `strict`; a `custom:` jail is taken at its word here (its caps are the operator's to
- *    supply) but still has to pass the probe.
+ * The host never runs untrusted code itself, so under `--public` the lane opens only on evidence:
+ * 1. a sandbox profile is configured (`none` is refused),
+ * 2. the startup [probe][PlaygroundSandboxProbe] ran inside that jail and found egress blocked, the
+ *    host filesystem contained and the process namespace isolated, and
+ * 3. the jail caps CPU and process count, which the probe can't measure; `unshare` / `bwrap` alone
+ *    are refused and pointed at `strict`, while a `custom:` jail is taken at its word on caps.
  *
- * A profile that merely *claims* containment ([PlaygroundSandbox.Profile.declaresEgressBlocked] and
- * friends) is not enough: `bwrap` on a kernel with user namespaces disabled, or a `custom:` wrapper
- * with a typo, both claim everything and contain nothing. Fail-closed in every direction — an
- * absent probe report is a refusal, not a pass.
+ * Claims are never enough, and an absent probe report is a refusal.
  *
- * ## Two admission postures (issue #3210)
- *
- * The chain above answers "is a **stranger's** snippet contained?". That is the right question only
- * when a stranger can actually reach the lane. All three playground surfaces (`/playground`, `POST
- * /api/{v}/compiler/run`, `/pg/{token}`) already reject a caller who is not a signed-in GitHub user
- * *with **write** access to `--github-auth-repo`* (#3313) — so on a box with GitHub auth
- * configured, the code being compiled comes from someone who can already push to the repo whose CI
- * builds this image. That is the same trust level as the token-gated posture Phases 1–3 shipped
- * under, where the gate returns `Allow` with no sandbox at all.
- *
- * So [decide] takes [repoAccessGated] as a second, independent basis for admission:
- * - **contained** — `--public`, anyone may call, the jail is proved: the evidence chain above;
- * - **repo-access-gated** — `--public`, but only repo collaborators may call: admitted, with the
- *   sandbox still applied when configured (defence in depth, no longer a precondition).
- *
- * The one combination that is never admitted is *anonymous **and** uncontained* — the refusal now
- * names both remedies rather than only the sandbox one (issue #3214). [Decision.Allow.detail] says
- * which posture admitted the lane, so an operator cannot mistake "admitted because collaborators
- * only" for "admitted because contained".
+ * Second posture: when GitHub auth is configured, all playground routes already require write
+ * access to `--github-auth-repo`, the same trust level as the token-gated posture. [decide] then
+ * admits the lane via [repoAccessGated], still applying any configured sandbox. Anonymous and
+ * uncontained is never admitted; [Decision.Allow.detail] names the posture that admitted it.
  */
 public object PlaygroundPublicGate {
 
@@ -520,12 +424,9 @@ public object PlaygroundPublicGate {
   }
 
   /**
-   * Decide whether the playground may serve. [isPublic] false ⇒ always allowed (the token-gated
-   * posture Phases 1–3 shipped under), and the sandbox — configured or not — is still applied.
-   *
-   * [repoAccessGated] is true when the host has GitHub auth configured, i.e. when the playground
-   * routes' `rejectMissingGithubRepoAccess` is a real check rather than a no-op. It admits the lane
-   * on a public box without requiring containment — see the class KDoc.
+   * Decide whether the playground may serve. Not [isPublic] ⇒ always allowed (sandbox still
+   * applied). [repoAccessGated] (GitHub auth configured) admits a public box without containment;
+   * see the class docs.
    */
   public fun decide(
     isPublic: Boolean,
@@ -539,9 +440,7 @@ public object PlaygroundPublicGate {
         else "token-gated; no sandbox (add --playground-sandbox to rehearse the public posture)"
       )
     }
-    // Posture 2: the routes admit only repo collaborators, so the containment evidence chain below
-    // is answering a question nobody is asking. The sandbox stays applied when configured — it is
-    // now defence in depth rather than the precondition.
+    // Repo collaborators only: containment becomes defence in depth, not a precondition.
     if (repoAccessGated) {
       return Decision.Allow(
         "public host, repo-access-gated (GitHub sign-in with write access to --github-auth-repo); " +
@@ -552,8 +451,7 @@ public object PlaygroundPublicGate {
       )
     }
     if (!sandbox.isActive) {
-      // Anonymous AND uncontained: the one combination that never serves. Name both remedies —
-      // configuring GitHub auth is the cheaper one on a box that cannot jail a snippet (#3214).
+      // Anonymous and uncontained: refuse, naming both remedies.
       return Decision.Refuse(
         "--playground-bundle / --playground-android-bundle under --public need EITHER GitHub " +
           "repo-access gating (--github-auth-client-id / --github-auth-client-secret / " +
@@ -583,8 +481,7 @@ public object PlaygroundPublicGate {
           ". The playground stays disabled under --public until the jail contains a snippet."
       )
     }
-    // Containment proven — but the probe cannot measure CPU or process-count caps, and a sealed
-    // jail with none of those still lets a snippet burn the box down from the inside.
+    // Containment proven, but the probe can't measure CPU or process caps.
     if (
       !sandbox.profile.declaresResourceCaps && sandbox.profile != PlaygroundSandbox.Profile.CUSTOM
     ) {

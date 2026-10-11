@@ -1,15 +1,7 @@
-// Resolving a preview bundle's Maven coordinates into local jars.
-//
-// A `.previewbundle` records its classpath as coordinates (`ClasspathEntry.Maven`) rather than
-// carrying every jar, so anything that *runs* a bundle — `compose-preview bundle daemon`,
-// `bundle render`, and `serve` — has to turn those coordinates back into files: check the local
-// Gradle/Maven caches first, then fetch from the configured remote repositories.
-//
-// Split out of `:cli` for #3824 preparation item 7. `serve` needed it, and while it lived in
-// `:cli` an extracted preview server could only have got it by depending on the CLI. It is not
-// part of `:bundle-format`: reading the format is offline and synchronous, while this does HTTP
-// over ktor and coroutines, and a format module should not drag a network client onto the render
-// subprocess classpath.
+// Resolves a preview bundle's Maven coordinates (`ClasspathEntry.Maven`) into local jars: local
+// Gradle/Maven caches first, then the configured remotes. Used by `bundle daemon`, `bundle render`
+// and `serve`. Not part of `:bundle-format`, which is offline; this pulls in ktor + coroutines,
+// which must stay off the render subprocess classpath.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")

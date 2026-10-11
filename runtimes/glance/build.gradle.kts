@@ -1,15 +1,7 @@
-// `:glance-preview-runtime` — composable-helper authoring path for Glance app-widget
-// previews. Sister to `:notification-preview-runtime`. `GlanceAppWidgetContent(widget = ...)`
-// materialises a `GlanceAppWidget` to `RemoteViews` via the public 1.2.0+
-// `GlanceAppWidget.composeForPreview(...)` API and inflates the resulting tree inside the
-// surrounding Compose `@Preview` — the same `RemoteViews.apply(context, parent)` path
-// `AppWidgetHost.createView(...)` takes on-device.
-//
-// Standalone on purpose — no compile dep on `:renderer-android` so the runtime can be used in
-// Bazel modules or JVM unit tests that don't carry the full Robolectric renderer. Pairs with a
-// (future) FQN-discovered `androidx.glance.preview.Preview` strategy in `:renderer-android` so
-// consumers can choose between authoring with Glance's own preview annotation (native discovery
-// path) or the composable-helper authoring path (this module).
+// `:glance-preview-runtime` — `GlanceAppWidgetContent(widget = ...)` materialises a
+// `GlanceAppWidget` to `RemoteViews` via `composeForPreview(...)` (Glance 1.2.0+) and inflates it
+// in the surrounding `@Preview`, as `AppWidgetHost.createView(...)` does on-device. The alternative
+// is Glance's own `@Preview` (native discovery). No dependency on `:renderer-android`.
 
 plugins {
   id("composeai.base-conventions")

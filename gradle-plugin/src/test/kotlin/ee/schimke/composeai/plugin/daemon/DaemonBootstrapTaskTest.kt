@@ -12,11 +12,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Direct invocation of [DaemonBootstrapTask] via [ProjectBuilder]. The full Android pipeline is
- * exercised in samples (see the worktree's `:samples:android:composePreviewDaemonStart` smoke test
- * in the PR description) — this unit test pins the descriptor's JSON shape so the VS Code extension
- * and Stream B daemon can target a stable contract without relying on AGP being on the test
- * classpath.
+ * Pins [DaemonBootstrapTask]'s descriptor JSON shape so the VS Code extension and daemon have a
+ * stable contract, without AGP on the test classpath.
  */
 class DaemonBootstrapTaskTest {
 
@@ -34,11 +31,8 @@ class DaemonBootstrapTaskTest {
 
   @Test
   fun `schema version is a declared Input so a schema bump invalidates the cached descriptor`() {
-    // Regression: DAEMON_DESCRIPTOR_SCHEMA_VERSION must participate in the task fingerprint.
-    // Without it, a plugin upgrade that bumps the schema (all other inputs unchanged) leaves the
-    // task UP-TO-DATE, so the stale lower-schema daemon-launch.json survives and the VS Code reader
-    // hard-rejects it ("descriptor schema mismatch: got 1, expected 2"), bricking the daemon warm
-    // path. Reflect on the accessor so a stray drop-of-@Input regression is caught here.
+    // The schema version must be a task input, else a schema bump leaves a stale
+    // `daemon-launch.json` that VS Code rejects ("descriptor schema mismatch").
     val getter = DaemonBootstrapTask::class.java.getMethod("getSchemaVersion")
     assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.Input::class.java)).isTrue()
 
@@ -162,10 +156,8 @@ class DaemonBootstrapTaskTest {
 
   @Test
   fun `descriptor encodes B2_0 userClassDirs sysprop verbatim`() {
-    // B2.0 — the disposable user-classloader design (CLASSLOADER.md) requires the gradle plugin
-    // to surface user-class-dirs to the daemon JVM. The plugin computes the value upstream
-    // (heuristic over the resolved classpath in `AndroidPreviewSupport.kt`); this test pins the
-    // contract that whatever value is set propagates verbatim through the descriptor.
+    // User class dirs (computed in `AndroidPreviewSupport.kt`) must propagate verbatim to the
+    // daemon JVM for the disposable user classloader.
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
     val task =
@@ -241,11 +233,8 @@ class DaemonBootstrapTaskTest {
 
   @Test
   fun `descriptor encodes B2_2 previewsJsonPath sysprop verbatim`() {
-    // B2.2 phase 1 — the daemon owns its own preview index, parsed from `previews.json` at
-    // startup. The gradle plugin surfaces the absolute path via the
-    // `composeai.daemon.previewsJsonPath` sysprop on the daemon JVM. This test pins the contract
-    // that whatever value upstream wires propagates verbatim through the descriptor's
-    // `systemProperties` map.
+    // The daemon parses `previews.json` itself; its path must propagate verbatim via the
+    // `composeai.daemon.previewsJsonPath` sysprop.
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
     val previewsJsonAbs = "/abs/build/compose-previews/previews.json"
@@ -298,19 +287,15 @@ class DaemonBootstrapTaskTest {
 
     val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
     assertThat(descriptor.enabled).isTrue()
-    // No javaLauncher provider configured — descriptor encodes null rather
-    // than an empty string. VS Code's daemonProcess.ts treats both the
-    // missing field and the explicit null as "no AGP-provided launcher,
-    // fall back to extension JDK detection."
+    // No launcher: null, not "". VS Code treats missing/null as "fall back to extension JDK
+    // detection".
     assertThat(descriptor.javaLauncher).isNull()
   }
 
   @Test
   fun `btaCompile is null when required inputs are missing`() {
-    // No variant wiring yet (implClasspath / moduleName / outputDir / icWorkingDir all unset)
-    // — the assembler emits null rather than shipping a half-populated BtaCompileConfig that
-    // would explode at the daemon's startup. Keeps the descriptor's "schema-version-2 with
-    // null btaCompile" the universal not-yet-wired shape.
+    // No variant wiring yet: `btaCompile` is null rather than a half-populated config that would
+    // fail at daemon startup.
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
     val task =
@@ -362,11 +347,8 @@ class DaemonBootstrapTaskTest {
 
   @Test
   fun `previewsManifest is an Optional InputFile so missing previews dot json is tolerated`() {
-    // The launch descriptor is written before composePreviewDiscover runs for the first time, so
-    // the @Optional annotation is load-bearing — without it, Gradle fails the task with
-    // "specifies file '…/previews.json' which doesn't exist" on every cold warm. Reflect on the
-    // property accessor so a stray @InputFile-without-@Optional regression is caught at unit test
-    // time rather than only by the e2e against a fresh module (which was issue #1629).
+    // The descriptor is written before the first discover, so `previews.json` must be `@Optional`
+    // or Gradle fails on a missing file (see #1629).
     val getter = DaemonBootstrapTask::class.java.getMethod("getPreviewsManifest")
     assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.InputFile::class.java)).isTrue()
     assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.Optional::class.java)).isTrue()
@@ -390,10 +372,8 @@ class DaemonBootstrapTaskTest {
     manifestFile.writeText("{\"previews\":[{\"id\":\"app.Foo\"}]}")
     task.get().emit()
     val second = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
-    // The descriptor's `manifestPath` is a path string and stays identical — content equality is
-    // expected. What matters for the respawn path is that `emit()` ran a second time at all (which
-    // updates daemon-launch.json's mtime). Both halves of the fix are needed: this @InputFile
-    // wiring makes Gradle invalidate the task; the extension-side mtime watcher acts on it.
+    // The path is unchanged; what matters is that `emit()` re-ran (bumping the file's mtime, which
+    // the extension watches) because the manifest is an `@InputFile`.
     assertThat(second.manifestPath).isEqualTo(first.manifestPath)
   }
 

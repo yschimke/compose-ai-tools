@@ -16,25 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 /**
- * `AndroidView`-hosted platform content in a **library** module — the shape issue #2957 is about.
- *
- * Rendering rich text is the classic reason a Compose app reaches for `AndroidView`: `TextView`
- * understands the `Html.fromHtml` spans that Compose's `AnnotatedString` doesn't cover for free.
- * Pocket Casts' `HtmlText` (podcast show notes, in the library module `:modules:services:compose`)
- * is exactly this, and it was one of the previews that rendered no PNG at all.
- *
- * The fixture is faithful to that failure. The inflated layout styles itself through
- * `?attr/sampleBodyTextAppearance`, an **app-owned** theme attribute, and this module is a library
- * — so there is no `<application android:theme>` for the preview host activity to inherit and the
- * attribute resolves against the platform default, which has never heard of it. Inflation throws
- * `UnsupportedOperationException: Failed to resolve attribute at index N`, that escapes
- * composition, and the render dies before writing anything. The design-artifacts export then drops
- * the component from the candidate join as "no static PNG".
- *
- * What makes it render is `composePreview { hostTheme.set("@style/Theme.SampleLibrary") }` in this
- * module's `build.gradle.kts`: the renderer's `PreviewHostTheme` resolves that name and applies the
- * theme to the host activity. `AndroidViewHtmlTextPixelTest` asserts the PNG exists and carries
- * drawn text.
+ * `AndroidView`-hosted rich text (`TextView` + `Html.fromHtml`) in a library module. The layout
+ * styles itself through an app-owned theme attribute, which a library has no `<application
+ * android:theme>` to provide, so inflation would throw and the render produce no PNG.
+ * `composePreview { hostTheme.set("@style/Theme.SampleLibrary") }` makes the host activity apply
+ * that theme; `AndroidViewHtmlTextPixelTest` checks the result.
  */
 @Composable
 fun HtmlShowNotes(html: String, modifier: Modifier = Modifier) {

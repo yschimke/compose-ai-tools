@@ -71,10 +71,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * The optimizer gives up after a bounded number of attempts, and it gives up on a key the daemon
-   * was merely too busy to reach just as it does on one that threw. Only the latter may be reported
-   * to a visitor as terminal — otherwise a preview that happened to be contended during the
-   * optimization pass 409s forever.
+   * The optimizer gives up on merely-busy keys as well as failed ones; only the latter may be
+   * reported to visitors as terminal.
    */
   @Test
   fun `an optimizer miss with no captured failure stays retryable`() {
@@ -92,10 +90,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * `Busy` means "ask again", and for a warming daemon that is right — but with no ceiling it is
-   * indistinguishable from "never". meshcore-mobile sat at `paused 288/372, failed: 0` across two
-   * server lifetimes on exactly that: 84 targets that answered `Busy`, were left unmarked, and so
-   * were never counted, never reported, and never given up on.
+   * `Busy` means "ask again", but without a ceiling it is "never": such keys were never counted,
+   * reported or given up on, and the pass sat at `paused` with `failed: 0`.
    */
   @Test
   fun `a long run of background Busy latches with a readable reason`() {
@@ -159,10 +155,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * The instrumentation exists because `cached`/`remaining` alone cannot answer the question that
-   * actually matters — is the pass keeping up, and if not, is it render-bound or gate-bound. Two
-   * throughput readings against the live server were wrong before this existed: one measured a
-   * different lane entirely, one divided by lifetime instead of active time.
+   * `cached`/`remaining` alone can't say whether the pass keeps up, or whether it is render- or
+   * gate-bound; the rate must use active time.
    */
   @Test
   fun `optimizer stats report rate, ETA, time split and observed batch width`() {
@@ -200,10 +194,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * Measured on the deployed box: 14 catalogs all optimizing at once, every one reporting waiting
-   * at 3–6× its render time. The total said "not render-bound" and stopped there — it could not say
-   * whether the gate was withholding turns (loosen the quiet window) or the catalogs were starving
-   * each other for render permits (prefetch fewer at once). Those two shapes must read differently.
+   * With many catalogs optimizing at once, gate waits (loosen the quiet window) and permit waits
+   * (prefetch fewer at once) need different fixes, so they must read differently.
    */
   @Test
   fun `a permit-starved pass and a gate-starved pass are distinguishable`() {
@@ -231,11 +223,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * The companion to the wait split. Measured on the deployed box, catalogs reported 88–201s of
-   * `renderMillis` against a known warm p50 of 238–1111ms — which reads as a slow renderer until
-   * you notice a cold Android warm is 34–68s and each pass had only 3–4 turns. Back the warm out
-   * and the per-entry cost is sub-second. "Buy a faster renderer" and "stop paying for cold starts"
-   * are not the same project, and the total cannot tell you which one you have.
+   * Cold Android warms (34–68s) dominate `renderMillis` on short passes; split out, the per-entry
+   * cost is sub-second. "Faster renderer" vs "fewer cold starts" must be distinguishable.
    */
   @Test
   fun `a cold-start-dominated pass and a render-dominated pass are distinguishable`() {
@@ -271,9 +260,8 @@ class CatalogThemeCacheTest {
   }
 
   /**
-   * Codex review on #3373. Foreground renders land in this same cache via `cacheCatalogRender`, so
-   * counting them toward the rate reports a prefetch throughput the prefetcher never achieved —
-   * against a denominator made only of optimizer time. The numerator has to be optimizer output.
+   * Foreground renders also land in this cache; counting them would report prefetch throughput the
+   * prefetcher never achieved. The numerator must be optimizer output.
    */
   @Test
   fun `foreground-filled entries do not inflate the prefetch rate`() {

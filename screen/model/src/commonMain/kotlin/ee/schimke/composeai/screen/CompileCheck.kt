@@ -5,31 +5,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The client half of the preview server's playground contract — `POST /api/{version}/compiler/run`
- * and `GET /api/{version}/compiler/catalogs` (PLAYGROUND.md §4).
+ * The client half of the preview server's playground contract — `POST
+ * /api/{version}/compiler/run` and `GET /api/{version}/compiler/catalogs` (PLAYGROUND.md §4).
  *
- * ### Why this lives in the model and not in the browser app
- *
- * Everything here is a pure function of text: building a request, choosing a target from what a
- * host advertises, reading a response, deciding whether a response is still wanted. The browser app
- * owns exactly one thing this module cannot have — `fetch` — and that is the only part with no
- * test. Putting the decisions here means they are tested on the JVM instead of being verified by
- * clicking.
- *
- * ### What the call actually buys
- *
- * "Does it compile" is the floor. The same response carries [CompileRunResponse.image] — the first
- * frame as a `data:` PNG — and [CompileRunResponse.previewToken], which opens a live interactive
- * session. So compile-checking the generated screen and running it are one request, not two.
+ * Pure functions of text, so the decisions are tested on the JVM; the browser app only does the
+ * `fetch`. A run response also carries the first frame ([CompileRunResponse.image]) and a live
+ * session token ([CompileRunResponse.previewToken]), so checking and running are one request.
  */
 public object CompileCheck {
 
-  /**
-   * Lenient by construction: the server's response has fields this client does not model (`errors`,
-   * `text`, `editLease`, …) and will grow more. Failing to parse a successful compile because the
-   * host added a field would be the worst possible reading of a contract that explicitly documents
-   * itself as a superset.
-   */
+  /** Lenient: the server's response is documented as a growing superset of what this models. */
   private val json = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -51,19 +36,13 @@ public object CompileCheck {
   public fun runUrl(host: String): String = "${host.trimEnd('/')}/api/$API_VERSION/compiler/run"
 
   /**
-   * Which catalog and mode to compile the generated screen against, from what the host advertises —
-   * or null when this host cannot compile M3 at all.
+   * Which catalog and mode to compile the generated screen against, from what the host advertises,
+   * or null when it can't compile M3.
    *
-   * **This is the whole answer to the classpath question, asked of the server instead of assumed.**
-   * `confType` selects the *renderer* ([CompileRunRequest.confType] → desktop / Robolectric / RC);
-   * what puts `androidx.compose.material3.*` on the compile classpath is the **catalog**. A client
-   * that sent only a `confType` would land on the host's pinned default, which may be somebody
-   * else's design system — and every reference in the generated file would be unresolved, reported
-   * as if the screen were wrong.
-   *
-   * Returning null rather than falling back is the same choice the server makes for an unknown
-   * catalog: "not available here" beats compiling the right source against the wrong classpath and
-   * reporting the difference as errors.
+   * `confType` only selects the renderer; the catalog is what puts `androidx.compose.material3.*`
+   * on the classpath. Without it the host's default might be another design system and every
+   * reference would be reported unresolved. Null rather than a fallback, as the server does for
+   * unknown catalogs.
    */
   public fun targetFor(
     catalogs: List<CompileCatalogInfo>,
@@ -84,11 +63,7 @@ public object CompileCheck {
     json.decodeFromString<CompileCatalogsResponse>(body).catalogs
 
   /**
-   * The run request body for [source].
-   *
-   * Posts the source **exactly** as the pane shows it. Reformatting between generating and posting
-   * would shift every diagnostic's line by an amount nothing tracks, so the error the compiler
-   * reported against line 12 would be drawn against line 11 of a different file.
+   * The run request body for [source], posted exactly as shown so diagnostic line numbers line up.
    */
   public fun requestBody(source: String, target: CompileTarget): String =
     json.encodeToString(
@@ -100,13 +75,10 @@ public object CompileCheck {
     )
 
   /**
-   * The `?compileHost=` value, or null when the feature is off.
+   * The `?compileHost=` value, or null when the feature is off (absent means off, not a default).
    *
-   * Only `http:` and `https:` origins are accepted. This value goes straight into a `fetch`, and a
-   * crafted query string is attacker-controlled input to a page an operator may have embedded — a
-   * `javascript:` or `data:` URL there is a script-injection surface, not a typo. **Absent means
-   * the feature is off**, not "use a default host": the browser-only loop is what works today and
-   * it must keep working with no server anywhere near it.
+   * SECURITY: only `http:`/`https:` origins are accepted, since this goes straight into `fetch` and
+   * a `javascript:` or `data:` URL from a crafted query would be a script-injection surface.
    */
   public fun hostFrom(params: Map<String, String>): String? {
     val raw = params["compileHost"]?.trim().orEmpty()
@@ -148,15 +120,8 @@ public object CompileCheck {
 
 /**
  * A monotonic fence over in-flight checks: every response older than the newest request is dropped.
- *
- * Every keystroke regenerates the source, so several checks can be in flight at once and they do
- * **not** come back in order. Without this, a slow response to an older edit lands last and paints
- * its errors over source that no longer exists — the user deletes the character that broke it, and
- * the error stays.
- *
- * Structured concurrency alone very nearly covers this (cancelling the previous check's coroutine
- * means its continuation never resumes), but "very nearly" is doing real work in that sentence and
- * a reader should not have to derive it. This is one integer and it is checkable in a test.
+ * Checks overlap and return out of order as the user types, and a stale response would paint errors
+ * over source that no longer exists.
  */
 public class StaleGuard {
   private var issued: Long = 0
@@ -249,10 +214,8 @@ public data class CompileRunResponse(
 )
 
 /**
- * One entry the host offers (`GET /api/{version}/compiler/catalogs`).
- *
- * [system] is the served design system and the field to match on; [id] is what goes back on a run
- * and can be module-qualified when one repository serves several targets.
+ * One entry the host offers (`GET /api/{version}/compiler/catalogs`). [system] is the served design
+ * system to match on; [id] goes back on a run and may be module-qualified.
  */
 @Serializable
 public data class CompileCatalogInfo(
@@ -265,11 +228,8 @@ public data class CompileCatalogInfo(
   val module: String = "",
 ) {
   /**
-   * The served system this entry belongs to.
-   *
-   * The server defaults `system` to `id` and a host that omits the field means exactly that, so
-   * resolve it here rather than matching against an empty string and concluding the host offers no
-   * M3.
+   * The served system this entry belongs to; a host omitting `system` means `id`, as the server
+   * defaults it.
    */
   public val servedSystem: String
     get() = system.ifEmpty { id }

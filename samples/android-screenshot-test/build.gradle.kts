@@ -1,13 +1,7 @@
-// Sample that exercises co-existence with Google's
-// `com.android.compose.screenshot` plugin. We do NOT drive its
-// `validate{Variant}ScreenshotTest` tasks — we keep rendering via Robolectric
-// — but applying its plugin creates the `screenshotTest` source set, and our
-// plugin has to discover + render the `@Preview` functions consumers put
-// there (the idiomatic place to keep preview-only code under Google's docs).
-//
-// Kept as its own module so `:samples:android` stays a minimal Robolectric-only
-// baseline — a regression in the screenshotTest discovery / instance-method
-// receiver resolution doesn't hide behind the larger sample's render output.
+// Co-existence with Google's `com.android.compose.screenshot` plugin: its `screenshotTest` source
+// set is the idiomatic home for preview-only code, so our plugin must discover and render
+// `@Preview`s there (we don't drive its validate tasks). Its own module so `:samples:android` stays
+// a minimal Robolectric baseline.
 @file:Suppress("UnstableApiUsage")
 
 plugins {
@@ -49,57 +43,29 @@ android {
 
   buildFeatures { compose = true }
 
-  // `screenshotTest` is experimental in AGP. The source set appears only when
-  // callers opt in with `android.experimental.enableScreenshotTest=true`.
-  //
-  // The gradle property alone isn't enough for Google's plugin: it also requires the
-  // per-module `experimentalProperties` flag, and fails configuration without it
-  // ("Please enable screenshotTest source set in module first"). Gated on the same
-  // property so the default build is unchanged.
+  // `screenshotTest` is experimental: it needs `android.experimental.enableScreenshotTest=true`
+  // and, for Google's plugin, the per-module `experimentalProperties` flag. Gated so the default
+  // build is unchanged.
   if (screenshotTestEnabled) {
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
   }
 }
 
-// `StudioParityTest` diffs `build/compose-previews/renders/` against the committed Layoutlib
-// references, so the renders have to exist by the time it runs. Same wiring rationale as
-// `composePreview { renderBeforeUnitTests }` in the other samples; spelled out here because this
-// module's previews live in the `screenshotTest` source set.
-// `tasks.matching { … }.configureEach { … }` rather than `named(…)`: AGP registers the unit-test
-// tasks lazily, so eager lookup fails at configuration time.
+// `StudioParityTest` needs the renders, so render before unit tests (as `renderBeforeUnitTests`
+// does elsewhere). `tasks.matching { … }` because AGP registers unit-test tasks lazily.
 tasks
   .matching { it.name == "testDebugUnitTest" }
   .configureEach { dependsOn("composePreviewRenderAll") }
 
-// Tell `StudioParityTest` whether its gate is SUPPOSED to run. Without this it can only see that
-// our Parity renders are missing, which is the correct state when the screenshotTest source set was
-// never materialised and a broken build when it was — indistinguishable from inside the test,
-// because the Layoutlib references are committed either way. Left to guess it assumed the benign
-// case and skipped green.
-//
-// SCOPE, because it is narrower than it looks: this is derived from the same property that
-// materialises the source set, so it catches "the gate was asked to run and had nothing of ours to
-// compare" — a render that produced no fixtures. It canNOT catch the `-P` flag being dropped
-// altogether, which turns this false and hands the test back its skip. Nothing inside the build can
-// catch that, because a flagless run is also the legitimate local case. CI carries that half, in a
-// step that asserts the gate compared something without consulting Gradle at all.
-//
-// `withType<Test>` rather than the `matching` block above, which configures a generic `Task` and so
-// cannot reach `systemProperty`.
+// Tell `StudioParityTest` whether its gate should run, so missing renders fail rather than skip
+// green when the source set was materialised. Can't catch the `-P` flag being dropped altogether
+// (that's also the legitimate local case); CI asserts that separately. `withType<Test>` to reach
+// `systemProperty`.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
   systemProperty("studioParity.required", screenshotTestEnabled)
-  // The gate's side-by-side composites are a real output of this task, so declare them as one.
-  //
-  // Undeclared, Gradle neither stores nor restores them, and `testDebugUnitTest` is cacheable: a
-  // FROM-CACHE run on a fresh CI runner therefore leaves `build/studio-parity` empty even though
-  // the parity test genuinely passed. The CI step that asserts the gate compared something then
-  // fails a build that was fine — observed on this PR's first run, which reported
-  // `testDebugUnitTest FROM-CACHE`, `BUILD SUCCESSFUL`, and no composites. Declared, they ride the
-  // cache entry with the test results, so a cache hit restores exactly what the cached run
-  // compared.
-  //
-  // `optional()` because the task legitimately produces none when the gate skips — no source set,
-  // so nothing of ours to compare.
+  // Declare the side-by-side composites as task outputs so a FROM-CACHE `testDebugUnitTest`
+  // restores them; otherwise CI's "gate compared something" check fails on a cache hit. Optional
+  // because a skipped gate produces none.
   outputs
     .dir(layout.buildDirectory.dir("studio-parity"))
     .withPropertyName("studioParityComposites")
@@ -119,11 +85,8 @@ dependencies {
   debugImplementation("androidx.compose.ui:ui-tooling")
 
   if (screenshotTestEnabled) {
-    // Google's plugin requires `ui-tooling` on the screenshotTest classpath
-    // to instantiate PreviewParameter providers and run the `@Preview`
-    // functions under Layoutlib. Our renderer doesn't use this configuration
-    // — it drives composables via its own ClassGraph-discovered methods —
-    // but compiling the screenshotTest source set still needs it.
+    // Google's plugin needs `ui-tooling` on the screenshotTest classpath for Layoutlib; our
+    // renderer doesn't use it, but compiling the source set does.
     "screenshotTestImplementation"(platform(libs.compose.bom.stable))
     "screenshotTestImplementation"(libs.compose.ui.tooling.preview)
     "screenshotTestImplementation"("androidx.compose.ui:ui-tooling")

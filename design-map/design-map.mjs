@@ -2,66 +2,29 @@
  * Project a discovery manifest into a `design-map.json` — the correspondence file design-parity
  * reads to know which design node a code component is meant to look like.
  *
- * ## Why this is a projection and not a config file
- *
- * design-parity joins a code subject to a design reference through a `design-map.json` entry:
- * `{ code, source, ref, previewId }`. Hand-maintaining that for a catalog's worth of previews is
- * exactly the mapping-config sprawl a catalog exists to avoid — and it drifts the moment a preview
- * is renamed, silently, because the join keys on the fully-qualified preview id.
- *
- * So the map is DERIVED. Every catalogued component already carries its seed-kit handle on the
- * annotation this repo defines:
+ * The map is derived from annotations rather than hand-maintained, so it cannot drift when a
+ * preview is renamed:
  *
  *     @CatalogComponent(id = "Button/Filled", reference = "figma:<fileKey>/<nodeId>")
  *
- * `composePreviewDiscover` writes that through to `previews.json` as `catalog.reference`, so this
- * module is a pure projection of the annotations. Keeping the ref in code is the point: a JSON map
- * keyed on preview names drifts when a preview is renamed, and fails silently when it does.
+ * It lives here, not in design-parity, because every field it reads is defined and emitted by this
+ * repository's discovery.
  *
- * ## Why this lives HERE and not in design-parity
+ * It does not resolve variant knobs to design nodes (that needs a kit vocabulary, which
+ * `@design-parity/kit-index` owns). Variant renders are emitted as declarations in a sidecar
+ * ({@link DESIGN_MAP_VARIANTS_SCHEMA}), carrying any author-stated `kitAxis`/`kitValue` for a
+ * resolver to prefer. The sidecar is a separate file because the design-map schema forbids extra
+ * keys.
  *
- * Every field it reads — `catalog.reference`, `referenceSet`, `noReference`,
- * `referenceContentsOnly`, `catalog.props`, `overrides.seeds` — is defined in this repository, by
- * `@CatalogComponent` / `@CatalogVariant` / `@OverrideVariant` and emitted by this repository's
- * discovery. Rename a field and the projection has to change in the same commit; putting the two
- * on opposite sides of a repo boundary is how a manifest reader goes quietly stale.
- *
- * ## What this deliberately does NOT do
- *
- * It does not resolve a variant knob to a design node. `size=l` is a fact about the Compose API;
- * `Size=Large` is a fact about somebody's design kit, and translating between them needs that kit's
- * published vocabulary — which this repo has no business holding, and which
- * [`@design-parity/kit-index`](https://github.com/yschimke/design-parity/tree/main/packages/kit-index)
- * does hold.
- *
- * What it does carry across is the catalog's own statement about the kit, when it makes one:
- * `@OverrideVariant(kitAxis = "Show avatar", kitValue = "True")` names the kit's spelling directly,
- * and those names ride on the seed into the sidecar for a resolver to prefer over its alias tables.
- * Projecting them is not translating them — this module never checks a declaration against a kit,
- * because it has no kit to check against; it only puts the author's words where the resolver can
- * read them. They were dead metadata until it did (compose-ai-tools#4086).
- *
- * So the variant renders come out as **declarations**, in a sidecar
- * ({@link DESIGN_MAP_VARIANTS_SCHEMA}): "this preview is the same component with these knobs
- * turned". A resolver that owns a kit index turns each into a tagged `ref`/`previewId` pair beside
- * the base one. A repo with no kit index still gets a valid map of base references, which is the
- * majority of the value and costs no design-tool credential.
- *
- * The sidecar is a separate file rather than another key on the map because the design-map schema
- * sets `additionalProperties: false` — a map carrying an extra key would fail its own validator.
- *
- * Pure and dependency-free (no `@design-parity/*`, no I/O) so it unit-tests without an `npm ci`,
- * like its siblings `catalog-image-path.mjs` / `catalog-variants.mjs`. The I/O around it is
- * `emit-design-map.mjs`.
+ * Pure and dependency-free so it unit-tests without `npm ci`; the I/O is `emit-design-map.mjs`.
  */
 
 /** The sidecar `schema` string a resolver must match before reading variant declarations. */
 export const DESIGN_MAP_VARIANTS_SCHEMA = "compose-preview-design-map-variants/v1";
 
 /**
- * The mode a capture is drawn in, when a design map should prefer one: the mode design kits draw
- * their frames in. Diffing a dark render against a light reference reports the whole palette as a
- * finding, so where a light capture exists it is the one that pairs with the reference.
+ * The mode design kits draw their frames in. A dark render diffed against a light reference reports
+ * the whole palette, so a light capture is preferred when one exists.
  */
 const LIGHT_MODE = "Light";
 
@@ -72,19 +35,10 @@ const VARIANT_TAG = "_VARIANT_";
  * The head of a capture's id with the `_VARIANT_<name>` reseed suffix removed, and whether there
  * was one — `{ head, reseed }`.
  *
- * `_VARIANT_` is a legal substring of a Kotlin function name, so a plain `includes()` read the BASE
- * capture of a composable called `Icon_VARIANT_Only` as a generated reseed. Every `continue` guarded
- * by that test then dropped the composable outright, including its explicit `noReference` — a
- * record whose whole purpose is to survive into the diagnostics.
- *
- * Discovery appends the tag to the id it has already built (`base.id + "_VARIANT_<name>"`), so the
- * marker of an actual reseed is the LAST one and the function's own name is still in front of it.
- * Splitting there and requiring the `.<functionName>` marker to survive in the head distinguishes
- * the two: `…FooKt.Icon_VARIANT_Only_Light` splits to `…FooKt.Icon`, which no longer contains
- * `.Icon_VARIANT_Only`, so it is a base capture; a real reseed of `Icon`,
- * `…FooKt.Icon_Light_VARIANT_pressed`, splits to `…FooKt.Icon_Light`, which still contains `.Icon`.
- *
- * A capture that names no function cannot be told apart this way, so it keeps the old reading.
+ * `_VARIANT_` is a legal substring of a function name, so split at the LAST tag and require
+ * `.<functionName>` to survive in the head: `…FooKt.Icon_VARIANT_Only_Light` is a base capture,
+ * `…FooKt.Icon_Light_VARIANT_pressed` a reseed. A capture naming no function keeps the plain
+ * reading.
  */
 function splitVariantTag(preview) {
   const id = String(preview.id ?? "");
@@ -104,15 +58,9 @@ function isVariantCapture(preview) {
 /**
  * A capture's id split into the composable it captures and the mode it was drawn in.
  *
- * Discovery builds an id as `<class>.<function>[_<mode>][_VARIANT_<name>]`, where the mode segment
- * is the `@Preview` name a multipreview gives the capture — `Light` / `Dark` for a themed pair, and
- * EMPTY for an unnamed single capture. Splitting on the function name rather than pattern-matching
- * the tail is what lets a dark-first catalog be recognised at all: its ids carry no mode segment to
- * match against. The reseed suffix comes off first, via [splitVariantTag] rather than a bare
- * substring split, so a function whose own name contains `_VARIANT_` keeps its whole identity.
- *
- * A capture whose id does not contain its own function name is left as its own subject with an
- * empty mode — it cannot be grouped with anything, so it selects itself.
+ * Ids are `<class>.<function>[_<mode>][_VARIANT_<name>]`, the mode being the multipreview name
+ * (empty for a single capture). Splitting on the function name lets dark-first catalogs, whose ids
+ * carry no mode, be recognised. An id not containing its function name selects itself.
  */
 export function captureIdentity(preview) {
   const { head } = splitVariantTag(preview);
@@ -124,51 +72,26 @@ export function captureIdentity(preview) {
 }
 
 /**
- * The one mode of a composable's captures that pairs with its design reference, or `null` when the
- * captures do not say which that would be.
+ * The one mode of a composable's captures that pairs with its design reference, or `null`.
  *
- * LIGHT wins whenever it is published, which is every catalog that renders a themed pair — design
- * kits draw their frames in light mode, so a dark render diffed against a light reference reports
- * the whole palette as a finding.
- *
- * A composable that publishes exactly ONE mode pairs with that one, whatever it is. A dark-first
- * catalog — a Wear watch face is a black screen, so its component multipreview is a single dark
- * capture — names no `Light` capture anywhere, and demanding one projected it to an empty map: a
- * file that reads as "nothing here corresponds to the kit" rather than "the projector could not see
- * these", and that `--strict` cannot fire on either, since there is nothing to be strict about
- * (compose-ai-tools#4192).
- *
- * Several modes with no light among them is the case that stays unselected. Picking one would be
- * guessing which of `Dark` and `Coral` the kit drew, and pairing the wrong one diffs a whole
- * palette — so it is reported instead (`diagnostics.ambiguousMode`).
+ * Light wins when published (kits draw in light). A single mode pairs with itself (e.g. dark-only
+ * Wear catalogs). Several modes with no light is ambiguous and reported as
+ * `diagnostics.ambiguousMode` rather than guessed.
  */
 function preferredMode(modes, widthByMode, baseBreakpointDp) {
   if (modes.has(LIGHT_MODE)) return LIGHT_MODE;
   if (modes.size === 1) return [...modes][0];
 
-  // A BREAKPOINT FAN-OUT is not an ambiguous mode, and telling them apart is what this arm is for.
-  //
-  // A multipreview that renders one function at several screen sizes produces several captures of
-  // one composable, exactly like a themed pair does — and the id segment they are told apart by is
-  // the same segment. Read as modes they are unresolvable (`Light` is nowhere among
-  // `wearos_small_round` / `wearos_large_round`), so every full-screen component of a Wear catalog
-  // dropped out of the map the moment it gained a second size, and `--strict` failed on it.
-  //
-  // They are distinguishable by a fact the id does not carry: each capture names a `device`, and
-  // the devices have DIFFERENT WIDTHS. A palette does not change the frame's width, so a set of
-  // captures whose modes map one-to-one onto distinct device widths is a size axis rather than a
-  // colour one, and one of them can be picked on the merits.
+  // A breakpoint fan-out is not an ambiguous mode: captures of one composable at several sizes use
+  // the same id segment as a themed pair, but name devices of distinct widths. Modes mapping
+  // one-to-one onto distinct widths are a size axis, and one can be picked.
   const sized = [...modes].map((mode) => [mode, widthByMode.get(mode)]);
   const widths = sized.map(([, width]) => width);
   if (!widths.every((width) => Number.isFinite(width))) return null;
   if (new Set(widths).size !== widths.length) return null;
 
-  // NARROWEST by default, because that is the size a kit draws: a design kit publishes its screen
-  // artwork at one size and leaves adaptation to the implementation, and the narrowest is the one
-  // every larger screen is an adaptation OF. `baseBreakpointDp` overrides it for a kit that draws
-  // somewhere else. A named base this composable does not render falls back to the narrowest
-  // rather than dropping the component: rendering a subset of the catalog's breakpoints is a
-  // legitimate thing for one screen to do, and it is not a reason to publish no map row for it.
+  // Narrowest by default — kits draw at one size and larger screens adapt it. `baseBreakpointDp`
+  // overrides; a named base this composable doesn't render falls back to the narrowest.
   sized.sort((a, b) => a[1] - b[1]);
   const named = Number.isFinite(baseBreakpointDp)
     ? sized.find(([, width]) => width === baseBreakpointDp)
@@ -177,11 +100,8 @@ function preferredMode(modes, widthByMode, baseBreakpointDp) {
 }
 
 /**
- * The device width a capture was drawn at, or `null` when it names no device.
- *
- * Read from `params.device` rather than `params.widthDp` alone: a device-less preview carries no
- * width at all, and a `wrapSandbox` bound is not a screen size. Only a capture that names a device
- * is claiming to be a picture of a screen.
+ * The device width a capture was drawn at, or `null` when it names no device (a device-less
+ * `widthDp` is a sandbox bound, not a screen size).
  */
 function deviceWidthDp(preview) {
   const params = preview?.params;
@@ -209,8 +129,7 @@ export function selectCaptures(previews, { baseBreakpointDp } = {}) {
     if (preview.catalog.componentId) ids.add(preview.catalog.componentId);
     componentsBySubject.set(subject, ids);
     const widths = widthsBySubject.get(subject) ?? new Map();
-    // A VARIANT capture rides the same device as its base, so it agrees rather than conflicts —
-    // but read the base's width first, since that is the one the fan-out is defined by.
+    // A variant capture shares its base's device; the base's width defines the fan-out.
     if (!widths.has(mode)) widths.set(mode, deviceWidthDp(preview));
     widthsBySubject.set(subject, widths);
   }
@@ -239,12 +158,9 @@ export function selectCaptures(previews, { baseBreakpointDp } = {}) {
       return chosen.has(subject) && chosen.get(subject) === mode;
     },
     /**
-     * The device width of a capture that is a NON-BASE breakpoint of a fan-out, or `null`.
-     *
-     * This is what turns the sizes the base did not take into cells rather than into silence. A
-     * capture qualifies only when its subject resolved to some other mode and both that mode and
-     * this one name a device width — so a `Dark` capture standing beside a chosen `Light` one,
-     * which is a mode and not a size, is never mistaken for a breakpoint.
+     * The device width of a capture that is a non-base breakpoint of a fan-out, or `null`. Requires
+     * both this mode and the chosen one to name device widths, so a `Dark` beside a chosen `Light`
+     * is never mistaken for a breakpoint.
      */
     breakpointOf(preview) {
       const { subject, mode } = captureIdentity(preview);
@@ -264,8 +180,7 @@ export function codeHandle(preview, { prefix = "catalog" } = {}) {
 }
 
 /**
- * The design source a reference handle names. design-parity dispatches its adapter on this, so a
- * wrong answer picks a driver that cannot read the ref at all.
+ * The design source a reference handle names; design-parity picks its adapter from this.
  */
 export function sourceForRef(ref) {
   const scheme = String(ref).split(":")[0];
@@ -273,36 +188,11 @@ export function sourceForRef(ref) {
 }
 
 /**
- * The knobs one variant render turns, normalised to `{ key, raw }`.
- *
- * A variant reaches us two ways and both NAME their axis — nothing is inferred from a function
- * name:
- *
- *   `@OverrideVariant(name = "l", strings = ["size=l"])` — a reseeded render of the same
- *     composable. Arrives as role COMPONENT with `_VARIANT_` in the id and the knobs on
- *     `overrides`.
- *
- *   `@CatalogVariant(of = "Fab/Standard", props = ["size=large"])` — its own composable, because
- *     the difference is more than a knob. Arrives as role VARIANT with the knobs in `catalog.props`.
- *
- * For the first form, `overrides.props` is preferred over `overrides.seeds` when present. They are
- * not the same list: `seeds` holds only the values that differ from the composable's defaults,
- * while `props` — emitted for a `@PreviewAxis` cross product — carries the FULL axis assignment,
- * defaults included. A cell that knows its own axes pairs by construction; one described only by
- * its non-default seeds is missing the axes it happens to sit at, and a kit that spells its default
- * size explicitly in a combination cell then has nothing to match against.
- */
-/**
  * Attach a kit-side declaration to the one seed it can belong to.
  *
- * `kitAxis` / `kitValue` name the design kit's own spelling for *a* knob — `content=avatar` is the
- * kit's `Show avatar=True` — and the annotation carries one pair per variant, so a variant that
- * turns two knobs gives no way to say which of them the axis names. It attaches to a lone seed;
- * with several, the declaration is reported and dropped rather than guessed at, since guessing
- * would pin the wrong axis and resolve to a confidently wrong node.
- *
- * A `null` declaration (neither field) leaves the seeds exactly as they were, which is every
- * variant written before these fields existed.
+ * `kitAxis`/`kitValue` name the kit's spelling for one knob, so they attach only to a lone seed;
+ * with several, the declaration is reported as unattached rather than guessed. No declaration
+ * leaves the seeds unchanged.
  */
 function declareKitNames(seeds, kitAxis, kitValue) {
   if (!kitAxis && !kitValue) return { seeds, unattached: [] };
@@ -322,10 +212,7 @@ function declareKitNames(seeds, kitAxis, kitValue) {
 }
 
 function foldSeeds(catalog) {
-  // `props` names the axis; `state` is the annotation's shorthand for the one axis common enough
-  // to have its own parameter. Either is a declaration, so neither is inferred —
-  // `@CatalogVariant(state = "disabled")` says the state axis as plainly as
-  // `props = ["state=disabled"]` would.
+  // `state` is shorthand for the `state` prop; both are declarations, nothing is inferred.
   const props = [...(catalog.props ?? [])];
   if (catalog.state && !props.some((p) => p.key === "state")) {
     props.push({ key: "state", value: catalog.state });
@@ -340,20 +227,10 @@ function foldSeeds(catalog) {
 function cellSeeds(overrides, catalog) {
   if (!overrides) return { seeds: [], unattached: [] };
 
-  // A cell that declares the kit's WHOLE assignment compares against that assignment, and the knob
-  // seeds do not enter resolution at all.
-  //
-  // Not a merge, and the reason is that a resolver has to place EVERY seed it is given: one extra
-  // knob seed that aliases to nothing kills the whole cell, so carrying both vectors would make a
-  // fully-declared cell fail for the sake of information the declaration already supersedes. The
-  // knobs still say how the render was produced — that is the renderer's business and it is
-  // recorded on the preview — while `kitProps` says what it is compared against. Keeping those two
-  // apart is what lets a catalog hold a better default than the kit and still compare honestly.
-  //
-  // Each entry is emitted as its own seed carrying both halves of the declaration, which is the
-  // shape a resolver already reads per seed. The `key` is the kit's own axis name rather than a
-  // knob key: there is no knob to name here, and inventing one would be a third spelling of a fact
-  // that already has two.
+  // A cell declaring the kit's whole assignment (`kitProps`) is compared against that alone: a
+  // resolver must place every seed, so extra knob seeds would only make the cell fail. The knobs
+  // stay recorded on the preview as how it was rendered. Each entry becomes a seed keyed by the
+  // kit's own axis name.
   if (overrides.kitProps?.length) {
     return {
       seeds: overrides.kitProps.map((p) => ({
@@ -370,32 +247,22 @@ function cellSeeds(overrides, catalog) {
     ? overrides.props.map((p) => ({ key: p.key, raw: p.value }))
     : (overrides.seeds ?? []).map((s) => ({ key: s.key, raw: s.raw }));
 
-  // An interaction variant seeds no knob — the renderer drives real hover, focus or press against
-  // the composed node instead, so the difference lives in the harness rather than in the data.
-  // A design kit models it as a value of the same `State` axis that carries Enabled and Disabled,
-  // so it enters resolution as a seed of the `state` knob and reaches the kit through the alias
-  // that knob already has. Without this the variant declares nothing: `seeds` is empty, an empty
-  // vector matches every sibling, and the render is dropped as "names no axis".
+  // An interaction variant (hover/focus/press) seeds no knob; kits model it on the `State` axis, so
+  // it enters resolution as a `state` seed. Otherwise the empty vector would match every sibling.
   const interaction = overrides.interaction;
   const drivenState =
     interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")
       ? { key: "state", raw: String(interaction).toLowerCase() }
       : undefined;
 
-  // A COMPONENT's own `kitAxis` is a DEFAULT for its cells — "every variant of this one turns the
-  // same kit property" — so a cell that names its own axis wins, and a cell that names only its
-  // exceptional VALUE still inherits the axis, which is the case the default exists for. A default
-  // that cannot be placed is silent, where the explicit form is reported: one is a blanket that
-  // need not cover everything, the other is an assertion about this cell that could not be
-  // honoured.
+  // A component's `kitAxis` is a default for its cells: a cell naming its own axis wins. An
+  // unplaceable default is silent; an explicit cell declaration is reported.
   const componentDefault = catalog?.role === "COMPONENT" ? catalog.kitAxis : undefined;
   const axis = overrides.kitAxis ?? componentDefault;
   const explicit = Boolean(overrides.kitAxis || overrides.kitValue);
 
-  // The interaction axis is not a knob anybody seeded — the harness drives it — so it does not
-  // count towards "which knob does this declaration name". A cell seeding `size=l` and pressing
-  // the component still names one knob, and its declaration belongs to that one. Only an
-  // interaction-only cell has the state seed as its subject.
+  // The harness-driven interaction axis doesn't count as a declarable knob unless it is the only
+  // one.
   const declarable = seeds.length ? seeds : drivenState ? [drivenState] : [];
   const declared = explicit
     ? declareKitNames(declarable, axis, overrides.kitValue)
@@ -409,6 +276,18 @@ function cellSeeds(overrides, catalog) {
   };
 }
 
+/**
+ * The knobs one variant render turns, normalised to `{ key, raw }`. Both forms name their axes:
+ *
+ *   `@OverrideVariant(name = "l", strings = ["size=l"])` — a reseed of the same composable: role
+ *     COMPONENT, `_VARIANT_` in the id, knobs on `overrides`.
+ *
+ *   `@CatalogVariant(of = "Fab/Standard", props = ["size=large"])` — its own composable: role
+ *     VARIANT, knobs in `catalog.props`.
+ *
+ * `overrides.props` (the full `@PreviewAxis` assignment, defaults included) is preferred over
+ * `overrides.seeds` (non-default values only), so cells pair against kits that spell defaults.
+ */
 export function variantSeeds(preview) {
   const catalog = preview.catalog;
   const { seeds: fold } = catalog?.role === "VARIANT" ? foldSeeds(catalog) : { seeds: [] };
@@ -416,18 +295,9 @@ export function variantSeeds(preview) {
   if (!fold.length) return cell;
   if (!cell.length) return fold;
 
-  // BOTH: an `@OverrideVariant` cell on a `@CatalogVariant` render — the folded component's own
-  // matrix. The render sits at the product of the two axes (`type=wave` AND `progress=1.0`), so it
-  // declares both; taking either half alone would resolve to a sibling node and diff the wrong
-  // frame. Folding a component used to cost it its whole matrix for want of this.
-  //
-  // The CELL wins a key collision. Both describe the same render, but the cell's value is what the
-  // renderer actually seeded, and the fold's is the default it seeded over.
-  //
-  // Its kit AXIS survives that, though. The axis is a fact about the knob — what the kit calls the
-  // thing being turned — and the collision only changes which way it is turned, so dropping the
-  // fold's seed wholesale would lose the one name a resolver cannot work out for itself, silently.
-  // The fold's `kitValue` does not survive: it described the value the cell has just replaced.
+  // An `@OverrideVariant` cell on a `@CatalogVariant` render sits at the product of both axes, so
+  // it declares both. The cell wins a key collision (it is what was actually seeded), but the
+  // fold's kit axis name survives; the fold's `kitValue` does not.
   const foldAxes = new Map(fold.filter((s) => s.kitAxis).map((s) => [s.key, s.kitAxis]));
   const merged = cell.map((s) =>
     !s.kitAxis && foldAxes.has(s.key) ? { ...s, kitAxis: foldAxes.get(s.key) } : s,
@@ -436,41 +306,29 @@ export function variantSeeds(preview) {
   return [...fold.filter((s) => !seeded.has(s.key)), ...merged];
 }
 
-/** The name a variant render goes by, for a report and for the design-map `state` slot. */
 /**
- * How a folded variant names itself in the reference diagnostics: `<parentId> [<axis>=<value> …]`.
- *
- * Not the bare `componentId` — that is the PARENT's id for a VARIANT role, so reporting a variant's
- * stated absence under it would read as a finding about a parent that may carry a perfectly good
- * reference.
- *
- * Not [variantName] either, though that is what the variant is called elsewhere: it narrows to the
- * `state` alone whenever there is one, so two variants of a parent sharing a state and differing
- * only in `props` produce the SAME name. These labels are map keys, so a collision silently drops
- * one of the two stated absences — losing exactly the record this diagnostic exists to keep. The
- * full seed vector is what distinguishes them, so the label is built from that.
+ * How a folded variant names itself in reference diagnostics: `<parentId> [<axis>=<value> …]`.
+ * Not the bare `componentId` (that's the parent's) nor [variantName] (which can collide when two
+ * variants share a state); these labels are map keys, so collisions would drop records.
  */
 export function variantAbsenceId(preview) {
   const parent = preview.catalog?.componentId ?? "(unnamed)";
   const axes = variantSeeds(preview)
     .map((seed) => `${seed.key}=${seed.raw}`)
     .join(" ");
-  // `state` and `props` are both optional, so a variant CAN declare `noReference` and name no axis
-  // at all. Falling back to the bare parent id then publishes "Button — <reason>" for a parent that
-  // may hold a perfectly good reference: it reads as a finding about the parent, and says nothing
-  // about which variant the reason belongs to. The function name is what distinguishes such a
-  // variant, so it stands in for the axes it did not give.
+  // A variant may declare `noReference` without naming any axis; fall back to its function name so
+  // the reason isn't attributed to the parent.
   const label = axes || preview.overrides?.name || preview.functionName || captureIdentity(preview).subject;
   return label ? `${parent} [${label}]` : parent;
 }
 
+/** The name a variant render goes by, for a report and for the design-map `state` slot. */
 function variantName(preview, seeds) {
   const catalog = preview.catalog;
   const cell = preview.overrides?.name;
   if (catalog?.role === "VARIANT") {
-    // Named for the FOLD's own axis, not for the merged vector — `wave`, not `wave-1.0` — so a
-    // folded component's cells read as `wave-full` / `wave-quarter` under it, the same shape a
-    // top-level component's cells have.
+    // Named for the fold's own axis (`wave`, not `wave-1.0`), so cells read like a top-level
+    // component's.
     const fold =
       catalog.state ??
       foldSeeds(catalog)
@@ -482,17 +340,11 @@ function variantName(preview, seeds) {
 }
 
 /**
- * Declarations this render could not place on a seed, one entry per variant that names a kit axis
- * or value it has more than one knob to hang it on.
- *
- * Reported rather than silently dropped: somebody took the trouble to spell the kit's own name,
- * and silence would leave them believing the render compares against a node it never reached —
- * the exact failure `kitAxis` exists to remove.
+ * Declarations this render could not place on a seed (a kit axis or value with more than one knob
+ * to hang it on). Reported so an author doesn't assume a pairing that never happened.
  */
 export function declarationMisses(preview) {
-  // This cell declares that the kit publishes nothing for it, so none of its kit names are meant
-  // to enter resolution. Reporting them as unplaced would turn an authored absence back into the
-  // indistinguishable resolution failure `noReference` exists to prevent.
+  // This cell declares the kit has nothing for it, so its kit names aren't meant to resolve.
   if (preview.overrides?.noReference) return [];
   const catalog = preview.catalog;
   const fold = catalog?.role === "VARIANT" ? foldSeeds(catalog).unattached : [];
@@ -501,41 +353,16 @@ export function declarationMisses(preview) {
 }
 
 /**
- * Every variant render, grouped by the component it folds under.
- *
- * Both annotation forms are collected. The `@CatalogVariant` form was invisible to the first cut of
- * this projection, which is why a FAB size axis read as unauthored while `FabSmall`/`FabMedium`/
- * `FabLarge` sat in the catalog all along.
- */
-/**
  * The kit axis/value a component declares for a non-base breakpoint width, or `null`.
  *
- * [entries] are `@CatalogComponent.breakpointKit` strings, `"<widthDp>=<kitAxis>=<kitValue>"`. The
- * `kitValue` half may itself contain `=` (a kit is free to name a cell `Size=Large`), so the split
- * is on the FIRST TWO separators only — `String.split("=")` with a limit would drop the tail.
- *
- * A malformed entry, a non-numeric width or a width this component never renders yields `null`,
- * which restores the bare `breakpoint=<width>` seed. That is the honest degradation — a mistyped
- * mapping should cost the pairing, not silently pair the render against the wrong kit cell — but
- * it must not be *silent*: degrading quietly leaves a typo indistinguishable from a deliberately
- * undeclared mapping, and the only symptom is a generic pairing miss much further downstream. So
- * a malformed entry is pushed onto [malformed] and reported as `diagnostics.invalidBreakpointKit`,
- * the same way an unresolvable mode is reported rather than guessed at.
- *
- * "Malformed" is only about the entry's *shape*. An entry that is well-formed but names a width
- * this particular capture is not — the common case, since one declaration serves every size — is
- * not a fault and is not reported.
- *
- * Every entry is checked, including those after the one that matches: the report must not depend on
- * where in the list the typo happens to sit. The first matching entry still wins.
+ * [entries] are `@CatalogComponent.breakpointKit` strings, `"<widthDp>=<kitAxis>=<kitValue>"`,
+ * split on the first two `=` only since `kitValue` may contain `=`. A malformed entry is pushed
+ * onto [malformed] (reported as `diagnostics.invalidBreakpointKit`) and degrades to the bare
+ * `breakpoint=<width>` seed. A well-formed entry for another width is not a fault. First match
+ * wins.
  */
 export function breakpointKitNames(entries, widthDp, malformed = []) {
-  // Every entry is inspected before the match is returned, rather than returning at the one that
-  // matches. Returning early made the report ORDER-DEPENDENT: a typo sitting after the matching
-  // entry was never looked at, so it produced no diagnostic on this capture — and on a component
-  // with only ONE non-base breakpoint, which is the motivating Picker case, no other capture
-  // re-reads the list to catch it either. That is exactly the symptomless degradation the
-  // diagnostic exists to prevent. First match still wins.
+  // Inspect every entry before returning so the malformed report doesn't depend on list order.
   let match = null;
   for (const entry of entries ?? []) {
     if (typeof entry !== "string") {
@@ -560,13 +387,14 @@ export function breakpointKitNames(entries, widthDp, malformed = []) {
       malformed.push({ entry, reason: "kitAxis and kitValue must both be non-empty" });
       continue;
     }
-    // Well-formed but for another size: not a fault, and the overwhelmingly common case.
+    // Well-formed but for another size: not a fault, and the common case.
     if (width !== widthDp) continue;
     match ??= { kitAxis, kitValue };
   }
   return match;
 }
 
+/** Every variant render (both annotation forms), grouped by the component it folds under. */
 export function variantRendersByComponent(
   previews,
   selection = selectCaptures(previews),
@@ -577,41 +405,22 @@ export function variantRendersByComponent(
     const catalog = preview.catalog;
     if (!catalog) continue;
 
-    // An `@OverrideVariant` render is a reseed of the SAME composable, so it keeps the parent's
-    // COMPONENT role and is distinguished only by the `_VARIANT_` tag discovery puts in its id.
-    // A `@CatalogVariant` render is its own composable, so it carries the VARIANT role and an
-    // ordinary base-capture id.
-    //
-    // A VARIANT role with a `_VARIANT_` id is the third case, and it used to fall through both
-    // tests into the `continue` below: a folded component carrying a matrix of its own. Discovery
-    // emitted those renders all along — they were simply never projected, so the kit nodes they
-    // sit on went uncompared, and a component could not be folded without deleting its cells.
-    // Either way only the selected capture participates — one declaration per variant, in the same
-    // mode its component's base reference pairs with.
+    // `@OverrideVariant`: same composable, COMPONENT role, `_VARIANT_` id. `@CatalogVariant`: its
+    // own composable, VARIANT role. A VARIANT role with a `_VARIANT_` id is a folded component's
+    // own matrix. Only the selected capture participates.
     const isOverrideVariant = catalog.role === "COMPONENT" && isVariantCapture(preview);
     const isCatalogVariant = catalog.role === "VARIANT";
 
-    // A BREAKPOINT capture is the third form, and it is not an annotation at all — it is the same
-    // composable drawn on a wider screen by a multipreview. It folds under its component like any
-    // other cell, seeded with the width it was drawn at, so the sizes the base did not take are
-    // published rather than discarded.
-    //
-    // Taken BEFORE the `participates` gate, because a non-base breakpoint is by definition the
-    // capture that did not participate. An `@OverrideVariant` cell of a non-base breakpoint is
-    // skipped, though — that is the product of two axes and would multiply the sheet by every
-    // size; the base breakpoint carries the component's matrix.
+    // A breakpoint capture (same composable on a wider screen) folds under its component seeded
+    // with its width. Taken before the `participates` gate, since non-base breakpoints never
+    // participate. `@OverrideVariant` cells of non-base breakpoints are skipped to avoid
+    // multiplying the matrix.
     if (!isOverrideVariant && !isCatalogVariant) {
       const widthDp = catalog.role === "COMPONENT" ? selection.breakpointOf(preview) : null;
       if (widthDp === null) continue;
-      // `@CatalogComponent(breakpointKit = ["225=Larger Screen (BP)=Yes"])` says what this size
-      // MEANS to the kit. Without it the seed is a bare `breakpoint=225` — a value no kit
-      // vocabulary contains — and the resolver can only report "no counterpart for
-      // `breakpoint=225`", even where the kit publishes the very cells the render would pair with
-      // (issue #4827).
-      //
-      // Opt-in and per component, because most kits draw every screen cell at one size and have no
-      // size axis at all. Declaring nothing keeps the bare seed, so those captures stay honestly
-      // reported as renders with no kit counterpart rather than mispaired.
+      // `breakpointKit` says what this size means to the kit; without it the seed is a bare
+      // `breakpoint=225` that no kit vocabulary contains. Opt-in, since most kits have no size
+      // axis.
       const malformed = [];
       const kit = breakpointKitNames(catalog.breakpointKit, widthDp, malformed);
       for (const bad of malformed) {
@@ -632,22 +441,14 @@ export function variantRendersByComponent(
     }
     if (!selection.participates(preview)) continue;
 
-    // A variant that names no axis says only "this is different", which is not enough to look
-    // anything up in a kit. Dropped rather than guessed at from the function name — unless it
-    // states that the kit publishes no cell for it. That statement itself belongs in the sidecar
-    // even though there is deliberately nothing to resolve.
+    // A variant naming no axis can't be looked up, so it is dropped unless it states the kit
+    // publishes nothing for it, which still belongs in the sidecar.
     const seeds = variantSeeds(preview);
     if (!seeds.length && !preview.overrides?.noReference) continue;
 
-    // A `@CatalogVariant` may state its OWN kit correspondence, and either spelling changes what a
-    // resolver should do with this render. Without reading them here a variant's declaration is
-    // emitted under the parent's `reference` regardless — which is precisely the mispairing the two
-    // fields were added to prevent.
-    //
-    // `noReference` says the kit exports no cell this render could honestly pair with. Handing it
-    // to the resolver anyway scores it against the PARENT's picture, so it is dropped: the absence
-    // is already reported once, as a stated absence, and a render that says "there is nothing to
-    // compare me to" must not then be compared.
+    // A `@CatalogVariant` may state its own kit correspondence. `noReference` means there is
+    // nothing to compare against, so it is dropped here (already reported as a stated absence)
+    // rather than scored against the parent.
     if (isCatalogVariant && catalog.noReference) continue;
 
     const list = byComponent.get(catalog.componentId) ?? [];
@@ -655,16 +456,12 @@ export function variantRendersByComponent(
       previewId: preview.id,
       name: variantName(preview, seeds),
       seeds,
-      // An authored finding about this CELL, not the parent component. A resolver must preserve it
-      // and skip node lookup; without the field a deliberate nodeless render is indistinguishable
-      // from a typo in kitAxis/kitValue/kitProps.
+      // An authored finding about this cell: a resolver must preserve it and skip node lookup.
       ...(isOverrideVariant && preview.overrides?.noReference
         ? { noReference: preview.overrides.noReference }
         : {}),
-      // `reference` names the variant's own kit cell. Carried onto the render so a resolver pairs
-      // that handle instead of deriving one from the parent's by seed. Additive to the sidecar's
-      // shape — a resolver that does not read it sees exactly what it saw before, which is why the
-      // schema string does not move.
+      // The variant's own kit cell, so a resolver pairs it directly. Additive; schema string
+      // unchanged.
       ...(isCatalogVariant && catalog.reference ? { reference: catalog.reference } : {}),
     });
     byComponent.set(catalog.componentId, list);
@@ -690,30 +487,14 @@ export function projectDesignMap(previews, opts = {}) {
   const components = [];
   const declarations = [];
   /**
-   * Whether a component reaches a design reference at all, and what it said if not.
-   *
-   * Read from the ANNOTATIONS, before and independently of capture selection — which is the whole
-   * point. A component publishing several modes with no Light among them is `ambiguousMode`, and
-   * `participates()` is false for every one of its captures; computing absence inside the capture
-   * loop therefore dropped such a component out of `unmapped` / `statedAbsent` entirely and
-   * reported it only as an ambiguous mode. A stated absence would then be fatal under
-   * `--strict --allow-stated-absence`, which is exactly the case that flag exists to accept.
-   *
-   * Keyed by componentId rather than pushed per preview, because a component's absence is one fact
-   * however many captures it publishes.
+   * Whether a component reaches a design reference, and what it said if not. Read from the
+   * annotations independently of capture selection, so an ambiguous-mode component still lands in
+   * `unmapped`/`statedAbsent`. Keyed by componentId: absence is one fact per component.
    */
   const unmappedIds = new Map();
   /**
-   * Stated absences, keyed by a COLLISION-SAFE identity and carrying the display label separately.
-   *
-   * A component keys on its own id and a variant on its capture subject, each behind its own
-   * prefix. Both are free-form strings from different namespaces — a `@CatalogComponent(id = …)`
-   * may legally be spelled like a capture subject — so sharing one map without tagging the domain
-   * is the same collision one namespace over. Never keyed on the rendered label. The label is built by joining `key=value` pairs, and
-   * discovery splits an annotation prop at its FIRST `=` only, so a value may legally contain both
-   * a space and an `=`: `props = ["a=b c=d"]` is one prop, and renders identically to the two props
-   * `a=b` and `c=d`. Keying on that string would silently drop one of two distinct absences — the
-   * same data loss this diagnostic exists to prevent, one level subtler.
+   * Stated absences, keyed by a collision-safe, domain-tagged identity with the display label kept
+   * separately. Never keyed on the label: `props = ["a=b c=d"]` renders the same as two props.
    */
   const statedAbsentIds = new Map();
   /** Capture subjects whose absence is stated — a variant is named by subject, not by component. */
@@ -724,17 +505,8 @@ export function projectDesignMap(previews, opts = {}) {
     const catalog = preview.catalog;
     if (!catalog || catalog.reference) continue;
     if (isVariantCapture(preview)) continue;
-    // A `@CatalogVariant` can now state its own kit correspondence, so its absence is reported
-    // like a component's. Scanning components alone meant folding a render under a parent silently
-    // dropped its stated absence from this accounting — a catalog could lose an audit signal by
-    // restructuring, which is exactly what `statedAbsent` exists to prevent. `--strict` counts a
-    // variant's stated absence the same as a component's: someone looked, and wrote down what they
-    // found, wherever the render sits.
-    //
-    // Reported under the variant's own label, not its parent's id (`componentId` is the PARENT for
-    // a VARIANT), or a folded variant's reason would be reported against a parent that may have a
-    // perfectly good reference of its own. The label is for reading; the KEY is the capture
-    // subject, which cannot collide — see the map's own note above.
+    // A `@CatalogVariant`'s stated absence is reported like a component's, under the variant's own
+    // label (not the parent id), keyed by capture subject.
     if (catalog.role === "VARIANT") {
       if (!catalog.noReference) continue; // silence under a parent is the parent's business
       const subject = captureIdentity(preview).subject;
@@ -742,11 +514,8 @@ export function projectDesignMap(previews, opts = {}) {
         label: variantAbsenceId(preview),
         reason: catalog.noReference,
       });
-      // The ambiguity filter below matches on componentId, which for a VARIANT is the PARENT's --
-      // so a variant's own stated absence could not suppress its own ambiguous-mode record, and a
-      // parent carrying a good reference left it unsuppressed. `--strict --allow-stated-absence`
-      // then failed on precisely the case that flag exists to accept. A variant render has its own
-      // capture subject, so record that instead of trying to name it by component.
+      // The ambiguity filter matches on componentId (the parent's, for a VARIANT), so record the
+      // variant's own subject instead.
       referencelessSubjects.add(subject);
       continue;
     }
@@ -755,33 +524,23 @@ export function projectDesignMap(previews, opts = {}) {
     if (catalog.noReference) {
       statedAbsentIds.set(`component:${id}`, { label: id, reason: catalog.noReference });
       statedAbsentComponentIds.add(id);
-      // Unconditional: [unmapped] below filters this set through [statedAbsentComponentIds], which
-      // is the only correct place for it — a component's stated absence may be read from a LATER
-      // capture than the one that first reports it unmapped, and a guard here can only see what has
-      // been read so far. The guard that used to stand here tested a bare `id` against a map now
-      // keyed `component:<id>` / `subject:<id>`, so for an ordinary id it never matched, and for a
-      // component legally named `component:X` it matched the wrong entry and dropped it from
-      // `unmapped` — letting `--strict` pass over a component with no reference and no reason.
+      // Unconditional: [unmapped] below filters through [statedAbsentComponentIds], since a stated
+      // absence may be read from a later capture.
     } else unmappedIds.set(id, true);
   }
   /** Components carrying neither a reference nor a stated reason for its absence. */
   const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentComponentIds.has(id));
   /**
-   * Components whose reference is absent for a STATED reason. Reported apart from `unmapped`
-   * because they are the opposite situation: someone looked, and what they found is that the kit
-   * has nothing live to point at. Rolling the two together is what made a retired pattern read as
-   * neglect.
+   * Components whose reference is absent for a stated reason — kept apart from `unmapped`, since
+   * someone looked and the kit has nothing to point at.
    */
   const statedAbsent = [...statedAbsentIds.values()].map(({ label, reason }) => ({
     componentId: label,
     reason,
   }));
   /**
-   * Every COMPONENT that reaches no reference, however its absence was spelled — the set the
-   * ambiguity filter tests `componentIds` against. A variant's key is a capture subject rather than
-   * a component id, so it is deliberately absent here and suppressed through
-   * [referencelessSubjects] instead; putting subjects in this set would only add entries no
-   * componentId can ever equal.
+   * Every component that reaches no reference, for the ambiguity filter. Variants are suppressed
+   * through [referencelessSubjects] instead.
    */
   const referencelessIds = new Set([...unmapped, ...statedAbsentComponentIds]);
 
@@ -797,12 +556,10 @@ export function projectDesignMap(previews, opts = {}) {
       code,
       source: sourceForRef(catalog.reference),
       ref: catalog.reference,
-      // The component SET, when the annotation names one. `ref` stays the one variant parity diffs
-      // against; `refSet` is what a whole-screen import matches an instance through, since a screen
-      // rarely uses the exact variant this sticker pictures. Absent unless the annotation says so.
+      // The component set, when named: `ref` is what parity diffs against; `refSet` is what a
+      // whole-screen import matches instances through.
       ...(catalog.referenceSet ? { refSet: catalog.referenceSet } : {}),
-      // Figma normally exports only the referenced node. Preserve an explicit per-component opt-out
-      // when the annotation says this reference intentionally relies on overlapping sheet content.
+      // Figma normally exports only the referenced node; keep an explicit opt-out.
       ...(catalog.referenceContentsOnly === false ? { referenceContentsOnly: false } : {}),
       previewId: preview.id,
     });
@@ -839,8 +596,7 @@ export function projectDesignMap(previews, opts = {}) {
     }))
     .sort((a, b) => a.componentId.localeCompare(b.componentId));
 
-  // Only the captures that participate: a variant declares once, and reporting its dark capture
-  // beside its light one would double every line of a list that exists to be acted on.
+  // Only participating captures, so each variant is listed once.
   const unplacedDeclarations = previews
     .filter((preview) => preview.catalog && selection.participates(preview))
     .flatMap(declarationMisses);
@@ -851,29 +607,18 @@ export function projectDesignMap(previews, opts = {}) {
     diagnostics: {
       unmapped,
       statedAbsent,
-      // Kept apart from component / `@CatalogVariant` absences. A folded cell is still valid
-      // inventory under plain --strict: its parent maps, its render is real, and its whole point is
-      // to record that the kit has no corresponding node.
+      // Kept apart from component absences: a folded cell is valid inventory under plain --strict.
       statedAbsentCells,
       unplacedDeclarations,
-      // Composables whose captures name no mode a reference could pair with — several modes, none
-      // of them light. Reported rather than guessed at: pairing `Dark` when the kit drew `Coral`
-      // diffs a whole palette.
-      // An ambiguous mode is only ever a problem BECAUSE a reference needs one capture to pair
-      // with. A component that reaches no reference has nothing to pair, so which of its captures
-      // the kit drew is not a question anyone is asking — reporting it would be noise on top of the
-      // absence already reported above, and under --strict it would be a second, unfixable failure
-      // for the same component.
+      // Composables with several modes and none light. Skipped for components with no reference,
+      // where the mode question is moot and would only add an unfixable --strict failure.
       ambiguousMode: selection.ambiguous.filter(
         (a) =>
           !referencelessSubjects.has(a.subject) &&
           (!a.componentIds.length || a.componentIds.some((id) => !referencelessIds.has(id))),
       ),
-      // `@CatalogComponent(breakpointKit = …)` entries that do not parse. Reported rather than
-      // dropped: the degradation is to the bare `breakpoint=<dp>` seed, which is exactly what an
-      // undeclared component produces, so a typo would otherwise be invisible until someone
-      // wondered why a kit cell never paired. Deduplicated — one declaration is re-read once per
-      // non-base capture of the component, and the same typo is one fault, not four.
+      // Unparseable `breakpointKit` entries, which otherwise silently degrade to the bare seed.
+      // Deduplicated: one entry is re-read per non-base capture.
       invalidBreakpointKit: [
         ...new Map(
           invalidBreakpointKit.map((e) => [`${e.componentId}\u0000${e.entry}`, e]),

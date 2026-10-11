@@ -27,77 +27,45 @@ import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.Opcodes
 
 /**
- * Recovers a target composable's real Kotlin value parameters (names / types / defaults) from its
- * `@kotlin.Metadata`, so a consumer can render a true call site for Figma Code Connect rather than
- * a bare `Foo()`.
+ * Recovers a composable's real Kotlin value parameters from `@kotlin.Metadata`, so consumers can
+ * render true call sites (e.g. for Figma Code Connect). The JVM signature drops names and adds
+ * Compose's synthetic `Composer` / `changed` / default-mask parameters; metadata has the source
+ * signature.
  *
- * Why metadata and not the JVM signature: a `@Composable` function's bytecode signature is mangled
- * — parameter names are dropped and Compose's compiler inserts synthetic `Composer` and `changed:
- * Int` parameters plus a default-mask arg. `@kotlin.Metadata` carries the *source* Kotlin
- * signature, so reading it yields the parameters as the author wrote them, with none of the
- * synthetic noise.
- *
- * Best-effort and non-fatal: any failure (no metadata, a newer metadata version than this reader
- * understands, a signature that doesn't line up) returns an empty list, and the caller falls back
- * to a parameterless call. Read leniently so a class compiled by a newer Kotlin than the bundled
- * `kotlin-metadata-jvm` still parses instead of throwing.
+ * Best-effort: any failure yields an empty list (a parameterless call). Read leniently so
+ * newer-Kotlin metadata still parses.
  */
 /**
- * A composable's source signature as metadata recorded it: its value parameters and, when it is an
- * extension, the receiver it is declared on.
- *
- * The receiver is what a printed call site cannot do without. `AnimatedVisibility` is declared on
- * `ColumnScope`, so it resolves only inside a `Column` — printing it at file scope yields an
- * unresolved reference. A generator that has no receiver field can only guess; one that has it can
- * refuse.
+ * A composable's source signature: value parameters and, for an extension, its receiver — without
+ * which a printed call (e.g. `AnimatedVisibility` on `ColumnScope`) doesn't resolve.
  */
 internal data class ComposableSignatureInfo(
   /** The source-level function name, straight from metadata — never the mangled JVM name. */
   val name: String,
   val parameters: List<TargetParameter>,
   val receiver: String?,
-  /**
-   * True when the declaration is `public` (or `internal`, which is still callable from the same
-   * module). A `private` or `protected` composable cannot be called from a file a generator writes,
-   * so a call site for one is a compile error waiting to happen.
-   */
+  /** `public` or `internal`, i.e. callable from a generated file. */
   val callableFromAnotherFile: Boolean,
   /**
-   * True when the function declares type parameters. A call that omits every defaulted argument
-   * supplies nothing for the compiler to infer them from — `fun <T> Picker(items: List<T> =
-   * emptyList())` cannot be called as `Picker()`.
+   * Declares type parameters, which a call omitting all defaulted arguments can't infer (`fun <T>
+   * Picker(items: List<T> = emptyList())`).
    */
   val hasTypeParameters: Boolean,
   /**
-   * Whether the composable declares a context receiver or context parameter.
-   *
-   * `context(Theme) @Composable fun Widget()` is callable only where a `Theme` is in scope, and a
-   * generated wrapper supplies none. Nothing in the rendered parameter list says so — the context
-   * is not a value parameter — so a call site would be printed and would not compile.
+   * Declares a context receiver / parameter, which a generated wrapper can't supply and the
+   * parameter list doesn't show.
    */
   val hasContextReceivers: Boolean,
   /**
-   * Fully-qualified `@RequiresOptIn` marker annotations on the declaration
-   * (`androidx.compose.material3.ExperimentalMaterial3Api`).
-   *
-   * A preview calling one of these compiles because its own file or function carries `@OptIn`. A
-   * generated wrapper inherits nothing, so the same call fails there unless the wrapper opts in
-   * too. Recorded rather than used to refuse, because opting in is mechanical and refusing would
-   * drop much of Material 3 for a problem the caller can fix in one annotation.
-   *
-   * Empty also means "none we could resolve": a marker whose own class was outside the scan cannot
-   * be identified, and is indistinguishable here from a declaration that needs no opt-in.
+   * Fully-qualified `@RequiresOptIn` markers on the declaration (e.g. `ExperimentalMaterial3Api`).
+   * A generated wrapper must opt in itself; recorded rather than refused, since opting in is
+   * mechanical. Empty may also mean a marker outside the scan couldn't be identified.
    */
   val requiredOptIns: List<String>,
   /**
-   * The subset of [requiredOptIns] whose markers are declared with
-   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
-   *
-   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
-   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
-   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
-   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
-   * the one point that can see it — the annotation's own meta-annotations.
+   * The subset of [requiredOptIns] declared with AndroidX `RequiresOptIn`. Those need
+   * `@androidx.annotation.OptIn(markerClass = …)`, which `kotlin.OptIn` can't substitute for; only
+   * the marker's meta-annotations reveal which.
    */
   val androidxOptIns: List<String>,
 )
@@ -108,9 +76,8 @@ internal object ComposableSignature {
   fun isTopLevel(classInfo: ClassInfo): Boolean = readClassMetadata(classInfo)?.kind in setOf(2, 5)
 
   /**
-   * The value parameters of [method] on [classInfo], or empty when they can't be recovered.
-   * [method] is matched inside the class metadata by its JVM name + descriptor, so overloads don't
-   * collide.
+   * Value parameters of [method], or empty when unrecoverable. Matched by JVM name + descriptor so
+   * overloads don't collide.
    */
   fun parametersOf(classInfo: ClassInfo, method: MethodInfo): List<TargetParameter> {
     return try {
@@ -131,13 +98,9 @@ internal object ComposableSignature {
   }
 
   /**
-   * Everything a printed call site needs from [method]'s Kotlin metadata, or **null when the
-   * metadata could not be read**.
-   *
-   * The null is the point. [parametersOf] degrades an unreadable signature to an empty parameter
-   * list, which is indistinguishable from a genuinely parameterless composable — fine for
-   * scaffolding a call site a human completes, wrong for a generator that claims its output
-   * compiles. A consumer that must not guess reads this instead and refuses on null.
+   * Everything a printed call site needs, or **null when metadata is unreadable**. Unlike
+   * [parametersOf], which degrades to an empty list indistinguishable from a parameterless
+   * composable, this lets a generator that claims its output compiles refuse.
    */
   fun signatureOf(
     classInfo: ClassInfo,
@@ -155,15 +118,10 @@ internal object ComposableSignature {
         }
       val fn = matchFunction(functions, method) ?: return null
       ComposableSignatureInfo(
-        // The name as the author wrote it. Metadata carries it directly, which is the only way to
-        // get it right: the JVM name may be value-class-mangled (`Text-Nvy7gAk`) *or* a legally
-        // escaped declaration whose own name contains a hyphen (``fun `filled-button`()``), and no
-        // amount of string surgery on the JVM name distinguishes those two.
+        // The source name from metadata: the JVM name may be value-class-mangled or a backticked
+        // name containing a hyphen, and string surgery can't tell them apart.
         name = fn.name,
-        // The constructibility pass wants the classpath, and only this overload's callers have one
-        // — `parametersOf` answers for a preview's own parameters, where nothing constructs a
-        // value. Absent (a caller that has no scan, and every existing test) the flag stays false,
-        // which is exactly the behaviour before it existed.
+        // Constructibility needs the classpath; without a scan the flag stays false.
         parameters =
           fn.valueParameters.map { it.toTargetParameter().withConstructibility(scanResult) },
         callableFromAnotherFile =
@@ -183,21 +141,12 @@ internal object ComposableSignature {
   }
 
   /**
-   * The editable knobs [method] declares as its own value parameters — the secondary override
-   * format (see [PreviewKnob]).
+   * Editable knobs declared as [method]'s own value parameters (see [PreviewKnob]).
    *
-   * Returns empty unless **every** value parameter declares a default, which is the shape
-   * `PreviewDiscovery.allParametersHaveDefaults` already requires before admitting a parameterised
-   * preview at all: a parameter with no default cannot be left to the `$default` mask, so a
-   * partially-defaulted function is not a knob carrier, it is an unrenderable preview.
-   *
-   * Within that, only parameters whose type the harness can build from a seed string become knobs.
-   * A `modifier: Modifier = Modifier` on a production composable annotated `@Preview` in place is
-   * deliberately *not* one — it is defaulted and renderable, but there is no seed value to give it,
-   * and publishing it as editable would put an uneditable control on every such preview.
-   *
-   * [PreviewKnob.index] is the parameter's position in the **full** value-parameter list, not among
-   * the knobs, because that is the index the renderer needs to place the argument.
+   * Empty unless **every** parameter has a default, matching
+   * `PreviewDiscovery.allParametersHaveDefaults`. Only types the harness can build from a seed
+   * string become knobs; `modifier: Modifier = Modifier` is not one. [PreviewKnob.index] is the
+   * position in the full parameter list, which the renderer needs.
    */
   fun knobsOf(
     classInfo: ClassInfo,
@@ -220,8 +169,7 @@ internal object ComposableSignature {
       }
     if (parameters.isEmpty()) return emptyList()
     if (!parameters.all { it.declaresDefaultValue }) return emptyList()
-    // Read the compiled body only when there is a knob to attach a default to. Most previews have
-    // none, and this is the one place discovery reads a method body rather than its signature.
+    // Read the body only when there's a knob: it's the one place discovery reads a method body.
     val hasKnob = parameters.any { knobType(it.type, scanResult) != null }
     val defaults =
       if (hasKnob) PreviewKnobDefaults.readFrom(classInfo, method, parameters.size) else emptyMap()
@@ -230,20 +178,15 @@ internal object ComposableSignature {
         val constants =
           if (type == PreviewKnobType.ENUM) enumConstantsOf(parameter.type, scanResult)
           else emptyList()
-        // An enum whose options could not be resolved is not a knob at all. Both causes land here —
-        // an unreadable class file, and two constants claiming one seed text — and both leave a
-        // picker with nothing in it, which is worse than the text box it replaced. Degrading to
-        // "not seedable" renders the author default and says nothing false.
+        // An enum without resolvable options (unreadable, or ambiguous seed texts) isn't a knob: an
+        // empty picker is worse than nothing.
         if (type == PreviewKnobType.ENUM && constants.isEmpty()) return@mapIndexedNotNull null
         PreviewKnob(
           name = parameter.name,
           index = index,
           type = type,
-          // The default is read out of the compiled body as the constant's NAME. Translate it to
-          // the constant's declared seed text so a knob's default is in the same vocabulary as its
-          // options — otherwise a viewer would show `ExtraLarge` as the default of a picker whose
-          // only offered values are `default` / `large` / `extra-large`, and "reset" would send a
-          // value the knob rejects.
+          // The default is read as the constant's name; translate it to its seed text so it's in
+          // the options' vocabulary and "reset" sends a valid value.
           default =
             defaults[index]?.let { read ->
               if (type == PreviewKnobType.ENUM) {
@@ -257,12 +200,8 @@ internal object ComposableSignature {
   }
 
   /**
-   * The constant names of the enum [type] names, in declaration order, or empty when they cannot be
-   * read.
-   *
-   * Read out of the enum's class file by [PreviewKnobDefaults.enumConstantsOf] rather than through
-   * ClassGraph's field info, which the discovery scan deliberately does not enable — see there for
-   * why that cost is not worth paying on every class of every build.
+   * Enum constant names in declaration order, or empty. Read via
+   * [PreviewKnobDefaults.enumConstantsOf] because the scan doesn't enable field info.
    */
   private fun enumConstantsOf(
     type: KmType,
@@ -275,13 +214,9 @@ internal object ComposableSignature {
   }
 
   /**
-   * The knob kind for [type], or null when the harness cannot construct a value for it.
-   *
-   * Matched on the metadata classifier's fully-qualified name rather than the rendered short name,
-   * so a project's own `Boolean` class cannot masquerade as `kotlin.Boolean`. A nullable parameter
-   * is excluded: the renderer signals "use the author default" by passing `null` for a position, so
-   * a knob that can legitimately *be* null has no way to say "seed me null" and would silently
-   * resolve to its default instead.
+   * The knob kind for [type], or null when the harness can't construct it. Matched on the qualified
+   * classifier so a project `Boolean` can't masquerade. Nullable parameters are excluded: `null`
+   * already means "use the author default".
    */
   private fun knobType(type: KmType, scanResult: ScanResult? = null): PreviewKnobType? {
     if (type.isNullable) return null
@@ -293,11 +228,7 @@ internal object ComposableSignature {
       "kotlin/Long" -> PreviewKnobType.LONG
       "kotlin/Float" -> PreviewKnobType.FLOAT
       "kotlin/Double" -> PreviewKnobType.DOUBLE
-      // An `enum class` parameter is the format's closed-value-set knob, and the only kind whose
-      // accepted values a viewer can enumerate. Resolving it needs the enum's OWN class, which the
-      // preview's metadata does not carry — so without a scan result this degrades to "not a knob"
-      // rather than to a knob whose options are unknown. A picker with no options would be worse
-      // than the text box it replaced.
+      // Enum knobs need the enum's own class, so without a scan this degrades to "not a knob".
       else ->
         PreviewKnobType.ENUM.takeIf {
           scanResult?.getClassInfo(name.replace('/', '.'))?.isEnum == true
@@ -306,35 +237,18 @@ internal object ComposableSignature {
   }
 
   /**
-   * The `@RequiresOptIn`-marked annotations a caller of [method] has to opt into.
+   * `@RequiresOptIn`-marked annotations a caller of [method] must opt into, resolved via each
+   * annotation's own class (unresolvable ones are skipped) rather than name patterns.
    *
-   * An opt-in marker is an annotation whose own class carries `@RequiresOptIn`, so this resolves
-   * one level up rather than pattern-matching names like `Experimental…` — a convention plenty of
-   * annotations follow without gating anything. An annotation class outside the scan resolves to
-   * null and is skipped: unrecognised, not assumed.
-   *
-   * **`directOnly()` at both levels is what makes this correct, and its absence is what made the
-   * first version wrong.** ClassGraph's `annotationInfo` is the transitive closure of
-   * meta-annotations, not the annotations written on the element: `Card` carries `@Composable`,
-   * `@ComposableInferredTarget` and `@FunctionKeyMeta`, and the closure of those three drags in
-   * `InternalComposeApi`, `ComposeCompilerApi` and `kotlin.RequiresOptIn` itself. Reading the
-   * closure therefore reported `@OptIn(InternalComposeApi::class)` for placing a `Card` — telling
-   * consumers to opt into Compose's internals to draw a container.
-   *
-   * Filtering those names out was the first fix and the wrong one: it also silenced a component an
-   * author had *deliberately* marked `@InternalComposeApi`, whose callers really must opt in.
-   * Direct annotations answer the actual Kotlin rule — this element, this marker — so
-   * `ComposableInferredTarget` drops out because it is not itself `@RequiresOptIn`, while an
-   * author's `@ExperimentalMaterial3Api` or `@InternalComposeApi` survives.
+   * **`directOnly()` at both levels is essential.** ClassGraph's `annotationInfo` is the transitive
+   * meta-annotation closure, which for any composable drags in `InternalComposeApi` and friends via
+   * `@Composable`'s own annotations. Direct annotations follow the actual Kotlin rule, so an
+   * author's deliberate `@InternalComposeApi` still counts.
    */
   private fun requiredOptInsOf(method: MethodInfo, mechanisms: Set<String>): List<String> =
     requiredOptInsOf(method.annotationInfo?.directOnly().orEmpty(), mechanisms)
 
-  /**
-   * The same question asked of a **class**: which opt-in markers does declaring a value of this
-   * type require? Used by [isNoArgConstructible], which refuses a gated type rather than emitting a
-   * `Type()` whose marker nothing carries.
-   */
+  /** The same for a class, used by [isNoArgConstructible] to refuse gated types. */
   private fun requiredOptInsOf(classInfo: ClassInfo, mechanisms: Set<String>): List<String> =
     requiredOptInsOf(classInfo.annotationInfo?.directOnly().orEmpty(), mechanisms)
 
@@ -351,31 +265,20 @@ internal object ComposableSignature {
       .sorted()
 
   /**
-   * Whether [fn] can only be called where some context is in scope.
+   * Whether [fn] needs a context in scope.
    *
-   * **Partial, and deliberately so.** `context(Theme)` compiled by an older toolchain lands in
-   * `contextReceiverTypes`, which is what this reads. Kotlin 2.2 onwards records the same
-   * declaration as a context *parameter* instead, and `KmFunction.contextParameters` is gated on an
-   * opt-in marker that itself requires API version 2.2 — this module targets 2.0, so the accessor
-   * cannot be referenced here at all.
-   *
-   * So a component compiled by a 2.2+ toolchain with a context parameter is still admitted and
-   * still produces a call that does not compile. That is a real gap, named here rather than hidden
-   * behind a check that looks total: closing it needs this module's API version raised, which is a
-   * build-wide decision and not this change's to make.
+   * **Partial:** reads `contextReceiverTypes`, which older toolchains use. Kotlin 2.2+ records
+   * context parameters instead, behind an accessor needing API version 2.2, which this module
+   * (targeting 2.0) can't reference. So such components are still admitted and produce
+   * non-compiling calls; closing that needs a build-wide API version bump.
    */
   @OptIn(kotlin.metadata.ExperimentalContextReceivers::class)
   @Suppress("DEPRECATION", "DEPRECATION_ERROR")
   private fun hasContextRequirement(fn: KmFunction): Boolean = fn.contextReceiverTypes.isNotEmpty()
 
   /**
-   * An annotation class's name as Kotlin source spells it.
-   *
-   * ClassGraph reports the **binary** name, where `$` separates a nested class from its outer one —
-   * but `$` is also legal inside a backticked top-level name (``annotation class
-   * `Api${'$'}Experimental` ``), so replacing every `$` with `.` corrupts the second case while
-   * fixing the first. The nesting chain says which is which, so the source name is rebuilt from it
-   * here, once, and the emitter gets a name it can print verbatim.
+   * An annotation class's source name. ClassGraph gives the binary name, where `$` separates
+   * nesting but may also appear in a backticked name, so rebuild it from the nesting chain.
    */
   private fun sourceNameOf(annotation: AnnotationInfo): String {
     val info = annotation.classInfo ?: return annotation.name
@@ -404,10 +307,8 @@ internal object ComposableSignature {
 
   private fun KmValueParameter.toTargetParameter(): TargetParameter {
     val slot = isComposableFunctionType(type)
-    // A receiver lambda that is not `@Composable` is a scope DSL, not a slot: `LazyColumn`'s
-    // `content: LazyListScope.() -> Unit` is filled with `item { … }` rather than with children.
-    // `receiverFqnOf` answers null for a function type with no receiver, so an ordinary
-    // `(String) -> Unit` callback stays what it was.
+    // A non-`@Composable` receiver lambda is a scope DSL (`LazyListScope.() -> Unit`), not a slot.
+    // Plain callbacks have no receiver.
     val dsl = if (slot) null else receiverFqnOf(type)
     return TargetParameter.Builder(name = name, type = renderType(type))
       .also { b ->
@@ -424,11 +325,8 @@ internal object ComposableSignature {
   }
 
   /**
-   * [TargetParameter.noArgConstructible] resolved against the classpath (issue #5067).
-   *
-   * Only asked for a parameter that could actually use it: one that is REQUIRED (a defaulted
-   * parameter is omitted, so nothing is constructed for it) and names a class type. Answering for
-   * the rest would scan the classpath for types no call site will ever print.
+   * [TargetParameter.noArgConstructible] (#5067), only computed for required class-typed
+   * parameters.
    */
   private fun TargetParameter.withConstructibility(scanResult: ScanResult?): TargetParameter {
     if (scanResult == null || hasDefault || nullable || composableSlot) return this
@@ -445,34 +343,14 @@ internal object ComposableSignature {
   }
 
   /**
-   * [TargetParameter.noArgFactory] resolved against the classpath: the `remember<SimpleName>` a
-   * call site should prefer over the raw constructor.
+   * [TargetParameter.noArgFactory]: the `remember<SimpleName>` a call site should prefer over the
+   * constructor. Compose's convention is `@Composable fun rememberT(…)` in the type's own package
+   * with all parameters defaulted; searching only that package makes it a lookup, not a guess. File
+   * facades are named after source files, so the package's classes are walked.
    *
-   * Compose states the convention rather than documenting it — a state type that wants remembering
-   * ships `@Composable fun rememberT(…)` **in its own package**, every parameter defaulted
-   * (`ScrollState`/`rememberScrollState`, `LazyListState`/`rememberLazyListState`,
-   * `TextFieldState`/`rememberTextFieldState`). Searching that one package is what makes this a
-   * lookup instead of a guess: the name alone would match any `rememberFoo` anywhere on the
-   * classpath, so the returned callable is one this scan actually saw, declared beside the type,
-   * and returning the type.
-   *
-   * Top-level functions live in a file facade whose name follows the *source file*, not the type,
-   * so the facade cannot be derived from [fqn] — the package's classes are walked and the ones
-   * carrying package metadata are read. Every refusal below is a way `rememberT()` fails to
-   * compile, mirroring [isNoArgConstructible]:
-   * - **wrong shape** — non-public, generic, an extension, or context-requiring, none of which is
-   *   callable as a bare `rememberT()`;
-   * - **a required parameter** — the point is a call with no arguments;
-   * - **a different return type** — a `rememberFoo` that returns something else is a name
-   *   collision, not the convention;
-   * - **not `@Composable`** — the convention is about remembering across recomposition, and a plain
-   *   function named `rememberT` is not it;
-   * - **opt-in gated** — the same refusal [isNoArgConstructible] makes, for the same reason: the
-   *   generated wrapper carries no marker for it.
-   *
-   * Unlike the constructor, the factory does not put the type's own name in the emitted source, so
-   * a gated *type* does not disqualify its ungated factory — only a marker on the factory itself
-   * does.
+   * Refused (each would fail as `rememberT()`): wrong shape (non-public, generic, extension,
+   * context-requiring); a required parameter; a different return type; not `@Composable`; opt-in
+   * gated. A gated type doesn't disqualify an ungated factory, since the type name isn't emitted.
    */
   internal fun noArgFactoryFor(scanResult: ScanResult, fqn: String): String? {
     return try {
@@ -486,18 +364,14 @@ internal object ComposableSignature {
         }
       if (declaring == null) null else "$pkg.$factoryName"
     } catch (_: Throwable) {
-      // Same posture as every other read here: unreadable answers "no factory", which costs the
-      // caller a constructor (or a placeholder) rather than a call site nothing verified.
+      // Unreadable means no factory.
       null
     }
   }
 
   /**
-   * Whether [method] is deprecated at any level: `@kotlin.Deprecated` (`WARNING` and `ERROR` keep
-   * the annotation; `HIDDEN` also compiles the method synthetic) or `@java.lang.Deprecated`.
-   *
-   * A generator must never print a deprecated call, so every place this reader offers something to
-   * call — a component overload, a `rememberT()` factory, a `T()` constructor — consults it.
+   * `@kotlin.Deprecated` at any level (`HIDDEN` is also synthetic) or `@java.lang.Deprecated`.
+   * Every callable this reader offers consults it.
    */
   fun isDeprecated(method: MethodInfo): Boolean =
     method.isSynthetic || DEPRECATED_ANNOTATIONS.any { method.hasAnnotation(it) }
@@ -532,16 +406,11 @@ internal object ComposableSignature {
           fn.valueParameters.all { it.declaresDefaultValue } &&
           (fn.returnType.classifier as? KmClassifier.Class)?.name?.replace('/', '.') == returnFqn
       } ?: return false
-    // `@Composable` is a bytecode annotation on the JVM method, not something metadata records for
-    // a declaration, so the check crosses back to the scan — and it has to cross by the JVM name
-    // METADATA carries, not by the source name. The real `rememberTextFieldState` takes a defaulted
-    // `TextRange`, an inline value class, so Kotlin emits it as `rememberTextFieldState-Le-punE`;
-    // looking it up under its source name finds no method and refuses a factory that is right
-    // there. Matched on the name alone rather than the descriptor, because the Compose compiler
-    // appends a `Composer, Int` and a default mask that no metadata signature accounts for.
+    // `@Composable` is only on the JVM method, so look it up by the JVM name metadata carries (e.g.
+    // `rememberTextFieldState-Le-punE`, mangled by a value-class parameter). Name only: the
+    // descriptor has Compose's extra parameters.
     val jvmName = declared.signature?.name ?: factoryName
-    // A deprecated factory is no placeholder: printing it would put a deprecated call in source
-    // that is supposed to read as current API.
+    // Never offer a deprecated factory.
     return info.getMethodInfo(jvmName).any { method ->
       method.hasAnnotation(COMPOSABLE_ANNOTATION) &&
         !isDeprecated(method) &&
@@ -550,33 +419,17 @@ internal object ComposableSignature {
   }
 
   /**
-   * Whether `Type()` — no arguments at all — is a legal, compiling expression for [fqn].
+   * Whether `Type()` compiles for [fqn]. Refused when:
+   * - **not on the classpath**;
+   * - **not a plain class** — object, interface, annotation, enum, or abstract;
+   * - **not public**;
+   * - **an inner class** — needs an outer instance;
+   * - **generic** — `T` uninferable;
+   * - **a value class** — mangled constructor;
+   * - **opt-in gated** — the wrapper wouldn't carry the type's marker (a follow-up).
    *
-   * Deliberately narrow, because the whole value of a printed call site is that it compiles. Every
-   * clause below is a way `Type()` fails to:
-   * - **not on the classpath** — nothing can be claimed about a type this scan cannot see;
-   * - **not a plain class** — an `object` is `Type` not `Type()`, an interface, annotation or enum
-   *   class has no constructor to call, and an abstract class cannot be instantiated;
-   * - **not public** — a generated file in another package cannot reach it, the same reason
-   *   `callableFromAnotherFile` refuses a private composable;
-   * - **an inner class** — `Outer.Inner()` needs an outer instance, which nothing here has;
-   * - **generic** — `Box()` with every argument defaulted leaves `T` uninferable, the same reason
-   *   `hasTypeParameters` refuses a generic composable;
-   * - **a value class** — its constructor is name-mangled, so what compiles from source is not what
-   *   the JVM signature suggests, and this reader would be guessing;
-   * - **opt-in gated** — a `@RequiresOptIn`-marked type needs a marker on the generated wrapper,
-   *   and while the CALLABLE's markers already travel on the record, a constructed type's do not.
-   *   Refusing keeps the emitted-implies-compiles claim true; carrying them is a follow-up, not a
-   *   silent widening.
-   *
-   * What remains is the case the issue is about: a public, non-generic, plain class with a public
-   * constructor whose parameters ALL declare defaults (or has none at all). That is read from
-   * metadata's `declaresDefaultValue` rather than by counting JVM parameters, because Kotlin emits
-   * such a constructor as the `(…, int, DefaultConstructorMarker)` bridge and the zero-arg form
-   * exists only in source.
-   *
-   * There is no recursion: a constructor whose own parameters are not all defaulted is refused
-   * outright, so the depth is capped at one by construction rather than by a counter.
+   * Otherwise it needs a public constructor whose parameters all declare defaults (or none), read
+   * from metadata since Kotlin emits only the `DefaultConstructorMarker` bridge. No recursion.
    */
   internal fun isNoArgConstructible(scanResult: ScanResult, fqn: String): Boolean {
     return try {
@@ -584,9 +437,8 @@ internal object ComposableSignature {
       if (!info.isPublic || info.isAbstract || info.isInterface || info.isEnum) return false
       if (info.isAnnotation) return false
       if (requiredOptInsOf(info, OPT_IN_MARKER_ANNOTATIONS).isNotEmpty()) return false
-      // A deprecated type, or one whose every public constructor is deprecated, prints no `T()`:
-      // the placeholder would be deprecated source. Annotations only — Kotlin's
-      // `DefaultConstructorMarker` bridge is synthetic without being deprecated.
+      // Deprecated types or constructors print no `T()`. The synthetic marker bridge isn't
+      // deprecated.
       if (isDeprecated(info)) return false
       val constructors = info.declaredConstructorInfo.filter { it.isPublic }
       if (
@@ -600,8 +452,7 @@ internal object ComposableSignature {
           ?: return false
       isNoArgConstructible(kmClass)
     } catch (_: Throwable) {
-      // Same posture as every other read here: an unreadable or newer-format class answers "no",
-      // which costs a refusal rather than emitting a call site nothing verified.
+      // Unreadable means "no".
       false
     }
   }
@@ -619,21 +470,13 @@ internal object ComposableSignature {
   }
 
   /**
-   * The fully-qualified receiver of an extension-function type, or null when it has none.
-   *
-   * Kotlin records the receiver as the first function type argument and marks the type with
-   * `kotlin.ExtensionFunctionType` — the same pair [renderFunctionType] reads to print `RowScope.()
-   * -> Unit`. This keeps the *qualified* classifier rather than the simple name that rendering
-   * deliberately reduces to, because a consumer generating an import or deciding which scoped
-   * modifier APIs are legal cannot use `RowScope` on its own.
+   * The qualified receiver of an extension-function type, or null: the first type argument, marked
+   * `kotlin.ExtensionFunctionType`. Kept qualified (unlike rendering) for imports and scoped-API
+   * decisions.
    */
   /**
-   * The classifier a function type returns, or null when [type] is not a function type.
-   *
-   * A function type's arguments are its parameters followed by its return, so the last one is it —
-   * `Function0<Float>` has exactly one and `Function1<Int, Float>` has the return second. Taken
-   * structurally so a consumer never has to read it off the rendered spelling; see
-   * [TargetParameter.lambdaReturnTypeFqn].
+   * The classifier a function type returns (its last type argument), or null when not a function
+   * type. See [TargetParameter.lambdaReturnTypeFqn].
    */
   private fun lambdaReturnFqnOf(type: KmType): String? {
     val classifier = (type.classifier as? KmClassifier.Class)?.name ?: return null
@@ -651,10 +494,8 @@ internal object ComposableSignature {
   }
 
   /**
-   * A short, readable type: the classifier's simple name, a trailing `?` when nullable, and a
-   * best-effort `<…>` of its type arguments (so `List<String>` reads as such). A function type
-   * renders as `(…) -> …`. This is a scaffolding hint, not a resolvable reference — the developer
-   * or agent completing the Code Connect mapping supplies the real value.
+   * A readable type hint: simple name, `?` when nullable, best-effort type arguments, `(…) -> …`
+   * for functions. Not a resolvable reference.
    */
   private fun renderType(type: KmType): String {
     val isFunction = (type.classifier as? KmClassifier.Class)?.name?.let { isFunctionClassName(it) }
@@ -678,14 +519,9 @@ internal object ComposableSignature {
       } else {
         ""
       }
-    // A nullable function type has to be parenthesised or the `?` reads as part of the return type:
-    // material3's `onCheckedChange: ((Boolean) -> Unit)?` rendered as `(Boolean) -> Unit?`, which
-    // says the callback returns `Unit?` and is nullable nowhere — the opposite of the truth, handed
-    // to every consumer of this string.
-    //
-    // This corrects the rendering only. Nullability that a *generator* acts on comes from
-    // `TargetParameter.nullable`, because even parenthesised the spelling stays ambiguous in the
-    // other direction: a non-null `(Int) -> String?` ends in `?` too.
+    // Parenthesise nullable function types, or `((Boolean) -> Unit)?` reads as `(Boolean) ->
+    // Unit?`. Generators use `TargetParameter.nullable`, since the spelling stays ambiguous for
+    // `(Int) -> String?`.
     if (type.isNullable && isFunction == true) return "($base$args)?"
     return base + args + if (type.isNullable) "?" else ""
   }
@@ -696,10 +532,8 @@ internal object ComposableSignature {
   }
 
   /**
-   * `(A, B) -> R`, or `Receiver.(A) -> R` for an extension-function type, using the metadata type
-   * arguments (last = return). Kotlin records the receiver as the first function argument and marks
-   * the type with `kotlin.ExtensionFunctionType`; without reading that marker a slot such as
-   * `RowScope.() -> Unit` misleadingly appears as an ordinary `(RowScope) -> Unit` callback.
+   * `(A, B) -> R`, or `Receiver.(A) -> R` when marked `kotlin.ExtensionFunctionType`; otherwise
+   * `RowScope.() -> Unit` would look like a `(RowScope) -> Unit` callback.
    */
   private fun renderFunctionType(
     type: KmType,
@@ -722,17 +556,12 @@ internal object ComposableSignature {
   private fun isFunctionClassName(name: String): Boolean = name.startsWith("kotlin/Function")
 
   /**
-   * A function-typed parameter annotated `@Composable` — a content slot. Kotlin metadata retains
-   * the type-use annotation, so use it instead of treating every callback (`onClick`,
-   * `onValueChange` and friends) as child content. A consumer can then label and render actual
-   * slots distinctly.
+   * A function-typed parameter annotated `@Composable` is a content slot (metadata keeps the
+   * type-use annotation), as opposed to callbacks like `onClick`.
    */
   private fun isComposableFunctionType(type: KmType): Boolean =
     (type.classifier as? KmClassifier.Class)?.name?.let { isFunctionClassName(it) } == true &&
       type.annotations.any { it.className == "androidx/compose/runtime/Composable" }
-
-  // --- @kotlin.Metadata extraction (ASM, from the class bytes)
-  // -------------------------------------
 
   /**
    * Read the raw `@kotlin.Metadata` values off [classInfo]'s class file and rebuild a `Metadata`.
@@ -771,11 +600,8 @@ internal object ComposableSignature {
       seen = true
       when (name) {
         "k" -> kind = value as? Int ?: kind
-        // ASM hands a primitive-typed annotation array (here `mv: IntArray`) to `visit` as the
-        // whole
-        // array in one call — NOT element-by-element through `visitArray` (which only object
-        // arrays,
-        // e.g. the `String[]` d1/d2, use). So capture `mv` here.
+        // ASM passes a primitive annotation array (`mv: IntArray`) whole to `visit`, not through
+        // `visitArray`.
         "mv" -> (value as? IntArray)?.let { metadataVersion = it }
         "xi" -> extraInt = value as? Int ?: extraInt
         "xs" -> extraString = value as? String ?: extraString

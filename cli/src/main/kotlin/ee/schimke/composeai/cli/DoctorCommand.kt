@@ -18,54 +18,19 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * `compose-preview doctor`
+ * `compose-preview doctor`.
  *
- * Two layers of checks:
+ * **Environment** checks (always run, safe outside a Gradle project): Java 17+, OS, HEAD probes of
+ * the Google hosts the Android / downloadable-font render paths need (warnings only; skip with
+ * `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`), which `compose-preview-server` `serve` would exec
+ * (never fetched here), and `env.desktop-natives` for CMP Desktop projects ([DesktopNativesCheck]).
  *
- * **Environment** (always runs, safe outside a Gradle project):
- * - Java 17+ on PATH
- * - HEAD probes of Google-controlled hosts required by Android / downloadable-font render paths
- *   (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). Each probe
- *   passes only on the response its URL gives with healthy egress — a 2xx, or the documented 404 on
- *   `fonts.gstatic.com/`; an intercepting proxy's 403/407 is a warning, not a tick. Warnings only;
- *   set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
- * - `env.preview-server` — which `compose-preview-server` `serve` / `browse` would exec (the
- *   `--server-binary` flag, `COMPOSE_PREVIEW_SERVER`, `PATH`, then the CLI's own fetched copy), and
- *   which server release this CLI would fetch. Never fetches one, and never asks the network which
- *   release is newest either; see [ServerDistributionProvision].
- * - `env.desktop-natives` — only when the project has a CMP Desktop module: resolves skiko's four
- *   native dependencies the way the *render JVM's* loader would, catching the
- *   `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` class of failure before a
- *   render burns a full build. See [DesktopNativesCheck] for why `ldd` isn't a substitute.
+ * **Project** checks (when a `settings.gradle[.kts]` is found): plugin applied, plus dependency
+ * alignment rules between the test-runtime and main classpaths (`deps.<module>.*`).
  *
- * **Project** (runs when a `settings.gradle[.kts]` is found at `--project` or cwd):
- * - Plugin applied to at least one module
- * - Consumer's test-runtime classpath vs main-variant classpath satisfies the AAR/R.id
- *   version-alignment rules for preview rendering. Checks:
- *     - `deps.<module>.ui-test-manifest` — ui-test-manifest on test classpath
- *     - `deps.<module>.activity-vs-navigationevent` — navigationevent on test, older activity on
- *       main
- *     - `deps.<module>.compose-ui-vs-core` — compose-ui 1.10+ on test, older androidx.core on main
- *     - `deps.<module>.hamcrest-skew` — `org.hamcrest:hamcrest:2.x` and the legacy split
- *       `:hamcrest-library` / `:hamcrest-core` 1.3 jars both on the test classpath; mixed `AllOf` /
- *       `Matchers` classes break Espresso's `<clinit>` with `NoSuchMethodError`
- *     - `deps.<module>.compose-bom` (warning) — no Compose BOM declared
- *
- * Output modes:
- * - Default: human-friendly ANSI with ✓ / ! / ✗ / ∙ markers, per-check remediation.
- * - `--json`: machine-readable [DoctorReport] (schema `compose-preview-doctor/v1`). Agents should
- *   prefer this — remediations come with concrete `commands[]` they can apply directly.
- * - `--explain`: prints extended rationale for each non-ok check, including the specific exception
- *   class an unfixed misconfig will surface at render time. Useful for humans first hitting a
- *   failure; noisy for agents.
- *
- * Opt-in slow checks (off by default to keep the default invocation cheap):
- * - `--daemon` (alias `--with-daemon`): also spawns each module's preview daemon JVM, completes the
- *   `initialize` handshake, and tears it down. Catches descriptor / classpath / launcher
- *   regressions that only surface at runtime. Costs ~600ms (Desktop) or 3-10s (Robolectric) per
- *   module. Emits one `project.<module>.daemon-smoke` check per module.
- *
- * Exits 0 when no errors (warnings OK), 1 when any check reports ERROR.
+ * Output: ANSI by default; `--json` for a [DoctorReport] (`compose-preview-doctor/v1`, preferred by
+ * agents); `--explain` for extended rationale. `--daemon` also smoke-tests each module's daemon.
+ * Exits 0 when there are no errors, 1 otherwise.
  */
 class DoctorCommand(
   private val args: List<String>,
@@ -78,40 +43,28 @@ class DoctorCommand(
   private val projectDirArg = args.flagValue("--project")
 
   /**
-   * `--timeout <seconds>` — the budget the discovery model query runs under, mirroring
-   * [Command.timeoutSeconds] so `doctor` reads the same flag as every other command. Doctor used
-   * `runBuildAction`'s 60s default and had no way to raise it, which is how a cold configuration
-   * that legitimately takes minutes came back as "no modules have the plugin applied"
-   * (issue #5171).
+   * `--timeout <seconds>` for the discovery model query, as [Command.timeoutSeconds]; cold
+   * configuration of a large build can take minutes.
    */
   private val timeoutSeconds: Long =
     args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
 
   /**
-   * Opt-in: when set, [runProjectChecks] also spawns each module's daemon JVM, completes the
-   * `initialize` round-trip, and tears it down. Slow (~600ms desktop, 3-10s Robolectric per module)
-   * so it's a separate flag rather than part of the default battery. `--with-daemon` is the same
-   * flag — kept as an alias because both spellings turned up in early dogfooding.
+   * Opt-in daemon spawn + `initialize` smoke test per module (slow). `--with-daemon` is an alias.
    */
   private val checkDaemon = "--daemon" in args || "--with-daemon" in args
 
   /**
-   * Version the CLI suggests in remediation messages ("install version X"). Comes from
-   * `--plugin-version`, else the project's version pin once [checkVersionPin] has read it, else the
-   * CLI's compiled-in Maven-line default. Distinct from [appliedPluginVersion], which is what the
-   * project actually has on its classpath — a project can be pinned to one version and still have
-   * another applied, which is exactly the state the pin check exists to surface.
+   * Version suggested in remediation messages: `--plugin-version`, else the project's pin (once
+   * [checkVersionPin] reads it), else the CLI's Maven-line default. Distinct from
+   * [appliedPluginVersion], which is what the classpath actually has.
    */
-  // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]: doctor prints this into snippets a user pastes
-  // into a build, so it has to name a version Gradle can actually resolve.
+  // Not [BUNDLE_VERSION]: this is pasted into builds, so it must be resolvable.
   private var recommendedPluginVersion = args.flagValue("--plugin-version") ?: MAVEN_LINE_VERSION
 
   /**
-   * `--variant <name>` forwarded as `-PcomposePreview.variant=<name>` on the Gradle connection,
-   * mirroring [BaseCommand.variantOverride]. Without this the model query (and any subsequent
-   * daemon spawn through `--with-daemon`) defaults to whatever the plugin's
-   * `composePreview.variant` convention picks, so `doctor --variant prodRelease` would silently
-   * report on `debug` instead.
+   * `--variant <name>`, forwarded as `-PcomposePreview.variant=<name>` like
+   * [BaseCommand.variantOverride].
    */
   private val variantOverride: String? =
     args.flagValue("--variant")?.trim()?.takeIf { it.isNotEmpty() }
@@ -122,10 +75,8 @@ class DoctorCommand(
   }
 
   /**
-   * Plugin version actually applied to the project, read from the Tooling model after
-   * [runProjectChecks] fetches it. Null when no project was detected or no module applies the
-   * plugin. Surfaced in the report header and as an explicit `project.plugin-version` check so
-   * agents debugging "my bump didn't take" can see exactly what's on the classpath.
+   * Plugin version actually applied, from the Tooling model; null when no project or plugin was
+   * found.
    */
   private var appliedPluginVersion: String? = null
 
@@ -136,10 +87,8 @@ class DoctorCommand(
   private val checks = mutableListOf<DoctorCheck>()
 
   /**
-   * Claude Code cloud sandbox detection. Same signal `scripts/install.sh` uses (see `CLAUDE_CLOUD`
-   * auto-detection). When true, network-reach remediations call out Claude Code's Custom network
-   * mode directly and `checkClaudeCloud` emits a top-line `env.claude-cloud` check so the rest of
-   * the report reads in that context.
+   * Claude Code cloud sandbox detection (same signal as `scripts/install.sh`); tailors network
+   * remediations and adds an `env.claude-cloud` check.
    */
   private val inClaudeCloud: Boolean =
     !System.getenv("CLAUDE_CODE_SESSION_ID").isNullOrBlank() ||
@@ -161,8 +110,7 @@ class DoctorCommand(
       checkBundleVersion()
       checkNetworkReach()
     } else {
-      // Still surface the installed version offline — paste-friendly for bug reports and the
-      // single most useful line in the report when the user is asking "what am I running?".
+      // Still report the installed version offline: the most useful line in a bug report.
       addCheck(
         DoctorCheck(
           id = "env.bundle-version",
@@ -205,11 +153,7 @@ class DoctorCommand(
 
   // --- Env checks ---------------------------------------------------------
 
-  /**
-   * OS fingerprint. Cheap to collect and has saved several issue rounds — e.g. #142 was specific to
-   * a Linux kernel build not visible from `os.name` alone. We emit name/version/arch verbatim;
-   * doctor never branches on these.
-   */
+  /** OS fingerprint, emitted verbatim for bug reports; doctor never branches on it. */
   private fun checkOs() {
     val name = System.getProperty("os.name") ?: "unknown"
     val version = System.getProperty("os.version") ?: ""
@@ -225,21 +169,12 @@ class DoctorCommand(
   }
 
   /**
-   * Which `compose-preview-server` `serve` and `browse` would exec, and where it came from.
-   *
-   * The only environment fact in this report that is about a *second program*, and it earns its
-   * line because #5177 made `serve` a launcher and nothing installed the thing it launches: for a
-   * while the answer to "why does serve not work" was invisible from inside the CLI. It is now
-   * fetched on first use ([ServerDistributionProvision]), so "none yet" is a normal state on a
-   * fresh install rather than a fault — reported as such, with the release that would be fetched
-   * named so a skew between the two is readable here rather than from a stack trace.
-   *
-   * Never fetches. Doctor is expected to be cheap and to work offline; a 120 MB download behind an
-   * environment check is neither.
+   * Which `compose-preview-server` `serve` and `browse` would exec, and where it came from. It is
+   * fetched on first use ([ServerDistributionProvision]), so "none yet" is normal. Never fetches:
+   * doctor must stay cheap and offline.
    */
   private fun checkServerBinary() {
-    // The cache, never the API. Doctor's contract is cheap and offline, and "which release is
-    // newest" is a network question — `serve` asks it, at the one moment it is about to download.
+    // The cache only: "which release is newest" is a network question `serve` asks itself.
     val requested = ServerDistributionProvision.requestedVersion()
     val cached = ServerDistributionProvision.cachedVersions().firstOrNull()
     val tracking =
@@ -254,11 +189,8 @@ class DoctorCommand(
       val pin =
         if (choice.source == ServerBinaryDiscovery.CACHE) "This CLI is $tracking"
         else "This CLI is $tracking, and fetches one when it finds none"
-      // The same question `serve` asks immediately before the exec, asked here where someone is
-      // already looking for what is wrong. Finding a binary is not the same as being able to run
-      // it: the start script resolves its own `java`, and doctor's own JVM (reported by
-      // `checkJava` below) is not that one. Null when the JVM clears the distribution's floor, or
-      // when nothing could be established — this never invents a problem.
+      // Finding a binary isn't being able to run it: its start script resolves its own `java`. Null
+      // when fine or unknown.
       val unrunnable = ServerJavaPreflight.failure(choice, ReleasedDistribution.SERVER)
       addCheck(
         DoctorCheck(
@@ -294,8 +226,7 @@ class DoctorCommand(
           else if (requested != null)
             "no preview server yet; `serve` fetches $requested on first use"
           else "no preview server yet; `serve` fetches the newest release on first use",
-        // The cache ROOT rather than one version's directory: with no release resolved there is no
-        // directory to name, and the root is the honest answer to "where did you look".
+        // With no release resolved, the cache root is the honest "where did you look".
         detail =
           "checked ${ServerBinaryDiscovery.FLAG}, ${ServerBinaryDiscovery.ENV}, PATH and " +
             "${ServerDistributionProvision.defaultCacheRoot().absolutePath}",
@@ -318,9 +249,7 @@ class DoctorCommand(
   private fun checkJava() {
     val version = System.getProperty("java.specification.version")
     val major = version?.substringBefore('.')?.toIntOrNull()
-    // Fingerprint the CLI's own JVM so bug reports carry vendor (often
-    // differentiates the Linux-distro / Google-internal JDK that caused
-    // #142) and java.home (pinpoints SDKMAN vs system-provided installs).
+    // Vendor and java.home help identify distro/vendor JDKs and SDKMAN vs system installs.
     val vendor = System.getProperty("java.vendor") ?: "unknown"
     val runtime =
       System.getProperty("java.runtime.version") ?: System.getProperty("java.version") ?: "unknown"
@@ -357,22 +286,13 @@ class DoctorCommand(
   }
 
   /**
-   * Separate check for the `java` on `PATH`. Motivated by #142: the reporter's Gradle launcher was
-   * pinned to JDK 21 via `JAVA_HOME`, but their system default (`java` on PATH) was JDK 25 — and
-   * the forked `composePreviewRender` test worker picked up the system default, because the Test
-   * task's `javaLauncher` wasn't pinned to the project toolchain. Separating the CLI JVM from the
-   * PATH JVM makes that delta visible in the first line of output.
-   *
-   * Skipped on Windows for now — `java -version` prints to stderr, the parsing is the same, but
-   * nobody is reporting Windows-specific bugs yet and `sh -c` isn't available there. Add when a
-   * Windows-only bug report needs it.
+   * Separate check for the `java` on `PATH`, which can differ from the CLI's JVM and is what forked
+   * test workers may pick up. Skipped on Windows (no `sh -c`).
    */
   private fun checkPathJava() {
     val sameAsCli =
       System.getProperty("java.home")?.let { home ->
-        // If PATH's `java` resolves to the same install as java.home,
-        // emitting a second check is noise — the cli check already
-        // covers it.
+        // Same install as java.home: a second check would be noise.
         val probe = runCommand(listOf("sh", "-c", "command -v java"))
         probe?.stdout?.trim()?.startsWith(home) == true
       } ?: false
@@ -384,9 +304,7 @@ class DoctorCommand(
         return
       }
     val versionOut = runCommand(listOf(path, "-version"))?.stderrOrStdout()?.trim().orEmpty()
-    // `java -version` prints 3 lines to stderr: the version, the
-    // runtime build, and the VM build. We keep the first two, which
-    // carry vendor tagging (e.g. `+-google-release-868188172`).
+    // Keep the version and runtime-build lines (they carry vendor tags).
     val summary = versionOut.lines().take(2).joinToString(" | ").ifBlank { "unreachable" }
     addCheck(
       DoctorCheck(
@@ -400,22 +318,14 @@ class DoctorCommand(
   }
 
   /**
-   * Surfaces Claude Code cloud sandbox detection as an info-style check so agents and humans
-   * reading the report know the four `env.network.*` probes below are load-bearing (Google hosts
-   * aren't on the Trusted allowlist — they only resolve in Custom mode) and that
-   * `scripts/install.sh` is the intended bootstrap path. Suppressed when no Claude cloud env vars
-   * are set.
+   * Info check for Claude Code cloud: the Google hosts below only resolve in Custom network mode,
+   * and `scripts/install.sh` is the intended bootstrap. Suppressed outside Claude cloud.
    */
   /**
-   * Whether this JVM can carry a non-ASCII preview id across a process boundary (issue #5172).
-   *
-   * `sun.jnu.encoding` is what the JVM encodes process arguments with, and it comes from the
-   * process locale, not from `file.encoding`: a container with no locale configured, a CI runner,
-   * and most cloud agent sandboxes all run at `ANSI_X3.4-1968`. There, every non-ASCII character in
-   * an argument is replaced by `?` in transit — so a preview named `Cadence — Sync ready` used to
-   * fail a narrowed render with an id it could never match. The CLI now routes such ids through a
-   * file, but the Gradle daemon inherits the same locale, so the warning is still worth a line: it
-   * turns the next encoding-shaped failure into a preflight note.
+   * Whether this JVM can pass a non-ASCII preview id across a process boundary. `sun.jnu.encoding`
+   * follows the process locale (often `ANSI_X3.4-1968` in containers), which turns non-ASCII
+   * argument characters into `?`. The CLI routes such ids through a file, but the Gradle daemon
+   * inherits the same locale, so it is still worth a warning.
    */
   private fun checkArgEncoding() {
     val encoding = System.getProperty("sun.jnu.encoding") ?: System.getProperty("file.encoding")
@@ -488,20 +398,15 @@ class DoctorCommand(
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
-    // `doctor` is the command people run *because* something is wrong, so it is the last place
-    // that should print the generic "check wrapper/cache access" line when the real cause is that
-    // the plugin version this project asks for isn't published yet (issue #5034).
+    // Lets a failed model query be explained as an unpublished pinned plugin version.
     val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
-    // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]. This feeds `pluginResolutionGuidance`, whose
-    // whole job is diagnosing "the plugin version this project asks for is not published"
-    // (#5034) — so it must be the version that IS published, not the CLI's own.
+    // Not [BUNDLE_VERSION]: the guidance diagnoses unpublished versions, so it needs one that is.
     val pluginVersion = pin?.version ?: MAVEN_LINE_VERSION
     val pluginVersionSource = pin?.source?.display
     val diagnosePublicationRace = { text: String ->
       pluginResolutionGuidance(text, pluginVersion, pluginVersionSource)
     }
-    // Cheap, disk-only, and independent of the Gradle model — so it runs first and still reports
-    // when the model query below fails. A wrong pin is one of the reasons a query fails.
+    // Disk-only and independent of the model, so it still reports when the query below fails.
     checkVersionPin(projectDir)
     checkPreviewServer(projectDir)
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
@@ -514,14 +419,10 @@ class DoctorCommand(
           )
           .apply { failureAdvice = diagnosePublicationRace }
           .use { gc ->
-            // Daemon-JVM + Gradle-version snapshot. Runs first so other
-            // project-scope checks can compare against the daemon's JDK
-            // (e.g. flagging test worker mismatch in #142).
+            // First, so later checks can compare against the daemon's JDK.
             checkGradleDaemon(gc)
-            // The caller's `--timeout` budget, not `runBuildAction`'s 60s default: discovery
-            // configures every project, and a cold multi-module configuration measured in minutes
-            // was being cancelled at 60s and then reported as a project-setup problem (issue
-            // #5171).
+            // The caller's `--timeout`, not the 60s default: cold configuration of a large build
+            // takes longer.
             gc
               .runBuildAction(GatherComposePreviewModelAction(), timeoutSeconds = timeoutSeconds)
               .also { gradleAccessFailure = gc.lastModelAccessFailure }
@@ -597,8 +498,7 @@ class DoctorCommand(
     }
 
     if (model.modules.isEmpty()) {
-      // Per-project model-build failures are the usual reason discovery comes back empty while the
-      // render task works (issue #3) — surface them so the user isn't left guessing.
+      // Per-project model failures are the usual reason discovery is empty while rendering works.
       val failureDetail =
         model.failures
           .takeIf { it.isNotEmpty() }
@@ -608,10 +508,7 @@ class DoctorCommand(
               if (fs.size > 10) " (… and ${fs.size - 10} more)" else ""
           }
       val raceGuidance = model.failures.firstNotNullOfOrNull { diagnosePublicationRace(it.message) }
-      // A project cancelled mid-configuration was never evaluated, so discovery did not observe
-      // anything about it — least of all that the plugin isn't applied. Reporting the cold-start
-      // timeout as a setup problem, complete with a `plugins { }` snippet, sent people off to edit
-      // build files that were already correct (issue #5171).
+      // A cancelled project was never evaluated, so this is a timeout, not "plugin not applied".
       val cancelled = model.failures.count { isDiscoveryCancellationFailure(it.message) }
       if (cancelled > 0 && raceGuidance == null) {
         addCheck(
@@ -650,9 +547,7 @@ class DoctorCommand(
         )
         return
       }
-      // Discovery that skipped projects can't tell "the plugin isn't applied" from "we never
-      // looked", so the honest verdict when anything failed is that discovery is incomplete — and
-      // the `plugins { }` snippet, which asserts the former, is withheld (issue #5171).
+      // If projects were skipped, discovery is incomplete; withhold the `plugins { }` snippet.
       val incomplete = raceGuidance == null && model.failures.isNotEmpty()
       addCheck(
         DoctorCheck(
@@ -701,10 +596,8 @@ class DoctorCommand(
     )
 
     appliedPluginVersion?.let { applied ->
-      // The CLI ships the daemon + renderer at its own BUNDLE_VERSION; the applied Gradle plugin is
-      // independent. A *major* mismatch is the real "mixing incompatible versions" hazard — major
-      // releases change the render/daemon wire format and the published okio.Path / suspend APIs —
-      // so surface that as a warning rather than the soft align hint used for minor/patch skew.
+      // The CLI's daemon/renderer are at BUNDLE_VERSION; a major mismatch with the applied plugin
+      // changes wire formats and APIs, so warn rather than hint.
       val incompatible = versionsIncompatible(applied, BUNDLE_VERSION)
       val skew = applied != recommendedPluginVersion
       addCheck(
@@ -773,11 +666,8 @@ class DoctorCommand(
   }
 
   /**
-   * Opt-in spawn smoke test. For each [modulePaths] entry, locate the
-   * `build/compose-previews/daemon-launch.json` descriptor, fork the daemon JVM, run the
-   * `initialize` round-trip, and tear it down. Each module emits one
-   * `project.<module>.daemon-smoke` check; the per-module results are independent so a stale
-   * descriptor in one module doesn't suppress a clean spawn in another.
+   * Opt-in spawn smoke test: per module, read `daemon-launch.json`, fork the daemon, run
+   * `initialize`, and tear it down. Results are independent per module.
    */
   private fun checkDaemonLiveness(projectDir: File, modulePaths: Set<String>) {
     if (modulePaths.isEmpty()) return
@@ -788,12 +678,8 @@ class DoctorCommand(
   }
 
   /**
-   * Emits the daemon's Gradle and JVM fingerprint as two `env` checks. We stash the JDK major and
-   * path on the class so per-module checks can compare against them (see
-   * [checkRenderPreviewsTask]).
-   *
-   * Runs inside the project block because fetching the model requires a live [GradleConnection].
-   * It's logically an env concern though, so the check id lives under `env.*`.
+   * Emit the daemon's Gradle and JVM fingerprint as `env` checks, stashing the JDK for later
+   * per-module comparison ([checkRenderPreviewsTask]). Needs a live [GradleConnection].
    */
   private fun checkGradleDaemon(gc: GradleConnection) {
     val env =
@@ -812,9 +698,7 @@ class DoctorCommand(
     daemonGradleVersion = env.gradle.gradleVersion
     val javaHome = env.java.javaHome
     daemonJavaHome = javaHome.absolutePath
-    // Derive JDK major from the release file — more reliable than
-    // guessing from `javaHome` path naming. Falls back to null if the
-    // file isn't there or doesn't parse (e.g. a non-standard install).
+    // From the `release` file, not the path; null when unavailable.
     daemonJavaMajor = readJdkMajor(javaHome)
     val majorStr = daemonJavaMajor?.let { "JDK $it" } ?: "unknown JDK"
     addCheck(
@@ -829,27 +713,16 @@ class DoctorCommand(
   }
 
   /**
-   * Report the project's compose-preview **version pin** — the one place a project names the
-   * version every entrypoint should use (issue #3738; see [resolveVersionPin]).
-   *
-   * Three outcomes, and none of them is an error:
-   * - **no pin** — `ok`, with the "how to pin" remediation. The zero-config path is legitimate:
-   *   each entrypoint uses its own bundled version, which is fine for a single-machine project.
-   * - **pin matches this CLI** — `ok`, the happy state.
-   * - **pin differs from this CLI** — `warning`. The pinned plugin is what gets injected, but the
-   *   daemon and renderer this CLI ships are stuck at [BUNDLE_VERSION], so across a major (where
-   *   the render/daemon wire format changes — docs/VERSIONING.md § 3) they can genuinely disagree.
-   *   A `-SNAPSHOT` on either side stays `ok`: a local snapshot build driving a pinned project is a
-   *   deliberate development flow, not a misconfiguration.
+   * Report the project's compose-preview version pin ([resolveVersionPin]). Never an error:
+   * - no pin — `ok`, with how to pin;
+   * - pin matches this CLI — `ok`;
+   * - pin differs — `warning`: the pinned plugin is injected, but this CLI's daemon and renderer
+   *   stay
+   *   at [BUNDLE_VERSION] and can disagree across a major. `-SNAPSHOT` on either side stays `ok`.
    */
   /**
-   * Report the project's **preview server** — the host `share-preview` uploads rendered evidence to
-   * when the project names one (see [resolveProjectServeUrl]).
-   *
-   * Reported because it changes what a command does without appearing on its command line: a
-   * project with this set makes `share-preview` upload by default where it would otherwise create a
-   * gist, and "why did my render end up on a website" should be answerable by `doctor` rather than
-   * by reading the source. Never an error — not naming a host is the normal state.
+   * Report the project's preview server ([resolveProjectServeUrl]), which makes `share-preview`
+   * upload there instead of creating a gist. Never an error.
    */
   private fun checkPreviewServer(projectDir: File) {
     val configured = resolveProjectServeUrl(projectDir, args, fileSystem = fileSystem)
@@ -870,17 +743,14 @@ class DoctorCommand(
       )
       return
     }
-    // The same validation the upload performs, so `doctor` can't hand out a clean bill of health
-    // for a configuration the command will refuse — which is precisely the configuration it exists
-    // to diagnose.
+    // Same validation as the upload, so doctor can't approve a URL the command will refuse.
     ServeImageUploader.rejectUnsafeUrl(configured.url)?.let { refusal ->
       addCheck(
         DoctorCheck(
           id = "project.preview-server",
           category = "project",
           status = "error",
-          // Redacted: a URL is refused *because* it carries credentials, and this message is where
-          // that URL would otherwise reach a terminal, a CI log and --json output.
+          // Redacted: the URL may be refused for carrying credentials.
           message =
             "preview server URL is unusable: ${ServeImageUploader.redactedUrl(configured.url)}",
           detail = "Source: ${configured.source.display}. $refusal",
@@ -892,8 +762,7 @@ class DoctorCommand(
       confirmProjectServeHost(
         configured,
         projectRoot = projectDir,
-        // Same identity `share-preview` will use, so the two cannot disagree about whether a
-        // repo-scoped confirmation applies.
+        // Same identity `share-preview` uses for repo-scoped confirmation.
         originRepo = gitOriginRepo(projectDir),
         fileSystem = fileSystem,
       )
@@ -902,9 +771,7 @@ class DoctorCommand(
         DoctorCheck(
           id = "project.preview-server",
           category = "project",
-          // A warning, not an error: nothing is broken, and refusing to act on an unconfirmed
-          // host is the safe behaviour working as designed. The operator just isn't getting the
-          // upload they may be expecting.
+          // A warning: refusing an unconfirmed host is working as designed.
           status = "warning",
           message =
             "this project names ${ServeImageUploader.redactedUrl(configured.url)}, unconfirmed " +
@@ -951,8 +818,7 @@ class DoctorCommand(
       )
       return
     }
-    // Remediation snippets elsewhere in the report ("apply the plugin with version X") should name
-    // the version the project has actually chosen, not this CLI's build.
+    // Remediation snippets should name the version the project chose.
     recommendedPluginVersion = pin.version
     val snapshot = pin.version.endsWith("-SNAPSHOT") || BUNDLE_VERSION.endsWith("-SNAPSHOT")
     val skew = pin.version != BUNDLE_VERSION && !snapshot
@@ -1003,18 +869,10 @@ class DoctorCommand(
   }
 
   /**
-   * Warn when the Gradle daemon's JVM is past [AGP_JDK_CEILING] and any module on this project
-   * applies AGP. Motivated by issue #1544: AGP's `JdkImageTransform` invokes the daemon JDK's
-   * `jlink` to materialise `android.jar`'s system modules, and on JDK 26 that has been reported
-   * failing on `core-for-system-modules.jar`. The same JDK + configuration-cache combination also
-   * can't serialise `JdkImageInput.generatedModuleFile` (a `TransformBackedProvider`). Neither
-   * failure mode is compose-preview-specific — they reproduce with plain AGP tasks too — but doctor
-   * is where consumers come when their first `compose-preview` invocation blows up, so we flag the
-   * env mismatch here.
-   *
-   * Threshold is the last AGP-blessed LTS at time of writing. Bump in one place ([AGP_JDK_CEILING])
-   * once AGP officially supports a newer LTS. Skipped on CMP Desktop-only projects — the
-   * JdkImageTransform path only runs under AGP.
+   * Warn when the Gradle daemon's JVM is past [AGP_JDK_CEILING] and a module applies AGP: AGP's
+   * `JdkImageTransform` (jlink) and configuration-cache serialisation have failed on newer JDKs.
+   * Not compose-preview-specific, but doctor is where users look. Skipped for Desktop-only
+   * projects.
    */
   private fun checkDaemonJdkForAgp(modules: Map<String, ModuleInfo>) {
     val major = daemonJavaMajor ?: return
@@ -1053,33 +911,16 @@ class DoctorCommand(
   }
 
   /**
-   * Emits `env.desktop-natives` when any module renders through the CMP Desktop (skiko) path.
-   *
-   * Gated on [rendersThroughSkiko] rather than run unconditionally: an Android-only project renders
-   * under Robolectric and never touches `libskiko`, so the check would be pure noise there. On a
-   * project that *does* include CMP, this is the check that turns the otherwise-opaque
-   * `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` into a named, fixable
-   * environment problem — before the user spends a full render cycle discovering it.
-   *
-   * The JVM we evaluate against is the Gradle daemon's ([daemonJavaHome], captured by
-   * [checkGradleDaemon]), because that's what the desktop render path forks from. `LD_LIBRARY_PATH`
-   * comes from this process's *environment*, which is the same value the daemon and the render
-   * subprocess inherit — so a variable that was set but never exported reads as unset here, exactly
-   * as it does at render time.
+   * Emit `env.desktop-natives` when any module renders through CMP Desktop (skiko); Android-only
+   * projects never load `libskiko`. Evaluated against the JVMs renders fork from, with this
+   * process's `LD_LIBRARY_PATH` (the same value the daemon and render subprocess inherit).
    */
   private fun checkDesktopNatives(modules: Map<String, ModuleInfo>) {
     val desktopModules = modules.filterValues { rendersThroughSkiko(it) }
     if (desktopModules.isEmpty()) return
 
-    // Evaluate against every JVM a render could actually fork into, not just the daemon's. A module
-    // whose render task carries its own launcher (a raised render JDK, or an explicit
-    // `composePreview.renderJavaVersion`) is the case that matters most here: store libraries on
-    // the path of a *system* JDK is the mixed-glibc trap, and reading the daemon's `java.home`
-    // instead would report a Nix daemon as healthy while the render dies (issue #3690).
-    // Per module: its own launcher when the model reports one, the daemon only as *that module's*
-    // fallback. Adding the daemon unconditionally would judge a JVM nothing renders on — and since
-    // the worst verdict wins below, an unused daemon that cannot resolve a library would fail
-    // doctor for a project whose every render is fine.
+    // Evaluate every JVM a render could fork into: a module's own launcher when the model reports
+    // one, otherwise the daemon as that module's fallback. An unused daemon must not fail doctor.
     val candidates =
       desktopModules.values
         .map { it.renderPreviewsTask?.javaLauncherPath ?: daemonJavaHome }
@@ -1094,17 +935,11 @@ class DoctorCommand(
         renderJavaHome = javaHome,
         ldLibraryPath = System.getenv("LD_LIBRARY_PATH"),
         exists = { path -> File(path).exists() },
-        // Resolved through symlinks so a store lib dir reached via a link farm
-        // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`) is still recognised as one.
+        // Resolve symlinks so store lib dirs reached via link farms are still recognised.
         canonicalize = canonicalize,
       )
     }
-    // The worst verdict wins: one render JVM that cannot load skiko breaks that module's previews
-    // regardless of how healthy the others look. Ranked by severity rather than by "first not-ok",
-    // because the candidates are ordered by where they came from — so an earlier candidate's
-    // warning would otherwise hide a later one whose renders cannot work at all, and warnings exit
-    // 0. Same order [DesktopNativesCheck.interpret] uses, so the selected result and the status it
-    // is reported under agree.
+    // Worst verdict wins, ranked by severity (same order as [DesktopNativesCheck.interpret]).
     val result =
       results.firstOrNull { it.missing.isNotEmpty() }
         ?: results.firstOrNull { !it.ok }
@@ -1118,11 +953,8 @@ class DoctorCommand(
               check.detail,
               "evaluated against ${result.renderJavaHome ?: "an unknown JVM"}" +
                 if (candidates.size > 1) " (of ${candidates.size} candidate render JVMs)" else "",
-              // The desktop render task is not a `Test`, so the Tooling model does not report its
-              // launcher: a CMP module that pins `composePreview.renderJavaVersion` is invisible
-              // here. Only worth saying where it could change the answer — a store daemon with
-              // store libraries on the path, which is exactly the healthy-looking configuration
-              // that a pinned system render JDK turns into the #3690 failure.
+              // The desktop render task isn't a `Test`, so the model doesn't report its launcher.
+              // Mentioned only where a pinned render JDK could change the answer.
               "a CMP module pinning composePreview.renderJavaVersion is not visible to this check; " +
                 "the render task prunes store dirs for such a JVM itself"
                   .takeIf { !result.loaderReadsSystemCache && result.storeDirsOnPath.isNotEmpty() },
@@ -1134,13 +966,8 @@ class DoctorCommand(
   }
 
   /**
-   * Whether [info]'s previews render through skiko (CMP Desktop) rather than Robolectric (Android).
-   *
-   * Primary signal is skiko itself on a resolved classpath — that's the artifact that carries the
-   * native `.so`, so its presence is precisely the condition under which the native deps matter.
-   * The `agpVersion == null` fallback covers a module whose classpath didn't resolve (doctor treats
-   * empty dep maps as "not checkable" elsewhere too): no AGP means no Robolectric path, so Desktop
-   * is the only renderer left.
+   * Whether [info] renders through skiko (CMP Desktop) rather than Robolectric: skiko on a resolved
+   * classpath, or no AGP when the classpath didn't resolve.
    */
   private fun rendersThroughSkiko(info: ModuleInfo): Boolean {
     val deps = info.mainRuntimeDependencies.keys + info.testRuntimeDependencies.keys
@@ -1148,12 +975,7 @@ class DoctorCommand(
     return deps.isEmpty() && info.agpVersion == null
   }
 
-  /**
-   * Emits per-module version info — AGP, Kotlin, Robolectric, Compose runtime.
-   * Robolectric/Compose-runtime are read from the resolved test classpath; AGP/Kotlin are
-   * plugin-side reflective reads. All four are surfaced as an `info`-style ok-status check so
-   * `--report` has one pasteable block with everything a triager needs to see.
-   */
+  /** Emit per-module versions (AGP, Kotlin, Robolectric, Compose runtime) as one info check. */
   private fun checkModuleVersions(modulePath: String, info: ModuleInfo) {
     val robolectric = info.testRuntimeDependencies["org.robolectric:robolectric"]
     val composeRuntime = info.testRuntimeDependencies["androidx.compose.runtime:runtime"]
@@ -1175,12 +997,8 @@ class DoctorCommand(
   }
 
   /**
-   * The check motivated by issue #142. If the test worker's forked JDK is a different major than
-   * the Gradle daemon's, emit a `warning` with the specific error signature the mismatch typically
-   * produces, plus a remediation pointing at the `javaLauncher` toolchain wiring.
-   *
-   * When the JDK majors match (or when we can't tell), this degrades to a pure info line — still
-   * useful in bug reports because it fingerprints the launcher vendor and path.
+   * Warn when the test worker's forked JDK major differs from the Gradle daemon's, with the typical
+   * error signature and the `javaLauncher` toolchain fix. Otherwise an info line.
    */
   private fun checkRenderPreviewsTask(modulePath: String, info: ModuleInfo) {
     val task = info.renderPreviewsTask ?: return
@@ -1229,17 +1047,12 @@ class DoctorCommand(
   }
 
   /**
-   * Scans HTML reports under `build/reports/tests/composePreviewRender/` for known error signatures
-   * and emits a per-module hint when it spots one. Purely pattern-based — we only match signatures
-   * we've seen in field reports, so false positives are rare and actionable. Best-effort: if
-   * there's no report on disk (first run, clean checkout) we silently skip.
+   * Scan `build/reports/tests/composePreviewRender/` HTML reports for known error signatures and
+   * emit a hint. Best-effort; skipped when there is no report.
    */
   private fun checkErrorSignatures(projectDir: File, modulePath: String) {
-    // Gradle path → filesystem path. `:auth:composables` → `auth/composables`
-    // for standard layouts (issue #157). Custom `project.projectDir`
-    // overrides aren't covered here — this is a best-effort triage path;
-    // when the directory doesn't exist we silently skip the signature
-    // scan rather than emit a false "no prior failure" signal.
+    // Gradle path → filesystem path for standard layouts; custom `projectDir`s are skipped
+    // silently.
     val relative = idSafe(modulePath).replace(':', File.separatorChar)
     val moduleDir = File(projectDir, relative).takeIf { it.isDirectory } ?: return
     val reportDir = File(moduleDir, "build/reports/tests/composePreviewRender")
@@ -1276,9 +1089,8 @@ class DoctorCommand(
   }
 
   /**
-   * Render findings produced plugin-side (see [CompatRules] in gradle-plugin) as doctor checks. CLI
-   * doesn't run compat logic of its own — one source of truth, consumed by both CLI and VS Code.
-   * Rule thresholds and remediation phrasing live in the plugin.
+   * Render plugin-side [CompatRules] findings as doctor checks; the plugin owns the rules and
+   * wording.
    */
   private fun checkModuleCompat(modulePath: String, info: ModuleInfo) {
     val variant = info.variant
@@ -1316,9 +1128,7 @@ class DoctorCommand(
           "warning" -> "warning"
           else -> "info"
         }
-      // Short-form detail is the default; `--explain` also surfaces
-      // the long-form detail from the plugin (the "why this breaks at
-      // render time" rationale).
+      // `--explain` adds the plugin's long-form rationale.
       val detail = if (explain) finding.detail else null
       val remediation =
         if (finding.remediationSummary != null) {
@@ -1342,14 +1152,9 @@ class DoctorCommand(
   }
 
   /**
-   * Grep-based "is your compose-bom recent enough" pre-flight. Runs BEFORE any Gradle call, so it
-   * works even outside a Gradle project or before the plugin is applied — complements the
-   * plugin-side `CompatRules` findings, which only fire once Gradle has resolved the test
-   * classpath. The renderer's own `MeasuredWrapBox` links against
-   * `ComposeUiNode.Companion.getApplyOnDeactivatedNodeAssertion`, first shipped in compose-ui
-   * 1.10.0 (compose-bom 2025.12.00). This wrapper is used by the standalone `composePreviewRender`
-   * task as well as daemon-backed rendering, so even a simple preview cannot stay on a 1.9.x render
-   * classpath.
+   * Grep-based Compose BOM preflight that works before any Gradle call. The renderer's
+   * `MeasuredWrapBox` needs compose-ui 1.10.0 (BOM 2025.12.00) on both standalone and daemon
+   * renders.
    */
   private fun checkComposeBomVersion() {
     val workspace = File(projectDirArg ?: ".").canonicalFile
@@ -1391,9 +1196,8 @@ class DoctorCommand(
   }
 
   /**
-   * Returns `(fileWhereFound, parsedVersion)` for every `androidx.compose:compose-bom` version
-   * literal we find under [root]. Scans `gradle/libs.versions.toml` and every `build.gradle[.kts]`,
-   * early-exiting at depth 4 so we don't wander through `build/`.
+   * `(file, version)` for every `androidx.compose:compose-bom` literal under [root], from
+   * `gradle/libs.versions.toml` and `build.gradle[.kts]` files (max depth 4).
    */
   private fun findComposeBomDeclarations(root: File): List<Pair<File, ComposeVersion>> {
     val out = mutableListOf<Pair<File, ComposeVersion>>()
@@ -1430,10 +1234,7 @@ class DoctorCommand(
     return out
   }
 
-  /**
-   * Compose BOM version in `YYYY.MM.NN` form. Enough precision for "is this older than 2025.01"; we
-   * never need to differentiate patches.
-   */
+  /** Compose BOM version in `YYYY.MM.NN` form; patch precision is never needed. */
   private data class ComposeVersion(val year: Int, val month: Int, val raw: String) {
     fun isOlderThan(minYear: Int, minMonth: Int): Boolean =
       year < minYear || (year == minYear && month < minMonth)
@@ -1461,14 +1262,8 @@ class DoctorCommand(
   }
 
   /**
-   * Compact, paste-friendly fingerprint block intended for GitHub issue reports. Prints everything
-   * a triager needs upfront so the reporter doesn't have to re-run `gradlew --version`, `java
-   * -version`, etc. across multiple follow-up comments. Structure is flat key-value so grep-parsing
-   * from an agent is cheap, and the schema string anchors the v1 contract the same way
-   * [DoctorReport.schema] does.
-   *
-   * Each block (env / modules / errors) only prints when we have data — e.g. module versions are
-   * omitted when no project was detected.
+   * Compact, flat key-value fingerprint block for GitHub issue reports, so triagers don't need
+   * follow-up questions. Sections print only when there is data.
    */
   private fun emitReport() {
     println("compose-preview-doctor-report/v1")
@@ -1577,20 +1372,9 @@ class DoctorCommand(
   }
 
   /**
-   * Compares the installed CLI's [BUNDLE_VERSION] against the latest GitHub release tag. Mirrors
-   * the resolution trick in `scripts/install.sh` — a HEAD against the public `releases/latest`
-   * redirect, not `api.github.com`, because the API rate-limits unauthenticated callers on shared
-   * sandbox IPs (Claude Code cloud, GitHub Actions free tier, etc.) and would 403.
-   *
-   * Failure modes are non-fatal:
-   * - Unreachable network → `skipped` check, single-line note. Same env-var opt-out
-   *   (`COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1`) as the rest of network probes.
-   * - Latest tag unparseable → `skipped`. Conservative: never call something "out of date" we can't
-   *   verify.
-   * - Installed == latest → `ok`.
-   * - Installed older → `warning` with a `compose-preview update` remediation. Newer-than-latest
-   *   (SNAPSHOT or pre-release) is treated as `ok` — these come from local builds and shouldn't
-   *   nag.
+   * Compare [BUNDLE_VERSION] with the latest GitHub release via a HEAD on the `releases/latest`
+   * redirect (not the rate-limited API). Unreachable or unparseable → `skipped`; older → `warning`
+   * with `compose-preview update`; equal or newer (SNAPSHOT) → `ok`.
    */
   private fun checkBundleVersion() {
     val latestUrl = "https://github.com/$REPO/releases/latest"
@@ -1598,8 +1382,7 @@ class DoctorCommand(
       try {
         httpProbeClient().use { client ->
           runBlocking {
-            // HEAD with redirects followed (Ktor follows for HEAD by default); the final request
-            // URL is the `…/releases/tag/v<version>` the `releases/latest` 302 lands on.
+            // The final redirected URL is `…/releases/tag/v<version>`.
             val response = client.head(latestUrl) { header("User-Agent", USER_AGENT) }
             response.call.request.url.toString()
           }
@@ -1664,11 +1447,8 @@ class DoctorCommand(
   }
 
   /**
-   * Probe Google-controlled hosts that the Android render path and Compose's downloadable-fonts
-   * integration depend on at build + render time. Each host becomes one `env.network.<id>` check;
-   * anything short of "the real host answered the way it answers this path" is a warning (it only
-   * matters for specific consumers) and points at the Claude Code on-the-web Custom-allowlist docs,
-   * since this is the most common place the checks fail. [networkCheck] holds the classification.
+   * Probe the Google hosts the Android render path and downloadable fonts need; one
+   * `env.network.<id>` check each, classified by [networkCheck].
    */
   private fun checkNetworkReach() {
     NETWORK_HOSTS.forEach { probe ->
@@ -1687,17 +1467,13 @@ class DoctorCommand(
   }
 
   /**
-   * HEAD [url] and return its status code + response headers, or `-1 to {error}` when the host is
-   * unreachable (never throws). A non-2xx is still a real response — its code comes back unchanged
-   * for [networkCheck] to judge, since only that layer knows which codes the probed path answers
-   * with when egress is healthy.
+   * HEAD [url] and return status + headers, or `-1 to {error}` when unreachable (never throws).
+   * Non-2xx codes are returned as-is for [networkCheck] to judge.
    */
   internal fun headPlain(url: String): Pair<Int, Map<String, String>> =
     try {
-      // NOT following redirects. A captive portal or filtering proxy that redirects to a 200 login
-      // page is the case these probes exist to catch, and following it reports that page's status
-      // as the host's — "reachable (HTTP 200)" for an endpoint that never answered. The 3xx and its
-      // `Location` reach [networkCheck] instead, which names it for what it is.
+      // Don't follow redirects: a captive portal redirecting to a 200 login page must not read as
+      // healthy.
       httpProbeClient(followRedirects = false).use { client ->
         runBlocking {
           val response = client.head(url) { header("User-Agent", USER_AGENT) }
@@ -1709,17 +1485,10 @@ class DoctorCommand(
       -1 to mapOf("error" to (e.message ?: e.javaClass.simpleName))
     }
 
-  /**
-   * A Ktor/OkHttp client tuned for doctor's one-shot HEAD probes: 3s connect + request timeouts,
-   * redirects followed (the engine default for HEAD). One client per probe — doctor isn't a hot
-   * path, and `use {}` tears the connection pool down immediately. Mirrors the Ktor/OkHttp client
-   * the rest of the CLI already uses (see [BundleSource]).
-   */
+  /** Client for doctor's one-shot HEAD probes: 3s timeouts, one client per probe. */
   private fun httpProbeClient(followRedirects: Boolean = true): HttpClient =
     HttpClient(OkHttp) {
-      // Off for the reachability probes, on for the version check — which reads the FINAL url of
-      // `releases/latest` and exists to be redirected. Set on the Ktor config and on the engine,
-      // because either one left following would hide the case the caller is asking about.
+      // Off for reachability probes, on for the version check; set on both Ktor config and engine.
       this.followRedirects = followRedirects
       engine {
         config {
@@ -1733,23 +1502,17 @@ class DoctorCommand(
       }
     }
 
-  /**
-   * Sanitise a module path (e.g. `:app` → `app`, `:samples:wear` → `samples:wear`) for use in check
-   * ids.
-   */
+  /** Module path without the leading `:` (`:samples:wear` → `samples:wear`) for check ids. */
   private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }
 
   /**
-   * Exec a short-lived command and capture its stdout/stderr. Returns `null` if the executable
-   * wasn't found, the process failed to start, or it didn't finish within 5s — doctor folds all of
-   * those into "skip the check" rather than erroring on what's essentially optional fingerprinting.
+   * Run a short command and capture output; null if it can't start or exceeds 5s (the check is
+   * skipped).
    */
   private fun runCommand(cmd: List<String>): CommandResult? {
     return try {
       val process = ProcessBuilder(cmd).redirectErrorStream(false).start()
-      // Drain stderr concurrently: reading stdout to EOF before touching stderr deadlocks if the
-      // child fills the stderr pipe buffer first, and the 5s `waitFor` guard below can never fire
-      // while we're blocked on that read. (`java -version` prints to stderr, so this path matters.)
+      // Drain stderr concurrently, or a full stderr pipe deadlocks the stdout read.
       val stderrHolder = arrayOfNulls<String>(1)
       val stderrThread = Thread {
         stderrHolder[0] = process.errorStream.bufferedReader().use { it.readText() }
@@ -1771,19 +1534,11 @@ class DoctorCommand(
   }
 
   private data class CommandResult(val exitCode: Int, val stdout: String, val stderr: String) {
-    /**
-     * `java -version` prints to stderr on most JDKs; fall back to stdout for the occasional one
-     * that doesn't.
-     */
+    /** `java -version` usually prints to stderr. */
     fun stderrOrStdout(): String = stderr.ifBlank { stdout }
   }
 
-  /**
-   * Reads the JDK major version from `$javaHome/release`. Most JDK distributions ship this file
-   * with a `JAVA_VERSION=...` line — more reliable than guessing from the install path, which
-   * varies wildly (`/usr/lib/jvm/temurin-21-jdk-amd64` vs `/opt/homebrew/opt/openjdk@21` vs
-   * `~/.sdkman/candidates/java/21.0.11-tem`). Returns `null` when the file is missing or malformed.
-   */
+  /** JDK major from `$javaHome/release` (`JAVA_VERSION=...`), or null when missing or malformed. */
   private fun readJdkMajor(javaHome: File): Int? {
     val release = File(javaHome, "release").takeIf { it.isFile } ?: return null
     val line =
@@ -1803,9 +1558,8 @@ class DoctorCommand(
   }
 
   /**
-   * One known `composePreviewRender` failure signature. Pattern is a plain substring we look for in
-   * the HTML test report; [hint] is the human explanation; [remediation] is the same action
-   * structure the rest of doctor emits, so agents get concrete commands out of this too.
+   * One known `composePreviewRender` failure signature: a substring to find in the HTML report, a
+   * human [hint], and a [remediation] in doctor's standard shape.
    */
   private data class ErrorSignature(
     val pattern: String,
@@ -1815,9 +1569,8 @@ class DoctorCommand(
 
   companion object {
     /**
-     * Minimum supported Compose BOM — 2025.12.00 → compose-ui 1.10.0. That's the first BOM whose
-     * runtime exposes `ComposeUiNode.Companion.getApplyOnDeactivatedNodeAssertion`, linked by the
-     * renderer's `MeasuredWrapBox` on both standalone and daemon-backed Android renders.
+     * Minimum Compose BOM, 2025.12.00 (compose-ui 1.10.0), required by the renderer's
+     * `MeasuredWrapBox`.
      */
     private const val MIN_BOM_YEAR = 2025
     private const val MIN_BOM_MONTH = 12
@@ -1829,10 +1582,7 @@ class DoctorCommand(
     private const val USER_AGENT = "compose-preview-doctor"
 
     /**
-     * Highest JDK we trust to drive AGP without surfacing the issue-1544-class footguns
-     * (`JdkImageTransform` / configuration-cache serialisation of `TransformBackedProvider`). JDK
-     * 21 is the last AGP-blessed LTS at time of writing. Bump once AGP officially supports a newer
-     * LTS — `checkDaemonJdkForAgp` keys off this value.
+     * Highest JDK trusted to drive AGP (last AGP-blessed LTS); `checkDaemonJdkForAgp` keys off it.
      */
     private const val AGP_JDK_CEILING = 21
 
@@ -1844,18 +1594,15 @@ class DoctorCommand(
       val url: String,
       val purpose: String,
       /**
-       * Non-2xx statuses this exact URL answers with when egress is healthy, mapped to the note
-       * that explains why. Only `fonts.gstatic.com` needs one: it serves versioned asset paths
-       * only, so a 404 on `/` *is* the real host answering. Every other non-2xx is treated as an
-       * interception — see [networkCheck].
+       * Non-2xx statuses this URL returns with healthy egress, with the reason. Only
+       * `fonts.gstatic.com` needs one (404 on `/`); anything else is treated as interception.
        */
       val expected: Map<Int, String> = emptyMap(),
     )
 
     /**
-     * Google-controlled hosts required by the Android/Compose render paths. None are on Claude
-     * Code's default Trusted allowlist — they only resolve in Custom mode or in environments with
-     * broader egress.
+     * Google hosts the Android/Compose render paths need; none are on Claude Code's Trusted
+     * allowlist.
      */
     internal val NETWORK_HOSTS =
       listOf(
@@ -1874,9 +1621,7 @@ class DoctorCommand(
         NetworkHost(
           id = "fonts-googleapis",
           host = "fonts.googleapis.com",
-          // A real CSS2 query, not `/` — the same shape the render path requests (see
-          // `GoogleFonts.buildRangeCssUrl`), and a path that answers 200. `/` is a 404 even with
-          // full egress, which tells us nothing about whether fonts will actually resolve.
+          // A real CSS2 query, as the render path requests; `/` 404s even with full egress.
           url = "https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap",
           purpose =
             "Google Fonts API — used by androidx.compose.ui:ui-text-google-fonts at render time",
@@ -1886,9 +1631,7 @@ class DoctorCommand(
           host = "fonts.gstatic.com",
           url = "https://fonts.gstatic.com/",
           purpose = "Google Fonts static asset host — downloadable-font binaries",
-          // No stable 200 path exists here: font binaries live behind versioned, churn-prone URLs
-          // (`/s/roboto/v47/…`), so pinning one trades a confusing tick for a false alarm the day
-          // Google reissues the family. `/` 404s from the real host, and that 404 is the signal.
+          // No stable 200 path (font URLs are versioned), but `/` reliably 404s from the real host.
           expected =
             mapOf(
               404 to "the host only serves versioned font paths, so `/` 404s when egress works"
@@ -1897,18 +1640,12 @@ class DoctorCommand(
       )
 
     /**
-     * Turn one probe result into its `env.network.<id>` check.
+     * Turn one probe result into its `env.network.<id>` check:
+     * - 2xx, or a status [NetworkHost.expected] documents for this URL → `ok` (with the reason).
+     * - Any other status → `warning`: a proxy or portal answering for the host.
+     * - No response ([code] <= 0) → `warning` with the transport error.
      *
-     * Three outcomes, because "we got bytes back" is not the same as "this host works":
-     * - **2xx**, or a status [NetworkHost.expected] documents for that exact URL → `ok`. The
-     *   expected case carries its reason in the message, so a 404 never reads as a bare tick.
-     * - **Any other status** → `warning`. A sandbox, captive portal or filtering proxy answers on
-     *   the host's behalf with a 403/407/502, and reporting that as "reachable (HTTP 403)" hid the
-     *   exact egress failure doctor exists to surface.
-     * - **No response at all** ([code] <= 0) → `warning`, carrying the transport error.
-     *
-     * Both warnings share the allowlist remediation: an intercepted response and a refused
-     * connection have the same fix.
+     * Both warnings share the allowlist remediation.
      */
     internal fun networkCheck(
       probe: NetworkHost,
@@ -1949,18 +1686,12 @@ class DoctorCommand(
           remediation = remediation,
         )
       }
-      // What THIS url answers with when egress is healthy, read off the probe rather than assumed.
-      // `fonts.gstatic.com` documents a 404 on `/` — it serves versioned asset paths only — so
-      // telling its operator "returns 2xx when egress is healthy" contradicted the probe's own
-      // configuration, in the one message they have to reason from.
+      // Describe the healthy answer from the probe's own config (gstatic expects a 404).
       val healthy =
         (listOf("2xx") + probe.expected.keys.sorted().map { "HTTP $it" }).let {
           if (it.size == 1) it.single() else it.dropLast(1).joinToString(", ") + " or " + it.last()
         }
-      // A REDIRECT is its own diagnosis. The probes do not follow them (see [headPlain]) precisely
-      // so this case stays visible: a captive portal or filtering proxy that redirects to a 200
-      // login page would otherwise be followed to that page and reported as the host answering
-      // healthily, which is the opposite of the truth.
+      // A redirect is its own diagnosis: probably a captive portal or filtering proxy.
       if (code in 300..399) {
         val target = redirectTarget?.takeIf { it.isNotBlank() }
         return DoctorCheck(
@@ -1994,10 +1725,8 @@ class DoctorCommand(
     }
 
     /**
-     * Failure signatures the CLI recognises from `composePreviewRender` HTML reports. Order matters
-     * — the first match wins. Keep the list curated: only patterns we've traced to a specific,
-     * actionable root cause belong here. Patterns that overlap benign test output produce false
-     * positives.
+     * Failure signatures recognised in `composePreviewRender` HTML reports; first match wins. Only
+     * patterns traced to a specific, actionable root cause belong here.
      */
     private val KNOWN_ERROR_SIGNATURES =
       listOf(
@@ -2062,9 +1791,8 @@ class DoctorCommand(
   }
 }
 
-// --- Report schema ---------------------------------------------------------
-// Stable public contract for external consumers — keep backwards-compatible
-// within a major schema version. Schema version lives in [DoctorReport.schema].
+// Report schema: a stable public contract, backwards-compatible within a major
+// ([DoctorReport.schema]).
 
 @Serializable
 data class DoctorReport(

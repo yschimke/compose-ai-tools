@@ -44,11 +44,8 @@ android {
 
 dependencies {
   implementation(platform(libs.rcplayers.bom))
-  // This module does NOT use the Compose BOM — wear-compose-remote-material3
-  // alpha01's POM pulls in Compose 1.11.0-beta01 runtime for foundation /
-  // runtime / ui, and `PreviewWrapper` only exists in ui-tooling-preview
-  // 1.11.0-beta+. Pinning explicit versions keeps resolution aligned with
-  // the 1.11 line and avoids fighting the 1.10.x BOM used elsewhere.
+  // No Compose BOM: wear-compose-remote-material3's POM pulls the 1.11 Compose line, and
+  // `PreviewWrapper` needs ui-tooling-preview 1.11+, so versions are pinned explicitly.
   implementation(libs.compose.ui.tooling.preview.wrapper)
   implementation(libs.compose.remote.tooling.preview)
   // `remote-tooling-preview`'s POM declares its creation/compose deps with
@@ -65,11 +62,8 @@ dependencies {
   // editor's `renderNow.overrides.remoteCompose.namedValues` flips `rememberNamedRemoteString`
   // bindings without rebuilding the document.
   implementation(libs.composeai.data.remotecompose.connector)
-  // The embedded player, on the *runtime* classpath. The connector declares it `compileOnly` (same
-  // as its alpha `compose-remote` deps), so a consumer that wants the embedded replay lane has to
-  // supply it — otherwise `RemoteComposeIrReplay`'s classloader gate never finds it and a
-  // `renderNow.overrides.remoteCompose.player = "embedded"` request silently falls back to the View
-  // player instead of doing what it was asked.
+  // The embedded player at runtime: the connector has it `compileOnly`, so without it an `embedded`
+  // player request falls back to the View player.
   implementation(libs.rcplayer.embedded.android)
   debugImplementation(libs.compose.ui.tooling.prerelease)
 

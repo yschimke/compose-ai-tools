@@ -4,16 +4,9 @@ import androidx.compose.runtime.Composable
 import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.FocusedPreview
 
-// --- States — interaction (pressed / focused) and the content axis, all on `Button/Filled`. ---
-//
-// The two interaction states are captured through **real input** (issue #3672). Both stickers
-// compose a plain `Button` — see the note in `:samples:design-catalog-m3-shared`'s
-// `CatalogComponents` — and `@FocusedPreview` drives the state at render time: the desktop renderer
-// walks focus with `FocusManager.moveFocus(...)` under a synthetic keyboard input mode, and
-// `pressed = true` dispatches a real pointer down onto the focused button, hit-tested like a click.
-// Until the desktop renderer learned that walk these two seeded a held `MutableInteractionSource`
-// from a `LaunchedEffect`, which painted a state layer without any component ever entering the
-// state.
+// Interaction (pressed / focused) and content states on `Button/Filled`. The interaction states use
+// real input: `@FocusedPreview` makes the desktop renderer move focus under keyboard input mode,
+// and `pressed = true` dispatches a pointer down onto the focused button.
 
 @CatalogVariant(
   of = "Button/Filled",

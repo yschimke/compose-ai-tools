@@ -1,17 +1,9 @@
-// `:samples:design-catalog-wear-m3` — a Wear Compose Material 3 **design catalog**:
-// one `@Preview` per component in its primary modes, authored so the upstream
-// `compose-preview` renderer can export the module as an importable sticker sheet
-// (see `@design-parity/catalog-export` in yschimke/design-parity, and the M3
-// sibling `:samples:design-catalog-m3`).
+// `:samples:design-catalog-wear-m3` — a Wear Compose Material 3 design catalog: one `@Preview` per
+// component, exportable as a sticker sheet (sibling of `:samples:design-catalog-m3`).
 //
-// Code-led source of truth for the Wear M3 sheet. Wear is dark-first, so component
-// stickers are a single transparent dark capture (`@CatalogWearModes`,
-// `showBackground = false`) rather than a light/dark pair; the round size
-// breakpoints (192/227/240 round) are fanned out only for the FULL-SCREEN
-// components (scaffold templates, scaling lists, EdgeButton) via
-// `@CatalogWearBreakpoints`, which uses the Wear tooling device ids directly. Kept
-// thin — `wear.compose.material3` + the Wear preview tooling — so it builds against
-// the stable Compose BOM.
+// Wear is dark-first, so component stickers are a single transparent dark capture
+// (`@CatalogWearModes`); only full-screen components fan out to the round breakpoints
+// (`@CatalogWearBreakpoints`). Builds against the stable Compose BOM.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")
@@ -30,12 +22,8 @@ composePreview {
   renderBeforeUnitTests.set(true)
 }
 
-// The locales this catalog localises — its own `values-<locale>` string-resource dirs plus the `en`
-// default — consumed by `androidResources.localeFilters` below to keep exactly these and drop the
-// further ~68 locales the AAR dependencies ship (wear-compose / compose-ui). That keeps this
-// catalog's real translations available to the renderer's locale-override picker while dropping
-// ~470 KB of otherwise-dead `resources.arsc` string data. Derived from the resource dirs so a new
-// `values-<locale>` translation is covered automatically.
+// The locales this catalog localises (its `values-<locale>` dirs plus `en`), derived from the
+// resource dirs. Used by `localeFilters` below.
 val wearCatalogAuthoredLocales: List<String> =
   (listOf("en") +
       projectDir
@@ -65,12 +53,8 @@ android {
 
   buildFeatures { compose = true }
 
-  // Keep only the locales this catalog localises (wearCatalogAuthoredLocales) — the `en` default
-  // plus its own `values-<locale>` translations — and drop the further ~68 locales the AAR
-  // dependencies ship but this catalog never provides. Those AAR-only locales are dead weight
-  // (~470 KB of `resources.arsc` string data nothing here renders); dropping them at resource-merge
-  // time keeps bundles self-contained with no post-hoc `resources.arsc` surgery, while the
-  // renderer's locale-override picker still resolves this catalog's real translations.
+  // Keep only this catalog's locales and drop the ~68 locales its AAR deps ship (~470 KB of dead
+  // `resources.arsc` strings), so bundles stay small without post-hoc surgery.
   androidResources { localeFilters += wearCatalogAuthoredLocales }
 
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
@@ -84,10 +68,8 @@ dependencies {
   implementation(libs.wear.compose.foundation)
   implementation(libs.wear.compose.ui.tooling)
   implementation(libs.compose.ui.tooling.preview)
-  // `Font(GoogleFont("Roboto Flex"/"Lobster Two"), provider)` — the catalog's typefaces resolve as
-  // downloadable Google fonts (fetched + cached by the renderer's ShadowFontsContractCompat) rather
-  // than vendored `res/font/*.ttf`, so the module ships no font bytes and every packed bundle drops
-  // ~2 MB while staying self-contained. Version from the Compose BOM above.
+  // Typefaces resolve as downloadable Google fonts (fetched and cached by the renderer), so the
+  // module ships no font bytes.
   implementation("androidx.compose.ui:ui-text-google-fonts")
   // @ScrollingPreview(END) — full-screen Wear components (EdgeButton, scaling
   // lists) reveal their bottom-anchored chrome only after the scroll settles, so
@@ -105,20 +87,14 @@ dependencies {
   implementation(project(":wear-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 
-  // `CatalogInteractivityTest` — a static render can prove what a sticker *looks* like but never
-  // that a tap does anything, and every handler on this sheet used to be a literal `{}`. These
-  // drive a real composition under Robolectric and dispatch real clicks, on both lanes — the same
-  // sticker must behave identically under `LocalInspectionMode` true and false (issue #3674).
-  // Deps mirror `:runtimes:splash`'s Robolectric Compose suite, sourced from the same stable BOM
-  // the main source set compiles against so the test JVM resolves identical symbols.
+  // `CatalogInteractivityTest` dispatches real clicks under Robolectric, with `LocalInspectionMode`
+  // true and false. Deps mirror `:runtimes:splash`'s Robolectric suite on the same stable BOM.
   testImplementation(libs.robolectric)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(platform(libs.compose.bom.stable))
   testImplementation("androidx.compose.ui:ui-test-junit4")
-  // `debugImplementation`, not `testImplementation`: `createComposeRule` launches a
-  // `ComponentActivity`, and this is an application module, so the activity has to be MERGED into
-  // the debug manifest Robolectric resolves against. On the test classpath alone the rule dies with
-  // "Unable to resolve activity for Intent … ComponentActivity".
+  // `debugImplementation`: `createComposeRule` launches a `ComponentActivity`, which must be merged
+  // into this application module's debug manifest.
   debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

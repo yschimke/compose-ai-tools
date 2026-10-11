@@ -3,14 +3,10 @@ package ee.schimke.composeai.bundle
 import java.io.File
 
 /**
- * Decides whether a bundle came from a producer the operator trusts, by combining the three
- * [TrustStore] bases against a bundle's `signatures.json` and (optionally) the [Origin] the server
- * fetched it from. The result gates whether the public preview server will **re-render** the
- * bundle's executable Compose — data tiers (baked PNGs, Remote Compose / protolayout / Lottie IR)
- * serve regardless of the verdict because they execute no code.
- *
- * Verification is fail-closed: anything the store can't positively attribute is
- * [Verdict.Unverified].
+ * Decides whether a bundle came from a producer the operator trusts, combining the [TrustStore]
+ * bases with the bundle's `signatures.json` and the optional [Origin] it was fetched from. Gates
+ * whether the public server re-renders the bundle's executable Compose; data tiers (baked PNGs, IR)
+ * are served regardless. Fail-closed: anything not positively attributed is [Verdict.Unverified].
  */
 public object BundleVerifier {
 
@@ -36,14 +32,10 @@ public object BundleVerifier {
     public data class Branch(val repo: String, val branch: String) : Basis
 
     /**
-     * Supplementary CI-provenance context recorded **only alongside a cryptographically-verified
-     * [Signature]** — never on its own. A `provenance` block is self-asserted data (any uploader
-     * can write any identity), so identity-glob + digest match is *not* proof of origin; granting
-     * trust from it alone would be a bypass (an attacker writes `signatures.json` with the
-     * recomputed digest and a matching identity → `Trusted` → re-render of executable Compose).
-     * Real keyless trust needs Fulcio cert-chain + Rekor verification, which is a follow-up; until
-     * then this basis only annotates a signature a pinned key already verified, so it expands the
-     * displayed provenance but never the trust decision.
+     * CI provenance recorded only alongside a cryptographically verified [Signature], never on its
+     * own: a `provenance` block is self-asserted, so trusting it alone would be a bypass. It
+     * annotates the displayed provenance but never changes the trust decision (until Fulcio/Rekor
+     * verification exists).
      */
     public data class Provenance(val identity: String, val type: String) : Basis
   }
@@ -58,9 +50,8 @@ public object BundleVerifier {
     )
 
   /**
-   * Verify in-memory bundle bytes — the runtime upload path ([ServeBundleStore]) has the bytes, not
-   * a file. Accepts either a plain zip or a PNG+ZIP polyglot ([BundleSigning.zipBytesOf]
-   * normalizes).
+   * Verify in-memory bundle bytes (the upload path, [ServeBundleStore]): a plain zip or a PNG+ZIP
+   * polyglot.
    */
   public fun verify(rawBundleBytes: ByteArray, trust: TrustStore, origin: Origin? = null): Verdict {
     val zip = BundleSigning.zipBytesOf(rawBundleBytes)
@@ -100,11 +91,8 @@ public object BundleVerifier {
       bases.add(Basis.Branch(origin.repo, origin.branch))
     }
 
-    // 2) Signature trust — a pinned key cryptographically verifies the canonical digest. This is
-    // the
-    // ONLY path that turns a signature into trust. Provenance is recorded as supplementary context
-    // for a signature that *already* verified — it never grants trust on its own (see
-    // [Basis.Provenance]).
+    // 2) Signature trust: a pinned key verifies the canonical digest — the only path from a
+    // signature to trust. Provenance is only recorded for an already-verified signature.
     for (sig in signatures) {
       if (sig.algorithm != BundleSigning.ALG_ED25519) continue
       // The signature's claimed digest must match what we recomputed (no signing a different

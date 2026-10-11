@@ -7,10 +7,8 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
-// Version derivation mirrors `:cli/build.gradle.kts` — callers can set `PLUGIN_VERSION` to a
-// release version (e.g. `0.10.15`), while local builds compute the next-patch SNAPSHOT from
-// `.release-please-manifest.json`. Keeping the schemes aligned makes on-demand viewer builds
-// compatible with the corresponding CLI / plugin / MCP server.
+// Version derivation mirrors `:cli/build.gradle.kts` (`PLUGIN_VERSION` or the next-patch SNAPSHOT),
+// keeping viewer builds aligned with the CLI and plugin.
 version =
   providers.environmentVariable("PLUGIN_VERSION").orNull
     ?: run {
@@ -22,28 +20,13 @@ version =
 
 base { archivesName.set("compose-preview-viewer") }
 
-// The viewer is a Compose Desktop application, configured through Compose Multiplatform's own
-// `compose.desktop.application` DSL rather than the JVM `application` plugin. Two portable
-// artefacts
-// come out of it (portable-bundles.md Tier 2.2):
-//   - `packageUberJarForCurrentOS` — a single self-contained
-//     `compose-preview-viewer-<os>-<arch>-<ver>.jar` (the current OS's Compose Desktop + Skiko
-//     runtime flattened in), so anyone with a JDK 17+ can `java -jar … foo.png` with nothing
-//     unpacked. Bundles Skiko's native libs and merges Compose's service files correctly.
-//   - `packageDistributionForCurrentOS` → a native installer (`.deb`/`.rpm` on Linux, `.dmg` on
-//     macOS, `.msi` on Windows) built by `jpackage`, which embeds a JDK runtime image — so a
-//     non-Java colleague installs and launches the viewer with nothing else on their machine.
-// The uber jar stays Isolated-Projects-clean — unlike the GradleUp Shadow plugin, whose
-// optional-property lookup walks to the parent project and trips this repo's
-// Isolated Projects + `configuration-cache.problems=fail` gate. The native-installer path is
-// IP-clean on Linux/macOS (`.deb`/`.dmg`), but the Windows `.msi` is NOT: Compose Multiplatform
-// packages MSIs via the WiX toolset and registers its `downloadWix` / `unzipWix` tasks on the ROOT
-// project, so `packageMsi` reads `rootProject.tasks` / `rootProject.layout` at configuration time
-// and trips the IP gate if a caller explicitly enables it. Keep Isolated Projects disabled when
-// building the Windows installer; plain configuration cache remains supported.
-//
-// We drop the JVM `application` plugin entirely (its slim `distZip`/`distTar` is superseded by the
-// drag-around uber jar, and keeping both registers two colliding `run` tasks).
+// A Compose Desktop application, packaged two ways:
+//   - `packageUberJarForCurrentOS` — one self-contained jar (Compose Desktop + Skiko natives), run
+//     with `java -jar … foo.png` on any JDK 17+.
+//   - `packageDistributionForCurrentOS` — a native installer via `jpackage` with an embedded JDK.
+// The uber jar is Isolated-Projects-clean (unlike the Shadow plugin). The Windows `.msi` is not:
+// CMP registers its WiX tasks on the root project, so build it with Isolated Projects disabled.
+// The JVM `application` plugin is dropped (its `run` task would collide).
 compose.desktop {
   application {
     mainClass = "ee.schimke.composeai.viewer.MainKt"
@@ -52,29 +35,23 @@ compose.desktop {
     // unnamed module silences it (parity with the old applicationDefaultJvmArgs).
     jvmArgs += "--enable-native-access=ALL-UNNAMED"
     nativeDistributions {
-      // Per-OS native installers. `TargetFormat.Deb` (Linux), `Dmg` (macOS), `Msi` (Windows) —
-      // jpackage only builds the format(s) native to the current OS. Rpm is omitted because the
-      // common Linux build host is Ubuntu (ships `dpkg-deb`, not `rpmbuild`), and `.deb` plus the
-      // current-OS uber jar already cover Linux recipients.
+      // Native installers per OS (jpackage builds only the current OS's format). No Rpm: the usual
+      // Linux host is Ubuntu, and `.deb` plus the uber jar cover Linux.
       targetFormats(
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
       )
       packageName = "compose-preview-viewer"
-      // jpackage rejects a `-SNAPSHOT`/non-numeric package version, so feed it the numeric core of
-      // the project version. The full version (incl. any `-SNAPSHOT`) still names the uber jar;
-      // this
-      // only affects the installer's internal package metadata.
+      // jpackage rejects non-numeric versions, so use the numeric core; the uber jar keeps the full
+      // version.
       val numericVersion = project.version.toString().substringBefore("-")
       packageVersion = numericVersion
       description = "Compose Preview Viewer — opens a packed preview bundle and renders it live."
       vendor = "compose-ai-tools"
       macOS {
-        // macOS's CFBundleShortVersionString requires MAJOR >= 1; `.deb`/`.msi` accept a 0 major,
-        // but the DMG build hard-fails on it. While the repo is pre-1.0 (`0.x.y`), coerce the
-        // leading-zero major to 1 for the DMG's internal version only — the output filename still
-        // carries the real `0.x.y`. Versions already at major >= 1 pass through unchanged.
+        // macOS's CFBundleShortVersionString needs MAJOR >= 1, so a 0.x.y version is coerced to
+        // 1.x.y for the DMG's internal metadata only.
         packageVersion = numericVersion.replaceFirst(Regex("^0\\."), "1.")
       }
     }
@@ -82,10 +59,8 @@ compose.desktop {
 }
 
 dependencies {
-  // Full Compose Desktop runtime — the viewer composes the bundle's `@Preview` composable LIVE
-  // inside its own Window, so every Compose API the bundle's classes resolve against has to be
-  // on the parent classloader. Bundle's classes load via a child URLClassLoader (see
-  // `BundleLoader.kt`); parent-loader Compose wins on every shared symbol.
+  // The full Compose Desktop runtime on the parent classloader: bundle classes load in a child
+  // URLClassLoader (`BundleLoader.kt`), and parent-loader Compose wins on shared symbols.
   implementation(compose.desktop.currentOs)
   implementation(libs.jetbrains.compose.runtime)
   implementation(libs.jetbrains.compose.ui)

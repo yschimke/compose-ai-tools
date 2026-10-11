@@ -184,10 +184,9 @@ public object GuidelineResponse {
     ?.takeIf { it.isFinite() && it > 0.0 }
 
   /**
-   * The error OpenRouter sent in place of a completion, in a 2xx [body]: a top-level `error`, or a
-   * choice that ended `finish_reason: "error"` with its own. OpenRouter answers 200 before a slow
-   * model has finished, to keep the connection open, so a provider that fails or times out after
-   * that can only say so in the body. Null when [body] is not such an error.
+   * The error OpenRouter sent in place of a completion in a 2xx [body] (a top-level `error`, or a
+   * choice with `finish_reason: "error"`): it answers 200 early to keep slow connections open, so
+   * later failures can only appear in the body. Null otherwise.
    */
   internal fun failure(body: String): FailedRequest? {
     val completion =

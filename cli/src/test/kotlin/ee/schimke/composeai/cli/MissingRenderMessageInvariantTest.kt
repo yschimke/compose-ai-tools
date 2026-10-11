@@ -7,23 +7,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The invariant five review rounds each violated exactly once (issue #3796): **no sentence may
- * outrun its evidence.**
+ * The invariant: no sentence may outrun its evidence. Rather than pinning one message per scenario,
+ * this enumerates the diagnosis space and checks every rendered claim is backed by its evidence:
+ * - owner: main, Lottie, or SVG renderer;
+ * - module: `:app`, `:feature` (exercising multi-module grouping);
+ * - run evidence: [Evidence.Unobserved] and each [GradleTaskDisposition];
+ * - sidecars: none, one, two distinct, a scanned `@PreviewParameter` row, declared + scanned.
  *
- * Every other test in this area pins one message for one scenario, which is why each round's fix
- * left the next round's bug writeable — the scenario nobody had thought to pin was always the one
- * that broke. This one goes the other way: it enumerates the diagnosis space and asserts, for every
- * point in it, that the claims in the rendered message are backed by the evidence that produced it.
- *
- * The space is the cross product of what the resolver can produce:
- * - owner: the main renderer, the Lottie renderer, the SVG renderer,
- * - module: `:app`, `:feature` (so multi-module grouping is exercised),
- * - run evidence: [Evidence.Unobserved] and each [GradleTaskDisposition],
- * - sidecars: none, one, two distinct, a scanned `@PreviewParameter` row, and declared + scanned
- *   together.
- *
- * Enumerated rather than randomised: the same 180 single-entry cases and their combinations run
- * identically on every machine, so a failure is always reproducible.
+ * Enumerated rather than randomised, so failures reproduce everywhere.
  */
 class MissingRenderMessageInvariantTest {
 
@@ -148,12 +139,10 @@ class MissingRenderMessageInvariantTest {
 
   @Test
   fun `the build-wiring verdict requires an observed run that reached the preview`() {
-    // Round #3789's bug, as a property — and the #3815 fan-out finding too. Stated in *primitive*
-    // terms (the raw evidence on the diagnosis), never via a derived flag: an invariant phrased in
-    // terms of `threwThisRun` would move with any change to `threwThisRun` and so could never
-    // contradict it. Two independent things license the sentence — the renderer was observed
-    // running, and it targeted an output the manifest names. A scanned fan-out row satisfies only
-    // the first, because nothing deletes a fan-out sidecar when its provider value goes away.
+    // Stated in primitive evidence, never a derived flag (which would move with the code it
+    // checks). "Rendered and threw" needs both an observed renderer run and a manifest-named
+    // output; a scanned fan-out row only has the first, since stale fan-out sidecars are never
+    // deleted.
     for (report in reports()) {
       val message = formatMissingRenderReport(report, total = report.size)
       val licensed = report.count { d ->

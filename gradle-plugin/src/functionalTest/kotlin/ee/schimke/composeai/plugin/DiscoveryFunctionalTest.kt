@@ -17,9 +17,8 @@ class DiscoveryFunctionalTest {
   private val json = Json { ignoreUnknownKeys = true }
 
   /**
-   * @param kotlinVersion the Kotlin and Compose compiler the fixture compiles with. The default is
-   *   the oldest toolchain the plugin supports; a test about a **bytecode shape** a newer compiler
-   *   emits (see the singleton-lambda case) names the version that emits it.
+   * @param kotlinVersion the Kotlin / Compose compiler for the fixture. Defaults to the oldest
+   *   supported; tests about a bytecode shape a newer compiler emits name that version.
    */
   private fun createCmpTestProject(
     kotlinVersion: String = "2.2.21",
@@ -138,10 +137,7 @@ class DiscoveryFunctionalTest {
     val names = manifest.previews.map { it.functionName }
     assertThat(names).containsExactly("RedBoxPreview", "BlueBoxPreview")
 
-    // AS-parity: bare `@Preview` with no device / showSystemUi /
-    // widthDp / heightDp must serialize null on both axes so renderers
-    // wrap to the composable's intrinsic size instead of defaulting
-    // to a 400×800 phone frame.
+    // Bare `@Preview` must serialize null on both axes so renderers wrap to intrinsic size.
     manifest.previews.forEach {
       assertThat(it.params.widthDp).isNull()
       assertThat(it.params.heightDp).isNull()
@@ -149,31 +145,18 @@ class DiscoveryFunctionalTest {
       assertThat(it.params.showSystemUi).isFalse()
     }
 
-    // P0.2 daemon prep: at least one preview must surface its `sourceFile`
-    // so the daemon's incremental-discovery path (B2.2) has a path to
-    // file-event correlation. Field is populated from ClassGraph's
-    // bytecode `SourceFile` attribute and rewritten to a package-qualified
-    // path in DiscoverPreviewsTask — see PreviewData.sourceFile.
+    // At least one preview must carry `sourceFile` for the daemon's incremental discovery.
     assertThat(manifest.previews.any { !it.sourceFile.isNullOrBlank() }).isTrue()
 
-    // …and where in that file it is, from the classfile's LineNumberTable. This addresses the
-    // *declaration* rather than the file, which is what lets the playground handoff seed one
-    // composable instead of every component in a section file.
-    //
-    // The anchor points INSIDE the body: the fixture declares `RedBoxPreview` with `@Preview` and
-    // `@Composable` above it and a `Box { Text(…) }` inside, so what is recorded is the `Box` line
-    // — strictly below the `fun` line. Both previews live in one file, `RedBoxPreview` first, so
-    // the two anchors are ordered. Asserting the relationship rather than exact numbers keeps this
-    // from breaking every time the fixture gains a line.
+    // …and a body line from the LineNumberTable. `RedBoxPreview` is declared first, and the anchor
+    // is inside its body (the `Box` line), so assert relationships rather than exact numbers.
     val red = manifest.previews.single { it.functionName == "RedBoxPreview" }
     val blue = manifest.previews.single { it.functionName == "BlueBoxPreview" }
     assertThat(red.bodyLine).isNotNull()
     assertThat(blue.bodyLine).isNotNull()
     assertThat(red.bodyLine!!).isGreaterThan(0)
     assertThat(blue.bodyLine!!).isGreaterThan(red.bodyLine!!)
-    // Deliberately NOT asserted against a recorded *end* line: there isn't one. Kotlin emits an
-    // inlined body into its caller with SMAP line numbers past the end of the caller's file, so a
-    // method's last line is not a number worth publishing — see `PreviewInfo.bodyLine`.
+    // No end line is recorded: inlined code makes it unreliable (see `PreviewInfo.bodyLine`).
   }
 
   @Test
@@ -229,9 +212,8 @@ class DiscoveryFunctionalTest {
   @Test
   fun `a call to one overload is recorded as that overload, not the first of its name`() {
     val projectDir = createCmpTestProject()
-    // Material 3 publishes OutlinedTextField as a TextFieldState overload AND a String one. The
-    // sticker calls the String one; recording the first of the name made m3-catalog's record offer
-    // `value` against a signature that has none, and the generator refused it.
+    // Material 3 has TextFieldState and String overloads of OutlinedTextField; the sticker calls
+    // the String one, and the record must describe that one.
     File(projectDir, "src/main/kotlin/test/Previews.kt")
       .appendText(
         """
@@ -377,12 +359,9 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `composePreviewDiscover records a parameter knob's literal default`() {
-    // The one place the knob-default reader is checked against bytecode the **Compose compiler**
-    // actually emitted. `PreviewKnobDefaultsTest` assembles the instruction shape by hand —
-    // precise,
-    // and worthless if the compiler stops emitting that shape. This compiles a real `@Preview` with
-    // the plugin CI resolves and reads the manifest back, so a compiler change that moves the
-    // defaults out of the function body turns this red instead of silently emptying every default.
+    // Checks the knob-default reader against bytecode the real Compose compiler emits
+    // (`PreviewKnobDefaultsTest` hand-assembles it), so a compiler change that moves defaults turns
+    // this red.
     val projectDir = createCmpTestProject()
     File(projectDir, "src/main/kotlin/test/Previews.kt")
       .writeText(
@@ -436,8 +415,7 @@ class DiscoveryFunctionalTest {
     assertThat(knobs.map { it.name to it.default })
       .containsExactly(
         "title" to "Shopping list",
-        // 0xFF3366FF as the Long the author wrote — the format has no Color kind, so an editable
-        // colour rides an ARGB Long and its default has to survive as that same number.
+        // An ARGB Long: the format has no Color kind.
         "accentArgb" to 0xFF3366FF.toString(),
         "itemCount" to "3",
         "ratio" to "0.5",
@@ -450,9 +428,8 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `desktop discovery names an APNG @AnimatedPreview apng and a GIF one gif`() {
-    // `@AnimatedPreview(format = Apng)` used to be named `.gif` unconditionally, so the desktop
-    // renderer — which honours the format — wrote APNG bytes into a `.gif`. On desktop the name now
-    // follows the format, and the GIF default keeps the name every consumer already links to.
+    // `@AnimatedPreview(format = Apng)` is named by its format on desktop; the GIF default keeps
+    // the existing name.
     val projectDir = createCmpTestProject()
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
@@ -534,9 +511,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover expands @OverrideVariant into synthetic seeded previews`() {
     val projectDir = createCmpTestProject()
 
-    // Declare the annotation locally with the discovered FQN so the test needs no external
-    // preview-annotations artifact — discovery matches by FQN. `@Repeatable` exercises the
-    // synthetic `.Container` holder path for the two-variant case.
+    // Annotations are declared locally at their discovered FQN, so no preview-annotations artifact
+    // is needed. `@Repeatable` exercises the `.Container` path.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "OverrideVariant.kt")
@@ -746,16 +722,9 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * The hoisted form: a matrix declared once on an annotation class and applied with one line.
-   *
-   * This is what stops a catalog retyping a cross product per component — five sizes by two shapes
-   * is nine cells, and m3-catalog had 237 near-identical annotations across thirteen blocks before
-   * `@OverrideVariant` could sit on an annotation class.
-   *
-   * Three properties are asserted together because they are the ones a naive implementation gets
-   * wrong: hoisted variants are found at all; stacking two annotations is a **union** (2 + 1 = 3
-   * variants, not 2 x 1 = 2 or some product); and a name carried by both is de-duplicated rather
-   * than emitted twice onto the same `_VARIANT_` output path.
+   * The hoisted form: a matrix declared once on an annotation class. Asserts that hoisted variants
+   * are found, that stacking two annotations is a **union** (2 + 1 = 3, not a product), and that a
+   * name carried by both is emitted once.
    */
   @Test
   fun `composePreviewDiscover expands @OverrideVariant hoisted onto an annotation class`() {
@@ -840,25 +809,15 @@ class DiscoveryFunctionalTest {
         OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xs")
       )
 
-    // The annotation is reachable both through ClassGraph's meta-annotation flattening and through
-    // the explicit closure walk. Reaching it twice must still produce one variant, not two.
+    // Reached twice (flattening and the explicit walk), still one variant.
     assertThat(sized.count { it.overrides?.name == "square" }).isEqualTo(1)
   }
 
   /**
-   * `@PermissionPreview` (issue #3676) — the static render lane's way to say which permissions a
-   * capture should be taken under, so a permission-gated screen's granted branch is reachable
-   * without threading a preview-only `granted: Boolean` through the composable.
-   *
-   * Three things at once, because they fail together and a partial pass is misleading: the
-   * annotation is matched by FQN (declared locally here, exactly as the `@OverrideVariant` tests
-   * do, so the test needs no published `preview-annotations` artifact); its `grants` strings parse
-   * into the typed capture model and are stamped onto **every** capture of the function; and a
-   * malformed entry is dropped with a warning while its well-formed siblings survive.
-   *
-   * The malformed half matters more than it looks: the symptom of a silently-dropped grant is a
-   * preview named "granted" that renders the denied branch — which is the original defect, and is
-   * invisible unless discovery says something.
+   * `@PermissionPreview` (#3676): FQN-matched (declared locally), its `grants` parse into the
+   * capture model on every capture of the function, and a malformed entry is dropped with a warning
+   * while siblings survive. The warning matters: a silently dropped grant renders the denied branch
+   * under a "granted" name.
    */
   @Test
   fun `composePreviewDiscover stamps @PermissionPreview grants onto every capture`() {
@@ -952,8 +911,8 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * Two hoisted matrices that disagree about one cell. The name is the rendered output's identity,
-   * so emitting both would have the second silently overwrite the first's PNG.
+   * Two hoisted matrices disagreeing about one cell: emitting both would overwrite one PNG with the
+   * other.
    */
   @Test
   fun `composePreviewDiscover keeps the first of a colliding @OverrideVariant name and warns`() {
@@ -1035,13 +994,9 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * `@PreviewAxis`: the declarative form of a variant matrix. Two axes on one function multiply
-   * into their cross product minus the base cell, each carrying its full assignment as props.
-   *
-   * The assertions are exactly the properties a naive expansion gets wrong: axes multiply (rather
-   * than unioning, which is how stacked `@OverrideVariant`s combine); the all-defaults cell is
-   * skipped rather than emitted as a duplicate of the base render; a default value is never seeded
-   * but IS part of the cell's props; and `namesEveryValue` puts an axis in every name.
+   * `@PreviewAxis`: two axes multiply into their cross product minus the base cell. Asserts
+   * multiplication (not union), the all-defaults cell is skipped, defaults are in props but not
+   * seeds, and `namesEveryValue` names every cell.
    */
   @Test
   fun `composePreviewDiscover expands @PreviewAxis into the cross product`() {
@@ -1221,14 +1176,13 @@ class DiscoveryFunctionalTest {
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
     val hoisted = manifest.previews.filter { it.functionName == "HoistedPreview" }
-    // 2 shapes x 2 selected = 4 cells, minus the all-defaults one, plus the base. A hoisted axis
-    // MULTIPLIES with a direct one — a union would have given 2 variants, not 3.
+    // 2 shapes x 2 selected = 4 cells, minus the all-defaults one, plus the base: hoisted and
+    // direct axes multiply.
     assertThat(hoisted).hasSize(4)
     assertThat(hoisted.mapNotNull { it.overrides?.name })
       .containsExactly("square", "off", "square-off")
 
-    // `slugs` renames the values for the name only; the seed still carries the value, typed
-    // BOOLEAN so a `previewOverrideBoolean` read honours it.
+    // `slugs` only renames; the seed keeps the BOOLEAN value.
     val off = hoisted.single { it.overrides?.name == "off" }
     assertThat(off.overrides!!.seeds)
       .containsExactly(
@@ -1239,19 +1193,11 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * The three ways an axis expansion can go wrong quietly, all in one project so the warnings are
-   * asserted against a single run.
-   *
-   * `Untyped` — a `BOOLEAN` axis whose values are not boolean literals. The renderer's seed parser
-   * drops what it cannot parse, so the cell would bake as a duplicate of the base render while the
-   * catalog published props claiming it was that cell: a wrong entry, not a missing one.
-   *
-   * `Colliding` — two axes sharing a value name. No authoring mistake required, and a name is a
-   * render output path, so the two cells would race for one file.
-   *
-   * `Hoisted` — the documented hoisting flow, which must NOT warn. A hoisted axis is reached twice
-   * by design (ClassGraph flattens it into the method's annotation list, and the meta-annotation
-   * walk finds it again), and warning on that would fire on every correct use.
+   * Three axis cases in one run:
+   * - `Untyped` — a BOOLEAN axis with non-boolean values, which would bake duplicates of the base
+   *   under false props.
+   * - `Colliding` — two axes sharing a value name, racing for one output file.
+   * - `Hoisted` — the documented flow, reached twice by design, which must NOT warn.
    */
   @Test
   fun `composePreviewDiscover rejects unusable @PreviewAxis declarations and warns`() {
@@ -1363,8 +1309,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
     val projectDir = createCmpTestProject()
 
-    // Declare the annotation locally with the discovered FQN so the test needs no external
-    // `preview-annotations` artifact — discovery matches by FQN + FIELD target, nothing else.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "ColorCatalog.kt")
@@ -1431,8 +1375,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover attaches @CatalogComponent and @CatalogVariant identity to previews`() {
     val projectDir = createCmpTestProject()
 
-    // Declare the catalog-inventory annotations locally with the discovered FQNs so the test needs
-    // no external `preview-annotations` artifact — discovery matches by FQN + target, nothing else.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "CatalogInventory.kt")
@@ -1579,9 +1521,8 @@ class DiscoveryFunctionalTest {
     assertThat(filled.reference).isEqualTo("figma:AbCdEf/10:5")
     assertThat(filled.referenceSet).isEqualTo("figma:AbCdEf/10:1")
     assertThat(filled.referenceContentsOnly).isFalse()
-    // Links into OTHER catalogs, carried VERBATIM: discovery does not parse these, because the
-    // export's catalog inventory is the one parser. A LIST, unlike `parallel` above, because a
-    // component can have more than one such neighbour and `compareWith` names exactly one sibling.
+    // Carried verbatim (the export parses them); a list because a component can have several
+    // neighbours.
     assertThat(filled.related)
       .containsExactly("m3-samples==Samples", "wear-m3-catalog=Button/Filled")
 
@@ -1602,9 +1543,7 @@ class DiscoveryFunctionalTest {
     // an older `preview-annotations` with no such attribute produces.
     assertThat(byFn.getValue("PlainSticker").catalog!!.related).isEmpty()
 
-    // Variant kit correspondence: read off the variant annotation, not inherited from the parent.
-    // Without this a render folded under a parent would lose its cross-system pairing and the
-    // stated reason it has no kit cell -- both of which are about the variant, not the parent.
+    // Variant kit correspondence comes from the variant annotation, not the parent.
     val iconOnly = byFn.getValue("FilledButtonIconOnly").catalog
     assertThat(iconOnly).isNotNull()
     assertThat(iconOnly!!.role).isEqualTo(CatalogRole.VARIANT)
@@ -1637,9 +1576,7 @@ class DiscoveryFunctionalTest {
     assertThat(retired.noReference)
       .isEqualTo("the kit files this under Deprecated and publishes no replacement")
 
-    // The fan-out intent rides the component entry as a flag; the export resolves the actual
-    // breakpoints from the renders (`Layout/List/smallRound`, `…/largeRound`) rather than from a
-    // list restated in the annotation, so there is nothing here that could contradict them.
+    // The flag only; the export resolves the actual breakpoints from the renders.
     val list = byFn.getValue("ListLayout").catalog
     assertThat(list).isNotNull()
     assertThat(list!!.perBreakpoint).isTrue()
@@ -1663,9 +1600,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover aggregates @TypographyCatalog tokens into type-style sheets`() {
     val projectDir = createCmpTestProject()
 
-    // Same FQN-match policy as `@ColorCatalog`, just on a `TextStyle` field — declare the
-    // annotation
-    // locally so the test needs no external `preview-annotations` artifact.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "TypographyCatalog.kt")
@@ -1737,8 +1671,6 @@ class DiscoveryFunctionalTest {
 
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
-    // Declare all three field-target catalog annotations locally so the test needs no external
-    // `preview-annotations` artifact — same policy as the colour/type tests above.
     File(annDir, "Catalogs.kt")
       .writeText(
         """
@@ -1900,9 +1832,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover emits a theme catalog sheet per @ThemeCatalog provider`() {
     val projectDir = createCmpTestProject()
 
-    // Declare the annotation locally (FQN match, no external artifact). Discovery only reads the
-    // class annotation — it doesn't verify the `PreviewWrapperProvider` interface (the renderer
-    // does) — so a bare annotated class is enough to exercise the discovery path.
+    // Declared locally; discovery reads only the class annotation, so a bare annotated class
+    // suffices.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "ThemeCatalog.kt")
@@ -1954,13 +1885,9 @@ class DiscoveryFunctionalTest {
     // the " theme" display label lives on `functionName`.
     assertThat(light.params.name).isEqualTo("Brand Light")
     assertThat(light.functionName).isEqualTo("Brand Light theme")
-    // A CMP/desktop project can't render catalog sheets, so the capture is optional
-    // (expected-absent
-    // rather than a missing-render regression) — same backend-aware policy as the token catalogs.
+    // CMP/desktop can't render catalog sheets, so the capture is optional.
     assertThat(light.captures.single().optional).isTrue()
-    // A theme sheet's SUBJECT is the theme, so it is fixed by construction: a preview host that
-    // re-rendered it under another `themeProvider` would leave a sheet captioned "Brand Light"
-    // drawing Brand Dark's colours. No `@FixedTheme` needed on the consumer's side.
+    // A theme sheet's subject is its theme, so it's fixed by construction.
     assertThat(themes.map { it.fixedTheme }).containsExactly(true, true)
   }
 
@@ -1968,8 +1895,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover marks an @FixedTheme preview as theme-fixed`() {
     val projectDir = createCmpTestProject()
 
-    // Declared locally with the discovered FQN — discovery matches by FQN + target and nothing
-    // else, so the test needs no external `preview-annotations` artifact.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "FixedTheme.kt")
@@ -2088,11 +2013,9 @@ class DiscoveryFunctionalTest {
         """
           .trimIndent()
       )
-    // Two declared themes → this module has a theme axis the viewer can drive. `AppTheme` is the
-    // app's own wrapper, exactly like Confetti's `ConfettiThemeFixed`: the preview calls it, and it
-    // installs the real `MaterialTheme`. Leaving colorScheme/typography/shapes defaulted is what
-    // makes the compiler emit the `MaterialTheme$default` bridge, so this also pins that the
-    // detector matches the shape real code produces.
+    // Two declared themes give the module a theme axis. `AppTheme` installs the real
+    // `MaterialTheme` with defaulted params, so the compiler emits the `MaterialTheme$default`
+    // bridge the detector must match.
     File(projectDir, "src/main/kotlin/test/Themes.kt")
       .writeText(
         """
@@ -2223,8 +2146,7 @@ class DiscoveryFunctionalTest {
         """
           .trimIndent()
       )
-    // Deliberately the SAME display name on both platforms — the id namespace is what has to keep
-    // them apart, otherwise the two sheets would collide on one `renders/<id>.png`.
+    // Same display name on both platforms: the id namespace must keep them apart.
     File(projectDir, "src/main/kotlin/test/Themes.kt")
       .writeText(
         """
@@ -2286,8 +2208,8 @@ class DiscoveryFunctionalTest {
         """
           .trimIndent()
       )
-    // Two providers with the SAME display name in different groups — would collide on
-    // `themecatalog__Light` (and its render output) without FQN disambiguation.
+    // Same display name in different groups; without FQN disambiguation both map to
+    // `themecatalog__Light`.
     File(projectDir, "src/main/kotlin/test/Themes.kt")
       .writeText(
         """
@@ -2508,9 +2430,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover hoists PreviewWrapperClass from a multi-preview annotation`() {
     val projectDir = createCmpTestProject()
 
-    // Stub our own @PreviewWrapperClass under its real FQN so the test doesn't need the
-    // preview-annotations artifact on the fixture classpath — same self-contained approach the
-    // @PreviewWrapper test below uses for the androidx annotation.
+    // Our @PreviewWrapperClass stubbed at its real FQN, like the androidx @PreviewWrapper test
+    // below.
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     annDir.mkdirs()
     File(annDir, "PreviewWrapperClass.kt")
@@ -2605,11 +2526,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover captures PreviewWrapper provider FQN`() {
     val projectDir = createCmpTestProject()
 
-    // Declare our own @PreviewWrapper / PreviewWrapperProvider under the real
-    // androidx FQN. CMP 1.10 (which this test uses) doesn't ship them yet, so
-    // stubbing them locally exercises the discovery path via ClassGraph without
-    // pinning the test to an unreleased dependency. The real 1.11 types are
-    // source-compatible, so production discovery on real apps behaves identically.
+    // @PreviewWrapper / PreviewWrapperProvider stubbed at the androidx FQN (absent from this CMP
+    //   version); the real types are source-compatible.
     val previewFqnDir = File(projectDir, "src/main/kotlin/androidx/compose/ui/tooling/preview")
     previewFqnDir.mkdirs()
     File(previewFqnDir, "PreviewWrapper.kt")
@@ -2632,9 +2550,8 @@ class DiscoveryFunctionalTest {
           .trimIndent()
       )
 
-    // Preview file that uses the wrapper on a function carrying both a direct
-    // @Preview and a multi-preview meta-annotation — assert the wrapper FQN
-    // propagates to every produced preview.
+    // A direct @Preview plus a multi-preview annotation on one function: the wrapper must reach
+    // every preview.
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
     srcFile.writeText(
       """
@@ -2755,8 +2672,7 @@ class DiscoveryFunctionalTest {
 
     val phone = manifest.previews.single { it.params.device == "id:pixel_6" }
     assertThat(phone.params.widthDp).isEqualTo(411)
-    // Pixel 6 = 1080x2400 px @ 420dpi → 411x914 dp. (Earlier revisions of
-    // DeviceDimensions used the Pixel 6 Pro height here.)
+    // Pixel 6 = 1080x2400 px @ 420dpi → 411x914 dp.
     assertThat(phone.params.heightDp).isEqualTo(914)
     assertThat(phone.id).endsWith("_pixel_6")
     // `renderOutput` is `<readable>-<digest>.png`, so the device variant is the tail of the
@@ -2775,12 +2691,8 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `composePreviewDiscover keeps render stems intact when a preview name contains a dot`() {
-    // Regression: `@Preview(name = "...1.5x")` carries a dot, which was appended verbatim to the
-    // preview id. `resolveRenderStems` splits the id on `.` to derive the on-disk stem, so the
-    // fractional part became a spurious trailing segment ("1" | "5x") and the
-    // shortest-unique-suffix
-    // walk could collapse the whole filename down to just "5x". 1.0x / 2.0x happened to survive
-    // because their "0x" tails collided and forced a longer suffix; 1.5x's unique "5x" did not.
+    // Regression: a name containing a dot (`1.5x`) used to be split as an id segment, collapsing
+    // the filename to `5x`.
     val projectDir = createCmpTestProject()
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -2846,8 +2758,7 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover picks up @SettledPreview`() {
     val projectDir = createCmpTestProject()
 
-    // Stub the annotation at its canonical FQN inside the synthetic project, same as the
-    // @ScrollingPreview test below — discovery matches by FQN, not by artifact.
+    // Annotations stubbed at their canonical FQN; discovery matches by FQN, not artifact.
     val settledFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     settledFqnDir.mkdirs()
     File(settledFqnDir, "SettledPreview.kt")
@@ -3008,25 +2919,21 @@ class DiscoveryFunctionalTest {
     assertThat(clamped.captures.single().settle)
       .isEqualTo(SettleCapture(afterMs = 0, maxMs = MAX_SETTLE_MS))
 
-    // A settled still keeps the plain `renders/<id>.png` name — the whole point of a dedicated
-    // field rather than reusing `advanceTimeMillis`, which stamps a `_TIME_<n>ms` suffix.
+    // A settled still keeps the plain name; `advanceTimeMillis` would add `_TIME_<n>ms`.
     assertThat(exact.captures.single().renderOutput).doesNotContain("_TIME_")
     assertThat(exact.captures.single().advanceTimeMillis).isNull()
 
     val unsettled = manifest.previews.single { it.functionName == "UnsettledPreview" }
     assertThat(unsettled.captures.single().settle).isNull()
 
-    // @SettledPreview + @AnimatedPreview on one function: BOTH ship now. The still carries its
-    // settle and the motion capture carries its animation; the renderers run them from separate
-    // compositions so neither spends the other's timeline (issue #4244).
+    // @SettledPreview + @AnimatedPreview: both ship, rendered from separate compositions (#4244).
     val paired = manifest.previews.single { it.functionName == "SettledPlusAnimatedPreview" }
     assertThat(paired.captures.any { it.settle != null }).isTrue()
     assertThat(paired.captures.any { it.animation != null }).isTrue()
     // …and never on the same capture: the settle rides the plain still, the animation its own row.
     assertThat(paired.captures.none { it.settle != null && it.animation != null }).isTrue()
 
-    // A sub-frame exact coordinate on a focused capture is raised to the focus path's setup floor,
-    // so both backends land on the same instant (issue #4247).
+    // A sub-frame exact settle on a focused capture is raised to the focus setup floor (#4247).
     val subFrame = manifest.previews.single { it.functionName == "SubFrameFocusSettledPreview" }
     assertThat(subFrame.captures.mapNotNull { it.settle?.afterMs }.toSet())
       .isEqualTo(setOf(FOCUS_SETUP_FRAMES_MS))
@@ -3034,10 +2941,8 @@ class DiscoveryFunctionalTest {
     val focused = manifest.previews.single { it.functionName == "FocusSettledPreview" }
     assertThat(focused.captures.mapNotNull { it.settle?.afterMs }.toSet()).isEqualTo(setOf(200))
 
-    // A multi-capture walk keeps the preview's own picture. Without the undriven row the component
-    // would publish only states it passes through: m3-catalog's `TimePicker/Input` came back with
-    // four focus steps and no resting sticker, which the parity lane then diffs against the kit's
-    // resting node (yschimke/m3-catalog#277).
+    // A multi-capture walk keeps the resting picture too, so the component isn't published only in
+    // passing focus states.
     val walk = manifest.previews.single { it.functionName == "FocusWalkPreview" }
     assertThat(walk.captures.count { it.focus == null }).isEqualTo(1)
     assertThat(walk.captures.single { it.focus == null }.renderOutput).doesNotContain("_FOCUS_")
@@ -3056,8 +2961,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover picks up @CaptureGutter`() {
     val projectDir = createCmpTestProject()
 
-    // Stub the annotation at its canonical FQN inside the synthetic project, same as the
-    // @SettledPreview test above — discovery matches by FQN, not by artifact.
     val gutterFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     gutterFqnDir.mkdirs()
     File(gutterFqnDir, "CaptureGutter.kt")
@@ -3153,8 +3056,7 @@ class DiscoveryFunctionalTest {
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
 
-    // Hoisted onto the multi-preview annotation: every expansion of the function inherits the
-    // gutter, because what the component draws past its bounds is true of all of them.
+    // Hoisted onto the multi-preview annotation, so every expansion inherits it.
     val hoisted = manifest.previews.filter { it.functionName == "HoistedGutterPreview" }
     assertThat(hoisted).hasSize(2)
     for (p in hoisted) {
@@ -3184,9 +3086,7 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover picks up @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 
-    // Stub out @ScrollingPreview at its canonical FQN inside the synthetic
-    // project — mirrors the @PreviewWrapper test above so the functional
-    // test doesn't need the preview-annotations artifact on its classpath.
+    // @ScrollingPreview stubbed at its canonical FQN.
     val scrollingFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     scrollingFqnDir.mkdirs()
     File(scrollingFqnDir, "ScrollingPreview.kt")
@@ -3304,15 +3204,9 @@ class DiscoveryFunctionalTest {
 
     val endPreviews = manifest.previews.filter { it.functionName == "EndScrollPreview" }
     assertThat(endPreviews).hasSize(2)
-    // @ScrollingPreview propagates identically to every @LightAndDark expansion,
-    // using its declared-in-source defaults (reduceMotion=true, axis=VERTICAL).
-    // Scroll state lives on each capture now (Capture.scroll) — single-capture
-    // previews carry it on the first element.
-    // `frameIntervalMs` on the annotation applies to every capture in
-    // the manifest even though it's only meaningful for GIF mode —
-    // discovery reads the field unconditionally for a uniform shape.
-    // Test stub declares 80 as the default (matches the real
-    // annotation's DEFAULT_GIF_FRAME_INTERVAL_MS).
+    // @ScrollingPreview applies to every @LightAndDark expansion with its source defaults, on each
+    //   capture. `frameIntervalMs` is read for every mode (stub default 80, matching
+    //   DEFAULT_GIF_FRAME_INTERVAL_MS).
     for (p in endPreviews) {
       assertThat(p.captures).hasSize(1)
       assertThat(p.captures.first().scroll)
@@ -3328,10 +3222,7 @@ class DiscoveryFunctionalTest {
     }
 
     val longPreview = manifest.previews.single { it.functionName == "LongScrollPreview" }
-    // `@ScrollingPreview(modes = [LONG])` with nothing else cross-products to a static frame
-    // produces ONLY a data product — no phantom `renders/<id>.png` capture. The data product
-    // IS the rendered output; emitting a sibling static would just write the unscrolled
-    // initial frame to renders/, which is what issue #1524 reported as confusing.
+    // LONG alone yields only a data product, no static `renders/<id>.png` (#1524).
     assertThat(longPreview.captures).isEmpty()
     assertThat(longPreview.dataProducts.single().scroll)
       .isEqualTo(
@@ -3350,27 +3241,21 @@ class DiscoveryFunctionalTest {
     val plain = manifest.previews.single { it.functionName == "PlainPreview" }
     assertThat(plain.captures.single().scroll).isNull()
 
-    // Multi-mode: one preview yields two captures, one per mode, with
-    // distinct `_SCROLL_<mode>` filenames. Modes sort by enum ordinal
-    // (TOP, END, LONG, GIF) so the renderer captures the initial frame
-    // before driving the scroller.
+    // Multi-mode: one capture per mode with `_SCROLL_<mode>` names, sorted by enum ordinal.
     val topAndEnd = manifest.previews.single { it.functionName == "TopAndEndScrollPreview" }
     assertThat(topAndEnd.captures).hasSize(2)
     assertThat(topAndEnd.captures.map { it.scroll?.mode })
       .containsExactly(ScrollMode.TOP, ScrollMode.END)
       .inOrder()
-    // renderOutput drops the package-and-class prefix from every preview id — the full FQN is
-    // retained on `preview.id` itself. The id digest sits between the readable part and the
-    // structural `_SCROLL_<mode>` suffix, which is what keeps the two namespaces from colliding.
+    // The package prefix is dropped from `renderOutput`; the digest sits between the readable part
+    // and `_SCROLL_<mode>`.
     val scrollOutputs = topAndEnd.captures.map { it.renderOutput }
     assertThat(scrollOutputs[0])
       .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_top\\.png")
     assertThat(scrollOutputs[1])
       .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_end\\.png")
 
-    // Single-mode GIF: moves to the scroll data-product path (no
-    // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
-    // manifest so the renderer can honour it.
+    // Single-mode GIF becomes a data product (no suffix) and carries `frameIntervalMs`.
     val gifOnly = manifest.previews.single { it.functionName == "GifScrollPreview" }
     // GIF-only follows the same rule as LONG-only — pure data product, no static sibling.
     assertThat(gifOnly.captures).isEmpty()
@@ -3406,8 +3291,6 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover rejects @CaptureGutter combined with @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 
-    // Both annotations stubbed at their canonical FQNs — discovery matches by FQN, same as the
-    // single-annotation tests above.
     val fqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     fqnDir.mkdirs()
     File(fqnDir, "CaptureGutter.kt")
@@ -3533,21 +3416,18 @@ class DiscoveryFunctionalTest {
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
 
-    // The offending functions contribute nothing — no still, no scroll product. The empty-modes
-    // form is rejected on the annotation's presence, not on it having produced any scroll spec.
+    // The rejection is on the annotation's presence, so empty modes are rejected too.
     assertThat(manifest.previews.map { it.functionName })
       .containsNoneOf("GutteredScrollPreview", "EmptyModesGutteredScrollPreview")
 
-    // Both controls survive with their respective intent intact, proving the guard is scoped to
-    // the combination rather than to either annotation on its own.
+    // Each annotation alone is fine; only the combination is rejected.
     val gutterOnly = manifest.previews.single { it.functionName == "GutterOnlyPreview" }
     assertThat(gutterOnly.params.captureGutter)
       .isEqualTo(CaptureGutterDp(start = 4, top = 4, end = 4, bottom = 5))
     val scrollOnly = manifest.previews.single { it.functionName == "ScrollOnlyPreview" }
     assertThat(scrollOnly.dataProducts.single().kind).isEqualTo("render/scroll/long")
 
-    // An all-zero gutter is equivalent to no annotation, so scroll + zero-gutter is kept — the
-    // rejection is scoped to an *effective* gutter, not the annotation's bare presence.
+    // An all-zero gutter equals no annotation, so it's kept.
     val zeroGutterScroll = manifest.previews.single { it.functionName == "ZeroGutterScrollPreview" }
     assertThat(zeroGutterScroll.params.captureGutter).isNull()
     assertThat(zeroGutterScroll.dataProducts.single().kind).isEqualTo("render/scroll/long")
@@ -3731,9 +3611,8 @@ class DiscoveryFunctionalTest {
         .withPluginClasspath()
         .build()
 
-    // Private previews are surfaced by ClassGraph's `ignoreMethodVisibility()`
-    // and invoked through reflection with `setAccessible(true)` at render time,
-    // so they no longer get dropped with a "skipping private @Preview" warning.
+    // Private previews are found via `ignoreMethodVisibility()` and invoked reflectively, so no
+    // skip warning.
     assertThat(result.output).doesNotContain("skipping private @Preview")
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -3800,8 +3679,7 @@ class DiscoveryFunctionalTest {
         .withPluginClasspath()
         .build()
 
-    // The warning now enumerates all three admitted shapes, since "no @PreviewParameter" stopped
-    // being the whole story once fully-defaulted parameter lists became renderable.
+    // The warning lists all three admitted shapes, including fully-defaulted parameters.
     assertThat(result.output)
       .contains("parameter(s) that are neither @PreviewParameter-injected nor fully defaulted")
     val manifest =
@@ -3815,11 +3693,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover keeps tile previews that take a Context parameter`() {
     val projectDir = createCmpTestProject()
 
-    // Stub the tile @Preview annotation under its real FQN. CMP 1.10 (the
-    // version this fixture uses) doesn't ship `androidx.wear.tiles.tooling`,
-    // but discovery is FQN-driven — the stub exercises the same code path
-    // wear-os-samples' WearTilesKotlin hit when its tile previews started
-    // returning zero entries after PR #984's parameter gate landed.
+    // Tile @Preview stubbed at its real FQN (absent from this CMP version); the same path tile
+    // previews hit when the parameter gate dropped them.
     val previewFqnDir = File(projectDir, "src/main/kotlin/androidx/wear/tiles/tooling/preview")
     previewFqnDir.mkdirs()
     File(previewFqnDir, "Preview.kt")
@@ -3873,8 +3748,7 @@ class DiscoveryFunctionalTest {
         .withPluginClasspath()
         .build()
 
-    // The "unsupported parameters" warning must NOT fire for tile previews —
-    // their (Context) parameter is part of the supported contract.
+    // Tile previews' `(Context)` parameter is supported, so no warning.
     assertThat(result.output).doesNotContain("MetaTilePreview' — method has parameter(s)")
     assertThat(result.output).doesNotContain("DirectTilePreview' — method has parameter(s)")
 
@@ -3936,14 +3810,10 @@ class DiscoveryFunctionalTest {
       )
 
     val light = manifest.previews.single { it.functionName == "TileLightStates" }
-    // `id` stays as the full FQN — consumers key by it. Top-level
-    // Kotlin functions land on the synthetic `<File>Kt` class, so
-    // the id is `test.PreviewsKt.TileLightStates_tile light (light)`.
+    // `id` stays the full FQN; top-level functions live on the `<File>Kt` class.
     assertThat(light.id).isEqualTo("test.PreviewsKt.TileLightStates_tile light (light)")
-    // `renderOutput` drops the `test.PreviewsKt.` package-and-class
-    // prefix, sanitises the awkward `tile light (light)` variant suffix
-    // down to shell-safe `tile_light_light`, and appends the id digest
-    // that keeps the filename unique and stable.
+    // `renderOutput` drops the package-and-class prefix, sanitises the variant suffix, and appends
+    // the id digest.
     assertThat(light.captures.single().renderOutput)
       .matches("renders/TileLightStates_tile_light_light-[0-9a-f]{8}\\.png")
 
@@ -3997,12 +3867,8 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * Regression for issue #157: previews were only surfaced for top-level modules. Nested Gradle
-   * paths (`:auth:composables`) use `:` as a separator, but the CLI was treating that string as a
-   * filesystem path and looking under `projectRoot/auth:composables/build/...` — which doesn't
-   * exist. The plugin itself always wrote manifests to the real subproject directory
-   * (`auth/composables/build/...`); this test locks that behaviour in so the CLI fix
-   * (`PreviewModule.projectDir` via the Tooling API) has a stable contract to read against.
+   * Regression (#157): nested Gradle paths like `:auth:composables` must write manifests under the
+   * real subproject dir, which the CLI's `PreviewModule.projectDir` relies on.
    */
   @Test
   fun `composePreviewDiscover runs in a nested subproject`() {
@@ -4032,8 +3898,7 @@ class DiscoveryFunctionalTest {
           .trimIndent()
       )
 
-    // Root build.gradle.kts is empty — the plugin is only applied to the
-    // nested subproject to mirror the Horologist-style layout in #157.
+    // Plugin applied only to the nested subproject (#157's layout).
     File(projectDir, "build.gradle.kts").writeText("")
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -4101,14 +3966,11 @@ class DiscoveryFunctionalTest {
     assertThat(result.task(":auth:composables:composePreviewDiscover")?.outcome)
       .isEqualTo(TaskOutcome.SUCCESS)
 
-    // Manifest lives under the real subproject dir (`auth/composables/…`),
-    // not a literal `auth:composables/…` path. This is the invariant the
-    // CLI's `PreviewModule.projectDir` relies on.
+    // Under the real subproject dir, not a literal `auth:composables/` path.
     val manifestFile = File(childDir, "build/compose-previews/previews.json")
     assertThat(manifestFile.exists()).isTrue()
 
-    // A stray `auth:composables/` directory would mean someone resolved
-    // the Gradle path as a filesystem path — the exact #157 bug.
+    // A stray `auth:composables/` dir would be the #157 bug.
     assertThat(File(projectDir, "auth:composables").exists()).isFalse()
 
     val manifest = json.decodeFromString<PreviewManifest>(manifestFile.readText())
@@ -4118,13 +3980,9 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `composePreviewDiscover finds public, internal, and private previews`() {
-    // Teams that don't want @Preview functions to leak into their public
-    // API mark them `private` (or `internal`). Kotlin compiles `private
-    // fun` to JVM `private` and `internal fun` to JVM `public` (with the
-    // `name$module` mangle); ClassGraph's `ignoreMethodVisibility()` surfaces
-    // both, and the renderer's `setAccessible(true)` lets the private one be
-    // invoked. Asserting all three shapes so the visibility regression doesn't
-    // return on any axis.
+    // `private` compiles to JVM private and `internal` to public with a `$module` mangle;
+    // ClassGraph surfaces both and the renderer invokes the private one via `setAccessible`. Assert
+    // all three shapes.
     val projectDir = createCmpTestProject()
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -4176,8 +4034,7 @@ class DiscoveryFunctionalTest {
       json.decodeFromString<PreviewManifest>(
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
-    // `internal fun` has its JVM name mangled to `InternalPreview$<module>`
-    // so we match by prefix rather than exact equality.
+    // Internal names are mangled, so match by prefix.
     val names = manifest.previews.map { it.functionName }
     assertThat(names).contains("PublicPreview")
     assertThat(names.any { it.startsWith("InternalPreview") }).isTrue()
@@ -4187,10 +4044,8 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `composePreviewDiscover infers cross-file target composable`() {
-    // Idiomatic preview-file layout: production composable `HomeScreen` lives in `HomeScreen.kt`,
-    // its `@Preview` lives in a sibling `Previews.kt`. PreviewTargetInference walks the preview
-    // method's bytecode, finds the single project-local @Composable call into HomeScreen, and
-    // attaches it as a target.
+    // `HomeScreen` in `HomeScreen.kt`, its `@Preview` in `Previews.kt`: inference finds the single
+    // project-local call and attaches it as the target.
     val projectDir = createCmpTestProject()
 
     val srcDir = File(projectDir, "src/main/kotlin/test")
@@ -4268,23 +4123,13 @@ class DiscoveryFunctionalTest {
 
   @Test
   fun `a capturing content lambda does not cost a preview its target`() {
-    // Mirrors the shape a parameter knob produces: the preview calls ONE project composable (a
-    // sticker wrapper), and the wrapper's content lambda calls several more from the same file.
+    // The preview calls one project composable (a sticker wrapper) whose content lambda calls
+    // several more. A capturing lambda compiles to a `$lambda$N` method of the preview's own class,
+    // which the walk follows; its calls must not count as the preview's own, or extra candidates
+    // push the real one below the threshold.
     //
-    // A lambda capturing nothing is lifted into a `ComposableSingletons$...` class; one that
-    // captures compiles to a `<preview>$lambda$N` method of the preview's OWN class, which the
-    // nested-method walk follows. Adding a single defaulted parameter flips a preview from the
-    // first shape to the second — so everything inside the lambda joined the preview's own call
-    // set, inflated the "how many project composables did this call?" count, and penalised every
-    // candidate below the emit threshold. The preview reported no target at all, for a body that
-    // had not changed.
-    //
-    // **This test guards the invariant; it does not reproduce the bug.** The Compose compiler does
-    // not lift this small a lambda into the same-class `$lambda$N` shape, so it passes with and
-    // without the fix. The reproduction is a real catalog — `m3-catalog`'s
-    // `ListDetailPaneScaffoldSticker`, whose target went from `AdaptiveSticker`/HIGH to nothing on
-    // the commit that gave it a `twoPanesOnMedium` knob, and came back with this change. Keep this
-    // test as the statement of what must hold; reach for a real project to see it fail.
+    // **Guards the invariant without reproducing the bug:** the compiler doesn't lift a lambda this
+    // small into that shape. The reproduction is m3-catalog's `ListDetailPaneScaffoldSticker`.
     val projectDir = createCmpTestProject()
 
     val srcDir = File(projectDir, "src/main/kotlin/test")
@@ -4437,13 +4282,8 @@ class DiscoveryFunctionalTest {
     assertThat(wrapTarget.sourceFile).contains("Components.kt")
     assertThat(themeTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
     assertThat(wrapTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
-    // `Screen(value: ScreenValue)` mentions a value class, so Kotlin mangles its JVM name to
-    // `Screen-<hash>`. This used to report `targets = []`: the name was judged as a Kotlin import
-    // identifier, a mangled one is not, and the target was dropped — so an ordinary app composable
-    // taking a `Dp` or a `Color` was invisible to inference. The rejection was the right call while
-    // a target had one name field and that field held the JVM name; with the source name recorded
-    // separately there is nothing left to be wrong about, and dropping the target is now the only
-    // wrong answer available.
+    // `Screen(value: ScreenValue)` mentions a value class, so its JVM name is mangled. With the
+    // source name recorded separately, the target must be kept.
     val mangled = manifest.previews.single { it.functionName == "MangledPreview" }.targets.single()
     assertThat(mangled.functionName).isEqualTo("Screen")
     assertThat(mangled.jvmName).startsWith("Screen-")
@@ -4451,23 +4291,16 @@ class DiscoveryFunctionalTest {
     assertThat(mangled.descriptor).isNotNull()
     assertThat(mangled.signatureKnown).isTrue()
 
-    // The unmangled targets carry both names too, and there they agree — recorded rather than
-    // left null so a consumer never has to write `jvmName ?: functionName`.
+    // Unmangled targets record both names too, so consumers never need `jvmName ?: functionName`.
     assertThat(themeTarget.jvmName).isEqualTo("HomeScreen")
     assertThat(themeTarget.descriptor).isNotNull()
   }
 
   /**
-   * The same `Theme { Component() }` shape, compiled by a Kotlin whose Compose compiler stores the
-   * non-capturing lambda as a **static method** of `ComposableSingletons$…` rather than as a class
-   * of its own. The walker used to look only for the class, so under a current Kotlin every such
-   * preview reported the *theme* as its subject — which is how Confetti's Wear component catalog
-   * came to record `ConfettiThemeFixed` for every sticker and no `SessionCard` at all.
-   *
-   * The wrapper is deliberately not one `isPreviewOnlyWrapper` recognises by name, and the preview
-   * is named the way Confetti names its variants — `SessionCardPopulatedPreview`, a CamelCase
-   * qualifier after the component — so the test also pins that such a name counts for the component
-   * it starts with.
+   * `Theme { Component() }` compiled by a Kotlin that stores a non-capturing lambda as a **static
+   * method** of `ComposableSingletons$…` rather than its own class. Looking only for the class made
+   * the theme the subject of every such preview. The wrapper isn't one recognised by name, and the
+   * CamelCase-qualified preview name must count for its component.
    */
   @Test
   fun `composePreviewDiscover looks through a theme lambda stored as a static method`() {
@@ -4520,8 +4353,7 @@ class DiscoveryFunctionalTest {
       .withPluginClasspath()
       .build()
 
-    // The shape under test, asserted rather than assumed: the singletons class exists and no
-    // `$lambda$…` class was generated beside it, so the lambda body can only be a method of it.
+    // Assert the shape: the singletons class exists and no `$lambda$…` class does.
     val classes = File(projectDir, "build/classes/kotlin/main/test").listFiles().orEmpty()
     assertThat(classes.map { it.name }).contains("ComposableSingletons\$PreviewsKt.class")
     assertThat(classes.filter { it.name.startsWith("ComposableSingletons\$PreviewsKt\$") })
@@ -4541,17 +4373,9 @@ class DiscoveryFunctionalTest {
   }
 
   /**
-   * Two non-capturing lambdas, one inside the other — a sticker that wraps a frame.
-   *
-   * Each `{ … }` is lifted into its own `ComposableSingletons$…` entry, and the outer one reaches
-   * the inner by reading its FIELD: `lambda_<a>$lambda$0` does a GETSTATIC on the private
-   * `lambda$<b>`, never calling the `getLambda$<b>$…` accessor. The walk only knew the accessor
-   * edge, so it stopped at the first lambda and the component two frames in was invisible.
-   *
-   * The reproduction is m3-catalog's `DatePickerModalSticker` — `Sticker { KeyboardNavigable {
-   * InlineDialogHost { DatePickerDialog { DatePicker() } } } }` — whose record carried
-   * `DateRangePicker` and neither picker (yschimke/m3-catalog#317). Two hops is the smallest shape
-   * that shows it.
+   * Two nested non-capturing lambdas (a sticker wrapping a frame). The outer reaches the inner by a
+   * GETSTATIC on its field rather than the accessor, so the walk must follow field reads to see the
+   * component two frames in (m3-catalog#317).
    */
   @Test
   fun `composePreviewDiscover looks through a lambda that another lambda holds`() {
@@ -4716,9 +4540,8 @@ class DiscoveryFunctionalTest {
   fun `failOnEmpty fails the build and emits diagnostics when no previews exist`() {
     val projectDir = createCmpTestProject()
 
-    // Replace the preview source file with one that has NO @Preview annotations.
-    // Keeps Compose on the classpath so ClassGraph has real classes to report
-    // about — exactly the diagnostic "scan found classes but no @Preview" path.
+    // A source with no @Preview but Compose on the classpath: the "scan found classes but no
+    // @Preview" diagnostic path.
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
     srcFile.writeText(
       """
@@ -4757,9 +4580,7 @@ class DiscoveryFunctionalTest {
     assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.FAILED)
     // The failure message names the module so CI logs make the regression obvious.
     assertThat(result.output).contains("discovered 0 previews in module 'test-project'")
-    // Diagnostics block: classDirs listing (directory existence + class counts)
-    // and the ClassGraph summary. These are the two lines users need to see to
-    // disambiguate "wrong class dir" from "wrong @Preview FQN".
+    // The class-dir listing and ClassGraph summary distinguish a wrong class dir from a wrong FQN.
     assertThat(result.output).contains("composePreview: discovery failure diagnostics")
     assertThat(result.output).contains("classDirs (")
     assertThat(result.output).contains("ClassGraph scan:")
@@ -4793,9 +4614,7 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover keeps notification previews that take a Context parameter`() {
     val projectDir = createCmpTestProject()
 
-    // Stub `@NotificationPreview` under its real FQN. The CMP fixture doesn't depend on
-    // `:preview-annotations`, but discovery is FQN-driven — the stub exercises the same code
-    // path a real consumer would. Mirrors the `Preview.kt` stub the tile-previews test uses.
+    // `@NotificationPreview` stubbed at its real FQN, like the tile test.
     val previewFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     previewFqnDir.mkdirs()
     File(previewFqnDir, "NotificationPreview.kt")
@@ -4858,11 +4677,9 @@ class DiscoveryFunctionalTest {
       .containsExactly("SimpleNotificationPreview", "NoArgNotificationPreview")
     assertThat(notificationPreviews.map { it.params.kind }.toSet())
       .containsExactly(PreviewKind.NOTIFICATION)
-    // `widthDp` is pinned to the 400dp sandbox width so the shade renders at its wide footprint
-    // rather than the router's 320dp square default (#1249). Height is left to the renderer.
+    // `widthDp` pinned to the 400dp sandbox (#1249).
     assertThat(notificationPreviews.map { it.params.widthDp }.toSet()).containsExactly(400)
-    // Each notification preview produces exactly one capture (no scroll / time / focus / ambient
-    // fan-out — `buildOutputPlan` treats NOTIFICATION the same as TILE for dimensional axes).
+    // One capture each: notifications get no dimensional fan-out.
     assertThat(notificationPreviews.map { it.captures.size }).containsExactly(1, 1)
     // Target inference is skipped for non-composable kinds, so `targets` stays empty.
     assertThat(notificationPreviews.flatMap { it.targets }).isEmpty()
@@ -4872,9 +4689,8 @@ class DiscoveryFunctionalTest {
   fun `composePreviewDiscover tags XrSubspacePreview functions as XR_SUBSPACE`() {
     val projectDir = createCmpTestProject()
 
-    // Stub `@XrSubspacePreview` under its real FQN — discovery is FQN-driven, so the stub exercises
-    // the same path a real consumer (depending on `:preview-annotations`) would, without dragging
-    // `androidx.xr.compose` onto the fixture's classpath.
+    // `@XrSubspacePreview` stubbed at its real FQN, keeping `androidx.xr.compose` off the fixture
+    // classpath.
     val previewFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
     previewFqnDir.mkdirs()
     File(previewFqnDir, "XrSubspacePreview.kt")
@@ -4931,12 +4747,8 @@ class DiscoveryFunctionalTest {
     val xrPreviews = manifest.previews.filter { it.functionName == "MySpatialPreview" }
     assertThat(xrPreviews.map { it.functionName }).containsExactly("MySpatialPreview")
     assertThat(xrPreviews.map { it.params.kind }.toSet()).containsExactly(PreviewKind.XR_SUBSPACE)
-    // XR subspace previews emit a SINGLE optional composite capture (and no data product). The
-    // composite.png is baked out-of-band by `composePreviewCompositeXr` from the scene.json
-    // `composePreviewRenderXr` writes; marking it `optional = true` means it shows in the listing
-    // when present but composePreviewRenderAll's missing-render gate never requires it. The subdir
-    // uses the same `[^A-Za-z0-9._-]` → `_` sanitisation as the render task. Also no target
-    // inference (non-composable kind).
+    // XR previews emit a single optional composite capture (baked out-of-band, so never required),
+    // in a subdir sanitised like the render task's. No data product or target inference.
     val xrCapture = xrPreviews.single().captures.single()
     val sanitizedId = xrPreviews.single().id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     assertThat(xrCapture.renderOutput).isEqualTo("renders/$sanitizedId/composite.png")

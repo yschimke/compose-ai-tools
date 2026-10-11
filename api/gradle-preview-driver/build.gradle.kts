@@ -1,17 +1,7 @@
-// Gradle Tooling-API render pipeline as a published library.
-//
-// Step B of the clean-API carve-out (issue #1084): the discover-modules → run-tasks →
-// read-manifests → build-base-PreviewResults pipeline that previously lived inside `:cli`'s
-// `Command` base class moves here so external consumers (contrib scripting, third-party
-// tooling, future MCP integrations) can drive renders without depending on `:cli`.
-//
-// Package note: types live in `ee.schimke.composeai.cli` for source-compat — they were in
-// `:cli` before the extraction. Same pattern `:data-a11y-core` + `:preview-data-api` used.
-//
-// Boundary: this module owns the Gradle Tooling-API wrapping and the PNG-sha-+-manifest pass.
-// CLI-specific concerns (`.cli-state.json` change detection, image-size override for hosting
-// agents, `--force` stderr notices, autoinject init-script synthesis) stay in `:cli` as
-// layers on top of the driver's output.
+// The Gradle Tooling-API render pipeline (discover modules → run tasks → read manifests → build
+// PreviewResults) as a published library, so external tooling can drive renders without `:cli`.
+// Types keep the `ee.schimke.composeai.cli` package for source compatibility. CLI-specific concerns
+// (change detection, `--force`, init-script injection) stay in `:cli`.
 
 plugins {
   id("composeai.base-conventions")
@@ -35,11 +25,8 @@ dependencies {
   // `:cli` used to declare — bumping is a published-API concern, not a CLI one.
   api("org.gradle:gradle-tooling-api:9.8.0")
 
-  // SLF4J no-op shipped alongside so the Tooling API doesn't complain about a missing impl
-  // when a CLI / consumer hasn't already wired one up. Pinned to the version that
-  // `gradle-tooling-api` strictly requires on `slf4j-api` (currently 2.0.17) — bumping the
-  // `-nop` impl ahead of that drags in a newer `slf4j-api` and trips the strict-constraint
-  // resolution.
+  // SLF4J no-op so the Tooling API doesn't warn about a missing impl. Pinned to the `slf4j-api`
+  // version `gradle-tooling-api` strictly requires.
   runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
 
   testImplementation(libs.junit)
@@ -47,11 +34,8 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-  // The unpacked Gradle distribution this build runs from. `DiscoverPreviewModulesIntegrationTest`
-  // points a real Tooling-API connection at it via `useInstallation(...)` so it reuses the
-  // already-present distribution instead of downloading one (the test `assumeTrue`s out when this
-  // is absent — e.g. a bare IDE run). Read at configuration time so the configuration cache
-  // captures it.
+  // The running Gradle distribution, so `DiscoverPreviewModulesIntegrationTest` can
+  // `useInstallation` instead of downloading one (it skips when absent).
   systemProperty("composeai.test.gradleHome", gradle.gradleHomeDir?.absolutePath ?: "")
 }
 

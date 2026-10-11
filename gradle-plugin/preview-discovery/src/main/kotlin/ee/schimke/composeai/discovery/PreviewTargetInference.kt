@@ -11,27 +11,17 @@ import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
 /**
- * Infers which production `@Composable` a `@Preview` function is presumed to render. The preview's
- * bytecode is walked for `INVOKE*` instructions; calls into project-local `@Composable` functions
- * are kept (theming / layout primitives are filtered out by FQN), then scored against signals like
- * "preview is in a debug/screenshotTest source set" or "preview's name matches the call's simple
- * name once the `Preview` suffix is stripped".
+ * Infers which production `@Composable` a `@Preview` renders: walks the preview's bytecode for
+ * calls into project-local composables (theming/layout filtered by FQN), then scores them on
+ * signals such as a non-shipping source set or a name match with the `Preview` suffix stripped.
  *
- * v1 emits at most one [PreviewTarget] per preview. The output type is a list because the schema is
- * forward-compatible with later multi-target inference (e.g. `Row { Foo(); Bar() }` returning
- * both), but the current scoring pass keeps only the top-scored candidate.
- *
- * Project-local theme/preview wrappers are filtered by source/name, and compiler-generated lambda
- * methods reachable from the preview are traversed so `Theme { Component() }` can still nominate
- * `Component`.
+ * Emits at most one [PreviewTarget] for now; the list type leaves room for multi-target inference.
+ * Compiler-generated lambda methods are traversed so `Theme { Component() }` nominates `Component`.
  */
 object PreviewTargetInference {
 
-  // FQN prefixes whose @Composable functions are theming / layout / runtime scaffolding
-  // rather than the production UI under preview. Anything matching one of these is dropped
-  // from the candidate set before scoring. Prefix-match keeps the list short and lets us
-  // reach into deeper packages (e.g. `androidx.compose.foundation.layout.Box`) without
-  // enumerating every leaf.
+  // FQN prefixes of theming / layout / runtime scaffolding, dropped before scoring. Prefixes reach
+  // nested packages without listing every leaf.
   private val WRAPPER_FQN_PREFIXES =
     listOf(
       "androidx.compose.material.",
@@ -47,28 +37,13 @@ object PreviewTargetInference {
       "org.jetbrains.compose.",
     )
 
-  // The subset of [WRAPPER_FQN_PREFIXES] that names design-system **components** rather than
-  // layout, runtime or drawing primitives.
-  //
-  // Both lists are right about the same packages for different questions. "Which of MY composables
-  // does this preview render?" wants `material3.Button` dropped — it is not the project's UI.
-  // "Which
-  // component does this sticker demonstrate?" wants exactly that call and nothing else, because a
-  // catalog sticker's whole subject is the library component it wraps. m3-catalog's 59 entries
-  // stand
-  // for 148 distinct `androidx.compose.material3.*` symbols, none of which the project-local pass
-  // can name, so a catalog gets no target at all today.
-  //
-  // Deliberately NOT the whole of `WRAPPER_FQN_PREFIXES`: `foundation.layout.Column`,
-  // `runtime.remember` and `ui.Modifier` stay scaffolding under either question, and admitting them
-  // would bury the one call a reader cares about under the frame that positions it.
+  // The subset of [WRAPPER_FQN_PREFIXES] naming design-system **components** rather than layout,
+  // runtime or drawing primitives. "Which of my composables does this render?" drops
+  // `material3.Button`; "which component does this sticker demonstrate?" wants exactly it. Layout,
+  // `remember` and `Modifier` stay scaffolding either way.
   /**
-   * How far a component may sit behind the project's own composables and still be the preview's.
-   *
-   * Three covers the shapes that motivated it — `Sticker { Frame { Component() } }` is two — with
-   * one to spare for a catalog that wraps its frame. Deeper than that and "the preview renders it"
-   * stops being a claim worth publishing: a screen four levels of project code above a `Text` is
-   * not a `Text` sticker.
+   * How far a component may sit behind the project's own composables and still count as the
+   * preview's: `Sticker { Frame { Component() } }` is two, plus one to spare.
    */
   private const val PROJECT_COMPOSABLE_MAX_DEPTH = 3
 
@@ -79,32 +54,21 @@ object PreviewTargetInference {
       "androidx.wear.compose.material3.",
       "androidx.wear.compose.material.",
       "androidx.wear.compose.remote.material3.",
-      // Glimmer is AndroidX's glasses design system. Its catalog stickers are the same shape as
-      // the Material and Wear catalogs above: project wrapper -> real library component.
+      // Glimmer is AndroidX's glasses design system; its stickers have the same wrapper → component
+      // shape.
       "androidx.xr.glimmer.",
     )
 
-  // Theme entry points inside the component libraries. They pass every other test here — real
-  // `@Composable`s returning `Unit`, in `material3` — and they are the frame a sticker is drawn in,
-  // not its subject. Nine of `:samples:cmp`'s twelve component-bearing previews reported
-  // `MaterialTheme` before this list existed.
-  //
-  // A denylist rather than a shape rule, because the obvious shape rule does not separate them:
-  // `MaterialTheme(colorScheme, shapes, typography, content)` and
-  // `Card(modifier, shape, colors, elevation, border, content)` are both "defaulted config plus one
-  // `@Composable` content lambda". The set is small, stable and named in every catalog's own
-  // scaffolding rules already (`compose-usage.json` rewrites `Sticker` to `MaterialTheme` for
-  // exactly this reason), so naming it here is cheaper and clearer than a heuristic that would
-  // eventually drop a real component.
+  // Theme entry points inside component libraries: the frame a sticker is drawn in, not its
+  // subject. A denylist because no shape rule separates `MaterialTheme(…, content)` from `Card(…,
+  // content)`; the set is small and stable.
   private val THEME_ENTRY_POINTS =
     setOf(
       "androidx.compose.material3.MaterialThemeKt.MaterialTheme",
       "androidx.compose.material.MaterialThemeKt.MaterialTheme",
       "androidx.wear.compose.material3.MaterialThemeKt.MaterialTheme",
       "androidx.wear.compose.material.MaterialThemeKt.MaterialTheme",
-      // Remote Compose's own theme entry point. Same role, different spelling — and it earns its
-      // line the same way the four above did: 60 of remote-catalog's previews reported
-      // `RemoteMaterialTheme` as their component before it was listed.
+      // Remote Compose's theme entry point.
       "androidx.wear.compose.remote.material3.RemoteMaterialThemeKt.RemoteMaterialTheme",
       "androidx.xr.glimmer.GlimmerThemeKt.GlimmerTheme",
     )
@@ -113,9 +77,7 @@ object PreviewTargetInference {
   // them up as project-local @Composable methods.
   private val STDLIB_FQN_PREFIXES = listOf("java.", "javax.", "kotlin.", "kotlinx.", "sun.", "jdk.")
 
-  // Source-set / variant names that signal the preview file is non-shipping. These are the
-  // standard AGP / Kotlin source set names; the check is conservative — anything not in the
-  // shipping set is treated as non-shipping for scoring purposes only.
+  // Source sets that mark a preview file as non-shipping; used for scoring only.
   private val NON_SHIPPING_SOURCE_SETS =
     setOf(
       "debug",
@@ -133,32 +95,22 @@ object PreviewTargetInference {
   private const val PREVIEW_FQN = "androidx.compose.ui.tooling.preview.Preview"
   private const val DESKTOP_PREVIEW_FQN = "androidx.compose.desktop.ui.tooling.preview.Preview"
   private const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
-  // Compose Multiplatform's own @Preview — see PreviewDiscovery.CMP_PREVIEW_FQN. A CMP project's
-  // previews would otherwise not count as previews here, so a composable called only by them would
-  // look like an ordinary composable and score as a render target.
+  // Without CMP's @Preview, a composable called only by CMP previews would score as a render
+  // target.
   private const val CMP_PREVIEW_FQN = PreviewDiscovery.CMP_PREVIEW_FQN
   private const val COMPOSABLE_FQN = "androidx.compose.runtime.Composable"
 
   /**
-   * Single bytecode call site, as captured from the preview method body.
+   * One bytecode call site from the preview body.
    *
-   * [viaLambda] marks a call the walk reached by descending into one of the preview's content
-   * lambdas rather than one the preview body makes itself. The distinction has to be recorded here
-   * because the two are indistinguishable afterwards, and because **whether a lambda is even
-   * reachable depends on the Kotlin compiler, not on the preview**: a non-capturing composable
-   * lambda is lifted into the file's `ComposableSingletons$…` class — as a class of its own or,
-   * from Kotlin 2.3, as a static method of it (both walked, narrowly, by
-   * [extractComposeSingletonLambdaCalls]) — while one that captures compiles to a
-   * `<preview>$lambda$N` method of the preview's own class, which the nested-method walk follows
-   * wholesale. Adding a single defaulted parameter to a preview flips it from the first shape to
-   * the second, so without this flag `infer`'s "how many project composables did this preview
-   * call?" count — and with it the target — changes for a preview whose body did not.
+   * [viaLambda] marks calls reached by descending into a content lambda. It must be recorded here
+   * because whether a lambda is reachable depends on the compiler: non-capturing lambdas are lifted
+   * into `ComposableSingletons$…` (walked narrowly by [extractComposeSingletonLambdaCalls]), while
+   * capturing ones become `<preview>$lambda$N` methods followed wholesale. A single defaulted
+   * parameter flips the shape, which would otherwise change `infer`'s call count and target.
    *
-   * Only the nested-method descent is tagged. [extractComposeSingletonLambdaCalls]'s results are
-   * lambda contents by the same argument and arguably belong here too, but tagging them changes the
-   * target of previews that have nothing to do with this bug — a `Theme { … }` sticker whose
-   * candidates were all suppressed by the survivor penalty starts reporting the frame it wraps — so
-   * that half is deliberately left alone rather than settled as a side effect of this fix.
+   * Only the nested-method descent is tagged; tagging singleton-lambda results too would change
+   * targets of unrelated previews.
    */
   internal data class Invocation(
     val ownerFqn: String,
@@ -179,38 +131,23 @@ object PreviewTargetInference {
    * @param previewClassInfo the class containing the `@Preview` method.
    * @param previewMethod the `@Preview`-annotated method.
    * @param scanResult the active ClassGraph result; used to look up call targets.
-   * @param projectClassFqns FQNs of every class compiled from the project's own source dirs (i.e.
-   *   not pulled from a dependency JAR). The "is this call project-local?" filter keys off this
-   *   set.
+   * @param projectClassFqns FQNs of classes compiled from the project's own sources; the
+   *   project-local filter.
    * @param previewSourceFile module-relative source path of the preview file, when known.
-   * @param resolveSourceFile maps a target class FQN to its module-relative source path. Returns
-   *   `null` when the source file isn't wired into the discovery task's `sourceFiles` input.
-   * @param variantName the AGP/Kotlin source set the preview was discovered under (used for the
-   *   `NON_SHIPPING_SOURCE_SET` signal).
-   * @param hasPreviewParameter `true` when the preview function has a `@PreviewParameter`-annotated
-   *   parameter; enables the `PARAMETER_FORWARDED` signal when the candidate consumes a value of
-   *   the right shape.
+   * @param resolveSourceFile maps a class FQN to its module-relative source path, or `null` when
+   *   unknown.
+   * @param variantName the source set the preview was discovered under (for
+   *   `NON_SHIPPING_SOURCE_SET`).
+   * @param hasPreviewParameter enables the `PARAMETER_FORWARDED` signal.
    */
   /**
-   * The **design-system components** [previewMethod] renders — the library composables a catalog
-   * sticker exists to demonstrate, as opposed to [infer]'s "which of the project's own composables
-   * does this preview render?".
+   * The **design-system components** [previewMethod] renders, separate from [infer]'s project-local
+   * answer: the two answer different questions, and mixing them would change what `targets[0]`
+   * means.
    *
-   * The two answer different questions and neither subsumes the other, so this is a separate list
-   * rather than more entries in `targets`: a consumer correlating a UI change to its preview wants
-   * the project-local answer, while a consumer describing a component's API wants this one. Mixing
-   * them would also silently change what `targets[0]` means for every existing reader.
-   *
-   * Resolution reuses [resolveCandidate], so a candidate must be a real `@Composable` on the scan's
-   * classpath — which already spans dependency jars — and must not itself carry a `@Preview`.
-   * Ordering is by call order, deduped, so a sticker wrapping one component yields exactly one
-   * entry and `HIGH` confidence; several distinct component calls yield several at `MEDIUM`,
-   * because nothing here can tell the subject from its neighbours.
-   *
-   * Parameters come from the same `@kotlin.Metadata` read as [infer]'s, so a library component
-   * arrives with its real signature — which is the point: `Button(onClick, modifier, enabled,
-   * shape, colors, elevation, border, contentPadding, interactionSource, content)` is written down
-   * nowhere in a catalog that spells it `Sticker("button-filled")`.
+   * Candidates go through [resolveCandidate] (real `@Composable`, not itself a `@Preview`), ordered
+   * by call order and deduped: one component → `HIGH`, several → `MEDIUM`. Parameters come from
+   * `@kotlin.Metadata`, giving each library component its real signature.
    */
   fun inferComponents(
     previewClassInfo: ClassInfo,
@@ -218,8 +155,8 @@ object PreviewTargetInference {
     scanResult: ScanResult,
     projectClassFqns: Set<String>,
     /**
-     * A catalog's own additions to [COMPONENT_LIBRARY_FQN_PREFIXES], from the `composePreview {
-     * componentLibraryPrefixes }` extension. See [isComponentLibraryOwner].
+     * Extra component-library owners from `componentLibraryPrefixes`; see
+     * [isComponentLibraryOwner].
      */
     extraLibraryPrefixes: List<String> = emptyList(),
   ): List<PreviewTarget> =
@@ -230,9 +167,9 @@ object PreviewTargetInference {
     )
 
   /**
-   * Every call a preview renders through: its body, the compose-singleton lambdas it passes, and
-   * the project composables those reach (to [PROJECT_COMPOSABLE_MAX_DEPTH]). Empty when the
-   * bytecode cannot be read. One walk serves [inferComponents] and [drawsWearWidget].
+   * Every call a preview renders through: its body, the singleton lambdas it passes, and project
+   * composables reached up to [PROJECT_COMPOSABLE_MAX_DEPTH]. Empty when unreadable. Shared by
+   * [inferComponents] and [drawsWearWidget].
    */
   internal fun renderedCalls(
     previewClassInfo: ClassInfo,
@@ -253,11 +190,9 @@ object PreviewTargetInference {
   }
 
   /**
-   * Whether [calls] draw a Glance Wear widget through a widget-preview entry point: upstream's
-   * `androidx.glance.wear.tooling.preview.WearWidgetPreview`, or compose-ai-tools'
-   * `CapturingWearWidgetPreview`, which wraps it to keep the encoded document. Either one renders
-   * its content inside the Wear widget host's container, under the `WEAR_WIDGETS` profile, so the
-   * preview is a widget whatever its canvas says.
+   * Whether [calls] reach a widget-preview entry point (`WearWidgetPreview` or our wrapping
+   * `CapturingWearWidgetPreview`), which renders under the `WEAR_WIDGETS` profile whatever the
+   * canvas says.
    */
   internal fun drawsWearWidget(calls: List<Invocation>): Boolean = calls.any { call ->
     (call.ownerFqn == CAPTURING_WEAR_WIDGET_PREVIEW_OWNER &&
@@ -280,14 +215,12 @@ object PreviewTargetInference {
         .asSequence()
         .filter { call -> isComponentLibraryOwner(call.ownerFqn, extraLibraryPrefixes) }
         .mapNotNull { resolveCandidate(it, scanResult) }
-        // Pair each candidate with its metadata up front, because the *source* name lives there
-        // and every decision below is about the source name. A candidate whose metadata cannot be
-        // read is dropped: without it there is no way to tell a mangled JVM name from a legally
-        // escaped one, and reporting the JVM name is how a nonexistent import gets published.
+        // Metadata carries the source name every decision below depends on. Candidates without
+        // metadata are dropped: a mangled JVM name can't be told from an escaped one, and reporting
+        // it publishes a nonexistent import.
         .mapNotNull { candidate ->
-          // The scan goes with it so a required parameter whose type constructs itself can be
-          // recognised (issue #5067) — `TextField(state = TextFieldState())`. Only this path needs
-          // it: these are the library components whose call sites get printed.
+          // The scan lets self-constructing required parameters be recognised (#5067), e.g.
+          // `TextField(state = TextFieldState())`.
           ComposableSignature.signatureOf(candidate.classInfo, candidate.method, scanResult)?.let {
             candidate to it
           }
@@ -309,8 +242,7 @@ object PreviewTargetInference {
         functionName = signature.name,
         jvmName = candidate.method.name,
         descriptor = candidate.method.typeDescriptorStr,
-        // A library symbol has no source file in this build; `sourceFile` stays null and
-        // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
+        // Library symbols have no source file here; [PreviewTarget.origin] says so.
         sourceFile = null,
         confidence = confidence,
         signals = listOf(TargetSignal.LIBRARY_COMPONENT),
@@ -329,10 +261,8 @@ object PreviewTargetInference {
   }
 
   /**
-   * Every overload of [candidate]'s function as a [TargetOverload], or empty when it has only one.
-   *
-   * An overload whose metadata cannot be read is left out rather than guessed at: the selection
-   * that consumes these prints calls from them, and a signature nobody read is not one to print.
+   * Every overload of [candidate]'s function, or empty when there's one. Overloads without readable
+   * metadata are omitted, since calls are printed from them.
    */
   private fun overloadsOf(
     candidate: ResolvedCandidate,
@@ -373,9 +303,7 @@ object PreviewTargetInference {
       try {
         extractCalls(previewClassInfo, previewMethod)
       } catch (_: Throwable) {
-        // Bytecode unavailable / unreadable — discovery should still succeed without target
-        // inference. The preview is still emitted; consumers see `targets = []` and fall back
-        // to whatever signal they had before.
+        // Unreadable bytecode: emit the preview without targets.
         return emptyList()
       }
     val unwrappedCalls =
@@ -394,17 +322,13 @@ object PreviewTargetInference {
         .filterNot { isWrapperFqn(it.ownerFqn) }
         .filter { it.ownerFqn in projectClassFqns }
         .mapNotNull { resolveCandidate(it, scanResult) }
-        // Pair each candidate with its metadata before judging its name, because every decision
-        // below is about the *source* name and only metadata carries it. Unlike `inferComponents`,
-        // a candidate whose metadata cannot be read is kept rather than dropped: `signatureKnown`
-        // already models "we could not look", `infer` has always emitted such targets, and
-        // dropping them here would trade a wrong name for a missing target.
+        // Pair candidates with metadata (for the source name), but unlike `inferComponents` keep
+        // ones without it: `signatureKnown` models that, and dropping them would lose targets.
         .map { candidate ->
           candidate to ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
         }
         .filterNot { (candidate, signature) ->
-          // No metadata means no source name, so the JVM name is all there is — and then the
-          // import filter below is the only guard, exactly as it was before this pairing existed.
+          // Without metadata the JVM name is all there is, and the import filter is the only guard.
           val sourceName = signature?.name ?: candidate.method.name
           !isValidKotlinImportIdentifier(sourceName) ||
             isPreviewOnlyWrapper(sourceName, resolveSourceFile(candidate.ownerFqn))
@@ -416,15 +340,10 @@ object PreviewTargetInference {
 
     if (candidates.isEmpty()) return emptyList()
 
-    // Count the composables the preview body calls ITSELF, and fall back to the lambda-reached
-    // ones only when it calls none directly — the `Theme { Screen() }` shape, where the wrapper is
-    // filtered out and the subject is only reachable through the lambda.
-    //
-    // A call reached by descending into a content lambda is not evidence that the preview renders
-    // several things side by side; it is the inside of the one thing it wraps. Counting both
-    // together made the penalty below depend on whether that lambda captured — a Kotlin compiler
-    // decision that a single defaulted parameter flips, silently changing the target of a preview
-    // whose body did not change. See [Invocation.viaLambda].
+    // Count only composables the preview calls itself, falling back to lambda-reached ones when
+    // there are none (`Theme { Screen() }`). Lambda contents are the inside of one thing, and
+    // counting them made the penalty depend on whether the lambda captured. See
+    // [Invocation.viaLambda].
     val directCallKeys =
       calls
         .asSequence()
@@ -432,8 +351,7 @@ object PreviewTargetInference {
         .mapTo(mutableSetOf()) { it.ownerFqn to it.methodName }
     fun key(candidate: ResolvedCandidate) = candidate.ownerFqn to candidate.method.name
     val directCandidates = candidates.filter { (candidate, _) -> key(candidate) in directCallKeys }
-    // The candidates the count is taken over. Anything outside it is still allowed to win, but on
-    // its own merits (name match, cross-file, …) rather than by being "the only call".
+    // Candidates outside the counted set can still win, but only on their own signals.
     val counted = (directCandidates.ifEmpty { candidates }).mapTo(mutableSetOf()) { key(it.first) }
     val survivors = counted.size
     // Keep each candidate paired with its score so the winner's resolved metadata is in hand below
@@ -452,10 +370,8 @@ object PreviewTargetInference {
           hasPreviewParameter = hasPreviewParameter,
           callerMethodHasComposableParam =
             candidate.method.parameterInfo?.any { p ->
-              // Heuristic for "this candidate consumes a value of the same shape as the preview's
-              // @PreviewParameter" — a non-`@Composable () -> Unit` parameter on the candidate.
-              // Cheap stand-in for proper data-flow analysis; good enough to flag the common
-              // `@PreviewParameter color: Long → Foo(color)` pattern.
+              // Cheap heuristic for "consumes the @PreviewParameter value": a non-`@Composable ()
+              // -> Unit` parameter.
               p.annotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
             } == true,
           wrapperUnwrapped = candidate.ownerFqn to candidate.method.name in unwrappedTargets,
@@ -485,9 +401,8 @@ object PreviewTargetInference {
         sourceFile = best.sourceFile,
         confidence = confidence,
         signals = best.signals,
-        // The target's real Kotlin value parameters (names / types / defaults) for the call site a
-        // consumer renders into Code Connect. Best-effort — empty when metadata can't be read,
-        // which `signatureKnown` is what distinguishes from a parameterless composable.
+        // Real value parameters for Code Connect call sites; empty when unreadable (see
+        // `signatureKnown`).
         parameters = signature?.parameters.orEmpty(),
         receiver = signature?.receiver,
         signatureKnown = signature != null,
@@ -510,9 +425,8 @@ object PreviewTargetInference {
   private fun isWrapperFqn(fqn: String): Boolean = WRAPPER_FQN_PREFIXES.any { fqn.startsWith(it) }
 
   /**
-   * Reads [previewClassInfo]'s class file via ClassGraph and walks [previewMethod]'s body for
-   * `INVOKE*` instructions. Method matching is by name + descriptor so overloads don't bleed into
-   * each other; ClassGraph's `MethodInfo.typeDescriptorStr` is the JVM signature.
+   * Walks [previewMethod]'s body for `INVOKE*` instructions, matching methods by name + descriptor
+   * so overloads don't mix.
    */
   internal fun extractCalls(
     previewClassInfo: ClassInfo,
@@ -578,18 +492,10 @@ object PreviewTargetInference {
                 }
 
                 /**
-                 * A singleton lambda reached by READING its field rather than calling its getter.
-                 *
-                 * The getter is what a preview body compiles to, and it was the only edge the walk
-                 * knew. One singleton lambda passing another as content does not go through it:
-                 * `lambda_521476302$lambda$0` reaches `lambda$1915723479` with a GETSTATIC on the
-                 * private field, and the accessor is never called. So the walk stopped at the first
-                 * nested `{ … }` — `DatePickerModalSticker` reaches `DatePicker` through four of
-                 * them and m3-catalog's record carried `DateRangePicker` and neither picker
-                 * (yschimke/m3-catalog#317).
-                 *
-                 * Spelled as the getter call it stands for, so the one place that resolves a lambda
-                 * key keeps being the only one.
+                 * A singleton lambda reached by reading its field (GETSTATIC) rather than calling
+                 * its getter, as when one singleton lambda passes another as content. Without this
+                 * the walk stopped at the first nested `{ … }` (m3-catalog#317). Recorded as the
+                 * getter call so lambda keys resolve in one place.
                  */
                 override fun visitFieldInsn(
                   opcode: Int,
@@ -621,8 +527,7 @@ object PreviewTargetInference {
       val key = pending.removeFirst()
       if (!visited.add(key)) continue
       val body = bodies[key] ?: continue
-      // Only a root body's calls are the preview's own; everything a followed nested method calls
-      // was reached by descending into a lambda. See [Invocation.viaLambda].
+      // Only a root body's calls are the preview's own; see [Invocation.viaLambda].
       collected += if (isRoot(key)) body.calls else body.calls.map { it.copy(viaLambda = true) }
       pending.addAll(body.nestedMethods.filter(shouldFollow))
     }
@@ -634,49 +539,25 @@ object PreviewTargetInference {
   private data class MethodBody(val calls: List<Invocation>, val nestedMethods: Set<MethodKey>)
 
   /**
-   * The calls inside a preview's **non-capturing** composable lambdas — the `{ … }` of `Theme {
-   * Component() }` — which the Compose compiler lifts out of the preview body into the file's
-   * generated `ComposableSingletons$…` class. A preview only calls the matching `getLambda$<key>$…`
-   * getter, so the lambda is found by that key and walked narrowly.
-   *
-   * Where the body lives depends on the compiler, and both places are read:
-   * - **A class of its own**, `ComposableSingletons$…$lambda$<key>$…`, with the body in its
-   *   `invoke(Composer, Int)` — what Compose compilers up to Kotlin 2.2 emit.
-   * - **A static method of the singletons class**, `lambda_<key>$lambda$<n>(Composer, Int)`, wired
-   *   to the field by `invokedynamic` — what Kotlin 2.3+ emits. Until this half existed every
-   *   `Theme { Component() }` preview compiled by a current Kotlin reported the *theme* as its
-   *   subject, because the walker looked for a class that was no longer generated: Confetti's Wear
-   *   component catalog recorded `ConfettiThemeFixed` for every one of its stickers, and
-   *   `SessionCard` reached no record at all. The name is matched with `$` and `-` normalised
-   *   (`lambda$-767012711` is stored under `lambda__767012711$lambda$0`), and the descent follows
-   *   the body's own nested `$lambda$n$…` methods — the callbacks it declares — since a call made
-   *   from one of those is still a call the lambda makes.
+   * Calls inside a preview's **non-capturing** composable lambdas, which the Compose compiler lifts
+   * into `ComposableSingletons$…`; the preview only calls `getLambda$<key>$…`, so the body is found
+   * by key. Both compiler layouts are read:
+   * - **A class**, `ComposableSingletons$…$lambda$<key>$…`, body in `invoke(Composer, Int)` (up to
+   *   Kotlin 2.2).
+   * - **A static method**, `lambda_<key>$lambda$<n>(Composer, Int)` (Kotlin 2.3+); without this
+   *   every `Theme { Component() }` preview reported the theme. Names are matched with `$` / `-`
+   *   normalised, and the body's own nested `$lambda$n$…` callbacks are followed.
    */
   /**
-   * The library components a preview reaches THROUGH its own composables.
-   *
-   * The walk above sees the preview's body plus one hop through Compose singleton lambdas, then
-   * keeps only calls whose owner is a component library. A sticker that factors its frame drops out
-   * of that entirely: `Sticker { TimePickerDialogFrame(…) }` lands on a project composable, which
-   * is neither a library call nor followed, so the `TimePicker` two hops further in is invisible.
-   * The cost is not one missing entry — m3-catalog's record carries `DateRangePicker` and neither
-   * picker, and wear-m3-catalog's `:remote-catalog` collapses 49 catalog entries into the two
-   * sticker composables that wrap them, because every component it publishes is behind a frame.
-   *
-   * So a call into the PROJECT's own code is followed, and the library calls inside it are the
-   * preview's too. Bounded by [PROJECT_COMPOSABLE_MAX_DEPTH] and a visited set: a frame that calls
-   * a frame is ordinary, a cycle is possible, and an unbounded walk over a large project's call
-   * graph would make discovery's cost a function of how deeply the project factors its UI.
-   *
-   * Deliberately NOT tagged `viaLambda`. That flag exists so `infer`'s project-local answer can
-   * discount lambda contents; this list feeds `inferComponents` only, where a component reached
-   * through a frame is exactly as much the sticker's subject as one called directly.
+   * The library components a preview reaches through its own composables. Without this, `Sticker {
+   * Frame(…) }` hides every component behind the project frame. Project calls are followed up to
+   * [PROJECT_COMPOSABLE_MAX_DEPTH] with a visited set, bounding cost and cycles. Not tagged
+   * `viaLambda`: for components, one reached through a frame is as much the subject as one called
+   * directly.
    */
   /**
-   * Compose's generated lambda holder, which [extractComposeSingletonLambdaCalls] already owns.
-   *
-   * Following one here would walk the `getLambda$N` getter rather than the lambda body, finding
-   * nothing, and then re-enter through the singleton path anyway.
+   * Singleton holders are handled by [extractComposeSingletonLambdaCalls]; following the getter
+   * here finds nothing.
    */
   private fun Invocation.isComposeSingleton(): Boolean = ".ComposableSingletons$" in ownerFqn
 
@@ -699,8 +580,7 @@ object PreviewTargetInference {
               resource = resource,
               ownerFqn = call.ownerFqn,
               isRoot = { key -> key.name == call.methodName && key.descriptor == call.descriptor },
-              // The nested-method walk inside one class is already how a captured lambda's body is
-              // reached; keeping it means a frame whose content lambda captures still resolves.
+              // Following nested methods is how a captured lambda's body is reached.
               shouldFollow = { key -> key.name.contains('$') },
             )
           } catch (_: Throwable) {
@@ -708,8 +588,8 @@ object PreviewTargetInference {
           }
         found += inner
         next += inner.filter { it.ownerFqn in projectClassFqns && !it.isComposeSingleton() }
-        // A project composable can hand its content to a singleton lambda too, so the same hop the
-        // preview body gets applies at every level rather than only the first.
+        // Project composables can pass content to singleton lambdas too, so apply the hop at every
+        // level.
         val throughLambdas = extractComposeSingletonLambdaCalls(inner, scanResult, projectClassFqns)
         found += throughLambdas
         next += throughLambdas.filter { it.ownerFqn in projectClassFqns }
@@ -721,13 +601,9 @@ object PreviewTargetInference {
   }
 
   /**
-   * How many singleton lambdas deep the walk goes.
-   *
-   * One hop was the whole of it, and one hop is not what a sticker with a frame does: `Sticker {
-   * KeyboardNavigable { InlineDialogHost { DatePickerDialog { DatePicker() } } } }` lifts each `{ …
-   * }` into its own singleton entry, and each reaches the next. Bounded for the same reason
-   * [PROJECT_COMPOSABLE_MAX_DEPTH] is — a lambda that hands content to a lambda is ordinary, and an
-   * unbounded walk makes discovery cost a function of how deeply a sticker nests.
+   * How many singleton lambdas deep to go: each nested `{ … }` is its own entry (`Sticker {
+   * KeyboardNavigable { InlineDialogHost { DatePickerDialog { DatePicker() } } } }`). Bounded like
+   * [PROJECT_COMPOSABLE_MAX_DEPTH].
    */
   private const val SINGLETON_LAMBDA_MAX_DEPTH = 4
 
@@ -896,15 +772,10 @@ object PreviewTargetInference {
   )
 
   /**
-   * Whether a call's JVM owner is in a component library: one of [COMPONENT_LIBRARY_FQN_PREFIXES],
-   * or one of the catalog's [extra] entries.
-   *
-   * An extra entry is matched more tightly than a built-in one. A built-in prefix is a whole
-   * design-system package and is matched with `startsWith`. An extra entry ending in `.` is a
-   * package and matches the same way. Any other entry is one JVM owner class, matched exactly:
-   * `androidx.compose.remote.creation.compose.layout.RemoteTextKt` admits `RemoteText` without also
-   * admitting `RemoteTextKtx`, or the `RemoteBox` and `RemoteRow` beside it in the same package,
-   * which would then compete with the subject for the preview's builder policy.
+   * Whether a call's owner is in a component library: [COMPONENT_LIBRARY_FQN_PREFIXES] (prefix
+   * match) or [extra]. Extra entries ending in `.` are packages; others are exact owner classes, so
+   * `RemoteTextKt` doesn't also admit `RemoteTextKtx` or sibling layouts that would compete for
+   * builder policy.
    */
   internal fun isComponentLibraryOwner(
     ownerFqn: String,
@@ -916,26 +787,14 @@ object PreviewTargetInference {
       }
 
   /**
-   * Whether a resolved call in a component library is the **component a sticker demonstrates**.
+   * Whether a resolved library call is the **component a sticker demonstrates**: a valid Kotlin
+   * import name, [returnsUnit] (components emit; `MaterialTheme.colorScheme` is a getter), and not
+   * a [THEME_ENTRY_POINTS] member.
    *
-   * Three rules, each earning its place against `:samples:cmp`: the name must be usable as a Kotlin
-   * import; [returnsUnit], because a component *emits* rather than returning a value
-   * (`MaterialTheme.colorScheme` is a `@Composable` property getter that passes every other test
-   * here, and reporting it would describe a sticker's theme lookup as its subject); and not a
-   * [THEME_ENTRY_POINTS] member, which is the frame a sticker is drawn in rather than its subject.
-   *
-   * [methodName] must be the **source** name from `@kotlin.Metadata`, never the JVM one. Kotlin
-   * mangles the JVM name of any function whose signature mentions a value class, so
-   * `androidx.compose.material3.Text` compiles to `TextKt."Text-Nvy7gAk"` — its `fontSize`, `color`
-   * and `overflow` are `TextUnit`, `Color` and `TextOverflow`. Judged on the JVM name the import
-   * rule below rejects it, which silently dropped **every Material 3 component whose signature
-   * mentions `Color`, `Dp` or `TextUnit`** from the component record, `Text` included: a preview
-   * whose only call was `Text` inferred no component at all.
-   *
-   * Recovering the source name by trimming at the first `-` would be wrong in the other direction.
-   * A backtick-escaped declaration is legal Kotlin and its own name may contain a hyphen — ``fun
-   * `filled-button`()`` — so trimming publishes `filled`, a function that does not exist. Only
-   * metadata separates the two, which is why [inferComponents] reads it before deciding anything.
+   * [methodName] must be the **source** name from metadata. JVM names of functions mentioning value
+   * classes are mangled (`Text-Nvy7gAk`), and judging those dropped every component using `Color`,
+   * `Dp` or `TextUnit`. Trimming at `-` is wrong too: a backtick-escaped name may legally contain a
+   * hyphen.
    */
   internal fun isComponentLibraryTarget(
     ownerFqn: String,
@@ -947,16 +806,9 @@ object PreviewTargetInference {
       "$ownerFqn.$methodName" !in THEME_ENTRY_POINTS
 
   /**
-   * The overload a call site actually invoked, among the composables named like it.
-   *
-   * A call carries its JVM descriptor, and a composable's defaults travel in the Compose compiler's
-   * own `$default` bitmask rather than a synthetic `foo$default` method, so the descriptor names
-   * one overload exactly. Taking the first composable of that name instead recorded whichever
-   * overload the class file listed first: m3-catalog's `OutlinedTextField(value, onValueChange)`
-   * sticker was recorded as the `TextFieldState` overload, so its record offered `value` and
-   * `singleLine` and the generator refused both ("`OutlinedTextField` has no parameter `value`").
-   * Falls back to the first composable when no overload matches (a descriptor this walk cannot
-   * resolve), as before.
+   * The overload a call site invoked, by JVM descriptor (Compose defaults travel in a bitmask, so
+   * the descriptor is exact). Taking the first same-named composable recorded the wrong
+   * `OutlinedTextField` overload. Falls back to the first composable when nothing matches.
    */
   internal fun <M> calledOverload(
     candidates: List<M>,
@@ -980,8 +832,7 @@ object PreviewTargetInference {
         descriptorOf = { it.typeDescriptorStr },
         isComposable = { it.hasAnnotation(COMPOSABLE_FQN) },
       ) ?: return null
-    // Skip composables that themselves carry a @Preview — those are sibling previews, not the
-    // production target.
+    // Composables that are themselves previews are siblings, not targets.
     if (
       composable.hasAnnotation(PREVIEW_FQN) ||
         composable.hasAnnotation(DESKTOP_PREVIEW_FQN) ||
@@ -1031,38 +882,30 @@ object PreviewTargetInference {
     var score = 0
     val signals = mutableListOf<TargetSignal>()
 
-    // +3 if this is the only project-local non-wrapper composable left after filtering. Only a
-    // candidate inside the counted set can earn it: when a preview calls one composable directly
-    // and that composable's lambda calls others, "the only call" describes the direct one, and
-    // handing the bonus to a lambda-reached sibling would let it tie and win on call order.
+    // +3 for the only remaining candidate, but only within the counted set, so a lambda-reached
+    // sibling can't tie the direct call.
     if (totalSurvivors == 1 && counted) {
       score += 3
       signals += TargetSignal.SINGLE_PROJECT_COMPOSABLE_CALL
     } else if (totalSurvivors > 1) {
-      // Multiple survivors penalise *each* candidate by (n-1) so the top one still has a
-      // chance to clear the threshold when it independently matches by name.
+      // With several survivors, each loses (n-1), so a name match can still clear the threshold.
       score -= (totalSurvivors - 1)
     }
 
-    // +2 if `FooPreview` / `PreviewFoo` / `Foo_*_Preview` strips down to the candidate's name.
-    // Against the SOURCE name: `ScreenPreview` matches `Screen`, never `Screen-a1b2c3d`, so
-    // scoring a mangled candidate on its JVM name silently withheld this signal from exactly the
-    // previews whose naming convention was clearest.
+    // +2 if the preview name strips to the candidate's **source** name (`ScreenPreview` → `Screen`,
+    // never `Screen-a1b2c3d`).
     if (nameMatches(previewMethodName, callerSourceName)) {
       score += 2
       signals += TargetSignal.NAME_MATCH
     } else if (nameQualifies(previewMethodName, callerSourceName)) {
-      // `SessionCardPopulatedPreview` is a preview *of* `SessionCard` as surely as
-      // `SessionCard_Populated_Preview` is; the qualifier is spelled in CamelCase rather than with
-      // an underscore. Worth one rather than two, so a candidate the preview names exactly still
-      // outranks one it merely starts with — `FooBarPreview` prefers `FooBar` to `Foo`.
+      // +1 for a CamelCase qualifier (`SessionCardPopulatedPreview` → `SessionCard`), so an exact
+      // name still outranks a prefix.
       score += 1
       signals += TargetSignal.NAME_MATCH
     }
 
-    // +1 if the candidate lives in a different .class file than the preview. Top-level functions
-    // share an owner only when declared in the same source file (Kotlin's `<File>Kt` synthetic),
-    // so this is a clean proxy for "cross-file".
+    // +1 if the candidate is in a different class file; top-level functions share an owner only
+    // within one source file.
     val crossFile = callerOwner != previewClassFqn
     if (crossFile) {
       score += 1
@@ -1084,8 +927,8 @@ object PreviewTargetInference {
       signals += TargetSignal.DEDICATED_PREVIEW_FILE
     }
 
-    // +1 when the preview takes a @PreviewParameter and the candidate has a non-composable param
-    // it could plausibly receive. Approximate but cheap.
+    // +1 when the preview has a @PreviewParameter and the candidate has a plausible non-composable
+    // parameter.
     if (hasPreviewParameter && callerMethodHasComposableParam) {
       score += 1
       signals += TargetSignal.PARAMETER_FORWARDED
@@ -1108,7 +951,7 @@ object PreviewTargetInference {
 
   /**
    * `FooPreview` ↔ `Foo`, `PreviewFoo` ↔ `Foo`, `Foo_Light_Preview` ↔ `Foo`, `FooScreenPreview` ↔
-   * `FooScreen`. Internal-mangled JVM names (`InternalPreview$module`) are stripped first.
+   * `FooScreen`. Internal-mangled names are stripped first.
    */
   internal fun nameMatches(previewMethodName: String, candidateName: String): Boolean {
     val stripped = strippedPreviewName(previewMethodName)
@@ -1123,8 +966,8 @@ object PreviewTargetInference {
   private fun strippedPreviewName(previewMethodName: String): String {
     // Strip the JVM `internal fun` mangle (`name$module`) before any name-shape work.
     val cleaned = previewMethodName.substringBefore('$')
-    // Order matters: try the more specific affixes (`_Preview` / `Preview_`) before the bare ones,
-    // so `Foo_Preview` becomes `Foo`, not `Foo_`. Final `_` trim catches any residue.
+    // Try specific affixes (`_Preview` / `Preview_`) first so `Foo_Preview` becomes `Foo`, not
+    // `Foo_`.
     val stripped =
       cleaned
         .removeSuffix("_Preview")
@@ -1136,10 +979,8 @@ object PreviewTargetInference {
   }
 
   /**
-   * `SessionCardPopulatedPreview` ↔ `SessionCard`: the stripped preview name starts with the
-   * candidate's and continues with a CamelCase qualifier — an upper-case letter or a digit, so
-   * `FooBarPreview` qualifies `Foo` while `FoobarPreview` does not. Never true where [nameMatches]
-   * already is.
+   * `SessionCardPopulatedPreview` ↔ `SessionCard`: the stripped name starts with the candidate's
+   * and continues with an upper-case letter or digit. Never true where [nameMatches] is.
    */
   internal fun nameQualifies(previewMethodName: String, candidateName: String): Boolean {
     val stripped = strippedPreviewName(previewMethodName)
@@ -1150,9 +991,8 @@ object PreviewTargetInference {
   }
 
   /**
-   * Mirror of `DiscoverPreviewsTask.packageQualifiedSourcePath`: builds a `<pkg>/<File>.kt`-shaped
-   * fallback for when the source file isn't wired into the task. Used as the second leg of source
-   * resolution so consumers always see *something*.
+   * Mirror of `DiscoverPreviewsTask.packageQualifiedSourcePath`: a `<pkg>/<File>.kt` fallback when
+   * sources aren't wired in.
    */
   private fun packageQualifiedSourcePath(classInfo: ClassInfo): String? {
     val simpleName = classInfo.sourceFile ?: return null

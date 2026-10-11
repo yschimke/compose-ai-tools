@@ -13,12 +13,8 @@ import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 
 /**
- * Provider-neutral design references attached to exact preview ids.
- *
- * A producer may start from PNG, SVG, HTML, Figma, or another design tool, but it must include a
- * canonical PNG raster for comparison. Keeping normalization at import time makes serving
- * reproducible and prevents the preview server from executing arbitrary HTML or fetching private
- * design URLs.
+ * Provider-neutral design references attached to exact preview ids. Producers must include a
+ * canonical PNG raster, so serving is reproducible and never executes HTML or fetches private URLs.
  */
 @Serializable
 public data class DesignReferenceManifest(
@@ -46,30 +42,19 @@ public data class DesignReference(
   /** Original inert artifact retained by the producer for provenance/download. */
   val artifact: DesignReferenceArtifact? = null,
   /**
-   * How close the published render is to this reference, scored at publish time.
-   *
-   * The catalog exists to answer this, and until it was carried here no page answered it at rest: a
-   * visitor had to enter the spec lane and wait for two rasters to decode before a number appeared.
-   * Published, it goes on the design-spec chip on first paint.
-   *
-   * Absent on every catalog published before the producer existed, and on any run whose driver had
-   * no browser to score with — so it is a strict enhancement. The lane still computes the same
-   * numbers live on entry, which is what a chip with no verdict falls back to and what an
-   * override-bearing render needs regardless (the baked score describes the PUBLISHED pixels, and a
-   * knob has moved them).
+   * How close the published render is to this reference, scored at publish time, so the design-spec
+   * chip shows it on first paint. Absent on older catalogs; the lane still scores live on entry,
+   * which override-bearing renders always need anyway.
    */
   val match: DesignReferenceMatch? = null,
 )
 
 /**
- * A published render/reference comparison, in the units the viewer's readout already prints:
- * [percent] is the structural match `ComposePreviewCompare.scoreImages` reports, [changedPercent]
- * the share of pixels the delta map marks, and [geometry] the content-box proportion difference —
- * carried only when it is above the threshold at which it describes the design rather than the
- * rasteriser, which is why it is nullable rather than zero.
- *
- * The producer computes these by driving that same asset in a headless page, so the baked numbers
- * and the lane's live ones come from one implementation and cannot disagree.
+ * A published render/reference comparison in the viewer readout's units: [percent] is
+ * `ComposePreviewCompare.scoreImages`' structural match, [changedPercent] the delta-map share, and
+ * [geometry] the content-box proportion difference (only above the threshold where it reflects the
+ * design rather than rasterisation, hence nullable). Computed by the same scorer in a headless
+ * page, so baked and live numbers agree.
  */
 @Serializable
 public data class DesignReferenceMatch(
@@ -77,20 +62,10 @@ public data class DesignReferenceMatch(
   val changedPercent: Double? = null,
   val geometry: Double? = null,
   /**
-   * Which pixel path minted these numbers, mirrored from `SCORE_VERSION` in
-   * `cli/serve-web/src/scorer/tuning.ts` and checked against it by a test.
-   *
-   * A match that does not carry [SCORE_VERSION] is dropped rather than printed. The scorer's kernel
-   * changed once, deliberately — `drawImage`'s implementation-defined smoothing gave way to the
-   * portable area average both engines run — and every published number moved with it. A delivery
-   * branch is regenerated on its own schedule, so a viewer will inevitably meet a catalog baked
-   * before the change; printing that chip would put a number from the old kernel beside a readout
-   * the lane computes with the new one, and the two disagreeing at a glance is the exact failure a
-   * baked number cannot survive. Dropped, the lane scores live on entry — which is what a chip with
-   * no verdict has always fallen back to.
-   *
-   * Null on every catalog published before the version existed, which is the same case and is
-   * treated the same way.
+   * Which pixel path minted these numbers, mirroring `SCORE_VERSION` in
+   * `cli/serve-web/src/scorer/tuning.ts`. A match without the current [SCORE_VERSION] (or null,
+   * from older catalogs) is dropped and scored live instead, so old-kernel numbers never sit beside
+   * new ones.
    */
   val scoreVersion: Int? = null,
 )
@@ -118,10 +93,8 @@ public data class DesignReferenceSource(
 @Serializable public data class DesignReferenceArtifact(val kind: String, val path: String? = null)
 
 /**
- * Validated, read-only view of a bundle/catalog's `references/index.json`.
- *
- * All failures are fail-soft: malformed, missing, traversing, duplicate, or hash-mismatched records
- * are omitted while the rest of the preview bundle continues to serve normally.
+ * Validated, read-only view of a bundle/catalog's `references/index.json`. Fail-soft: malformed,
+ * missing, traversing, duplicate or hash-mismatched records are omitted.
  */
 public class ServeDesignReferenceStore
 private constructor(
@@ -149,12 +122,8 @@ private constructor(
   }
 
   /**
-   * The manifest as read from disk, with its records left as raw JSON.
-   *
-   * [DesignReferenceManifest] is the schema producers write against; this is what a fail-soft
-   * READER needs, and they differ in exactly one way that matters: decoding a `List<JsonElement>`
-   * cannot fail on the contents of any one record, so [load] can decode them individually and drop
-   * only what it cannot read.
+   * The manifest with records left as raw JSON, so [load] can decode them one by one and drop only
+   * what it can't read.
    */
   @Serializable
   private data class RawManifest(
@@ -167,14 +136,9 @@ private constructor(
     public const val INDEX_FILE: String = "index.json"
 
     /**
-     * The pixel path this build's scorer implements — mirrored from `SCORE_VERSION` in
-     * `cli/serve-web/src/scorer/tuning.ts`, which is where the rationale for the number lives, and
-     * pinned to it by `ServeDesignReferenceStoreTest`.
-     *
-     * Two copies of a constant are fine while something fails when they disagree, and this is the
-     * pair that has to agree: the browser mints the number and the host decides whether to print
-     * it, so a host reading the wrong version would either discard every current match or trust
-     * every stale one.
+     * The pixel path this build's scorer implements, mirrored from `SCORE_VERSION` in
+     * `cli/serve-web/src/scorer/tuning.ts` (which explains the number) and pinned by
+     * `ServeDesignReferenceStoreTest`.
      */
     public const val SCORE_VERSION: Int = 3
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
@@ -199,13 +163,8 @@ private constructor(
       val seen = HashSet<String>()
       val valid =
         manifest.references
-          // Decoded ONE RECORD AT A TIME, so a record this reader cannot understand costs only
-          // itself. Decoding the whole array in one call makes any single malformed entry — a
-          // `"match": {}` from a half-written producer, a null where a number belongs — throw while
-          // parsing the envelope, which lands in the `runCatching` above and returns an EMPTY
-          // store: one bad record and the catalog's entire design-spec lane goes dark, on every
-          // page, silently. That is the opposite of this class's stated contract, and the
-          // per-record validation below (ids, paths, hashes, [isSaneMatch]) never gets to run.
+          // Decoded one record at a time: decoding the whole array would let one malformed entry
+          // empty the entire store.
           .mapNotNull {
             runCatching { JSON.decodeFromJsonElement<DesignReference>(it) }.getOrNull()
           }
@@ -223,14 +182,8 @@ private constructor(
     }
 
     /**
-     * Whether a published match is a number a chip can print — minted by the kernel this build
-     * scores with, and in range.
-     *
-     * Dropped rather than clamped, and dropped WITHOUT taking the reference with it: a nonsense
-     * percentage is a producer bug, and the lane's live scoring still answers the same question on
-     * entry — so the cost of ignoring it is a chip with no verdict, where the cost of trusting it
-     * is a chip stating a falsehood and the cost of dropping the record is a page with no design
-     * spec at all.
+     * Whether a published match is printable: minted by this build's kernel and in range. Dropped
+     * (without dropping the reference) rather than clamped; the lane scores live instead.
      */
     private fun isSaneMatch(match: DesignReferenceMatch): Boolean =
       match.scoreVersion == SCORE_VERSION &&
@@ -239,16 +192,14 @@ private constructor(
         (match.changedPercent?.let { it.isFinite() && it in 0.0..100.0 } ?: true) &&
         (match.geometry?.let { it.isFinite() && it >= 0.0 } ?: true)
 
-    // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-    // and the `:server` call sites are in a different module now. Not a widened API by intent.
+    // Public because `:server` call sites live in another module; not a widened API by intent.
     public fun isSafeRelativePath(value: String): Boolean {
       if (value.isBlank() || value.startsWith('/') || value.startsWith('\\')) return false
       if (Regex("^[A-Za-z]:").containsMatchIn(value)) return false
       return value.replace('\\', '/').split('/').none { it.isBlank() || it == "." || it == ".." }
     }
 
-    // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-    // and the `:server` call sites are in a different module now. Not a widened API by intent.
+    // Public because `:server` call sites live in another module; not a widened API by intent.
     public fun isValid(reference: DesignReference, bytes: ByteArray): Boolean =
       hasValidMetadata(reference) && hasValidRaster(reference, bytes)
 

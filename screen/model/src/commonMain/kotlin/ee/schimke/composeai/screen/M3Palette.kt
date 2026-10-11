@@ -13,32 +13,14 @@ import ee.schimke.composeai.discovery.TargetParameter
 /**
  * Component records for the Material 3 subset the UI builder offers.
  *
- * ### Why these are authored rather than discovered
+ * Hand-authored because discovery only records composables in the scanned module; M3's components
+ * have no `@Preview`. These are data in the real schema, checked by the real
+ * [ee.schimke.composeai.discovery.ScreenGenerator]; when discovery learns to record library
+ * symbols, this file goes away.
  *
- * `ComponentRecords.from(manifest)` derives records **wholly from discovered preview targets**, and
- * a preview target is a composable in the scanned module. Material 3's own components are a
- * dependency's symbols with no `@Preview` anywhere, so discovery never sees them: running
- * `composePreviewDiscover` on the M3 catalog yields three records — `Sticker`, `CatalogSticker`,
- * `FullScreenM3` — the catalog's own wrappers, and none of the components a screen is built from.
- *
- * So these are hand-authored. That is a smaller claim than it sounds: it is **data in the real
- * schema**, read by the real [ee.schimke.composeai.discovery.ScreenGenerator], which type-checks
- * every value against [TargetParameter.typeFqn], refuses what it cannot prove, and holds the
- * `expressionPackages` allow-list. Nothing here is a second code generator. When discovery learns
- * to record library symbols, this file is deleted and the same document generates unchanged.
- *
- * ### What decides the contents
- *
- * Not "what looks useful": the vocabulary is sized by **real screens**. Each component and each
- * argument here is one a preview in this repository's own catalog actually uses —
- * `LibraryGreetingPreview`, `PermissionGatedCameraScreen`, `ScrollingListPreview` and
- * `AppScaffoldTemplate`, four screens from four different sample apps. `M3PaletteScreenTest`
- * rebuilds those four as documents and asserts the generated source, so a component that drifts
- * from the signature it claims fails there rather than in a browser.
- *
- * ### `origin = LIBRARY`
- *
- * These are a dependency's symbols, not the project's, which is exactly what that flag records.
+ * The vocabulary is sized by four real sample screens (`LibraryGreetingPreview`,
+ * `PermissionGatedCameraScreen`, `ScrollingListPreview`, `AppScaffoldTemplate`), which
+ * `M3PaletteScreenTest` rebuilds and asserts. `origin = LIBRARY` marks them as dependency symbols.
  */
 object M3Palette {
 
@@ -56,17 +38,11 @@ object M3Palette {
   /** Every id the builder offers, containers first. */
   val allIds: List<String> = containerIds + componentIds
 
-  // ---------------------------------------------------------------------------------------------
-  // Values a screen sets, as the generator's own vocabulary rather than text spliced into source.
-  // ---------------------------------------------------------------------------------------------
+  // Values a screen sets, in the generator's own vocabulary.
 
   /**
-   * `[value].dp`, as the generator's own vocabulary for a dimension.
-   *
-   * `dp` is an extension **property** on `Int`, which is why this is a chain with a property link
-   * rather than a call. Passing the bare `Int` instead — `padding(8)` — is a call to a `padding`
-   * overload that does not exist, and the compiler says only "none of the following candidates is
-   * applicable".
+   * `[value].dp`. `dp` is an extension property on `Int`, hence a chain with a property link; a
+   * bare `Int` would call a nonexistent `padding` overload.
    */
   fun dp(value: Int): ScreenValue =
     ScreenValue.Chain(
@@ -89,11 +65,8 @@ object M3Palette {
   private const val PADDING_VALUES = "$LAYOUT.PaddingValues"
 
   /**
-   * The named values the builder offers for a parameter of [typeFqn], as label to value.
-   *
-   * A closed list rather than a free expression box, and that is the security posture rather than a
-   * simplification: `expressionPackages` gates which packages a value may *name*, and every choice
-   * here is one this file authored. A screen cannot reach a symbol nobody put in this list.
+   * The named values the builder offers for a parameter of [typeFqn], as label to value. A closed
+   * list by design: a screen can't reach a symbol nobody put here.
    */
   fun choicesFor(typeFqn: String?): List<Pair<String, ScreenValue>> =
     when (typeFqn) {
@@ -156,21 +129,11 @@ object M3Palette {
       typeFqn = PADDING_VALUES,
     )
 
-  // ---------------------------------------------------------------------------------------------
   // Modifiers.
-  // ---------------------------------------------------------------------------------------------
 
   /**
-   * The modifier links the builder offers, labelled, as the chain link each toggles.
-   *
-   * A modifier is a [ScreenValue.Chain] on `Modifier`, which is the generator's own vocabulary for
-   * it — not a string the builder splices into source. Every link is imported and called by its
-   * simple name, and the generator refuses two links claiming one simple name from different
-   * packages, so a chain cannot silently become a different chain.
-   *
-   * `padding` is a *function* of the amount rather than a fixed entry, because the four screens
-   * this palette is sized against use 8, 12 and 16 between them. A fixed `padding(8.dp)` chip could
-   * not build any of them faithfully, which is the whole question being asked of the builder.
+   * The modifier links the builder offers, labelled, each as a [ScreenValue.Chain] link on
+   * `Modifier`. `padding` takes the amount because the reference screens use 8, 12 and 16.
    */
   fun modifierLinks(paddingDp: Int): List<Pair<String, ChainLink>> =
     listOf(
@@ -190,20 +153,14 @@ object M3Palette {
     )
 
   /**
-   * The packages an expression in a generated screen may name — the generator's security guard.
-   *
-   * An **allow-list**, not a convenience: [ee.schimke.composeai.discovery.ScreenGenerator] refuses
-   * any reference, construct or chain link outside it rather than emitting a call into a package
-   * the document's author chose. `androidx.compose.material3` is here because the real screens read
-   * `MaterialTheme.typography` and `MaterialTheme.colorScheme`; widening it further is a deliberate
-   * act, not a side effect of adding a component.
+   * The packages an expression in a generated screen may name: the generator's security allow-list.
+   * `androidx.compose.material3` is here for `MaterialTheme.typography` / `.colorScheme`; widening
+   * it should be deliberate.
    */
   val expressionPackages: Set<String> =
     setOf("androidx.compose.ui", LAYOUT, UNIT, M3, "androidx.compose.ui.graphics")
 
-  // ---------------------------------------------------------------------------------------------
   // The records.
-  // ---------------------------------------------------------------------------------------------
 
   private fun record(
     id: String,
@@ -272,11 +229,8 @@ object M3Palette {
         variant = "authored",
         components =
           listOf(
-            // `Scaffold.content` is `@Composable (PaddingValues) -> Unit` — the padding arrives as
-            // a
-            // parameter, not a receiver, so no receiver scope is recorded for it. Recorded as that
-            // type, so a document can name the parameter (`ScreenNode.slotParameters`) and pad its
-            // body by it instead of drawing under the bars.
+            // `Scaffold.content` takes `PaddingValues` as a parameter, not a receiver; recorded so
+            // a document can name it (`ScreenNode.slotParameters`) and pad its body.
             record(
               "scaffold",
               M3,
@@ -331,11 +285,8 @@ object M3Palette {
                     .build()
                 ),
             ),
-            // `TopAppBar` is still `@ExperimentalMaterial3Api`, which is why the opt-in is recorded
-            // rather than assumed: the generator writes the annotation onto the screen, and it is
-            // an
-            // AndroidX-mechanism marker, so it goes under `androidx.annotation.OptIn` rather than
-            // `kotlin.OptIn`. A screen using no app bar carries neither.
+            // `TopAppBar` is `@ExperimentalMaterial3Api`, an AndroidX-mechanism marker, so the
+            // generator emits `androidx.annotation.OptIn` for it.
             record(
               "top-app-bar",
               M3,

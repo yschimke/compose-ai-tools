@@ -81,24 +81,17 @@ public data class JevSubjectTrace(
 /**
  * EXPERIMENTAL: the text-only checker, minimal first.
  *
- * Round 0 shows Jev, per subject, a compact source excerpt (the preview's body, and only the
- * signatures of the wrappers it calls), the ~30-token accessibility summary line, and a one-line
- * list of the [GuidelineFacts] computed from what is already in hand; each structural rule is one
- * Choice whose instructions carry the rule's check, its guidance and the facts that bear on it
- * ([JevRuleShapes]), decisive ones first. Besides `cannot_tell`, `not_applicable`, `fail` and
- * `pass`, a question offers one `needs:<kind>` option per evidence kind the subject could still be
- * shown — `needs:a11y` (the full nodes and measured checks, which the host may have to fetch),
- * `needs:source` (the whole source with its wrappers), `needs:facts` (every computed fact) — and a
- * follow-up round serves what was asked, one host prefetch for all subjects, re-asking only the
- * rules that asked. `cannot_tell` while evidence is still offered counts as asking for all of it.
- * Only after the last round does `cannot_tell` become unchecked ([TEXT_ONLY_REASON]); a visual rule
- * is never asked. Nothing is passed silently.
+ * Round 0 shows Jev, per subject, a compact source excerpt (the preview body plus wrapper
+ * signatures), the accessibility summary line and the computed [GuidelineFacts]; each structural
+ * rule is one Choice carrying the rule's check, guidance and relevant facts ([JevRuleShapes]).
+ * Options are `cannot_tell`, `not_applicable`, `fail`, `pass` and one `needs:<kind>` per evidence
+ * kind still available (`a11y`, `source`, `facts`); a follow-up round serves what was asked and
+ * re-asks only those rules. `cannot_tell` while evidence remains counts as asking for all of it,
+ * and becomes unchecked ([TEXT_ONLY_REASON]) only after the last round. Visual rules are never
+ * asked; nothing is passed silently.
  *
- * Jev returns probabilities, never text, so a verdict's reason is the decisive fact it was shown,
- * and its `nodeIds` come from a Choice over the node ids in play, or from that fact's node.
- *
- * Results are cached under [GuidelineRunOptions.cacheModel], which names the checker, so a vision
- * verdict and a Jev verdict never answer for one another.
+ * Jev returns probabilities, not text, so a verdict's reason is the decisive fact it was shown.
+ * Results are cached under [GuidelineRunOptions.cacheModel], which names the checker.
  */
 internal class JevChecker(
   private val model: GuidelineModel,
@@ -113,10 +106,7 @@ internal class JevChecker(
   /** How many subjects are asked at once: the run's `--concurrency` ([GuidelineRunOptions]). */
   var parallelism: Int = options.concurrency
 
-  /**
-   * For comparison only, off by default: fetch and show every subject's full accessibility data
-   * before round 0, as the first version of this checker did, rather than minimal first.
-   */
+  /** For comparison only: show every subject's full accessibility data before round 0. */
   var a11yUpFront: Boolean = false
 
   private val jevModel: String = options.answeringModel
@@ -407,11 +397,9 @@ internal class JevChecker(
   }
 
   /**
-   * Before round 0: the facts computable from what is already in hand. Accessibility data the host
-   * holds without fetching (it can [GuidelineEvidenceHost.summary] it: a staged
-   * `accessibility.json`, or an earlier fetch) feeds the facts and the summary line, though the
-   * node list itself waits to be asked for; data the host would have to fetch waits for
-   * `needs:a11y`. With [a11yUpFront], everything is fetched and shown at once instead.
+   * Before round 0: compute the facts from what is in hand. Accessibility data the host already
+   * holds feeds the facts and summary line; data it would have to fetch waits for `needs:a11y`
+   * (unless [a11yUpFront]).
    */
   private fun prepare(states: List<Asked>, platform: String) {
     if (a11yUpFront) {
@@ -739,10 +727,8 @@ internal class JevChecker(
 
   /**
    * What the jev checker needs from a run's request pool: cost reservations under the cap, a
-   * run-wide pause on a rate limit, and the retry allowance. [Ledger] is this checker's
-   * own; #5805's concurrency pool (cost reservation and a global `Retry-After` pause for the vision
-   * path) is meant to implement it once it lands, through [requestPool], so both checkers share one
-   * pool and one set of rules.
+   * run-wide pause on a rate limit, and the retry allowance. TODO: share one implementation with
+   * the vision path's concurrency pool (#5805) via [requestPool].
    */
   internal interface DecisionsPool {
     val spent: Double
@@ -801,11 +787,6 @@ internal class JevChecker(
     private val lock = ReentrantLock()
     private val settled = lock.newCondition()
 
-    /**
-     * A reservation for one more request, or null when the cap cannot afford it. Under a cap,
-     * nothing is started beside the first request until it has come back: before then the price is
-     * unknown, and parallel requests reserved at zero could all cross the cap.
-     */
     private var pausedUntil = 0L
 
     override fun pauseAll(millis: Long) = lock.withLock {
@@ -820,6 +801,11 @@ internal class JevChecker(
       }
     }
 
+    /**
+     * A reservation for one more request, or null when the cap cannot afford it. Under a cap only
+     * one request runs until a price is known, so parallel zero-cost reservations can't cross the
+     * cap.
+     */
     override fun reserve(): Double? = lock.withLock {
       if (cap == null) {
         started++

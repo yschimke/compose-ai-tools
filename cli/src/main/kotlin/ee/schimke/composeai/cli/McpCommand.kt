@@ -18,31 +18,17 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * `compose-preview mcp <subcommand>`
- *
- * Three subcommands cover the full agent-attach lifecycle:
- *
+ * `compose-preview mcp <subcommand>`:
  * - `serve` — launch the MCP server on stdio, or the shared UI Builder's authenticated Streamable
  *   HTTP endpoint with `--streamable-http`. Status / errors go to stderr.
- * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
- *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
- *   required up-front this way), run `composePreviewDiscover`, and print or install the MCP host
- *   configuration an agent host needs.
- * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) without
- *   making any changes.
+ * - `install` — bootstrap and enable every plugin module's daemon descriptor, run
+ *   `composePreviewDiscover`, and print or install the agent-host MCP configuration.
+ * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) read-only.
  *
- * **`serve` is a launcher now**; `install` and `doctor` are not, and the split is the layer rule's.
- * The MCP server needs an HTTP server to do its job — the UI-builder Streamable HTTP endpoint, and
- * everything the MCP SDK brings — so #5176 placed that module in compose-preview-server, and this
- * command execs the `compose-preview-mcp` binary published from there, exactly as [ServeCommand]
- * execs `compose-preview-server`. `install` and `doctor` stay here in full: they read Gradle
- * descriptors, run `composePreviewDiscover` and write agent-host config, which is offline behaviour
- * that opens no socket, and the config they write still names *this* CLI (`compose-preview mcp
- * serve`) as the agent's command — so the install story an agent follows does not change at all.
- *
- * Stdio survives the extra process. The JSON-RPC framing runs over inherited stdin/stdout, so the
- * agent host talks to the MCP server through this process rather than to a different stream, and
- * the exit code is passed back.
+ * `serve` is a launcher: it execs the `compose-preview-mcp` binary from compose-preview-server
+ * (which needs an HTTP server), as [ServeCommand] does. `install` and `doctor` are offline and stay
+ * here, and the config they write still names this CLI's `mcp serve`. JSON-RPC runs over inherited
+ * stdio and the exit code is passed back.
  */
 internal class McpCommand(
   args: List<String>,
@@ -167,16 +153,10 @@ internal class McpCommand(
   // -- serve -------------------------------------------------------------------------------------
 
   private fun serve(args: List<String>) {
-    // Pure delegation — the MCP server owns stdin / stdout for JSON-RPC framing. Anything printed
-    // to stdout here would corrupt the wire protocol; status goes to stderr. Do not infer a default
-    // project from cwd: MCP hosts may launch from "/" and projects can be registered later.
-    //
-    // `inheritIO`, not piped streams: the agent host's stdin and stdout are handed to the MCP
-    // server directly, so this process copies nothing, cannot reframe a message, and adds no
-    // buffering to a protocol that is sensitive to both.
-    //
-    // A cached copy is compared against the newest release once a day and replaced when older
-    // (#5602); without that, whoever ran this once stays on that server for good.
+    // The MCP server owns stdout for JSON-RPC, so nothing may be printed there; status goes to
+    // stderr. Don't infer a project from cwd (hosts may launch from "/"). `inheritIO` so this
+    // process never copies or buffers the protocol. Cached copies are refreshed against the newest
+    // release daily.
     val found = ServerBinaryDiscovery.choose(args, ReleasedDistribution.MCP)
     val choice =
       found?.let(::refreshedMcp)
@@ -192,9 +172,8 @@ internal class McpCommand(
         label = ReleasedDistribution.MCP.label,
       )
     )
-    // The same preflight `serve` runs, and it matters more here: an MCP host shows the user no
-    // stderr at all, so an `UnsupportedClassVersionError` inside the start script surfaces only as
-    // a server that will not connect. See `ServerJavaPreflight`.
+    // Same preflight as `serve`; matters more here since MCP hosts hide stderr, so a JVM mismatch
+    // would only look like a server that won't connect.
     ServerJavaPreflight.failure(choice, ReleasedDistribution.MCP)?.let {
       System.err.println(it)
       exitProcess(1)
@@ -223,12 +202,8 @@ internal class McpCommand(
   }
 
   /**
-   * Fetch the pinned MCP server when the machine has none, and name the copy that results.
-   *
-   * The same trade `serve` makes (#5183): nothing installs this binary, so a miss means "not
-   * fetched yet" rather than "not wanted", and putting the download in the installer would charge
-   * every user of `render`, `show`, `bundle` and `history` for a command they may never run. The
-   * tarball rides the same release as the preview server, so one pin covers both.
+   * Fetch the MCP server when the machine has none (first use, like `serve`), and name the result.
+   * It ships in the same release as the preview server.
    */
   private fun refreshedMcp(found: ServerBinaryDiscovery.Choice): ServerBinaryDiscovery.Choice =
     ServerBinaryDiscovery.refreshed(
@@ -289,15 +264,14 @@ internal class McpCommand(
         exitProcess(2)
       }
 
-      // Two batched runs: bootstrap every descriptor, then re-run discovery so previews.json sits
-      // alongside. Single Gradle invocation per phase keeps configuration cache hits warm.
+      // Two batched phases (bootstrap descriptors, then re-run discovery), one Gradle invocation
+      // each.
       System.err.println(
         "==> bootstrapping daemon descriptors for ${modules.size} module(s): " +
           modules.joinToString(", ") { ":${it.gradlePath}" }
       )
-      // No `-P` propagation here: DaemonExtension's `enabled` property is intentionally not wired
-      // to a Gradle property (see DaemonExtension.kt KDoc). We populate the descriptor by running
-      // the task and then patch the JSON ourselves below — same as the smoke script does.
+      // DaemonExtension's `enabled` isn't wired to a Gradle property, so run the task and patch the
+      // JSON below.
       val daemonOk =
         driver
           .render(
@@ -312,11 +286,7 @@ internal class McpCommand(
         exitProcess(1)
       }
 
-      // Flip the on-disk `enabled` flag — DaemonExtension's gradle-property override is
-      // intentionally
-      // not propagated into the JSON (see DaemonExtension.kt KDoc), so we patch it here so the
-      // agent
-      // doesn't have to remember the build-script edit.
+      // Flip the on-disk `enabled` flag so the agent needn't edit the build script.
       val descriptors = modules.mapNotNull { module ->
         val descriptor = File(module.projectDir, "build/compose-previews/daemon-launch.json")
         if (!descriptor.isFile) {
@@ -483,10 +453,9 @@ internal class McpCommand(
   }
 
   /**
-   * Register `compose-preview-mcp` with each selected host, only where the entry is missing or
-   * broken: a healthy existing entry is left exactly as it is, so running `mcp install` in a
-   * project never rewrites global host config. Global entries are `<stable launcher> mcp serve`
-   * with no `--project`; only a project-scoped OpenCode config (`--scope project`) names one.
+   * Register `compose-preview-mcp` with each selected host only where the entry is missing or
+   * broken, so `mcp install` never rewrites healthy global config. Global entries are `<stable
+   * launcher> mcp serve` without `--project`; only project-scoped OpenCode config names one.
    */
   private fun registerHosts(args: List<String>, projectDir: File): Registration {
     val antigravityDetected = isAntigravityEnvironment()
@@ -526,15 +495,14 @@ internal class McpCommand(
     val antigravity = AntigravityConfig(File(System.getProperty("user.home")))
     val antigravityConfig =
       args.flagValue("--antigravity-config")?.let(::File) ?: antigravity.target()
-    // The plugin registers the same server under its own name; a global entry would be a second
-    // copy of every tool. Only an explicit --antigravity / --antigravity-config overrides that.
+    // The plugin registers the same server; a global entry would duplicate every tool. Only an
+    // explicit --antigravity / --antigravity-config overrides that.
     val antigravityViaPlugin =
       antigravity.pluginInstalled &&
         "--antigravity" !in args &&
         args.flagValue("--antigravity-config") == null
     val claude = ClaudeConfig(File(System.getProperty("user.home")))
-    // Same as Antigravity: the Claude Code plugin registers the server itself, so a user-scope
-    // entry would duplicate every tool. Only an explicit --claude overrides that.
+    // Same for the Claude Code plugin; only an explicit --claude overrides it.
     val claudeViaPlugin = claude.pluginInstalled && "--claude" !in args
     val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
     val openCodeConfig =
@@ -634,8 +602,8 @@ internal class McpCommand(
   }
 
   /**
-   * The plugin already provides the server. Leave global config alone, but name any global entry
-   * that duplicates it: removing it is the fix, and it is the user's file to edit.
+   * The plugin provides the server: leave global config alone, but name any duplicate global entry
+   * for the user to remove.
    */
   private fun antigravityPluginResult(antigravity: AntigravityConfig): HostResult =
     HostResult(
@@ -945,10 +913,8 @@ internal class McpCommand(
 
   internal companion object {
     /**
-     * Names this CLI's launcher to the MCP server it starts, so the server can run `compose-preview
-     * init-script --path` itself on a machine where `mcp install` never ran, instead of failing the
-     * first render with "run `compose-preview mcp install` once"
-     * (yschimke/compose-agent-plugins#87).
+     * Names this CLI's launcher to the MCP server, so it can run `compose-preview init-script
+     * --path` itself where `mcp install` never ran.
      */
     const val CLI_ENV = "COMPOSE_PREVIEW_CLI"
 
@@ -1010,16 +976,9 @@ internal class McpCommand(
     }
 
     /**
-     * The argv handed to the MCP server.
-     *
-     * `--mcp-binary` is this launcher's own flag and is dropped rather than forwarded — the MCP
-     * server has no such option, and passing it through would make every invocation fail on an
-     * unknown argument. Everything else is the caller's, unparsed: `--project`,
-     * `--streamable-http`, the UI-builder flags and their defaults are the server's surface, and a
-     * launcher that re-validated them here would be a second copy of it, drifting from the first.
-     *
-     * No subcommand word is added, unlike [ServeCommand]: `compose-preview-mcp` IS the server, so
-     * its argv starts at the first forwarded flag.
+     * The argv for the MCP server: everything except this launcher's own `--mcp-binary`, unparsed,
+     * so the server's flags aren't re-validated (and drifted) here. No subcommand word: the binary
+     * is the server.
      */
     internal fun mcpLaunchCommand(binary: String, args: List<String>): List<String> = buildList {
       add(binary)
@@ -1110,10 +1069,8 @@ internal class McpCommand(
   }
 }
 
-// Pinned to DAEMON_DESCRIPTOR_SCHEMA_VERSION in
-// gradle-plugin/daemon-launch-builder/.../DaemonClasspathDescriptor.kt. Bump together —
-// `checkDaemonLaunchSchema` fails the build if they drift, so this is enforced rather than
-// remembered.
+// Must equal DAEMON_DESCRIPTOR_SCHEMA_VERSION in DaemonClasspathDescriptor.kt;
+// `checkDaemonLaunchSchema` enforces it.
 internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 
 internal data class DoctorState(
@@ -1128,8 +1085,8 @@ internal data class DoctorState(
 internal data class DoctorFinding(val id: String, val level: String, val message: String)
 
 /**
- * Validate the on-disk daemon descriptor and return findings + a verdict telling the agent what (if
- * anything) to do. Lifted out of [McpCommand] so it's unit-testable without spinning up Gradle.
+ * Validate the on-disk daemon descriptor and return findings plus a verdict for the agent. Separate
+ * from [McpCommand] for unit testing.
  */
 internal fun inspectDescriptor(
   gradlePath: String,

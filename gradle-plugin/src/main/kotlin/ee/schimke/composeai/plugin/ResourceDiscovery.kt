@@ -4,13 +4,9 @@ import ee.schimke.composeai.discovery.*
 import java.io.File
 
 /**
- * Pure-Kotlin core of the [DiscoverAndroidResourcesTask]. Walks the consumer's `res/` source roots
- * for `drawable<qualifier>` and `mipmap<qualifier>` subdirectories, classifies each XML file via
- * [ResourceXmlClassifier], groups source files by `(base, name)`, and computes the capture fan-out
- * (qualifier × adaptive shape) per the [ResourcePreviewsExtension] DSL knobs.
- *
- * Lives outside the task class so the bulk of the logic can be unit-tested without spinning up a
- * Gradle ProjectBuilder — the task is a thin shell that hands paths to [discover].
+ * Core of [DiscoverAndroidResourcesTask]: walks `res/` roots for `drawable*` / `mipmap*` dirs,
+ * classifies XML via [ResourceXmlClassifier], groups by `(base, name)`, and computes the capture
+ * fan-out from the [ResourcePreviewsExtension] knobs. Separate from the task for unit testing.
  */
 object ResourceDiscovery {
 
@@ -30,15 +26,12 @@ object ResourceDiscovery {
     val styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     val stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
     /**
-     * When `true`, every [ResourceType.ANIMATED_VECTOR] capture is paired with a sibling filmstrip
-     * capture sampling [filmstripFractions] × `totalDuration`. Mirror of
-     * `composePreview.resourcePreviews.filmstrip`.
+     * Pair each [ResourceType.ANIMATED_VECTOR] capture with a filmstrip at [filmstripFractions];
+     * mirrors `resourcePreviews.filmstrip`.
      */
     val filmstrip: Boolean = true,
     /**
-     * Keyframe fractions for the [ResourceType.ANIMATED_VECTOR] filmstrip capture. Each value in
-     * `[0, 1]`. Defaults to [DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS] — 5 cells at
-     * 0%/25%/50%/75%/100%.
+     * Filmstrip keyframe fractions in `[0, 1]`; defaults to [DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS].
      */
     val filmstripFractions: List<Float> = DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS,
     /** Module-relative path to use as the [ManifestReference.source] root, e.g. `src/main`. */
@@ -46,20 +39,17 @@ object ResourceDiscovery {
   )
 
   /**
-   * Walks [resSourceRoots] and returns one [ResourcePreview] per `(base, name)` pair, with captures
-   * fanned out across the configured [densities] (and [shapes] for adaptive icons, [stretches] for
-   * 9-patches). XML files whose root tag we don't render (`<shape>`, `<selector>`, …) are dropped;
-   * raster `.png` files that aren't `.9.png` 9-patches are also dropped (out of scope — we render
-   * vector / animated-vector / adaptive-icon XML, 9-patch raster, and nothing else).
+   * One [ResourcePreview] per `(base, name)` in [resSourceRoots], fanned out across [densities]
+   * (plus [shapes] for adaptive icons, [stretches] for 9-patches). Unrendered XML roots (`<shape>`,
+   * `<selector>`, …) and non-9-patch rasters are dropped.
    */
   fun discover(config: Config): List<ResourcePreview> {
     val collected = linkedMapOf<String, Builder>()
     for (root in config.resSourceRoots) {
       if (!root.isDirectory) continue
       val rootRelative = config.sourceRootRelativePath(root)
-      // Sort directories alphabetically so the default-qualifier `drawable/` walks before
-      // `drawable-night/`, which makes the `null` slot in `sourceFiles` populate first and the
-      // capture order deterministic across filesystems (`listFiles()` makes no order guarantee).
+      // Sorted so `drawable/` walks before `drawable-night/` and capture order is deterministic
+      // (`listFiles()` has no order).
       val children = root.listFiles()?.sortedBy { it.name } ?: continue
       for (child in children) {
         if (!child.isDirectory) continue
@@ -85,17 +75,12 @@ object ResourceDiscovery {
           if (
             type == ResourceType.ADAPTIVE_ICON && ResourceXmlClassifier.hasMonochromeLayer(file)
           ) {
-            // Themed captures (THEMED_LIGHT / THEMED_DARK) require a <monochrome> layer; record its
-            // presence so the capture fan-out can skip themed styles for plain
-            // background+foreground
-            // icons rather than emit captures the renderer can't produce (counted as missing).
+            // Themed styles need a `<monochrome>` layer; record it so plain icons skip them.
             builder.hasMonochrome = true
           }
           if (builder.type != type) {
-            // Same logical id classifies as different ResourceTypes across qualifier dirs (e.g.
-            // `drawable/ic_foo.xml` is a vector but `drawable-night/ic_foo.xml` is an
-            // animated-vector). Pathological — last write wins, but we keep the first type since
-            // that's what the consumer's default-qualifier file said.
+            // The same id may classify differently across qualifier dirs; keep the
+            // default-qualifier file's type.
           }
           val relativeSourcePath =
             "$rootRelative/${child.name}/${file.name}".replace(File.separatorChar, '/')
@@ -106,10 +91,7 @@ object ResourceDiscovery {
     return collected.values.map { it.build(config) }
   }
 
-  /**
-   * Computes the capture set for one resource. Public so [DiscoverAndroidResourcesTask] tests can
-   * pin specific fan-outs without driving the filesystem walk.
-   */
+  /** The capture set for one resource; public for tests. */
   fun captures(
     type: ResourceType,
     qualifierSuffixes: Set<String?>,
@@ -133,10 +115,8 @@ object ResourceDiscovery {
         val combined = combineQualifiers(cleaned, density)
         when (type) {
           ResourceType.ADAPTIVE_ICON -> {
-            // Two-axis fan-out: every (shape × non-LEGACY style) plus one bare LEGACY capture
-            // (mask-independent — pre-O fallback ignores the system mask). Themed styles need a
-            // <monochrome> layer to render; drop them when the icon has none so a plain
-            // background+foreground icon doesn't emit captures that can't be produced.
+            // Every (shape × non-LEGACY style) plus one mask-independent LEGACY capture; themed
+            // styles only with a `<monochrome>` layer.
             val maskedStyles = styles.filter {
               it != AdaptiveStyle.LEGACY &&
                 (hasMonochrome ||
@@ -228,9 +208,7 @@ object ResourceDiscovery {
               )
           }
           ResourceType.NINE_PATCH -> {
-            // Fan out across stretch variants — same drawable, different `setBounds` targets.
-            // Empty `stretches` would mean "no captures", which is almost certainly a config
-            // mistake; default to all four to keep the previewer well-defined.
+            // Empty `stretches` is almost certainly a mistake; default to all four.
             val effectiveStretches = stretches.ifEmpty { DEFAULT_NINE_PATCH_STRETCHES }
             for (stretch in effectiveStretches) {
               out +=
@@ -256,12 +234,9 @@ object ResourceDiscovery {
   }
 
   /**
-   * Cleans a source-file qualifier suffix into the prefix the renderer should pass to Robolectric.
-   * Density tokens are stripped so the implicit density fan-out can re-add a specific bucket
-   * (`anydpi` counts here — adaptive-icon source dirs like `mipmap-anydpi-v26` carry it but we want
-   * to render at concrete densities for sharp output). Version tokens (`v26`, `v34`) are stripped
-   * too — they gate which file AAPT picks at resolution time, not how the picked file renders, so
-   * they don't belong in the capture qualifier.
+   * Turns a source qualifier into the capture qualifier: density tokens (including `anydpi`) are
+   * stripped so the density fan-out re-adds a concrete bucket, and version tokens (`v26`) are
+   * stripped since they only affect which file AAPT picks.
    */
   private fun cleanSourceQualifier(suffix: String?): String? {
     if (suffix == null) return null
@@ -323,9 +298,8 @@ object ResourceDiscovery {
     val type: ResourceType,
     val sourceFiles: LinkedHashMap<String, String> = linkedMapOf(),
     /**
-     * `true` once any adaptive-icon source file for this resource declares a `<monochrome>` layer.
-     * Gates the THEMED_LIGHT / THEMED_DARK capture fan-out — see
-     * [ResourceXmlClassifier.hasMonochromeLayer].
+     * Set when any adaptive-icon source declares `<monochrome>`; gates themed captures
+     * ([ResourceXmlClassifier.hasMonochromeLayer]).
      */
     var hasMonochrome: Boolean = false,
   ) {

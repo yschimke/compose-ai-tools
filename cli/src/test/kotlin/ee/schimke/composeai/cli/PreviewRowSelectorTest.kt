@@ -10,19 +10,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Issue #3786 — selecting a `@PreviewParameter` **row id** must not drop the module before the rows
- * exist.
- *
- * `serve` hosts one entry per row (#3772) with ids of the shape `<baseId>_<row>`, and accepts a row
- * id as a selector. But the ids are synthesised late, from the fan-out the render pass wrote to
- * disk — discovery emits one entry per parameterized *function*, so the manifest holds `Foo` and
- * has never heard of `Foo_PARAM_1`. Module selection and render narrowing both run against that
- * manifest, *before* the expansion, so `serve --id Foo_PARAM_1` used to exit with "no previews
- * discovered": the row-selecting branch in `ServeCommand` was unreachable on the Gradle path.
- *
- * The substring form accidentally worked from the other direction (`--filter Foo` keeps the module,
- * then serves all of Foo's rows), so this only bit when someone named a row precisely — exactly
- * when they were being most specific.
+ * Selecting a `@PreviewParameter` row id must not drop the module before the rows exist. `serve`
+ * hosts one entry per row (`<baseId>_<row>`), but those ids are synthesised from the rendered
+ * fan-out, while module selection and render narrowing run earlier against a manifest that only
+ * knows the function (`Foo`, not `Foo_PARAM_1`).
  */
 class PreviewRowSelectorTest {
 
@@ -64,9 +55,7 @@ class PreviewRowSelectorTest {
     assertEquals(listOf(":app"), selected.map { it.gradlePath })
   }
 
-  /**
-   * `--filter` and `--preview` name the same row and were broken the same way (#3744 widened it).
-   */
+  /** `--filter` and `--preview` naming the same row. */
   @Test
   fun `filter and preview accept a row id too`() {
     val app = module(":app")
@@ -91,9 +80,8 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * The row lane must not become a blanket "keep everything on a miss". A preview with no provider
-   * has no rows, so a selector that matches nothing there is still definitively wrong — and the "no
-   * previews discovered" diagnostic for a typo depends on it.
+   * The row lane must not become "keep everything on a miss": a preview with no provider has no
+   * rows, and the typo diagnostic depends on that.
    */
   @Test
   fun `a row-shaped selector still drops a module whose preview has no provider`() {
@@ -131,10 +119,7 @@ class PreviewRowSelectorTest {
     assertEquals(listOf(":app"), selected.map { it.gradlePath })
   }
 
-  /**
-   * A declared preview whose id genuinely ends in `_1` is matched under its own name — the
-   * mis-handling the issue flagged against a naive `substringBeforeLast('_')`.
-   */
+  /** A declared preview whose id genuinely ends in `_1` matches under its own name. */
   @Test
   fun `a declared preview whose id ends in an underscore digit matches as itself`() {
     val app = module(":app")
@@ -151,12 +136,9 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Review follow-up (#3795). A real preview named `Foo_Dark` in one module and a parameterized
-   * `Foo` in another: `--id Foo_Dark` must resolve to the module that actually declares it. Keeping
-   * both — the second because `Foo_Dark` *could* be a row of `Foo` — makes `serve` abort with "2
-   * modules discovered" before its row-level filtering ever runs, turning a previously working
-   * exact selection into an error. A direct hit anywhere therefore switches the row lane off, the
-   * same way the daemon consults `PreviewRowAddress.split` only on an exact miss.
+   * A real `Foo_Dark` in one module and a parameterized `Foo` in another: `--id Foo_Dark` must
+   * resolve only to the real one, or `serve` aborts on two modules. A direct hit switches the row
+   * lane off, as the daemon only consults `PreviewRowAddress.split` on an exact miss.
    */
   @Test
   fun `an exact hit anywhere wins over a hypothetical row of a parameterized preview`() {
@@ -179,11 +161,8 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Review follow-up (#3795). `--filter` is a case-insensitive **substring** of the final id, so
-   * these are ordinary ways to ask for a row — and `ServeCommand.matches(row.id)` would match all
-   * of them. Module selection has to agree, or it drops the module before that check runs. A
-   * `<base>_<row>` prefix rule answered "no" to the last two: a row's label is not a prefix of
-   * anything, and the rule was case-sensitive besides.
+   * `--filter` is a case-insensitive substring of the final id, so these are all ordinary row
+   * requests that `ServeCommand.matches(row.id)` accepts; module selection must agree.
    */
   @Test
   fun `filter keeps a parameterized preview for any row-shaped spelling`() {
@@ -202,13 +181,9 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Review follow-up (#3798). The exact-hit precedence must NOT extend to the substring selectors.
-   * A parameterized `Foo` yielding `Foo_Crimson` and an ordinary `CrimsonButton` are *both*
-   * legitimately named by `--filter Crimson` — matching several previews at once is what a
-   * substring rule is for, not a conflict to resolve — so letting the concrete one suppress the row
-   * owner would drop a preview that satisfies the documented predicate. Only `--id` is
-   * single-target, and only `--id` has a caller (`serve`) that breaks when a second module tags
-   * along.
+   * Exact-hit precedence must not extend to substring selectors: `--filter Crimson` legitimately
+   * names both a parameterized `Foo`'s `Foo_Crimson` and an ordinary `CrimsonButton`. Only `--id`
+   * is single-target.
    */
   @Test
   fun `a direct filter hit does not suppress other modules' row owners`() {
@@ -253,13 +228,10 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Review follow-up (#3799). The conservative row lane stays opt-in: a command may only keep a
-   * module on a "maybe" if it can cash the keep in after the render, or a speculative keep just
-   * renders a module and prints nothing from it. `serve` cashes it in with `ServeParameterRows`,
-   * and since #3819 `show` / `list` / `render` cash it in with [selectRequestedResults] — but the
-   * extension commands (`a11y` and friends) drive their per-preview data production off the
-   * discovery manifest, which knows only declared ids, so they stay strict and a row selector fails
-   * there *before* a render rather than after one.
+   * The row lane is opt-in: a command may keep a module on a "maybe" only if it can cash the keep
+   * in after rendering (`serve` via `ServeParameterRows`; `show` / `list` / `render` via
+   * [selectRequestedResults]). Extension commands only know declared ids, so they stay strict and
+   * fail before rendering.
    */
   @Test
   fun `the row lane is off for commands that cannot expand rows`() {
@@ -334,9 +306,8 @@ class PreviewRowSelectorTest {
   // ---------- render narrowing: keep #3730's optimisation for row requests ----------
 
   /**
-   * Keeping the module is only half the answer. Without this the scope would select nothing and
-   * fall back to `FULL`, paying for every preview in the module — the exact cost #3730 removed, and
-   * the cost the issue expected option (3) to incur. Selecting the *base* preserves it.
+   * Keeping the module isn't enough: the scope must select the base preview, or it falls back to
+   * `FULL` and renders the whole module.
    */
   @Test
   fun `a row id narrows the gradle render to its base preview`() {
@@ -356,15 +327,9 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Issue #3819. The same narrowing, reached through the command that actually runs it — the flag
-   * [Command.rowAwareSelection] is what routes a row request into the lane above, and `show` /
-   * `render` now set it because they can cash the keep in ([selectRequestedResults] matches the row
-   * ids `PreviewResultBuilder` carries on each capture).
-   *
-   * Both halves matter and neither is enough alone: without the flag the request selects nothing
-   * here and falls back to `FULL`, paying for every preview in the module to answer a single-row
-   * question; with the flag but no row-aware output filtering, the render happens and the command
-   * prints "No previews matched." anyway — the state the issue was filed about.
+   * The same narrowing via the command: [Command.rowAwareSelection] routes row requests into this
+   * lane for `show` / `render`. Without the flag the module renders in full; without row-aware
+   * output filtering the command prints "No previews matched." anyway.
    */
   @Test
   fun `show and render narrow a row id to its base preview`() {

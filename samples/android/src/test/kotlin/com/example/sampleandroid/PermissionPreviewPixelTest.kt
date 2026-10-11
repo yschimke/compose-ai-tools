@@ -5,26 +5,13 @@ import java.io.File
 import org.junit.Test
 
 /**
- * End-to-end verification for issue #3676: the two `@Preview`s over `PermissionGatedCameraScreen`
- * capture *different* branches.
+ * The two `@Preview`s over `PermissionGatedCameraScreen` must capture different branches: the
+ * granted one's `@PermissionPreview(grants = ["android.permission.CAMERA=granted"])` seeds
+ * Robolectric's grants so the viewfinder branch renders. Like `:samples:wear`'s
+ * `GestureHintPreviewPixelTest`.
  *
- * Before `@PermissionPreview` existed, the static build published two byte-identical "needs
- * permission" PNGs, one of them labelled "granted" — a wrong artefact, which is worse than a
- * missing one, because a reviewer reading the catalog has no way to tell. The granted preview now
- * carries `@PermissionPreview(grants = ["android.permission.CAMERA=granted"])`, which the renderer
- * turns into a `PermissionsOverrideExtension` seeding Robolectric's `ShadowApplication` grant set
- * before the first composition, so `ContextCompat.checkSelfPermission(...)` returns
- * `PERMISSION_GRANTED` and the screen takes its viewfinder branch.
- *
- * Reads the files produced by `:samples:android:composePreviewRenderAll` (wired into this module's
- * `test` task via `composePreview { renderBeforeUnitTests = true }`), mirroring `:samples:wear`'s
- * `GestureHintPreviewPixelTest` — the same "two renders of one screen must differ" assertion for
- * the same class of environment override.
- *
- * The renders are located by function-name prefix rather than by a hardcoded filename: the exact
- * stem is owned by discovery's filename normalisation (`docs/RENDER_FILENAMES.md`), which folds the
- * `@Preview(name = …)` variant suffix in and sanitises it, and pinning a copy of that here would
- * make this test fail for a reason that has nothing to do with permissions.
+ * Renders are found by function-name prefix, since discovery owns the exact stem
+ * (`docs/RENDER_FILENAMES.md`).
  */
 class PermissionPreviewPixelTest {
 

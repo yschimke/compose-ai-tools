@@ -13,25 +13,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * The compile gate for `ComponentSnippets` — the Kotlin compiler, not an argument, deciding whether
- * a printed call site is real.
+ * The compile gate for `ComponentSnippets`: the Kotlin compiler decides whether printed call sites
+ * are real. `ComponentSnippetsTest` only checks text against hand-written records. This discovers
+ * real material3 components, writes their `components.json` snippets (the exact bytes consumers
+ * get) into the project, and compiles them.
  *
- * `ComponentSnippetsTest` asserts the *text* of a snippet against a hand-written record. That is a
- * regression net and nothing more: every expectation in it is a claim I made about Kotlin, so a
- * wrong belief about what `{}` infers against, or about which parameters `Button` actually
- * defaults, produces a green test and source that does not build. This test removes me from the
- * loop. It discovers real `androidx.compose.material3` components out of a real project, prints
- * their call sites, writes them into that project, and compiles them.
- *
- * It reads `ComponentRecord.code` off the written `components.json` rather than calling
- * `ComponentSnippets` itself, so what is compiled here is the exact bytes a consumer receives. A
- * generator that worked in-process while the record persisted something else would pass a test that
- * called the generator, and fail every consumer.
- *
- * **The vacuity guard is the important assertion.** A generator that refused everything would emit
- * an empty file that compiles perfectly, so "the build passed" alone proves nothing. The test
- * therefore names components it insists were emitted, and fails if the generator quietly stopped
- * producing them.
+ * **The vacuity guard matters most:** an empty file compiles, so the test names components that
+ * must have been emitted.
  */
 class ComponentCallSiteCompileFunctionalTest {
 
@@ -40,26 +28,14 @@ class ComponentCallSiteCompileFunctionalTest {
   private val json = Json { ignoreUnknownKeys = true }
 
   /**
-   * Components whose call sites this generator is expected to be able to print.
+   * Components the generator must be able to print.
    *
-   * `Checkbox` and `Switch` are here for their **nullable callback** (`onCheckedChange: ((Boolean)
-   * -> Unit)?`): no lambda-shaped rule accepts a nullable function type, so both were refused until
-   * the generator learned to answer `null` for any nullable parameter. They are what keeps that
-   * answer honest against a real Material 3 signature rather than a hand-written record.
+   * `Checkbox` / `Switch` cover nullable callbacks (`((Boolean) -> Unit)?`), answered with `null`.
    *
-   * `TextField` and `OutlinedTextField` are here for the **constructed placeholder** (issue #5067):
-   * their required `state: TextFieldState` has no literal, and the two were the last refusals on
-   * the measured Material 3 surface. `TextFieldState`'s constructor parameters all carry defaults,
-   * so `TextFieldState()` compiles from source even though the JVM sees only a `(String, long, int,
-   * DefaultConstructorMarker)` bridge — which is exactly why the claim has to be settled by the
-   * compiler here rather than by a hand-written record. They also cover the invariant that moved:
-   * these are the first snippets that emit an import beyond the callable.
-   *
-   * Those two now carry a second claim as well: that discovery found `rememberTextFieldState` on
-   * the real androidx classpath and the generator preferred it over the constructor. Compiling is
-   * necessary but not sufficient for that one — `TextFieldState()` compiles too — so
-   * [assertPrefersTheRememberFactory] checks the emitted text, and this build checks that the text
-   * the compiler accepted is the text that was checked.
+   * `TextField` / `OutlinedTextField` cover the constructed placeholder (#5067): `state:
+   * TextFieldState` has no literal, and only the compiler can confirm `TextFieldState()` (the JVM
+   * sees just the marker bridge). They also emit an import beyond the callable, and check that
+   * `rememberTextFieldState` was found and preferred ([assertPrefersTheRememberFactory]).
    */
   private val expectedEmitted =
     setOf("Text", "Button", "Card", "Checkbox", "Switch", "TextField", "OutlinedTextField")
@@ -206,9 +182,7 @@ class ComponentCallSiteCompileFunctionalTest {
       }
     }
 
-    // Vacuity guard: an empty generated file compiles, so the compile below only means something
-    // if the generator actually produced these. The refusals are in the message because "why was
-    // `Button` skipped" is the first question a failure here raises.
+    // Vacuity guard; the refusals are in the message to explain why something was skipped.
     assertWithMessage(
         "discovered %s; refusals were %s",
         components.components.map { it.symbol.name },
@@ -221,9 +195,7 @@ class ComponentCallSiteCompileFunctionalTest {
 
     writeGeneratedCallSites(projectDir, emitted)
 
-    // `GradleRunner.build()` throws on a failed build, so reaching this line *is* the gate: the
-    // Kotlin compiler accepted every printed call site. The outcome check only rules out the task
-    // having been skipped — `FROM_CACHE` is a pass because a cache hit still means these exact
+    // `build()` throws on failure, so reaching here is the gate; `FROM_CACHE` still means these
     // sources compiled.
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)
@@ -231,12 +203,8 @@ class ComponentCallSiteCompileFunctionalTest {
   }
 
   /**
-   * The two text fields must be written with `rememberTextFieldState()`, not `TextFieldState()`.
-   *
-   * Asserted on the emitted text because the compiler cannot tell them apart: both type-check, and
-   * only one of them survives recomposition. This is the only place the *preference* is checked
-   * against a real classpath — the unit tests build a `TargetParameter` by hand and so can only
-   * prove the generator honours a factory it was handed, never that discovery resolved one.
+   * Text fields must use `rememberTextFieldState()`, which the compiler can't distinguish from
+   * `TextFieldState()`. The only check of the preference against a real classpath.
    */
   private fun assertPrefersTheRememberFactory(emitted: Map<String, ComponentCode>) {
     for (name in listOf("TextField", "OutlinedTextField")) {
@@ -250,18 +218,10 @@ class ComponentCallSiteCompileFunctionalTest {
     }
   }
 
-  /**
-   * Writes one `@Composable` per snippet into the project's own source set.
-   *
-   * Each call site goes in its own function rather than one shared body so a single bad snippet
-   * fails with the name of the component that produced it, instead of the first compile error
-   * hiding the rest.
-   */
+  /** One `@Composable` per snippet, so a bad snippet fails with its component's name. */
   private fun writeGeneratedCallSites(projectDir: File, emitted: Map<String, ComponentCode>) {
-    // The markers each call needs, imported once and applied per function below. A component
-    // guarded by `@ExperimentalMaterial3Api` compiles in its own preview because that file opted
-    // in; a generated wrapper inherits nothing, so this is the half of the contract the caller
-    // owns — and compiling it here is what stops `requiredOptIns` being an unchecked claim.
+    // Opt-in markers, imported once and applied per function: generated wrappers inherit nothing,
+    // so compiling here checks `requiredOptIns`.
     val imports =
       (emitted.values.flatMap { it.imports } + emitted.values.flatMap { it.requiredOptIns })
         .toSortedSet()

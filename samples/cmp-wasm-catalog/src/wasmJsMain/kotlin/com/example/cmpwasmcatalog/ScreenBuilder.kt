@@ -55,17 +55,12 @@ import ee.schimke.composeai.screen.removeNode
 import ee.schimke.composeai.screen.setArgument
 
 /**
- * The UI builder, over the **real** screen document and the **real** generator.
+ * The UI builder, over the real screen document and the real generator.
  *
- * A screen starts as a `Scaffold` — the thing an app screen is — and grows by adding containers and
- * components into a selected node's slot. Selecting a node exposes its arguments and its modifier
- * chain; every edit rebuilds the document, which re-renders the middle pane and regenerates the
- * source on the right in the same recomposition.
- *
- * Nothing here generates code. `ScreenGenerator` does — the one in `preview-discovery`, shared as
- * source so it compiles to `wasmJs` too, which is what lets the browser generate with no server.
- * When it refuses, the refusals are shown: they name the node and the reason, and that is more
- * useful than a blank pane.
+ * A screen starts from a root (usually a `Scaffold`) and grows by adding containers and components
+ * into a selected node's slot. Every edit rebuilds the document, re-rendering the middle pane and
+ * regenerating the source on the right. `ScreenGenerator` (shared source, compiled to `wasmJs`)
+ * does the generating; its refusals are shown, naming the node and reason.
  */
 @Composable
 internal fun ScreenBuilderApp(
@@ -74,10 +69,8 @@ internal fun ScreenBuilderApp(
 ) {
   var document by remember { mutableStateOf(newScreen()) }
   var selected by remember { mutableStateOf(0) }
-  // Which of the selected node's slots an add drops into. A `Scaffold` has three, and a builder
-  // that guesses one cannot express an app screen: the top bar, the FAB and the body are different
-  // regions. Reset when the selection moves, so a slot name never leaks onto a node that has no
-  // such slot.
+  // Which of the selected node's slots an add drops into (a `Scaffold` has three). Reset when the
+  // selection moves, so a slot name never leaks onto a node without it.
   var slot by remember { mutableStateOf<String?>(null) }
   // The amount `padding` carries. The four screens this palette is sized against use 8, 12 and 16
   // between them, so a fixed chip could not build any of them faithfully.
@@ -93,9 +86,7 @@ internal fun ScreenBuilderApp(
         verticalArrangement = Arrangement.spacedBy(6.dp),
       ) {
         SectionLabel("Screen")
-        // The root is a choice, not a constant. A `Scaffold` is what an app screen usually is, but
-        // three of the four real screens this palette is sized against are rooted in a `Surface` —
-        // a builder that can only start from a scaffold cannot rebuild them at all.
+        // The root is a choice: three of the four reference screens are rooted in a `Surface`.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
           M3Palette.containerIds.forEach { id ->
             TextButton(
@@ -155,10 +146,8 @@ internal fun ScreenBuilderApp(
           SectionLabel("[$selected] ${target?.componentId} takes no children")
         } else {
           SectionLabel("Add into [$selected].$into")
-          // Shown even for a single-slot container, so the name of the region being filled is
-          // always on screen rather than implied.
-          // `FlowRow`, because `Scaffold`'s three slot names do not fit the panel on one line and
-          // a `Row` clips the last one into an unreadable vertical sliver rather than wrapping.
+          // Shown even for single-slot containers so the region being filled is always named.
+          // `FlowRow` so `Scaffold`'s three slot names wrap rather than clip.
           FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             slots.forEach { name ->
               FilterChip(
@@ -196,10 +185,8 @@ internal fun ScreenBuilderApp(
         val node = document.nodeAt(selected)
         SectionLabel("Arguments" + if (node == null) "" else " — ${node.componentId}")
         if (node != null) {
-          // One editor per declared parameter, chosen by the parameter's own `typeFqn` rather than
-          // by the component's id. That is what lets the palette grow without the builder growing
-          // a branch per component: `Text.style`, `Surface.color` and `Column.verticalArrangement`
-          // are all "a reference this palette offers a closed list of", and they get one control.
+          // One editor per parameter, chosen by its `typeFqn` rather than the component id, so the
+          // palette can grow without per-component branches.
           M3Palette.editableParametersOf(node.componentId).forEach { parameter ->
             val current = node.arguments[parameter.name]
             when {
@@ -261,10 +248,8 @@ internal fun ScreenBuilderApp(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
           ) {
-            // A `FilterChip` rather than a button with a tick in its label: the selected state is
-            // the chip's own container colour, so it needs no glyph. A `✓` prefix was the first
-            // attempt and rendered as tofu — the catalog's self-hosted fonts have no U+2713, and
-            // the browser cannot fall back inside a Skia composition the way it would in the DOM.
+            // A `FilterChip` shows selection by its container colour; a `✓` prefix rendered as tofu
+            // (the self-hosted fonts lack U+2713 and Skia can't fall back).
             M3Palette.modifierLinks(paddingDp).forEach { (label, link) ->
               FilterChip(
                 selected = node.hasLink(link),
@@ -272,9 +257,7 @@ internal fun ScreenBuilderApp(
                 label = { Text(label, style = MaterialTheme.typography.bodySmall) },
               )
             }
-            // The amount the `padding` chip carries. Stepping it re-toggles a padding already on
-            // the node, so the chain follows the control rather than stranding the old amount —
-            // otherwise the chip reads `padding(12)` while the source still says `padding(16.dp)`.
+            // Stepping the amount re-toggles an existing padding so the chain follows the control.
             listOf(8, 12, 16).forEach { amount ->
               TextButton(
                 onClick = {
@@ -354,11 +337,8 @@ private fun ScreenNode.hasLink(link: ChainLink): Boolean =
   } == true
 
 /**
- * Adds or removes [link] from the node's modifier chain.
- *
- * A modifier is a [ScreenValue.Chain] on `Modifier` — the generator's own vocabulary — not text
- * spliced into source. Clearing the last link removes the argument entirely rather than leaving a
- * bare `Modifier`, which would generate `modifier = Modifier` for a node nobody modified.
+ * Adds or removes [link] from the node's modifier chain. Removing the last link drops the argument
+ * rather than leaving `modifier = Modifier`.
  */
 private fun ScreenDocument.toggleModifier(index: Int, link: ChainLink): ScreenDocument {
   val node = nodeAt(index) ?: return this
@@ -405,12 +385,9 @@ internal fun depthOf(parents: List<Int?>, index: Int): Int {
 }
 
 /**
- * The generated source as an [AnnotatedString], coloured by [SourceHighlighter].
- *
- * The tokens **tile the source exactly**, which is what lets this be a walk over the list with no
- * gap handling: every offset is covered once, so appending each range in order reproduces the text.
- * A gap or an overlap would show as mangled source, and the invariant is asserted in the model's
- * own tests rather than left to be noticed here.
+ * The generated source as an [AnnotatedString], coloured by [SourceHighlighter]. The tokens tile
+ * the source exactly (asserted in the model's tests), so appending each range in order reproduces
+ * it.
  */
 @Composable
 private fun highlight(source: String): AnnotatedString {
@@ -435,17 +412,9 @@ private fun highlight(source: String): AnnotatedString {
 }
 
 /**
- * The one place a token kind becomes a colour, derived entirely from `MaterialTheme.colorScheme`.
- *
- * **Not a hardcoded IDE palette.** The builder honours `?uiMode=dark`, and a fixed light-theme
- * scheme is unreadable on the other one. Deriving from the scheme also means the code pane cannot
- * drift from the surface it sits on when the theme changes.
- *
- * Two details are deliberate. Weight carries part of the distinction, because M3 offers three
- * accent roles and there are more kinds than that — `primary` bold reads differently from `primary`
- * regular without inventing a colour. And `colorScheme.error` is **not** used for any token: it is
- * what the "Cannot generate" list beside the pane is drawn in, and a string literal wearing the
- * error colour would say something false.
+ * Maps token kinds to colours derived from `MaterialTheme.colorScheme`, so the pane works in dark
+ * mode and tracks the surface. Weight distinguishes kinds beyond M3's three accent roles;
+ * `colorScheme.error` is reserved for the "Cannot generate" list.
  */
 @Composable
 private fun sourcePalette(): Map<SourceTokenKind, SpanStyle> {
@@ -466,17 +435,8 @@ private fun sourcePalette(): Map<SourceTokenKind, SpanStyle> {
 private const val COMMENT_ALPHA = 0.7f
 
 /**
- * The compile check, and the handoff it comes with.
- *
- * One `POST /api/{v}/compiler/run` answers three questions at once: does the generated screen
- * compile, what does the *server* render for it, and where can it be run interactively. So the pane
- * shows the diagnostics **and** the "Run it" link — treating the same response as pass/fail only
- * would throw away the more interesting half.
- *
- * The response's first-frame PNG is deliberately **not** drawn here: the live render is already the
- * pane immediately to the left of this one, showing the same document. Adding a second, staler copy
- * of it would cost a base64 → `ImageBitmap` decode on every result to say something the user can
- * already see.
+ * The compile check: one `POST /api/{v}/compiler/run` reports diagnostics and a "Run it" link. The
+ * response's first-frame PNG isn't drawn, since the live render is already the adjacent pane.
  */
 @Composable
 private fun CompilePane(host: String, source: String) {

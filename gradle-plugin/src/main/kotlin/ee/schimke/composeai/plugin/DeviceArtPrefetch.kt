@@ -7,20 +7,13 @@ import okhttp3.Request
 import org.gradle.api.logging.Logger
 
 /**
- * Downloads device-art bezel layers into the on-disk cache the renderer reads
- * (`ee.schimke.composeai.daemon.CachedDeviceArtSource`). Runs in the Gradle daemon JVM via **OkHttp
- * directly** — deliberately *off* the render subprocess (whose classpath can't carry an HTTP
- * client's `kotlinx-coroutines` without skewing Compose). Not Ktor: Ktor 3.x needs coroutines >=
- * 1.10, but the Gradle daemon ships an older coroutines and Ktor fails with
- * `Job.invokeOnCompletion$default NoSuchMethodError`; OkHttp has no coroutines dependency.
+ * Downloads device-art bezel layers into the cache the renderer reads
+ * (`ee.schimke.composeai.daemon.CachedDeviceArtSource`), in the Gradle JVM rather than the render
+ * subprocess (an HTTP client's coroutines would skew Compose there).
  *
- * The frame → layers table is a small mirror of `DeviceArtCatalog` (the renderer-side source of
- * truth) kept here so the plugin build doesn't take a cross-build project dependency. Keep the two
- * in sync when adding a frame; a frame the prefetch misses just means the renderer finds no cached
- * `back` layer and skips framing (graceful, never a build failure).
- *
- * Best-effort throughout: a failed layer is logged and skipped; already-cached layers aren't
- * re-fetched.
+ * The frame → layers table mirrors the renderer's `DeviceArtCatalog` to avoid a cross-build
+ * dependency; keep them in sync. A missed frame just renders unframed. Best-effort: failed layers
+ * are logged and skipped, cached ones not re-fetched.
  */
 object DeviceArtPrefetch {
 
@@ -59,11 +52,8 @@ object DeviceArtPrefetch {
   ) {
     val needed = artIds.filter { FRAMES.containsKey(it) }
     if (needed.isEmpty()) return
-    // OkHttp directly (synchronous), NOT Ktor: Ktor 3.x needs kotlinx-coroutines >= 1.10, but the
-    // Gradle daemon classpath ships an older coroutines and Ktor blows up with
-    // `Job.invokeOnCompletion$default NoSuchMethodError`. OkHttp has no coroutines dependency, so
-    // it
-    // works in both the Gradle JVM here and (if ever needed) the render subprocess.
+    // OkHttp, not Ktor: Ktor 3.x needs kotlinx-coroutines >= 1.10 and fails on the Gradle daemon's
+    // older copy (`Job.invokeOnCompletion$default NoSuchMethodError`).
     val timeout = Duration.ofSeconds(20)
     val client =
       OkHttpClient.Builder()

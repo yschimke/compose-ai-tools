@@ -9,13 +9,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pack-time backstop for the `backend: desktop` / `*-android` classpath mismatch.
- *
- * The desktop classpath guard ([ValidateComposePreviewClasspathTask]) matches on file-path
- * substrings, which cannot see this: the `artifactType=jar` artifact view hands back
- * AGP-transformed `…/transforms/<hash>/transformed/<name>/jars/classes.jar` paths, in which nothing
- * of the original artifact id survives. So the check lives where the resolved Maven coordinates are
- * still exact — inside the pack itself.
+ * Pack-time backstop for `backend: desktop` with `*-android` deps.
+ * [ValidateComposePreviewClasspathTask] matches path substrings, which AGP-transformed
+ * `…/transformed/<name>/jars/classes.jar` paths hide, so this check runs in the pack, where Maven
+ * coordinates are exact.
  */
 class DesktopBundleAndroidClasspathGuardTest {
 
@@ -60,10 +57,8 @@ class DesktopBundleAndroidClasspathGuardTest {
   private fun jarsFor(deps: List<DependencyDecision>) = deps.map { java.io.File(it.sourcePath) }
 
   /**
-   * The exact shape that shipped in the meshcore-mobile `:meshcore-components` bundle.
-   *
-   * A function, not a field: [dep] writes into [tmp], whose root only exists once the JUnit rule
-   * has run — a field initializer would evaluate at construction time and fail every test.
+   * The shape shipped in meshcore-mobile's `:meshcore-components` bundle. A function, since [dep]
+   * needs [tmp]'s root, which exists only after the rule runs.
    */
   private fun androidComposeDeps() =
     listOf(
@@ -88,11 +83,8 @@ class DesktopBundleAndroidClasspathGuardTest {
   }
 
   /**
-   * Regression for the `--embed-deps` hole: `assembleClasspath` rewrites every kept Maven dep into
-   * a metadata-free `ClasspathEntry.Embedded`, so a guard reading the assembled entries would find
-   * no coordinates and pass a bundle that is just as broken — the AGP-transformed `classes.jar` is
-   * then carried *inside* `libs/` rather than referenced. Keying on
-   * [DependencyDecision.coordinate], which is identical in both modes, is what closes it.
+   * `--embed-deps` turns kept deps into coordinate-free `ClasspathEntry.Embedded`, so the guard
+   * keys on [DependencyDecision.coordinate], identical in both modes.
    */
   @Test
   fun `embed mode is covered because the check reads decisions not assembled entries`() {

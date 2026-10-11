@@ -26,10 +26,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Unit coverage for `compose-preview a11y`. The Gradle Tooling API path (`withGradle`, `runGradle`,
- * `resolveModules`) isn't exercised here — we hit the pure decision functions (`a11yExitCode`) and
- * the encoder/filter helpers exposed by [Command] via a thin test subclass. The CI-side end-to-end
- * coverage lives in `:gradle-plugin:functionalTest`.
+ * Unit coverage for `compose-preview a11y`'s pure decisions (`a11yExitCode`) and [Command]'s
+ * encoder/filter helpers via thin subclasses. The Tooling API path is covered end to end in
+ * `:gradle-plugin:functionalTest`.
  */
 class A11yCommandTest {
 
@@ -288,11 +287,8 @@ class A11yCommandTest {
 
   @Test
   fun `a fully qualified preview reference reaches the daemon work list`() {
-    // The `<Class>.<function>` form is only recognisable from the manifest row — the id here
-    // carries neither the package nor the class. Module selection and the Gradle narrowing both
-    // see the row, so they keep the module; if this fan-out matched on the bare id instead, the
-    // work list would come back empty and `a11y` would report a clean run of a module it never
-    // asked the daemon about.
+    // `<Class>.<function>` is only recognisable from the manifest row; matching on the bare id
+    // would leave an empty work list and report a clean run that never asked the daemon.
     val cmd = TestableReportCommand(listOf("--preview", "com.example.PreviewsKt.Alpha"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"))).single()
@@ -313,10 +309,8 @@ class A11yCommandTest {
 
   @Test
   fun `an exact permutation id is addressed as its declared preview, with overrides`() {
-    // `--permutations accessibility` synthesises `Foo_dark` client-side; the daemon's PreviewIndex
-    // only knows the ids the plugin discovered and resolves them exactly, so asking it for
-    // `Foo_dark` gets "unknown preview". The request names `Foo` and carries the dark-mode
-    // configuration instead — and files the result under the id the user asked about (#3762).
+    // `Foo_dark` is synthesised client-side and unknown to the daemon, so the request names `Foo`
+    // with the dark configuration and files the result under `Foo_dark`.
     val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
@@ -384,10 +378,8 @@ class A11yCommandTest {
 
   @Test
   fun `a filter under permutations fetches every matching permutation`() {
-    // Each expanded row is its own render at its own configuration, and checking a11y across those
-    // configurations is the point of `--permutations accessibility` — dark contrast, RTL layout,
-    // 2x font scale. Deduplicating them back to the declared preview would report one result four
-    // times over.
+    // Each expanded row is its own render at its own configuration (the point of `--permutations
+    // accessibility`), so they aren't deduplicated back to the declared preview.
     val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()

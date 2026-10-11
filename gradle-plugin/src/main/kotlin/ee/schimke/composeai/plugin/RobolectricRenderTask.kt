@@ -7,19 +7,14 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.work.DisableCachingByDefault
 
 /**
- * The Android `composePreviewRender` task — a Robolectric [Test] that renders `@Preview`s inside
- * the test JVM — subtyped only so it can carry the same `--preview` / `--preview-id` /
- * `--exclude-preview-id` / `--exclude-preview-row` / `--permutations` command-line options the
- * desktop [RenderPreviewsTask] exposes (issues #2066 / #2966 / #2977). A plain `Test` can't declare
- * `@Option`s, and before #2977 those options (and their `composePreview.filter` / `.idFilter` /
- * `.idExclude` property conventions) reached only the desktop backend, so
- * `:app:composePreviewRender --preview Foo` was inert on an Android module.
+ * The Android `composePreviewRender` task: a Robolectric [Test], subtyped only to carry the same
+ * `--preview` / `--preview-id` / `--exclude-preview-id` / `--exclude-preview-row` /
+ * `--permutations` options as the desktop [RenderPreviewsTask] (#2066 / #2966 / #2977); a plain
+ * `Test` can't declare `@Option`s.
  *
- * The three list properties are the single source of truth: [AndroidPreviewSupport] sets their
- * conventions from the matching Gradle properties, forwards them to the Robolectric render JVM as
- * the `composeai.preview.*` system properties `PreviewFilter` reads, and gates the build cache off
- * any non-empty filter (a filtered render writes a partial `renders/` set — see the desktop task's
- * identical `cacheIf` reasoning). Everything else about the task is stock `Test` behaviour.
+ * [AndroidPreviewSupport] sets the list properties' conventions from Gradle properties, forwards
+ * them as `composeai.preview.*` system properties for `PreviewFilter`, and disables caching for
+ * filtered runs. Otherwise stock `Test`.
  */
 @DisableCachingByDefault(
   because = "Robolectric rendering runs a test JVM whose environment is not a declared input"
@@ -27,9 +22,7 @@ import org.gradle.work.DisableCachingByDefault
 abstract class RobolectricRenderTask : Test() {
 
   /**
-   * `--preview` name/glob patterns (repeatable). Empty (default) renders every preview. Convention
-   * comes from `composePreview.filter`; the option overrides it. `@Input` so a filter change
-   * re-renders.
+   * `--preview` name/glob patterns; empty renders everything. Convention: `composePreview.filter`.
    */
   @get:Input abstract val previewFilters: ListProperty<String>
 
@@ -77,13 +70,10 @@ abstract class RobolectricRenderTask : Test() {
   }
 
   /**
-   * `--exclude-preview-row` label patterns (repeatable). Convention: `composePreview.rowExclude`.
-   *
-   * The one axis the id patterns above can't express on either backend: the id filters run over
-   * DISCOVERED entries, and a `@PreviewParameter` provider's rows don't exist until
-   * `expandParameterProvider` enumerates them inside this render JVM. Matched against the row's
-   * label — the token in `<stem>_<label>.png` — case-insensitively, and never allowed to empty a
-   * preview's row set. Mirrors the desktop task's `previewRowExcludes`.
+   * `--exclude-preview-row` label patterns. Convention: `composePreview.rowExclude`. Rows only
+   * exist once the provider is enumerated in the render JVM, so id patterns can't name them.
+   * Case-insensitive on the `<stem>_<label>.png` label, and never empties a preview's rows. Mirrors
+   * the desktop task.
    */
   @get:Input abstract val previewRowExcludes: ListProperty<String>
 
@@ -99,10 +89,7 @@ abstract class RobolectricRenderTask : Test() {
     previewRowExcludes.set(values)
   }
 
-  /**
-   * Extra render fan-outs. Currently `accessibility`, which adds dark, RTL, and 2x font-scale
-   * siblings for every discovered Compose preview.
-   */
+  /** Extra render fan-outs; `accessibility` adds dark, RTL and 2x font-scale siblings. */
   @get:Input abstract val permutations: ListProperty<String>
 
   @Option(
@@ -117,36 +104,18 @@ abstract class RobolectricRenderTask : Test() {
 }
 
 /**
- * Make a render [Test] task's own output locale-independent.
+ * Makes a render [Test] task's output locale-independent.
  *
- * Agent sandboxes and minimal CI images routinely run under `LC_CTYPE=POSIX`, which leaves the JVM
- * with `sun.jnu.encoding=ANSI_X3.4-1968` (US-ASCII). That breaks a render task in a way that looks
- * nothing like an encoding problem:
- * - `Test`'s **HTML** reporter creates one output directory *per test method*, and for these tasks
- *   a test method is a preview, whose display name comes from consumer source — `@Preview(name =
- *   "Play Store — 10 inch tablet")`. Gradle writes those directory names using the *daemon's*
- *   platform encoding, so any preview name containing a non-ASCII character (an em dash, an accent,
- *   CJK) fails report generation with "Malformed input or input contains unmappable characters".
- *   Gradle then prints one line per failing file **twice** — once in the failure summary and once
- *   in the cause list — so a handful of em-dashed preview names buries the actual render result
- *   under hundreds of lines. Disabling the HTML report removes the failure class outright, and
- *   costs nothing: this task's product is PNGs, and per-preview failures are already reported
- *   through the `.error.json` sidecars that `formatMissingPreviewsMessage` reads.
- * - [Test.setDefaultCharacterEncoding] fixes the forked render JVM's own streams. It cannot fix the
- *   report-writing above (that happens in the daemon), and since JDK 18 `sun.jnu.encoding` cannot
- *   be overridden with `-D` at all — hence disabling the report rather than trying to re-encode it.
+ * Under `LC_CTYPE=POSIX` the JVM's `sun.jnu.encoding` is US-ASCII. Gradle's HTML test report
+ * creates a directory per test method (here, per preview name from consumer source), so any
+ * non-ASCII preview name fails report generation, printing hundreds of duplicate lines that bury
+ * the result. Disabling the HTML report removes that; failures are already reported via
+ * `.error.json` sidecars. [Test.setDefaultCharacterEncoding] fixes the forked JVM's streams;
+ * `sun.jnu.encoding` can't be overridden with `-D` since JDK 18.
  *
- * The **JUnit XML** report is deliberately left enabled: its files are named after the test *class*
- * (`RobolectricRenderTest_Shard0`), which is always ASCII, so it is unaffected and CI test-result
- * collection keeps working.
- *
- * Cost of turning HTML off, stated plainly: the `composePreviewRender-reports` CI artifact
- * (`.github/actions/apply/action.yml`) uploads `build/reports/tests/composePreviewRender/`
- * alongside `build/test-results/composePreviewRender/`, so that artifact loses its browsable HTML.
- * No diagnostic content is lost — the HTML report is *generated from* the JUnit XML, which still
- * ships with the full per-test stack traces — but triage from the artifact means reading XML
- * instead of opening `index.html`. That is the deliberate trade: a browsable report on the runs
- * that succeed, versus renders that fail outright on every machine with a non-UTF-8 locale.
+ * The JUnit XML report stays (files are named after ASCII class names), so CI collection works. The
+ * cost: the `composePreviewRender-reports` artifact loses its browsable HTML, though the XML keeps
+ * every stack trace.
  */
 internal fun configureRenderTaskReporting(task: org.gradle.api.tasks.testing.Test) {
   task.defaultCharacterEncoding = "UTF-8"
@@ -155,32 +124,16 @@ internal fun configureRenderTaskReporting(task: org.gradle.api.tasks.testing.Tes
 }
 
 /**
- * The marker every `LinkBufferComposer` notice carries — the runtime flag's own field name. Matched
- * as a literal rather than referencing `LinkBufferComposer.FLAG_FIELD`: the plugin does not depend
- * on `:data-render-core` (it forwards `composeai.render.*` by name, see
- * [AndroidPreviewClasspath.buildSystemProperties]), and this keeps that direction of the dependency
- * graph unchanged for one string.
+ * Literal rather than `LinkBufferComposer.FLAG_FIELD`, to avoid a dependency on
+ * `:data-render-core`.
  */
 private const val COMPOSER_NOTICE_MARKER = "isLinkBufferComposerEnabled"
 
 /**
- * Promotes the render JVM's "which composer drew this?" notice onto the build log.
- *
- * Needed because of an asymmetry between the lanes. The desktop renderer is a forked process whose
- * stderr passes straight through, so its notice lands in the build output. This lane renders inside
- * a Gradle `Test` worker, and Gradle *captures* a passing test's streams into the JUnit XML rather
- * than printing them — so the notice reached `build/test-results/…` and nowhere a person looks.
- *
- * That is fine for chatter, and wrong for this line specifically.
- * `composeai.render.linkBufferComposer=auto` trades the hard failure for a render on whatever
- * composer the runtime has, and the *only* thing keeping that from being the silently-ignored
- * opt-in `LinkBufferComposer` refuses to be is the notice being visible. A degrade nobody sees is
- * the failure mode, not the fallback.
- *
- * Forwards just the matching lines rather than setting `testLogging.showStandardStreams`, which
- * would carry every Robolectric warning in the batch along with them, and de-duplicates: the
- * announcement is once per Robolectric sandbox, so a sharded module would otherwise repeat one
- * identical line per shard.
+ * Promotes the "which composer drew this?" notice to the build log. Desktop's forked stderr passes
+ * through, but Gradle captures a passing test's output into the JUnit XML. With
+ * `linkBufferComposer=auto`, a silent degrade is exactly the failure to avoid. Forwards only
+ * matching lines (not all Robolectric output) and de-duplicates across shards.
  */
 private class ComposerNoticeListener : org.gradle.api.tasks.testing.TestOutputListener {
 

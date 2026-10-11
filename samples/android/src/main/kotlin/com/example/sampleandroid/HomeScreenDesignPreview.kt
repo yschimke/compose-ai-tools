@@ -16,27 +16,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * The UI-builder design in [`samples/android/design/home-screen.uibuilder.json`] as Compose, and
- * the design half of the device-capture parity lane.
+ * The UI-builder design in [`samples/android/design/home-screen.uibuilder.json`] as Compose: the
+ * design half of the device-capture parity lane (`DeviceCaptureParityTest` compares it with the real
+ * `MainActivity` capture). See
+ * [`docs/design/DEVICE_CAPTURE.md`](../../../../../../../docs/design/DEVICE_CAPTURE.md).
  *
- * ## What this file is
- *
- * `DeviceCaptureParityTest` renders this preview and the real `MainActivity`
- * (`renders/activity__MainActivity.png`, the `kind=ACTIVITY` capture app tours already produce) and
- * reports how far apart they are. The app is the reference; this is the design authored to match
- * it. See [`docs/design/DEVICE_CAPTURE.md`](../../../../../../../docs/design/DEVICE_CAPTURE.md).
- *
- * ## Why it is checked in rather than generated at build time
- *
- * The builder's `CapabilityComposeCodeExporter` lives in `compose-preview-server`, which is layer 2
- * — this repository is layer 1 and may not depend upward
- * ([`REPOSITORY_LAYERS.md`](../../../../../../../docs/design/REPOSITORY_LAYERS.md)). So the design
- * document is the source of truth, this is its committed projection, and the parity lane compares
- * *pixels* rather than trusting the transcription.
- *
- * **It is therefore transcribed, not generated**, and that is the one seam in this lane a reviewer
- * has to check by eye. Each composable below states which design node it came from. The mapping
- * follows the exporter's own rules, which are worth knowing when checking it:
+ * Hand-transcribed rather than generated: the builder's exporter lives in compose-preview-server
+ * (layer 2), which this repository may not depend on
+ * ([`REPOSITORY_LAYERS.md`](../../../../../../../docs/design/REPOSITORY_LAYERS.md)). Each composable
+ * names its design node, following the exporter's rules:
  *
  * - `layout/column.verticalSpacingDp` → `verticalArrangement = Arrangement.spacedBy(n.dp)`
  * - a `padding` modifier → `.padding(start =, top =, end =, bottom =)`, always four named edges
@@ -45,13 +33,10 @@ import androidx.compose.ui.unit.dp
  * - `m3/text.style` → `MaterialTheme.typography.<style>`
  * - `m3/text.color` → `MaterialTheme.colorScheme.<token>`
  *
- * A follow-up should replace the transcription with the exporter's real output, run in
- * compose-preview-server and committed here — see the issue linked from the parity test.
+ * TODO: replace the transcription with the exporter's real output, committed here.
  */
-// Rendered under exactly the conditions the ACTIVITY capture uses, so the comparison is
-// apples-to-apples: `AppTourDiscovery.buildActivityPreviews` builds its preview from
-// `DeviceDimensions.DEFAULT` (400x800dp at density 2.625) with `showSystemUi = true`. Any of the
-// three differing would make the score measure the render setup rather than the design.
+// Rendered under the same conditions as the ACTIVITY capture (`DeviceDimensions.DEFAULT`, 400x800dp
+// at 2.625, `showSystemUi = true`), so the score measures the design, not the setup.
 @Preview(name = "Design", showSystemUi = true, widthDp = 400, heightDp = 800)
 @Composable
 fun HomeScreenDesignPreview() {

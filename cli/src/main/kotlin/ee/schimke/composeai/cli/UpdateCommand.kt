@@ -4,19 +4,12 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * `compose-preview update [VERSION] [--dry-run] [--no-modify-path]`
+ * `compose-preview update [VERSION] [--dry-run] [--no-modify-path]`: re-run `scripts/install.sh`
+ * from `main` (idempotent; latest release or the given version), refreshing the skill bundle and
+ * launcher.
  *
- * Re-runs `scripts/install.sh` from `main`, which is idempotent and resolves the latest release (or
- * the version pinned via the positional arg) and refreshes both the skill bundle and the CLI
- * launcher. Exists so users don't have to remember the bootstrap URL — paired with `doctor`'s
- * update check.
- *
- * `--dry-run` prints the curl-pipe-bash command without executing it; useful for users who'd rather
- * inspect the installer before running it, or for environments where curl-pipe-bash is
- * policy-blocked.
- *
- * `--no-modify-path` is forwarded to `install.sh`, which then leaves shell startup files alone
- * instead of adding `~/.local/bin` to PATH in them.
+ * `--dry-run` prints the curl-pipe-bash command instead of running it. `--no-modify-path` is
+ * forwarded so `install.sh` leaves shell startup files alone.
  */
 class UpdateCommand(private val args: List<String>) {
   fun run() {
@@ -52,10 +45,9 @@ class UpdateCommand(private val args: List<String>) {
 
   companion object {
     /**
-     * Drop cached MCP servers older than the newest release, so the next `mcp serve` fetches the
-     * new one instead of relaunching the old (#5602). Returns the line to print, or null when there
-     * was nothing to say. A release pinned with `COMPOSE_PREVIEW_SERVER_VERSION` is left alone, and
-     * so is everything when the newest cannot be resolved.
+     * Drop cached MCP servers older than the newest release so the next `mcp serve` fetches it.
+     * Returns the line to print, or null. A `COMPOSE_PREVIEW_SERVER_VERSION` pin, or an
+     * unresolvable newest, leaves everything alone.
      */
     internal fun pruneStaleMcp(
       requested: String? = ServerDistributionProvision.requestedVersion(),
@@ -98,11 +90,8 @@ class UpdateCommand(private val args: List<String>) {
     }
 
     /**
-     * Conservative shell-quoting for the version arg. `install.sh` only accepts a semver-like
-     * positional, so this is belt-and-braces — anything outside `[A-Za-z0-9._-]` gets wrapped in
-     * single quotes (with embedded single quotes escaped). Refusing exotic input would also be
-     * fine; quoting keeps `compose-preview update <whatever>` from ever expanding into the parent
-     * shell pipeline.
+     * Shell-quote the version arg (anything outside `[A-Za-z0-9._-]`), so it can never expand in
+     * the parent pipeline.
      */
     internal fun shellQuote(s: String): String {
       if (s.all { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }) return s

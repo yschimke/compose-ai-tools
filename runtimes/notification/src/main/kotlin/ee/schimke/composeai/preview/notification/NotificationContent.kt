@@ -22,41 +22,22 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Composable helper that inflates a notification factory into the surrounding Compose tree.
+ * Inflates a notification [factory] into the surrounding Compose tree. Stack `@Preview`s to fan out
+ * variants over `uiMode`, `locale`, `widthDp`, `fontScale`; no notification-specific plumbing
+ * needed.
  *
- * Pairs with stacked `@Preview` (multi-preview meta-annotations) to fan out variants of the same
- * notification across the existing knobs `@Preview` already owns — `uiMode`, `locale`, `widthDp`,
- * `fontScale`. The fan-out is driven by Compose tooling: discovery + the renderer's COMPOSE path
- * pick each `@Preview` up as a separate entry, so no notification-specific plumbing is required.
+ * Inflation mirrors the renderer's `NotificationPreviewComposable`:
+ * `Notification.Builder.recoverBuilder` → [surface]'s `createXxxContentView()` (falling back to
+ * `createContentView()`) → `RemoteViews.apply(...)`. This is the AOSP visual; OEM chrome isn't
+ * reproducible under Robolectric.
  *
- * Inflation path mirrors the renderer-side `NotificationPreviewComposable`:
- * `Notification.Builder.recoverBuilder(context, notification)` → [surface]'s matching
- * `createXxxContentView()` (with `createContentView()` as the collapsed fallback) →
- * `RemoteViews.apply(...)`. This is the AOSP visual; OEM chrome (Pixel rounded corners, Samsung
- * tinting) is drawn by SystemUI on-device and isn't reproducible under Robolectric.
- *
- * Pass [previewId] to opt into the structured-fields JSON sidecar — when the renderer's
- * `composeai.render.outputDir` system property is set (i.e. running under the compose-preview
- * Gradle plugin's render task), a `<sanitized-id>.notification.json` is written alongside the PNG
- * under `<outputDir>/../data/notifications/`. Same schema and convention as the FQN-discovered
- * `@NotificationPreview` strategy in `:renderer-android`. Helper-based call sites that don't know
- * their preview id at compile time can leave it `null`; sidecar emission is opt-in.
- *
- * Pass [surface] to render a specific notification surface: [NotificationSurface.EXPANDED]
- * (default, the shade-expanded `createBigContentView()` layout — the most informative variant and
- * what the rest of the gallery uses), [NotificationSurface.COLLAPSED] (`createContentView()` — the
- * one-line shade row), or [NotificationSurface.HEADS_UP] (`createHeadsUpContentView()` — the popup
- * variant shown for high-importance channels). On AOSP heads-up returns the same `RemoteViews` as
- * the expanded layout for most styles; the parameter is still distinct in the API so multi-preview
- * meta-annotations can author 3-way surface fan-outs. [surface] is recomposition-aware: the
- * composable is internally wrapped in `key(surface)`, so binding it to state (e.g. a runtime toggle
- * in an interactive session) causes the inflated tree to re-render on change rather than sticking
- * on the first-composition value.
- *
- * [previewId] is the first parameter so [factory] stays the trailing-lambda slot —
- * `NotificationContent { ctx -> ... }` is the common shape and shouldn't require named arguments.
- * Pass `previewId` only when you actually want the sidecar: `NotificationContent(previewId = "Foo")
- * { ctx -> ... }`.
+ * @param previewId opts into the structured-fields sidecar: when `composeai.render.outputDir` is
+ * set
+ *   (under the Gradle render task), `<sanitized-id>.notification.json` is written under
+ *   `<outputDir>/../data/notifications/`, same schema as `@NotificationPreview`. First so [factory]
+ *   stays the trailing lambda.
+ * @param surface which [NotificationSurface] to render (default [NotificationSurface.EXPANDED]).
+ *   Recomposition-aware: changing it re-inflates.
  */
 @Composable
 fun NotificationContent(
@@ -66,28 +47,13 @@ fun NotificationContent(
   factory: (Context) -> Notification,
 ) {
   val context = LocalContext.current
-  // `AndroidView`'s `factory` block runs once per view instance — Compose recompositions do not
-  // rerun it. Without keying, callers that bind [surface] to state (e.g. a runtime toggle between
-  // collapsed / expanded / heads-up) would see the rendered notification stay on whichever
-  // surface was active at first composition. Wrapping the `AndroidView` in `key(surface)` forces
-  // Compose to throw away the previous view instance and re-run `factory` whenever [surface]
-  // changes, so the inflated RemoteViews tree tracks the parameter. The factory body is cheap
-  // (a `FrameLayout` plus a one-shot RemoteViews inflation) so the recreation cost is fine for
-  // a surface change — these are infrequent compared to per-frame recompositions, and the only
-  // mutable state inside the tree is the inflated RemoteViews itself, which is regenerated from
-  // scratch on every surface anyway.
+  // `AndroidView`'s `factory` runs once per view instance, so key on [surface] to re-inflate when
+  // it changes (e.g. bound to a runtime toggle). Surface changes are rare and inflation is cheap.
   key(surface) {
     AndroidView(
-      // Force the notification-shape width rather than `fillMaxWidth()`. Under the renderer's
-      // AS-parity wrap-to-content path, a `@Preview` composable hosting `NotificationContent`
-      // gets measured with `minWidth = 0`, and the inflated RemoteViews tree's intrinsic
-      // width (~320dp — the AOSP notification metric) is what comes back through `AndroidView`'s
-      // measure block. The captured PNG then crops to that intrinsic measure, producing the
-      // square ~317×317 footprint reported in issue #1249 instead of the wide-and-short shade
-      // row the inflater is laying out. Setting an exact width here gives the inflater the same
-      // 400dp canvas the renderer-side `NotificationPreviewComposable` path (`@NotificationPreview`
-      // discovery) implicitly hits, so gallery / variant `@Preview` previews share the wide
-      // footprint instead of getting clipped into a square.
+      // An exact width rather than `fillMaxWidth()`: under wrap-to-content measuring, the
+      // RemoteViews' ~320dp intrinsic width would crop the PNG to a square. Matches the 400dp
+      // canvas the `@NotificationPreview` path gets.
       modifier = Modifier.width(widthDp.dp).wrapContentHeight(),
       factory = { ctx ->
         val parent =
@@ -97,12 +63,8 @@ fun NotificationContent(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
               )
-            // RemoteViews title rows resolve `?attr/textColorPrimary` against the activity theme,
-            // which is near-white under `uiMode = NIGHT_YES`. Without a matching dark surface
-            // behind the inflated tree, the title text renders white-on-white. SystemUI on-device
-            // paints the dark notification surface for us; here we have to do it ourselves. Read
-            // `android.R.attr.colorBackground` from the theme so the colour tracks the active
-            // night-mode configuration without us hard-coding light / dark values.
+            // Title rows resolve `?attr/textColorPrimary`, near-white at night, so paint a matching
+            // surface behind the tree as SystemUI would on-device.
             setBackgroundColor(resolveBackgroundColor(ctx))
           }
         val notification = factory(context)
@@ -126,18 +88,14 @@ fun NotificationContent(
 }
 
 /**
- * Notification surface the [NotificationContent] helper inflates. The three values map to the three
- * `Notification.Builder.createXxxContentView()` entry points SystemUI uses on-device:
+ * Notification surface the [NotificationContent] helper inflates, matching SystemUI's
+ * `Notification.Builder` entry points:
  *
- * - [COLLAPSED] → `createContentView()`, the one-line row that appears when the shade lists the
- *   notification alongside others. Wide-and-short.
- * - [EXPANDED] → `createBigContentView()`, the layout shown when the user taps to expand. Most
- *   style classes (`BigTextStyle`, `MessagingStyle`, `InboxStyle`, …) only differ from collapsed in
- *   this layout, so it's the most informative variant and the default.
- * - [HEADS_UP] → `createHeadsUpContentView()`, the popup variant shown for high-importance channels
- *   (or `setPriority(PRIORITY_HIGH)` pre-O). On stock AOSP this returns the same `RemoteViews` tree
- *   as the expanded layout for most styles — we still surface it as a distinct value because OEM
- *   skins (and the platform's `MediaStyle`) do diverge.
+ * - [COLLAPSED] → `createContentView()`, the one-line shade row.
+ * - [EXPANDED] → `createBigContentView()`, the expanded layout — where most styles differ, so the
+ *   default.
+ * - [HEADS_UP] → `createHeadsUpContentView()`, the high-importance popup. Usually identical to
+ *   expanded on AOSP, but OEM skins and `MediaStyle` diverge.
  */
 enum class NotificationSurface {
   COLLAPSED,
@@ -146,24 +104,15 @@ enum class NotificationSurface {
 }
 
 /**
- * Default notification surface width in dp. Mirrors the renderer's `SANDBOX_WIDTH_DP` so a
- * `@Preview` composable hosting [NotificationContent] without an explicit `widthDp` lays out at the
- * same width Android Studio's preview pane and the standalone renderer hand out. The AOSP
- * notification shade is 360–412dp wide on real devices; 400dp keeps the gallery / variant PNGs the
- * same shape as `@NotificationPreview`-routed previews.
+ * Default notification surface width in dp, matching the renderer's `SANDBOX_WIDTH_DP` so these
+ * PNGs have the same shape as `@NotificationPreview`-routed ones.
  */
 const val DEFAULT_NOTIFICATION_WIDTH_DP: Int = 400
 
 /**
- * AOSP-derived notification surface colours, picked off the active `Configuration.uiMode`. We
- * deliberately don't read `?android:attr/colorBackground` from the activity theme: the renderer's
- * sandbox activity uses a generic theme that resolves the same lavender for both day and night
- * modes, so the title row's `?attr/textColorPrimary` (near-white under NIGHT_YES) renders
- * white-on-white. Hard-coding the two surface values keeps each variant's contrast correct.
- *
- * Values approximate `Theme.DeviceDefault.Notification` / `…Notification.Dark` (≈ `#FFFFFF` day,
- * `#1F1F1F` night) — close enough to AOSP that the rendered PNG reads like the shade surface a
- * stock device would draw.
+ * AOSP-approximate notification surface colours (≈ `#FFFFFF` day, `#1F1F1F` night) picked from
+ * `Configuration.uiMode`. Not read from the theme: the sandbox activity's theme resolves the same
+ * background for day and night, which would render white-on-white at night.
  */
 private fun resolveBackgroundColor(context: Context): Int {
   val night =
@@ -179,12 +128,8 @@ private fun inflateNotificationView(
   parent: ViewGroup,
   surface: NotificationSurface,
 ): android.view.View? {
-  // `createBigContentView` / `createContentView` / `createHeadsUpContentView` are marked
-  // deprecated for production posting paths (where the system inflates them for you) but there's
-  // no non-deprecated alternative when you specifically want the RemoteViews tree for offline
-  // rendering. Each surface falls back to `createContentView()` so notifications without a
-  // `setStyle(...)` (which produce no big / heads-up layout) still render at least the collapsed
-  // row instead of erroring out.
+  // These `create*ContentView` methods are deprecated for posting but are the only way to get the
+  // RemoteViews offline. Each falls back to `createContentView()` for unstyled notifications.
   val builder = Notification.Builder.recoverBuilder(context, notification)
   val remoteViews =
     when (surface) {
@@ -197,14 +142,9 @@ private fun inflateNotificationView(
 }
 
 /**
- * Per-preview structured-fields sidecar. Same schema and same on-disk convention as
- * `:renderer-android`'s `NotificationSidecar` — duplicated here on purpose so this module can stand
- * alone (no compile dep on `:renderer-android` for consumers in Bazel modules or JVM unit tests
- * that don't carry the renderer).
- *
- * Hand-rolled JSON for the same reason the renderer-side version is: the runtime classpath
- * deliberately doesn't pull `kotlinx-serialization`, and the schema is shallow and stable.
- * Best-effort — failures here print to stderr but don't propagate.
+ * Per-preview structured-fields sidecar, same schema and location as `:renderer-android`'s
+ * `NotificationSidecar`. Duplicated so this module stands alone; hand-rolled JSON to avoid
+ * kotlinx-serialization on the runtime classpath. Best-effort: failures go to stderr.
  */
 private object NotificationSidecar {
 

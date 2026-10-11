@@ -5,32 +5,18 @@ import java.io.File
 import org.junit.Test
 
 /**
- * Asserts the interactive XR menu navigation GIFs produced by
- * `:samples:xr-glimmer:composePreviewRenderAll` land at the right paths with the right shape, and
- * that each env actually composites a visibly different connector-owned backdrop.
- *
- * Each top-level function (`GlimmerXrMenuLight` etc.) carries `@FocusedPreview(indices =
- * [0, 1, 2, 3], gif = true)`, so the renderer drives focus across four Glimmer `ListItem`s (one
- * `moveFocus(Enter)` on the first capture, then `moveFocus(Next)` per subsequent step) and stitches
- * each function's four captures into a single `.gif`. The per-step PNG fan-out (`_FOCUS_0.png`
- * etc.) must NOT be written — `gif = true` is supposed to collapse it. Together the guards catch:
- *
- * - GIF stitching breakages (a file disappears or shrinks to zero / loses its magic header).
- * - Regressions where the renderer writes both the GIF *and* the per-step PNGs (a duplicate- output
- *   mode would silently quadruple the `:samples:xr-glimmer` render budget here).
- * - A future renderer change that renames the GIF (e.g. dropping the trailing `_FOCUS` suffix on
- *   the GIF path) — the new filename would land outside the assertion below.
- * - **Env-backdrop drift.** Each env is ADD-composited by the connector after raw capture, so the
- *   four output GIFs must be byte-distinct while their `.raw.gif` siblings stay identical.
+ * Checks the interactive XR menu GIFs: each `GlimmerXrMenu*` function's
+ * `@FocusedPreview(indices = [0, 1, 2, 3], gif = true)` walks focus across four `ListItem`s and
+ * stitches one `.gif`. Guards against broken stitching, per-step `_FOCUS_<n>.png` files also being
+ * written, a renamed GIF path, and environment-backdrop drift (the four composited GIFs must differ
+ * while their `.raw.gif` siblings stay identical).
  */
 class GlimmerInteractiveMenuTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
-  // Filenames are `<functionName>_<previewName>` per the discovery rule, with non-allowlisted
-  // characters collapsed to underscores (docs/RENDER_FILENAMES.md). Function name carries the
-  // env; the preview name is the short env label — so e.g. the Light GIF lands at
-  // `GlimmerXrMenuLight_Light.gif`.
+  // `<functionName>_<previewName>` with disallowed characters collapsed (docs/RENDER_FILENAMES.md),
+  // e.g. `GlimmerXrMenuLight_Light.gif`.
   private val envGifBasenames =
     listOf(
       "GlimmerXrMenuLight_Light",
@@ -63,13 +49,8 @@ class GlimmerInteractiveMenuTest {
   }
 
   /**
-   * The four env GIFs must be visually distinct because each composites a different
-   * procedurally-drawn backdrop. Byte-comparing the GIFs is a strict-enough proxy — two different
-   * env backdrops painted with `BlendMode.Plus` on top of the same Glimmer UI produce different
-   * pixel data, which produces different GIF bytes after the renderer's stitcher quantises. Inverse
-   * of the assertion `GlimmerCaptureAdditivePixelTest` enforces on the `NowPlayingCard` PNG fan-out
-   * (which intentionally stays byte-identical across env names because that sample still uses
-   * Encoding B without inline compositing).
+   * The four environment GIFs composite different backdrops with `BlendMode.Plus`, so their bytes
+   * must differ (unlike `GlimmerCaptureAdditivePixelTest`'s uncomposited captures).
    */
   @Test
   fun `four env GIFs render visually distinct backdrops`() {

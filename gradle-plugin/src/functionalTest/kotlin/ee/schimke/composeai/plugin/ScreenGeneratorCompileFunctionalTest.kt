@@ -24,17 +24,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * The end-to-end prototype: a builder's document, the components a real build discovered, and a
- * screen the Kotlin compiler accepts.
- *
- * `ComponentCallSiteCompileFunctionalTest` proves one component can be *called*. This proves a
- * screen can be *composed* — values bound, components nested into slots — which is the thing a UI
- * builder is for and the thing no test covered. The exporter it replaces asserted balanced braces
- * on its output; balanced braces are not a compiler.
- *
- * Nothing here is hand-fed. The catalog is whatever `composePreviewDiscover` wrote for a project of
- * ordinary previews, addressed by canonical id, so a change that stops a component being
- * discoverable — or stops its call site being printable — fails here rather than in a consumer.
+ * End-to-end: a builder document plus components a real build discovered yields a screen the Kotlin
+ * compiler accepts. `ComponentCallSiteCompileFunctionalTest` proves a component can be called; this
+ * proves a screen can be composed (values bound, slots nested). Nothing is hand-fed: the catalog is
+ * what `composePreviewDiscover` wrote.
  */
 class ScreenGeneratorCompileFunctionalTest {
 
@@ -212,10 +205,9 @@ class ScreenGeneratorCompileFunctionalTest {
                       arguments =
                         mapOf(
                           "text" to ScreenValue.Text("Good morning"),
-                          // `Modifier.weight` is declared on `ColumnScope`, and this `Text` is in
-                          // `Card`'s `ColumnScope` content slot. Nothing in the value says it
-                          // compiles — the generator checks the claim against the slot it emitted
-                          // this node into, and the compile below is what settles it.
+                          // `Modifier.weight` is declared on `ColumnScope` and this `Text` is in
+                          // `Card`'s `ColumnScope` slot; the generator checks the claim and the
+                          // compile settles it.
                           "modifier" to
                             ScreenValue.Chain(
                               receiver =
@@ -247,9 +239,8 @@ class ScreenGeneratorCompileFunctionalTest {
                                 arguments =
                                   mapOf(
                                     "text" to ScreenValue.Text("Continue"),
-                                    // A member of `Modifier` on the value `padding` returned,
-                                    // held in a local typed `Modifier` so the compiler holds the
-                                    // receiver to the classifier the package guard checked.
+                                    // A `Modifier` member on `padding`'s result, held in a local
+                                    // typed `Modifier` so the compiler checks the receiver.
                                     "modifier" to
                                       ScreenValue.Chain(
                                         receiver =
@@ -305,10 +296,8 @@ class ScreenGeneratorCompileFunctionalTest {
         screen,
         components,
         expressionPackages = setOf("androidx.compose"),
-        // The device fan-out rides on this case rather than getting its own project, because what
-        // it needs proving is exactly what this test already provides: that the Kotlin compiler
-        // accepts what was emitted. `@Preview` is repeatable, and "repeatable" is a claim about a
-        // real annotation on a real classpath — a string assertion cannot check it.
+        // The device fan-out rides here because only a real compile can prove `@Preview` is
+        // repeatable on the classpath.
         preview = ScreenGenerator.Preview(devices = listOf("id:pixel_6", "id:pixel_fold")),
       )
     val emitted =
@@ -330,18 +319,12 @@ class ScreenGeneratorCompileFunctionalTest {
     assertThat(emitted.source).contains("""Text(text = "Continue", """)
     assertThat(emitted.source).contains("val modifier: Modifier = Modifier.padding(4.dp)\n")
     assertThat(emitted.source).contains("modifier = modifier.then(Modifier)")
-    // And by their *simple* names, imported once. Both `Text`s sit inside a receiver slot —
-    // `Card`'s `ColumnScope` and `Button`'s `RowScope` — which the generator used to qualify on
-    // the premise that an import could not reach inside one. The `contains` assertions above pass
-    // either way, since a qualified call ends in the same characters; these are what tell the two
-    // apart, and the compile below is what proves the imported spelling actually resolves.
+    // Simple-name imports even inside receiver slots; the `contains` checks above pass either way,
+    // so these distinguish the spellings and the compile proves resolution.
     assertThat(emitted.source).contains("import androidx.compose.material3.Text")
     assertThat(emitted.source).doesNotContain("androidx.compose.material3.Text(text = ")
-    // Stock Material 3 needs no opt-in at a call site. The markers the Compose compiler stamps
-    // onto the JVM method are not themselves opt-in requirements, and reading the meta-annotation
-    // closure rather than the direct annotations reported them anyway — which told consumers to
-    // opt into Compose internals to place a `Card`. This is the gate on that against a real
-    // library; `ComposableSignatureTest` covers the same trap on fixtures.
+    // Stock Material 3 needs no opt-in; reading the meta-annotation closure wrongly reported
+    // Compose internals. `ComposableSignatureTest` covers the same on fixtures.
     assertThat(emitted.requiredOptIns).isEmpty()
     assertThat(emitted.source).doesNotContain("@OptIn")
     // Two stacked `@Preview`s on one wrapper, which the compile below is the real check on.
@@ -701,11 +684,8 @@ class ScreenGeneratorCompileFunctionalTest {
 
   @Test
   fun `a lazy list built through its scope's DSL compiles`() {
-    // The half `slots` alone could never write. `Feed`'s `content` is a `LazyListScope.() -> Unit`
-    // whose lambda type a bare `{ Text(…) }` satisfies — so nothing refused — and which does not
-    // compile, because `Text` is not a member of `LazyListScope`. Five of the m3 catalog's layout
-    // containers had no component record at all for exactly this reason
-    // (yschimke/compose-preview-server#394). What settles it is the compile at the end.
+    // A `LazyListScope.() -> Unit` slot accepts `{ Text(…) }` by type but doesn't compile; such
+    // containers had no records before (compose-preview-server#394). The compile settles it.
     val projectDir = createTestProject()
 
     val discover = runGradle(projectDir, "composePreviewDiscover")
@@ -778,10 +758,7 @@ class ScreenGeneratorCompileFunctionalTest {
 
   @Test
   fun `a lambda returning a constant compiles where the parameter takes one`() {
-    // `progress: () -> Float` was refused outright with "no value in this vocabulary is a lambda",
-    // which was true of the vocabulary and not of the need — a determinate indicator, a
-    // `rememberCarouselState { n }`, and both pickers all want the same narrow thing. The compile
-    // at the end is what settles that `{ 0.4f }` is really what the parameter takes.
+    // `progress: () -> Float` used to be refused; the compile confirms `{ 0.4f }` is what it takes.
     val projectDir = createTestProject()
 
     val discover = runGradle(projectDir, "composePreviewDiscover")

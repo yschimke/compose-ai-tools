@@ -22,31 +22,16 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Proves the `daemon-launch.json` schema is a stable contract independent of the Gradle plugin: any
- * non-Gradle build (Amper, Bazel, Buck2, a shell script) that can resolve a runtime classpath
- * + locate compiled `@Preview` classes can author a working descriptor by hand and drive a
- *   `RenderSession` against it.
+ * Proves the `daemon-launch.json` schema is a contract independent of the Gradle plugin: a
+ * non-Gradle build (Amper, Bazel, a shell script) can author a descriptor by hand and drive a
+ * `RenderSession`.
  *
- * The test does **not** call `:samples:cmp:composePreviewDaemonStart`. It does call
- * `:samples:cmp:composePreviewDiscover` (via the gradle pre-build) so a `previews.json` exists on
- * disk — preview discovery is one of the two contracts a non-Gradle integration owns, but the
- * discovery library extraction is a separate piece of work (see `docs/NON_GRADLE_INTEGRATION.md` §
- * "Limitations and follow-ups"); for now the test reuses an existing manifest the way an Amper /
- * Bazel rule would in a v1 integration.
+ * Reuses `:samples:cmp:composePreviewDiscover`'s `previews.json` (discovery is not yet extracted;
+ * see `docs/NON_GRADLE_INTEGRATION.md`) but not the plugin's daemon task. Proves that the
+ * descriptor can be rebuilt field by field, that `SubprocessRenderSessions.open(...)` completes
+ * `initialize` with it, and that `renderNow` produces a real PNG from it.
  *
- * **What's proven:**
- *
- * 1. The classpath / mainClass / sysprops the daemon needs at boot can be assembled outside the
- *    plugin (the test rebuilds the descriptor field-by-field from a parsed reference, not from a
- *    Gradle action).
- * 2. `SubprocessRenderSessions.open(...)` accepts the synthesised descriptor and completes the
- *    `initialize` handshake.
- * 3. `renderNow` produces a real PNG against the synthesised classpath — i.e. the daemon picks up
- *    the user classes and Compose runtime from the descriptor, not from any ambient gradle state.
- *
- * **Self-skip:** the test skips cleanly when the prerequisite gradle outputs are missing — devs who
- * haven't run `:samples:cmp:composePreviewDiscover` shouldn't see a hard failure. CI runs the
- * pre-step explicitly via `render-session/subprocess/build.gradle.kts`.
+ * Self-skips when the prerequisite Gradle outputs are missing; CI runs the pre-step.
  */
 class NonGradleContractTest {
 
@@ -73,10 +58,8 @@ class NonGradleContractTest {
       return
     }
 
-    // 1. Treat the gradle-plugin's descriptor as a *parts list* — classpath entries, sysprop
-    //    values, JVM args — that any other producer would also need to surface. The synthesis
-    //    below uses individual fields, not the file as a whole; a real Amper / Bazel integration
-    //    would resolve the same parts from its own dep graph.
+    // Treat the plugin's descriptor as a parts list; another build system would resolve the same
+    // parts.
     val referenceDescriptor = json.parseToJsonElement(gradlePluginDescriptor.readText()).jsonObject
     val classpath = referenceDescriptor.classpathList()
     val jvmArgs = referenceDescriptor["jvmArgs"]!!.jsonArray.map { it.jsonPrimitive.content }
@@ -109,12 +92,8 @@ class NonGradleContractTest {
         .toString()
     )
 
-    // 3. Open the session against the synthesised descriptor and render a vanilla preview from
-    //    the manifest. The handshake must succeed; the render must land a PNG on disk.
-    //    `@PreviewParameter`-driven previews are skipped — they need provider expansion the
-    //    standalone discovery layer doesn't do here (see `docs/NON_GRADLE_INTEGRATION.md`
-    //    "Limitations and follow-ups"); the test would fail loading the composable by raw
-    //    method name. A vanilla `@Preview` exercises the same render path.
+    // Open the session and render a vanilla preview. `@PreviewParameter` previews are skipped: the
+    // standalone path doesn't expand providers.
     val target =
       pickVanillaPreviewId(previewsJsonCopy)
         ?: error("previews.json must contain at least one non-parameterised preview")
@@ -178,10 +157,8 @@ class NonGradleContractTest {
   }
 
   /**
-   * Rewrites `renderOutput` paths in a copied `previews.json` so each preview's PNG lands in our
-   * tmp render-output dir (configured via the descriptor's `composeai.render.outputDir` sysprop)
-   * rather than the original gradle-plugin output dir. Mirrors what a non-Gradle integration would
-   * do post-discovery to point captures at a build-system-controlled output location.
+   * Rewrites `renderOutput` paths in a copied `previews.json` so PNGs land in our tmp output dir,
+   * as a non-Gradle integration would.
    */
   private fun rewritePreviewsForTmp(rawJson: String, renderOutputDir: File): String {
     val root = json.parseToJsonElement(rawJson).jsonObject
@@ -216,10 +193,8 @@ class NonGradleContractTest {
     this["classpath"]!!.jsonArray.map { it.jsonPrimitive.content }
 
   /**
-   * Returns the first preview id in [previewsJson] whose `params.previewParameterProviderClassName`
-   * is `null` — i.e. a vanilla `@Preview` without a `@PreviewParameter`-driven fan-out. The
-   * subprocess daemon's `RenderEngine` resolves composable methods by raw name; parameterised
-   * previews need provider-instance threading that the daemon's standalone path doesn't do.
+   * The first preview id in [previewsJson] without a `@PreviewParameter` provider; the standalone
+   * daemon resolves composables by raw name.
    */
   private fun pickVanillaPreviewId(previewsJson: File): String? {
     val parsed = json.parseToJsonElement(previewsJson.readText()).jsonObject
@@ -238,10 +213,8 @@ class NonGradleContractTest {
   }
 
   /**
-   * Hand-written `daemon-launch.json` builder. This is the *exact* shape the design document
-   * specifies — anything that can produce this JSON works with the subprocess factory. Kept
-   * structural rather than typed (no `@Serializable` class) so the test demonstrates the bare
-   * contract a non-Kotlin caller (a shell script, a Bazel rule generator) would also produce.
+   * Hand-written `daemon-launch.json`, kept structural (no `@Serializable` class) to show the bare
+   * contract a non-Kotlin producer would write.
    */
   private fun writeDescriptor(
     modulePath: String,
@@ -286,9 +259,8 @@ class NonGradleContractTest {
   }
 
   /**
-   * Walks up from the test JVM's working dir until we find the repo's `settings.gradle.kts`. The
-   * test classpath plants the working dir somewhere under `render-session/subprocess/` during
-   * gradle runs, but every path we feed into the descriptor has to be absolute.
+   * Walks up from the working dir to the repo's `settings.gradle.kts`, since descriptor paths must
+   * be absolute.
    */
   private fun locateRepoRoot(): File {
     var dir: File? = File(".").canonicalFile

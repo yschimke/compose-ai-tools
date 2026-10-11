@@ -13,9 +13,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * The tag index is the element identity a scoped parity acceptance resolves against, so the
- * uniqueness signal ([ServeSemanticsTags.TagEntry.count]) has to be trustworthy in the cases that
- * would otherwise report a duplicate as unique. Those are what these cover.
+ * The uniqueness signal ([ServeSemanticsTags.TagEntry.count]) must be trustworthy in the cases that
+ * would otherwise report a duplicate as unique.
  */
 class ServeSemanticsTagsTest {
 
@@ -94,11 +93,7 @@ class ServeSemanticsTagsTest {
     assertEquals(3, tags.getValue("row").count)
   }
 
-  /**
-   * The case the whole field exists for: a zero-area duplicate must not be dropped, because
-   * dropping it reports `count = 1` for a tag two nodes carry and an acceptance would resolve it as
-   * unique.
-   */
+  /** A zero-area duplicate still counts, or the tag reads as unique. */
   @Test
   fun `a duplicate with no usable bounds still raises the count`() {
     val tags =
@@ -151,11 +146,7 @@ class ServeSemanticsTagsTest {
     )
   }
 
-  /**
-   * A tag is matched by Compose as the exact string, so the index must not normalise it. Trimming
-   * would merge these two distinct tags into one `count = 2` entry — false ambiguity for `"pad"`,
-   * and no key at all for an acceptance recording `" pad "`.
-   */
+  /** Tags match as exact strings; trimming would merge distinct tags into false ambiguity. */
   @Test
   fun `a tag is keyed verbatim, not trimmed`() {
     val tags =
@@ -190,10 +181,8 @@ class ServeSemanticsTagsTest {
   }
 
   /**
-   * The space is on the wire because the design doc and this producer currently disagree about
-   * whether the index is canonical-plane or render-pixel. A consumer must be able to tell without
-   * guessing, since treating render pixels as canonical is exactly what produces a wrong
-   * `element-moved` verdict.
+   * The space is on the wire because the doc and this producer disagree about canonical-plane vs
+   * render-pixel; consumers must not guess.
    */
   @Test
   fun `every entry names its coordinate space`() {
@@ -202,11 +191,8 @@ class ServeSemanticsTagsTest {
   }
 
   /**
-   * Asserted on the **raw JSON**, not on a decoded [ServeSemanticsTags.TagEntry]. Decoding restores
-   * the Kotlin default, so a round-trip test passes even when the field never reached the wire —
-   * which is exactly what happened: the host serialises with `encodeDefaults = false`, and without
-   * `@EncodeDefault` the discriminator was dropped while every Kotlin-side assertion still saw it.
-   * A browser reading the response is the consumer that matters here.
+   * Asserted on raw JSON: decoding restores the Kotlin default, so a round-trip test passes even if
+   * the field never reaches the wire (`encodeDefaults = false` without `@EncodeDefault`).
    */
   @Test
   fun `the coordinate space survives serialisation under encodeDefaults false`() {

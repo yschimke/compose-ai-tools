@@ -37,41 +37,28 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Browser entrypoint for the in-browser CMP catalog (Workstream C / model 1).
+ * Browser entrypoint for the in-browser CMP catalog.
  *
- * Reads `?id=<component>&uiMode=<light|dark>&fontScale=<f>&localeTag=<bcp47>` (plus any
- * author-declared `knob.<key>=<value>` edits) from the page URL and mounts the matching catalog
- * component into the `#composeApp` container. This is what the `serve` viewer embeds in a sandboxed
- * `<iframe>` at the `data-mode="live"` seam — the Wasm runs in the browser sandbox, so it's safe to
- * execute even for an unverified session (no code runs on our server). The viewer's theme /
- * font-scale / locale controls re-point these params, so they drive the in-browser render live
- * (device/orientation are server-render-only and stay disabled there).
+ * Reads `?id=<component>&uiMode=<light|dark>&fontScale=<f>&localeTag=<bcp47>` (plus
+ * `knob.<key>=<value>` edits) and mounts the matching catalog component into `#composeApp`. The
+ * `serve` viewer embeds this in a sandboxed `<iframe>`, so it runs only in the browser sandbox.
  *
- * Those controls update the render **in place** rather than reloading the iframe: the page's
- * initial query is the [baseParams] floor and [applyOverrides] (called by the embedding viewer via
- * `postMessage`) merges a `?a=b` patch over it into [renderParams], which recomposes the live tree.
- * Recomputing from [baseParams] every time means an absent key reverts to the deep-link default
- * (e.g. clearing the Theme control falls back to the baked variant's `uiMode`), with no full
- * reload.
+ * Viewer controls update the render in place: [applyOverrides] (via `postMessage`) merges a patch
+ * over the page's initial [baseParams] into [renderParams], so an absent key reverts to the
+ * deep-link default without a reload.
  */
 private var baseParams: Map<String, String> = emptyMap()
 private val renderParams = mutableStateOf<Map<String, String>>(emptyMap())
 
 fun main() {
-  // The `?…` query is the clean baked default (the viewer's `data-wasm-src`); the viewer carries
-  // its
-  // initial session overrides in the `#…` fragment instead, so [baseParams] stays the true default
-  // and clearing a control later (an empty [applyOverrides] patch) reverts to it rather than
-  // sticking.
+  // The `?…` query is the clean baked default; the viewer's initial overrides travel in the `#…`
+  // fragment, so clearing a control later reverts to the true default.
   baseParams = parseQuery(locationSearch())
   renderParams.value = baseParams + parseQuery(locationHash())
   ComposeViewport(viewportContainerId = "composeApp") {
-    // Text parity with the baked snapshot needs the same typefaces the Android renderer
-    // rasterizes: load the fonts the `fonts.json` manifest declares (self-hosted beside the app,
-    // `?fontsBase=` overridable) and hold the catalog composition — and therefore the first-frame
-    // signal the embedding viewer swaps on — until they resolve, so the first revealed frame is
-    // already shaped by the right fonts. A fetch failure or the timeout degrades to the CMP
-    // bundled font instead of blocking the reveal.
+    // Hold the composition (and the first-frame signal) until the `fonts.json` fonts load, so the
+    // first revealed frame matches the baked snapshot's typefaces. Failure or timeout falls back to
+    // the bundled font.
     var fonts by remember { mutableStateOf<FontsState>(FontsState.Loading) }
     LaunchedEffect(Unit) {
       fonts =
@@ -79,9 +66,7 @@ fun main() {
     }
     val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
-    // `?mode=builder` mounts the UI builder instead of the single-sticker viewer: the same catalog,
-    // the same knob lookups, assembled into a composition rather than shown one component at a
-    // time. Kept behind a param so the embedding viewer's own use of this app is untouched.
+    // `?mode=builder` mounts the UI builder over the same catalog and knob lookups.
     if (params["mode"] == "builder") {
       MaterialTheme(
         colorScheme = if (params["uiMode"] == "dark") darkColorScheme() else lightColorScheme()
@@ -95,19 +80,15 @@ fun main() {
     // Clamp to the viewer slider's range so a crafted query can't blow up layout.
     val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f
     val rtl = isRtlLocale(params["localeTag"])
-    // No `background` handling: the baked sticker's surface is transparent in every catalog
-    // variant (see `CatalogStickerFrame`), so this tier draws it transparent unconditionally and
-    // `background=off` has nothing left to drop. `bgPhase=<x>,<y>` is the embedding viewer's
-    // stage-pattern tile origin in this frame's CSS-px coordinates, so the checkerboard the app
-    // paints behind the sticker continues the page's cells exactly.
+    // The sticker surface is always transparent, so there's no `background` handling.
+    // `bgPhase=<x>,<y>` is the viewer's checkerboard origin in this frame's CSS px, so the app's
+    // checkerboard continues the page's cells.
     val checkerPhase = parsePhase(params["bgPhase"])
-    // The viewer's resolved stage colour, so the transparent sticker sits on the same backdrop the
-    // snapshot does. Absent (or unparseable) ⇒ the page is on its checkerboard, which the app
-    // continues itself.
+    // The viewer's resolved stage colour; absent means the page shows its checkerboard, which the
+    // app continues.
     val stageColor = parseStageColor(params["stageBg"])
-    // Author-declared editable knobs ride as `knob.<key>=<value>` params (the viewer pushes the
-    // changed ones); strip the prefix and provide them to the shared catalog's `catalogOverride*`
-    // lookups. Absent ⇒ empty map ⇒ every knob renders its author default (baked-parity).
+    // `knob.<key>=<value>` params, stripped of the prefix for the catalog's `catalogOverride*`
+    // lookups; absent knobs render their author default.
     val knobs = knobOverrides(params)
     CompositionLocalProvider(LocalWasmCatalogKnobs provides knobs) {
       CatalogApp(
@@ -127,9 +108,9 @@ fun main() {
 }
 
 /**
- * Project the `knob.<key>=<value>` params out of the merged render params, stripped to the bare
- * `<key>` (matching the shared runtime's `seedKey` — the base key or `key[index]`). The value stays
- * a raw string; each typed `catalogOverride*` parses it to its own type.
+ * Project the `knob.<key>=<value>` params out of [params], stripped to `<key>` (the runtime's
+ * `seedKey`: base key or `key[index]`). Values stay raw strings for each `catalogOverride*` to
+ * parse.
  */
 internal fun knobOverrides(params: Map<String, String>): Map<String, String> {
   val out = mutableMapOf<String, String>()
@@ -157,20 +138,14 @@ private sealed interface FontsState {
 }
 
 /**
- * Load the catalog's fonts **by URL**, driven by the `fonts.json` manifest served beside them: for
- * each `role: "default"` family entry, fetch its files and build one [FontFamily] used for the
- * whole M3 type scale. The default base is `./fonts/` — vendored beside the app (self-hosted,
- * Apache 2.0), so the bundle stays offline-clean behind an egress proxy — and an operator can point
- * `?fontsBase=` at any http(s) origin that serves the same layout with CORS (the sandboxed iframe
- * has an opaque origin, so cross-origin fonts need `ACAO`). A base without a manifest falls back to
- * the fixed Roboto pair (the pre-manifest `?fontsBase=` contract); null on any failure ⇒ the caller
- * falls back to the CMP bundled font.
+ * Load the catalog's fonts by URL from the `fonts.json` manifest: each `role: "default"` family
+ * becomes the [FontFamily] for the whole M3 type scale. Defaults to the vendored `./fonts/`
+ * (offline-clean); `?fontsBase=` may point at any CORS-enabled origin (the sandboxed iframe has an
+ * opaque origin). A base without a manifest falls back to the fixed Roboto pair.
  *
- * The host `index.html` starts these same fetches at document load (`__cpPrefetch*`), in parallel
- * with the Wasm boot, and the fetch bridge below consumes those in-flight promises — so by the time
- * this runs the bytes are usually already here. (It must be the *iframe's own* prefetch: the
- * sandbox's opaque origin gets its own HTTP-cache partition, so the embedding viewer page can't
- * warm anything for it.)
+ * The host `index.html` starts these fetches at load (`__cpPrefetch*`) in parallel with Wasm boot,
+ * and the bridge consumes those promises. It must be the iframe's own prefetch, since the opaque
+ * origin has its own HTTP-cache partition.
  */
 private suspend fun loadCatalogFonts(): FontsState.Ready {
   val raw = baseParams["fontsBase"] ?: "./fonts/"
@@ -208,9 +183,8 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
       FontsState.Ready(null)
     }
   }
-  // Each family loads fail-soft in isolation: a 404'd/blocked generic TTF (partial deploy, custom
-  // fontsBase rollout) must not take the already-loadable default Roboto — and with it every
-  // component's text parity — down with it. A failed family just drops to its bundled fallback.
+  // Each family loads fail-soft in isolation, so a missing generic TTF doesn't take down the
+  // default.
   val default =
     try {
       entries
@@ -238,9 +212,8 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
         )
       }
     }
-  // Named downloadable-GoogleFont families (`role: "named"`), keyed by the GoogleFont display name
-  // that namedFontFamily() looks up (`Orbitron`, `Space Grotesk`, …). Same fail-soft isolation as
-  // the generics: a family whose faces don't fetch drops to namedFontFamily's fallback.
+  // Named GoogleFont families (`role: "named"`), keyed by display name for namedFontFamily(); same
+  // fail-soft isolation.
   val named = mutableMapOf<String, FontFamily>()
   entries
     .filter { it.role == "named" && it.family.isNotEmpty() }
@@ -268,11 +241,9 @@ internal data class ManifestFont(
 )
 
 /**
- * Parse `fonts.json` (`{families: [{name, role, fonts: [{file, weight, style}]}]}`). JSON parsing
- * happens on the JS side ([flattenFontsManifest] — no serialization dependency for one small
- * manifest); this validates each flattened row. Rows with a missing/unsafe `file` (path traversal,
- * absolute scheme) are dropped; unknown roles are kept for the caller to filter, so future roles
- * (generic-family mappings, named families) stay additive.
+ * Parse `fonts.json` (`{families: [{name, role, fonts: [{file, weight, style}]}]}`), flattened on
+ * the JS side ([flattenFontsManifest]). Rows with a missing or unsafe `file` (traversal, absolute
+ * scheme) are dropped; unknown roles are kept for the caller to filter.
  */
 internal fun parseFontsManifest(json: String?): List<ManifestFont> {
   val flat = json?.let { flattenFontsManifest(it) }?.toString() ?: return emptyList()
@@ -297,8 +268,8 @@ private const val FIELD_SEP = "\u0000"
 private const val ROW_SEP = "\u0001"
 
 /**
- * `JSON.parse` the manifest and flatten it to `role␀name␀file␀weight␀style` rows (␁-joined) — the
- * shape that crosses the Wasm↔JS boundary as one string. Null/empty on malformed JSON.
+ * `JSON.parse` the manifest into `role␀name␀file␀weight␀style` rows (␁-joined), one string across
+ * the Wasm↔JS boundary. Null/empty on malformed JSON.
  */
 private fun flattenFontsManifest(json: String): JsString? =
   js(
@@ -317,9 +288,8 @@ private fun flattenFontsManifest(json: String): JsString? =
   )
 
 /**
- * `fetch(url)` → base64 of the response body. Base64 is the bridge shape because Kotlin/Wasm can't
- * take a `Uint8Array` across the interop boundary as a `ByteArray`; the chunked
- * `String.fromCharCode` keeps each `apply` under the JS argument-count limit.
+ * `fetch(url)` → base64 of the body: Kotlin/Wasm can't take a `Uint8Array` as a `ByteArray`.
+ * Chunked `String.fromCharCode` stays under the JS argument-count limit.
  */
 private fun fetchAsBase64(url: String, timeoutMs: Int): Promise<JsString> =
   js(
@@ -335,10 +305,8 @@ private fun fetchAsBase64(url: String, timeoutMs: Int): Promise<JsString> =
   )
 
 /**
- * Cancellable, so `withTimeoutOrNull` around the font load actually unblocks on a stalled origin (a
- * plain `suspendCoroutine` never observes cancellation and would hold the first frame forever). The
- * JS-side `AbortSignal.timeout` additionally kills the underlying request itself, slightly after
- * the Kotlin timeout would have abandoned it.
+ * Cancellable, so `withTimeoutOrNull` actually unblocks on a stalled origin; `AbortSignal.timeout`
+ * also kills the underlying request.
  */
 private suspend fun fetchBytes(url: String): ByteArray = suspendCancellableCoroutine { cont ->
   fetchAsBase64(url, timeoutMs = (FONT_LOAD_TIMEOUT_MS + 2_000L).toInt())
@@ -375,9 +343,8 @@ private suspend fun fetchText(url: String): String = suspendCancellableCoroutine
 private fun consoleWarn(message: String): Unit = js("console.warn(message)")
 
 /**
- * Parse the viewer's `stageBg=#rrggbb` — the solid stage colour it resolved for this preview. Null
- * for anything else (absent, `checker` when the page is in transparent mode, or a malformed value),
- * which leaves the app on its own checkerboard.
+ * Parse the viewer's `stageBg=#rrggbb`. Null otherwise (absent, `checker`, malformed), leaving the
+ * app on its checkerboard.
  */
 internal fun parseStageColor(raw: String?): Color? {
   val hex = raw?.trim()?.removePrefix("#")?.takeIf { it.length == 6 } ?: return null
@@ -396,11 +363,8 @@ internal fun parsePhase(raw: String?): Offset {
 }
 
 /**
- * Tell the embedding `serve` viewer the first real frame is on the canvas ("cp-wasm-ready"): it
- * keeps the baked snapshot on-stage until this arrives, so ticking "Run in browser (Wasm)" swaps
- * with no blank/white flash while the ~MBs of Wasm load. A no-op when the page is top-level
- * (`window.parent === window`; the string bounces to our own message listener, where it parses to
- * an empty override patch).
+ * Tell the embedding viewer the first real frame is drawn ("cp-wasm-ready"), so it can swap from
+ * the baked snapshot without a blank flash. Harmless when top-level (it parses to an empty patch).
  */
 private fun postFirstFrame() {
   postToParent("cp-wasm-ready")
@@ -409,9 +373,8 @@ private fun postFirstFrame() {
 private fun postToParent(message: String): Unit = js("window.parent.postMessage(message, '*')")
 
 /**
- * Apply a live override patch (`?a=b&c=d`, no leading `?`) pushed by the embedding viewer through
- * `window.postMessage`. Exported to JS so the host page's message listener can forward it; merges
- * over [baseParams] so absent keys revert to the deep-link defaults, then recomposes in place.
+ * Apply a live override patch (`a=b&c=d`) pushed by the viewer via `window.postMessage`, merged
+ * over [baseParams] and recomposed in place. Exported for the host page's message listener.
  */
 @JsExport
 fun applyOverrides(query: String) {
@@ -419,9 +382,8 @@ fun applyOverrides(query: String) {
 }
 
 /**
- * Whether [localeTag]'s primary language subtag is right-to-left. Layout direction is the locale
- * effect a single component actually shows in the browser (full locale formatting needs the server
- * renderer); covers the common RTL languages.
+ * Whether [localeTag]'s primary language subtag is right-to-left — layout direction being the
+ * locale effect a single component shows in the browser.
  */
 internal fun isRtlLocale(localeTag: String?): Boolean {
   val lang =
@@ -449,11 +411,9 @@ internal fun parseQuery(search: String): Map<String, String> {
 }
 
 /**
- * Decode one query key/value: `+` → space, then `%XX` percent-escapes (UTF-8). The embedding viewer
- * builds patches with `encodeURIComponent`, which escapes even the comma inside `bgPhase`
- * (`12.00,4.00` → `12.00%2C4.00`) — without this decode the phase parser would silently fall back
- * to `Offset.Zero` and the checkerboard would seam. Hand-rolled (not JS `decodeURIComponent`) so a
- * malformed escape degrades to literal text instead of throwing across the JS boundary.
+ * Decode one query key/value: `+` → space, then UTF-8 `%XX` escapes (`encodeURIComponent` escapes
+ * the comma in `bgPhase`). Hand-rolled so a malformed escape degrades to literal text instead of
+ * throwing across the JS boundary.
  */
 internal fun decode(value: String): String {
   val plusDecoded = value.replace('+', ' ')

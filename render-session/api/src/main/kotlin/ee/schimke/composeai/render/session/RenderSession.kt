@@ -31,43 +31,23 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Live render session bound to one preview module. The session encapsulates the renderer lifecycle
- * (initialize, render, fetch data, subscribe to live updates, close); implementations choose how to
- * host the renderer — most commonly as a daemon subprocess driven over JSON-RPC, but a future
- * in-process embedded driver presents the same contract.
+ * Live render session bound to one preview module: initialize, render, fetch data, subscribe to
+ * live updates, close. Most commonly backed by a daemon subprocess driven over JSON-RPC.
  *
- * ## `Duration` and the mangled JVM names
+ * Methods taking a `kotlin.time.Duration` compile to mangled JVM names (`renderNow-9VgGkz4`) and
+ * are not callable from Java; changing the value-class type is an ABI break.
  *
- * `kotlin.time.Duration` is a value class, so every method taking a `timeout` compiles to a mangled
- * name (`renderNow-9VgGkz4`): not callable from Java, which is accepted for this Kotlin-first API.
- * Swapping one value class for another renames the method, which the ABI dump shows as a removal
- * plus an addition; treat it as the break it is.
+ * **Lifecycle:** [RenderSessionFactory] completes the `initialize` handshake before returning, so
+ * the observable lifecycle is `open → drive → close`.
  *
- * ## Lifecycle
+ * **Threading:** safe for calls sequenced by the caller; concurrent use is implementation-defined.
  *
- * A session is born *initialized*: [RenderSessionFactory] performs the renderer-side `initialize`
- * handshake before handing the session back, so callers never observe an un-initialized session.
- * The publicly observable lifecycle is just `open → drive → close`.
- *
- * ## Threading
- *
- * Implementations are required to be safe for concurrent calls from one calling thread sequenced by
- * the caller. Multi-threaded use is implementation-defined — the subprocess backend's underlying
- * client is internally synchronised, but the contract here does not promise it.
- *
- * ## Notifications
- *
- * Daemon backends emit asynchronous notifications (`renderFinished`, `discoveryUpdated`,
- * `classpathDirty`, `dataProduct`, …) as renders progress. Register a listener via [onNotification]
- * when you need to react to them; the default session ignores them after the synchronous reply
- * returns. Notifications are dispatched from an implementation-defined thread; handlers must not
+ * **Notifications** (`renderFinished`, `discoveryUpdated`, `classpathDirty`, `dataProduct`, …) are
+ * delivered to [onNotification] listeners on an implementation-defined thread; handlers must not
  * block.
  *
- * ## Errors
- *
- * Every request method throws [RenderSessionException] (or a more specific subtype) on transport /
- * protocol failure. Wire-level data-product errors (`DataProductUnknown`,
- * `DataProductNotAvailable`, etc.) are surfaced as [DataProductException].
+ * **Errors:** request methods throw [RenderSessionException] on transport/protocol failure, and
+ * [DataProductException] for wire-level data-product errors.
  */
 public interface RenderSession : AutoCloseable {
   /** Absolute path to the workspace root the session was opened against. */
@@ -82,11 +62,7 @@ public interface RenderSession : AutoCloseable {
   /** Backend that hosts this session — informational; behaviour is identical across backends. */
   public val backendKind: RenderSessionBackend
 
-  // ---------------------------------------------------------------------------
-  // Editor-state notifications. None of these return data; they update the
-  // session's view of which previews matter so subscriptions / live updates
-  // stay scoped.
-  // ---------------------------------------------------------------------------
+  // Editor-state notifications: no data returned; they keep subscriptions and live updates scoped.
 
   /** Set the most-recently-visible preview ids. Drives sticky subscription liveness. */
   public fun setVisible(previewIds: List<String>)
@@ -104,11 +80,7 @@ public interface RenderSession : AutoCloseable {
     changeType: ChangeType = ChangeType.MODIFIED,
   )
 
-  // ---------------------------------------------------------------------------
-  // Render. Synchronous — returns when every requested preview has either
-  // rendered or failed. Caller decides whether to issue one wide call or many
-  // narrow ones.
-  // ---------------------------------------------------------------------------
+  // Render. Synchronous: returns when every requested preview has rendered or failed.
 
   /**
    * Render the given previews. Idempotent at the client level — the backend caches and may serve
@@ -123,16 +95,12 @@ public interface RenderSession : AutoCloseable {
     timeout: Duration = 30.seconds,
   ): RenderNowResult
 
-  // ---------------------------------------------------------------------------
   // Data products.
-  // ---------------------------------------------------------------------------
 
   /**
-   * Fetch one data product for one preview. The backend re-renders when the artefact isn't
-   * materialised yet and the kind is marked `requiresRerender` (e.g. `a11y/atf`). Inline transport
-   * returns the payload as a parsed [JsonElement]; path transport returns an on-disk file path the
-   * caller reads directly. Pass [inline] = `true` to coerce inline transport on kinds that support
-   * it.
+   * Fetch one data product for one preview, re-rendering if the kind `requiresRerender` and isn't
+   * materialised yet. Inline transport returns a parsed [JsonElement]; path transport returns a
+   * file path. Pass [inline] = `true` to force inline where supported.
    *
    * @throws DataProductException on wire-level data-product errors.
    */
@@ -145,9 +113,8 @@ public interface RenderSession : AutoCloseable {
   ): DataFetchResult
 
   /**
-   * Subscribe to a data product kind on one preview. The session keeps the subscription "sticky
-   * while visible" — when the preview leaves the most recent [setVisible] set the backend drops the
-   * subscription automatically. Re-subscribe when it returns to view.
+   * Subscribe to a data product kind on one preview. Sticky while visible: the backend drops it
+   * when the preview leaves the latest [setVisible] set; re-subscribe when it returns.
    */
   public fun subscribeData(
     previewId: String,
@@ -163,9 +130,7 @@ public interface RenderSession : AutoCloseable {
     timeout: Duration = 15.seconds,
   ): DataSubscribeResult
 
-  // ---------------------------------------------------------------------------
   // Extensions — descriptor introspection + per-session enable/disable.
-  // ---------------------------------------------------------------------------
 
   /** Enumerate the extensions advertised by the backend. */
   public fun listExtensions(timeout: Duration = 15.seconds): ExtensionsListResult
@@ -182,11 +147,8 @@ public interface RenderSession : AutoCloseable {
     timeout: Duration = 15.seconds,
   ): ExtensionsDisableResult
 
-  // ---------------------------------------------------------------------------
-  // History — per-render archive surface. Optional on every backend; backends
-  // that don't archive returns empty results / fail with the same exception
-  // shape so callers can probe without backend-specific branching.
-  // ---------------------------------------------------------------------------
+  // History — per-render archive. Optional: non-archiving backends return empty results or fail
+  // with the same exception shape, so callers can probe without branching.
 
   /** List archived render entries. Pass [HistoryListParams] to filter by preview id / time. */
   public fun historyList(
@@ -209,9 +171,7 @@ public interface RenderSession : AutoCloseable {
     timeout: Duration = 30.seconds,
   ): HistoryDiffResult
 
-  // ---------------------------------------------------------------------------
-  // Recording — scripted screen-recording surface.
-  // ---------------------------------------------------------------------------
+  // Recording — scripted screen recording.
 
   /** Start a recording session against one preview. Returns the daemon-allocated recording id. */
   public fun recordingStart(
@@ -235,17 +195,12 @@ public interface RenderSession : AutoCloseable {
     timeout: Duration = 60.seconds,
   ): RecordingEncodeResult
 
-  // ---------------------------------------------------------------------------
   // Streaming (optional — daemon `stream/start` + `streamFrame` + `interactive/input`).
-  // ---------------------------------------------------------------------------
 
   /**
-   * Start a held streamed-frame session for one preview (daemon `stream/start`). The renderer then
-   * pushes `streamFrame` notifications — observe via [onNotification] — carrying inline base64
-   * frames keyed by [StreamStartResult.frameStreamId]. The default throws
-   * [UnsupportedOperationException]; callers that want graceful degradation catch it (or any
-   * failure) and fall back to [renderNow]-per-frame. Only the subprocess/daemon backend overrides
-   * this.
+   * Start a held streamed-frame session for one preview (daemon `stream/start`); frames arrive as
+   * `streamFrame` notifications keyed by [StreamStartResult.frameStreamId]. The default throws
+   * [UnsupportedOperationException]; callers can fall back to [renderNow] per frame.
    */
   public fun streamStart(
     previewId: String,
@@ -260,10 +215,9 @@ public interface RenderSession : AutoCloseable {
     throw UnsupportedOperationException("streaming not supported")
 
   /**
-   * Tell the renderer whether anyone is currently looking at a held stream (daemon
-   * `stream/visibility`, fire-and-forget). A hidden stream keeps its held session warm but drops to
-   * [fps] (daemon default: 1) for both emission *and* rendering, and the first frame after it flips
-   * back to visible is flagged as a keyframe. Default throws.
+   * Tell the renderer whether anyone is watching a held stream (daemon `stream/visibility`). A
+   * hidden stream stays warm but drops to [fps] (daemon default 1); the first frame after becoming
+   * visible is a keyframe. Default throws.
    */
   public fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null): Unit =
     throw UnsupportedOperationException("streaming not supported")
@@ -284,21 +238,17 @@ public interface RenderSession : AutoCloseable {
     pointerType: String? = null,
   ): Unit = throw UnsupportedOperationException("streaming not supported")
 
-  // ---------------------------------------------------------------------------
   // Notifications.
-  // ---------------------------------------------------------------------------
 
   /**
-   * Register a notification listener. The returned [AutoCloseable] removes the listener when closed
-   * — typical use is `session.onNotification { … }.use { runRenders() }` so the subscription is
-   * scoped to one block. Handlers must not block; offload to a worker if real work is needed.
+   * Register a notification listener; closing the returned [AutoCloseable] removes it, e.g.
+   * `session.onNotification { … }.use { runRenders() }`. Handlers must not block.
    */
   public fun onNotification(listener: NotificationListener): AutoCloseable
 
   /**
-   * Close the session. Idempotent. After close, every other method throws [IllegalStateException].
-   * Implementations are responsible for tearing down their transport (subprocess shutdown,
-   * classloader release, etc.) without leaking resources.
+   * Close the session, tearing down its transport. Idempotent; afterwards every other method throws
+   * [IllegalStateException].
    */
   override fun close()
 }
@@ -323,17 +273,15 @@ public enum class RenderSessionBackend {
   Subprocess,
 
   /**
-   * In-process embedded driver. Currently unsupported on most JVMs — the renderer needs the full
-   * Robolectric + AGP + Compose classpath, which is rare outside of unit-test runners. Reserved for
-   * future implementations.
+   * In-process embedded driver. Reserved: the renderer needs the full Robolectric + AGP + Compose
+   * classpath, which is rare outside unit-test runners.
    */
   Embedded,
 }
 
 /**
- * Common base for failures observed across the session contract. Implementations preserve the
- * underlying [cause] (e.g. an `IOException` from the transport, a `JsonRpcException` from the
- * protocol layer) where one exists.
+ * Common base for session failures, preserving the underlying [cause] (transport `IOException`,
+ * protocol `JsonRpcException`) where one exists.
  */
 public open class RenderSessionException(message: String, cause: Throwable? = null) :
   RuntimeException(message, cause)

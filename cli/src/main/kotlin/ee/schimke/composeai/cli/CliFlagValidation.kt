@@ -1,18 +1,9 @@
 package ee.schimke.composeai.cli
 
 /**
- * Per-command option allowlists used to keep an unrecognised option from disappearing silently
- * (issue #3781).
- *
- * Parsing in this CLI is intentionally lightweight: commands read the options they care about
- * directly from [List] rather than registering them with a parser. That makes a typo
- * indistinguishable from an option the command simply did not read. Keep that parsing model, but
- * validate the routed argv against the command that will receive it and warn before any expensive
- * work starts.
- *
- * The warning is deliberately non-fatal for backwards compatibility. Existing scripts which pass an
- * extra option keep their exit-code behaviour, while a human or CI log can no longer mistake the
- * option for one that took effect.
+ * Per-command option allowlists, so an unrecognised option doesn't vanish silently. Commands read
+ * options directly from argv, which makes a typo indistinguishable from an unread option; the
+ * routed argv is validated and a non-fatal warning printed before expensive work starts.
  */
 internal object CliFlagValidation {
   private val commandBase =
@@ -36,18 +27,13 @@ internal object CliFlagValidation {
       "--no-auto-inject",
     )
 
-  // `--id-file` selects for the report commands (the `apply` action's a11y pipeline hands its
-  // changed previews this way); `bundle pack` reads it too, with its own allowlist below.
+  // `--id-file` selects for report commands (the `apply` action's a11y pipeline); `bundle pack` has
+  // its own entry.
   private val reportFlags = commandBase + setOf("--json", "--fail-on", "--id-file")
 
   /**
-   * Every flag the server's `serve` command documents, shared by the commands that launch it.
-   *
-   * `ui-builder` launches the server's `ui` command, and that command accepts every `serve` flag as
-   * well — the server's own help says so. A launcher that listed a hand-picked subset warned about
-   * flags the documented command line actually takes, which reads as though the command were wrong
-   * rather than the list. One set, so the next serve flag is added in one place; a flag that
-   * arrives here first still gets the forwarded-note, which is accurate.
+   * Every flag the server's `serve` documents, shared by the launchers (the server's `ui` accepts
+   * them all too), so new serve flags are added in one place.
    */
   private val serveFlags =
     setOf(
@@ -247,8 +233,7 @@ internal object CliFlagValidation {
           "--plugin-version",
           "--project",
           "--report",
-          // Doctor's discovery pass runs under the same budget every other command uses, so the
-          // flag that raises it has to be accepted here too (issue #5171).
+          // Doctor's discovery pass uses the shared timeout budget.
           "--timeout",
           "--variant",
           "--verbose",
@@ -270,11 +255,9 @@ internal object CliFlagValidation {
             "--wasm-dir",
           ),
       "serve" to commandBase + serveFlags,
-      // A launcher for the server's `ui` command, so the flags are that command's: the selectors
-      // a build needs, the network knobs any local server takes, and the builder's own options.
-      // `--no-open` belongs to the lane rather than the server (it suppresses `--open-browser`),
-      // which is why it is listed here and not among serve's. `--no-project` is the server's
-      // packaged-catalogs mode, named in the `ui-builder --help` the server answers with.
+      // Launcher for the server's `ui`: its selectors, network knobs and builder options.
+      // `--no-open` is the lane's own (suppresses `--open-browser`); `--no-project` is the server's
+      // packaged-catalogs mode.
       "ui-builder" to
         commandBase +
           serveFlags +
@@ -299,11 +282,9 @@ internal object CliFlagValidation {
             "--ui-builder-runtime-dir",
             "--ui-builder-state-dir",
           ),
-      // A launcher for the server's `design` command, so the flags are that command's. No
-      // selectors: this command names a design on a server rather than a preview in this project,
-      // so `--module` and friends would be noise it forwards for nobody. `--token` is listed
-      // because the server refuses it by name — a credential does not go on a command line — and
-      // that refusal is a better message than "unrecognised option".
+      // Launcher for the server's `design`: no project selectors (it names a design on a server).
+      // `--token` is listed so the server's explicit refusal of command-line credentials is what
+      // users see.
       "design" to
         setOf(
           "--assets",
@@ -324,9 +305,8 @@ internal object CliFlagValidation {
           "--timeout",
           "--token",
         ),
-      // A launcher for the server's `a2ui` command: a document in, a PNG out, against a server
-      // that is already up. `--token` is listed for the reason `design` lists it: the server
-      // refuses a credential on the command line by name.
+      // Launcher for the server's `a2ui` (document in, PNG out); `--token` listed for the same
+      // reason as `design`.
       "a2ui" to
         setOf(
           "--catalog",
@@ -342,10 +322,8 @@ internal object CliFlagValidation {
           "--timeout",
           "--token",
         ),
-      // The flags a preview server passes when it spawns the Gradle half of `serve`. Deliberately
-      // narrow: this command is machine-facing, and every flag here is one the server has to know
-      // to send. `--stdio` selects the transport; `--module` and `--variant` are the two selectors
-      // that change what a build produces, so the server forwards its own.
+      // Flags the preview server passes when spawning the Gradle half of `serve`; deliberately
+      // narrow.
       "build-host" to setOf("--stdio", "--module", "--variant", "--verbose", "-v"),
       "share-preview" to
         setOf(
@@ -363,19 +341,14 @@ internal object CliFlagValidation {
           "--serve-url",
           "--serve-token",
           "--github-token-file",
-          // Known so the command's own refusal is the only message a caller gets: it explains why
-          // a token may not be an argument, which "unrecognised option" does not.
+          // Known so the command's own refusal (why tokens can't be arguments) is the message
+          // shown.
           "--github-token",
         ),
-      // `rc` owns nested subcommands, so this is the union of what `compile` / `dump` / `header`
-      // read — and ONLY that. Deliberately not `commandBase`, unlike most entries here: `rc` drives
-      // no build and reads no project, so `--module`, `--filter`, `--timeout` and the rest have
-      // nothing to act on. Including them would have this validator call
-      // `rc --module :app dump doc.rc` well-formed while the module is silently discarded, which
-      // is the exact failure it exists to warn about. `devices` sets the precedent.
+      // Union of what `compile` / `dump` / `header` read, and only that: `rc` reads no project, so
+      // `commandBase` flags would be silently discarded (as with `devices`).
       "rc" to setOf("--help", "-h", "--output", "-o", "--compact", "--json"),
-      // `bundle` owns nested subcommands. Validate at the routed-command boundary while allowing
-      // the union of their options; nested positional dispatch remains BundleCommand's concern.
+      // Union of the nested subcommands' options; positional dispatch is BundleCommand's concern.
       "bundle" to
         commandBase +
           setOf(
@@ -464,12 +437,8 @@ internal object CliFlagValidation {
   val ALL: Set<String> = BY_COMMAND.values.flatten().toSet()
 
   /**
-   * Commands whose argv is forwarded to the compose-preview-server binary essentially untouched.
-   *
-   * For these, an option outside the allowlist is not "ignored" — the launcher passes it through
-   * and the server, which owns the flag surface, accepts or refuses it by name. The note that names
-   * an unknown option must say that, because "(ignored)" would be false: the option reaches the
-   * server and takes effect there.
+   * Commands whose argv is forwarded to the server binary, which owns the flag surface; for these
+   * an unknown option is passed through, not ignored, and the note says so.
    */
   internal val FORWARDED_TO_SERVER: Set<String> =
     setOf("serve", "browse", "ui-builder", "design", "a2ui")
@@ -497,8 +466,8 @@ internal object CliFlagValidation {
       }
       val flag = raw.substringBefore('=')
       if (flag !in allowed) unknown += flag
-      // Only a recognised, required-value flag owns the following token. An unknown flag must not
-      // hide another option after it, while a legitimate value such as "--literal" must be safe.
+      // Only a recognised value flag consumes the next token, so an unknown flag can't hide the
+      // option after it.
       index += if (flag in allowed && flag in CliFlags.VALUE_FLAGS && '=' !in raw) 2 else 1
     }
     return unknown.toList()

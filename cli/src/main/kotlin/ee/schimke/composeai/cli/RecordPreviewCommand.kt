@@ -20,14 +20,9 @@ import okio.Path.Companion.toPath
 
 /**
  * `compose-preview record` — turn a session script into a repeatable recording (GIF / APNG / MP4 /
- * WebM) of an already-compiled `@Preview`, with one command and zero MCP / daemon / protocol
- * knowledge required.
- *
- * The command is a thin author-facing wrapper over the existing scripted-recording machinery: it
- * discovers the target module (so the classpath + preview spec come for free from the gradle
- * plugin), opens a short-lived [RenderSession] against the module's daemon, then drives the
- * standard start → script → stop → encode sequence and copies the artifact to `--out`. The daemon
- * is spawned, driven, and shut down inside this one invocation — the user never manages a server.
+ * WebM) of an already-compiled `@Preview`. Discovers the module, opens a short-lived
+ * [RenderSession] against its daemon, runs start → script → stop → encode, and copies the artifact
+ * to `--out`.
  *
  * ```
  * compose-preview record \
@@ -38,16 +33,12 @@ import okio.Path.Companion.toPath
  *   --out demos/multi-touch-drawing/drawing-canvas-gestures.gif
  * ```
  *
- * The script file is a JSON array of `RecordingScriptEvent` — the same vocabulary agents already
- * emit through MCP `record_preview` (`input.pointerDown` / `pointerMove` / `pointerUp` / `click`,
- * `input.keyDown` / `keyUp`, `recording.probe`, …). Recordings tick on a virtual clock keyed to
- * `fps`, so the same script reproduces the same frames every run.
+ * The script is a JSON array of `RecordingScriptEvent` (the MCP `record_preview` vocabulary),
+ * ticked on a virtual clock keyed to `fps` so it reproduces exactly.
  *
- * **Assertions.** The script can also carry Maestro-style `assert.visible` / `assert.notVisible`
- * events, each with a `target` (ref / testTag / role+text). They resolve against the live semantics
- * tree at their `tMs`; if any assertion isn't met the command still writes the recording (the
- * frames show why it failed) but exits non-zero (code 2), turning a recording into a check CI can
- * gate on:
+ * Scripts may carry `assert.visible` / `assert.notVisible` events with a `target`, resolved against
+ * the live semantics tree at their `tMs`. If any fails, the recording is still written but the
+ * command exits 2, so CI can gate on it:
  * ```json
  * { "tMs": 1500, "kind": "assert.visible", "target": { "text": "Submit" } }
  * ```
@@ -60,11 +51,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * The preview to record. `--preview` is the documented spelling; `--id` and `--filter` are
-   * accepted as the same thing for the user who arrived from `render` / `show` (where all three now
-   * select previews — issue #3744). Unlike those commands, `record` needs exactly **one** preview,
-   * so the reference goes through [resolvePreviewId]'s staged resolver rather than the set-shaped
-   * [previewMatchesReference] predicate, and an ambiguous reference is an error.
+   * The preview to record: `--preview`, or `--id` / `--filter` as aliases. Exactly one is needed,
+   * so it goes through [resolvePreviewId]'s staged resolver and ambiguity is an error.
    */
   private val recordedPreviewRef: String? = exactId ?: previewRef ?: filter
   private val scriptPath: String? = args.flagValue("--script")
@@ -81,8 +69,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       .filter { it.isNotEmpty() }
 
   /**
-   * Directory holding committed baseline PNGs for `assert.pixels` events (issue #1967). Relative
-   * `inputText` baseline paths are resolved against it; defaults to the current directory.
+   * Directory for `assert.pixels` baseline PNGs; relative `inputText` paths resolve against it
+   * (default: the current directory).
    */
   private val baselineDir: String? = args.flagValue("--baseline-dir")
 
@@ -107,11 +95,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     // `--overrides` beats the shared settings file, key by key (the MCP server's precedence).
     val overrides = previewSettings.fillOverrides(parseOverrides(overridePairs))
 
-    // Phase 1: discover the module + its preview spec and refresh the daemon descriptor. Runs
-    // inside
-    // the gradle connection; we capture everything the daemon-driven phase needs and let the
-    // connection close before spawning the daemon (the spawn reads the on-disk descriptor, not the
-    // tooling-api model).
+    // Phase 1: discover the module and preview spec and refresh the daemon descriptor, then close
+    // the Gradle connection before spawning the daemon (which reads the on-disk descriptor).
     var resolved: ResolvedModule? = null
     withGradle(silenceStdout = false) { gradle ->
       val modules = resolveModules(gradle)
@@ -125,9 +110,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
                 "pass --module to pick one"
             )
         }
-      // composePreviewRenderAll doesn't write daemon-launch.json; composePreviewDaemonStart does,
-      // and
-      // both depend on composePreviewDiscover so previews.json is fresh for the preview lookup.
+      // `composePreviewDaemonStart` writes daemon-launch.json; both it and the render depend on
+      // discovery.
       val ok =
         runGradle(
           gradle,
@@ -195,18 +179,9 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
         "(${format.name.lowercase()}, ${outcome.encoded.sizeBytes} bytes)"
     )
 
-    // Gate on assertions last, after the artifact is on disk — a failing recording is still worth
-    // keeping (the captured frames show *why* the assertion failed). A non-zero exit lets CI /
-    // agents
-    // treat a recording as a check, the way Maestro's `assertVisible` fails a flow.
-    //
-    // Two failure shapes count: a FAILED assertion (the condition was evaluated and not met), and
-    // an
-    // `assert.*` event that came back anything other than APPLIED — most commonly UNSUPPORTED on a
-    // backend that doesn't advertise assertions (e.g. Android today). An assertion that never ran
-    // is
-    // NOT a pass; treating it as one would let a CI recording exit 0 while silently skipping the
-    // check it was written to enforce.
+    // Gate on assertions after the artifact is written (the frames show why). A FAILED assertion
+    // and an `assert.*` that wasn't APPLIED (e.g. UNSUPPORTED on Android) both fail: an assertion
+    // that never ran is not a pass.
     val failures =
       outcome.scriptEvents.filter {
         it.status == RecordingScriptEventStatus.FAILED ||
@@ -235,10 +210,6 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
 
   private data class ResolvedModule(val projectDir: File, val previewId: String)
 
-  // ---------------------------------------------------------------------------
-  // Script + argument parsing.
-  // ---------------------------------------------------------------------------
-
   private fun parseScript(scriptFile: File): List<RecordingScriptEvent> {
     val text = fileSystem.read(scriptFile.path.toPath()) { readUtf8() }
     return try {
@@ -252,12 +223,9 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Resolve `assert.pixels` baseline paths (issue #1967). The baseline PNG path rides each event's
-   * existing `inputText` field; the daemon reads it off the shared local filesystem. Relative paths
-   * are made absolute against `--baseline-dir` (default: the current directory) so resolution is
-   * independent of the daemon's working directory. Absolute paths and non-pixel events pass through
-   * unchanged. (`"assert.pixels"` mirrors `RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT`; the
-   * literal avoids pulling `:data-render-core` onto the CLI classpath.)
+   * Make `assert.pixels` baseline paths (carried in `inputText`) absolute against `--baseline-dir`,
+   * so they don't depend on the daemon's working directory. `"assert.pixels"` mirrors
+   * `RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT` without the `:data-render-core` dependency.
    */
   private fun resolveBaselines(events: List<RecordingScriptEvent>): List<RecordingScriptEvent> {
     val base = File(baselineDir ?: ".")
@@ -269,9 +237,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Pick the encoder. An explicit `--format` always wins; otherwise infer from the `--out`
-   * extension (`.gif` / `.apng` / `.mp4` / `.webm`); falling back to APNG (the always-available
-   * default) when neither pins it.
+   * Pick the encoder: `--format`, else the `--out` extension (`.gif` / `.apng` / `.mp4` / `.webm`),
+   * else APNG.
    */
   private fun resolveFormat(formatFlag: String?, outPath: String): RecordingFormat {
     if (formatFlag != null) {
@@ -299,10 +266,9 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     }
 
   /**
-   * Resolve `--preview` against the discovered manifest. Accepts (in priority order): an exact
-   * preview `id`, the `<className>.<functionName>` form the issue's UX uses, a bare `functionName`,
-   * or a unique case-insensitive substring of an id. Fails with the candidate list when nothing
-   * matches or more than one does.
+   * Resolve `--preview` against the manifest, in priority order: exact id,
+   * `<className>.<functionName>`, bare `functionName`, or a unique case-insensitive id substring.
+   * Fails with the candidates when nothing or several match.
    */
   private fun resolvePreviewId(
     previewRef: String,
@@ -329,9 +295,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Build a [PreviewOverrides] from `key=value` pairs. Supports the knobs that matter for recording
-   * an existing preview — most notably `touchOverlay` (paints rings under dispatched pointers). The
-   * full override surface lives on MCP `record_preview`; this is the friendly CLI subset.
+   * Build [PreviewOverrides] from `key=value` pairs: the recording-relevant subset (e.g.
+   * `touchOverlay`) of MCP `record_preview`'s overrides.
    */
   private fun parseOverrides(pairs: List<String>): PreviewOverrides? {
     if (pairs.isEmpty()) return null
@@ -353,9 +318,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
           "density" -> overrides.copy(density = value.toFloatOrFail(key))
           "widthPx" -> overrides.copy(widthPx = value.toIntOrFail(key))
           "heightPx" -> overrides.copy(heightPx = value.toIntOrFail(key))
-          // Fake wall clock (#1968): pin the preview's time-of-day to a fixed epoch-millis instant
-          // so relative timestamps / countdowns are deterministic. Needs the preview to read
-          // `LocalClock` (:data-preview-overrides-runtime).
+          // Pin the preview's wall clock for deterministic timestamps; the preview must read
+          // `LocalClock`.
           "clockEpochMillis" -> overrides.copy(clockEpochMillis = value.toLongOrFail(key))
           else ->
             fail(
@@ -389,10 +353,6 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   private fun String.toLongOrFail(key: String): Long =
     toLongOrNull() ?: fail("--overrides $key expects an integer; got '$this'")
 
-  // ---------------------------------------------------------------------------
-  // Output.
-  // ---------------------------------------------------------------------------
-
   private fun copyArtifact(videoPath: String, outPath: String): File {
     val src = videoPath.toPath()
     val dst = outPath.toPath()
@@ -416,10 +376,6 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       base
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Helpers.
-  // ---------------------------------------------------------------------------
 
   private fun requireFlag(value: String?, flag: String, what: String): String {
     if (value.isNullOrBlank()) {

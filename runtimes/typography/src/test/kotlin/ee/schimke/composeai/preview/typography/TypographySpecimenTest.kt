@@ -14,20 +14,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Smoke test for the three specimen helpers. Each test composes the helper into a Robolectric
- * activity, waits for first composition, then asserts:
- *
- * 1. The helper renders without throwing (the `composeRule.setContent { … }` call would propagate a
- *    composition-time exception here).
- * 2. The expected number of labelled rows surface in the semantics tree, counted by querying for
- *    each row's label string. We use `onAllNodesWithText(label, substring = false)
- *    .fetchSemanticsNodes().size` because `assertCountEquals` would couple us to the merged-vs-
- *    unmerged tree shape and `Text` in Material 3 can register either way depending on the ambient
- *    `LocalContentColor` etc.
- *
- * The tests stay deliberately shape-only — they do NOT measure rendered glyph metrics. The helpers
- * are display surfaces whose visual correctness is verified through the compose-preview render
- * pipeline (the sibling `:samples:android` `@Preview` fixtures), not unit tests.
+ * Smoke tests for the three specimen helpers: each composes without throwing and shows the expected
+ * number of labelled rows (counted with `onAllNodesWithText(...).fetchSemanticsNodes()`, which
+ * doesn't depend on merged-vs-unmerged tree shape). Shape only; visuals are checked by the
+ * `@Preview` renders.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])

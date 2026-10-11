@@ -6,17 +6,10 @@ import java.io.File
 import org.junit.Test
 
 /**
- * Integration coverage for the embedded Compose Desktop backend against the in-repo `:samples:cmp`
- * daemon descriptor. The test self-skips when the descriptor isn't on disk — the build it depends
- * on is `./gradlew :samples:cmp:composePreviewDaemonStart`, run separately or by CI before this
- * test fires.
- *
- * What's exercised: the full handshake (open + initialize), one read-only protocol call
- * (`extensions/list`), and graceful close. The point is to prove the round-trip works without
- * pulling the whole render-and-fetch flow into a unit test — that surface is huge and rendering a
- * real preview from inside the test JVM would force the test runner to host the full Compose
- * Desktop + Skiko classpath, which is an order of magnitude more class-loading than this module
- * already pays.
+ * Embedded Compose Desktop backend against the `:samples:cmp` daemon descriptor: handshake,
+ * `extensions/list`, close. Self-skips when the descriptor is absent (built by
+ * `./gradlew :samples:cmp:composePreviewDaemonStart`). Rendering is left out: hosting the full
+ * Compose Desktop + Skiko classpath in the test JVM costs far more class-loading.
  */
 class EmbeddedDesktopEndToEndTest {
 

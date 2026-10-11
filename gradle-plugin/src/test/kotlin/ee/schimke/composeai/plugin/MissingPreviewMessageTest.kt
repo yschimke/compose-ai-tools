@@ -36,10 +36,7 @@ class MissingPreviewMessageTest {
         sidecars = emptyMap(),
       )
 
-    // The renderAll wrapper's original "NO-SOURCE" diagnosis stays
-    // intact when no .error.json sidecars are present — the task really
-    // was skipped (or genuinely produced nothing), which is what the
-    // legacy message was written for.
+    // Without sidecars the original NO-SOURCE diagnosis stays: the task really was skipped.
     assertThat(msg).contains("composePreviewRender")
     assertThat(msg).contains("NO-SOURCE")
     assertThat(msg).contains("1 of 1")
@@ -80,21 +77,15 @@ class MissingPreviewMessageTest {
         sidecars = sidecars,
       )
 
-    // The misleading "NO-SOURCE / RobolectricRenderTest.class" sentence
-    // is the whole reason this code exists — make sure we DON'T emit it
-    // when at least one sidecar was found.
+    // With any sidecar, the misleading NO-SOURCE sentence must not appear.
     assertThat(msg).doesNotContain("NO-SOURCE")
     assertThat(msg).doesNotContain("RobolectricRenderTest")
-    // The sidecar's exception class + message + frame should all be in
-    // the body so the user sees the actual failure rather than having
-    // to grep for an .error.json file by hand.
+    // The sidecar's exception class, message and frame are shown directly.
     assertThat(msg).contains("ClassNotFoundException")
     assertThat(msg).contains("com.example.PreviewsKt")
     assertThat(msg).contains("Previews.kt:42")
     assertThat(msg).contains("A:")
-    // Previews without a sidecar still get called out separately so a
-    // mixed "some threw, some were skipped" run doesn't hide the
-    // skip-class entries.
+    // Previews without a sidecar are still listed separately.
     assertThat(msg).contains("No sidecar")
     assertThat(msg).contains("B")
   }
@@ -103,9 +94,7 @@ class MissingPreviewMessageTest {
   fun `readErrorSidecarsFor parses sidecar JSON next to each missing preview's render path`() {
     val outDir = tempDir.root.resolve("compose-previews")
     val rendersDir = outDir.resolve("renders").apply { mkdirs() }
-    // Schema mirrors RenderErrorSidecar.write — verifies we stay
-    // compatible with the renderer-side encoder without taking a
-    // cross-module dependency on the writer.
+    // Schema mirrors `RenderErrorSidecar.write` without a cross-module dependency.
     rendersDir
       .resolve("A.png.error.json")
       .writeText(
@@ -133,9 +122,8 @@ class MissingPreviewMessageTest {
 
     val sidecars = ComposePreviewTasks.readErrorSidecarsFor(manifest, listOf("A", "B"), outDir)
 
-    // A has a sidecar; B does not. The map shape is exactly
-    // {id -> ErrorSidecar} for the ones present — `formatMissingPreviewsMessage`
-    // relies on `id !in sidecars` to bucket "skipped" vs "threw" previews.
+    // Only previews with sidecars are in the map; callers use `id !in sidecars` to bucket skipped
+    // vs threw.
     assertThat(sidecars.keys).containsExactly("A")
     val a = sidecars.getValue("A")
     assertThat(a.exception).isEqualTo("java.lang.NoSuchMethodError")
@@ -168,17 +156,14 @@ class MissingPreviewMessageTest {
         sidecars = sidecars,
       )
 
-    // Cap at 5 sidecar entries to keep the error block readable —
-    // anything past that gets a "(+N more with sidecars)" footer rather
-    // than scrolling the user off-screen.
+    // Capped at 5 entries with a "(+N more)" footer.
     assertThat(msg).contains("(+5 more with sidecars)")
   }
 
   @Test
   fun `formatMissingPreviewsMessage collapses one root cause into a single counted line`() {
-    // Issue #3690's shape: skiko failed to load, so the first preview carries the real error and
-    // every other one carries the same cascading NoClassDefFoundError. Listing five arbitrary
-    // members of that cascade is how the actual cause got buried.
+    // #3690's shape: the first preview has the real skiko load error, the rest the same cascade;
+    // the real cause must lead.
     val manifest =
       PreviewManifest(
         module = "catalog",
@@ -292,9 +277,8 @@ class MissingPreviewMessageTest {
   }
 
   /**
-   * Issue #3741's sidecar, in shape: the renderer invokes the preview reflectively, so the
-   * sidecar's own `exception` is a content-free `InvocationTargetException` and its `topAppFrame`
-   * points at the tooling frame that did the invoking. Everything a reader needs is in the trace.
+   * #3741's shape: the reflective invoke makes `exception` a bare `InvocationTargetException` and
+   * `topAppFrame` a tooling frame; the trace has what matters.
    */
   private val reflectiveWrapperTrace =
     """
@@ -390,9 +374,8 @@ class MissingPreviewMessageTest {
   }
 
   /**
-   * A `use {}` body that threw and then failed to close. `printStackTrace()` prints the suppressed
-   * throwable's own `Caused by:` indented under it and *after* the primary chain's deepest cause —
-   * verbatim JDK output shape (`Throwable.printEnclosedStackTrace`).
+   * A `use {}` that threw and then failed to close: the suppressed throwable's `Caused by:` prints
+   * after the primary chain (JDK `printEnclosedStackTrace` shape).
    */
   private val suppressedTrace =
     """
@@ -423,9 +406,7 @@ class MissingPreviewMessageTest {
 
   @Test
   fun `the preferred frame never comes from a suppressed branch`() {
-    // The deepest *primary* section is the IOException's; the suppressed branch's frames live in
-    // `com.example.wear.io` and would otherwise win the reversed section scan by being printed
-    // last.
+    // The primary chain's deepest cause wins, not the suppressed branch printed last.
     val frame = RenderErrorTrace.preferredAppFrame(suppressedTrace, "com.example.wear.WearAppKt")
 
     assertThat(frame?.file).isEqualTo("AmbientAwareActivity.kt")
@@ -434,9 +415,8 @@ class MissingPreviewMessageTest {
 
   @Test
   fun `formatMissingPreviewsMessage names the merged unit-test R jar behind a missing R class`() {
-    // The shape element-x renders with: every preview in the module dies at class-init because
-    // compose-ui's PoolingContainer reads an R table that is not on the render classpath. Without
-    // the hint the list below reads as 321 independently broken previews.
+    // element-x's shape: every preview dies at class init on a missing R table; the hint keeps it
+    // from reading as 321 broken previews.
     val manifest =
       PreviewManifest(
         module = "designsystem",

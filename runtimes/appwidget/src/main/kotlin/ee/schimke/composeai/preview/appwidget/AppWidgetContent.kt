@@ -21,26 +21,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Composable helper that inflates a `RemoteViews` factory into the surrounding Compose tree and
- * auto-discovers `<appwidget-provider>` metadata for the inflated layout.
+ * Inflates a `RemoteViews` [factory] into the surrounding Compose tree (via `RemoteViews.apply`, as
+ * `AppWidgetHost.createView(...)` does on-device) and offers matching `<appwidget-provider>`
+ * metadata to the launcher-widget data product (see [offerAppWidgetMetadata]).
  *
- * Inflation path:
- * 1. Run [factory] to build the `RemoteViews` against the surrounding `LocalContext`.
- * 2. `RemoteViews.apply(context, parent)` inflates the tree into a `View` we host inside the
- *    `AndroidView` factory — the same path `AppWidgetHost.createView(...)` walks on-device.
- * 3. Look up `AppWidgetManager.installedProviders` for any registered AppWidget whose
- *    `initialLayout` matches the inflated `RemoteViews.layoutId`. If found, translate the matching
- *    `AppWidgetProviderInfo` (`min/maxResizeWidth/Height`, `targetCellWidth/Height`, `resizeMode`)
- *    into a [LauncherWidgetMetadata] snapshot and offer it to the connector's
- *    [LauncherWidgetMetadataChannel] so the launcher-widget data product surfaces it on its
- *    payload. Falls through silently when no match — picker behaviour is unchanged for one-off
- *    `RemoteViews` previews that aren't backed by a registered receiver.
+ * The view is hosted `MATCH_PARENT × MATCH_PARENT`, so `@Preview(widthDp, heightDp)` (or
+ * `LauncherWidgetExtension`) controls the footprint.
  *
- * The inflated view is hosted inside `MATCH_PARENT × MATCH_PARENT` so a `@Preview(widthDp,
- * heightDp)` (or the `LauncherWidgetExtension` daemon-side override) controls the visible
- * footprint.
- *
- * @param factory consumer's `RemoteViews` factory. Typically `RemoteViews(context.packageName,
+ * @param factory the `RemoteViews` factory, e.g. `RemoteViews(context.packageName,
  *   R.layout.widget_x).apply { setTextViewText(...) }`.
  */
 @Composable
@@ -73,12 +61,9 @@ fun AppWidgetContent(factory: (Context) -> RemoteViews) {
 }
 
 /**
- * Look up [remoteViews]'s `layoutId` against the consumer's registered AppWidget providers and
- * offer the matched metadata to [LauncherWidgetMetadataChannel]. No-op when no provider matches
- * (one-off `RemoteViews` previews not backed by a manifest receiver) or when running outside a
- * daemon render (the channel's ThreadLocal previewId is unset). Extracted as `internal` so the
- * connector's unit tests can exercise the translation against a fake [AppWidgetProviderInfo]
- * without standing up a full `AppWidgetManager`.
+ * Match [remoteViews]'s `layoutId` against registered providers' `initialLayout` and offer the
+ * translated metadata to [LauncherWidgetMetadataChannel]. No-op without a match or outside a daemon
+ * render. Internal for unit tests.
  */
 internal fun offerAppWidgetMetadata(context: Context, remoteViews: RemoteViews) {
   if (LauncherWidgetMetadataChannel.currentPreviewId() == null) return
@@ -89,17 +74,13 @@ internal fun offerAppWidgetMetadata(context: Context, remoteViews: RemoteViews) 
 }
 
 /**
- * Translate an `AppWidgetProviderInfo` into a [LauncherWidgetMetadata] snapshot. Cell counts derive
- * from `targetCellWidth/Height` (Android 12+) when set, otherwise from the
- * `min/maxResizeWidth/Height` dp range using the same `72dp` cell / `8dp` spacing arithmetic the
- * connector applies — `cells = round((dp + spacing) / (cell + spacing))`, clamped to ≥ 1.
+ * Translate an `AppWidgetProviderInfo` into [LauncherWidgetMetadata]. Cells come from
+ * `targetCellWidth/Height` (Android 12+) when set, else from the `min/maxResize` dp range using the
+ * connector's `72dp` cell / `8dp` spacing: `cells = round((dp + spacing) / (cell + spacing))`, ≥ 1.
  */
 internal fun translate(context: Context, info: AppWidgetProviderInfo): LauncherWidgetMetadata {
   val density = context.resources.displayMetrics.density
-  // Prefer the explicit `targetCellWidth/Height` (API 31+) when set. Fall back to the
-  // px-based `minResizeWidth/Height` → dp → cells path otherwise. `maxResizeWidth/Height`
-  // bound the supported-cells rectangle on the top end; missing values fall back to the
-  // platform default (no upper cap → use `minResize` as the only declared size).
+  // `maxResize` bounds the supported-cells rectangle; when missing, `minResize` is the only size.
   val minWidthCells =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.targetCellWidth > 0) {
       info.targetCellWidth

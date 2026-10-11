@@ -17,28 +17,14 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Stage-2 checkpoint #5 — Android variants, distilled to the only piece of compiler input that
- * isn't "plain JVM Kotlin against a list of JARs".
+ * Android variants reduced to their one distinctive compiler input. AGP turns resources, manifest,
+ * AIDL, BuildConfig and R into ordinary jars before `compileKotlin*`, so the question is whether
+ * BTA (with the Compose plugin) compiles Kotlin referencing a synthetic R class from a jar on its
+ * classpath. If so, Android needs only classpath assembly; source-generating tooling (KSP, KAPT)
+ * still falls back to `gradle --continuous`.
  *
- * Why this is the right framing: BTA never sees Android-specific *inputs* directly. AGP turns
- * resources, manifest, AIDL, BuildConfig, and the R table into ordinary `.class` / `.jar` artefacts
- * BEFORE Gradle's `compileKotlin*` runs. The kotlinc step downstream of AGP is plain JVM Kotlin
- * compilation against a classpath that happens to include those AGP-generated jars. So the
- * Android-specific question reduces to: **can BTA compile Kotlin source that references a synthetic
- * Android R class through a JAR on its compile classpath**, with the Compose plugin still active?
- *
- * If yes, the daemon's stage-2 wire-up needs to assemble the right classpath for an Android variant
- * — same plumbing the existing daemon already does for the test sandbox — but the BTA side is
- * unchanged from the desktop case. Stage 1's `gradle --continuous` fallback remains the safety net
- * for modules that pull in source-generating tooling BTA doesn't model (KSP, KAPT, AGP-generated
- * *.kt sources for synthetic accessors).
- *
- * If no, we have a concrete blocker to feed back upstream and Android stays exclusively on stage 1.
- *
- * Synthetic R.jar is built at test time via `javax.tools.ToolProvider.getSystemJavaCompiler()`. If
- * running on a JRE without javac, the test is `assumeNotNull`-skipped — same shape the project uses
- * for other JDK-feature-gated assertions. JDK 17 (our toolchain) ships javac, so CI will always run
- * it.
+ * The R.jar is built with `ToolProvider.getSystemJavaCompiler()`; the test skips on a JRE without
+ * javac.
  */
 class BtaCompilerAndroidRJarTest {
 
@@ -58,10 +44,8 @@ class BtaCompilerAndroidRJarTest {
     // emits, just trimmed to one field. The compile classpath gets the jar appended; the
     // Compose plugin sees it as any other dependency.
     val rJar = buildSyntheticRJar(tmp.newFolder("rjar").toPath(), javac)
-    // Wrap in `listOf` — `List<Path>.plus(Path)` resolves to the `Iterable<Path>` overload
-    // because `Path` itself implements `Iterable<Path>` (yielding its name components). That
-    // would silently expand `/tmp/.../R.jar` into four single-component entries on the
-    // classpath instead of appending the JAR file itself.
+    // `listOf`: `Path` is itself `Iterable<Path>`, so `+ rJar` would append its name components
+    // instead of the jar.
     val compileClasspath = baseCompileClasspath + listOf(rJar)
 
     val src = tmp.newFolder("src").toPath()
@@ -111,12 +95,8 @@ class BtaCompilerAndroidRJarTest {
       indexOf(bytes, composeDescriptor) >= 0,
     )
 
-    // Sanity: the inlined constant value (0x7f100000 = 2_131_755_008) appears in the
-    // bytecode. Kotlin's compiler inlines `public static final int` references — this is
-    // the same behaviour `compileDebugKotlin` produces against AGP's R.jar, so a literal
-    // search for `fixture/R$string` would actually be wrong (it would fail in production
-    // builds for the same reason). We check for the inlined value instead, which is the
-    // actual proof that the R reference was resolved at compile time.
+    // Kotlin inlines `public static final int` R values (as against AGP's R.jar), so check for the
+    // inlined constant rather than a `fixture/R$string` reference.
     val expectedValue = 0x7f100000
     val expectedBytes =
       byteArrayOf(

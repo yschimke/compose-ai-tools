@@ -5,14 +5,10 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// The in-browser tier never runs a daemon, so it can't seed a knob the way the desktop `@Preview`
-// path does (`previewOverride*` ← `renderNow.overrides.namedOverrides`). Instead the embedding
-// `serve` viewer pushes the current `knob.<key>` values into the sandboxed iframe (URL fragment +
-// `postMessage`), the wasm entrypoint parses them, and provides them through
-// [LocalWasmCatalogKnobs] around the catalog composition. These `actual`s read that map so an
-// edited knob (a label, a count, a colour) is honoured live in the browser, matching what the
-// daemon lanes (PNG / SVG / Live Compose) already do. An un-seeded knob still returns its author
-// [default], so the baked sticker sheet stays pixel-unchanged.
+// The browser tier has no daemon to seed knobs, so the `serve` viewer pushes `knob.<key>` values
+// into the iframe (URL fragment + `postMessage`) and the wasm entrypoint provides them via
+// [LocalWasmCatalogKnobs]. An un-seeded knob returns its author [default], so the baked sticker
+// sheet is unchanged.
 
 /**
  * Current in-browser knob seeds, keyed by the runtime's `seedKey` scheme — the bare `key`, or

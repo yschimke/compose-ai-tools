@@ -7,24 +7,15 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Demonstrates that the renderer's `@Preview` pipeline handles composables
-// whose ViewModels come from Metro's compile-time DI graph. Two patterns
-// are shown side-by-side in [CounterPreviews]:
+// Previews of composables whose ViewModels come from Metro's compile-time DI graph (see
+// [CounterPreviews]):
+//  * State hoisting — the stateless `CounterScreenContent(state, …)` with a literal state; the
+//    idiomatic preview path to reach for first.
+//  * Full DI graph — `CounterScreen()` uses `metroViewModel()`; the preview builds the app's
+//    `AppGraph` and provides its `MetroViewModelFactory`.
 //
-//  * State-hoisting — the stateless `CounterScreenContent(state, …)` is
-//    rendered with a literal state value. No DI involved, the renderer
-//    sees a plain `@Composable`. This is the idiomatic preview path and
-//    the one to reach for first.
-//  * Full DI graph — `CounterScreen()` calls `metroViewModel()` which
-//    reads `LocalMetroViewModelFactory`. The preview builds the same
-//    `AppGraph` the app would (via `createGraph<AppGraph>()`) and
-//    provides its `MetroViewModelFactory` to the composition. Exercises
-//    the production wiring under Robolectric.
-//
-// No `composePreview.sdkVersion.set(35)` rescue here — the `samples/sdk21/`
-// subtree only runs under a JDK 21 daemon (see settings.gradle.kts), so
-// Robolectric 4.16.1 can render against the auto-detected SDK 36 the way
-// `compileSdk` declares.
+// No `sdkVersion` pin: `samples/sdk21/` runs only on JDK 21, so Robolectric renders the
+// auto-detected SDK 36.
 
 android {
   namespace = "com.example.metroviewmodel"

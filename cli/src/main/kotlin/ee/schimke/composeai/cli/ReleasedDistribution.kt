@@ -1,22 +1,10 @@
 package ee.schimke.composeai.cli
 
 /**
- * One of the distributions this CLI launches but does not contain.
- *
- * Two of them now, and both ship from the same repository and the same release
- * ([PREVIEW_SERVER_REPO], tagged `v<version>`): the preview server behind `serve`, `browse` and
- * `ui-builder`, and the MCP server behind `mcp serve`. They arrived for the same reason at two
- * different times — `serve` stopped linking the server when the dependency cycle closed (#5177),
- * and `mcp` stopped linking `:mcp` when the layer rule placed that module in the server's
- * repository (#5176) — and they are described by one type rather than two parallel objects because
- * everything except the names below is identical: the same discovery ordering, the same
- * fetch-on-first-use, the same cache layout, the same failure text shape.
- *
- * One resolved version covers both. The MCP tarball is attached to the *same* release as the server
- * distribution, so resolving the newest release once keeps the pair in step; resolving them
- * separately would let them skew, and there is no cadence on which they would skew usefully. That
- * reasoning is about these two archives only, and it is why they still share a version now that the
- * version is the newest release rather than a pin.
+ * One of the distributions this CLI launches but doesn't contain: the preview server (`serve`,
+ * `browse`, `ui-builder`) or the MCP server (`mcp serve`), both from the same [PREVIEW_SERVER_REPO]
+ * release. One type because only the names differ. One resolved version covers both, keeping the
+ * pair in step.
  */
 internal data class ReleasedDistribution(
   /** Launcher script name inside `bin/`, and the name looked up on `PATH`. */

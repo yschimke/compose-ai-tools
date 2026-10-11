@@ -4,17 +4,9 @@ import ee.schimke.composeai.discovery.ScreenDocument
 import ee.schimke.composeai.discovery.ScreenNode
 import ee.schimke.composeai.discovery.ScreenValue
 
-/**
- * The edits a builder makes to a [ScreenDocument] — add into a slot, remove, set an argument.
- *
- * Pure functions over an immutable document: a builder's undo history is then the list of documents
- * it has produced, and every operation is testable without a composition.
- *
- * Nodes are addressed by **pre-order index**, walking each node's slots in declaration order. That
- * ordering is the contract between selecting a node, editing it and rendering it, so it is derived
- * here once rather than by each of them. An edit that changes the tree's shape renumbers everything
- * after it, which callers must expect rather than caching an index across edits.
- */
+// The edits a builder makes to a [ScreenDocument], as pure functions (so undo is a list of
+// documents). Nodes are addressed by pre-order index over slots in declaration order; edits that
+// change the tree's shape renumber later nodes, so don't cache indices across edits.
 
 /** A node with its pre-order [index], its parent's, and the slot of its parent it sits in. */
 public data class IndexedNode(

@@ -2,12 +2,9 @@ package ee.schimke.composeai.discovery
 
 object DeviceDimensions {
   /**
-   * Per-device geometry resolved from a `@Preview(device = ...)` string.
-   *
-   * `density` is the Compose density factor (= densityDpi / 160). Renderers map this back to a
-   * Robolectric `<n>dpi` qualifier (and the desktop renderer passes it straight through to
-   * Compose's `Density(...)` constructor) so output PNGs match what Android Studio's preview
-   * renders for the same `@Preview`.
+   * Per-device geometry resolved from a `@Preview(device = ...)` string. `density` is densityDpi /
+   * 160, mapped to a Robolectric `<n>dpi` qualifier (or Compose `Density` on desktop) so PNGs match
+   * Studio.
    */
   data class DeviceSpec(
     val widthDp: Int,
@@ -17,19 +14,15 @@ object DeviceDimensions {
   )
 
   /**
-   * The density Android Studio uses when no device is specified — xxhdpi-ish (420dpi → 2.625x),
-   * matching its default phone-class preview. Picked over the previous 2.0x default to align with
-   * Studio; only affects previews that don't pin a `device` (or a `spec:...,dpi=...`).
+   * Studio's density when no device is specified (420dpi → 2.625x); only affects previews without a
+   * `device` or `spec:…,dpi=`.
    */
   const val DEFAULT_DENSITY: Float = 2.625f
 
   /**
-   * Per-axis sizing decision for a single preview, mirroring Android Studio's Compose preview pane:
-   * an axis is *fixed* when the user named a dp value or chose a device/`showSystemUi`, otherwise
-   * it *wraps* to the composable's intrinsic size. Wrapped axes still need a sandbox dimension so
-   * Robolectric Configuration qualifiers and the desktop `ImageComposeScene` have a finite canvas
-   * to render into — the renderer crops the PNG back down to the measured content bounds
-   * afterwards.
+   * Per-axis sizing, mirroring Studio: an axis is *fixed* when a dp value, device or `showSystemUi`
+   * was given, otherwise it *wraps*. Wrapped axes still need a finite sandbox to render into; the
+   * renderer crops to measured bounds afterwards.
    */
   data class SizeSpec(
     val widthDp: Int,
@@ -40,9 +33,8 @@ object DeviceDimensions {
   )
 
   /**
-   * Sandbox dp used for wrapped axes — matches the historical default (400×800 dp) that stood in
-   * for "no device" before AS-parity sizing, so `fillMax*` composables measure into a phone-shaped
-   * viewport rather than a giant square. Wrapped small composables then crop well below this.
+   * Sandbox dp for wrapped axes (400×800), so `fillMax*` composables measure into a phone-shaped
+   * viewport.
    */
   const val SANDBOX_WIDTH_DP = 400
   const val SANDBOX_HEIGHT_DP = 800
@@ -50,11 +42,8 @@ object DeviceDimensions {
   /** Back-compat alias for callers/tests that want a single constant. */
   const val SANDBOX_DP = SANDBOX_WIDTH_DP
 
-  // Source-of-truth for the dp values and densities below: sergio-sastre/ComposablePreviewScanner
-  // (Phone.kt / Tablet.kt / Wear.kt / GenericDevices.kt / Desktop.kt / Television.kt /
-  // Automotive.kt / XR.kt under android/.../device/types/), with dp = px / (densityDpi / 160)
-  // and density = densityDpi / 160. This is the same data the takahirom/roborazzi
-  // compose-preview-scanner-support pipeline uses.
+  // Source of the dp values and densities: sergio-sastre/ComposablePreviewScanner's device tables
+  // (dp = px / (densityDpi / 160)), the same data roborazzi's scanner support uses.
   private val KNOWN_DEVICES =
     mapOf(
       // --- Pixel phones ---
@@ -70,9 +59,7 @@ object DeviceDimensions {
       "id:pixel_4_xl" to DeviceSpec(411, 869, 3.5f),
       "id:pixel_4a" to DeviceSpec(393, 851, 2.75f),
       "id:pixel_5" to DeviceSpec(393, 851, 2.75f),
-      // Pixel 6 / 6a / 7 / 7a / 8 / 8a all share the same screen geometry
-      // (1080×2400 px @ 420dpi → 411×914 dp). Earlier revisions of this file
-      // accidentally used the Pixel 6 Pro value (891) for these — fixed.
+      // Pixel 6 / 6a / 7 / 7a / 8 / 8a share 1080×2400 px @ 420dpi → 411×914 dp.
       "id:pixel_6" to DeviceSpec(411, 914, 2.625f),
       "id:pixel_6a" to DeviceSpec(411, 914, 2.625f),
       "id:pixel_6_pro" to DeviceSpec(411, 891, 3.5f),
@@ -94,38 +81,29 @@ object DeviceDimensions {
       "id:pixel_c" to DeviceSpec(1280, 900, 2.0f),
       "id:pixel_tablet" to DeviceSpec(1280, 800, 2.0f),
 
-      // --- Generic Android Studio device IDs ---
-      // These appear as "Small Phone", "Medium Phone", "Medium Tablet", "Resizable
-      // (Experimental)" in the @Preview device picker.
+      // --- Generic Android Studio device IDs ("Small Phone", "Medium Phone", …) ---
       "id:small_phone" to DeviceSpec(360, 640, 2.0f),
       "id:medium_phone" to DeviceSpec(411, 914, 2.625f),
       "id:medium_tablet" to DeviceSpec(1280, 800, 2.0f),
       "id:resizable" to DeviceSpec(411, 914, 2.625f),
 
-      // --- Wear OS ---
-      // WearDevices constants from androidx.wear.tooling.preview.devices —
-      // used by @androidx.wear.tiles.tooling.preview.Preview. All wear devices
-      // run at 320dpi (xhdpi → 2.0x) per upstream. The xl_round entry isn't in
-      // sergio-sastre/ComposablePreviewScanner's table yet but ships in AOSP's
-      // sdklib/devices/wear.xml as a 480x480 px / xhdpi device.
+      // --- Wear OS --- WearDevices constants, all 320dpi (2.0x). xl_round comes from AOSP's sdklib
+      // `wear.xml` (480x480 px).
       "id:wearos_small_round" to DeviceSpec(192, 192, 2.0f),
       "id:wearos_large_round" to DeviceSpec(227, 227, 2.0f),
       "id:wearos_xl_round" to DeviceSpec(240, 240, 2.0f),
       "id:wearos_square" to DeviceSpec(180, 180, 2.0f),
       "id:wearos_rect" to DeviceSpec(201, 238, 2.0f),
-      // wearos_rectangular is the older Studio identifier for the same device as
-      // wearos_rect (kept around for projects that haven't migrated yet).
+      // Older Studio id for `wearos_rect`.
       "id:wearos_rectangular" to DeviceSpec(201, 238, 2.0f),
 
-      // --- Desktop ---
-      // Studio's "Small/Medium/Large Desktop" entries; useful for Compose for Desktop
-      // previews routed through the Android renderer.
+      // --- Desktop --- Studio's desktop entries, for desktop previews routed through the Android
+      // renderer.
       "id:desktop_small" to DeviceSpec(1366, 768, 1.0f),
       "id:desktop_medium" to DeviceSpec(1920, 1080, 2.0f),
       "id:desktop_large" to DeviceSpec(1920, 1080, 1.0f),
 
-      // --- Television (Android TV) ---
-      // 4K and 1080p resolve to the same dp surface; 4K just renders at 4× density.
+      // --- Television --- 4K and 1080p share a dp surface; 4K renders at 4× density.
       "id:tv_720p" to DeviceSpec(931, 524, 1.375f),
       "id:tv_1080p" to DeviceSpec(960, 540, 2.0f),
       "id:tv_4k" to DeviceSpec(960, 540, 4.0f),
@@ -141,9 +119,7 @@ object DeviceDimensions {
       "id:automotive_large_portrait" to DeviceSpec(1280, 1606, 1.0f),
       "id:automotive_ultrawide" to DeviceSpec(2603, 880, 1.5f),
 
-      // --- XR ---
-      // xr_device is the deprecated identifier replaced by xr_headset_device in newer
-      // Android Studio versions; both refer to the same device.
+      // --- XR --- `xr_device` is the deprecated name for `xr_headset_device`.
       "id:xr_headset_device" to DeviceSpec(1280, 1279, 2.0f),
       "id:xr_device" to DeviceSpec(1280, 1279, 2.0f),
     )
@@ -152,29 +128,19 @@ object DeviceDimensions {
   val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f, isRound = true)
 
   /**
-   * The AI-glasses display `androidx.xr.glimmer` draws for: 960x720 at **density 1.0**.
+   * The AI-glasses display `androidx.xr.glimmer` targets: 960x720 at **density 1.0**.
    *
-   * The density is the load-bearing half and is not a phone-style guess. Glimmer sizes UI in
-   * **visual angle**, not dp: at ~30 pixels per degree the library's own type and touch targets
-   * land on the angular sizes it is calibrated for (18dp text -> 18px -> 0.6 degrees) and that
-   * identity holds **only at density 1.0**. At 1.5 the same text measures 27px -> 0.9 degrees and
-   * contrast and legibility read optimistically; at the renderer's 2.625 phone default it is worse
-   * again. `samples/xr-glimmer` pinned dpi=160 for exactly this reason and states the arithmetic.
+   * The density is load-bearing: Glimmer sizes UI in visual angle, and at ~30 pixels per degree its
+   * calibrated sizes hold only at density 1.0 (18dp text → 18px → 0.6°); higher densities make
+   * contrast and legibility read optimistically. 960x720 at 30 PPD is a 32 × 24° field of view.
+   * Re-pin if Google publishes the AI Glasses AVD's exact values; keep the 30-PPD identity.
    *
-   * 960x720 at 30 PPD spans 32 x 24 degrees of field of view — a plausible 4:3 HUD. Re-pin all
-   * three numbers here if Google publishes the AI Glasses AVD's exact resolution, FoV and
-   * densityDpi; the 30-PPD identity is the anchor to preserve.
-   *
-   * Used as a **wrap sandbox** rather than a pinned canvas — see
-   * [PreviewDiscovery.retargetGlimmerStickers], which is where the difference between "measure
-   * against the glasses display" and "occupy the glasses display" is spelled out.
+   * Used as a wrap sandbox, not a pinned canvas; see [PreviewDiscovery.retargetGlimmerStickers].
    */
   val DEFAULT_GLASSES = DeviceSpec(960, 720, 1.0f)
 
   fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
-    // Explicit widthDp/heightDp on the @Preview annotation — no device info,
-    // so fall back to the AS default density (xxhdpi-ish, matching Studio's
-    // default phone preview).
+    // Explicit widthDp/heightDp with no device: use Studio's default density.
     if (widthDp != null && widthDp > 0 && heightDp != null && heightDp > 0) {
       return DeviceSpec(widthDp, heightDp, DEFAULT_DENSITY)
     }
@@ -195,19 +161,15 @@ object DeviceDimensions {
               else null
             }
             .toMap()
-        // `parent=<id>` — what Studio's device picker writes as soon as you pick a catalog device
-        // and change anything about it (`spec:parent=pixel_tablet,orientation=portrait`). It
-        // supplies every term the string doesn't restate — geometry, density, shape — so without
-        // the lookup the whole spec collapsed to the 400×800 default and the picked device
-        // vanished. Resolved through [resolve] itself so a parent id follows exactly the same
-        // rules as a bare `device = "id:…"`, wear fallback included.
+        // `parent=<id>` (what Studio writes after customizing a catalog device) supplies every term
+        // the spec doesn't restate. Resolved through [resolve] so it follows the same rules as
+        // `id:…`.
         val parent = params["parent"]?.let { resolve(it.asDeviceId()) }
         val base = parent ?: DEFAULT
         val parsedWidth = params["width"]?.toIntOrNull() ?: base.widthDp
         val parsedHeight = params["height"]?.toIntOrNull() ?: base.heightDp
         val (w, h) = orientedDp(parsedWidth, parsedHeight, params["orientation"])
-        // `isRound=` / `shape=` state the shape outright; only when neither is present does the
-        // parent's shape carry through (a round watch parent stays round).
+        // `isRound=` / `shape=` override; otherwise the parent's shape carries through.
         val isRound =
           if (params.containsKey("isround") || params.containsKey("shape")) {
             params["isround"]?.equals("true", ignoreCase = true) == true ||
@@ -215,9 +177,8 @@ object DeviceDimensions {
           } else {
             base.isRound
           }
-        // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
-        // — honour it if present, otherwise inherit the parent's (or the AS default). `cutout=` is
-        // accepted by Studio's grammar but intentionally ignored here until a renderer consumes it.
+        // `dpi=` is honoured, else the parent's (or Studio default) density. `cutout=` is accepted
+        // but ignored.
         val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: base.density
         return DeviceSpec(w, h, density, isRound = isRound)
       }
@@ -233,21 +194,11 @@ object DeviceDimensions {
     trim().lowercase().let { if (it.startsWith("id:")) it else "id:$it" }
 
   /**
-   * [widthDp] / [heightDp] rotated to satisfy an `orientation=` term, or unchanged when they
-   * already satisfy it.
+   * [widthDp] / [heightDp] rotated only when they contradict `orientation=`; a no-op otherwise, for
+   * squares, and for absent or unknown tokens. Handling only landscape left `orientation=portrait`
+   * (e.g. `@PreviewScreenSizes`' Tablet) rendering landscape.
    *
-   * The swap fires only when the request *contradicts* the current aspect ratio, so it means "make
-   * it look like this", not "always flip": `orientation=landscape` on an already-landscape spec is
-   * a no-op, and applying it twice lands in the same place. A square frame is never swapped, and an
-   * absent or unrecognised token never swaps.
-   *
-   * Landscape alone used to be handled here (via `maxOf`/`minOf`), so `orientation=portrait` on a
-   * landscape spec — which is what `@PreviewScreenSizes`' own "Tablet" entry asks for — silently
-   * rendered landscape. Same defect as issue #3547 on the override lane, one layer earlier.
-   *
-   * KEEP IN SYNC with the daemon's `FrameOrientation.orientedPx`, which the daemon's copy of this
-   * parser calls directly; the two builds are separate, so this is the one rule that has to be
-   * spelled twice.
+   * KEEP IN SYNC with the daemon's `FrameOrientation.orientedPx` (separate builds).
    */
   private fun orientedDp(widthDp: Int, heightDp: Int, orientation: String?): Pair<Int, Int> =
     when (orientation?.trim()?.lowercase()) {
@@ -278,17 +229,12 @@ object DeviceDimensions {
   }
 
   /**
-   * AS-parity sizing: axes are fixed iff the user specified them (or chose a device frame /
-   * `showSystemUi`); otherwise the axis wraps to the composable's intrinsic size. The `widthDp` /
-   * `heightDp` fields of the returned [SizeSpec] are the *sandbox* dimensions the renderer should
-   * use — for wrapped axes that's [SANDBOX_DP]; for fixed axes it's the effective dp the frame was
-   * resolved to.
+   * Studio-parity sizing: an axis is fixed iff specified (or a device / `showSystemUi` frame
+   * applies), else it wraps. The returned [SizeSpec] dimensions are sandbox dims: [SANDBOX_DP] for
+   * wrapped axes, the effective dp for fixed ones.
    *
-   * [wrapSandboxWidthDp] / [wrapSandboxHeightDp] ([PreviewParams.wrapSandboxWidthDp]) replace
-   * [SANDBOX_WIDTH_DP] / [SANDBOX_HEIGHT_DP] on a wrapped axis without fixing it — the axis still
-   * reports `wrap = true`, so the capture crops to measured size. They're ignored on a fixed axis
-   * (an explicit dp or a device frame already owns the geometry) and on the device / `showSystemUi`
-   * branch below, where nothing wraps.
+   * [wrapSandboxWidthDp] / [wrapSandboxHeightDp] ([PreviewParams.wrapSandboxWidthDp]) replace the
+   * sandbox on a wrapped axis without fixing it; ignored on fixed axes and the device branch.
    */
   fun resolveForRender(
     device: String?,
@@ -300,9 +246,8 @@ object DeviceDimensions {
   ): SizeSpec {
     val w = widthDp?.takeIf { it > 0 }
     val h = heightDp?.takeIf { it > 0 }
-    // Device / showSystemUi → full device frame on both axes. Explicit
-    // widthDp/heightDp still override the resolved device spec (matches
-    // the existing `resolve()` precedence and AS).
+    // Device / showSystemUi: full frame on both axes; explicit widthDp/heightDp still override, as
+    // in [resolve] and Studio.
     if (device != null || showSystemUi) {
       val spec = resolve(device, w, h)
       return SizeSpec(

@@ -1,23 +1,12 @@
 #!/usr/bin/env node
-// Bulk fidelity audit for the serve `/compare` page.
-//
-// Drives the real comparison page in Chromium and scrapes the score every row settles on, so the
-// numbers come from the shipped scorer rather than a reimplementation of it. That matters: the
-// scorer is the thing under test, and a second copy of the edge-tolerant metric would be free to be
-// wrong in the same direction as the first.
-//
-// Two phases, because an audit that re-downloads the artifacts on every run is neither reproducible
-// nor kind to a shared preview server:
+// Bulk fidelity audit for the serve `/compare` page: drives the real page in Chromium and scrapes
+// the settled scores, so numbers come from the shipped scorer rather than a reimplementation.
 //
 //   mirror — pull one catalog's compare page and every artifact it references onto disk.
 //   run    — replay that mirror from a local static server and scrape the settled scores.
 //
-// `run --patch <file>` swaps in a local `format-compare.js` via request interception, so a scorer
-// change is measured against byte-identical artifacts before and after. That is the whole point:
-// A/B a scoring change without deploying it. The asset is BUILT from `serve-web/src/scorer/` in
-// yschimke/compose-preview-server, so run `npm run build` in that repository's `serve-web/` first —
-// patching in a stale committed bundle would
-// A/B the change against itself and report no difference.
+// `run --patch <file>` swaps in a local `format-compare.js`, A/B-testing a scorer change against
+// identical artifacts. Build it first (`npm run build` in compose-preview-server's `serve-web/`).
 //
 // Usage:
 //   node scripts/compare-audit.mjs mirror --all --dir .audit-mirror
@@ -25,7 +14,7 @@
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference \
 //     --patch ../compose-preview-server/server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
 //
-// Requires `playwright` on NODE_PATH (the preview-server harness dev dependency, or a standalone install).
+// Requires `playwright` on NODE_PATH.
 
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -121,9 +110,8 @@ async function discoverCatalogs(base) {
 }
 
 /**
- * Every absolute-path asset the compare page needs: the chrome (css/js) plus one URL per artifact
- * the rows point at. Collected from the markup rather than reconstructed, so a new lane or a
- * renamed route is picked up without touching this script.
+ * Every absolute-path asset the compare page needs, collected from the markup so new lanes and
+ * routes are picked up automatically.
  */
 function assetUrlsIn(html) {
   const urls = new Set();

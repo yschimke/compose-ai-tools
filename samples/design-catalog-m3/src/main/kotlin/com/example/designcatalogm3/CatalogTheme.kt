@@ -38,50 +38,29 @@ import com.example.designcatalogm3.shared.catalogTypography
 import com.example.designcatalogm3.shared.parseCatalogFontFamilies
 
 /**
- * The catalog's theme wrapper. Each sticker is a stock [MaterialTheme] — the default light/dark
- * `colorScheme` — so the `compose/theme` token set the renderer extracts is the **real** Material 3
- * system, not a bespoke palette. A uniform 16dp [padding] frames every sticker so the sheet reads
- * cleanly and the layout (semantics) variant has breathing room around the component.
+ * The catalog's theme wrapper: a stock [MaterialTheme] (so the extracted `compose/theme` tokens are
+ * the real Material 3 system) with uniform 16dp [padding] around each sticker.
  *
- * The type scale is re-pointed at [Roboto] and the generic families are supplied via
- * [LocalGenericFonts], so the desktop (Skiko) render rasterises the **same faces** the Android
- * Robolectric render used to — and the same the in-browser wasm tier fetches — keeping the baked
- * stickers stable across the Android→CMP renderer switch (Skiko's own default is not Roboto).
+ * The type scale uses [Roboto] and [LocalGenericFonts] supplies the generic families, so the Skiko
+ * render uses the same faces as the wasm tier (Skiko's own default is not Roboto).
  */
 @Composable
 fun CatalogSticker(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
-  // The typeface and palette are read from the override surface, so the preview server can re-skin
-  // any sticker (`knob.theme.font` / `knob.theme.colors`) with no preview change — the previews
-  // stay
-  // clean one-liners. Absent an override both resolve to the catalog default (Roboto Flex + M3
-  // light/dark), so an un-overridden render is pixel-identical. The choices are the declared
-  // `@TypographyCatalog` / `@ColorCatalog` names (see `CatalogCatalogs.kt`); this wrapper is the
-  // one
-  // place that maps a selected name back to its `FontFamily` / `ColorScheme`. (`@ThemeCatalog` +
-  // `themeProvider` — the wear catalog's route — needs Compose 1.11's `PreviewWrapperProvider`,
-  // which
-  // this CMP 1.10 desktop module doesn't have, so the override is read in-composition instead.)
-  // NOTE: this stays on `catalogOverrideString`, not the new `catalogOverrideFont`, on purpose: the
-  // `design-artifacts` publish builds this catalog against the *released* `previewOverride*`
-  // runtime
-  // (`composeaiUseReleasedRuntimes`), which won't carry `previewOverrideFont` until the runtime
-  // release that ships it lands. Switch to `catalogOverrideFont(..., CATALOG_FONT_NAMES)` — for the
-  // font autocomplete the wear catalog already uses — once `composeaiReleasedRuntimeVersion` bumps.
+  // Typeface and palette come from the override surface (`knob.theme.font` / `knob.theme.colors`),
+  // so the preview server can re-skin any sticker without preview changes; absent an override they
+  // resolve to Roboto Flex + M3. `@ThemeCatalog` + `themeProvider` (the wear catalog's route) needs
+  // Compose 1.11's `PreviewWrapperProvider`, which this CMP 1.10 module lacks. TODO: switch to
+  // `catalogOverrideFont(..., CATALOG_FONT_NAMES)` once `composeaiReleasedRuntimeVersion` ships
+  // `previewOverrideFont` (the publish builds against the released runtime).
   val font = catalogFont(catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX))
   val colorScheme =
     catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
-  // Shapes + typography-metrics overrides ride the same in-composition knob surface as colors /
-  // font, so the preview server can re-skin every sticker's corners and type scale
-  // (`knob.theme.shapes` / `knob.theme.typography`) with no preview change. Absent either knob,
-  // both
-  // resolve to the stock M3 shapes / the font-only type scale, so an un-overridden render stays
-  // pixel-identical.
+  // Shapes and typography-metrics overrides ride the same knob surface (`knob.theme.shapes` /
+  // `knob.theme.typography`); absent, they resolve to stock M3.
   val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
-  // Type scale = the `theme.font` single face, then per-role-group families from `theme.fonts`
-  // (e.g. display=Orbitron, body=Space Grotesk — resolved against `CatalogNamedFonts`), then the
-  // `theme.typography` metrics overlay. Absent the fonts knob the middle step is a no-op, so an
-  // un-overridden render stays pixel-identical.
+  // Type scale = the `theme.font` face, then per-role-group families from `theme.fonts` (resolved
+  // against `CatalogNamedFonts`), then the `theme.typography` metrics overlay.
   val typography =
     catalogApplyTypography(
       catalogApplyFontFamilies(
@@ -101,11 +80,9 @@ fun CatalogSticker(content: @Composable () -> Unit) {
 }
 
 /**
- * Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its desktop
- * [FontFamily], falling back to the Roboto Flex default for an unknown name. Add a vendored face
- * here and to `CatalogCatalogs.kt` (and, for the Wasm tier, to `cmp-wasm-catalog`'s `fonts.json`)
- * to offer it. The palette resolver + choice names are shared (`CatalogThemeChoices`) so the Wasm
- * viewer resolves the same override identically.
+ * Resolves a typeface [name] (a declared `@TypographyCatalog` label) to its desktop [FontFamily],
+ * defaulting to Roboto Flex. To offer a new face, add it here, to `CatalogCatalogs.kt`, and to
+ * `cmp-wasm-catalog`'s `fonts.json`.
  */
 fun catalogFont(name: String): FontFamily =
   when (name) {
@@ -115,16 +92,10 @@ fun catalogFont(name: String): FontFamily =
   }
 
 /**
- * The sticker frame with its [colorScheme] / [typography] supplied by the caller — the shared body
- * of the catalog theme. [CatalogSticker] resolves the two from the override surface (defaulting to
- * Roboto Flex + M3) and passes them here, so the font / palette override re-skins every sticker
- * from this one place without touching a single preview — the point of keeping the previews clean.
- *
- * The generic / named font families ([LocalGenericFonts] / [LocalNamedFonts]) are always provided
- * so a component that asks for `serif` / a named GoogleFont resolves the vendored face regardless
- * of the selected typeface. Component stickers render on a TRANSPARENT surface so each reads as a
- * silhouette on the viewer's backing; `contentColor = onSurface` keeps text/icons themed against
- * it.
+ * The sticker frame with caller-supplied [colorScheme] / [typography]; [CatalogSticker] resolves
+ * them from the override surface. Generic and named font families are always provided. Stickers
+ * render on a transparent surface (a silhouette on the viewer's backing) with
+ * `contentColor = onSurface`.
  */
 @Composable
 fun CatalogStickerFrame(
@@ -146,27 +117,19 @@ fun CatalogStickerFrame(
 }
 
 /**
- * The catalog's primary-mode multipreview: every component is rendered in both light and dark, the
- * two modes M3 ships. Stacking this annotation on a composable yields the `· Light` / `· Dark`
- * captures the sticker sheet pairs. Further modes (states, breakpoints) are added per-component
- * with extra `@Preview`s where they matter.
- *
- * `uiMode = 32` is the raw value of Android's `Configuration.UI_MODE_NIGHT_YES` — the CMP desktop
- * source set has no `android.content.res.Configuration`, so (as `:samples:cmp` does) the bit is
- * written directly; the renderer treats `uiMode` as an int and flips `isSystemInDarkTheme()`.
+ * The catalog's primary-mode multipreview: light and dark, the `· Light` / `· Dark` captures the
+ * sticker sheet pairs. `uiMode = 32` is `Configuration.UI_MODE_NIGHT_YES`, written raw because the
+ * CMP desktop source set has no `android.content.res.Configuration`.
  */
-// No `showBackground` — the harness background stays transparent so a component sticker is a
-// silhouette on the viewer's checkerboard. The sticker's own [CatalogSticker] surface is
-// transparent too. The full-screen [CatalogTemplate] keeps its device background.
+// No `showBackground`: component stickers stay transparent silhouettes on the viewer's checkerboard.
 @Preview(name = "Light", group = "modes")
 @Preview(name = "Dark", uiMode = 32, group = "modes")
 annotation class CatalogModes
 
 /**
- * Frame for **full-screen scaffold templates** — as opposed to the centred component
- * [CatalogSticker]. Just the stock [MaterialTheme] filling the device with the `background`
- * surface; the template supplies its own `Scaffold` and drives the system-bar spacing through
- * window insets (see [SYSTEM_BAR_INSET]).
+ * Frame for full-screen scaffold templates: the stock [MaterialTheme] filling the device with the
+ * `background` surface. The template drives system-bar spacing through window insets
+ * ([SYSTEM_BAR_INSET]).
  */
 @Composable
 fun FullScreenM3(content: @Composable () -> Unit) {
@@ -177,29 +140,22 @@ fun FullScreenM3(content: @Composable () -> Unit) {
 }
 
 /**
- * Height of the renderer's synthetic status / navigation bars (`SystemBarsFrame` draws both at
- * 24dp). The render environment has no real window insets behind that overlay, so a template feeds
- * this height to its `Scaffold`/`TopAppBar` `windowInsets` — reproducing a real edge-to-edge M3
- * scaffold (the app bar paints under the status bar with its title below the OS clock; content and
- * the FAB clear the gesture pill) rather than an outer padding that pushes the scaffold into a
- * band.
+ * Height of the renderer's synthetic status/navigation bars (24dp). There are no real insets behind
+ * that overlay, so templates feed this to their `Scaffold`/`TopAppBar` `windowInsets` to reproduce
+ * an edge-to-edge M3 scaffold.
  */
 val SYSTEM_BAR_INSET = 24.dp
 
 /**
- * Full-screen template multipreview: a phone (`id:pixel_8`) with `showSystemUi = true` so the
- * capture carries the synthetic OS status + nav chrome, in both light and dark. The desktop
- * renderer honours `device` + `showSystemUi` (see `:samples:cmp`'s Pixel-8 preview), so this frames
- * the CMP template exactly as the Android render did.
+ * Full-screen template multipreview: `id:pixel_8` with `showSystemUi = true` for the synthetic OS
+ * chrome, in light and dark.
  */
 @Preview(name = "Light", device = "id:pixel_8", showSystemUi = true, group = "template")
 @Preview(name = "Dark", device = "id:pixel_8", showSystemUi = true, uiMode = 32, group = "template")
 annotation class CatalogTemplate
 
-// --- Fonts, loaded once from the bundled faces under src/main/resources/fonts/. ---
-// The same TTFs the wasm tier vendors, so desktop render + in-browser tier + the historical Android
-// baked stickers all share one typeface. `androidx.compose.ui.text.platform.Font(identity, data)`
-// is the desktop/Skiko overload (the same one the wasm app uses).
+// Fonts loaded once from src/main/resources/fonts/ — the same TTFs the wasm tier vendors.
+// `androidx.compose.ui.text.platform.Font(identity, data)` is the desktop/Skiko overload.
 
 private fun fontBytes(name: String): ByteArray =
   object {}.javaClass.getResourceAsStream("/fonts/$name")?.readBytes()
@@ -213,19 +169,15 @@ val Roboto: FontFamily =
   )
 
 /**
- * Roboto Flex — the catalog's **default** typeface (see [CatalogDefaultFont]), the variable-font
- * evolution of [Roboto] and the face Material 3 now ships as its default sans. One variable TTF
- * (`RobotoFlex.ttf`, vendored under `resources/fonts/` from fonts.google.com's `ofl/robotoflex`)
- * carries the whole weight axis, so a single face backs the entire type scale; Skiko rasterises the
- * default (400) instance and synthesises the heavier scale steps.
+ * Roboto Flex — the catalog's default typeface (see [CatalogDefaultFont]) and Material 3's default
+ * sans. One variable TTF from fonts.google.com's `ofl/robotoflex` backs the whole type scale.
  */
 val RobotoFlex: FontFamily =
   FontFamily(Font("RobotoFlex", fontBytes("RobotoFlex.ttf"), FontWeight.Normal, FontStyle.Normal))
 
 /**
- * Lobster Two — a display face vendored from fonts.google.com's `ofl/lobstertwo`, offered as a
- * selectable typeface theme (see [CatalogThemes]). A deliberately distinctive script/serif so the
- * font-override is unmistakable when applied to a sticker.
+ * Lobster Two (fonts.google.com `ofl/lobstertwo`), a deliberately distinctive selectable typeface
+ * so the font override is unmistakable.
  */
 val LobsterTwo: FontFamily =
   FontFamily(
@@ -239,13 +191,9 @@ val LobsterTwo: FontFamily =
   )
 
 /**
- * Google Sans Flex — offered as a **named** downloadable-GoogleFont family (the same `role:
- * "named"` tier as [CatalogNamedFonts]'s Orbitron), so the catalog declares it as a selectable
- * typeface. It is **not** distributed on fonts.google.com (Google Sans is a Google-brand font), so
- * the branded TTF isn't vendored here; [optionalGoogleFontFamily] therefore degrades gracefully to
- * the platform sans until a `GoogleSansFlex.ttf` is dropped into `resources/fonts/`, at which point
- * the real face round-trips into the fonts manifest exactly like any other named GoogleFont. The
- * declaration (the choice) exists regardless — the point of the theme-override typeface catalog.
+ * Google Sans Flex, declared as a named GoogleFont typeface choice. It isn't distributed on
+ * fonts.google.com, so it isn't vendored; [optionalGoogleFontFamily] falls back to the platform
+ * sans until a `GoogleSansFlex.ttf` is dropped into `resources/fonts/`.
  */
 val GoogleSansFlex: FontFamily =
   optionalGoogleFontFamily("Google Sans Flex", "GoogleSansFlex.ttf") ?: FontFamily.SansSerif
@@ -254,10 +202,8 @@ val GoogleSansFlex: FontFamily =
 val CatalogDefaultFont: FontFamily = RobotoFlex
 
 /**
- * Builds a named downloadable-GoogleFont [FontFamily] from a vendored face, or returns null when
- * the TTF isn't present (so a not-yet-vendored brand face degrades to a caller-chosen fallback
- * rather than failing the build — the same graceful degradation the fonts-manifest generator
- * assumes).
+ * Builds a named GoogleFont [FontFamily] from a vendored face, or null when the TTF is absent so
+ * the caller can fall back.
  */
 private fun optionalGoogleFontFamily(name: String, file: String): FontFamily? = runCatching {
   FontFamily(googleFontFace(name, file, FontWeight.Normal))
@@ -275,18 +221,13 @@ val CatalogGenericFonts: Map<String, FontFamily> =
   )
 
 /**
- * Named downloadable-GoogleFont substitutes keyed by the GoogleFont display name
- * `namedFontFamily(…)` looks up — the desktop-render counterpart to the wasm tier's `role: "named"`
- * families, built from the branded TTFs vendored under `resources/fonts/` (`<slug>-<weight>.ttf`,
- * the exact filenames the fonts manifest expects).
+ * Named GoogleFont substitutes keyed by the display name `namedFontFamily(…)` looks up, built from
+ * branded TTFs vendored as `resources/fonts/<slug>-<weight>.ttf`.
  *
- * The face `identity` is deliberately the downloadable-GoogleFont label string
- * (`Font(GoogleFont("Orbitron", …), …)`) rather than a plain id: the daemon's font-usage recorder
- * reports a resolved face by its `identity`, and the export's manifest generator regexes the
- * GoogleFont display name back out of exactly that shape. So this desktop face round-trips into a
- * `role: "named"` manifest entry at export — the same family the wasm tier then fetches — with no
- * daemon-pipeline change. `namedFontFamily(...)` (sealed-resolver-safe lookup) is what a catalog
- * component says in place of the Android-only `FontFamily(Font(GoogleFont("Orbitron"), provider))`.
+ * Each face's `identity` is the GoogleFont label (`Font(GoogleFont("Orbitron", …), …)`) because the
+ * daemon's font-usage recorder reports that and the export's manifest generator parses the family
+ * back out of it, producing a `role: "named"` entry the wasm tier fetches. Components use
+ * `namedFontFamily(...)` instead of the Android-only `FontFamily(Font(GoogleFont(...), provider))`.
  */
 val CatalogNamedFonts: Map<String, FontFamily> =
   mapOf(

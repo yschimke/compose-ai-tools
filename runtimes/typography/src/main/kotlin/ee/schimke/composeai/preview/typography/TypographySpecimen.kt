@@ -16,21 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Renders every Material 3 type role in [typography] as a labelled row — `displayLarge`,
- * `displayMedium`, …, `labelSmall` — so visual regressions in a custom Material 3 theme's
- * `Typography` surface as a pixel diff in the surrounding `@Preview`.
- *
- * Pairs with a normal `@Preview` (stacked or single). Authors who wrap a Material 3 `Typography`
- * value in this helper get a one-PNG audit of every role at the size, weight, and family that
- * `MaterialTheme.typography` is configured to use. The output matches the Material 3 reference
- * table at <https://m3.material.io/styles/typography/type-scale-tokens> — fifteen rows in the
- * standard descending order (display → headline → title → body → label, each at large / medium /
- * small).
- *
- * Sample text is the canonical English pangram so consumers can eyeball ascender / descender /
- * kerning behaviour across the scale. Localised pangrams aren't surfaced here on purpose — the
- * existing `@Preview(locale = …)` knob already fans the same composable out across locales when the
- * consumer needs per-script samples.
+ * Renders every Material 3 type role in [typography] as a labelled row (`displayLarge` …
+ * `labelSmall`), so regressions in a theme's `Typography` show up as a pixel diff. Fifteen rows in
+ * the order of the M3 type-scale table
+ * (https://m3.material.io/styles/typography/type-scale-tokens). Sample text is an English pangram;
+ * use `@Preview(locale = …)` for other scripts.
  */
 @Composable
 fun TypographySpecimen(typography: Typography, modifier: Modifier = Modifier) {
@@ -42,10 +32,7 @@ fun TypographySpecimen(typography: Typography, modifier: Modifier = Modifier) {
 }
 
 /**
- * Material 3 role order for [TypographySpecimen]. Returned as a stable `List<Pair<...>>` rather
- * than a `Map` so the row sequence is deterministic across calls (the rendered PNG diffs cleanly).
- * Matches the descending size order in the M3 reference table — fifteen entries, three sizes per
- * role family, in the order display → headline → title → body → label.
+ * Material 3 role order for [TypographySpecimen], as an ordered list so the PNG is deterministic.
  */
 private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle>> =
   listOf(
@@ -67,11 +54,8 @@ private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle
   )
 
 /**
- * One specimen row: a fixed-width label column on the left, the sample text rendered at [style] on
- * the right. The label uses a small, role-agnostic size so a `displayLarge` row's label doesn't
- * itself span the whole row — labels are wayfinding, not content. The label column width (140.dp)
- * is tuned to hold the longest M3 role name (`displayMedium` / `headlineMedium` / `labelMedium`)
- * without wrapping at typical preview densities.
+ * One specimen row: a fixed 140dp label column (fits the longest role name) in a small fixed style,
+ * then the sample text in [style].
  */
 @Composable
 internal fun SpecimenRow(label: String, style: TextStyle, text: String) {
@@ -85,11 +69,8 @@ internal fun SpecimenRow(label: String, style: TextStyle, text: String) {
 }
 
 /**
- * The fixed label style for specimen rows. Hard-coded to a small monospace size so the label column
- * reads consistently across `TypographySpecimen`, `FontFamilySpecimen`, and
- * `FallbackCoverageSpecimen` — including when the specimen is rendered against a `Typography` whose
- * own `labelSmall` has been heavily customised. Monospace keeps the column visually aligned even
- * when role names of different lengths share the column.
+ * Fixed small monospace label style shared by the specimens, independent of the theme's own
+ * `labelSmall`.
  */
 internal val LabelStyle: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
 

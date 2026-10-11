@@ -1,46 +1,24 @@
-// `:samples:design-catalog-m3-shared` — the **single source of truth** for the
-// Compose Material 3 catalog's component set, shared by three surfaces:
+// `:samples:design-catalog-m3-shared` — the single source of truth for the Compose Material 3
+// catalog components (`CatalogComponent(id)`), shared by:
+//  * `:samples:design-catalog-m3` (desktop) — the `@Preview` sticker sheet the renderer and daemon
+//    build;
+//  * `:samples:cmp-wasm-catalog` (wasmJs) — the in-browser "Run in browser (Wasm)" tier;
+//  * `:cli:serve-wasm` — the preview UI itself, rendering compose-m3 cards in-process.
 //
-//  * `:samples:design-catalog-m3` (JVM/desktop) authors the `@Preview` sticker
-//    sheet against these composables and is the module the `compose-preview`
-//    renderer / daemon builds — the baked stickers, `compose/theme`,
-//    `compose/semantics-wireframe`, a11y findings, AND the trusted server-side
-//    live re-render all come from there.
-//  * `:samples:cmp-wasm-catalog` (wasmJs) mounts these same composables in the
-//    browser sandbox for the in-browser "Run in browser (Wasm)" tier.
-//  * `:cli:serve-wasm` compiles the same catalog app into the preview UI itself,
-//    so compose-m3 cards and detail views render in-process with no iframe or
-//    preview-server render round trip.
-//
-// Before this module the two surfaces re-authored the M3 component set twice
-// (the Android catalog's `@Preview` stickers vs. the wasm module's id→composable
-// map). They now call one authoritative `CatalogComponent(id)` here, so the
-// component list, the theme wrapper, the generic-font plumbing, and the stateful
-// helpers live in exactly one place.
-//
-// Deliberately thin — only the multiplatform compose runtime + `material3` — and
-// applies NO `ee.schimke.composeai.preview` plugin: it's a plain library. The
-// `@Preview` annotations (and their discovery) live in the desktop consumer, so
-// this module never needs `ui-tooling-preview` on the `wasmJs` target (that
-// artifact has no wasm klib).
+// A plain library (no preview plugin): `@Preview`s and discovery live in the desktop consumer, so
+// this never needs `ui-tooling-preview` (which has no wasm klib) on `wasmJs`.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
-  // Applied by id without a version — KGP-multiplatform + the compose-compiler
-  // plugin are already on the buildscript classpath via the AGP/Compose bundle,
-  // so `alias(libs.plugins…)` errors with "already on the classpath with an
-  // unknown version" (mirrors `:samples:cmp-shared` / `:samples:cmp-wasm-catalog`).
+  // Applied by id without a version: these plugins are already on the buildscript classpath, and
+  // `alias(libs.plugins…)` fails with "already on the classpath with an unknown version".
   id("org.jetbrains.kotlin.multiplatform")
   alias(libs.plugins.compose.multiplatform)
   id("org.jetbrains.kotlin.plugin.compose")
 }
 
 kotlin {
-  // JVM target so `commonMain` compiles against the Desktop flavor of
-  // compose-runtime — that's what the desktop renderer / daemon
-  // (`ImageComposeScene`) launches against. Named "desktop" to mirror
-  // `:samples:cmp-shared`; the consumer `:samples:design-catalog-m3` resolves
-  // this single JVM variant.
+  // The desktop JVM target the renderer / daemon (`ImageComposeScene`) runs against.
   jvm("desktop") {
     compilations.configureEach {
       compileTaskProvider.configure {
@@ -58,10 +36,7 @@ kotlin {
 
   sourceSets {
     commonMain {
-      // The slot-constraint adapter. There used to be a second, reduced copy under
-      // `src/releasedRuntimeMain/` for the published-bundle build, which compiled against the last
-      // RELEASED slot runtime while normal builds used the workspace one; the runtime is a released
-      // coordinate on every build now (compose-preview-daemon, #5336), so one adapter is enough.
+      // The slot-constraint adapter.
       kotlin.srcDir("src/currentRuntimeMain/kotlin")
       dependencies {
         // String-typed `compose.*` accessors are deprecated in CMP 1.10 in favour
@@ -72,30 +47,21 @@ kotlin {
         @Suppress("DEPRECATION") implementation(compose.material3)
         @Suppress("DEPRECATION") implementation(compose.ui)
         implementation(libs.graphics.shapes)
-        // Compose Multiplatform string resources: the catalog's component labels resolve from
-        // `commonMain/composeResources/values*/strings.xml`, so a `localeTag` override (or the
-        // `en-XA`/`ar-XB` pseudolocale) renders translated / pseudolocalised copy through the
-        // daemon's `LocaleList` provider. `api` so the desktop `@Preview` sticker sheet
-        // (`:samples:design-catalog-m3`) can reference the same generated `Res` for its
-        // scaffold-template strings without re-declaring its own resource set.
+        // Compose Multiplatform string resources, so `localeTag` overrides (and pseudolocales)
+        // render translated copy. `api` so the desktop sticker sheet can use the same generated
+        // `Res`.
         @Suppress("DEPRECATION") api(compose.components.resources)
-        // `PreviewSlot` / `LocalSlotMode` for the slotted-card component. `api` so the desktop
-        // sticker
-        // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode
-        // sticker.
+        // `PreviewSlot` / `LocalSlotMode`; `api` so the sticker sheet can provide `LocalSlotMode`.
         api(libs.composeai.slot.preview.runtime)
-        // The composition document a builder assembles (`Screen` / `ScreenNode`) and the component
-        // spec table this catalog supplies to its codegen. `api` so the wasm app can hold a
-        // `Screen` in its own state without re-declaring the model. No Compose dependency of its
-        // own — it is data, and it compiles to wasmJs, which is where the builder runs.
+        // The builder's composition document model; `api` so the wasm app can hold a `Screen`. Pure
+        // data, compiles to wasmJs.
         api(project(":screen-model"))
       }
     }
 
-    // The named-override runtime (`previewOverride*`) is a plain JVM artifact with no wasm klib, so
-    // it can only back the desktop `actual`s of the `catalogOverride*` wrappers (the `wasmJs`
-    // actuals return the author default). Desktop is the target the renderer / daemon builds, so
-    // that's exactly where the knobs resolve against real daemon seeds.
+    // The `previewOverride*` runtime is JVM-only, so it backs only the desktop `actual`s of the
+    // `catalogOverride*` wrappers (wasm returns author defaults) — which is where the daemon seeds
+    // them.
     val desktopMain =
       getByName("desktopMain") {
         dependencies { implementation(libs.composeai.data.preview.overrides.runtime) }
@@ -118,10 +84,8 @@ kotlin {
   }
 }
 
-// Generate a **public** `Res` accessor so the desktop `@Preview` sticker sheet
-// (`:samples:design-catalog-m3`) can resolve the shared string resources for its scaffold
-// templates, not just the component bodies authored here. Default visibility is `internal`,
-// which would keep `Res` invisible across the module boundary.
+// A public `Res` accessor so the desktop sticker sheet can resolve the shared strings across the
+// module boundary.
 compose.resources {
   publicResClass = true
   packageOfResClass = "com.example.designcatalogm3.shared.generated.resources"

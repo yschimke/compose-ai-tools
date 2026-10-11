@@ -49,14 +49,9 @@ fun ShadowStickerGutteredPreview() {
 }
 
 /**
- * A **fill-width** component on a fixed 400dp frame, rendered with and without a gutter — the pair
- * that pins the gutter's core promise at a fractional density.
- *
- * `:samples:android` renders at 2.625, where the dp the hosting window grows by and the pixels each
- * gutter edge rounds to do not divide evenly. Resolving the child's viewport as "enlarged window
- * minus the rounded edges" costs it a pixel, and a pixel is all it takes for `fillMaxWidth` content
- * to measure differently from the un-guttered render — which is precisely what the annotation
- * promises cannot happen. The pixel test asserts the drawn band is the same width in both.
+ * A fill-width component on a 400dp frame, with and without a gutter. At 2.625 density the gutter's
+ * rounded edges don't divide evenly, so a naive viewport loses a pixel and `fillMaxWidth` content
+ * measures differently. The pixel test asserts equal band widths.
  */
 @Preview(name = "Fill fixed", widthDp = 400, showBackground = true)
 @Composable

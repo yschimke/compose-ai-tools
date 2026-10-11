@@ -32,13 +32,8 @@ import ee.schimke.composeai.preview.slots.PreviewSlotScope
 import ee.schimke.composeai.preview.slots.PreviewSlotSizing
 import org.jetbrains.compose.resources.stringResource
 
-// ---------------------------------------------------------------------------
-// Scaffold templates — full-screen, pre-built screen skeletons an app copies
-// whole. Rendered on a phone with `showSystemUi = true` (see [CatalogTemplate])
-// so the capture reads as a real screenshot: the OS status bar at the top and
-// the gesture-pill nav bar at the bottom, drawn by the renderer's
-// SystemBarsFrame, framing the template's own Material chrome.
-// ---------------------------------------------------------------------------
+// Scaffold templates: full-screen skeletons an app copies whole, rendered with `showSystemUi =
+// true` (see [CatalogTemplate]) so the renderer's synthetic status and nav bars frame them.
 
 // Sender names stay literal (proper nouns aren't translated); each preview line is a string
 // resource so a `localeTag` override renders the message copy in the target language.
@@ -52,11 +47,8 @@ private val templateMessages =
   )
 
 /**
- * Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list of ListItems, and a
- * FloatingActionButton — the canonical M3 screen an app starts a new surface from. The render
- * environment has no real window insets behind the renderer's synthetic OS bars, so the scaffold
- * supplies them itself ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
- * below the OS clock, and the content/FAB clear the gesture pill.
+ * Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list and a FAB. There are no
+ * real insets behind the synthetic OS bars, so it supplies [SYSTEM_BAR_INSET] itself.
  */
 @CatalogComponent(
   id = "Template/AppScaffold",
@@ -71,15 +63,9 @@ fun AppScaffoldTemplate() = FullScreenM3 {
   Scaffold(
     contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
     topBar = {
-      // Each fillable region is a `PreviewSlot`, which is why this template is a *skeleton* and not
-      // just a screenshot: a no-op in an ordinary render (it draws the content below, tagged
-      // `dp-slot:<name>`), it swaps to a labelled placeholder under `LocalSlotMode` and surfaces
-      // through `/render/<id>.slots` as a drop target with its measured box. The knobs stay — a
-      // slot's default child is a live example, not an either/or with being editable.
-      //
-      // The scope is declared explicitly because a `Scaffold` slot lambda has no layout-scope
-      // receiver to infer it from: a child that replaces the app bar is laid out as a single box
-      // across the full width, not stacked.
+      // Each fillable region is a `PreviewSlot` (a no-op normally; a labelled placeholder under
+      // `LocalSlotMode`, and a drop target via `/render/<id>.slots`), so this is a skeleton. The
+      // scope is explicit because a `Scaffold` slot lambda has no layout-scope receiver.
       PreviewSlot(
         name = "topBar",
         scope = PreviewSlotScope.Box,
@@ -129,10 +115,8 @@ fun AppScaffoldTemplate() = FullScreenM3 {
     ) {
       Column(Modifier.fillMaxSize()) {
         templateMessages.forEachIndexed { index, (sender, previewRes) ->
-          // Each row's sender + preview are indexed override knobs (`sender[i]` / `preview[i]`), so
-          // a daemon-backed render can reseed any individual row from the `compose/overrides`
-          // surface. The preview copy's author default is a string resource so a `localeTag`
-          // override translates it; the sender name stays a literal proper noun.
+          // Each row's sender and preview are indexed knobs (`sender[i]` / `preview[i]`); the
+          // preview copy defaults to a string resource so `localeTag` translates it.
           ListItem(
             headlineContent = { Text(previewOverrideString("sender", sender, index = index)) },
             supportingContent = {

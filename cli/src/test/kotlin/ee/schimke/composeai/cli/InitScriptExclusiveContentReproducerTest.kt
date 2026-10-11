@@ -11,30 +11,17 @@ import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 
 /**
- * End-to-end reproducer for the Confetti shape (https://github.com/joreilly/Confetti `main`):
- * `pluginManagement.repositories` declares `exclusiveContent { ... }`, and Gradle 9.3+ then rejects
- * any project that *adds repositories to* `buildscript.repositories` with `When using exclusive
- * repository content in 'settings.pluginManagement.repositories', you cannot add repositories to
- * 'buildscript.repositories'.`
+ * End-to-end reproducer for the Confetti shape: `pluginManagement.repositories` declares
+ * `exclusiveContent { ... }`, and Gradle 9.3+ then rejects any project adding to
+ * `buildscript.repositories`.
  *
- * Asserts that the rendered init script's `allprojects { buildscript { repositories { ... } } }`
- * sub-block is suppressed when the settings file matches this shape, so it never trips the
- * validation. For a module without its own `buildscript { repositories { ... } }`, the init script
- * does NOT add repositories or inject a raw coordinate (either would crash configuration); instead
- * it resolves the plugin classpath through the project's own settings-managed repositories via a
- * detached configuration and injects the resolved JARs as `files(...)` — landing the plugin on the
- * module's own buildscript classloader without touching `buildscript.repositories`. The `configures
- * cleanly` test pins the no-crash behavior; the `applies the plugin` test pins that the files()
- * path actually applies the plugin when the coordinate is resolvable.
+ * Asserts the init script's `buildscript { repositories { ... } }` sub-block is suppressed for this
+ * shape. Modules without their own buildscript repos instead resolve the plugin through the
+ * settings-managed repos via a detached configuration and inject `files(...)`, keeping the plugin
+ * on the module's own buildscript classloader (an initscript-classpath load breaks AGP visibility).
+ * `configures cleanly` pins the no-crash path; `applies the plugin` pins the resolvable path.
  *
- * PR #1483 tried to dodge the validation with an `initscript { classpath ... }` load, but that
- * broke plugins-that-reference-AGP at runtime (`NoClassDefFoundError:
- * com/android/build/api/variant/AndroidComponentsExtension` — init-script-loaded plugins sit on a
- * sibling classloader of AGP). The current fix keeps the plugin on the project's OWN buildscript
- * classloader (via the resolved files()), which preserves AGP visibility.
- *
- * Uses TestKit's default Gradle (the wrapper version) so the test fires the same validation that
- * production users hit; older Gradle wouldn't see the validation at all.
+ * Uses TestKit's default (wrapper) Gradle so the real validation fires.
  */
 class InitScriptExclusiveContentReproducerTest {
 
@@ -49,13 +36,10 @@ class InitScriptExclusiveContentReproducerTest {
     Files.createTempDirectory(prefix).toFile().also { tempDirs += it }
 
   /**
-   * Sets up a minimal project that mirrors Confetti's settings shape: `exclusiveContent` declared
-   * inside `pluginManagement { listOf(repositories, dependencyResolutionManagement.repositories)
-   * .forEach { ... } }`. The `:app` subproject applies a `plugins { }` block — required to make
-   * Gradle actually evaluate the buildscript classpath, which is where our injection fires.
-   * Crucially `:app/build.gradle.kts` does NOT declare its own `buildscript { repositories { ... }
-   * }` — that matches the realistic Confetti shape where modules route everything through
-   * pluginManagement / dependencyResolutionManagement.
+   * A minimal project mirroring Confetti's settings: `exclusiveContent` inside `pluginManagement {
+   * listOf(repositories, dependencyResolutionManagement.repositories).forEach { ... } }`. `:app`
+   * has a `plugins { }` block (so the buildscript classpath is evaluated) and no buildscript
+   * repositories of its own.
    */
   private fun createConfettiShapedProject(): File {
     val root = tempDir()
@@ -87,19 +71,9 @@ class InitScriptExclusiveContentReproducerTest {
 
   @Test
   fun `init script configures cleanly against a Confetti-shaped project with no module buildscript repos`() {
-    // Original 0.11.7 regression: `allprojects { buildscript { repositories { ... } } }`
-    // tripped Gradle 9.3+'s
-    //   "When using exclusive repository content in 'settings.pluginManagement.repositories',
-    //    you cannot add repositories to 'buildscript.repositories'."
-    // 0.11.8 fix sidestepped that validation but still injected the classpath dep, which then
-    // failed with "Cannot resolve external dependency ... because no repositories are defined"
-    // for any module without its own buildscript { repositories { ... } } — that crashed the
-    // whole Tooling API query (the 0.11.8 follow-up regression). The current fix neither adds
-    // repos nor injects a raw coordinate for such modules: it resolves the plugin classpath via a
-    // detached configuration and injects files(). Here the coordinate ("0.11.9") isn't published
-    // to any repo the consumer declares, so resolution fails, is swallowed (runCatching), and the
-    // branch degrades to a no-op — configuration still completes cleanly with no crash. The
-    // `applies the plugin` test below covers the resolvable case.
+    // Neither adding repos nor injecting a raw coordinate may happen for a repo-less module (either
+    // crashes configuration). Here the coordinate isn't resolvable, so the detached resolution
+    // fails quietly and configuration completes; the resolvable case is the next test.
     val project = createConfettiShapedProject()
     val initScript = materializeInitScript(tempDir(), "0.11.9")
 
@@ -134,14 +108,8 @@ class InitScriptExclusiveContentReproducerTest {
 
   @Test
   fun `init script still injects buildscript classpath when settings has no exclusiveContent`() {
-    // Sanity check that the guard is narrow — a settings file WITHOUT exclusiveContent must still
-    // see the buildscript injection (the auto-inject happy path the CLI is built around; issue
-    // #305 and friends). We can't easily verify successful plugin resolution end-to-end here
-    // without spinning up mavenLocal with our SNAPSHOT, so the assertion is structural: run the
-    // build, and whether it succeeds or fails (the plugin coordinate may not resolve), the
-    // failure must NOT be the exclusiveContent validation. A false positive in the scanner that
-    // suppresses injection on a vanilla project would silently regress auto-inject for every
-    // consumer.
+    // The guard must be narrow: without exclusiveContent the buildscript injection still happens.
+    // Plugin resolution may fail here, but the failure must not be the exclusiveContent validation.
     val root = tempDir()
     File(root, "settings.gradle.kts")
       .writeText(
@@ -178,20 +146,15 @@ class InitScriptExclusiveContentReproducerTest {
 
   @Test
   fun `init script applies the plugin via detached-config files() in the exclusiveContent shape`() {
-    // The Confetti :androidApp fix, end to end: in the exclusiveContent shape a module WITHOUT its
-    // own buildscript repos can't add to buildscript.repositories, so the init script resolves the
-    // plugin classpath through the project's settings-managed repos via a detached configuration
-    // and injects files(). This proves that, when the coordinate IS resolvable, the plugin actually
-    // applies to the module — not just that configuration doesn't crash. Two stub plugins are
-    // published to a local maven repo: `ee.schimke.composeai.preview` (prints a marker on apply)
-    // and a fake `com.android.application` (the withPlugin host id that triggers auto-inject).
+    // When the coordinate is resolvable, the files() path actually applies the plugin. Two stub
+    // plugins go to a local repo: `ee.schimke.composeai.preview` (prints a marker) and a fake
+    // `com.android.application` (the withPlugin host that triggers auto-inject).
     val repo = tempDir("compose-preview-repro-repo-")
     publishStubPlugins(repo)
 
     val root = tempDir()
-    // Confetti shape: exclusiveContent shared into pluginManagement + DRM; the stub repo in both so
-    // the plugins-DSL (com.android.application) AND the detached-config resolution find the stubs.
-    // `:app` declares NO buildscript repositories of its own — the exact repo-less shape.
+    // exclusiveContent shared into pluginManagement and dependencyResolutionManagement, with the
+    // stub repo in both; `:app` declares no buildscript repositories.
     File(root, "settings.gradle.kts")
       .writeText(
         """
@@ -251,11 +214,9 @@ class InitScriptExclusiveContentReproducerTest {
   }
 
   /**
-   * Publishes two stub Gradle plugins to [repo] via a nested TestKit build: the compose-preview
-   * plugin (id `ee.schimke.composeai.preview`, prints a marker on apply) and a fake
-   * `com.android.application` (the withPlugin host id that triggers auto-inject). Kept as separate
-   * subprojects so distinct implementation artifacts are published — resolving the compose-preview
-   * marker must not drag in the fake-AGP descriptor.
+   * Publish two stub plugins to [repo] via a nested TestKit build: the compose-preview plugin
+   * (prints a marker on apply) and a fake `com.android.application`. Separate subprojects so
+   * resolving one marker doesn't pull in the other.
    */
   private fun publishStubPlugins(repo: File) {
     val build = tempDir("compose-preview-repro-stubs-")

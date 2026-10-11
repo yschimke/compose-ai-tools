@@ -7,27 +7,17 @@ import ee.schimke.composeai.previewdriver.GradleTaskDisposition
 import ee.schimke.composeai.previewdriver.GradleTaskOutcome
 
 /*
- * The prose half of issue #3796. `PreviewDiagnosis.kt` holds what is known; this file turns it into
- * sentences, and its one rule is that every sentence is a function taking the evidence it asserts.
- *
- * That is not a style preference. Five review rounds on this diagnostic each landed the same bug —
- * a sentence stating more than had been observed — and each fix repaired one sentence while leaving
- * the next one writeable. Here, `staleSidecarSentence` takes the observed `GradleTaskDisposition`
- * that proves the skip, so "did not run in this invocation" cannot be written without one;
- * `threwSentence` takes `wiringIsFine` only from `ownerRan == true`; the remedy hangs off
- * [RendererTaskKind], so the `testClassesDirs` advice cannot attach to a task that has no
- * `testClassesDirs`; and a module is named only from a group that contains exactly one.
- *
- * `MissingRenderMessageInvariantTest` asserts these over the whole diagnosis space.
+ * Turns `PreviewDiagnosis.kt`'s facts into sentences. Rule: every sentence is a function taking the
+ * evidence it asserts, so it can't claim more than was observed — `staleSidecarSentence` needs the
+ * observed skip, `threwSentence` gets `wiringIsFine` only from an observed run, remedies hang off
+ * [RendererTaskKind], and a module is named only from a single-module group.
+ * `MissingRenderMessageInvariantTest` checks these over the whole diagnosis space.
  */
 
 /**
- * The stderr report for a run that produced no PNG for [diagnoses] of [total] previews.
- *
- * Pure function over already-resolved facts — the disk reads and the backend rules live in
- * [diagnoseMissingRenders] — so the wording is unit-testable without standing up a Gradle render.
- *
- * [prefix] carries the `missing-renders policy=…` tag when the policy opts the exit code down.
+ * The stderr report for a run that produced no PNG for [diagnoses] of [total] previews. Pure over
+ * facts resolved by [diagnoseMissingRenders]. [prefix] carries the `missing-renders policy=…` tag
+ * when the policy lowers the exit code.
  */
 fun formatMissingRenderReport(
   diagnoses: List<PreviewDiagnosis>,
@@ -50,8 +40,8 @@ fun formatMissingRenderReport(
   val unexplained = diagnoses.filter { it.unexplained }
 
   if (threwThisRun.isNotEmpty()) {
-    // `wiringIsFine` is licensed by the observed run: the renderer reached these previews, so the
-    // NO-SOURCE / testClassesDirs guidance below must not be printed for them.
+    // Licensed by the observed run: the renderer reached these previews, so no wiring advice for
+    // them.
     sb.append("\n").append(threwSentence(threwThisRun.size, wiringIsFine = true))
   }
   if (threwUndated.isNotEmpty()) {
@@ -64,8 +54,7 @@ fun formatMissingRenderReport(
     }
   }
   if (scannedRows > 0) sb.append("\n").append(scannedRowSentence(scannedRows))
-  // Grouped by module and owner: one task *name* is many tasks in a multi-module render, with
-  // independently different outcomes, and each sentence quotes the skip it was given.
+  // Grouped by module and owner: one task name is many tasks in a multi-module render.
   for ((key, entries) in diagnoses.filter { it.staleSidecars }.groupBy { it.module to it.owner }) {
     val disposition =
       entries.first().ownerRun.valueOrNull() ?: continue // unreachable: staleSidecars implies it
@@ -93,10 +82,7 @@ private fun offenderLines(entry: PreviewDiagnosis): String {
   val moduleTag = if (entry.module.isNotBlank()) " (${entry.module})" else ""
   sb.append("\n  - ").append(entry.id).append(moduleTag).append(" — no PNG for: ")
   sb.append(entry.coords)
-  // Identical sidecars collapse to one line — one broken composable writes the same throwable
-  // beside every one of its outputs, and printing it once per capture buries the run's real shape.
-  // Distinct ones are labelled with the output they came from, because that is the only thing that
-  // ties an exception to the coordinate that produced it.
+  // Identical sidecars collapse to one line; distinct ones are labelled with their output.
   val groups = entry.sidecars.groupBy({ it.sidecar to entry.dating(it) }, { it.output })
   for ((key, outputs) in groups) {
     val (sidecar, dating) = key
@@ -106,8 +92,7 @@ private fun offenderLines(entry: PreviewDiagnosis): String {
         className = entry.className,
         // A single failure needs no output label; the entry line above already names the preview.
         outputs = if (groups.size > 1) outputs else emptyList(),
-        // Each marker is licensed by the finding's own dating — the observed skip for "earlier
-        // run", the scan for a fan-out row this invocation may never have attempted.
+        // Each marker comes from the finding's own dating (observed skip, or scanned fan-out row).
         dating = dating,
         scanned =
           entry.sidecars.any { it.output in outputs && it.discovery == OutputDiscovery.SCANNED },
@@ -118,13 +103,8 @@ private fun offenderLines(entry: PreviewDiagnosis): String {
 }
 
 /**
- * "N preview(s) rendered and then threw …" — evidenced by the sidecars themselves, which only exist
- * because a renderer wrote them.
- *
- * [wiringIsFine] is the part that describes *this* invocation ("the renderer reached them, so the
- * build wiring is fine"), so callers may only pass `true` from an observed run. Without that
- * observation the sentence still reports the exception — the sidecar is real — but says nothing
- * about the build.
+ * "N preview(s) rendered and then threw …", evidenced by the sidecars. [wiringIsFine] ("the build
+ * wiring is fine") may only be `true` from an observed run.
  */
 private fun threwSentence(count: Int, wiringIsFine: Boolean): String = buildString {
   append(count).append(" preview(s) rendered and then threw")
@@ -135,13 +115,9 @@ private fun threwSentence(count: Int, wiringIsFine: Boolean): String = buildStri
 }
 
 /**
- * Why a `@PreviewParameter` row's exception is reported without being dated.
- *
- * The fan-out is found by scanning — only the provider knows its values — and nothing removes a
- * fan-out `.error.json` when a value is renamed or removed: both renderers'
- * `deleteStaleFanoutFiles` match the template's `png` / `gif` extension, never the sidecar
- * companion. So the file may describe a row this invocation never attempted, and saying otherwise
- * would be the stale-sidecar claim this whole diagnostic exists to stop making.
+ * Why a `@PreviewParameter` row's exception is undated: fan-out files are found by scanning, and
+ * stale fan-out `.error.json`s are never cleaned up, so the row may not have been attempted this
+ * run.
  */
 private fun scannedRowSentence(count: Int): String =
   "$count preview(s) are reported from a `@PreviewParameter` fan-out sidecar found by scanning. " +
@@ -149,11 +125,8 @@ private fun scannedRowSentence(count: Int): String =
     "is renamed or removed, so this run may not have attempted that row."
 
 /**
- * "N preview(s) have a sidecar on disk, but `<task>` did not run …".
- *
- * Takes the [disposition] that proves the skip rather than a boolean, so the sentence cannot be
- * written without it, and [owner] rather than a name, so it names the task that actually skipped
- * and only offers NO-SOURCE for a task that can report it.
+ * "N preview(s) have a sidecar on disk, but `<task>` did not run …". Requires the [disposition]
+ * proving the skip and the actual [owner], so NO-SOURCE is only offered where it can occur.
  */
 private fun staleSidecarSentence(
   owner: RendererTask,
@@ -176,18 +149,14 @@ private fun staleSidecarSentence(
 }
 
 /**
- * The "what to check" paragraphs for previews the composable's own behaviour doesn't explain, one
- * per owning renderer.
- *
- * Split by [RendererTaskKind] because the two remedies are about different things and neither is
- * transferable: the main renderer's is a `Test` task's classpath, the kind renderers' is an
- * `onlyIf` and a task dependency.
+ * "What to check" paragraphs for unexplained previews, one per owning renderer kind
+ * ([RendererTaskKind]): the main renderer's remedy is about a `Test` classpath, the kind renderers'
+ * about `onlyIf` and dependencies.
  */
 private fun remedyParagraphs(unexplained: List<PreviewDiagnosis>): List<String> {
   val byOwner = unexplained.groupBy { it.module to it.owner }
   return buildList {
-    // The main renderer's paragraph names no module and gives the same advice everywhere, so one
-    // copy covers however many modules are in the group.
+    // The main renderer's advice is module-independent, so one copy suffices.
     if (byOwner.keys.any { (_, owner) -> owner.kind == RendererTaskKind.MAIN }) {
       add(mainRendererRemedy())
     }
@@ -198,10 +167,8 @@ private fun remedyParagraphs(unexplained: List<PreviewDiagnosis>): List<String> 
 }
 
 /**
- * The historical guidance, and the reason this whole diagnostic exists: it is the *hypothesis* to
- * check when nothing better is known, stated as "a common cause" rather than as a finding. It
- * belongs only to [RendererTaskKind.MAIN] — `testClassesDirs` is a `Test` task's input and
- * `composePreviewRender-reports` is its artifact.
+ * The fallback hypothesis ("a common cause"), only for [RendererTaskKind.MAIN]: `testClassesDirs`
+ * and `composePreviewRender-reports` belong to its `Test` task.
  */
 private fun mainRendererRemedy(): String =
   "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
@@ -210,16 +177,10 @@ private fun mainRendererRemedy(): String =
     "artifact attached to the run."
 
 /**
- * The guidance for previews rendered by one of Android's kind-specific renderers.
- *
- * Deliberately not the NO-SOURCE paragraph: these are `RenderPreviewsTask`s, so they have no
- * `testClassesDirs`, declare no `@SkipWhenEmpty` input (they never report NO-SOURCE at all), and
- * write no `composePreviewRender-reports`. What *does* skip them is `composePreview { enabled =
- * false }` (their `onlyIf`) or a failure in something they depend on.
- *
- * Makes no claim about what the task *did*: this group also holds previews whose renderer ran and
- * simply produced nothing, which "it did not run" would misdescribe. The module is named from the
- * group — which is one module by construction — or omitted.
+ * Guidance for Android's kind-specific renderers (`RenderPreviewsTask`s): no NO-SOURCE paragraph,
+ * since they have no `testClassesDirs` or `@SkipWhenEmpty` input. They are skipped by
+ * `composePreview { enabled = false }` or a failed dependency. Claims nothing about whether the
+ * task ran; the module is named only from a single-module group.
  */
 private fun kindRendererRemedy(owner: RendererTask, module: String, count: Int): String {
   val owns =
@@ -231,16 +192,10 @@ private fun kindRendererRemedy(owner: RendererTask, module: String, count: Int):
 }
 
 /**
- * The `threw X: msg (at File.kt:42 in fn)` detail lines for one of a failing preview's sidecars.
- *
- * Leads with the **root** cause rather than the outermost throwable: the renderer invokes the
- * preview reflectively, so the outer exception is routinely an `InvocationTargetException` that
- * says nothing at all, while the last `Caused by:` in the trace is the real failure (issue #3741's
- * case: `NoClassDefFoundError: com/google/wear/services/ambient/AmbientComponentState`).
- *
- * [outputs] labels the line when a preview's outputs failed differently; empty for the ordinary
- * one-failure case. [earlierRun] marks a sidecar the renderer had no chance to refresh this run —
- * licensed by an observed skip, never by silence.
+ * The `threw X: msg (at File.kt:42 in fn)` lines for one sidecar, leading with the root cause (the
+ * outer throwable is usually a reflective `InvocationTargetException`). [outputs] labels lines when
+ * outputs failed differently; [earlierRun] marks a sidecar not refreshed this run, licensed only by
+ * an observed skip.
  */
 private fun sidecarDetail(
   sidecar: RenderErrorSidecar,
@@ -270,8 +225,7 @@ private fun sidecarDetail(
     sb.append(')')
   }
   if (chain.isNotEmpty()) {
-    // The whole `Caused by:` chain, outermost first — the wrapper says *how* the renderer reached
-    // the failure (reflective invoke, class initialisation), which the root cause alone hides.
+    // The whole `Caused by:` chain, outermost first: the wrappers show how the failure was reached.
     val names =
       (listOf(sidecar.exception) + chain.map { it.exception })
         .filter { it.isNotBlank() }
@@ -283,9 +237,8 @@ private fun sidecarDetail(
 }
 
 /**
- * The whole "diagnose, then say it" pass, as `show` and both halves of `render` use it. One entry
- * point so no caller can reintroduce a path that reports a missing render without its sidecar —
- * which is exactly what `render --output` did until it was routed through here.
+ * The diagnose-then-report pass shared by `show` and `render`, so no caller can report a missing
+ * render without its sidecar.
  */
 internal fun missingRenderReport(
   missing: List<PreviewResult>,

@@ -16,23 +16,17 @@ public data class HostResourceSample(
   /** The governing headroom: the smaller of [memoryHost] and [memoryCgroup]. */
   val memoryAvailableFraction: Double?,
   /**
-   * The two ceilings [memoryAvailableFraction] is the minimum of, retained so `/status.json` can
-   * say which one governs. Null when that ceiling does not exist or could not be read — an
-   * unlimited cgroup leaves [memoryCgroup] null, which is what a bare-metal host reports.
+   * The two ceilings [memoryAvailableFraction] is the minimum of, so `/status.json` can say which
+   * governs. Null when absent or unreadable (an unlimited cgroup leaves [memoryCgroup] null).
    */
   val memoryHost: Double? = null,
   val memoryCgroup: Double? = null,
 )
 
 /**
- * Thresholds deliberately have separate stop/resume sides so a busy host cannot flap.
- *
- * Serializable because these are published on `/status.json` under
- * `themeOptimizer.pressure.thresholds`. A reading without its threshold is not diagnosable: the
- * page showed `loadPerCpu 2.06` and `paused: load 2.06 per CPU` while an operator had no way to
- * tell whether the limit was the 0.85 default or a deployment override several times larger, and
- * therefore no way to tell a gate doing its job from one tuned past the point of doing it. The
- * override is a system property set outside the image, so the source cannot answer it either.
+ * Thresholds have separate stop/resume sides so a busy host cannot flap. Serializable because they
+ * are published on `/status.json`: a reading is only diagnosable next to the (possibly overridden)
+ * threshold it was judged against.
  */
 @Serializable
 public data class OptimizerPressureThresholds(
@@ -45,70 +39,38 @@ public data class OptimizerPressureThresholds(
   val resumeQuietMillis: Long = 30_000L,
   val sampleIntervalMillis: Long = 2_000L,
   /**
-   * Longest the gate may withhold admission while **no** reading is over a stop threshold.
-   *
-   * The gap between a stop and its resume side is a dead band, and a host can sit in one
-   * indefinitely: memory available 18% is neither `<= 0.15` (so nothing re-trips, and the reason
-   * degrades to the bare "host recovering") nor `>= 0.25` (so [OptimizerPressureGate] never starts
-   * counting [resumeQuietMillis]). Observed in production as a gate held for eight hours while the
-   * host sat at 2% CPU, with theme optimization stalled at 0.35% of its entries.
-   *
-   * Hysteresis exists to delay resumption, not to prevent it, so cap the hold. The stop thresholds
-   * are the real danger line; once the reading is back on their safe side, a bounded duty cycle —
-   * admit, possibly trip again, wait again — is the correct failure mode for best-effort work,
-   * where a permanent latch is not.
+   * Longest the gate may hold while no reading is over a stop threshold. A host can sit
+   * indefinitely in the dead band between stop and resume sides; hysteresis should delay
+   * resumption, not prevent it, so the hold is capped.
    */
   val maxRecoveryMillis: Long = 10 * 60_000L,
   /**
-   * Longest a hold whose stop threshold keeps **re-tripping** may withhold admission before the
-   * gate opens for [dutyCycleMillis]. `0` restores the old permanent latch.
-   *
-   * [maxRecoveryMillis] bounds the dead band; this bounds the other permanent latch, and it is the
-   * one production actually sat in. preview.coo.ee runs 17 resident render daemons on an 8 GB box,
-   * so `MemAvailable` there is a steady 14-15% — under the 15% stop side on every sample. Nothing
-   * is recovering, so the dead-band cap never engages, and theme optimization simply never ran:
-   * `/status.json` reported `paused · memory available 15%` with `wear-m3` warmed to 5 of its 170
-   * entries across a 15-hour uptime.
-   *
-   * A steady-state reading is the host's baseline, not an emergency, and best-effort work that
-   * never runs is indistinguishable from work that was never scheduled. So the same reasoning
-   * [maxRecoveryMillis] records applies: bound the hold, admit a slice, let it trip again. What
-   * stays permanent is a genuine emergency — see [dutyCycleFloorMemoryAvailableFraction].
+   * Longest a hold whose stop threshold keeps re-tripping may last before the gate opens for
+   * [dutyCycleMillis]; `0` restores the permanent latch. A host whose baseline sits on the stop
+   * side (e.g. steady 14% available memory) would otherwise never run optimization. Genuine
+   * emergencies stay latched ([dutyCycleFloorMemoryAvailableFraction]).
    */
   val starvationCapMillis: Long = 30 * 60_000L,
   /**
-   * How long the gate stays open once [starvationCapMillis] is exhausted. `0` disables the cap.
-   *
-   * This must be comfortably longer than one cold Android daemon warm (34-68s in production). The
-   * old one-minute window was commonly spent entirely in that warm: the next per-batch gate check
-   * saw the window closed and yielded with zero cache entries written. Five minutes matches the
-   * optimizer's normal lane slice, so a concession can pay for the warm and still do useful work
-   * without turning the pressure backstop into an unbounded admission.
+   * How long the gate stays open once [starvationCapMillis] is exhausted; `0` disables the cap.
+   * Must comfortably exceed a cold Android daemon warm (34-68s) so the window does useful work.
    */
   val dutyCycleMillis: Long = 5 * 60_000L,
   /**
-   * Memory headroom below which the duty cycle never opens, whatever the hold has cost.
-   *
-   * The stop side (15%) is "back off"; this is "the next allocation may be the one that OOM-kills
-   * the replica". A host there keeps the permanent latch, because slow progress is not worth a
-   * killed server.
+   * Memory headroom below which the duty cycle never opens: the next allocation may OOM-kill the
+   * replica.
    */
   val dutyCycleFloorMemoryAvailableFraction: Double = 0.05,
 ) {
   public companion object {
     /**
-     * Thresholds overridden by `composeai.serve.optimizer*` system properties.
-     *
-     * Deployments differ in what "constrained" means — a box whose steady state is 18% available
-     * memory (17 resident render daemons will do that) has a resume threshold set *below* its own
-     * baseline, so the gate is guaranteed to latch on the first transient dip. That is a property
-     * of the host, not of the code, and it needs to be settable without a rebuild.
+     * Thresholds overridden by `composeai.serve.optimizer*` system properties, since what counts as
+     * constrained depends on the host's baseline.
      */
     public fun fromSystemProperties(): OptimizerPressureThresholds {
       val defaults = OptimizerPressureThresholds()
       return OptimizerPressureThresholds(
-        // `ratio`, NOT `fraction`. Load average per CPU is not bounded by 1.0 — it is a queue
-        // depth, and a host rendering flat out sits well above one runnable task per core.
+        // `ratio`, not `fraction`: load per CPU is a queue depth and can exceed 1.0.
         stopLoadPerCpu = ratio("optimizerStopLoadPerCpu") ?: defaults.stopLoadPerCpu,
         resumeLoadPerCpu = ratio("optimizerResumeLoadPerCpu") ?: defaults.resumeLoadPerCpu,
         stopCpuUtilization = fraction("optimizerStopCpuUtilization") ?: defaults.stopCpuUtilization,
@@ -137,18 +99,9 @@ public data class OptimizerPressureThresholds(
       System.getProperty("composeai.serve.$name")?.toDoubleOrNull()?.takeIf { it in 0.0..1.0 }
 
     /**
-     * A load average per CPU, which is a **queue depth and not a fraction**: one runnable task per
-     * core reads 1.0, and a host deliberately rendering flat out sits above that.
-     *
-     * These two thresholds were parsed by [fraction] and silently lost every value over 1.0. On
-     * preview.coo.ee, whose load while the optimizer works measures 1.03 to 1.74 per CPU, that made
-     * the load limb impossible to relax: the stop side could not be raised past its 0.85 default,
-     * so the gate tripped on the optimizer's own rendering and the override an operator wrote was
-     * dropped without a word. Failing closed is right for a typo in a percentage; it is wrong for a
-     * number whose legitimate range simply is not `0..1`.
-     *
-     * Still bounded, because a typo is still a typo — but at a ceiling no real box reaches rather
-     * than at one every busy box exceeds. Above it, the default stands, as before.
+     * Parse a load-per-CPU threshold, which is a queue depth, not a fraction: a busy host sits
+     * above 1.0, so parsing it as a fraction would silently drop legitimate overrides. Bounded at
+     * [MAX_LOAD_PER_CPU] to still reject typos; above it the default stands.
      */
     private fun ratio(name: String): Double? =
       System.getProperty("composeai.serve.$name")?.toDoubleOrNull()?.takeIf {
@@ -156,8 +109,7 @@ public data class OptimizerPressureThresholds(
       }
 
     /**
-     * Ceiling for a load-per-CPU threshold. A box whose load average is 64x its core count is not a
-     * box an operator is tuning; it is one that has already fallen over.
+     * Ceiling for a load-per-CPU threshold; a host at 64x its core count has already fallen over.
      */
     private const val MAX_LOAD_PER_CPU = 64.0
 
@@ -200,21 +152,13 @@ public data class OptimizerPressureSnapshot(
   /** How many times the starvation cap has had to open this gate since the server started. */
   val dutyCycles: Int = 0,
   /**
-   * The thresholds [constrained] was judged against — the effective values after any
-   * `composeai.serve.optimizer*` override, not the compiled defaults.
-   *
-   * Published because every other field here is a reading, and a reading alone cannot say whether
-   * the gate is behaving. Null only when a snapshot is built without a gate to ask.
+   * The effective thresholds [constrained] was judged against (after overrides). Null only when
+   * built without a gate.
    */
   val thresholds: OptimizerPressureThresholds? = null,
   /**
-   * The two memory ceilings behind [memoryAvailableFraction], which is the SMALLER of them.
-   *
-   * Kept apart because collapsing them loses the fact that decides what to do. A box reporting
-   * `memory available 0%` reads as an emergency; if that 0% is [memoryCgroupAvailableFraction]
-   * while [memoryHostAvailableFraction] sits at 60%, the machine is fine and the container's own
-   * limit is the whole problem — a one-line cap change, not a bigger box. The collapsed number
-   * cannot tell those apart, and the wrong reading points at the wrong fix.
+   * The two memory ceilings behind [memoryAvailableFraction] (the smaller of them), kept apart
+   * because a full cgroup on a roomy host needs a cap change, not a bigger box.
    */
   val memoryHostAvailableFraction: Double? = null,
   val memoryCgroupAvailableFraction: Double? = null,
@@ -223,19 +167,12 @@ public data class OptimizerPressureSnapshot(
 /**
  * Hysteretic host-resource gate for best-effort optimization.
  *
- * A high reading stops admission immediately. Resumption requires every reading that tripped the
- * hold to be back on its resume side for [OptimizerPressureThresholds.resumeQuietMillis], so a
- * render finishing does not instantly admit another cold daemon while the host is still recovering.
- *
- * Because the stop and resume sides differ, a reading can settle between them and satisfy neither.
- * [OptimizerPressureThresholds.maxRecoveryMillis] bounds how long that costs: hysteresis delays
- * resumption, and this is what stops it preventing resumption outright.
- *
- * A reading that stays on the *stop* side is the other way a hold becomes permanent, and it is the
- * one a busy host reaches by simply being busy. [OptimizerPressureThresholds.starvationCapMillis]
- * bounds that one the same way: after the cap the gate opens for a bounded window, then holds
- * again. Only a host under [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction]
- * keeps the latch.
+ * A high reading stops admission immediately. Resumption needs every reading that tripped the hold
+ * back on its resume side for [OptimizerPressureThresholds.resumeQuietMillis].
+ * [OptimizerPressureThresholds.maxRecoveryMillis] bounds a hold stuck in the dead band, and
+ * [OptimizerPressureThresholds.starvationCapMillis] bounds one whose reading stays on the stop side
+ * by opening a bounded window. Only a host under
+ * [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction] keeps the latch.
  */
 public class OptimizerPressureGate(
   private val sample: () -> HostResourceSample?,
@@ -257,8 +194,8 @@ public class OptimizerPressureGate(
   private var held = false
 
   /**
-   * When the next concession is measured from — moved to the end of each window the cap opens, and
-   * to the moment a window is cut short, so the cap always means "at most this long without one".
+   * When the next concession is measured from: the end of each window, or the moment one is cut
+   * short.
    */
   private var capAnchor = Long.MIN_VALUE
 
@@ -291,14 +228,10 @@ public class OptimizerPressureGate(
           ?.takeIf { it <= thresholds.stopMemoryAvailableFraction }
           ?.let { add(PressureSignal.MEMORY to "memory available ${formatPercent(it)}") }
       }
-      // Only what actually stopped us has to come back: a hold taken for memory should not also
-      // wait on a CPU reading that never crossed its own stop threshold.
+      // Only the signals that tripped the hold must recover.
       val safe = trippedBy.all { it.recovered(current, thresholds) }
-      // What is over a stop threshold *right now*, and what was over one on the previous sample.
-      // The difference is what has to cut a duty cycle short. Comparing against `trippedBy` would
-      // not do: that set accumulates for the life of the hold, so a signal that tripped once, went
-      // quiet, and spiked again while memory kept the hold alive would read as "already tripped"
-      // and buy the rest of the window.
+      // Signals over a stop threshold now vs. on the previous sample; newly tripped ones cut a duty
+      // cycle short. `trippedBy` accumulates over the hold, so it can't answer this.
       val activeSignals = tripped.map { it.first }.toSet()
       val newlyTripped = activeSignals - lastTripped
       lastTripped = activeSignals
@@ -309,14 +242,11 @@ public class OptimizerPressureGate(
           recoveringSince = Long.MIN_VALUE
           true
         } else if (!held) {
-          // `held`, not the published `constrained`: a starvation duty cycle publishes an open gate
-          // while the hold is still on, and reading that back would end the hold without the quiet
-          // window it is owed.
+          // `held`, not the published `constrained`, which reads open during a duty cycle.
           false
         } else {
-          // Nothing is over a stop threshold any more, so the hold is now bounded either way:
-          // it ends when the resume side is held for `resumeQuietMillis`, or when the dead band
-          // between the two sides has withheld admission for `maxRecoveryMillis`.
+          // Nothing is over a stop threshold: the hold ends after `resumeQuietMillis` on the resume
+          // side, or after `maxRecoveryMillis` in the dead band.
           if (recoveringSince == Long.MIN_VALUE) recoveringSince = now
           val recoveryExhausted = now - recoveringSince >= thresholds.maxRecoveryMillis
           val quiet =
@@ -368,21 +298,13 @@ public class OptimizerPressureGate(
     }
 
   /**
-   * The cached snapshot, with an elapsed duty-cycle window closed first.
-   *
-   * Both paths that reuse [cached] — inside the sample interval, and when sampling fails outright —
-   * would otherwise publish an open gate for as long as they last. Inside the sample interval that
-   * is at most one interval; when `/proc` stops being readable it is forever, and the 60-second
-   * window becomes a permanent admission of optimizer work under pressure nobody can see any more.
-   * The window is a *bounded* concession, so it expires on the clock rather than on the next
-   * successful reading.
+   * The cached snapshot, with an elapsed duty-cycle window closed first; otherwise a sampler that
+   * stops working would publish an open gate forever.
    */
   private fun cachedClosingExpiredDutyCycle(now: Long): OptimizerPressureSnapshot {
     if (!held || dutyCycleUntil == Long.MIN_VALUE || now < dutyCycleUntil) return cached
     closeWindow(at = dutyCycleUntil)
-    // `heldMillis` is recomputed rather than carried over: the cached value was taken while the
-    // window was open, and republishing it would report a gate that has been shut for hours as
-    // having withheld admission for however long it had at the moment the sampler died.
+    // Recompute `heldMillis` rather than republishing the stale value.
     cached =
       cached.copy(
         constrained = true,
@@ -398,16 +320,8 @@ public class OptimizerPressureGate(
     else null
 
   /**
-   * Ends the open window, if any, and re-arms the cap from [at].
-   *
-   * A window cut short — by new pressure, or by memory dropping under the floor — must not leave
-   * the next concession measured from the end it never reached: that would withhold admission for
-   * up to `starvationCapMillis + dutyCycleMillis`, which is not what the cap says it does. So a
-   * live window closes at `now`.
-   *
-   * A window that simply *elapsed* is the other case, and it anchors at its scheduled end even when
-   * nothing observed the expiry until later: the concession was served in full, and a sampler that
-   * went blind for the next nine seconds is not a reason to charge the host another cap for them.
+   * End the open window, if any, and re-arm the cap from [at]. A window cut short closes at `now`;
+   * one that elapsed anchors at its scheduled end, even if the expiry was noticed later.
    */
   private fun closeWindow(at: Long) {
     if (dutyCycleUntil == Long.MIN_VALUE) return
@@ -416,45 +330,30 @@ public class OptimizerPressureGate(
   }
 
   /**
-   * Whether the starvation cap should let this held gate through right now.
-   *
-   * Opens a [OptimizerPressureThresholds.dutyCycleMillis] window once a hold has withheld admission
-   * for [OptimizerPressureThresholds.starvationCapMillis], then re-arms: hold, admit a slice, hold
-   * again. The window is closed early — and never opened — while memory sits under (or cannot be
-   * read against) [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction], so the one
-   * case that can actually kill the server keeps the permanent latch; and closed early when a
-   * signal that was not already holding crosses its stop threshold, so the concession never covers
-   * pressure it did not answer for.
-   *
-   * The reason string keeps naming the reading that is holding, because it still is: a duty cycle
-   * is progress *despite* the pressure, not an all-clear. `dutyCycles` on `/status.json` is what
-   * says the host has been running on it.
+   * Whether the starvation cap lets this held gate through right now: after
+   * [OptimizerPressureThresholds.starvationCapMillis] of holding, open a
+   * [OptimizerPressureThresholds.dutyCycleMillis] window, then re-arm. Never opened (and closed
+   * early) while memory is under, or can't be read against,
+   * [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction]; closed early when a new
+   * signal trips. The reason keeps naming the holding reading: a duty cycle is progress despite
+   * pressure.
    */
   private fun dutyCycling(
     sample: HostResourceSample,
     now: Long,
     newlyTripped: Set<PressureSignal>,
   ): Boolean {
-    // A zero-length window admits nothing, so it is not a duty cycle — counting one would leave
-    // `/status.json` reporting concessions the gate never made. Both knobs disable the cap.
+    // A zero-length window admits nothing, so either knob at 0 disables the cap.
     if (thresholds.starvationCapMillis <= 0L || thresholds.dutyCycleMillis <= 0L) return false
-    // `dutyCycleUntil` means "a window is live", and it has to be retired the moment one elapses:
-    // the two early closes below anchor at `now` because they are cutting a live window short, and
-    // a stale marker makes them do that to a window that already ran its course — re-anchoring a
-    // cap that was correctly anchored at the window's end when it opened.
+    // Retire an elapsed window immediately, so the early closes below don't re-anchor it.
     if (dutyCycleUntil != Long.MIN_VALUE && now >= dutyCycleUntil) closeWindow(at = dutyCycleUntil)
-    // An unknown memory reading is not a safe one. `LinuxHostResourceSampler` returns a partial
-    // sample when `/proc/meminfo` is unreadable but load and CPU are not, and a load hold would
-    // then earn a concession with the OOM floor unverified. A host that never reports memory keeps
-    // the permanent latch, which is the conservative half of that trade.
+    // An unknown memory reading is not safe: keep the latch.
     val headroom = sample.memoryAvailableFraction
     if (headroom == null || headroom < thresholds.dutyCycleFloorMemoryAvailableFraction) {
       closeWindow(at = now)
       return false
     }
-    // "A high reading stops admission immediately" is the gate's contract, and an open window must
-    // not buy a *different* signal up to `dutyCycleMillis` of grace. The signal that earned the
-    // concession may stay over its threshold — that is the whole point — but a new one closes it.
+    // A new signal crossing its stop threshold closes the window immediately.
     if (newlyTripped.isNotEmpty()) {
       closeWindow(at = now)
       return false
@@ -469,12 +368,8 @@ public class OptimizerPressureGate(
   }
 
   /**
-   * Why a hold with no reading over a stop threshold is still held.
-   *
-   * The bare "host recovering" this replaces was actively misleading during the eight-hour stall
-   * [OptimizerPressureThresholds.maxRecoveryMillis] documents: it reads as "nearly there" whether
-   * the gate is counting down its quiet window or parked in a dead band it cannot leave. Naming the
-   * signal and the bar it has to clear makes the two distinguishable from `/status.json` alone.
+   * Why a hold with no reading over a stop threshold is still held: names the signal and the bar it
+   * must clear, so a quiet-window countdown is distinguishable from a dead band.
    */
   private fun recoveringReason(sample: HostResourceSample): String {
     val waiting =
@@ -505,15 +400,9 @@ public class OptimizerPressureGate(
 }
 
 /**
- * Reads Linux load, CPU time and available memory through the proc filesystem — and, when this
- * process is inside a memory-limited cgroup, through that cgroup as well.
- *
- * **Why the cgroup half exists.** `/proc/meminfo` inside a container reports the HOST's memory, not
- * the container's limit. The deployed profiles cap preview at 3 GiB (`deploy/vps`) and 6 GiB
- * (`deploy/oracle`) on hosts with far more than that, so a replica sitting a hair under its own OOM
- * limit still saw plenty of "available" memory host-wide — and the admission gate kept letting
- * optimizer work in at precisely the moment it needed to stop. The reported fraction is the SMALLER
- * of the two headrooms, so whichever ceiling is nearer is the one that governs.
+ * Reads Linux load, CPU time and available memory from `/proc`, and from the cgroup when this
+ * process is memory-limited: inside a container `/proc/meminfo` reports the host's memory, not the
+ * container's limit. The reported fraction is the smaller headroom.
  */
 public class LinuxHostResourceSampler(
   private val procRoot: File = File("/proc"),
@@ -548,8 +437,7 @@ public class LinuxHostResourceSampler(
       values["MemAvailable"]?.toDouble()?.div(total)
     }
       .getOrNull()
-    // Whichever ceiling is nearer governs. An unlimited or unreadable cgroup contributes nothing,
-    // which is what keeps a bare-metal host reading exactly as it did before.
+    // The nearer ceiling governs; an unlimited or unreadable cgroup contributes nothing.
     val cgroup = cgroupMemoryAvailableFraction()
     val constrained = listOfNotNull(memory, cgroup).minOrNull()
     if (load == null && cpu == null && constrained == null) return null
@@ -557,18 +445,10 @@ public class LinuxHostResourceSampler(
   }
 
   /**
-   * The fraction of this process's cgroup memory allowance still available, or null when there is
-   * no limit to speak of.
-   *
-   * Both cgroup generations are read because the deployment targets do not agree: v2 exposes
-   * `memory.max`/`memory.current` at the root, v1 the `memory/memory.limit_in_bytes` pair. A v1
-   * limit is reported as a huge sentinel rather than a word, so anything at or above the host's own
-   * `MemTotal` is treated as "no limit" rather than compared against.
-   *
-   * `inactive_file` is subtracted from usage because it is page cache the kernel reclaims under
-   * pressure rather than memory this process cannot give back. Counting it would make a container
-   * that has merely read a lot of files look permanently full, and the gate would then refuse
-   * optimizer work forever — the opposite failure, and a quieter one.
+   * Fraction of this process's cgroup memory allowance still available, or null when unlimited.
+   * Reads cgroup v2 (`memory.max`/`memory.current`) or v1 (`memory.limit_in_bytes`); a v1 limit at
+   * or above `MemTotal` means no limit. `inactive_file` (reclaimable page cache) is subtracted from
+   * usage, or a container that read many files would look permanently full.
    */
   private fun cgroupMemoryAvailableFraction(): Double? = runCatching {
     readCgroupV2Memory() ?: readCgroupV1Memory()
@@ -640,8 +520,8 @@ public class LinuxHostResourceSampler(
   private data class CpuTimes(val total: Long, val idle: Long)
 
   private companion object {
-    // cgroup v1 writes `PAGE_COUNTER_MAX * PAGE_SIZE` when there is no limit; on 64-bit that is a
-    // number in the exabytes. Anything at or above this is "unlimited", not a ceiling to measure.
+    // cgroup v1's "no limit" sentinel (`PAGE_COUNTER_MAX * PAGE_SIZE`); at or above this is
+    // unlimited.
     const val UNLIMITED_CGROUP_V1_LIMIT = 0x7FFFFFFFFFFFF000L
   }
 }
@@ -659,11 +539,9 @@ public fun interface OptimizerHostCoordinator {
 }
 
 /**
- * Coordinates optimizer work across server replicas with advisory file locks.
- *
- * A per-system lock prevents two replicas warming the same generation concurrently. A lane lock
- * caps all optimizer passes on the physical host, rather than multiplying the configured lane count
- * by the number of replicas. Locks are released by the kernel if a replica exits or is OOM-killed.
+ * Coordinates optimizer work across server replicas with advisory file locks: a per-system lock
+ * stops two replicas warming the same generation, and a lane lock caps passes per physical host.
+ * The kernel releases locks if a replica exits or is OOM-killed.
  */
 public class FileOptimizerHostCoordinator(
   private val directory: File,
@@ -677,10 +555,8 @@ public class FileOptimizerHostCoordinator(
 
   override fun tryAcquire(system: String): OptimizerHostLease? {
     if (!(directory.isDirectory || directory.mkdirs())) return null
-    // One replica owns optimization for its lifetime. A pass-sized system lock alone prevents
-    // simultaneous work, but the next slice could move to a replica whose in-memory view predates
-    // the first replica's writes and redundantly warm the same generation. Leadership keeps the
-    // cache/index view coherent; the kernel hands it to a survivor if the owner exits or is killed.
+    // One replica owns optimization for its lifetime so its in-memory cache view stays coherent;
+    // the kernel hands leadership to a survivor if it dies.
     if (!ensureLeader()) return null
     val systemLock = tryLock(File(directory, "system-${digest(system)}.lock")) ?: return null
     for (lane in 0 until lanes.coerceAtLeast(1)) {

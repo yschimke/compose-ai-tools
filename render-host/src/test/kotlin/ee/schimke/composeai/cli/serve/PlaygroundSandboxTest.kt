@@ -7,10 +7,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The playground's per-session sandbox policy (PLAYGROUND.md §6, issue #3016): the argv each
- * profile jails a snippet JVM behind, the JVM-level caps that apply regardless of profile, and the
- * knob validation that turns a typo into a startup failure rather than a silently unconfined
- * playground.
+ * The playground's per-session sandbox policy (PLAYGROUND.md §6): each profile's jail argv, the
+ * JVM-level caps applied regardless of profile, and knob validation that fails at startup instead
+ * of running unconfined.
  */
 class PlaygroundSandboxTest {
 
@@ -352,10 +351,9 @@ class PlaygroundSandboxTest {
 
   @Test
   fun `the profiles excluded from the drop are exactly those whose caps live in the argv`() {
-    // The discriminator ServeCommand refuses on. `systemd`/`strict` enforce MemoryMax, CPUQuota
-    // and TasksMax through the systemd-run prefix that command() emits, so dropping that argv
-    // drops the enforcement — heap and pool sizing are all that would remain. Pinning the set here
-    // means adding a future cgroup-backed profile can't silently inherit the caps-only fallback.
+    // The set ServeCommand refuses on: `systemd`/`strict` enforce their caps through the
+    // systemd-run prefix, so dropping the argv drops the enforcement. Pinned so a future
+    // cgroup-backed profile can't silently get the caps-only fallback.
     val capBacked =
       PlaygroundSandbox.Profile.entries.filter { it.declaresResourceCaps }.map { it.id }.toSet()
 
@@ -381,12 +379,9 @@ class PlaygroundSandboxTest {
 }
 
 /**
- * The `--public` admission decision (issues #3016, #3210). Two independent postures admit the lane:
- * **contained** — a sandbox that has *proved* it contains a snippet, where every uncertain state
- * (no profile, no probe, a probe that failed to launch, a probe with any failing check) stays a
- * refusal — and **repo-access-gated**, where GitHub auth limits the callers to repo collaborators
- * and the containment evidence is no longer the thing being asked for. Only anonymous *and*
- * uncontained is refused outright.
+ * The `--public` admission decision. Two independent postures admit the lane: contained (a sandbox
+ * that proved containment; every uncertain state is a refusal) and repo-access-gated (GitHub auth
+ * limits callers to collaborators). Only anonymous and uncontained is refused outright.
  */
 class PlaygroundPublicGateTest {
 

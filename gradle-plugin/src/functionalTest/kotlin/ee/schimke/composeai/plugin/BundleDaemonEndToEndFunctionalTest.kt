@@ -18,23 +18,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end coverage for `compose-preview bundle daemon` driven through the actual CLI binary.
+ * End-to-end `compose-preview bundle daemon` through the real CLI: boots the desktop daemon on a
+ * packed bundle, runs `initialize` + `shutdown` + `exit` over stdio, and expects a clean exit.
+ * Catches what unit tests can't: sidecar provisioning of `lib-daemon-desktop/` + `lib-renderer/`,
+ * sysprop names matching `DaemonMain`, and the v1 framing VS Code's `DaemonClient` writes.
  *
- * Boots the desktop daemon JVM against a synthetic packed bundle, runs the `initialize` +
- * `shutdown`
- * + `exit` handshake over stdio, and asserts the JVM exits cleanly. Catches the bugs the unit
- *   coverage can't:
- *
- * - The pinned desktop sidecar can be provisioned on first use and supplies `lib-daemon-desktop/`
- *   plus `lib-renderer/` (missing jars make the daemon spawn fail).
- * - `composeai.daemon.userClassDirs` / `composeai.daemon.previewsJsonPath` sysprop names match what
- *   `DaemonMain` reads on the JVM side.
- * - Daemon's stdio JSON-RPC speaks the same v1 framing the VS Code extension's `DaemonClient`
- *   writes, so a real bundle viewer panel will actually round-trip `initialize`.
- *
- * Reuses the same opt-in + gating as [BundleRenderEndToEndFunctionalTest] —
- * `bundle.render.e2e=true` keys both. The root build's `functionalTestWithBundleRender` task flips
- * it on.
+ * Gated like [BundleRenderEndToEndFunctionalTest] by `bundle.render.e2e=true` (set by
+ * `functionalTestWithBundleRender`).
  */
 class BundleDaemonEndToEndFunctionalTest {
 

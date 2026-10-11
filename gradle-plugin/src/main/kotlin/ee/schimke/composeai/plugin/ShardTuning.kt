@@ -3,45 +3,25 @@ package ee.schimke.composeai.plugin
 import kotlin.math.max
 
 /**
- * Measured costs for Robolectric-driven Compose preview rendering, used to pick a shard count in
- * auto mode. Update these when the cost profile changes (faster hardware, a slimmer sandbox, a new
- * Robolectric release).
+ * Measured Robolectric render costs for auto shard sizing; update when the profile changes.
+ * Benchmarked 2026-04-14 on `samples/android` (5 previews, sdk 34, NATIVE graphics): first preview
+ * in a JVM 4.03s, later ones 0.11–0.22s.
  *
- * Benchmarked on 2026-04-14 against the `samples/android` module (5 previews, Robolectric `sdk=34`,
- * `graphicsMode=NATIVE`). Numbers come from the per-testcase times in
- * `build/test-results/composePreviewRender/` (one XML per task run):
- * - First preview in a JVM: 4.03s (sandbox + classloader + first Compose setContent).
- * - Previews 2–5 in the same JVM: 0.11–0.22s each (warm sandbox, cached classes).
- *
- * **Cost-aware model.** Earlier versions modelled every preview as a flat [SECONDS_PER_COST_UNIT];
- * the per-capture `cost` field landed in the manifest (catalogue: static / TOP = 1, END = 3, LONG =
- * 20, GIF = 40, animated = 50) lets us scale that estimate by the actual work the renderer is going
- * to do for each preview. A module with three GIF captures dwarfs a module with thirty static ones,
- * even though the preview count says otherwise.
- *
- * Fork-startup overhead is an estimate — Gradle's worker-forking and JVM spin-up cost above and
- * beyond the shared sandbox warmup. Measure again if fork counts ever seem wildly off.
+ * Cost-aware: estimates scale by each capture's manifest `cost` (static/TOP 1, END 3, LONG 20, GIF
+ * 40, animated 50), since a few GIFs can outweigh many statics. Fork overhead is an estimate.
  */
 internal object ShardTuning {
   /**
-   * Per-fork sandbox + classloader setup, **before any Compose work**. The historical 4.0s "warmup"
-   * included the first capture's render; we split it out so the same constant works for both fast
-   * (1-cost static) and heavy (50-cost animation) first captures. Subsequent compose work is priced
-   * at [SECONDS_PER_COST_UNIT] × the capture's cost.
+   * Per-fork sandbox + classloader setup before any Compose work; compose work is
+   * [SECONDS_PER_COST_UNIT] × cost.
    */
   const val PER_FORK_SETUP_SECONDS = 3.85
 
-  /**
-   * Wall-time per cost unit. A static `@Preview` is `cost = 1.0`, which historically rendered in
-   * ~0.15s once the sandbox was warm. Every other catalogue entry — END = 3, LONG = 20, GIF = 40,
-   * animated = 50 — is a multiple of that baseline.
-   */
+  /** Wall time per cost unit (a warm static preview ≈ 0.15s). */
   const val SECONDS_PER_COST_UNIT = 0.15
 
   /**
-   * Extra seconds per additional fork, on top of warmup — Gradle worker startup, test-report
-   * aggregation, scheduler overhead. Warmups themselves run in parallel across forks, so only the
-   * excess cost is counted.
+   * Extra seconds per additional fork (worker startup, report aggregation); setup runs in parallel.
    */
   const val FORK_OVERHEAD_SECONDS = 1.0
 
@@ -49,34 +29,27 @@ internal object ShardTuning {
   const val MAX_SHARDS = 8
 
   /**
-   * Estimated peak memory (MB) a single render fork holds — Robolectric sandbox + Compose runtime +
-   * the forked JVM's own heap/metaspace/native overhead. Used only to bound the fork count on
-   * memory-constrained runners: [autoShards] never asks for more forks than `availableMemoryMb /
-   * PER_FORK_MEMORY_MB`. Deliberately generous (a static-only fork is far lighter) so we err on the
-   * side of not OOM-ing a small runner. GitHub-hosted runners scale RAM with cores (2-vCPU≈7 GB,
-   * 4-vCPU≈16 GB), so on the standard ladder the CPU cap usually binds first and this only bites on
-   * tight self-hosted / container runners.
+   * Generous estimated peak memory per render fork, bounding [autoShards] to `availableMemoryMb /
+   * PER_FORK_MEMORY_MB` so small runners don't OOM. On standard GitHub runners the CPU cap usually
+   * binds first.
    */
   const val PER_FORK_MEMORY_MB = 2048L
 
   /**
-   * Auto mode only turns sharding on when both thresholds are met versus the single-fork baseline.
-   * Rationale: forking is an externally visible cost (more JVMs, more memory, more log noise) — we
-   * should only pay it when the gain is unambiguous. A 2s→1s speedup is not worth the complexity.
+   * Sharding must clear both thresholds versus one fork: forking has visible costs, so only pay for
+   * unambiguous gains.
    */
   const val MIN_SAVING_SECONDS = 3.0
   const val MIN_SAVING_FRACTION = 0.30
 
   /**
-   * Predicted wall time for K shards under the cost-aware model:
-   *
-   * makespanCost = max(totalCost / K, maxIndividualCost) T(K) = PER_FORK_SETUP + makespanCost ×
-   * SECONDS_PER_COST_UNIT + (K − 1) × FORK_OVERHEAD
-   *
-   * `makespanCost` is the lower bound on what an LPT-balanced K-way split can achieve: the average
-   * load per shard, floored by the largest individual capture (no shard can finish before its
-   * biggest preview completes). The setup is paid concurrently across forks, so only the `(K − 1)`
-   * extra fork-startup cost is summed. Returned in seconds.
+   * Predicted wall time for K shards:
+   * ```
+   * makespanCost = max(totalCost / K, maxIndividualCost)
+   * T(K) = PER_FORK_SETUP + makespanCost × SECONDS_PER_COST_UNIT + (K − 1) × FORK_OVERHEAD
+   * ```
+   * `makespanCost` is the LPT lower bound, floored by the largest item; setup is concurrent, so
+   * only extra fork overhead is summed. Seconds.
    */
   fun predictedSeconds(totalCost: Double, maxIndividualCost: Double, shards: Int): Double {
     if (totalCost <= 0.0 || shards <= 0) return 0.0
@@ -88,33 +61,20 @@ internal object ShardTuning {
   }
 
   /**
-   * Picks the K ≥ 2 that minimises [predictedSeconds] over the allowed range, and returns it only
-   * if the improvement over K = 1 clears BOTH the absolute ([MIN_SAVING_SECONDS]) and relative
-   * ([MIN_SAVING_FRACTION]) thresholds. Otherwise returns 1.
+   * The K ≥ 2 minimising [predictedSeconds], if it beats K = 1 by both [MIN_SAVING_SECONDS] and
+   * [MIN_SAVING_FRACTION]; else 1. K is capped by `min(MAX_SHARDS, cores − 1, availableMemoryMb /
+   * PER_FORK_MEMORY_MB, shardableRows)`, leaving one core for Gradle.
    *
-   * Upper bound is `min(MAX_SHARDS, cores − 1, availableMemoryMb / PER_FORK_MEMORY_MB,
-   * shardableRows)`. We leave a single core for the Gradle daemon + I/O rather than the old `cores
-   * / 2` — while the render task runs it is effectively the *only* Gradle work in flight, so
-   * reserving half the machine left it idle. On the standard GitHub runner ladder that roughly
-   * doubles the usable fork count (a 4-vCPU runner goes from 2 → 3). The memory term stops a
-   * many-core-but-low-RAM runner from OOM-ing; never shard below one row per fork.
+   * Sized by preview rows, not captures: the renderer keeps a row's captures on one shard
+   * (`RobolectricRenderTest.assignToShard`), so counting captures would add idle forks. See
+   * [ShardTuning.perPreviewRowCosts].
    *
-   * **[shardableRows], not capture count.** The renderer partitions whole preview *rows* across
-   * forks (`RobolectricRenderTest.assignToShard`) — every capture of one preview stays on the same
-   * shard, so a preview is indivisible no matter how many captures it has. Sizing by raw capture
-   * count would let this pick more forks than there are rows to spread, leaving the extra forks
-   * idle and making a multi-capture module (paused-clock / GIF frames) *slower* than a single fork.
-   * Callers pass the preview-row count and per-row cost (see [ShardTuning.perPreviewRowCosts]).
-   *
-   * @param totalCost sum of every row's cost across the manifest
-   * @param maxIndividualCost largest single *row* cost (sum of that preview's captures + data
-   *   products) — sets the makespan floor, since no shard can finish before its heaviest row
-   * @param shardableRows number of indivisible preview rows (caps shard count so each fork gets
-   *   ≥ 1)
-   * @param cores CPU cores visible to the build (defaults to the runtime processor count)
-   * @param availableMemoryMb host physical memory in MB used to bound forks; defaults to
-   *   [Long.MAX_VALUE] so unit tests exercise the CPU/cost logic without a machine-dependent memory
-   *   cap. Production callers pass [hostMemoryMb].
+   * @param totalCost sum of every row's cost
+   * @param maxIndividualCost largest single row cost (the makespan floor)
+   * @param shardableRows number of indivisible preview rows
+   * @param cores CPU cores visible to the build
+   * @param availableMemoryMb host memory bound; defaults to [Long.MAX_VALUE] so tests aren't
+   *   machine-dependent. Production passes [hostMemoryMb].
    */
   fun autoShards(
     totalCost: Double,
@@ -152,11 +112,8 @@ internal object ShardTuning {
   }
 
   /**
-   * Best-effort host physical memory in MB, for the [autoShards] memory bound. Reads the HotSpot
-   * `com.sun.management.OperatingSystemMXBean`; if that management interface isn't present (non-Sun
-   * JVM), returns [Long.MAX_VALUE] so the memory term simply doesn't bind and the CPU/cost caps
-   * decide. Container memory limits aren't reflected by this bean pre-JDK-uncommon setups, but the
-   * generous [PER_FORK_MEMORY_MB] margin absorbs the slack.
+   * Host physical memory in MB via HotSpot's `OperatingSystemMXBean`, or [Long.MAX_VALUE] when
+   * unavailable. Container limits may not be reflected; [PER_FORK_MEMORY_MB]'s margin absorbs that.
    */
   fun hostMemoryMb(): Long =
     try {
@@ -172,23 +129,12 @@ internal object ShardTuning {
   private val RENDER_OUTPUT_FIELD = Regex("\"renderOutput\"\\s*:")
 
   /**
-   * Parse a `previews.json` manifest into one cost per **preview row** — the unit the renderer
-   * actually shards on ([autoShards] docs). Each element is the summed cost of one preview entry's
-   * captures + data products, mirroring the per-row cost `RobolectricRenderTest.assignToShard`
-   * uses. The returned size is the shardable-row count.
+   * One cost per preview row (the renderer's sharding unit; see [autoShards]): each entry's
+   * captures + data products, priced 1.0 when `cost` is absent.
    *
-   * Hand-rolled brace-depth scan rather than `kotlinx.serialization` to keep that dependency off
-   * the plugin classpath (same rationale as the rest of the plugin's manifest reads). It groups by
-   * the top-level objects inside the `"previews"` array, so nested capture/product objects don't
-   * inflate the row count. `@PreviewParameter` expansion happens later in the renderer and only
-   * *adds* rows, so this count is a safe lower bound: we may under-shard a provider-heavy module,
-   * never over-shard it. A capture with no explicit `cost` (pre-0.8.0 manifest) is priced at 1.0,
-   * matching the renderer's default.
-   *
-   * App-level previews are **excluded**: `kind=ACTIVITY` / `kind=APP_TOUR` entries render from
-   * `AppTourRobolectricRenderTest`, which is a lane of its own and never sharded, so counting them
-   * here would size the shards for rows they will not be given — and a module heavy on activities
-   * (Home Assistant declares 18 of them) would then spin up forks with nothing to do.
+   * A brace-depth scan instead of kotlinx.serialization to keep that off the plugin classpath.
+   * `@PreviewParameter` expansion only adds rows later, so this is a safe lower bound. ACTIVITY /
+   * APP_TOUR entries are excluded: they render in the unsharded app-tour lane.
    */
   fun perPreviewRowCosts(manifestText: String): List<Double> {
     val previewsKey = manifestText.indexOf("\"previews\"")
@@ -234,12 +180,8 @@ internal object ShardTuning {
   }
 
   /**
-   * Whether this preview entry belongs to the app-tour lane rather than the sharded composable one.
-   *
-   * Matched on the entry's own `params.kind`. Anchoring to the two names rather than to "the first
-   * `kind` in the entry" is what makes the substring test safe: an entry's nested `dataProducts`
-   * carry a `kind` of their own (`render/scroll/gif` and friends), but none of those is ever
-   * `ACTIVITY` or `APP_TOUR`.
+   * Whether an entry is in the app-tour lane. Matching the two kind names is safe: nested
+   * data-product `kind`s never take those values.
    */
   private val APP_LEVEL_KIND = Regex("\"kind\"\\s*:\\s*\"(ACTIVITY|APP_TOUR)\"")
 

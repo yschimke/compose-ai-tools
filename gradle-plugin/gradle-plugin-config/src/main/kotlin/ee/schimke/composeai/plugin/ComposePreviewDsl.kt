@@ -4,33 +4,19 @@ import ee.schimke.composeai.plugin.tooling.ComposePreviewAppliedTask
 import org.gradle.api.Project
 
 /**
- * Shared registration helpers for the `composePreview { }` DSL, used by **both** the
- * configuration-only [ComposePreviewConfigPlugin] (this module) and the full runtime
- * `ComposePreviewPlugin` (`:gradle-plugin`).
- *
- * The two plugins can legitimately coexist in one build: a consumer applies the config-only plugin
- * to commit `composePreview { … }` intent without pinning the rendering runtime, and the CLI then
- * auto-injects the runtime plugin at *its own* version to actually drive renders. Because the
- * `composePreview` extension type and the `composePreviewApplied` marker task live in this shared
- * artifact, whichever plugin applies first creates them and the other reuses them — there is no
- * double-registration crash and no second copy of the extension type on the classpath.
- *
- * All registration here is **create-or-find / register-if-absent** for exactly that reason.
+ * Shared registration for the `composePreview { }` DSL, used by both the config-only
+ * [ComposePreviewConfigPlugin] and the runtime `ComposePreviewPlugin`. The two can coexist (config
+ * committed in the build, runtime injected by the CLI at its own version), so everything here is
+ * create-or-find / register-if-absent.
  */
 object ComposePreviewDsl {
   const val EXTENSION_NAME = "composePreview"
   const val APPLIED_TASK_NAME = "composePreviewApplied"
 
   /**
-   * Returns the build's single `composePreview` [PreviewExtension], creating and wiring its
-   * conventions on first call. Idempotent: a second caller (the other plugin) gets the existing
-   * instance so user-written `composePreview { … }` config flows into one set of `Property`
-   * objects.
-   *
-   * The convention chain mirrors what the runtime plugin used to set inline — Gradle-property
-   * overrides (`-PcomposePreview.variant=…`, etc.) are read at `.get()` time, so an explicit
-   * `composePreview { variant = "x" }` in the build script still wins (`Property.set` beats
-   * convention).
+   * The build's single `composePreview` [PreviewExtension], created with its conventions on first
+   * call and reused afterwards. Gradle-property overrides (`-PcomposePreview.variant=…`) are read
+   * lazily, and an explicit DSL value still wins over the convention.
    */
   fun createOrFindExtension(project: Project): PreviewExtension {
     project.extensions.findByType(PreviewExtension::class.java)?.let {
@@ -59,11 +45,8 @@ object ComposePreviewDsl {
         .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(false)
     )
-    // `addAll`, not `convention`: the property and the `renderGraph { exclude(…) }` DSL are
-    // additive, so a consumer passing `-PcomposePreview.renderGraphExcludes=…` on one CI job does
-    // not silently drop the exclusions their build script already commits to (a convention would
-    // be replaced wholesale by the first DSL `add`). The provider stays lazy, so the property is
-    // read at resolution time like every other override here.
+    // `addAll`, not `convention`: the property and the DSL are additive, whereas a convention would
+    // be replaced by the first DSL `add`.
     extension.renderGraph.excludes.addAll(
       project.providers
         .gradleProperty("composePreview.renderGraphExcludes")
@@ -74,10 +57,8 @@ object ComposePreviewDsl {
   }
 
   /**
-   * Registers the `composePreviewApplied` marker task unless it already exists. The marker
-   * (`<module>/build/compose-previews/applied.json`) is how the VS Code extension discovers applied
-   * modules authoritatively — it must be present whether the module applies the config-only plugin
-   * or the full runtime plugin.
+   * Registers `composePreviewApplied` unless present; its `applied.json` is how VS Code discovers
+   * applying modules, whichever plugin applied.
    */
   fun registerAppliedTaskIfAbsent(project: Project, version: String) {
     if (project.tasks.findByName(APPLIED_TASK_NAME) != null) return
@@ -88,12 +69,8 @@ object ComposePreviewDsl {
       pluginVersion.set(version)
       modulePath.set(project.path)
       moduleName.set(project.name)
-      // Lazy provider wiring: the value is read at task execution, so for the full runtime plugin
-      // it
-      // reflects the AGP-resolved variant snapped into `composePreview.variant` during
-      // `onVariants`,
-      // and for the config-only plugin it reflects the configured value or the `"debug"`
-      // convention.
+      // Lazy: reflects the AGP-resolved variant on the runtime plugin, or the configured /
+      // `"debug"` value on the config-only one.
       variant.set(extension.variant)
       previewsEnabled.set(extension.enabled)
       outputFile.set(project.layout.buildDirectory.file("compose-previews/applied.json"))

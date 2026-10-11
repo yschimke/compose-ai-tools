@@ -7,12 +7,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * One cell of a render matrix: the display-axis values that distinguish it from its siblings.
- *
- * Shared by the `render_matrix` MCP tool and the `compose-preview render-matrix` CLI command
- * (issue #1788) so the cross-product expansion, cell cap, override mapping, and human labels stay
- * identical across both surfaces. A null axis means "leave at the preview's default" for that
- * dimension.
+ * One cell of a render matrix: the display-axis values distinguishing it from its siblings; a null
+ * axis keeps the preview's default. Shared by the `render_matrix` MCP tool and the
+ * `compose-preview render-matrix` CLI command so expansion, caps and labels stay identical.
  */
 public data class MatrixCell(
   public val device: String? = null,
@@ -21,9 +18,8 @@ public data class MatrixCell(
   public val fontScale: Float? = null,
 ) {
   /**
-   * Typed [PreviewOverrides] for this cell, ready for `renderNow`. `uiMode` is parsed to [UiMode];
-   * an unrecognised value throws so the caller surfaces "invalid axis values" rather than rendering
-   * with a silent default.
+   * Typed [PreviewOverrides] for `renderNow`. An unrecognised `uiMode` throws, surfacing invalid
+   * axis values instead of silently rendering the default.
    */
   public fun toOverrides(): PreviewOverrides =
     PreviewOverrides(
@@ -63,8 +59,7 @@ public data class MatrixCell(
 }
 
 /**
- * Cross-product expansion + bounds for a render matrix — the single source of truth for both the
- * MCP `render_matrix` tool and the CLI `render-matrix` command (issue #1788).
+ * Cross-product expansion and bounds for a render matrix, shared by the MCP tool and CLI command.
  */
 public object MatrixAxes {
   /** Upper bound on matrix cells, so a careless cross-product can't fan out unboundedly. */
@@ -81,8 +76,7 @@ public object MatrixAxes {
 
   /**
    * Expand the axes into the full cross-product in stable `device → locale → uiMode → fontScale`
-   * order, so cell ordering is deterministic. An unset (null) axis contributes a single "leave at
-   * default" value, so e.g. `uiModes=[light,dark]` with every other axis null yields two cells.
+   * order. A null axis contributes one "default" value.
    */
   public fun expand(
     devices: List<String>?,

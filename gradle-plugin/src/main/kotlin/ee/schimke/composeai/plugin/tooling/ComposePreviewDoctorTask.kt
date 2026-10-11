@@ -21,21 +21,10 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
 
 /**
- * Writes [CompatRules] findings for the current module to a sidecar JSON. Parallels the
- * `ComposePreviewModel` path used by the CLI — this task exists so drivers that can't run Gradle
- * `BuildAction`s (notably the VS Code extension, which uses the vscode-gradle task API) still get
- * the same output shape via a plain task invocation.
- *
- * Output shape matches [DoctorReport] in
- * `cli/src/main/kotlin/ee/schimke/composeai/cli/DoctorCommand.kt` at the per-module level — the CLI
- * and the extension converge on the same JSON schema (`compose-preview-doctor/v1`).
- *
- * Cheap to run: resolves the two configurations' `resolutionResult` (no artifact downloads),
- * applies rules, writes a small JSON file.
- *
- * Configuration-cache safe: the runtime classpath `ResolutionResult`s are wired in as
- * `Provider<ResolvedComponentResult>` at registration time so the action never reaches back to
- * `task.project`.
+ * Writes [CompatRules] findings for this module to a JSON sidecar, for drivers that can't run
+ * `BuildAction`s (VS Code); same per-module shape as the CLI's [DoctorReport]
+ * (`compose-preview-doctor/v1`). Cheap: resolution results only. Config-cache safe: results arrive
+ * as `Provider<ResolvedComponentResult>`.
  */
 @DisableCachingByDefault(
   because =
@@ -47,55 +36,37 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
 
   @get:Input abstract val modulePath: Property<String>
 
-  /**
-   * Gradle runtime version, e.g. `"9.4.1"`. Wired at task-registration time from
-   * `GradleVersion.current().version` so [CompatRules] can flag consumers on older wrappers than
-   * the plugin supports. Kept as a plain [Property<String>] rather than a non-serialisable Gradle
-   * object so the configuration-cache image round-trips cleanly.
-   */
+  /** Gradle version (e.g. `"9.4.1"`), as a plain string for the configuration cache. */
   @get:Input abstract val gradleVersion: Property<String>
 
   @get:Internal abstract val mainRuntimeRoot: Property<ResolvedComponentResult>
 
   @get:Internal abstract val testRuntimeRoot: Property<ResolvedComponentResult>
 
-  /**
-   * The module's `android.defaultConfig.minSdk`, captured in `finalizeDsl`. Optional because it's
-   * unset for non-Android modules and consumers who omit it; [CompatRules.checkLibraryMinSdk]
-   * treats `null` as "not checkable".
-   */
+  /** `android.defaultConfig.minSdk`; unset means not checkable. */
   @get:Input @get:Optional abstract val moduleMinSdk: Property<Int>
 
   /**
-   * The `android-manifest` artifacts (AAR `AndroidManifest.xml`s) on
-   * `${variant}UnitTestRuntimeClasspath`. Wired as a lazy `Provider<Set<ResolvedArtifactResult>>`
-   * so resolution happens at execution, not configuration. Feeds [CompatRules.checkLibraryMinSdk]
-   * via each AAR's declared `minSdkVersion`.
+   * AAR manifests on the unit-test runtime classpath, resolved lazily, for the library-minSdk
+   * check.
    */
   @get:Internal abstract val testManifestArtifacts: SetProperty<ResolvedArtifactResult>
 
   /**
-   * JSON-encoded `List<InjectedDependency>` captured at plugin-apply time (populated inside
-   * `AndroidPreviewSupport.registerAndroidTasks`). Defaults to `"[]"` so the task produces a clean
-   * empty list when no injections are relevant. JSON-as-Input keeps the config-cache image simple —
-   * a single string round-trips without needing a registered serializer for the nested data class.
+   * JSON-encoded `List<InjectedDependency>` from plugin apply time (default `"[]"`); a string keeps
+   * the config-cache image simple.
    */
   @get:Input abstract val injectedDependenciesJson: Property<String>
 
   /**
-   * True when this module declared a known `@Preview` tooling coord directly. Captured at
-   * `onVariants` time inside `AndroidPreviewSupport.registerAndroidTasks` — at that point
-   * `AndroidPreviewSupport.hasPreviewDependency(project, variant)` has the consumer's full
-   * `dependencies { }` block to inspect. Feeds `CompatRules.checkUndeclaredPreviewTooling`. Default
-   * `true` so the check stays silent when the input isn't wired (e.g. an older plugin version's
-   * doctor task running against a newer model).
+   * Whether a preview-tooling coord is declared directly (captured in `onVariants`). Defaults
+   * `true` so the check stays silent when unwired.
    */
   @get:Input abstract val previewToolingDeclared: Property<Boolean>
 
   /**
-   * Value of `composePreview.enforcePreviewToolingDependency` at registration time — wired through
-   * the Property so an `-PcomposePreview.enforcePreviewToolingDependency=false` override flows into
-   * the finding. Default `true` for the same parity reason as [previewToolingDeclared].
+   * `composePreview.enforcePreviewToolingDependency`, including `-P` overrides. Defaults `true`
+   * like [previewToolingDeclared].
    */
   @get:Input abstract val enforcePreviewToolingDependency: Property<Boolean>
 
@@ -107,13 +78,8 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
     val mainRoot = mainRuntimeRoot.orNull
     val main = collectModuleVersions(mainRoot)
     val test = collectModuleVersions(testRuntimeRoot.orNull)
-    // Compute "is preview tooling reachable through transitively-resolved deps?" at action time
-    // by walking the resolved `${variant}RuntimeClasspath` graph (issue #1549). Doing it here
-    // rather than as an `@Input` Property avoids forcing eager configuration-time resolution —
-    // `mainRuntimeRoot` is a `Provider<ResolvedComponentResult>` whose value materialises at
-    // execution. Independent of [previewToolingDeclared]; when transitive=true and direct=false,
-    // `CompatRules.checkUndeclaredPreviewTooling` surfaces the soft "pin the dep locally"
-    // recommendation under `enforcePreviewToolingDependency = true` too.
+    // Transitive reachability is computed here from the resolved graph (#1549) rather than as an
+    // `@Input`, avoiding configuration-time resolution.
     val transitivePreviewToolingDetected =
       mainRoot?.let {
         ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling(it)
@@ -164,11 +130,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
   }
     .getOrElse { emptyList() }
 
-  /**
-   * Mirror the CLI's `emitText` shape at module scope: header, one marker line per finding,
-   * optional remediation. The JSON file is authoritative for tooling; this is purely for the human
-   * watching the Gradle output.
-   */
+  /** Human-readable summary mirroring the CLI's text output; the JSON is authoritative. */
   private fun printSummary(report: DoctorModuleReport, out: File) {
     logger.lifecycle("compose-preview doctor — ${report.module} (variant: ${report.variant})")
     if (report.findings.isEmpty()) {
@@ -254,17 +216,11 @@ internal data class DoctorFinding(
 )
 
 /**
- * Record of one injected-dependency decision made by the plugin at apply time. Populated for both
- * unconditional injections (e.g. `ui-test-manifest`, `ui-test-junit4`) and conditional ones (e.g.
- * the wear-tiles signal scan). Surfaced via the plugin's sidecar `doctor.json` so drivers that
- * can't run Gradle `BuildAction`s — notably the VS Code extension — can show the same
- * injected-dependency state the CLI / `--info` log already exposes.
- *
- * `outcome` takes one of:
+ * One injected-dependency decision, surfaced in `doctor.json` for drivers without `BuildAction`s.
+ * `outcome`:
  * - `APPLIED` — unconditional injection fired.
- * - `MATCHED` — conditional injection fired because the signal was found.
- * - `SKIPPED` — conditional injection DID NOT fire because the signal was not found;
- *   `configuration` is empty in this case because nothing was actually added.
+ * - `MATCHED` — conditional injection fired on its signal.
+ * - `SKIPPED` — signal absent; `configuration` is empty.
  */
 @Serializable
 internal data class InjectedDependency(

@@ -16,11 +16,8 @@ import org.junit.After
 import org.junit.Test
 
 /**
- * Coverage for the viewer's [CoordinateResolver]. Local-repo cases run with network disabled
- * (hermetic, temp repo dir); the network cases use a throwaway loopback [HttpServer] as a fake
- * remote Maven repo — no real network. Mirrors the cli resolver's behaviour:
- * pick-matching-candidate, download-on-miss + cache, offline cache read, jar/aar by type,
- * warn-not-fail.
+ * Coverage for the viewer's [CoordinateResolver]: local cases offline in a temp repo, network cases
+ * against a loopback [HttpServer] standing in for a Maven repo.
  */
 class CoordinateResolverTest {
 

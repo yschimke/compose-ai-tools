@@ -9,21 +9,15 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.source
 
-/**
- * Bundle → daemon-launch plumbing shared by every consumer that spawns a preview daemon straight
- * from a packed bundle with no Gradle build in between: [BundleDaemonCommand] (`bundle daemon`,
- * stdio-driven subprocess for the VS Code bundle viewer) and
- * [ee.schimke.composeai.cli.serve.ServeBundleDaemon] (`serve --catalogs --allow-render-trusted`'s
- * in-process `daemon-launch.json` synthesis). Kept as plain top-level functions — the two callers
- * extract/launch differently enough (inherited stdio vs. a written descriptor file) that a shared
- * class would just be a bag of parameters.
- */
+// Bundle → daemon-launch plumbing shared by consumers that spawn a preview daemon straight from a
+// packed bundle: [BundleDaemonCommand] (`bundle daemon`) and
+// [ee.schimke.composeai.cli.serve.ServeBundleDaemon]. Plain functions, since the two launch
+// differently enough that a shared class would just be a bag of parameters.
 
 /**
- * Extract `classes/app.jar` → [classesDir] and `previews.json` → [previewsJson] from a bundle's
- * [zipBytes]. Throws if `previews.json` is missing; `classes/app.jar` is required only when
- * [requireAppJar] is true (false for a v5+ bundle whose previews are all IR-only — a fully
- * IR-backed bundle legitimately carries no consumer classes).
+ * Extract `classes/app.jar` → [classesDir] and `previews.json` → [previewsJson] from [zipBytes].
+ * Throws if `previews.json` is missing; `classes/app.jar` is required only when [requireAppJar] (a
+ * fully IR-backed v5+ bundle carries none).
  */
 public fun extractBundleClassesAndManifest(
   zipBytes: ByteArray,
@@ -59,12 +53,9 @@ public fun extractBundleClassesAndManifest(
 }
 
 /**
- * Extract the v5+ IR replay payload from [zipBytes]: every `ir/<leaf>` entry into [irDir]
- * (flattened to its basename, matching [BundleIr.path]) plus `bundle.json` into [manifestFile].
- *
- * Both detached-daemon entry points need these files: `bundle daemon` passes them directly to its
- * subprocess, while the public catalog server records them in `daemon-launch.json`. Keeping the
- * extraction here prevents those two launch paths from silently diverging again.
+ * Extract the v5+ IR replay payload from [zipBytes]: each `ir/<leaf>` into [irDir] (basename, as
+ * [BundleIr.path]) and `bundle.json` into [manifestFile]. Shared so both detached-daemon launch
+ * paths stay in sync.
  */
 public fun extractBundleIrArtifacts(
   zipBytes: ByteArray,
@@ -100,11 +91,9 @@ public fun extractBundleIrArtifacts(
 }
 
 /**
- * Unpack a zip or jar's [bytes] into [targetDir], rejecting Zip Slip. Resolve + normalize +
- * `Path.startsWith` is the containment check CodeQL's `java/zipslip` recognizes as sanitization; an
- * equally safe `canonicalFile` + `String.startsWith` guard is reported as a false positive.
- *
- * [what] names the offending entry in the rejection message ("bundle entry", "app jar entry", …).
+ * Unpack a zip or jar's [bytes] into [targetDir], rejecting Zip Slip. Uses resolve + normalize +
+ * `Path.startsWith`, the form CodeQL's `java/zipslip` recognizes. [what] names the offending entry
+ * kind in the error.
  */
 public fun expandZipBytesSafely(
   bytes: ByteArray,
@@ -157,12 +146,9 @@ public fun locateBundleSidecarJars(sidecarName: String): List<File> {
   // A configured native is supplemental; it must never make an empty daemon directory look like a
   // usable sidecar. Callers rely on an empty result for their actionable missing-daemon error.
   if (sidecarJars.none { !it.name.startsWith("skiko-awt-runtime-") }) return emptyList()
-  // The portable CLI omits host-specific Skiko runtimes. Ask its registered provisioner only when
-  // a desktop daemon classpath is actually assembled; view-only and Android serve lanes never
-  // reach this branch and therefore remain network-free. Always ask the provisioner when present:
-  // it validates an explicit override against the required host and Skiko version before returning
-  // it. Callers compiled in other repositories (notably the preview server) receive the native
-  // without depending on the CLI module.
+  // The portable CLI omits host-specific Skiko runtimes; ask the provisioner only when a desktop
+  // daemon classpath is assembled, so view-only and Android lanes stay network-free. It also
+  // validates an explicit override against the required host and Skiko version.
   val provisionedSkiko =
     if (sidecarName == "lib-daemon-desktop") provisionDesktopNative(sidecarJars) else null
   return if (sidecarName == "lib-daemon-desktop") {

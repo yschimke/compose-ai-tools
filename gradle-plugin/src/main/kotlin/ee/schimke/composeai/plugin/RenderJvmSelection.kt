@@ -7,44 +7,26 @@ import org.gradle.jvm.toolchain.JavaLauncher
 import org.gradle.jvm.toolchain.JavaToolchainService
 
 /**
- * Picks the JDK the preview *render subprocess* forks into so it can load the consumer's compiled
- * classes, instead of asking the consumer to downgrade their bytecode target.
+ * Picks the JDK the render subprocess forks into so it can load the consumer's classes.
  *
- * ## The problem
+ * Render JVMs inherit AGP's unit-test `javaLauncher`, which follows the consumer's toolchain, but
+ * Kotlin can emit newer bytecode than that JDK (and the VS Code daemon may fall back to its bundled
+ * JDK 17), so every preview fails with `UnsupportedClassVersionError`. Rather than making consumers
+ * downgrade their bytecode, select a new-enough JVM and provision it through Gradle's toolchain
+ * service.
  *
- * Every render path (`composePreviewRender`, the resource/XR render tasks, the VS Code daemon) runs
- * the consumer's `.class` files in a forked JVM, and that JVM is chosen by inheriting AGP's
- * unit-test `javaLauncher` — which follows the consumer's *toolchain*. But Kotlin's `jvmTarget` can
- * emit **newer** bytecode than the toolchain JDK (kotlinc on JDK 17 happily emits Java-21 class
- * files), and the VS Code daemon frequently falls back to its own bundled JDK 17. When the render
- * JVM is older than the bytecode it must load, the class loader throws
- * `UnsupportedClassVersionError` and *every* preview fails — with no message that points at the
- * JDK.
- *
- * The historical workaround (see meshcore-mobile#271) was for the app to pin every module's
- * bytecode back down to Java 17. That's invasive — a dozen `build.gradle.kts` edits — and it fights
- * the direction consumers actually want to move. Instead the plugin selects a render JVM new enough
- * for the consumer's bytecode and provisions it through Gradle's toolchain service.
- *
- * ## Selection
- *
- * [selectMajor] is the pure decision. It never returns *below* the inherited launcher (so an
- * upgrade is the only automatic move — we never silently render on an older JVM than the consumer's
- * own toolchain), and an explicit `composePreview.renderJavaVersion` override wins outright so the
- * SDK matrix (and anyone deliberately pinning a JDK) keeps working.
+ * [selectMajor] is the pure decision: never below the inherited launcher, and an explicit
+ * `composePreview.renderJavaVersion` wins outright.
  */
 internal object RenderJvmSelection {
   /**
    * The JDK major the render subprocess should run on.
    *
-   * @param inheritedMajor the major of AGP's unit-test `javaLauncher` (the consumer toolchain), or
-   *   `null` when AGP exposes none and the render would fall through to the Gradle daemon JVM.
-   * @param gradleDaemonMajor `JavaVersion.current()` — the JVM Gradle itself runs on, always
-   *   available without provisioning.
-   * @param bytecodeMajor the highest bytecode target detected across the module's Kotlin/Java
-   *   compilation, or `null` when it can't be determined.
-   * @param explicitOverride `composePreview.renderJavaVersion` (or the matching `-P` property);
-   *   when set it is honoured verbatim, including deliberately *lower* values.
+   * @param inheritedMajor AGP's unit-test launcher major, or `null` when there is none (Gradle JVM
+   *   fallback).
+   * @param gradleDaemonMajor `JavaVersion.current()`, always available.
+   * @param bytecodeMajor the highest detected bytecode target, or `null`.
+   * @param explicitOverride `composePreview.renderJavaVersion`; honoured verbatim, even if lower.
    */
   fun selectMajor(
     inheritedMajor: Int?,
@@ -61,15 +43,10 @@ internal object RenderJvmSelection {
   }
 
   /**
-   * Build the launcher provider for a render task, given AGP's inherited launcher. Stays lazy — the
-   * inherited launcher is only resolved inside the returned provider — so config-cache
-   * serialization and toolchain resolution both defer to execution time and nothing captures the
-   * [Project].
-   *
-   * When the selected major matches (or is below) what was inherited, the *original* inherited
-   * launcher provider is returned unchanged, preserving the exact JVM AGP wired (issue #142). Only
-   * a genuine upgrade — or an explicit override — routes through [JavaToolchainService], which then
-   * finds an installed JDK of that version or provisions one.
+   * The launcher provider for a render task. Lazy, so configuration-cache serialization and
+   * toolchain resolution defer to execution and nothing captures the [Project]. Returns the
+   * inherited provider unchanged when no upgrade is needed (#142); only an upgrade or override goes
+   * through [JavaToolchainService].
    */
   fun launcherFor(
     toolchains: JavaToolchainService,
@@ -84,10 +61,8 @@ internal object RenderJvmSelection {
       }
     }
     if (inherited == null) {
-      // No inherited launcher: the render would fall through to the Gradle daemon JVM. Only take
-      // over (routing through the toolchain service) when the bytecode target genuinely exceeds it;
-      // otherwise return null so the caller leaves the convention untouched — no toolchain
-      // resolution, byte-for-byte the prior behaviour.
+      // No inherited launcher: only take over when the bytecode exceeds the Gradle JVM, else return
+      // null and leave the convention alone.
       val target = selectMajor(null, gradleDaemonMajor, bytecodeMajor, null)
       return if (target > gradleDaemonMajor) {
         toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(target)) }
@@ -107,12 +82,8 @@ internal object RenderJvmSelection {
   }
 
   /**
-   * The absolute `java` path for a render that forks the **Gradle daemon JVM** rather than an
-   * inherited launcher — the desktop (`javaexec`) render path, which sets no executable today and
-   * so runs on whatever JVM Gradle is on (in this repo, the JDK-17 daemon). Returns `null` when no
-   * upgrade is warranted (bytecode fits the daemon JVM and no override), so the caller leaves the
-   * `javaexec` default untouched — byte-for-byte the prior behaviour. A non-null value is a
-   * config-cache-safe [Provider] resolved lazily from the toolchain service.
+   * `java` path for a render that would run on the Gradle JVM (desktop `javaexec`), or `null` when
+   * no upgrade is needed. A lazy, config-cache-safe [Provider].
    */
   fun daemonJvmExecutable(
     toolchains: JavaToolchainService,
@@ -125,16 +96,10 @@ internal object RenderJvmSelection {
     }
 
   /**
-   * The absolute `java` path to bake into a **daemon launch descriptor** (`daemon-launch.json`).
-   * Unlike [daemonJvmExecutable], this is **always** non-null (for the selected major), because the
-   * daemon is spawned by an *external* process — VS Code (`findJavaOnPath()`) or the MCP server
-   * (its own `java.home`), not Gradle. A null launcher there does not mean "use the Gradle daemon
-   * JVM"; it means "let the editor guess", and a JDK-17 editor will then spawn the daemon on Java
-   * 17 and hit `UnsupportedClassVersionError` even when the Gradle build ran on a newer JVM. So the
-   * descriptor pins the JVM unconditionally: `max(Gradle daemon JVM, bytecode target)`, or the
-   * explicit override. The `max` with the Gradle daemon JVM keeps it resolvable with no
-   * provisioning in the common case (that JVM is always a detectable toolchain), while still
-   * writing an explicit path so the editor never falls back to an older JDK.
+   * `java` path baked into `daemon-launch.json`. Unlike [daemonJvmExecutable], always non-null: the
+   * daemon is spawned by VS Code or the MCP server, where null means "let the editor guess" (often
+   * an older JDK). Pins `max(Gradle JVM, bytecode target)` or the override; the Gradle JVM term
+   * keeps it resolvable without provisioning.
    */
   fun daemonDescriptorExecutable(
     toolchains: JavaToolchainService,
@@ -150,18 +115,13 @@ internal object RenderJvmSelection {
 }
 
 /**
- * Best-effort detection of the highest JVM bytecode target the consumer's classes are compiled to,
- * so [RenderJvmSelection] can raise the render JVM to match. Every probe is defensive: a missing
- * Kotlin Gradle plugin, a renamed KGP method, or an unrealised task yields `null`/skips rather than
- * failing configuration. Detection under-reporting is safe (we fall back to the toolchain/daemon
- * JVM); over-reporting only matters if a matching JDK can't be provisioned, which surfaces as a
- * clear toolchain error plus the `composePreview.renderJavaVersion` escape hatch.
+ * Best-effort detection of the consumer's highest bytecode target. Every probe is defensive.
+ * Under-reporting falls back safely; over-reporting only matters if no JDK can be provisioned,
+ * which surfaces as a toolchain error with `renderJavaVersion` as the escape hatch.
  */
 internal object BytecodeTargetDetector {
   /**
-   * Parse a Kotlin `JvmTarget` / Java `targetCompatibility` string to its class-file major-version
-   * "feature" number: `"21"`/`"JVM_21"` -> 21, `"1.8"`/`"VERSION_1_8"` -> 8. Returns `null` when no
-   * version-shaped token is present.
+   * `"21"`/`"JVM_21"` → 21, `"1.8"`/`"VERSION_1_8"` → 8; `null` when no version token is present.
    */
   fun parseTargetMajor(raw: String?): Int? {
     if (raw.isNullOrBlank()) return null
@@ -172,9 +132,8 @@ internal object BytecodeTargetDetector {
   }
 
   /**
-   * Read `compilerOptions.jvmTarget` off the named Kotlin compile tasks by reflection, so the
-   * plugin needn't declare a compile dependency on the Kotlin Gradle plugin. Returns the highest
-   * major found, or `null`.
+   * `compilerOptions.jvmTarget` from the named Kotlin compile tasks, by reflection (no KGP compile
+   * dependency). Highest major, or `null`.
    */
   fun detectKotlinJvmTarget(project: Project, candidateTaskNames: List<String>): Int? {
     var best: Int? = null

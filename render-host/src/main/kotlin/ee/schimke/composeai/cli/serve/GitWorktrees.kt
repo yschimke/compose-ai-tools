@@ -18,29 +18,19 @@ public data class GitResult(val exitCode: Int, val stdout: String) {
 }
 
 /**
- * Manages git **worktrees** for serving multiple revisions of one repo from a single server. Each
- * resolved commit gets one detached worktree under [cacheRoot] (`<cacheRoot>/<sha>`), reused on
- * later requests — so a revision is checked out at most once. Resolution + add are serialised so
- * two concurrent first-requests for the same revision don't race to add the same worktree.
- *
- * Worktrees share the repo's object store, so they're cheap; they outlive the [ServeRenderHost]s
- * built from them (the registry evicts hosts, not checkouts) and are cleaned up on [close] / `git
- * worktree prune`.
+ * Manages git worktrees for serving multiple revisions of one repo: each resolved commit gets one
+ * detached worktree at `<cacheRoot>/<sha>`, reused afterwards. Resolution and add are serialised.
+ * Worktrees share the object store and outlive the hosts built from them; cleaned up on [close] /
+ * `git worktree prune`.
  */
 public class GitWorktrees(
   private val repoRoot: File,
   private val cacheRoot: File,
   /**
-   * Refs whose history a requested revision must be reachable from to be served. Empty = nothing is
-   * allowed (project mode fails closed): a client-supplied `?session=<rev>` is only checked out
-   * when it's an ancestor of one of these operator-trusted refs, so arbitrary fetched PR/fork
-   * commits can't be materialized or (downstream) built.
-   *
-   * A short name like `main` or `origin/main` is **qualified** to `refs/heads/…` / `refs/remotes/…`
-   * before the ancestry check (see [qualify]): gitrevisions resolves an ambiguous `<name>` as
-   * `refs/tags/<name>` *before* the branch, so a same-named malicious tag could otherwise satisfy
-   * the allowlist for commits reachable only from that tag. Tags are never auto-matched — to allow
-   * one, pass it fully qualified as `refs/tags/<name>`.
+   * Refs a requested revision must be an ancestor of to be served; empty allows nothing (fails
+   * closed), so arbitrary fetched PR/fork commits are never checked out. Short names are qualified
+   * to `refs/heads/…` / `refs/remotes/…` ([qualify]) so a same-named tag can't satisfy the
+   * allowlist; tags must be given as `refs/tags/<name>`.
    */
   private val allowedRefs: List<String> = emptyList(),
   private val git: GitRunner = RealGitRunner,
@@ -49,17 +39,13 @@ public class GitWorktrees(
 
   private val lock = ReentrantLock()
 
-  // Reference count per worktree directory, NOT a plain set: two different revisions (e.g. a branch
-  // name and its SHA, or a revision session and a same-ref catalog session) resolve to the SAME
-  // `<cacheRoot>/<sha>` directory, so a shared worktree must survive until *every* holder has
-  // reclaimed it (issue #2022 review). Each [prepare] increments; each [remove] decrements and only
-  // `git worktree remove`s at zero.
+  // Reference count per worktree: different revisions can resolve to the same `<cacheRoot>/<sha>`,
+  // so it is only removed when the last holder releases it.
   private val prepared = HashMap<File, Int>()
 
   /**
-   * Resolve [rev] to a commit and ensure a worktree for it exists; returns the worktree directory,
-   * or `null` when the revision can't be resolved, isn't allowed by policy, or can't be created.
-   * Registers a reference on the worktree — balance it with a [remove] (or a terminal [close]).
+   * Resolve [rev] and ensure a worktree exists, returning its directory, or null when unresolvable,
+   * disallowed, or uncreatable. Registers a reference; balance with [remove] (or [close]).
    */
   public fun prepare(rev: String): File? = lock.withLock {
     val sha = resolve(rev) ?: return null
@@ -68,8 +54,7 @@ public class GitWorktrees(
       return null
     }
     val dir = File(cacheRoot, sha)
-    // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it (another
-    // revision that resolved to the same commit, or a survivor from an earlier run).
+    // Already a valid checkout (same commit via another revision, or a previous run); reuse it.
     if (File(dir, ".git").exists()) {
       prepared.merge(dir, 1, Int::plus)
       return dir
@@ -92,10 +77,8 @@ public class GitWorktrees(
   }
 
   /**
-   * Qualify an allowlist [ref] to an unambiguous fully-qualified ref, or null if it doesn't exist.
-   * A `refs/…` ref is verified as-is (so a tag can be allowed explicitly via `refs/tags/<name>`); a
-   * short name is tried as a branch then a remote-tracking branch only — never a tag — so a
-   * same-named tag can't hijack the allowlist.
+   * Qualify an allowlist [ref] unambiguously, or null if it doesn't exist. `refs/…` is verified
+   * as-is; a short name is tried as a branch, then a remote-tracking branch — never a tag.
    */
   private fun qualify(ref: String): String? {
     val candidates =
@@ -115,14 +98,9 @@ public class GitWorktrees(
   }
 
   /**
-   * Release one reference on a worktree this instance prepared — the second-level GC of a long-idle
-   * revision session (issue #2022). The worktree is only `git worktree remove`d once its **last**
-   * reference is released, so GC of one revision alias can't delete a `<cacheRoot>/<sha>` directory
-   * another still-live session (a same-commit alias, or a same-ref catalog session) is resuming or
-   * rendering from. A no-op for a [dir] this instance didn't prepare, so a stray reclaim can't `git
-   * worktree remove` an unrelated path. Best-effort; a later `git worktree prune` (on [close]) mops
-   * up any residue. A subsequent [prepare] of the same revision re-adds the worktree from the
-   * shared object store.
+   * Release one reference on a worktree this instance prepared; `git worktree remove` only at zero,
+   * so another live session on the same commit keeps its checkout. No-op for directories not
+   * prepared here. Best-effort; `git worktree prune` on [close] cleans up.
    */
   public fun remove(dir: File): Unit = lock.withLock {
     val refs = prepared[dir] ?: return@withLock

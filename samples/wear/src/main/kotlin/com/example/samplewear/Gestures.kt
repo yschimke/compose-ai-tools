@@ -59,20 +59,12 @@ import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 import kotlinx.coroutines.launch
 
 /**
- * A one-handed-gesture gallery for Wear OS, navigated with [SwipeDismissableNavHost].
+ * A one-handed-gesture gallery for Wear OS ([SwipeDismissableNavHost]), using the public APIs as
+ * the AndroidX samples do: primary (double-pinch with [OneHandedGestureClickIndicator]), dismiss
+ * (wrist-turn back), scroll, page, and disabled (`LocalOneHandedGestureEnabled = false`).
  *
- * Each screen follows the AndroidX samples and uses the public one-handed gesture APIs directly:
- * - **primary** — the double-pinch primary action on a [Button], with an inline
- *   [OneHandedGestureClickIndicator].
- * - **dismiss** — the wrist-turn dismiss action mapped to back navigation.
- * - **scroll** — the primary gesture driving `scrollDown` on a list.
- * - **page** — the primary gesture driving `scrollToNextPage` on a pager.
- * - **disabled** — a screen that opts out via `LocalOneHandedGestureEnabled = false`.
- *
- * On-device the gestures fire from the watch's sensors (Pixel Watch 3+). The preview renderer fakes
- * Wear's SDK gesture input manager, so these unmodified public-API components can also register,
- * report availability, and receive gestures under Robolectric. Previews drive the same public
- * indicator states explicitly for deterministic animation capture.
+ * The renderer fakes Wear's gesture input manager, so these components register and receive
+ * gestures under Robolectric; previews set indicator states explicitly for deterministic capture.
  */
 object GestureRoutes {
   const val HOME = "home"

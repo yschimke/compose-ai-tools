@@ -9,18 +9,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * App-level preview discovery: the real activities an app declares and the scripted tours a module
- * commits. Two producers, one theme — put the *app itself* (not just isolated composables) in front
- * of agents and reviewers:
- * - [parseManifestActivities] reads `<activity>` entries + intent-filters out of the merged
- *   `AndroidManifest.xml`; [buildActivityPreviews] turns the enabled ones into synthetic
- *   [PreviewKind.ACTIVITY] previews. The launcher activity's capture is the app's hero image.
- * - [parseTourSpec] reads a committed `compose-previews/tours/<name>.json` script;
- *   [buildTourPreviews] turns each into a synthetic [PreviewKind.APP_TOUR] preview whose captures
- *   are the tour's steps (launch → click/intent/back → …), one PNG per step.
+ * App-level discovery, putting the app itself in front of reviewers:
+ * - [parseManifestActivities] / [buildActivityPreviews]: enabled manifest activities become
+ *   [PreviewKind.ACTIVITY] previews; the launcher's is the hero image.
+ * - [parseTourSpec] / [buildTourPreviews]: `compose-previews/tours/<name>.json` scripts become
+ *   [PreviewKind.APP_TOUR] previews, one PNG per step.
  *
- * Pure JVM, no Gradle/AGP types — same contract as the rest of [PreviewDiscovery] so non-Gradle
- * build systems can drive it.
+ * Pure JVM, like the rest of [PreviewDiscovery].
  */
 object AppTourDiscovery {
 
@@ -30,25 +25,13 @@ object AppTourDiscovery {
   private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
   /**
-   * Class-name prefixes of activities that manifest-merger injects from libraries (Glance's action
-   * trampoline, ui-tooling's `PreviewActivity`, ui-test-manifest's `ComponentActivity`, Play
-   * Services dialogs, Firebase Auth's reCAPTCHA / federated-IdP trampolines, …). They're not part
-   * of the *app* — not previewable entry points, not tour material — so they're dropped at parse
-   * time.
+   * Activity prefixes manifest-merger injects from libraries (Glance trampolines, ui-tooling,
+   * ui-test-manifest, Play Services, Firebase Auth's headless trampolines that crash off-device).
+   * Dropped at parse time.
    *
-   * `com.google.firebase.` earns its place from Firebase Auth's `GenericIdpActivity` and
-   * `RecaptchaActivity` — headless trampolines that NPE inside `onResume` the moment they are
-   * launched off a real device, and did so in both Confetti catalogs.
-   *
-   * Each entry is a **library** namespace, never a whole vendor one. The bare `com.google.` prefix
-   * that would cover both Google entries at once is exactly the mistake to avoid: an app is free to
-   * own that namespace — Now in Android ships as `com.google.samples.apps.nowinandroid` — and the
-   * shorter prefix would classify every one of its screens as library-injected, leaving its catalog
-   * with no activities at all.
-   *
-   * So the list stays evidence-led rather than pre-emptive, and narrow rather than convenient:
-   * every prefix here is also a way to silently drop an app's own screen, so a library earns one
-   * once it has been seen producing a dead card.
+   * Library namespaces only, never a vendor root: `com.google.` would drop every screen of an app
+   * like `com.google.samples.apps.nowinandroid`. Each prefix can hide an app's own screen, so add
+   * one only after seeing it produce a dead card.
    */
   private val LIBRARY_ACTIVITY_PREFIXES =
     listOf(
@@ -70,16 +53,9 @@ object AppTourDiscovery {
     isLenient = true
   }
 
-  // -------------------------------------------------------------------------
-  // Manifest activities
-  // -------------------------------------------------------------------------
-
   /**
-   * Parses the merged manifest's `<activity>` declarations. Best-effort: a missing / malformed
-   * manifest yields an empty list rather than an error (mirrors `ManifestReferenceExtractor`).
-   * Activities with `android:enabled="false"` are skipped — they can't be launched. Short
-   * `.RelativeName` forms are resolved against the manifest `package` attribute when present
-   * (merged manifests produced by AGP carry the full applicationId there).
+   * Parses `<activity>` declarations from the merged manifest; missing or malformed yields empty.
+   * Disabled activities are skipped; `.Relative` names resolve against the manifest `package`.
    */
   fun parseManifestActivities(file: File): List<ManifestActivity> =
     if (file.isFile) file.inputStream().use { parseManifestActivities(it) } else emptyList()
@@ -220,11 +196,9 @@ object AppTourDiscovery {
   }
 
   /**
-   * Turns [activities] into one synthetic [PreviewKind.ACTIVITY] preview each. The launcher
-   * activity's capture is required (the hero must render); every other activity is `optional` —
-   * real screens often need intent extras or session state discovery can't guess, and a best-effort
-   * `.error.json` beside a missing PNG beats failing the whole render for it. Sized to the standard
-   * phone canvas ([DeviceDimensions.DEFAULT]) or the Wear default on watch modules.
+   * One [PreviewKind.ACTIVITY] preview per activity. The launcher's capture is required; others are
+   * `optional`, since they may need extras or state discovery can't supply. Sized to
+   * [DeviceDimensions.DEFAULT], or the Wear default on watch modules.
    */
   fun buildActivityPreviews(
     activities: List<ManifestActivity>,
@@ -260,20 +234,13 @@ object AppTourDiscovery {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Tour specs
-  // -------------------------------------------------------------------------
-
   /** One committed tour script — the JSON shape of `compose-previews/tours/<name>.json`. */
   @Serializable
   data class TourSpec(
     /** Tour id; also the render-file stem. Falls back to the spec's filename when absent. */
     val name: String? = null,
     val description: String? = null,
-    /**
-     * The Intent that starts the tour. `null` → the manifest's launcher activity, so the common
-     * "tour starts at the home screen" spec needs no `start` block at all.
-     */
+    /** The starting Intent; `null` uses the launcher activity. */
     val start: TourIntentSpec? = null,
     val steps: List<TourSpecStep> = emptyList(),
   )
@@ -295,12 +262,9 @@ object AppTourDiscovery {
     ?.takeIf { it.steps.isNotEmpty() || it.start != null }
 
   /**
-   * Turns committed tour spec files into one synthetic [PreviewKind.APP_TOUR] preview each. Every
-   * tour gets a synthesized step-0 "launch" capture of its start state, then one capture per
-   * authored step; the renderer performs each step's action and captures the currently-resumed
-   * activity. A spec without a `start` intent falls back to [launcherActivity]'s component — specs
-   * in modules with no launcher must name their start explicitly (the ones that don't are skipped
-   * with a warning added to [warnings]).
+   * One [PreviewKind.APP_TOUR] preview per spec: a synthesized step-0 launch capture, then one per
+   * authored step. Without a `start` intent the [launcherActivity] is used; specs that can't
+   * resolve a start are skipped with a warning.
    */
   fun buildTourPreviews(
     tourSpecFiles: List<File>,

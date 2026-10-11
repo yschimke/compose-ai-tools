@@ -6,22 +6,14 @@ import kotlin.system.exitProcess
 import okio.FileSystem
 
 /**
- * Materialises the bundled auto-inject init script and prints metadata about it. Exists so external
- * tooling (CI workflows, scripts, agent harnesses) can drive Gradle directly with the same
- * `--init-script` body the CLI uses internally — without having to vendor a copy of the script and
- * keep it in lockstep with the bundled plugin version.
+ * Materialises the auto-inject init script so external tooling can drive Gradle with the same
+ * `--init-script` the CLI uses, without vendoring a copy.
+ * - `--path` (default) — write it to its cache location and print the path (idempotent).
+ * - `--print` — print the script body instead.
  *
- * Subcommands:
- * - `--path` (default) — write the script to its cache location and print the absolute path on
- *   stdout. Idempotent: re-running with the same bundle leaves the file untouched.
- * - `--print` — emit the rendered script body on stdout instead of a path. Useful for ad-hoc
- *   pipelines that prefer a pipe over a filesystem handoff.
- *
- * The version baked into the script follows the same precedence as every other entrypoint:
- * `--plugin-version`, then the project's pin (`COMPOSE_PREVIEW_VERSION`, `gradle.properties`,
- * version catalog — see [resolveVersionPin]), then this CLI's [MAVEN_LINE_VERSION]. So a `./gradlew
- * --init-script "$(compose-preview init-script --path)"` invocation applies the same plugin version
- * a bare `compose-preview render` would.
+ * The baked version follows the usual precedence (`--plugin-version`, the project pin via
+ * [resolveVersionPin], then [MAVEN_LINE_VERSION]), so `./gradlew --init-script "$(compose-preview
+ * init-script --path)"` matches `compose-preview render`.
  */
 class InitScriptCommand(
   private val args: List<String>,

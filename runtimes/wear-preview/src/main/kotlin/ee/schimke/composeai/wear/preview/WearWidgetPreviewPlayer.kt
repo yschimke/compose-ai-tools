@@ -1,14 +1,10 @@
 package ee.schimke.composeai.wear.preview
 
 /**
- * Which Remote Compose player replays a [CapturingWearWidgetPreview]'s captured document. The two
- * rasterise independently, and differ for accessibility: [ANDROIDX_VIEW] is one unlabelled `View`
- * to the a11y lane (an unfixable `SpeakableTextPresentCheck` on every widget), while
- * [ANDROIDX_EMBEDDED] composes the document and labels itself from its root content description,
- * hence the default (issue #5259).
- *
- * Select per build with [PROPERTY] (`-PcomposePreview.rcPlayer=androidx-view`), e.g. when glyph
- * hinting on the framework `Canvas` matters.
+ * Which Remote Compose player replays a [CapturingWearWidgetPreview]'s document. [ANDROIDX_VIEW] is
+ * one unlabelled `View` to the a11y lane; [ANDROIDX_EMBEDDED] composes the document and labels
+ * itself from its root content description, hence the default. Select with [PROPERTY]
+ * (`-PcomposePreview.rcPlayer=androidx-view`).
  */
 enum class WearWidgetPreviewPlayer(
   /** Canonical spelling of this lane: the implementation that draws. */

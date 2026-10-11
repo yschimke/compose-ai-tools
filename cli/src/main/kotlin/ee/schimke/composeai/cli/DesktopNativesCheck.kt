@@ -3,44 +3,27 @@ package ee.schimke.composeai.cli
 /**
  * "Can the render JVM actually `dlopen` skiko?" — the check behind `env.desktop-natives`.
  *
- * The CMP Desktop renderer runs Skia through `libskiko-linux-x64.so`, which the JVM extracts to
- * `~/.skiko/<hash>/` on first use. That `.so` carries four direct `DT_NEEDED` entries — see
- * [REQUIRED_LIBS] — and none of them ship with the JDK. When one can't be resolved, *every* preview
- * in the module fails with the same line:
+ * CMP Desktop renders through `libskiko-linux-x64.so`, whose [REQUIRED_LIBS] don't ship with the
+ * JDK; one missing fails every preview with:
  * ```
  * UnsatisfiedLinkError: …/libskiko-linux-x64.so: libGL.so.1: cannot open shared object file
  * ```
  *
- * which reads like a missing package and usually isn't. Two things make this trap worse than it
- * looks, and both are why this check exists rather than a one-line "is libGL installed?":
+ * A simple "is libGL installed?" isn't enough:
+ * 1. A Nix/Guix store JDK uses the store's `ld-linux`, which ignores `/etc/ld.so.cache` and the
+ *    system lib dirs, so `ldd` can succeed while the render fails ([loaderReadsSystemCache]).
+ * 2. `LD_LIBRARY_PATH` must be exported all the way to the render subprocess (forked from the
+ *    Gradle
+ *    daemon), so the environment is read, and the remediation includes `./gradlew --stop`.
  *
- * 1. **`ldconfig -p` and `ldd` can both say yes while the render still fails.** A JDK installed
- *    from a Nix (or Guix) store is patchelf'd to that store's `ld-linux`, which does **not** read
- *    `/etc/ld.so.cache` and does **not** search `/usr/lib/<triple>`. So a container can ship a
- *    perfectly good `/usr/lib/x86_64-linux-gnu/libGL.so.1`, have `ldd` resolve it happily (ldd runs
- *    the *system* loader), and still have the render JVM fail — the two processes don't use the
- *    same loader. [loaderReadsSystemCache] is what encodes that: when the render JVM lives in a
- *    store, only `LD_LIBRARY_PATH` counts.
- * 2. **`LD_LIBRARY_PATH` has to be *exported*, all the way down to the render subprocess.** The
- *    render forks from the Gradle daemon, which inherits from the Gradle client — a shell that sets
- *    the variable without exporting it (or a daemon started *before* the variable was set) leaves
- *    the render JVM with nothing. Hence [evaluateDesktopNatives] reads the env, not a shell
- *    snapshot, and the remediation says `./gradlew --stop`.
- *
- * The evaluation is a pure function over injected inputs so it can be unit-tested without a Nix
- * store, an `ldconfig`, or a real filesystem; [DoctorCommand] supplies the live values.
+ * The evaluation is pure over injected inputs for testing; [DoctorCommand] supplies live values.
  */
 internal object DesktopNativesCheck {
 
   /**
-   * Direct `DT_NEEDED` entries of `libskiko-linux-x64.so`, minus the three every JVM already has
-   * (`libm`, `libc`, `ld-linux`). Read off the shipped binary with `readelf -d`; re-check when
-   * bumping the CMP / skiko version, since a new skiko can grow a dependency.
-   *
-   * `libfreetype.so.6` is deliberately *not* listed: skiko doesn't link it directly, it arrives
-   * transitively through fontconfig, so probing for it adds a false-negative mode (a distro that
-   * statically links freetype into fontconfig) without catching anything the fontconfig probe
-   * misses.
+   * Direct `DT_NEEDED` entries of `libskiko-linux-x64.so` (from `readelf -d`), minus `libm`, `libc`
+   * and `ld-linux`. Re-check when bumping skiko. `libfreetype.so.6` is omitted: it arrives via
+   * fontconfig, and probing it directly only adds false negatives.
    */
   val REQUIRED_LIBS =
     listOf(
@@ -51,17 +34,15 @@ internal object DesktopNativesCheck {
     )
 
   /**
-   * Directories the *system* `ld.so` searches after `LD_LIBRARY_PATH`, in its own order. Only
-   * consulted when [loaderReadsSystemCache] is true. `x86_64-linux-gnu` covers Debian/Ubuntu's
-   * multiarch layout; `/usr/lib64` covers Fedora/RHEL/SUSE.
+   * Directories the system `ld.so` searches after `LD_LIBRARY_PATH`, in order; only used when
+   * [loaderReadsSystemCache]. Covers Debian multiarch and `/usr/lib64` distros.
    */
   val SYSTEM_LIB_DIRS =
     listOf("/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib64", "/lib64", "/usr/lib")
 
   /**
-   * Path prefixes whose JDKs are patchelf'd to a private `ld-linux` that ignores
-   * `/etc/ld.so.cache`. Matching is on the *resolved* `java.home`, so a `~/.nix-profile/bin/java`
-   * symlink into the store is caught too.
+   * Prefixes of JDKs patchelf'd to a private `ld-linux`. Matched on the resolved `java.home`, so
+   * profile symlinks into the store count.
    */
   private val STORE_PREFIXES = listOf("/nix/store/", "/gnu/store/")
 
@@ -86,8 +67,8 @@ internal object DesktopNativesCheck {
     /** `java.home` of the JVM the render forks into, as reported by Gradle. */
     val renderJavaHome: String?,
     /**
-     * `LD_LIBRARY_PATH` entries that resolve into a Nix/Guix store. Only interesting alongside a
-     * *non*-store render JVM — see [glibcSkew].
+     * `LD_LIBRARY_PATH` entries that resolve into a Nix/Guix store; relevant only with a non-store
+     * JVM ([glibcSkew]).
      */
     val storeDirsOnPath: List<String> = emptyList(),
   ) {
@@ -95,20 +76,13 @@ internal object DesktopNativesCheck {
       get() = libs.filter { it.resolvedAt == null }
 
     /**
-     * The hybrid-userland trap of issue #3690: store libraries on the search path of a render JVM
-     * that is linked against the *system* glibc.
-     *
-     * Every lib below resolves, so [missing] is empty and this check used to report `ok` — while
-     * every preview in the module died at `dlopen`, because a store `libGL.so.1` drags the store's
-     * own (newer) glibc into a process that already holds the system one:
+     * Store libraries on the search path of a JVM linked against system glibc: everything resolves,
+     * but a store `libGL.so.1` pulls in the store's newer glibc and `dlopen` fails:
      * ```
      * /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
      *   (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
      * ```
-     *
-     * The reverse pairing (system dirs on a store JVM's path) is not flagged: that is the
-     * documented remediation below, and the store loader needs `LD_LIBRARY_PATH` to find anything
-     * at all.
+     * The reverse (system dirs on a store JVM's path) is the documented remediation, not flagged.
      */
     val glibcSkew: Boolean
       get() = applicable && loaderReadsSystemCache && storeDirsOnPath.isNotEmpty()
@@ -118,16 +92,14 @@ internal object DesktopNativesCheck {
   }
 
   /**
-   * Resolve each of [REQUIRED_LIBS] the way the render JVM's dynamic loader would.
+   * Resolve each of [REQUIRED_LIBS] as the render JVM's dynamic loader would.
    *
    * @param osName `System.getProperty("os.name")`.
-   * @param renderJavaHome `java.home` of the JVM that forks the render — the Gradle daemon's JVM in
-   *   practice (doctor already fetches it via `BuildEnvironment`). Null falls back to assuming a
-   *   system loader, which is the lenient direction: we'd rather under-report than cry wolf.
-   * @param ldLibraryPath the raw `LD_LIBRARY_PATH` *environment variable* (not a shell variable) as
-   *   inherited by this process. This is the same value the Gradle daemon and the render subprocess
-   *   inherit, which is exactly what makes an unexported variable detectable here.
-   * @param exists existence predicate for an absolute path — injected so tests needn't touch disk.
+   * @param renderJavaHome `java.home` of the JVM that forks the render (the Gradle daemon's). Null
+   *   assumes a system loader, erring toward under-reporting.
+   * @param ldLibraryPath the inherited `LD_LIBRARY_PATH` environment variable, the same value the
+   *   daemon and render subprocess inherit, so an unexported variable shows as unset.
+   * @param exists existence predicate for an absolute path, injected for tests.
    */
   fun evaluateDesktopNatives(
     osName: String,
@@ -139,9 +111,7 @@ internal object DesktopNativesCheck {
     val linux = osName.lowercase().contains("linux")
     val searchDirs = ldLibraryPath.orEmpty().split(':').map { it.trim() }.filter { it.isNotEmpty() }
     val readsCache = loaderReadsSystemCache(renderJavaHome)
-    // Resolved, not as written: a store lib dir is routinely reached through a symlink farm
-    // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`), and only the resolved path admits
-    // where it came from.
+    // Resolved, since store lib dirs are often reached through symlink farms.
     val storeDirs = searchDirs.filter { dir ->
       STORE_PREFIXES.any { canonicalize(dir).startsWith(it) }
     }
@@ -158,8 +128,7 @@ internal object DesktopNativesCheck {
 
     val libs = REQUIRED_LIBS.map { (soname, purpose) ->
       val fromLdPath = searchDirs.firstNotNullOfOrNull { dir -> "$dir/$soname".takeIf(exists) }
-      // System dirs only count when the loader would actually look there. A store JDK won't,
-      // which is the whole point of the distinction — see the class doc.
+      // System dirs only count when the loader reads them; a store JDK's doesn't.
       val fromSystem =
         if (fromLdPath != null || !readsCache) null
         else SYSTEM_LIB_DIRS.firstNotNullOfOrNull { dir -> "$dir/$soname".takeIf(exists) }
@@ -182,9 +151,8 @@ internal object DesktopNativesCheck {
   }
 
   /**
-   * Whether the loader backing [javaHome] consults `/etc/ld.so.cache` and the system library dirs.
-   * False for Nix/Guix store JDKs (see class doc); true for everything else, including a null
-   * [javaHome] — an unknown JVM is assumed conventional so we don't invent failures.
+   * Whether [javaHome]'s loader consults `/etc/ld.so.cache` and the system dirs: false for Nix/Guix
+   * store JDKs, true otherwise (including null, so failures aren't invented).
    */
   fun loaderReadsSystemCache(javaHome: String?): Boolean {
     val home = javaHome ?: return true
@@ -192,12 +160,8 @@ internal object DesktopNativesCheck {
   }
 
   /**
-   * Turn a [Result] into the `env.desktop-natives` check. Split out from [DoctorCommand] so the
-   * message/remediation wording is unit-testable, matching how [interpretDaemonSmoke] is
-   * structured.
-   *
-   * [inClaudeCloud] only changes the phrasing of the fix — cloud sandboxes reach this through a
-   * session-start script, local machines through their package manager.
+   * Turn a [Result] into the `env.desktop-natives` check; split out so the wording is testable
+   * (like [interpretDaemonSmoke]). [inClaudeCloud] only changes the remediation phrasing.
    */
   fun interpret(result: Result, inClaudeCloud: Boolean): DoctorCheck {
     val id = "env.desktop-natives"
@@ -217,12 +181,9 @@ internal object DesktopNativesCheck {
           "`ldconfig -p` use the *system* loader and will look fine even when the render fails."
       } else null
 
-    // Checked *after* the missing-library branch below would be wrong, and this ordering is the
-    // whole point: a glibc skew is a warning (the plugin prunes the store dirs for its own render
-    // JVM, so renders driven through it still work), while a library the loader cannot find at all
-    // is an error (nothing renders, by any route). Reporting the warning first on a box that has
-    // both would hide the fatal condition behind the survivable one — and warnings exit 0, so
-    // doctor would pass a project whose previews cannot render.
+    // Only when nothing is missing: a skew is a warning (the plugin prunes store dirs for its
+    // render JVM), a missing library is an error, and the error must not be hidden behind the
+    // warning.
     if (result.glibcSkew && result.missing.isEmpty()) {
       return DoctorCheck(
         id = id,
@@ -304,9 +265,7 @@ internal object DesktopNativesCheck {
           append(". LD_LIBRARY_PATH as inherited by this process: ")
           append(if (result.ldLibraryPath.isEmpty()) "(unset)" else result.ldLibraryPath.toString())
           storeNote?.let { append(". $it") }
-          // Both conditions at once: the missing library is the fatal one and owns the status, but
-          // the skew is still on this box and still worth naming — otherwise fixing the missing lib
-          // leaves a second, differently-shaped failure waiting behind it.
+          // Both at once: the missing library owns the status, but name the skew too.
           if (result.glibcSkew) {
             append(
               ". Also on this box: LD_LIBRARY_PATH mixes ${result.storeDirsOnPath.size} " +

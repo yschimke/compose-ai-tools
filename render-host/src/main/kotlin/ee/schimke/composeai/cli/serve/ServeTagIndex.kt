@@ -9,39 +9,16 @@ import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 
 /**
- * A catalog's **published** tag index — `served preview id → testTag → {count, bounds}`.
- *
- * The element identity a scoped parity acceptance resolves against
+ * A catalog's published tag index (`served preview id → testTag → {count, bounds}`), the element
+ * identity a scoped parity acceptance resolves against
  * ([docs/design/COMPONENT_PARITY_WORKFLOW.md](../../../../../../../../docs/design/COMPONENT_PARITY_WORKFLOW.md)).
+ * The same projection as [ServeSemanticsTags], but computed in CI (`tag-index.mjs`) and published
+ * as `tags/index.json`, since a static catalog has no daemon.
  *
- * ## Why this exists alongside [ServeSemanticsTags]
- *
- * They are the same projection with different producers, because a published catalog has no daemon.
- * [ServeSemanticsTags] projects the index live from a render this host just performed; that path
- * requires a semantics tree, which only a daemon produces. A catalog's renders happened in CI, at
- * catalog-generation time — so its index is computed *there* (the export driver's `tag-index.mjs`,
- * the JS twin) and published as `tags/index.json` beside the stickers. This class is the reader for
- * that file.
- *
- * The consequence worth stating: without this, the whole element-gate half of the parity workflow
- * was unreachable on exactly the surfaces the epic is about, since every published design catalog
- * is a static bundle.
- *
- * ## Fail-soft, like every other carried artifact
- *
- * A malformed index, an unknown schema token, or an oversized one drops **wholesale** and the
- * catalog serves exactly as before — matching [ServeAnnotationStore] and
- * [ServeDesignReferenceStore].
- *
- * **What an acceptance does next is not "degrade to no element gate".** An earlier revision of this
- * sentence said so and called it the safe direction; it is only safe if the acceptance also stops
- * *suppressing*. An element-scoped acceptance whose gate cannot run and whose mask still joins the
- * valid union has silently become a plain ignore rectangle — and a tagged element that has
- * disappeared or moved goes on being hidden, which is precisely the failure the element gate was
- * added to catch. So the outcome is defined the other way: **an element-scoped acceptance that
- * cannot resolve its tag suppresses nothing.** The engine reaches that verdict already — an absent
- * entry resolves to no node, which is `element-moved`, which invalidates — and
- * `gate-element-vanished` in the conformance fixtures is what keeps both engines there.
+ * Fail-soft like [ServeAnnotationStore]: a malformed, unknown or oversized index is dropped
+ * wholesale. An element-scoped acceptance that then can't resolve its tag suppresses nothing
+ * (absent entry → `element-moved` → invalid), so it never degrades into a plain ignore rectangle;
+ * `gate-element-vanished` in the conformance fixtures keeps both engines there.
  */
 @Serializable
 public data class TagIndexManifest(
@@ -55,16 +32,9 @@ public data class TagIndexManifest(
 }
 
 /**
- * The on-the-wire shape of one entry, deliberately **not** [ServeSemanticsTags.TagEntry].
- *
- * The difference is [space], which is nullable here and defaulted there. Decoding straight into the
- * producer type would fill a missing `space` in with the Kotlin default, and the host could no
- * longer tell "the publisher declared render-pixels" from "the publisher declared nothing" — which
- * is precisely what the discriminator exists to distinguish. A later element gate reading an
- * undeclared index would then compare or transform bounds in a plane nobody stated.
- *
- * So the wire type keeps absence representable, [ServeTagIndexStore] rejects it, and only validated
- * entries are converted to the producer type.
+ * The wire shape of one entry, not [ServeSemanticsTags.TagEntry], because [space] must be nullable
+ * here: decoding into the producer type would default a missing `space` and hide that the publisher
+ * declared nothing. [ServeTagIndexStore] rejects that, and only validated entries are converted.
  */
 @Serializable
 public data class WireTagEntry(
@@ -91,18 +61,14 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
     public const val INDEX_FILE: String = "index.json"
 
     /**
-     * Cap on indexed previews. A catalog is third-party data and this file is read at staging time
-     * on a shared host, so it gets the same treatment as the acceptance budget: a bound that a
-     * hostile or broken publisher cannot raise. Generous against real use — the largest published
-     * catalog is in the hundreds of stickers.
+     * Cap on indexed previews: third-party data read on a shared host, so bounded; far above real
+     * catalogs.
      */
     public const val MAX_PREVIEWS: Int = 4096
 
     private val JSON = Json { ignoreUnknownKeys = true }
 
-    /**
-     * Empty store — a catalog that publishes no index at all, which is every catalog until it does.
-     */
+    /** Empty store, for a catalog that publishes no index. */
     public val EMPTY: ServeTagIndexStore = ServeTagIndexStore(emptyMap())
 
     public fun load(
@@ -130,18 +96,9 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
     }
 
     /**
-     * The entry as [ServeSemanticsTags.TagEntry], or null when it is not usable.
-     *
-     * A count below 1 is not a tag anything carried, and a zero-area box is not geometry a gate can
-     * measure against — both indicate a producer bug rather than something to resolve badly. Absent
-     * bounds are *not* a rejection: a tag whose every node had unusable bounds still counts, which
-     * is the point of `count`.
-     *
-     * An **absent or unrecognised `space` is** a rejection. Silently defaulting it would let an
-     * index that declared no coordinate space read as though it had declared render pixels, and a
-     * gate would then compare bounds in a plane nobody stated — the exact confusion the field was
-     * added to prevent. An unknown value is refused for the same reason rather than assumed: a
-     * future canonical-plane producer must not be read as render-pixel by an older host.
+     * The entry as [ServeSemanticsTags.TagEntry], or null when unusable: count below 1 or a
+     * zero-area box (absent bounds are fine; `count` still matters). An absent or unrecognised
+     * `space` is also rejected rather than assumed to be render pixels.
      */
     private fun WireTagEntry.validated(): ServeSemanticsTags.TagEntry? {
       if (count < 1) return null

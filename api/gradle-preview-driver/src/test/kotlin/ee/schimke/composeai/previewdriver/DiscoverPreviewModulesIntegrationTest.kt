@@ -11,20 +11,12 @@ import org.gradle.tooling.model.GradleProject
 import org.junit.Assume.assumeTrue
 
 /**
- * End-to-end regression for issue #1620 against a real Gradle build: preview discovery must not
- * realize the whole task graph.
- *
- * The synthetic build's `:native` module registers a task whose **configuration action** throws —
- * standing in for a real `org.graalvm.buildtools.native` `nativeCompile` task that provisions a
- * Java toolchain (expensive, network-dependent, frequently failing) when it's realized.
- *
- * Both queries run against the same Tooling-API connection:
- * 1. [DiscoverPreviewModulesAction] — the new discovery path. Walks `GradleBuild` + per-project
- *    `ComposePreviewModel` and never realizes `:native`'s task, so it completes. (No plugin is
- *    applied, so the result is empty — the point is that it does *not* throw.)
- * 2. The `GradleProject` model — the old discovery path. Building it realizes every task in every
- *    project, runs `:native`'s poison configuration, and fails the whole query. Asserting this
- *    keeps the repro honest: it's the exact failure #1620 removes.
+ * Against a real Gradle build, preview discovery must not realize the whole task graph (see #1620).
+ * `:native` registers a task whose configuration action throws, standing in for an expensive
+ * toolchain-provisioning task. On one Tooling-API connection:
+ * 1. [DiscoverPreviewModulesAction] never realizes it, so it completes (empty, as no plugin is
+ *    applied).
+ * 2. The `GradleProject` model realizes every task and fails, keeping the repro honest.
  */
 class DiscoverPreviewModulesIntegrationTest {
 

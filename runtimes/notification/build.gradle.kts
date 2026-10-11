@@ -1,14 +1,9 @@
-// `:notification-preview-runtime` — the composable-helper authoring path for notification
-// previews. Pairs with the `@NotificationPreview` annotation that ships in `:preview-annotations`:
-// the annotation drives the FQN-discovered NOTIFICATION strategy (renderer-android builds the
-// `Notification` directly and emits a `.notification.json` sidecar); this module's
-// `NotificationContent` composable hosts a built `Notification` inside an existing `@Preview`
-// composable so authors can stack uiMode / locale / fontScale knobs via multi-preview meta-
-// annotations.
+// `:notification-preview-runtime` — `NotificationContent` hosts a built `Notification` inside an
+// ordinary `@Preview`, so authors can stack uiMode / locale / fontScale multipreviews. The
+// alternative is `@NotificationPreview` (FQN-discovered by the renderer).
 //
-// Standalone on purpose — no compile dep on `:renderer-android` so the runtime can be used in
-// Bazel modules or JVM unit tests that don't carry the full Robolectric renderer. The sidecar JSON
-// shape is duplicated locally rather than imported.
+// No dependency on `:renderer-android`, so it works in Bazel modules and plain JVM tests; the
+// sidecar JSON shape is duplicated locally.
 
 plugins {
   id("composeai.base-conventions")

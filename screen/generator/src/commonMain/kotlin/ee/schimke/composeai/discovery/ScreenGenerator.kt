@@ -4,77 +4,25 @@ package ee.schimke.composeai.discovery
  * Generates a compilable `@Composable` screen from a [ScreenDocument] and the components a build
  * discovered.
  *
- * ## What this adds over [ComponentSnippets]
+ * Unlike [ComponentSnippets], which prints one call site with placeholders, this binds the values a
+ * builder set and nests components into each other's slots.
  *
- * [ComponentSnippets] prints one component's call site with **placeholders** — `Text(text = "")` —
- * which proves a component is reachable but renders nothing anyone designed. This binds the values
- * a builder actually set, and nests components into each other's slots, so the output is the screen
- * rather than a specimen of its parts.
+ * A node is generated only when its record carries an emitted [ComponentCode]; `code.call` is the
+ * licence to call (public, inferable, importable, signature actually read), while the argument list
+ * is rebuilt here from [ComponentRecord.parameters].
  *
- * ## What it inherits, and why that matters
+ * Known gaps in that licence: `@Deprecated(level = ERROR)` components and Kotlin context
+ * *parameters* are still admitted. A [ScreenValue.Chain] link is emitted as an imported extension,
+ * which loses to a same-named member on the receiver; a renaming import alias would fix that but
+ * hurts readability for a case not seen in practice, so it is declined deliberately.
  *
- * A node is generated only when its record carries an emitted [ComponentCode]. That single check
- * carries every protection the call-site generator learned the hard way: the component is public,
- * has no uninferable type parameters, did not collide with an overload, is a top-level function
- * with an importable callable, and has a signature that was actually read rather than defaulted
- * away. None of that is re-derived here — a second implementation of those rules is how two halves
- * of a contract start disagreeing.
+ * `expressionPackages` is a security boundary: [ScreenValue.Construct] emits qualified calls with
+ * document-supplied arguments, so it is empty by default and refuses anything outside it.
+ * Reference, Construct and Chain values carry a claimed type that is checked against the parameter
+ * but otherwise trusted.
  *
- * What is *not* inherited is the argument list: `code.call` fills required parameters with
- * placeholders, and this replaces them with the document's values. So the emitted call is built
- * here from [ComponentRecord.parameters], with `code.call` used as the licence to call at all.
- *
- * ## Where that licence is wider than it should be
- *
- * `code.call != null` is treated as proof that nothing stops a caller writing this call. That is
- * not quite true, and the gap is one problem rather than a list of them: **the record cannot
- * express every source-level restriction on calling a declaration**, so each one found has to be
- * recorded as its own field, and one not yet found is silently admitted. Two are known and open:
- *
- * - `@Deprecated(level = DeprecationLevel.ERROR)`. A preview can call such a component under
- *   `@Suppress("DEPRECATION_ERROR")`, which persists a call site the generated file — carrying no
- *   such suppression — cannot compile.
- * - A context *parameter* (Kotlin 2.2 onwards). `ComposableSignature.hasContextRequirement` reads
- *   the older `contextReceiverTypes` only, and says there why it cannot read the other.
- *
- * Both are admitted today. Closing them properly means either an explicit closed list of what
- * `code.call` promises, or compiling a candidate call in the producer — not a boolean per
- * restriction, which is how this list would keep growing.
- *
- * A third restriction belongs to [ScreenValue.Chain] rather than to `code.call`: an imported
- * extension **loses to a member of the same simple name on the receiver**. A link naming
- * `com.example.pad` is emitted as `.pad()`, and a receiver that declares its own `pad` gets the
- * call instead — a different expression from the one the document asked for, emitted as though it
- * were the right one. The only mechanism that forces the link's own callable is a *renaming* import
- * alias (`import com.example.pad as generatedPad`, called as `.generatedPad()`); an alias to the
- * same name does not help, since resolution keys off the name at the call site. That is declined
- * for now, deliberately: it renames every link in every generated file — `Modifier
- * .generatedFillMaxWidth()` — to close a case that needs a link named after a member of `Any`,
- * `Number` or `Modifier.Companion`, and a probe over material3 1.11 found no such collision. The
- * trade is readability against a narrow hazard, and it is recorded here so it is a decision rather
- * than an oversight.
- *
- * ## The one thing a caller must decide
- *
- * `expressionPackages` is not a convenience. A [ScreenDocument] is wire data, and
- * [ScreenValue.Construct] emits a qualified call with document-supplied arguments — so without a
- * declared vocabulary this object would happily generate
- * `java.nio.file.Files.readString(java.nio.file.Path.of("/etc/passwd"))` for a `String` parameter,
- * and a host that compiles and renders what it generated would run it. The set is empty by default,
- * so a caller that has not thought about it gets refusals rather than arbitrary code.
- *
- * A third gap arrived with the widened value vocabulary and is a different animal:
- * [ScreenValue.Reference], [ScreenValue.Construct] and [ScreenValue.Chain] carry a **claimed**
- * type. It is checked against the parameter, so a colour handed to a `String` is still refused, but
- * the claim itself is taken on trust. [ScreenValue] says why that trade was worth making and where
- * the failure lands when a projection gets it wrong.
- *
- * ## Refusing, again
- *
- * The discipline is the same one that makes the call-site generator worth anything: emit only what
- * can be proven, and say why otherwise. A builder pinned to a catalog it no longer has, a property
- * the component never declared, a string handed to a `Boolean` — each is a refusal naming the node,
- * because a screen that compiles and is not the one designed is worse than an error message.
+ * Anything that cannot be proven is refused with a reason naming the node: a screen that compiles
+ * but is not the one designed is worse than an error.
  */
 object ScreenGenerator {
 
@@ -96,20 +44,10 @@ object ScreenGenerator {
   /**
    * The design environment a generated `@Preview` should reproduce, or null for no preview.
    *
-   * Opt-in, and deliberately so. `@Preview` lives in `androidx.compose.ui.tooling.preview`, which
-   * is an Android tooling dependency a consumer of this generator need not have on its compile
-   * classpath — the Gradle plugin generates screens into builds that do not. Emitting it always
-   * would trade "the file compiles" for "the file previews", which is the wrong way round for the
-   * caller that only wanted source.
-   *
-   * The values are the design's own environment rather than `@Preview` defaults, because a design
-   * authored at 411x914 in dark at a 1.3 font scale and previewed at Android Studio's defaults is a
-   * different picture from the one its author approved — and the whole point of pasting the export
-   * into an IDE is to see that picture.
-   *
-   * [locale] is wire data. It reaches the emitted file inside a string literal, so it is validated
-   * against a language-tag shape rather than escaped: a value that is not one is a projection bug
-   * worth a refusal, not something to quietly pass through into source this generator signs.
+   * Opt-in because `@Preview` is an Android tooling dependency consumers need not have on the
+   * compile classpath. Values are the design's own environment, not `@Preview` defaults. [locale]
+   * is validated against a language-tag shape rather than escaped, since it lands in a string
+   * literal.
    */
   data class Preview(
     /** Design width in dp. Omitted from the annotation when null, so `@Preview` decides. */
@@ -121,54 +59,23 @@ object ScreenGenerator {
     /** BCP-47-ish language tag, e.g. `en-US`. Omitted when null. */
     val locale: String? = null,
     /**
-     * Whether the design is dark, emitted as `uiMode = …UI_MODE_NIGHT_YES`.
-     *
-     * Fully qualified through `android.content.res.Configuration` rather than imported: the
-     * constant is Android-only and this keeps it out of the import list, where it would collide
-     * with nothing today but would still be a name the file spends for one integer.
+     * Whether the design is dark, emitted as `uiMode = …UI_MODE_NIGHT_YES`; fully qualified so the
+     * Android-only constant stays out of the imports.
      */
     val darkMode: Boolean = false,
-    /**
-     * Paints the preview's background rather than compositing on transparency.
-     *
-     * True by default because a transparent preview of a screen designed against a surface reads as
-     * a rendering fault to the person who pasted it.
-     */
+    /** Paints the preview's background; a transparent screen preview reads as a rendering fault. */
     val showBackground: Boolean = true,
     /**
-     * Also emit a `@PreviewScreenSizes` wrapper, so the screen is drawn at every reference size
-     * rather than only at the one it was designed on.
-     *
-     * A screen is the one artifact whose whole job is to survive a size it was not drawn at, and a
-     * design carries exactly one frame — so the preview that reproduces that frame answers "does it
-     * look right?" and cannot answer "does it still look right?". The platform ships the second
-     * question's answer as a multipreview, so this emits *that* rather than a hand-written list of
-     * devices: `@PreviewScreenSizes` is maintained with the reference devices, and a list written
-     * here would be a copy of it that goes stale.
-     *
-     * Off by default for the same reason [Preview] itself is opt-in — it is a second tooling
-     * annotation, from the same artifact — and because a caller wanting one picture should not be
-     * handed five.
+     * Also emit a `@PreviewScreenSizes` wrapper so the screen is drawn at every reference size.
+     * Uses the platform multipreview rather than a hand-written device list that would go stale.
+     * Off by default.
      */
     val screenSizes: Boolean = false,
     /**
-     * Device ids to draw the screen at, one `@Preview(device = …)` each, beside the design's own
-     * frame.
-     *
-     * These are what a *design* named rather than what the platform ships, which is the whole
-     * difference between this and [screenSizes]. `@PreviewScreenSizes` answers "does it still look
-     * right at the reference sizes?" and is androidx's to maintain; this answers "does it look
-     * right on the devices this screen claims to work on?", which only the design knows. A screen
-     * claiming a foldable and nothing else should get a foldable and nothing else, and the
-     * multipreview cannot express that.
-     *
-     * Ids, not geometry: `id:pixel_6` is what `@Preview.device` resolves against the tooling's own
-     * catalog, so a list here cannot describe a frame no renderer produces. A width and height
-     * would be a second copy of that catalog, free to disagree with it.
-     *
-     * Empty by default, and empty means the design's own frame alone — what every caller before
-     * this field asked for. Order is kept and repeats are dropped: two identical previews are not
-     * two answers.
+     * Device ids (e.g. `id:pixel_6`) to draw the screen at, one `@Preview(device = …)` each, beside
+     * the design's own frame. Unlike [screenSizes], these are the devices the design claims to
+     * support. Ids rather than geometry so they resolve against the tooling's catalog. Order kept,
+     * repeats dropped.
      */
     val devices: List<String> = emptyList(),
   )
@@ -179,11 +86,8 @@ object ScreenGenerator {
   private const val MINIMUM_FOLDED_RUN = 3
 
   /**
-   * Where a spliced value may begin and end — see [varyingRun].
-   *
-   * A common prefix ends wherever two children happen to diverge, which is often inside a token.
-   * These say what "inside a token" means for the two directions: a value can only follow one of
-   * these characters, and can only be followed by one of the others.
+   * Where a spliced value may begin and end — see [varyingRun]. A value can only follow an opening
+   * delimiter and be followed by a closing one, so a fold never splits a token.
    */
   private val FOLD_OPENING_DELIMITERS = setOf('(', ',', '=', '[', ' ')
 
@@ -198,30 +102,20 @@ object ScreenGenerator {
   private val FOLD_DECIMAL_NUMBER = Regex("""^-?(\d+)(\.\d+)?([fFdDLl]?)$""")
 
   /**
-   * How many shorter windows are tried after the grown one fails — see [varyingRun].
-   *
-   * A maximal window usually fails because of its last child, so one or two steps back is where the
-   * fold is. Searching further is the quadratic scan this bound exists to refuse.
+   * How many shorter windows are tried after the grown one fails — see [varyingRun]. Bounds what
+   * would otherwise be a quadratic scan.
    */
   private const val FOLD_SHRINK_ATTEMPTS = 3
 
   /**
-   * The longest run one fold may cover, and so the bound on the growth scan.
-   *
-   * Growth restarts at each sibling a fold did not consume, and generated calls of *different*
-   * components still share their indentation and their closing `)` — so without a cap a slot that
-   * folds nowhere costs a scan per child, and sibling lists have no bound. A run longer than this
-   * is folded in windows of this size rather than in one: two lists for a five-hundred-cell year is
-   * a fair price for a scan that cannot run away.
+   * The longest run one fold may cover, bounding the growth scan. Longer runs are folded in windows
+   * of this size.
    */
   private const val FOLD_MAXIMUM_WINDOW = 256
 
   /**
-   * Names the loop parameter may take, in preference order.
-   *
-   * The first one the body does not already contain is used, so the parameter cannot shadow
-   * anything the body reads. A body containing all of them takes no fold, which is the honest
-   * answer rather than a name picked by counting.
+   * Loop parameter names in preference order; the first one the body doesn't contain is used so it
+   * cannot shadow anything. A body containing all of them is not folded.
    */
   private val FOLD_PARAMETER_NAMES = listOf("value", "entry", "element", "each", "item")
 
@@ -234,7 +128,6 @@ object ScreenGenerator {
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
-      // Reading it as the current schema is exactly the guess the version exists to prevent.
       return Result.Refused(
         listOf(
           "components.json is schema ${components.schemaVersion}, newer than the " +
@@ -257,19 +150,9 @@ object ScreenGenerator {
       val bad = previewRefusals(preview)
       if (bad.isNotEmpty()) return Result.Refused(bad)
     }
-    // **Schema 1 is refused outright**, rather than read with a growing list of exceptions.
-    //
-    // The first attempt kept reading it and refused only the one thing it could name — markers
-    // whose opt-in mechanism it could not classify. That was too clever twice over: it scanned the
-    // whole catalog, so one gated component nobody placed refused a screen built entirely from
-    // stable ones; and it protected only the field it happened to be about, while a schema-1 record
-    // also cannot say whether a component needs a context receiver, so those still slipped through
-    // with a persisted `code.call` and produced a call the compiler rejects.
-    //
-    // Both are the same shape: this generator's guarantee rests on fields schema 1 does not have,
-    // and every one of them would need its own exception here. One rule instead of a table of them
-    // — a producer emits schema 2, and a catalog older than that is regenerated rather than
-    // squinted at.
+    // Schema 1 is refused outright: this generator's guarantees rest on fields schema 1 lacks
+    // (opt-in mechanism, context receivers), and patching each one is a growing table of
+    // exceptions. Regenerate the catalog instead.
     if (components.schemaVersion < COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA) {
       return Result.Refused(
         listOf(
@@ -280,27 +163,10 @@ object ScreenGenerator {
         )
       )
     }
-    // Two components can share a simple name (`com.a.Badge`, `com.b.Badge`), and a screen can share
-    // one with a component it calls — `fun HomeScreen()` calling a `HomeScreen` component would
-    // shadow the import and recurse into itself. Neither is exotic once a catalog spans libraries.
-    // A simple name is only used when exactly one component wants it and the screen does not; the
-    // rest are called fully qualified, which is always unambiguous and needs no import.
-    //
-    // Nesting is deliberately *not* a third reason. This once also qualified any component sitting
-    // in a slot with a receiver — `Column(content = ColumnScope.() -> Unit)` and everything under
-    // it — on the premise that an import would not reach inside one. That premise is false, and
-    // the whole Compose ecosystem is the counterexample: `import …material3.Text` then `Column {
-    // Text("hi") }` is what every hand-written file does, and an implicit receiver adds names to
-    // the scope rather than removing the imported one from it. Because the flag was sticky, one
-    // scoped slot near the root qualified every descendant, so a realistic screen was fully
-    // qualified throughout — the shape a builder's code pane shows its user.
-    //
-    // What the premise was groping for is real but much narrower: a *member* of the receiver with
-    // the same simple name does win over an import. That is the same hazard a hand-written file
-    // carries, this generator has no view of a receiver's members to reason about it, and being
-    // more paranoid than the language bought unreadable output rather than safety.
-    // `ScreenGeneratorCompileFunctionalTest` compiles a screen nested through `Card` and `Button`
-    // against real Material 3, which is what says the imports resolve.
+    // Two components can share a simple name, and a screen can share one with a component it calls
+    // (which would recurse). A simple name is used only when exactly one component wants it and the
+    // screen does not; the rest are called fully qualified. Nesting inside receiver-scoped slots
+    // does not require qualification — imports resolve there as in hand-written code.
     val functionIssues = validateFunctions(document, preview)
     if (functionIssues.isNotEmpty()) return Result.Refused(functionIssues)
     val functionNames = document.functions.map { it.name }.toSet()
@@ -314,29 +180,23 @@ object ScreenGenerator {
             it.symbol.name !in functionNames &&
             it.symbol.name !in parameterNames &&
             it.symbol.name !in RESERVED_BY_THE_WRAPPER &&
-            // Both only when a preview is emitted, because only then does the file spend these
-            // names; reserving them always would needlessly qualify a component in every other
-            // screen. `Preview` is the annotation's own simple name, and the wrapper is a
-            // top-level declaration that would *win* over an import of the same name — so a
-            // component called `HomeScreenPreview` in a `HomeScreen` would silently become a call
-            // to the wrapper, which calls the screen, which renders it: a stack overflow standing
-            // in for the component somebody placed.
+            // Reserved only when a preview is emitted. The wrapper is a top-level declaration that
+            // would win over an import of the same name, turning a component call into infinite
+            // recursion.
             (preview == null ||
               (it.symbol.name != PREVIEW_SIMPLE_NAME &&
                 it.symbol.name != previewFunctionName(document.name))) &&
-            // The fan-out spends two more names on the same terms, and only when it is emitted.
             (preview?.screenSizes != true ||
               (it.symbol.name != PREVIEW_SCREEN_SIZES_SIMPLE_NAME &&
                 it.symbol.name != screenSizesPreviewFunctionName(document.name))) &&
-            // The device fan-out spends one more name, on the same terms. It reuses the `Preview`
-            // annotation already reserved above, so only the wrapper is new.
+            // The device fan-out reuses the `Preview` annotation reserved above; only the wrapper
+            // is new.
             (preview?.devices.isNullOrEmpty() ||
               it.symbol.name != devicesPreviewFunctionName(document.name))
         }
         .map { it.canonicalId }
         .toSet()
-    // Declarations are checked before anything reads them, so a misspelled variable is reported
-    // once against the declaration rather than once per node that names it.
+    // Declarations are checked first so a misspelled variable is reported once, not per node.
     val duplicates =
       document.state.groupingBy(ScreenState::name).eachCount().filterValues { it > 1 }.keys
     if (duplicates.isNotEmpty()) {
@@ -359,17 +219,13 @@ object ScreenGenerator {
         }
       )
     }
-    // The same shadowing one level up. A state name is a local `val` in the composable body, so it
-    // also shadows any package *root* the generated source writes out in full: the preamble emits
-    // `androidx.compose.runtime.remember` for every declaration, a component that cannot claim a
-    // simple name is called by its qualified callable, an allowed expression is written qualified,
-    // and each declared type is interpolated into `mutableStateOf<…>`. A state named `androidx`
-    // compiles on its own line — a local is not in scope in its own initializer — and breaks the
-    // next one, which is the worst place for this to surface.
+    // A state name is a local `val`, so it also shadows any package root the generated source
+    // writes qualified (`androidx.compose.runtime.remember`, qualified callables, declared types).
+    // It compiles on its own line and breaks the next, so refuse it up front.
     val qualifiedRoots = buildSet {
       add("androidx")
-      // Every component, not only the ones that cannot claim a simple name: which of the two a
-      // node gets is decided per record, and a state name may not shadow the root of either.
+      // Every component: a state name may not shadow the root of either a simple or a qualified
+      // call.
       components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
       expressionPackages.mapTo(this) { it.substringBefore('.') }
       document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
@@ -406,11 +262,8 @@ object ScreenGenerator {
         document.name,
         expressionPackages,
         document.state.associateBy(ScreenState::name),
-        // A state declaration is a local in the body, and a local named `kotlin` captures the
-        // qualifier a folded run writes. State names are the one shadowing surface known before
-        // emission, and they are spent on the fold rather than on a refusal: such a document is
-        // generated with its siblings written out, exactly as before folding existed. Every other
-        // way the name could enter the file is closed by never importing it — see [importedName].
+        // A state named `kotlin` captures the qualifier a folded run writes, so such a document is
+        // simply not folded.
         foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
         allocatedNames =
           (document.state.map(ScreenState::name) +
@@ -423,38 +276,30 @@ object ScreenGenerator {
             .toMutableSet(),
         functions = document.functions.associateBy { it.name },
       )
-    // Everything a hoisted binding must not shadow: the declarations, the components this file
-    // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
-    // `FooInitial(...)` call captures it exactly the way a state name would.
+    // Everything a hoisted binding must not shadow: declarations, simply-named components, the
+    // screen.
     val bindingNamesTaken =
       document.state.map(ScreenState::name).toSet() +
         components.components.filter { it.canonicalId in simplyImportable }.map { it.symbol.name } +
         document.name +
-        // And the package roots, for the same reason a state name may not be one: a component that
-        // cannot claim a simple name is called fully qualified, and `val tintInitial = …` above a
-        // `tintInitial.widgets.Text(...)` captures that root exactly as a declaration would.
+        // And package roots, for the same reason as state names.
         qualifiedRoots
     val declaredSoFar = mutableSetOf<String>()
     val preamble =
       document.state.map { declared ->
-        // Each initializer sees only what precedes it, and the name itself is added after the
-        // initializer is rendered rather than before, because a local is not in scope in its own.
+        // The name is added after its initializer renders: a local is not in scope in its own
+        // initializer.
         context.initializerScope = declaredSoFar.toSet()
-        // The declared type is interpolated into `mutableStateOf<…>`, so it is source, and
-        // `ScreenDocument` is wire data. Every other name this file writes goes through a shape
-        // check first; this one did not, so a malformed type produced source that does not compile
-        // and a crafted one could close the call and splice statements into the composable.
+        // The declared type is interpolated into `mutableStateOf<…>` and is wire data, so
+        // shape-check it to prevent malformed or injected source.
         if (!isQualifiedName(declared.typeFqn)) {
           context.reasons +=
             "state `${declared.name}` is declared as `${declared.typeFqn}`, which is not a " +
               "qualified Kotlin name"
           return@map null
         }
-        // Rendered against the declared type, the same way an assignment to this variable is.
-        // The untyped path emits a literal on its own terms, so `kotlin.Float` seeded with `0.5`
-        // produced `mutableStateOf<kotlin.Float>(0.5)` — a Double literal — and a literal of the
-        // wrong kind entirely was emitted rather than refused. Nullability is stripped for the
-        // comparison because every literal this vocabulary has is non-null.
+        // Rendered against the declared type, as an assignment would be, so a wrong-kind literal is
+        // refused. Nullability is stripped because every literal in this vocabulary is non-null.
         val initial =
           context.argument(
             declared.initial,
@@ -465,27 +310,20 @@ object ScreenGenerator {
           ) ?: return@map null
         declaredSoFar += declared.name
         val name = ComponentSnippets.escapeIfKeyword(declared.name)
-        // Nullability is syntax, not part of any segment's name. Escaping the whole spelling
-        // turned the documented `kotlin.String?` into `kotlin.`String?`` — a backticked classifier
-        // rather than a nullable String — so every nullable state stopped compiling.
+        // Nullability is syntax, not part of a name: escape only the segments, not the trailing
+        // `?`.
         val nullableType = declared.typeFqn.endsWith("?")
         val type =
           ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn.removeSuffix("?")) +
             if (nullableType) "?" else ""
-        // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
-        // composable read — `MaterialTheme.colorScheme.primary` is the documented example. Kotlin
-        // rejects that inside the lambda even though the same expression is legal one line up, so
-        // anything naming an API is bound first and the lambda closes over the binding.
-        //
-        // A literal and a state read stay where they are: neither can be a composable call — one
-        // is a constant, the other reads a local `MutableState` — and hoisting every `""` would
-        // double an ordinary preamble to guard against nothing.
+        // `remember`'s calculation is `@DisallowComposableCalls`, and a value may name a composable
+        // read (`MaterialTheme.colorScheme.primary`), so anything naming an API is bound first.
+        // Literals and state reads can't be composable calls and stay inline.
         val hoisted =
           declared.initial is ScreenValue.Reference ||
             declared.initial is ScreenValue.Construct ||
             declared.initial is ScreenValue.Chain
-        // `remember` so the value survives recomposition — without it the screen resets on every
-        // frame that touches it, which looks like the state never changing at all.
+        // `remember` so the value survives recomposition.
         if (!hoisted) {
           listOf(
             "val $name = androidx.compose.runtime.remember { " +
@@ -507,8 +345,8 @@ object ScreenGenerator {
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
     val declarations = preamble.filterNotNull().flatten()
 
-    // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
-    // written twice under two annotations that would each reject the other's markers.
+    // An AndroidX-mechanism marker is reported by both scans; subtract it so it is written only
+    // once.
     val androidxOptIns = context.androidxOptIns.distinct().sorted()
     val optIns = (context.optIns - context.androidxOptIns).distinct().sorted()
     val imports =
@@ -521,13 +359,9 @@ object ScreenGenerator {
           ))
         .distinct()
         .sorted()
-    // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
-    // component half of this can't collide — `simplyImportable` already withholds a simple name two
-    // records want — but everything else here is imported from wherever a projection said: an
-    // extension link, and since `importedName`, a reference's root and a construct's callable too.
-    // So `foundation.layout.padding` and `some.other.padding` in one screen, or two `Color`s from
-    // two packages, have to be caught here. This is the check that makes importing references safe
-    // enough to be worth the readability.
+    // Two imports of one simple name don't compile. Components are already deduplicated, but
+    // extension links, references and construct callables are imported from wherever a projection
+    // said, so check for conflicts here.
     val conflicts =
       imports
         .groupBy { it.substringAfterLast('.') }
@@ -544,9 +378,7 @@ object ScreenGenerator {
         }
       )
     }
-    // A local is allocated while the body is still being written, so an import added after it —
-    // a later node's component or extension — can take the same simple name, and the local would
-    // then shadow it for the rest of its block. Refused rather than guessed around.
+    // A local allocated mid-body could shadow an import added later for a subsequent node. Refused.
     val shadowedImports =
       context.hoistedNames.filter { local -> imports.any { it.substringAfterLast('.') == local } }
     if (shadowedImports.isNotEmpty()) {
@@ -556,9 +388,8 @@ object ScreenGenerator {
         }
       )
     }
-    // A marker is imported when its simple name is free — no other import, no marker from another
-    // package, nothing the file declares — and written qualified otherwise. Deciding it here, after
-    // the conflict check, means an opt-in can never be what makes a screen refuse.
+    // A marker is imported only when its simple name is free, decided after the conflict check so
+    // an opt-in can never make a screen refuse.
     val markerNames = (optIns + androidxOptIns).groupBy { it.substringAfterLast('.') }
     val importedMarkers =
       (optIns + androidxOptIns)
@@ -582,18 +413,15 @@ object ScreenGenerator {
       appendLine()
       if (optIns.isNotEmpty()) {
         appendLine(
-          // Both halves qualified. The markers because two can share a simple name from different
-          // packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is ambiguous
-          // rather than merely ugly; the annotation itself because the generated file sits in a
-          // package the caller chose, and a package declaring its own `OptIn` would capture the
-          // bare name — the AndroidX branch below was already written qualified.
+          // Both qualified: markers can share a simple name across packages, and the caller's
+          // package might declare its own `OptIn`.
           optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" }
         )
       }
       if (androidxOptIns.isNotEmpty()) {
-        // A different annotation, not a stylistic variant: `kotlin.OptIn` rejects a marker declared
-        // with `androidx.annotation.RequiresOptIn` ("this class is not an opt-in requirement
-        // marker"), and the AndroidX one takes an array under a named `markerClass`.
+        // Not a stylistic variant: `kotlin.OptIn` rejects markers declared with
+        // `androidx.annotation.RequiresOptIn`, and the AndroidX one takes a named `markerClass`
+        // array.
         appendLine(
           androidxOptIns.joinToString(
             ", ",
@@ -640,19 +468,15 @@ object ScreenGenerator {
   }
 
   /**
-   * Whether a group of same-named imports is extensions that no one call could mean two of: each
-   * called only on receiver types the document states, and no receiver type shared. Anything else —
-   * a classifier in the group, or a link whose receiver type is not known — is the conflict it
-   * looks like.
+   * Whether a group of same-named imports is extensions that no single call could mean two of: each
+   * called only on stated receiver types, none shared. Anything else is a real conflict.
    */
   private fun resolvedByReceiver(
     group: List<String>,
     receivers: Map<String, Set<String?>>,
     ordinary: Set<String>,
   ): Boolean {
-    // An import also used as an ordinary call or reference — a top-level `padding(…)` component
-    // beside `Modifier.padding` from the same package — is not only an extension, and a receiver
-    // says nothing about which one a bare call means.
+    // An import also used as an ordinary call or reference is not only an extension.
     if (group.any { it in ordinary }) return false
     val types = group.map { receivers[it] ?: return false }
     if (types.any { null in it }) return false
@@ -726,20 +550,14 @@ object ScreenGenerator {
     }
 
   /**
-   * Resolves a document's component id, by canonical key or by catalog alias.
-   *
-   * Two indexes rather than one flat map, because they are not equally authoritative:
-   * [ComponentRecord.canonicalId] is the file's key and an alias is a label several records may
-   * carry. Merging them would let an alias on one record mask another record's key — a silent
-   * substitution, which is the one outcome worth more care than either lookup.
+   * Resolves a document's component id, by canonical key or by catalog alias. Two indexes because
+   * an alias is a label several records may carry; merging would let one record's alias mask
+   * another's canonical key.
    */
   private class ComponentIndex(records: List<ComponentRecord>) {
     private val byCanonical = records.groupBy { it.canonicalId }
-    // `distinct()` inside the record, never across records. A record listing one alias twice says
-    // nothing twice; two *records* claiming one alias is the ambiguity this refuses, and they can
-    // share a canonical id — so collapsing by canonical id here would let an alias resolve to
-    // whichever of the two came first in the file, while `resolve` refuses the same pair when
-    // asked by canonical id. Catalog-order-dependent, and silently so.
+    // `distinct()` within a record only: two records claiming one alias is ambiguous even when they
+    // share a canonical id, and collapsing would make resolution catalog-order-dependent.
     private val byAlias =
       records
         .flatMap { record -> record.componentIds.distinct().map { it to record } }
@@ -785,7 +603,7 @@ object ScreenGenerator {
     val simplyImportable: Set<String>,
     val screenName: String,
     val expressionPackages: Set<String>,
-    /** Declared state by name, so a read can be checked against something rather than trusted. */
+    /** Declared state by name, so a read can be checked rather than trusted. */
     val state: Map<String, ScreenState> = emptyMap(),
     /** Whether [foldRepeats] may fold here — see the call that computes it. */
     val foldsRepeatedSiblings: Boolean = true,
@@ -793,20 +611,13 @@ object ScreenGenerator {
     val functions: Map<String, ScreenFunction> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
-    /**
-     * Kept apart from [imports] only so the conflict message can say an *extension* collided. They
-     * are unioned before anything is written.
-     */
+    /** Kept apart from [imports] only so a conflict message can say an *extension* collided. */
     val extensionImports = mutableSetOf<String>()
 
     /**
-     * For each extension import, the receiver types it was called on — null where a link's receiver
-     * type is not known, which is any link after the first.
-     *
-     * Two extensions of one simple name are not a conflicting import: Kotlin reports that only for
-     * classifiers, and `import …icons.filled.Star` beside `import …icons.outlined.Star` is ordinary
-     * Compose, resolved per call by the receiver — `Icons.Filled` or `Icons.Outlined`. What does
-     * not compile is a call both apply to, so the check is on receivers, and see [generate].
+     * For each extension import, the receiver types it was called on (null where unknown — any link
+     * after the first). Same-named extensions only conflict when a call could resolve to both, so
+     * the check in [generate] is on receivers.
      */
     val extensionReceivers = mutableMapOf<String, MutableSet<String?>>()
     val optIns = mutableSetOf<String>()
@@ -814,32 +625,22 @@ object ScreenGenerator {
     val reasons = mutableListOf<String>()
 
     /**
-     * The state names in scope while one declaration's own initializer is rendered, or null in the
-     * body, where every declaration is.
-     *
-     * The preamble emits one `val` per declaration in document order and a local is not in scope in
-     * its own initializer, so an initializer may read only what came before it. Without this a
-     * document could put `first`'s initializer on `second.value` and generate a file that names a
-     * variable two lines before declaring it.
+     * State names in scope while one declaration's initializer renders, or null in the body. A
+     * local is not in scope in its own initializer, so an initializer may read only earlier
+     * declarations.
      */
     var initializerScope: Set<String>? = null
 
     /**
-     * The receiver scope of the slot the node currently being emitted sits in, or null at the root.
-     *
-     * Depth-first and single-threaded, so one field with save/restore is the whole mechanism. It
-     * exists for [ChainLink.receiverScopeFqn]: whether `Modifier.weight` compiles is not a fact
-     * about the value, it is a fact about **where the node was placed**, and this is the only place
-     * that knows.
+     * The receiver scope of the slot the current node sits in, or null at the root. Needed for
+     * [ChainLink.receiverScopeFqn]: whether `Modifier.weight` compiles depends on where the node
+     * was placed. Depth-first and single-threaded, so save/restore suffices.
      */
     private var slotScope: String? = null
 
     private data class RowScope(val variable: String, val fields: Map<String, String>)
 
-    /**
-     * A slot lambda's parameter, bound by [ScreenNode.slotParameters]: the local it is named and
-     * the type the record declares for it.
-     */
+    /** A slot lambda's parameter bound by [ScreenNode.slotParameters]: its local name and type. */
     private data class SlotParameter(val variable: String, val type: String)
 
     /** Every slot parameter visible at this point, by document key; innermost binding wins. */
@@ -853,18 +654,12 @@ object ScreenGenerator {
     private val localNameCounters = mutableMapOf<String, Int>()
 
     /**
-     * The block a node is being emitted into, and the typed locals its member links have asked to
-     * be declared there — see [memberLink].
+     * The block a node is being emitted into, and the typed locals its member links asked to
+     * declare there — see [memberLink]. A local lands immediately before the call that reads it, in
+     * the same composable scope and composition locals, so hoisting is exact.
      *
-     * One per [node] call, pushed on entry and written above the node's own text on the way out, so
-     * a local lands immediately before the call that reads it, in the same block: a slot lambda, a
-     * repetition's `forEach`, a selection branch or a function body. That is what keeps it
-     * **exact** rather than merely equivalent. The value is computed in the same composable scope,
-     * under the same composition locals, as the argument it came out of — a receiver read from
-     * `LocalContentColor` inside a `Surface` would read something else at the top of the screen.
-     *
-     * [lambdaDepth] counts the value lambdas entered since this block opened. Inside one a receiver
-     * is evaluated when the lambda runs, not when the node composes, so nothing there is hoisted.
+     * [lambdaDepth] counts value lambdas entered since this block opened; inside one a receiver is
+     * evaluated when the lambda runs, so nothing is hoisted.
      */
     private class Block {
       val locals = mutableListOf<String>()
@@ -892,12 +687,9 @@ object ScreenGenerator {
 
     /**
      * The name of a `val name: Owner = receiver` declared above the current node, or null where
-     * there is no block to declare it in — a state initializer, or inside a value lambda — and the
-     * caller writes the `let<Owner, _>` form instead.
-     *
-     * A receiver already held under the same classifier in this block is reused rather than
-     * computed twice, unless it calls a `remember…`: each call site of one of those is its own slot
-     * in the composition, and folding two into one local would make two states one.
+     * there is no block to declare it in (a state initializer or value lambda; the caller writes
+     * the `let<Owner, _>` form instead). Reused within a block unless it calls a `remember…`, since
+     * each such call site is its own composition slot.
      */
     private fun hoistedReceiver(owner: String, ownerFqn: String, receiver: String): String? {
       val block = blocks.lastOrNull()?.takeIf { it.lambdaDepth == 0 } ?: return null
@@ -920,8 +712,6 @@ object ScreenGenerator {
 
     /**
      * An argument whose whole text is a receiver this block already holds, written as that local.
-     * `directive = calculatePaneScaffoldDirective(…)` beside a member read of the same expression
-     * is the case: the local is typed as what both of them are, and the screen computes it once.
      */
     private fun sharedArgument(argument: String): String {
       val block = blocks.lastOrNull() ?: return argument
@@ -1049,8 +839,7 @@ object ScreenGenerator {
         reasons += "screen nesting exceeds 128 levels"
         return ""
       }
-      // Asked before the structural paths return: none of them calls a component, so none has a
-      // slot lambda whose parameter a binding could name, and each would drop one in silence.
+      // Asked before the structural paths return: none has a slot lambda a binding could name.
       if (
         (node.repetition != null || node.selection != null || node.function != null) &&
           node.slotParameters.isNotEmpty()
@@ -1075,21 +864,14 @@ object ScreenGenerator {
           }
         }
       if (record == null) {
-        // Keep walking its children: a catalog that dropped a whole subtree should name every node
-        // it can no longer place, not just the outermost one. `reasons` is what a caller acts on,
-        // and the text returned here is discarded the moment anything has failed.
+        // Keep walking children so every node a stale catalog can no longer place is reported.
         node.slots.values.flatten().forEach { node(it, depth + 1) }
         return "$pad// unresolved: ${node.componentId}"
       }
-      // The licence to call at all. Everything a refusal protects against — private, generic,
-      // collided, unreadable, not importable — is already decided here, once, by the producer.
-      //
-      // A record refused only for a placeholder this node supplies is still callable: the record
-      // could not print `Icon(imageVector = …)` on its own, but this node names the icon. The
-      // decision is re-run with the node's own arguments, slots and handlers counted as present.
-      // Only when the record's own fields reproduce the refusal it stores: a producer may know
-      // something its fields do not say, and that refusal is never second-guessed here. Opt-ins
-      // then come from the record itself, which is where the code block copies them from.
+      // The licence to call at all, decided once by the producer. A record refused only for a
+      // placeholder this node supplies is re-checked with the node's own arguments counted as
+      // present, but only when the record's own fields reproduce the stored refusal — a producer's
+      // refusal is never overridden.
       val recorded = record.code
       val code =
         if (recorded?.call != null || recorded == null) recorded
@@ -1118,8 +900,8 @@ object ScreenGenerator {
         return "$pad// unusable: ${node.componentId}"
       }
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
-      // A member of an object — `SearchBarDefaults.InputField` — is written through its object, as
-      // it is documented and as a person calls it, and the object is what imports.
+      // An object member (`SearchBarDefaults.InputField`) is written through its object, which
+      // imports.
       val owner = record.symbol.callable.substringBeforeLast('.', "")
       val objectMember = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
       if (record.canonicalId in simplyImportable)
@@ -1142,25 +924,19 @@ object ScreenGenerator {
           }
         if (rejected != null) {
           reasons += rejected
-          // The loop below walks `record.parameters`, so a slot the component never declared is
-          // never reached and its subtree would go unreported — the same gap as an unresolved
-          // node's children, one level in. A renamed slot is exactly when a document is most
-          // likely to be stale further down, so those children are the ones worth naming.
+          // Walk the children of an undeclared slot too, so a stale subtree is fully reported.
           children.forEach { node(it, depth + 1) }
         }
       }
-      // A slot parameter named for a slot with no children binds a name nothing can read, and says
-      // the document expected content there — stale, like the slot items below.
+      // A slot parameter named for a slot with no children binds a name nothing can read: stale
+      // document.
       node.slotParameters.keys
         .filterNot { it in node.slots }
         .sorted()
         .forEach {
           reasons += "`${record.symbol.name}`.`$it` names its lambda parameter and has no children"
         }
-      // A wrapper for a slot the node does not fill names nothing. The emission below reads
-      // `slotItems` only where there are children, so an unmatched key would be dropped in
-      // silence — and a document that says `item` about the wrong slot is exactly the stale
-      // document every other refusal here exists to name.
+      // A wrapper for a slot the node does not fill would otherwise be dropped silently.
       node.slotItems.keys
         .filterNot { it in node.slots }
         .sorted()
@@ -1171,9 +947,7 @@ object ScreenGenerator {
 
       val arguments = mutableListOf<String>()
       var trailing: String? = null
-      // A handler naming a parameter the component does not declare is refused here rather than
-      // silently dropped, exactly as an unknown argument is: a screen whose button does nothing is
-      // not the screen that was designed, and it compiles perfectly.
+      // An unknown handler is refused, not dropped: a button that does nothing still compiles.
       node.handlers.keys
         .filterNot { key -> record.parameters.any { it.name == key } }
         .sorted()
@@ -1193,15 +967,9 @@ object ScreenGenerator {
             argument(supplied, parameter, record.symbol.name)?.let {
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
             }
-            // A conflicted document can set both an argument and a slot for one parameter. The
-            // scalar loses (a literal cannot be a function type, so `argument` refuses it), but the
-            // slot's children would never be visited otherwise — the fourth branch that rejects a
-            // node and would drop its subtree.
-            //
-            // Only when the slot loop above did not already walk them. It walks the children of
-            // any slot it rejected, so for a parameter that is not a composable slot both paths
-            // fire, every reason below is duplicated, and a document conflicted at each level
-            // doubles the work per level.
+            // A conflicted document can set both an argument and a slot for one parameter; the
+            // scalar is refused, but walk the slot's children unless the slot loop above already
+            // did.
             if (children != null) {
               reasons +=
                 "`${record.symbol.name}`.`${parameter.name}` is set as both a value and a slot"
@@ -1213,35 +981,28 @@ object ScreenGenerator {
           children != null &&
             fillable(parameter, node.slotItems[parameter.name]) &&
             !ComponentSnippets.acceptsBareLambda(parameter.type) -> {
-            // `code.call` may have been emittable only because this slot was defaulted away. A
-            // `(Int, Int) -> Unit` or `() -> String` slot cannot be satisfied by `{ children }`.
+            // `code.call` may have been emittable only because this slot was defaulted away; a
+            // non-`Unit` or parameterised lambda can't be satisfied by `{ children }`.
             reasons +=
               "`${record.symbol.name}`.`${parameter.name}` is `${parameter.type}`, which children " +
                 "in a bare lambda cannot satisfy"
-            // The third branch that rejects a node and would otherwise drop its subtree, after an
-            // unresolved id and a slot the component never declared. All three now walk on.
             children.forEach { node(it, depth + 1) }
           }
           children != null && fillable(parameter, node.slotItems[parameter.name]) -> {
-            // A DSL slot declares its children through its receiver rather than composing them —
-            // `item { … }` inside a `LazyListScope` — so the wrapper, when the document names one,
-            // is resolved and checked before anything is emitted. See [SlotItem].
+            // A DSL slot declares children through its receiver (`item { … }` in `LazyListScope`),
+            // so the wrapper is resolved and checked first. See [SlotItem].
             val declared = node.slotItems[parameter.name]
             val wrapper = declared?.let { slotItem(it, parameter, record.symbol.name) }
             if (declared != null && wrapper == null) {
-              // The fifth branch that rejects a node and would otherwise drop its subtree.
               children.forEach { node(it, depth + 1) }
               continue
             }
             val outer = slotScope
-            // Inside a wrapper the receiver is the wrapper's own, which nothing attests, so the
-            // children sit under no scope and a scoped link there refuses by name — the honest
-            // answer, and the one [SlotItem] documents.
+            // Inside a wrapper the receiver is the wrapper's own, which nothing attests, so scoped
+            // links refuse.
             slotScope = if (wrapper == null) parameter.composableSlotReceiver else null
-            // The lambda's parameter, named when the document asks to read it: `{ padding -> … }`
-            // rather than a bare `{ … }` whose `it` nothing can reach. Only a lambda that takes
-            // exactly one parameter can be named, and only where the children are composed into
-            // it directly — a DSL wrapper's own lambda is a different one.
+            // Name the lambda's parameter when the document reads it (`{ padding -> … }`). Only
+            // single-parameter lambdas composed into directly can be named.
             val key = node.slotParameters[parameter.name]
             val bound = key?.let { k ->
               val type = ComponentSnippets.singleLambdaParameterType(parameter.type)
@@ -1270,21 +1031,17 @@ object ScreenGenerator {
                 slotScope = outer
                 slotParameterScope = outerParameters
               }
-            // `content` goes after the parentheses, the way Compose is written: `Row(modifier = …)
-            // { … }` rather than `content = { … }` inside them. A trailing lambda binds to the
-            // signature's final parameter, and a record may list only some of a composable's
-            // parameters — the palette's `ListItem` stops at `supportingContent`, which is not
-            // last — so position in the record is not evidence. The name is: the Compose API
-            // guidelines put `content` last precisely so it can trail, and every other slot
-            // stays named.
+            // `content` trails the parentheses, as Compose is written. Keyed on the name rather
+            // than position, since a record may list only some parameters; the API guidelines put
+            // `content` last.
             if (parameter.name == "content" && parameter === record.parameters.last())
               trailing = "$head\n$nested\n$pad}"
             else
               arguments +=
                 "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $head\n$nested\n$pad}"
           }
-          // Untouched by the document. A default may be omitted; anything else still has to be
-          // filled, and the placeholder table is the same one the call-site generator uses.
+          // Untouched by the document: a default may be omitted; anything else gets the call-site
+          // placeholder.
           parameter.hasDefault -> Unit
           else -> {
             val placeholder = ComponentSnippets.placeholderFor(parameter)
@@ -1293,16 +1050,9 @@ object ScreenGenerator {
                 "`${record.symbol.name}` needs `${parameter.name}: ${parameter.type}` and the " +
                   "document does not set it"
             } else {
-              // A constructed placeholder (`TextFieldState()`, issue #5067) is the one the table
-              // writes that does not resolve on its own, so its import travels with it — through
-              // the same conflict check every other import here goes through, which is what keeps
-              // two same-named types from silently producing a file Kotlin refuses.
-              // The fourth door a simple name comes in by, and the only one the document does not
-              // choose: this import is the *record's* parameter type. It is reserved on the same
-              // terms as the other three — a type whose simple name is `kotlin` would capture the
-              // qualifier a folded run writes.
-              // A `rememberT()` placeholder names a factory the same way, and imports it on the
-              // same terms; the two are mutually exclusive, so a parameter brings at most one.
+              // A constructed placeholder (`TextFieldState()`) or `rememberT()` factory needs an
+              // import, which goes through the same conflict check — and may not be named `kotlin`,
+              // which folds would capture.
               (ComponentSnippets.constructedTypeOf(parameter)
                   ?: ComponentSnippets.factoryCallableOf(parameter))
                 ?.let {
@@ -1338,26 +1088,16 @@ object ScreenGenerator {
     }
 
     /**
-     * Whether this parameter can take children at all.
-     *
-     * A `@Composable` slot always can. A **scope DSL** — `LazyColumn`'s `content: LazyListScope.()
-     * -> Unit`, which is a receiver lambda and not `@Composable` — can only when the document says
-     * how, because its children are declared through the receiver rather than composed into it.
-     * Without a [SlotItem] there is nothing to write them as, and the honest answer is the refusal
-     * a lazy container got before any of this existed.
+     * Whether this parameter can take children. A `@Composable` slot always can; a scope DSL
+     * (`LazyListScope.() -> Unit`) only with a [SlotItem] saying how to declare them.
      */
     private fun fillable(parameter: TargetParameter, item: SlotItem?): Boolean =
       parameter.composableSlot || (item != null && parameter.scopeDslReceiver != null)
 
     /**
-     * The call each of a DSL slot's children is wrapped in — `item`, `item(key = "a")` — or null
-     * having recorded why this one cannot be written.
-     *
-     * The scope check is the whole point. `item` is a member of `LazyListScope` supplied by the
-     * lambda's receiver, so it is never imported and resolves only inside a slot that composes
-     * under exactly that type; a document claiming it about a `ColumnScope` slot would otherwise
-     * emit an unresolved reference the generator had already called compilable. The same argument
-     * [ChainLink.receiverScopeFqn] makes for a scoped modifier, one level out.
+     * The call each DSL-slot child is wrapped in (`item`, `item(key = "a")`), or null having
+     * recorded why not. `item` is a receiver member, never imported, so it is valid only in a slot
+     * whose receiver is exactly that scope type.
      */
     private fun slotItem(
       item: SlotItem,
@@ -1380,25 +1120,8 @@ object ScreenGenerator {
     }
 
     /**
-     * The Kotlin expression for [value] as an argument to [parameter], or null having recorded why
-     * it does not fit.
-     *
-     * Two rules, because [ScreenValue] has two halves. A literal is checked by *rendering it
-     * against the parameter's type*, so `Whole(1)` is an `Int` for an `Int` parameter and a `Long`
-     * for a `Long` one — the parameter decides, which is what lets one document value serve either.
-     * A [ScreenValue.Reference], [ScreenValue.Construct] or [ScreenValue.Chain] is checked the
-     * other way round: it renders once, on its own terms, and its claimed type must equal the
-     * parameter's.
-     *
-     * Both compare the **qualified** type, so a `com.example.String` property is rejected rather
-     * than handed a string literal — the trap the call-site generator was caught by twice.
-     */
-    /**
-     * A handler, as a lambda assigning declared state.
-     *
-     * The parameter must be a zero-argument function type. A handler on `onValueChange: (String) ->
-     * Unit` would need a parameter list this generator has no name for, and emitting `{ … }` there
-     * compiles only by accident of the argument being ignored.
+     * A handler, as a lambda assigning declared state. The parameter must be a zero-argument
+     * function type; anything else would need parameters this generator has no names for.
      */
     fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? =
       insideLambda {
@@ -1411,27 +1134,21 @@ object ScreenGenerator {
       owner: String,
     ): String? {
       val where = "`$owner`.`${parameter.name}`"
-      // A composable slot is not an event callback, however much its type looks like one. The
-      // `@Composable` lives in `composableSlot` rather than in `type`, so `content: @Composable ()
-      // -> Unit` reads as `() -> Unit` and satisfies every shape check below. Compose then runs the
-      // body while composing rather than when anything happens, so a `Toggle` bound here flips its
-      // state on every composition and invalidates the scope that just wrote it — a screen that
-      // recomposes forever, from a document the generator called valid.
+      // A composable slot is not an event callback even though `content: @Composable () -> Unit`
+      // reads as `() -> Unit`; a `Toggle` bound there would flip on every composition and recompose
+      // forever.
       if (parameter.composableSlot) {
         reasons += "$where is a composable slot rather than an event callback"
         return null
       }
-      // Zero arguments, not merely "a bare lambda fits". `acceptsBareLambda` is the slot question
-      // and answers true for `(String) -> Unit`, because children placed in a slot may ignore its
-      // receiver. A handler may not: `onValueChange` exists to deliver the new value, and a
-      // generated body that ignores it compiles and silently drops what the control reported.
+      // Zero arguments, not merely "a bare lambda fits": a handler that ignores `onValueChange`'s
+      // value compiles and silently drops what the control reported.
       if (!ComponentSnippets.acceptsZeroArgLambda(parameter.type)) {
         reasons += "$where is `${parameter.type}`, which a generated handler cannot satisfy"
         return null
       }
       if (actions.isEmpty()) {
-        // An empty handler is a button that looks live and is not. The document meant something by
-        // binding it, and an empty lambda is the one reading that hides the mistake.
+        // An empty handler is a button that looks live and is not.
         reasons += "$where binds a handler with no actions"
         return null
       }
@@ -1467,12 +1184,8 @@ object ScreenGenerator {
                   "declared as a ${declared.typeFqn}"
               return null
             }
-            // An event callback is not a composable scope. A reference, a construct or a chain
-            // can name a composable read — `MaterialTheme.colorScheme.primary` is the documented
-            // example — and Kotlin rejects one inside an `onClick`. The preamble hoists such an
-            // expression to a binding because it has a composable scope to hoist into; a handler
-            // is emitted inside the tree and has nowhere to put one, so this refuses instead of
-            // returning `Emitted` for source that does not compile.
+            // Handlers are emitted inside the tree with no composable scope to hoist into, so a
+            // reference, construct or chain (which may be a composable read) is refused here.
             if (
               action.value is ScreenValue.Reference ||
                 action.value is ScreenValue.Construct ||
@@ -1483,8 +1196,7 @@ object ScreenGenerator {
                   "handler cannot evaluate — an event callback is not a composable scope"
               return null
             }
-            // Literals carry no type of their own, so they are checked the way an argument is —
-            // by rendering against the declared type rather than by comparing a claim.
+            // Literals carry no type, so they are checked by rendering against the declared type.
             val rendered =
               argument(
                 action.value,
@@ -1544,8 +1256,8 @@ object ScreenGenerator {
       val variable = allocateLocal("screenRow")
       val fields = repetition.fields.entries.toList()
       val parameters = fields.mapIndexed { index, (_, type) -> "val field$index: $type" }
-      // Evaluate initializers before entering the template's scope. Nested loops can forward a
-      // value from their enclosing row without accidentally reading their own not-yet-bound row.
+      // Evaluate initializers before entering the template's scope, so nested loops read the
+      // enclosing row.
       val rows =
         repetition.rows.mapIndexed { rowIndex, row ->
           if (row.keys != repetition.fields.keys) {
@@ -1579,12 +1291,9 @@ object ScreenGenerator {
     }
 
     /**
-     * A read of a slot lambda's parameter, checked against the type the record declares for it.
-     *
-     * A qualified or generic declaration must match the claimed type exactly. An unqualified one —
-     * a record spells slot lambda types as written, `PaddingValues` — can only be matched by simple
-     * name, and only when the claim is a plain class name too: comparing the text after the last
-     * dot of `Map<String, a.B>` would read the nested argument instead of the type.
+     * A read of a slot lambda's parameter, checked against the record's declared type. Qualified or
+     * generic types must match exactly; an unqualified one matches by simple name only against a
+     * plain class-name claim.
      */
     private fun slotParameterRead(value: ScreenValue.SlotParameterRead, where: String): String? {
       val binding = slotParameterScope[value.key]
@@ -1627,8 +1336,7 @@ object ScreenGenerator {
       val selection = requireNotNull(node.selection)
       val pad = INDENT.repeat(depth)
       val inner = INDENT.repeat(depth + 1)
-      // Walk every branch, including unreachable or malformed ones, so diagnostics never hide
-      // broken components behind the currently selected state. `when` introduces no receiver.
+      // Walk every branch so diagnostics don't hide broken components behind the selected state.
       val branches =
         node.slots.mapValues { (_, children) ->
           children.joinToString("\n") { node(it, depth + 2) }
@@ -1706,9 +1414,8 @@ object ScreenGenerator {
               return@map "$inner// invalid case"
             }
             val match = argument(value, parameter, "selection `$slot`")
-            // Kotlin primitive equality considers signed zero equal. Float narrowing can also make
-            // two different input decimals equal; compare the actual spellings emitted by
-            // argument().
+            // Primitive equality treats signed zeros as equal and float narrowing can merge
+            // decimals, so compare the emitted spellings.
             val key =
               when (match) {
                 "-0.0",
@@ -1728,12 +1435,8 @@ object ScreenGenerator {
     }
 
     /**
-     * A state read, as the `.value` of the declared property.
-     *
-     * `.value` rather than a `by` delegate, because `by` needs `getValue` and `setValue` imported
-     * and this generator's rule is that nothing it emits can be shadowed by the package it lands
-     * in. Two more imports are two more chances of the conflict the import check already refuses,
-     * bought for a spelling nobody reads twice in generated code.
+     * A state read, as `.value` of the declared property — not a `by` delegate, which would need
+     * `getValue`/`setValue` imports that the package could shadow.
      */
     fun stateRead(value: ScreenValue.StateRead, where: String): String? {
       val declared = visibleState[value.variable]
@@ -1769,23 +1472,9 @@ object ScreenGenerator {
     /**
      * `{ 0.4f }` for a parameter that takes a zero-argument lambda, or null having said why not.
      *
-     * Two things are checked and neither is optional. The parameter has to actually take a bare
-     * zero-argument lambda, and the body has to fit what that lambda returns.
-     *
-     * The first is asked of the **classifier**, not of the rendered spelling: `kotlin.Function0`
-     * means no value parameters and no receiver, because Kotlin records an extension function type
-     * as a `Function1` whose first argument is the receiver. So `(Int) -> Float` and `Float.() ->
-     * Float` are both `Function1` and both refused, and `{ 0.4f }` never lands on a lambda that was
-     * handed something it ignores.
-     *
-     * `ComponentSnippets.acceptsZeroArgLambda` answers a neighbouring question and is deliberately
-     * not reused: it requires `-> Unit`, because it exists to decide whether an *event handler* can
-     * be written, and a value-returning lambda is the case it is built to reject.
-     *
-     * The body is checked by [argument] against a parameter standing for the return type, so a
-     * lambda's result gets the identical literal rules an argument does: the `Int` range check, the
-     * `Float` narrowing, the refusal of `NaN`. Restating them here is how two spellings of one rule
-     * start disagreeing.
+     * Checked on the classifier: only `kotlin.Function0` qualifies (`(Int) -> Float` and `Float.()
+     * -> Float` are both `Function1`). Not `acceptsZeroArgLambda`, which requires `-> Unit`. The
+     * body is checked by [argument] against the return type, so literal rules aren't restated.
      */
     private fun lambda(
       value: ScreenValue.Lambda,
@@ -1805,9 +1494,7 @@ object ScreenGenerator {
           "$where is `${parameter.type}`, which a `{ … }` returning a value does not satisfy"
         return null
       }
-      // A parameter that stands for the lambda's RESULT, so the body is checked as an argument to
-      // it. `hasDefault` is irrelevant to a value that is present, and the name is only ever read
-      // back out in a refusal, where the parameter it came from is the useful thing to name.
+      // A parameter standing for the lambda's result, so the body is checked as an argument to it.
       val body =
         argument(
           value.result,
@@ -1819,6 +1506,14 @@ object ScreenGenerator {
       return "{ $body }"
     }
 
+    /**
+     * The Kotlin expression for [value] as an argument to [parameter], or null having recorded why.
+     *
+     * A literal is rendered against the parameter's type (`Whole(1)` is an `Int` or a `Long` as the
+     * parameter decides). A [ScreenValue.Reference], [ScreenValue.Construct] or [ScreenValue.Chain]
+     * renders on its own terms and its claimed type must equal the parameter's. Both compare the
+     * qualified type, so `com.example.String` is not handed a string literal.
+     */
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
@@ -1840,10 +1535,8 @@ object ScreenGenerator {
         }
         return rendered
       }
-      // `string` refuses an over-long value by *recording* the reason, so the count is read either
-      // side of the render: a null literal that already explained itself must not draw the generic
-      // "is not a String" on top of it, and comparing message text instead would silence the
-      // second of two identical parameters on two nodes.
+      // `string` records its own reason for an over-long value, so compare counts to avoid a
+      // second, generic "is not a String" on top of it.
       val before = reasons.size
       val literal =
         when (value) {
@@ -1852,8 +1545,7 @@ object ScreenGenerator {
           is ScreenValue.Whole ->
             when (type) {
               "kotlin.Int" ->
-                // `toInt()` wraps silently: 2147483648 would be emitted as -2147483648, which
-                // compiles and is not the number anyone entered.
+                // `toInt()` wraps silently.
                 if (value.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong())
                   value.value.toString()
                 else null
@@ -1861,15 +1553,13 @@ object ScreenGenerator {
               else -> null
             }
           is ScreenValue.Fractional32 ->
-            // Its own spelling, so it fits `Float` and nothing else — a `Double` parameter handed
-            // one would compile as `1f` only by widening, which is the coercion this vocabulary
-            // exists to avoid.
+            // Its own spelling, so it fits `Float` only; widening into `Double` is the coercion to
+            // avoid.
             if (type == "kotlin.Float" && value.value.isFinite()) floatLiteral(value.value)
             else null
           is ScreenValue.Fractional ->
             when {
-              // Neither `NaN` nor `Infinity` is a Kotlin literal, so both would emit source the
-              // compiler rejects.
+              // Neither `NaN` nor `Infinity` is a Kotlin literal.
               !value.value.isFinite() -> null
               type == "kotlin.Float" -> {
                 // The same narrowing rule as `Int`, which the first pass missed one type down: a
@@ -1883,11 +1573,10 @@ object ScreenGenerator {
               type == "kotlin.Double" -> value.value.toString()
               else -> null
             }
-          // A lambda returning a constant. Held to the parameter's *return* type rather than to
-          // its `kotlin.Function0` classifier, which every zero-argument function type shares.
+          // Held to the parameter's *return* type; every zero-argument function type is
+          // `kotlin.Function0`.
           is ScreenValue.Lambda -> lambda(value, parameter, owner)
           is ScreenValue.ActionLambda -> lambda(value.actions, parameter, owner)
-          // Every case with a claimed type left through the branch above.
           else -> null
         }
       if (literal == null && reasons.size == before) {
@@ -1897,28 +1586,19 @@ object ScreenGenerator {
     }
 
     /**
-     * [value] rendered on its own terms — no parameter to lean on — or null having said why.
-     *
-     * This is the rule for every **nested** position (a constructor argument, a chain receiver),
-     * where there is no declared type to render against. A literal therefore gets one fixed
-     * spelling: a whole number is an `Int` when it fits and a `Long` otherwise, and a fraction is
-     * always a `Double`. That is a real restriction — `Dp` takes a `Float`, so `Dp(16.0)` does not
-     * compile and a projection wanting `16.dp` writes the idiomatic [ScreenValue.Chain] instead.
-     * Documented rather than papered over: a rule a projection can read beats a coercion it cannot
-     * predict.
+     * [value] rendered on its own terms, for nested positions with no declared type (a constructor
+     * argument, a chain receiver), or null having said why. A whole number is an `Int` when it fits
+     * and a `Long` otherwise, and a fraction is always a `Double` — so `Dp(16.0)` doesn't compile
+     * and a projection writes `16.dp` as a [ScreenValue.Chain] instead.
      */
     fun expression(value: ScreenValue, where: String, depth: Int): String? {
-      // A document arrives over the wire and nothing on that path bounds how deeply a value nests.
-      // Recursion here is depth-first over attacker-shaped data, so the cap is a refusal rather
-      // than a `StackOverflowError` thrown out of a generator that promised a `Result`.
+      // Documents are wire data with unbounded nesting; cap depth with a refusal, not a stack
+      // overflow.
       if (depth > MAX_VALUE_DEPTH) {
         reasons += "$where nests values more than $MAX_VALUE_DEPTH deep"
         return null
       }
-      // Collected for every nesting level, not just the outermost, because a construct's argument
-      // is as capable of naming a gated API as the construct itself. Unioned into the same two
-      // sets a component's markers go into, so the wrapper carries one `@OptIn` of each mechanism
-      // however many places asked for it.
+      // Collected at every nesting level: a construct's argument can name a gated API too.
       markers(value.requiredOptIns, optIns, where)
       markers(value.androidxOptIns, androidxOptIns, where)
       return when (value) {
@@ -1933,23 +1613,19 @@ object ScreenGenerator {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
-        // The one nested fraction that is not a `Double`, which is the whole reason this kind
-        // exists — see `ScreenValue.Fractional32`.
+        // The one nested fraction that is not a `Double` — see `ScreenValue.Fractional32`.
         is ScreenValue.Fractional32 ->
           if (value.value.isFinite()) floatLiteral(value.value)
           else {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
-        // Nested, there is no declared type to check the body against — the same trade every
-        // literal makes here — so the body takes the one fixed spelling its kind has. That is what
-        // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
-        // whole number always is.
+        // Nested, the body takes its kind's fixed spelling (`rememberCarouselState { 5 }` is an
+        // `Int`).
         is ScreenValue.Lambda ->
           insideLambda { expression(value.result, where, depth + 1) }?.let { "{ $it }" }
-        // Like other nested expressions, the enclosing callable has no discovered signature
-        // here. This validates the actions and emits a body without authored parameters; the
-        // compiler still checks the enclosing factory/modifier overload.
+        // No discovered signature here: validate the actions and let the compiler check the
+        // enclosing call.
         is ScreenValue.ActionLambda ->
           lambda(
             value.actions,
@@ -1970,8 +1646,7 @@ object ScreenGenerator {
         is ScreenValue.Construct -> {
           val callable = importedName(value.callableFqn, where) ?: return null
           val argb = (value.positional.singleOrNull() as? ScreenValue.Whole)?.value
-          // `Color(0xFF1A73E8)`, the ARGB spelling colours are read in, rather than the decimal
-          // `Color(4279923688L)` that means the same bits.
+          // `Color(0xFF1A73E8)`, the ARGB spelling colours are read in.
           if (
             value.callableFqn == COLOR &&
               value.named.isEmpty() &&
@@ -1989,27 +1664,20 @@ object ScreenGenerator {
             return null
           }
           val rendered = expression(value.receiver, where, depth + 1) ?: return null
-          // `-1.dp` is `-(1.dp)`, not `(-1).dp`: Kotlin binds the selector tighter than unary
-          // minus. Verified with the compiler — `-1.toString()` is rejected outright, because
-          // there is no `unaryMinus` on `String`. For a receiver whose result *does* have one the
-          // failure is worse than a compile error: it silently applies the extension to the
-          // positive value and negates afterwards.
+          // `-1.dp` is `-(1.dp)`: the selector binds tighter than unary minus, which would silently
+          // negate after applying the extension.
           val receiver = if (rendered.startsWith("-")) "($rendered)" else rendered
-          // A builder rather than `buildString`, because a member link may replace everything
-          // written so far with the local it was hoisted into.
+          // A builder, because a member link may replace everything written so far with its hoisted
+          // local.
           val chain = StringBuilder(receiver)
           with(chain) {
             for ((index, link) in value.links.withIndex()) {
-              // The **whole** callable, not just the simple name it ends in. Validating only the
-              // last segment let `foo..padding` through: `padding` is a fine name, so the link
-              // was accepted and imported as `foo.``.padding` — an empty backticked segment, in a
-              // file this generator had already called compilable.
+              // Validate the whole callable, not just its last segment (`foo..padding` must be
+              // refused).
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
-              // A member of the receiver's own type — `directive.maxHorizontalPartitions`,
-              // `directive.copy(…)`. The package guard above has held the declaring classifier to
-              // `expressionPackages`, and `memberLink` makes the compiler hold the receiver to that
-              // classifier. See `ChainLink.member`.
+              // A member of the receiver's own type (`directive.copy(…)`); `memberLink` makes the
+              // compiler hold the receiver to the guarded classifier. See `ChainLink.member`.
               if (link.member) {
                 val written =
                   memberLink(
@@ -2024,9 +1692,8 @@ object ScreenGenerator {
                 append(written)
                 continue
               }
-              // A member extension of the slot's receiver. Not imported — the receiver supplies it
-              // — and legal only where that receiver is actually in scope, which is what makes
-              // `Modifier.weight` expressible without guessing. See `ChainLink.receiverScopeFqn`.
+              // A member extension of the slot's receiver: not imported, and legal only where that
+              // receiver is in scope (`Modifier.weight`). See `ChainLink.receiverScopeFqn`.
               val scope = link.receiverScopeFqn
               if (scope != null) {
                 if (slotScope != scope) {
@@ -2050,18 +1717,10 @@ object ScreenGenerator {
                 }
                 continue
               }
-              // A chain link is *imported* and called by its simple name, so it has to be a
-              // top-level declaration. `RowScope.weight` is not: it is a member extension of the
-              // scope, supplied by an implicit receiver, and neither
-              // `import …layout.RowScope.weight` nor a package-level `…layout.weight` resolves.
-              // Emitted anyway it produces a file that fails on the import line.
-              //
-              // The qualifier's case is the evidence available here. Kotlin packages are lower
-              // case and classifiers are capitalised by universal convention, so a capitalised
-              // penultimate segment names a classifier and therefore a member. That is a
-              // convention rather than a rule — a top-level callable in a package with a
-              // capitalised segment is legal and would be refused — and refusing the legal
-              // oddity beats emitting the common one broken.
+              // A chain link is imported by simple name, so it must be top-level; `RowScope.weight`
+              // is a member extension and won't import. A capitalised penultimate segment is taken
+              // as a classifier — a convention, so a legal oddity is refused rather than the common
+              // case emitted broken.
               if (
                 link.callableFqn
                   .substringBeforeLast('.')
@@ -2076,15 +1735,13 @@ object ScreenGenerator {
                 return null
               }
               if (simple in RESERVED_BY_THE_WRAPPER) {
-                // The third door a simple name comes in by, refused for the reason the other two
-                // are: a `kotlin` here captures the qualifier `foldRepeats` writes.
+                // A `kotlin` import would capture the qualifier `foldRepeats` writes.
                 reasons +=
                   "$where imports `$simple`, which the generated file spends on its own scaffolding"
                 return null
               }
               if (!link.property && simple == screenName) {
-                // An extension imported under the screen's own name is shadowed by the function
-                // being generated, so the chain would call the screen — or fail to resolve.
+                // The generated function would shadow an import of the screen's own name.
                 reasons += "$where imports `$simple`, which is the screen's own name"
                 return null
               }
@@ -2111,33 +1768,21 @@ object ScreenGenerator {
     }
 
     /**
-     * The chain so far, [written], with a [ChainLink.member] link applied to it — or null having
-     * said why it cannot be.
+     * The chain so far, [written], with a [ChainLink.member] link applied, or null having said why.
      *
-     * The claim that `Owner` declares the member is what the package guard was applied to, and a
-     * plain `written.name` would not hold the document to it: this generator cannot type the
-     * receiver, so `androidx.compose.Fake.delete` on an expression that is really a `java.io.File`
-     * would pass the guard and emit a `.delete()` that resolves to `File.delete()`. So the receiver
-     * is written where the **compiler** checks its type, the way a person would write it:
+     * This generator cannot type the receiver, so a plain `written.name` would let a claimed owner
+     * pass the package guard while resolving to some other type's member. Instead the receiver is
+     * written where the compiler checks its type:
      * ```
      * val paneScaffoldDirective: PaneScaffoldDirective = calculatePaneScaffoldDirective(…)
      * SupportingPaneScaffold(…, value = …(paneScaffoldDirective.maxHorizontalPartitions))
      * ```
+     * declared above the node (see [Block]), or inline as `written.let<Owner, _> { it.name }` where
+     * no block exists. A generic `Owner` fails to compile, which is the safe direction.
      *
-     * declared immediately above the node, in its own block (see [Block]). Where there is no block
-     * to declare it in — a state initializer, or inside a value lambda, whose body runs later — the
-     * same check is written inline as `written.let<Owner, _> { it.name }`. Either way the file only
-     * compiles when the receiver is an `Owner`, and then the name can only resolve to `Owner`'s
-     * member (or an override of it). A generic `Owner` is written without its type arguments and so
-     * fails to compile: a refusal the compiler makes, which is the safe direction to be wrong in.
-     *
-     * Three more claims are checked here rather than trusted. The link's qualifier has to name a
-     * classifier — the capitalised segment the non-member path refuses — since that is what `Owner`
-     * is. It cannot also claim a slot scope, which is the other way a link avoids its import. And a
-     * first link needs an **explicit** value receiver: a bare classifier reference such as the
-     * `Modifier` a modifier chain starts from is a type's companion, not an instance of it. Only
-     * the first link is asked, because any later one's receiver is the value the links before it
-     * produced; [receiver] is null for those.
+     * Also checked: the qualifier names a classifier, the link doesn't also claim a slot scope, and
+     * a first link has an explicit value [receiver] (a bare `Modifier` is a companion, not an
+     * instance).
      */
     private fun memberLink(
       link: ChainLink,
@@ -2203,17 +1848,9 @@ object ScreenGenerator {
      * Accepts each `@RequiresOptIn` marker that can be written as a qualified name, refusing the
      * rest.
      *
-     * A marker reaches the file as annotation source through `markerReference`, which only
-     * keyword-escapes. That was safe while every marker came from `ComponentRecord` — discovery
-     * read those off a class file — and stopped being safe the moment a [ScreenValue] could carry
-     * its own, because a `ScreenDocument` is wire data. A marker holding a backtick and a newline
-     * closes the generated `@OptIn(…)` and opens a top-level declaration: arbitrary code in the
-     * file **without naming anything `expressionPackages` would have checked**.
-     *
-     * The shape check alone, deliberately. A marker is an inert type reference inside an annotation
-     * and executes nothing, so restricting *which* markers may be named would refuse a project's
-     * own experimental annotation for no safety gained. What has to hold is that it cannot stop
-     * being a name.
+     * Markers can now come from wire data via [ScreenValue], and `markerReference` only
+     * keyword-escapes, so a backtick or newline could inject code. Only the shape is checked: a
+     * marker is an inert type reference, so restricting which ones may be named would gain nothing.
      */
     private fun markers(names: List<String>, into: MutableSet<String>, where: String) {
       for (name in names) {
@@ -2234,52 +1871,30 @@ object ScreenGenerator {
     }
 
     /**
-     * A name **imported** and written the way a person writes it, or null having said why not.
+     * A name imported and written the way a person writes it, or null having said why not.
      *
-     * The rule this replaces qualified every reference and construct in place —
-     * `androidx.compose.ui.Modifier.size(24.dp)`, `androidx.compose.ui.Alignment.Start` — and
-     * imported neither. `ScreenDocument` gave the reason and the reason was real but narrower than
-     * the cost: an import can be shadowed by a same-named declaration in the package the caller
-     * chose for the generated file, and a qualified path cannot.
+     * Importing risks shadowing by a declaration in the caller's package, but conflicting imports
+     * are refused file-wide and a shadowed import fails loudly at the import line, so readability
+     * wins.
      *
-     * Three things were already true when that was written, and together they make the shadowing
-     * case small enough to trade away. Conflicting imports are refused for the whole file, so two
-     * roots claiming one simple name cannot silently pick one. `simplyImportable` already withholds
-     * a simple name two component records both want. And an import shadowed by the caller's own
-     * declaration fails **at the import line**, loudly, rather than resolving to the wrong thing —
-     * which keeps the generator's promise that its output compiles or it refuses.
-     *
-     * What was traded away for that is every generated file: `Modifier` and `MaterialTheme` appear
-     * once per node, so the qualification was paid on every line and read like nothing anybody
-     * writes. The one thing this cannot check is the caller's own package, because the generator is
-     * writing into it rather than reading it.
-     *
-     * **What gets imported is the qualifier a reader expects to see.** A top-level declaration
-     * imports itself — `RoundedCornerShape`, `Color`, `Modifier`. A member of an object imports its
-     * **owner**, so `CardDefaults.cardColors(…)` keeps the `CardDefaults` a person would write
-     * instead of collapsing to a bare `cardColors(…)`. The two are told apart by the qualifier's
-     * case, exactly as a chain link tells a member extension from a top-level one: Kotlin packages
-     * are lower case and classifiers are capitalised by universal convention.
+     * A top-level declaration imports itself (`Color`, `Modifier`); an object member imports its
+     * owner, so `CardDefaults.cardColors(…)` keeps its qualifier. The two are told apart by the
+     * qualifier's case, as for chain links.
      */
     private fun importedName(fqn: String, where: String): String? {
       qualifiedName(fqn, where) ?: return null
       val owner = fqn.substringBeforeLast('.')
-      // A capitalised penultimate segment names a classifier, so the declaration is a member of it
-      // and the classifier is what imports. Same convention, same caveat, as the chain-link check.
+      // A capitalised penultimate segment names a classifier, which is what imports.
       val memberOfClassifier = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
       val imported = if (memberOfClassifier) owner else fqn
       val simple = imported.substringAfterLast('.')
       if (simple in RESERVED_BY_THE_WRAPPER) {
-        // Written qualified instead, which is the answer a component in this position already gets
-        // and the one this function replaced for every value. Not a refusal: a document that names
-        // `kotlin` is legal and generated fine before folding existed, and refusing it here would
-        // turn a spelling choice inside one `repeat` into a document the generator will not write.
-        // Nothing is imported, so the qualifier a folded run writes still means the package.
+        // Written qualified instead (not refused), so a folded run's `kotlin.` still means the
+        // package.
         return qualifiedName(fqn, where)
       }
       if (simple == screenName || simple in allocatedNames) {
-        // The generated function shadows an import of its own name, so the expression would name
-        // the screen rather than the declaration. The chain-link path refuses this already.
+        // The generated function would shadow an import of its own name.
         reasons += "$where imports `$simple`, which is the screen's own name"
         return null
       }
@@ -2293,35 +1908,18 @@ object ScreenGenerator {
     /** A dotted path, each segment escaped, or null having said why. */
     private fun qualifiedName(fqn: String, where: String): String? {
       val segments = fqn.split('.')
-      // A **qualifier is required**, not just a writable name. Every path this validates is either
-      // emitted fully qualified with no import (a reference, a construct) or imported by its full
-      // name (a chain link), and a single segment can be neither: it names a declaration in the
-      // default package, which a file in a named package can neither import nor refer to. Left
-      // unchecked, `Construct("Color", …)` emitted a bare `Color(…)` into `package
-      // generated.screen`
-      // and this returned `Emitted` for it.
-      //
-      // Shape before trust, deliberately: a malformed name is malformed whatever vocabulary is
-      // declared, and "this is not a qualified name" is the more actionable of the two answers.
+      // A qualifier is required: a single segment names the default package, which a file in a
+      // named package can't reference. Shape is checked before trust since it's the more actionable
+      // error.
       if (!isQualifiedName(fqn)) {
         reasons += "$where refers to `$fqn`, which is not a qualified Kotlin name"
         return null
       }
-      // **The trust boundary.** Everything else in this file asks whether a name can be *written*;
-      // this asks whether it may be *called*, and the two are not the same question once a
-      // document arrives over the wire.
-      //
-      // `Construct` emits a fully-qualified call with the arguments the document supplies, so a
-      // spelling-only check admits any accessible JVM method:
-      // `Files.readString(Path.of("/etc/passwd"))` is a well-formed qualified call whose claimed
-      // type is `kotlin.String`, matches a `String` parameter, and generates without complaint. A
-      // host that then compiles and renders the screen — which is the point of generating it —
-      // has executed it.
-      //
-      // So a caller declares the vocabulary its projection is allowed to name, and the default is
-      // **empty**: a caller who never thought about this gets refusals rather than arbitrary code.
-      // A prefix matches the package itself or a name under it, never a longer sibling package,
-      // which is why the `.` is required rather than a bare `startsWith`.
+      // SECURITY: the trust boundary. `Construct` emits a qualified call with document-supplied
+      // arguments, so a spelling-only check would admit e.g.
+      // `Files.readString(Path.of("/etc/passwd"))`, which a host rendering the screen would
+      // execute. Callers declare allowed packages; the default is empty. The `.` keeps a prefix
+      // from matching a longer sibling package.
       if (expressionPackages.none { fqn == it || fqn.startsWith("$it.") }) {
         reasons +=
           "$where names `$fqn`, which is outside the packages this screen may call " +
@@ -2333,10 +1931,8 @@ object ScreenGenerator {
 
     /** A string literal, or null when it is too long to be one. */
     private fun string(value: String, where: String): String? {
-      // A JVM constant-pool string is length-prefixed with an unsigned short, so a value over 65535
-      // modified-UTF-8 bytes cannot be a literal at all — the backend fails late, on a file this
-      // generator has already called compilable. Nothing bounds a pasted document value, so it is
-      // measured and refused rather than assumed small.
+      // A JVM constant-pool string is limited to 65535 modified-UTF-8 bytes; larger values would
+      // fail late in the backend.
       val length = modifiedUtf8Length(value)
       if (length > MAX_CONSTANT_POOL_STRING) {
         reasons +=
@@ -2349,38 +1945,15 @@ object ScreenGenerator {
   }
 
   /**
-   * A slot's already-generated children, with runs of identical siblings written as one `repeat`.
+   * A slot's generated children, with runs of identical siblings written as one `repeat`.
    *
-   * A builder's document has no loop in it, so a twelve-cell contribution row is twelve nodes —
-   * that is the only thing such a document can say, and the canvas draws exactly what is there.
-   * Emitting it back as twelve identical `Surface(…)` calls is faithful and unreadable, and a
-   * screen nobody can read is a poor answer for a generator whose output is meant to be handed to a
-   * person and kept.
+   * Builder documents have no loops, so a twelve-cell row is twelve nodes. Folding joins children
+   * that generated byte-identical text, so it changes only the spelling; `repeat` is inline, so
+   * composition is unchanged. Not applied to [SlotItem] slots, where child identity matters.
    *
-   * The fold is how the same composition is *spelled*, never what it is. It joins children that
-   * generated **byte-identical text**, so the run emits the calls it replaced, in the same order,
-   * in the same scope, with the same arguments; `repeat` is `inline`, so the body is composed in
-   * the caller's scope exactly as the separate calls were. Comparing the generated text rather than
-   * the [ScreenNode]s is what makes that true regardless of anything [node] does on the way —
-   * whatever two children print the same is interchangeable by construction.
-   *
-   * Not applied to a slot filled through a [SlotItem]. `item { … }` is where child identity has
-   * consequences a reader cannot see from the text, and the trade there is not obviously worth it.
-   *
-   * Written `kotlin.repeat(n) { _ -> … }`, and both halves of that are the point: `repeat` is a
-   * name like any other and so is the `it` it would bind. A document may legally declare state
-   * called either, a catalog may export a component simply imported under either name, and a
-   * value's `Reference`, `Construct` or `Chain` may import one while this very slot is being
-   * rendered. Any of those would silently change what a folded child's calls and reads resolve to —
-   * a local `val repeat` capturing the call, the lambda's implicit `Int` shadowing an `it`.
-   *
-   * A precomputed guard cannot see the last of those, because imports accumulate as nodes are
-   * emitted. So the fold does not ask what is in scope: it writes a form nothing in the body can
-   * capture. The one name left to protect is the `kotlin` root, which joins `androidx` in the
-   * shadowing check every state declaration already passes.
-   *
-   * [MINIMUM_FOLDED_RUN] is where the pattern starts being the point: two of anything is a pair a
-   * reader takes in at a glance, and folding it costs two lines to save one.
+   * Written `kotlin.repeat(n) { _ -> … }` so nothing in the body (state, imports accumulating
+   * during emission) can capture `repeat` or an implicit `it`. Only the `kotlin` root needs
+   * protecting. Runs shorter than [MINIMUM_FOLDED_RUN] aren't worth folding.
    */
   private fun foldRepeats(children: List<String>, indent: String): String {
     val out = StringBuilder()
@@ -2389,10 +1962,8 @@ object ScreenGenerator {
       var end = index + 1
       while (end < children.size && children[end] == children[index]) end++
       if (out.isNotEmpty()) out.append("\n")
-      // Whichever fold covers more siblings, and the `repeat` on a tie. A run of identical children
-      // followed by one that differs in a literal is *both* — three `repeat`s and a call, or one
-      // list of eight — and the list is the better reading of it as well as the shorter: the values
-      // are what differ, so the values are what a reader should see.
+      // Whichever fold covers more siblings, the `repeat` on a tie: when values differ, a list
+      // shows them.
       val varying = varyingRun(children, index)?.takeIf { it.end > end }
       if (varying == null && end - index >= MINIMUM_FOLDED_RUN) {
         val run = end - index
@@ -2430,64 +2001,35 @@ object ScreenGenerator {
   }
 
   /**
-   * A run of siblings that generated the same text but for one literal, or null for anything else.
+   * A run of siblings that generated the same text but for one literal, or null.
    *
-   * The sibling case above it is a contribution graph whose cells are the same colour. A real one
-   * has cells of *different* colours, and its twelve nodes then generate twelve calls that differ
-   * in eight hex digits — which is the shape a reader most wants written as a list, and the shape
-   * the identical-run fold cannot touch. So the varying literal becomes the list and everything
-   * around it becomes the body:
+   * Folds e.g. differently-coloured cells into:
    * ```
    * kotlin.collections.listOf(0xFFEBEDF0, 0xFF9BE9A8, 0xFF40C463).forEach { value ->
    *     Surface(color = Color(value), …)
    * }
    * ```
-   *
-   * What makes that sound is the same thing that makes the identical fold sound — the generated
-   * text — but read one level finer. The children share a prefix and a suffix character for
-   * character, the piece between them is a **whole literal** in each of them, and substituting the
-   * loop's parameter for that piece rebuilds each child exactly. Everything else is refused rather
-   * than reasoned about:
-   *
-   * - the varying piece must sit between delimiters, so the prefix is trimmed back to the last of
-   *   `(`, `,`, `=`, `[` or a space and the suffix must begin at one of `)`, `,`, `]` or a space. A
-   *   common prefix that ends inside a token — `Text(text = "a` for `"a1"` and `"a2"` — is not a
-   *   place a value can be spliced into, and trimming to the delimiter turns it into one;
-   * - every piece must be a literal of one kind: all string literals, all booleans, or all numbers
-   *   of the same textual length. The length rule is about *type*, not neatness: `listOf(1, 2)` is
-   *   a `List<Int>` and `listOf(0xFFEBEDF0, 2)` a `List<Any>`, and a body written for the first
-   *   would not compile against the second. Same length, same spelling, same inferred type;
-   * - the pieces must differ. All-identical is the run above, folded better as a `repeat`.
-   *
-   * The parameter is named from what the body does not already say: a candidate that appears
-   * nowhere in the text cannot shadow anything the body reads, which is the same question
-   * `kotlin.repeat`'s `_` answers by binding nothing at all.
+   * Sound because substituting the parameter rebuilds each child's text exactly. Requirements: the
+   * varying piece sits between delimiters (never inside a token); all pieces are literals of one
+   * kind and, for numbers, the same textual length so `listOf` infers the same type; and they
+   * differ (else it's an identical run). The parameter name is one the body doesn't already
+   * contain.
    */
   private fun varyingRun(children: List<String>, start: Int): VaryingRun? {
-    // Grown once, then shrunk a little — never searched. The window extends while the children
-    // still share *some* prefix and suffix with the first of them, which is a running minimum and
-    // so costs each child one comparison walk rather than one per candidate window. Only the
-    // window that growth ended at is validated, and only [FOLD_SHRINK_ATTEMPTS] shorter ones after
-    // it, because the reason a maximal window fails is nearly always its last child: the sibling
-    // that ended the run.
-    //
-    // The alternative — asking the full question of every window — is quadratic per starting
-    // child and cubic over a slot, and sibling lists have no bound. A pasted screen is exactly
-    // where a fold is most wanted and least affordable.
+    // Grown once, then shrunk a little — never searched. The window extends while children share
+    // some prefix/suffix with the first (a running minimum, one walk per child); only the final
+    // window and [FOLD_SHRINK_ATTEMPTS] shorter ones are validated. A full search would be
+    // quadratic per start.
     val first = children[start]
     var prefix = first.length
     var suffix = first.length
-    // From the *second* child: the first shares all of itself with itself, which would leave the
-    // suffix nothing to be.
+    // From the second child: the first shares all of itself with itself.
     var end = start + 1
     val limit = minOf(children.size, start + FOLD_MAXIMUM_WINDOW)
     while (end < limit) {
       val text = children[end]
-      // Each as a running minimum against the first child, and independent of the other: a child
-      // *identical* to the first shares all of it in both directions, and limiting the suffix by
-      // the prefix would read that as no room and end the window at the very children a run of
-      // identical siblings followed by a different one is made of. The overlap is settled once, on
-      // the window growth ends at, by [varyingFold].
+      // Prefix and suffix are independent running minima; their overlap is settled by
+      // [varyingFold].
       prefix = commonPrefixLength(first, text, prefix)
       suffix = commonSuffixLength(first, text, suffix)
       if (prefix == 0 || suffix == 0) break
@@ -2522,10 +2064,8 @@ object ScreenGenerator {
     if (values.distinct().size < 2) return null
     if (values.any { it.isEmpty() || '\n' in it }) return null
     if (!values.all(::isFoldableStringLiteral) && !values.all(::isFoldableBooleanLiteral)) {
-      // Same kind *and* same length. Length alone lets `1000` and `1.0f` into one list — an `Int`
-      // and a `Float`, four characters each — which `listOf` reconciles to a supertype the call
-      // they were lifted out of may not accept. The kind says hex, whole or fractional and which
-      // suffix; the length keeps two whole numbers from landing either side of `Int.MAX_VALUE`.
+      // Same kind and same length: length alone admits `1000` and `1.0f` together; kind alone
+      // admits whole numbers either side of `Int.MAX_VALUE`.
       val kinds = values.map(::foldableNumberKind)
       if (kinds.any { it == null } || kinds.distinct().size != 1) return null
       if (values.any { it.length != values.first().length }) return null
@@ -2568,26 +2108,19 @@ object ScreenGenerator {
   private fun isFoldableBooleanLiteral(value: String): Boolean = value == "true" || value == "false"
 
   /**
-   * Which sort of number [value] is, or null for what is not one.
-   *
-   * Two numbers belong in one list when they are written the same way, not merely when they are
-   * both numbers: the kind carries the radix, whether there is a fractional part, and the suffix,
-   * which together are what decides the type Kotlin infers for the list.
+   * Which sort of number [value] is (radix, fractional, suffix — what decides Kotlin's inferred
+   * type), or null for what is not one.
    */
   private fun foldableNumberKind(value: String): String? {
     FOLD_HEX_NUMBER.matchEntire(value)?.let {
-      // A hex literal's own type depends on its magnitude — `0xFF` is an `Int` and `0xFFEBEDF0` a
-      // `Long` — so it is foldable only when it says which it is.
+      // A hex literal's type depends on magnitude, so it is foldable only with an explicit suffix.
       return if (it.groupValues[2].isEmpty()) null else "hex:${it.groupValues[2]}"
     }
     val decimal = FOLD_DECIMAL_NUMBER.matchEntire(value) ?: return null
     val fractional = decimal.groupValues[2].isNotEmpty()
     val suffix = decimal.groupValues[3]
-    // A whole number without a suffix is an `Int` *here* and need not have been one there: it was
-    // written into a call that may take a `Long`, and Kotlin widens neither implicitly. Lifting it
-    // into a list gives the loop variable the literal's own type, so only a literal carrying its
-    // type — `1000L`, `1.0f` — survives being moved. A bare decimal fraction is a `Double`
-    // wherever it stands, so it needs no suffix to keep its type.
+    // An unsuffixed whole number may have been widened to `Long` at its call site; lifting it into
+    // a list would change its type. Bare decimal fractions are `Double` everywhere.
     if (!fractional && suffix.isEmpty()) return null
     return "${if (fractional) "fractional" else "whole"}:$suffix"
   }
@@ -2602,25 +2135,13 @@ object ScreenGenerator {
   )
 
   /**
-   * A `Long` literal.
-   *
-   * `-9223372036854775808L` does not compile: Kotlin reads the positive token first and rejects it
-   * as out of range, then applies unary minus. Verified with the compiler, which is also why
-   * `Int.MIN_VALUE` is left as a plain literal — the same spelling one type down *is* accepted.
-   *
-   * Qualified for the same reason `@kotlin.OptIn` is: the generated file sits in a package the
-   * caller chose, and a same-package declaration named `Long` shadows the default import.
+   * A `Long` literal. `-9223372036854775808L` doesn't compile (the positive token is range-checked
+   * before unary minus). Qualified because the caller's package could declare its own `Long`.
    */
   private fun long(value: Long): String =
     if (value == Long.MIN_VALUE) "kotlin.Long.MIN_VALUE" else "${value}L"
 
-  /**
-   * A Kotlin string literal for [value].
-   *
-   * `$` needs escaping as much as `"` does: a user typing `$name` into a label would otherwise
-   * generate a template referring to a variable that does not exist, which is a compile error
-   * produced by ordinary text.
-   */
+  /** A Kotlin string literal for [value]; `$` is escaped so typed text never becomes a template. */
   private fun quote(value: String): String =
     value
       .replace("\\", "\\\\")
@@ -2632,13 +2153,8 @@ object ScreenGenerator {
       .let { "\"$it\"" }
 
   /**
-   * Whether [name] can be written into generated source as a bare declaration name.
-   *
-   * Three ways it cannot, and all three produce source the compiler rejects rather than a warning:
-   * it is not an identifier at all (`my screen`), it is a hard keyword (`when`), or it is
-   * all-underscore. The last is the least obvious — `_`, `__` and friends match every identifier
-   * regex ever written and Kotlin reserves them, so `fun _()` fails with "Names _, __, ___, … are
-   * reserved in Kotlin".
+   * Whether [name] can be a bare declaration name: an identifier, not a hard keyword, and not
+   * all-underscore (Kotlin reserves `_`, `__`, …).
    */
   private fun isUsableIdentifier(name: String): Boolean =
     ComponentSnippets.isIdentifier(name) &&
@@ -2646,29 +2162,8 @@ object ScreenGenerator {
       name.any { it != '_' }
 
   /**
-   * Whether [name] can be written as a Kotlin name at all — bare or in backticks.
-   *
-   * Wider than [isUsableIdentifier] on purpose, and for a different question. That one asks whether
-   * a *declaration* can be named this; this one asks whether a name a projection handed us can be
-   * *referred to*, and Kotlin's backticks admit far more than its identifier rule does — a real
-   * marker in this repo's own fixtures is spelled `` `Api${'$'}Experimental` ``. So the rule is the
-   * escape's own limit rather than the identifier's: a backticked name may not be empty and may not
-   * contain the characters that would close the quoting or reparse as structure.
-   */
-  /**
-   * Whether [fqn] is a dotted path of writable names carrying a qualifier.
-   *
-   * Shared by the callable check and the marker check so the two cannot drift. Both put a
-   * projection-supplied string into generated source, and a string that is not a name is how one
-   * stops being a reference and starts being syntax.
-   */
-  /**
-   * The local a hoisted initializer is bound to.
-   *
-   * Derived from the state's own name so the generated line reads as belonging to it, and bumped
-   * until it collides with nothing this file already writes — a screen may legitimately declare
-   * both `caption` and `captionInitial`, or call a component named `CaptionInitial`, and the
-   * binding must shadow neither.
+   * The local a hoisted initializer is bound to: derived from the state's name and bumped until it
+   * collides with nothing the file already writes.
    */
   private fun initialBinding(name: String, taken: Set<String>): String {
     var candidate = "${name}Initial"
@@ -2676,30 +2171,30 @@ object ScreenGenerator {
     return ComponentSnippets.escapeIfKeyword(candidate)
   }
 
+  /**
+   * Whether [fqn] is a dotted path of writable names with a qualifier. Shared by the callable and
+   * marker checks so they cannot drift.
+   */
   private fun isQualifiedName(fqn: String): Boolean {
     val segments = fqn.split('.')
     return fqn.isNotEmpty() && segments.size >= 2 && segments.all(::isWritableName)
   }
 
+  /**
+   * Whether [name] can be referred to, bare or backticked. Wider than [isUsableIdentifier]:
+   * backticks admit almost anything except empty names and characters that close the quoting.
+   */
   private fun isWritableName(name: String): Boolean =
     name.isNotEmpty() &&
-      // Reserved, and reserved past backticks. `_`, `__` and friends match every identifier rule
-      // ever written, so nothing else here rejects them, and `receiver._` would be returned as
-      // successfully generated source that does not compile. The same rule `isUsableIdentifier`
-      // applies to a declaration's name applies to a name we merely refer to.
+      // Reserved even in backticks: `receiver._` doesn't compile.
       name.any { it != '_' } &&
       name.none { it in FORBIDDEN_IN_A_NAME }
 
   private val FORBIDDEN_IN_A_NAME = ".;:\\/[]<>`\n\r".toSet()
 
   /**
-   * An opt-in marker, spelled for source.
-   *
-   * The name arrives already in source notation — the producer rebuilds a nested marker's name from
-   * its nesting chain, because `$` is a nesting separator in a binary name and an ordinary
-   * character inside a backticked one, and only the chain tells them apart. All that is left here
-   * is keyword escaping, since a marker under `com.`when`` is spelled without backticks anywhere it
-   * is recorded.
+   * An opt-in marker, spelled for source. The producer already rebuilt nested names into source
+   * notation, so only keyword escaping is left.
    */
   private fun markerReference(marker: String): String =
     ComponentSnippets.escapeCallableIfKeyword(marker)
@@ -2719,10 +2214,8 @@ object ScreenGenerator {
   private fun Float.isNegativeZero(): Boolean = this == 0f && 1f / this < 0f
 
   /**
-   * The bytes [value] occupies as a JVM constant-pool string.
-   *
-   * Modified UTF-8, not UTF-8: `NUL` is two bytes rather than one, and a supplementary character is
-   * six (both halves of the surrogate pair encoded separately) rather than four.
+   * The bytes [value] occupies as a JVM constant-pool string: modified UTF-8, where `NUL` is two
+   * bytes and a supplementary character six.
    */
   private fun modifiedUtf8Length(value: String): Int = value.sumOf { c ->
     when {
@@ -2734,31 +2227,16 @@ object ScreenGenerator {
 
   private const val MAX_CONSTANT_POOL_STRING = 65535
 
-  /**
-   * How deeply one argument's value may nest.
-   *
-   * Sixteen is far past anything a builder produces — `Modifier.padding(PaddingValues(16.dp))` is
-   * three — and far short of what overflows a stack. The number is not the point; having one is.
-   */
+  /** How deeply one argument's value may nest; far past real use, far short of a stack overflow. */
   private const val MAX_VALUE_DEPTH = 16
 
   /**
-   * Simple names the generated file has already spent on its own scaffolding.
+   * Simple names the generated file already spends on its own scaffolding.
    *
-   * The wrapper always imports `androidx.compose.runtime.Composable`, so a catalog component that
-   * happens to be called `Composable` would be imported alongside it and `Composable()` would be
-   * ambiguous between the two. Such a component is called fully qualified instead — the same answer
-   * the screen's own name and a two-package collision already get.
-   *
-   * `kotlin` is spent by [foldRepeats], which writes `kotlin.repeat(n)` precisely so that no
-   * declaration in the body can capture the call. A declaration imported under that simple name
-   * would capture the *qualifier* instead and leave `repeat` unresolved, so nothing is imported
-   * under it: a component and a value's reference or construct are written qualified instead, while
-   * a chain link and a constructed placeholder — neither of which can be called without its import
-   * — are refused by name. Those are the four ways a simple name enters this file. A state
-   * declaration is the fifth shadowing surface and is not an import, so it turns the fold off
-   * rather than being answered here. The matching state name is refused by the root-shadowing
-   * check, which already carries `androidx` for the same reason.
+   * `Composable` is always imported. `kotlin` is spent by [foldRepeats]'s `kotlin.repeat`, so
+   * nothing is imported under it: components and value references are written qualified, while
+   * chain links and constructed placeholders (which need their import) are refused. A state named
+   * `kotlin` turns folding off instead.
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable", "kotlin")
 
@@ -2768,11 +2246,8 @@ object ScreenGenerator {
   private const val PREVIEW_SIMPLE_NAME = "Preview"
 
   /**
-   * The platform's own reference-size multipreview, from the same tooling artifact as `@Preview`.
-   *
-   * Named rather than expanded into a list of `@Preview(device = …)` lines: the set of reference
-   * devices is androidx's to change, and a copy of it here would be the copy that disagrees with
-   * the IDE.
+   * The platform's reference-size multipreview. Named rather than expanded so the device set stays
+   * androidx's to maintain.
    */
   private const val PREVIEW_SCREEN_SIZES_ANNOTATION =
     "androidx.compose.ui.tooling.preview.PreviewScreenSizes"
@@ -2792,26 +2267,14 @@ object ScreenGenerator {
     "$screenName$DEVICES_SIMPLE_NAME$PREVIEW_SIMPLE_NAME"
 
   /**
-   * A language tag this generator is willing to put inside a string literal.
-   *
-   * Letters, digits and separators only. `@Preview(locale = …)` takes a tag such as `en-US`, and
-   * anything outside this shape is either not a tag or is trying to be something other than a tag —
-   * a quote or a newline would close the literal and continue in code. Escaping it would also work
-   * and is what [ScreenValue.Text] does for values a designer typed; a locale is not typed prose,
-   * so a wrong one is worth naming rather than smuggling through as an escaped string that no
-   * Android runtime will resolve anyway.
+   * A language tag this generator will put inside a string literal: letters, digits and separators,
+   * so a quote or newline can't close the literal. A wrong locale is refused rather than escaped.
    */
   private val LANGUAGE_TAG = Regex("[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*")
 
   /**
-   * A device specifier this generator is willing to put inside a string literal.
-   *
-   * Deliberately a shape check and not a catalog. `@Preview.device` takes both `id:pixel_6` and the
-   * `spec:width=411dp,height=891dp,dpi=420` form, and which ids exist is the *tooling's* question,
-   * answered by whichever Android Studio or render lane resolves the string — a list here would go
-   * stale against it and refuse devices that work. What this can settle is that the value is a
-   * device specifier at all rather than something that closes the literal and continues in code, so
-   * a quote, a backslash or a newline is refused by name.
+   * A device specifier (`id:pixel_6` or `spec:…`) this generator will put inside a string literal.
+   * A shape check, not a catalog — which ids exist is the tooling's question.
    */
   private val DEVICE_SPEC = Regex("[A-Za-z0-9_.:=,%/+-]+")
 
@@ -2820,8 +2283,7 @@ object ScreenGenerator {
     preview.widthDp?.let { if (it <= 0) add("preview widthDp must be positive, not $it") }
     preview.heightDp?.let { if (it <= 0) add("preview heightDp must be positive, not $it") }
     preview.fontScale?.let {
-      // `!(it > 0)` rather than `it <= 0` so a NaN — which loses every comparison — is caught here
-      // instead of reaching the file as `fontScale = NaNf`, which does not compile.
+      // `!(it > 0)` also catches NaN, which would otherwise emit `fontScale = NaNf`.
       if (!(it > 0.0) || it.isInfinite())
         add("preview fontScale must be finite and positive, not $it")
     }
@@ -2834,12 +2296,8 @@ object ScreenGenerator {
   }
 
   /**
-   * The `@Preview` wrapper: a private, zero-argument composable that calls the screen.
-   *
-   * A wrapper rather than the annotation on the screen itself. The screen is the artifact a caller
-   * pastes and then *calls* from their own code; annotating it would make every call site carry a
-   * preview, and a `@Preview` function is expected to take no arguments — a constraint that belongs
-   * to the preview, not to the screen it previews.
+   * The `@Preview` wrapper: a private, zero-argument composable that calls the screen, so the
+   * screen itself stays a plain callable without preview constraints.
    */
   private fun previewFunction(screenName: String, preview: Preview): String {
     val arguments = buildList {
@@ -2857,8 +2315,7 @@ object ScreenGenerator {
       if (arguments.isEmpty()) {
         appendLine("@$PREVIEW_SIMPLE_NAME")
       } else {
-        // One argument per line, always. A design carrying a locale and a uiMode runs well past
-        // 100 columns on one line, and ktfmt is not run over what this emits.
+        // One argument per line: ktfmt is not run over what this emits.
         appendLine("@$PREVIEW_SIMPLE_NAME(")
         arguments.forEach { appendLine("$INDENT$it,") }
         appendLine(")")
@@ -2871,25 +2328,9 @@ object ScreenGenerator {
   }
 
   /**
-   * The `@PreviewScreenSizes` wrapper: the same screen at every reference size.
-   *
-   * It carries none of the design's environment, and that is the point of it being a second
-   * function rather than another annotation on the first. The multipreview supplies each device's
-   * own width, height and density; a `widthDp` beside it would override the very thing being
-   * varied, and a `uiMode` or `fontScale` would quietly apply to all five. The design's own frame,
-   * theme and type scale stay on [previewFunction], where they describe one picture the author
-   * actually approved.
-   */
-  /**
-   * The device fan-out: one `@Preview(device = …)` per id the design named, on one wrapper.
-   *
-   * Stacked annotations rather than a function each, because `@Preview` is repeatable and N
-   * wrappers calling one screen would be N identical bodies differing only in an annotation.
-   *
-   * It carries none of the design's frame, for [screenSizesPreviewFunction]'s reason exactly: the
-   * device supplies its own width, height and density, and a `widthDp` beside it would override the
-   * thing being varied. `name` is the id itself — the generator has no label for a device and
-   * inventing one would be a second catalog — so each picture is identifiable by what asked for it.
+   * The device fan-out: one stacked `@Preview(device = …)` per id the design named, on one wrapper.
+   * Carries none of the design's frame, which would override what is being varied; `name` is the
+   * id.
    */
   private fun devicesPreviewFunction(screenName: String, devices: List<String>): String =
     buildString {
@@ -2905,6 +2346,10 @@ object ScreenGenerator {
       appendLine("}")
     }
 
+  /**
+   * The `@PreviewScreenSizes` wrapper: the same screen at every reference size. Carries none of the
+   * design's environment, which would override the varied dimensions or apply to every device.
+   */
   private fun screenSizesPreviewFunction(screenName: String): String = buildString {
     appendLine("@$PREVIEW_SCREEN_SIZES_SIMPLE_NAME")
     appendLine("@Composable")

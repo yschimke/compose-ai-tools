@@ -28,71 +28,49 @@ import org.gradle.jvm.toolchain.JavaLauncher
 import org.gradle.jvm.toolchain.JavaToolchainService
 
 /**
- * All AGP-touching code lives here, segregated from [ComposePreviewPlugin] so the plugin class
- * stays loadable on classpaths without AGP (functional tests, Compose-Multiplatform-only
- * consumers). Gradle decorates the plugin class at apply time — and decoration resolves referenced
- * classes eagerly. Keeping every `com.android.build.api.*` reference out of
- * [ComposePreviewPlugin]'s bytecode means AGP only gets loaded when this helper's static methods
- * are actually invoked, which happens inside `pluginManager.withPlugin("com.android.application" /
- * "com.android.library")`.
+ * All AGP-touching code, kept out of [ComposePreviewPlugin] so that class stays loadable without
+ * AGP: Gradle's decoration resolves referenced classes eagerly, so AGP is only loaded once these
+ * methods run inside `pluginManager.withPlugin("com.android.*")`.
  */
 internal object AndroidPreviewSupport {
   /**
-   * Output subdirectory (under `build/compose-previews/`) for `kind=LOTTIE` renders on the Android
-   * backend, kept disjoint from the Robolectric `renders/` so the two render tasks don't share an
-   * output directory (overlapping outputs disable Gradle's build cache). Used both as the discovery
-   * `lottieRenderSubdir` (so each Lottie capture's `renderOutput` points here) and as the
-   * `composePreviewRenderLottie` task's output dir.
+   * Output subdirectory for Android `kind=LOTTIE` renders (discovery's `lottieRenderSubdir` and the
+   * `composePreviewRenderLottie` output), disjoint from Robolectric's `renders/` because
+   * overlapping outputs disable the build cache.
    */
   internal const val LOTTIE_RENDER_SUBDIR: String = "lottie-renders"
 
   /**
-   * Output subdirectory (under `build/compose-previews/`) for `kind=SVG` renders on the Android
-   * backend. Same rationale as [LOTTIE_RENDER_SUBDIR]: kept disjoint from the Robolectric
-   * `renders/` so the JVM SVG render (`composePreviewRenderSvg`) and the Robolectric render don't
-   * share an output directory. Used as the discovery `svgRenderSubdir` and as the render task's
-   * output dir.
+   * Output subdirectory for Android `kind=SVG` renders; same rationale as [LOTTIE_RENDER_SUBDIR].
    */
   internal const val SVG_RENDER_SUBDIR: String = "svg-renders"
 
   /**
-   * Module-root directory holding committed app-tour scripts. Each `*.json` inside becomes a
-   * synthetic `kind=APP_TOUR` preview (see `AppTourDiscovery`); the dir is module-rooted (not a
-   * source set) so the specs sit beside the module's other committed preview state and stay visible
-   * without source-set spelunking.
+   * Module-root directory of committed app-tour scripts; each `*.json` becomes a `kind=APP_TOUR`
+   * preview (see `AppTourDiscovery`).
    */
   internal const val TOUR_SPECS_DIR: String = "compose-previews/tours"
 
   /**
-   * Floor version pinned on every plugin-injected `androidx.compose.*` coordinate that doesn't have
-   * its own version source (`ui-test-manifest`, `ui-test-junit4`). Matches the Compose line that
-   * `:renderer-android` compiles against (`compose-bom-compat` 2025.11.01 → Compose 1.9.5); the
-   * renderer's bytecode references `ui-test` entry points at this surface, so injecting the
-   * matching version guarantees the test classpath has methods the renderer calls. Consumers with a
-   * higher Compose BOM in their `implementation` still get their aligned version through Gradle's
-   * max-version conflict resolution. Bump in lockstep with `compose-bom-compat` in
-   * `gradle/libs.versions.toml`.
+   * Floor version for injected `androidx.compose.*` coordinates with no other version source
+   * (`ui-test-manifest`, `ui-test-junit4`), matching the Compose `:renderer-android` compiles
+   * against. Higher consumer versions win via conflict resolution. Bump with `compose-bom-compat`
+   * in `gradle/libs.versions.toml`.
    */
   internal const val RENDERER_COMPOSE_FLOOR_VERSION: String = "1.9.5"
 
   /**
-   * Path segments that identify `androidx.xr.scenecore`'s on-device spatial backend artifacts on a
-   * resolved classpath — the bare module-cache dir (`scenecore-spatial-core`) or an
-   * artifact-with-version file/dir (`scenecore-spatial-core-1.0.0-alpha16[.aar]`,
-   * `…-alpha16-runtime.jar`, the extracted-AAR transform dir). Anchored so consumer directories
-   * that merely contain the prefix (e.g. a checkout named `scenecore-spatial-demo`) never match.
-   * See the `composePreviewRenderXr` classpath filter for why these must stay off the render
-   * classpath.
+   * Path segments identifying `androidx.xr.scenecore`'s on-device spatial backend artifacts
+   * (module-cache dir, versioned file, or extracted-AAR dir). Anchored so directories merely
+   * sharing the prefix don't match. See the `composePreviewRenderXr` classpath filter.
    */
   internal val SCENECORE_SPATIAL_BACKEND_SEGMENT: Regex =
     Regex("scenecore-spatial-(core|rendering)([-.][0-9].*)?")
 
   /**
-   * Platform token for the auto-provisioned `xr-composite` cache, matching the Release asset matrix
-   * in `.github/workflows/release.yml` and the CLI writer's `XrCompositeProvision.platformToken`.
-   * `null` for any OS/arch combination that has no published asset (e.g. linux-arm64) — the cache
-   * tier then contributes nothing and the task falls through to its graceful skip. Kept pure
-   * (params rather than `System.getProperty`) so it's unit-testable.
+   * Platform token of the auto-provisioned `xr-composite` cache, matching the release asset matrix
+   * and the CLI's `XrCompositeProvision.platformToken`. `null` when no asset is published (e.g.
+   * linux-arm64). Parameters rather than `System.getProperty` for testability.
    */
   internal fun xrCompositePlatformToken(osName: String, osArch: String): String? {
     val os = osName.lowercase()
@@ -107,19 +85,14 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Config-time provider for the shared auto-provision cache binary path:
-   * `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/xr-composite`
-   * (`xr-composite.exe` on Windows). This is the WELL-KNOWN PATH CONVENTION shared with the CLI
-   * writer ([XrCompositeProvision.cacheBinary] in `:cli`) — the two derive the identical path from
-   * the same release [version] + host platform, which is how the CLI's fetch and the plugin's read
-   * meet without a runtime handshake. [version] is the pinned `xr-composite` release
-   * ([XrFakeVersions.composite]) on both sides, NOT each side's own version. Built entirely from
-   * injected providers so it stays IP- and configuration-cache-safe (no `project.*` /
-   * `System.getProperty` at task-action time).
+   * Provider for the shared cache binary
+   * `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/xr-composite[.exe]`.
+   * The same path convention as the CLI's `XrCompositeProvision.cacheBinary`, which is how the
+   * CLI's download and the plugin's read meet. [version] is the pinned [XrFakeVersions.composite]
+   * on both sides. Built from injected providers for configuration-cache safety.
    *
-   * Returns an absent provider when the host platform has no published asset, when `user.home`
-   * resolves empty and no `XDG_CACHE_HOME` is set — anything that would make the path meaningless —
-   * so the binary chain falls through to the graceful skip.
+   * Absent when the platform has no asset or no cache root resolves, so the task falls through to
+   * its skip.
    */
   internal fun xrCompositeCacheBinaryPath(
     version: String,
@@ -129,8 +102,7 @@ internal object AndroidPreviewSupport {
     osArch: Provider<String>,
   ): Provider<String> {
     val platform = osName.zip(osArch) { n, a -> xrCompositePlatformToken(n, a) ?: "" }
-    // Cache root: XDG_CACHE_HOME if set, else <user.home>/.cache. `orElse("")` keeps the chain
-    // resolvable so we can detect "neither available" and drop out.
+    // `orElse("")` keeps the chain resolvable so "neither available" can be detected.
     val cacheRoot =
       xdgCacheHome.orElse("").zip(userHome.orElse("")) { xdg, home ->
         when {
@@ -156,22 +128,17 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Modules within `androidx.wear.tiles` whose presence in a consumer's declared deps signals "this
-   * project writes Tile previews." When any match, [configure] injects `wear.tiles:tiles-renderer`
-   * into the consumer's variant `implementation` so AGP generates R classes for
-   * protolayout-renderer — the class TilePreviewRenderer reflectively needs at render time. See the
-   * `afterEvaluate` block in [registerAndroidTasks] for the full rationale.
+   * `androidx.wear.tiles` modules that signal Tile previews. When declared, [configure] injects
+   * `tiles-renderer` so AGP generates the protolayout-renderer R classes `TilePreviewRenderer`
+   * needs.
    */
   private val tilesSignalNames =
     setOf("tiles", "tiles-renderer", "tiles-tooling-preview", "tiles-tooling")
 
   /**
-   * `(group, name)` of every artifact whose presence in a module's declared deps marks it as a
-   * "valid preview module" — the plugin registers its tasks and runs discovery only when at least
-   * one matches. Convention-plugin-everywhere setups (e.g. applying `composePreview` to every
-   * Android module) stay silent no-ops on utility modules without any preview surface.
-   *
-   * Group+name match only (no version): cheap, IP-safe, doesn't trigger dependency resolution.
+   * `(group, name)` of artifacts that mark a "preview module"; tasks are registered only when one
+   * is declared, so convention-plugin-everywhere setups stay quiet. Group+name only: no resolution,
+   * IP-safe.
    */
   private val previewArtifactSignals =
     setOf(
@@ -185,15 +152,9 @@ internal object AndroidPreviewSupport {
     )
 
   /**
-   * The Compose Multiplatform module families whose **Android** variants are pure redirectors:
-   * `androidApiElements-published` / `androidRuntimeElements-published` carry no files at all and
-   * exist only to depend on the matching `androidx.compose.*` artifact. Verified against
-   * `org.jetbrains.compose.ui:ui:1.11.1`, whose Android variants list `files: []` and a single
-   * `androidx.compose.ui:ui` dependency.
-   *
-   * Deliberately an explicit list rather than an `org.jetbrains.compose.` prefix:
-   * `org.jetbrains.compose.components` (e.g. `components-resources`) *does* ship Android classes,
-   * so excluding it by prefix would strip real code off the render classpath.
+   * Compose Multiplatform families whose Android variants are pure redirectors (no files, one
+   * `androidx.compose.*` dependency). An explicit list, not an `org.jetbrains.compose.` prefix,
+   * because `org.jetbrains.compose.components` does ship Android classes.
    */
   private val COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS =
     listOf(
@@ -206,13 +167,10 @@ internal object AndroidPreviewSupport {
     )
 
   /**
-   * Adds one of the plugin's own dependencies to an Android render configuration, carrying Rule 3's
-   * exclusions (see [applyRenderGraphResolutionRules]) on that dependency alone. Per dependency
-   * rather than config-wide, because the render configuration extends the consumer's unit-test
-   * classpath and a config-wide exclude would strip a CMP consumer's own redirectors.
-   *
-   * Only when the consumer brings its own Compose ([consumerBringsOwnCompose]): otherwise Rule 3
-   * removes the only Compose there is and empties the render classpath (issue #3484).
+   * Adds one of the plugin's own dependencies to an Android render configuration with Rule 3's
+   * exclusions (see [applyRenderGraphResolutionRules]) on that dependency alone; config-wide
+   * excludes would strip a CMP consumer's own redirectors. Only when [consumerBringsOwnCompose],
+   * else Rule 3 would remove the only Compose there is (#3484).
    */
   internal fun addRenderGraphDependency(
     project: Project,
@@ -231,16 +189,12 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Whether the consumer has Compose of its own on [configuration]'s graph, the precondition for
-   * Rule 3. Read without resolving: either the Compose compiler plugin is applied to this project
-   * (a positive signal only; a root-level `apply false` doesn't count), or an `androidx.compose.*`
-   * / `org.jetbrains.compose.*` dependency is declared in the `extendsFrom` hierarchy.
+   * Whether the consumer has its own Compose on [configuration]'s graph (Rule 3's precondition),
+   * without resolving: the Compose compiler plugin is applied here, or an `androidx.compose.*` /
+   * `org.jetbrains.compose.*` dependency is declared in the hierarchy.
    *
-   * Dependencies the plugin itself injected ([addPluginDependency]) are skipped by identity:
-   * counting our own `ui` / `foundation` floor pins made a tile-only consumer look Compose-capable,
-   * and the renderer then failed to link against the 1.9.5 floor. A consumer declaring exactly the
-   * coordinate and version we inject collapses into ours and reads as Compose-less, which is the
-   * safe direction.
+   * Plugin-injected dependencies ([addPluginDependency]) are skipped by identity, otherwise our
+   * floor pins made Compose-less consumers look Compose-capable.
    */
   internal fun consumerBringsOwnCompose(project: Project, configuration: Configuration?): Boolean {
     if (COMPOSE_COMPILER_PLUGIN_IDS.any(project.plugins::hasPlugin)) return true
@@ -267,10 +221,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Adds a dependency the PLUGIN contributes (as opposed to one the consumer declared) and records
-   * it so [consumerBringsOwnCompose] can tell the two apart. Use this for every
-   * `androidx.compose.*` / `org.jetbrains.compose.*` coordinate the plugin injects; anything else
-   * is optional, since the probe only ever looks at Compose groups.
+   * Adds a plugin-contributed dependency and records it for [consumerBringsOwnCompose]. Required
+   * for every injected Compose coordinate.
    */
   internal fun addPluginDependency(
     project: Project,
@@ -283,8 +235,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Identity set of the dependencies [addPluginDependency] contributed, kept in the project's extra
-   * properties so it is project-scoped and never aliases an equal consumer dependency.
+   * Identity set of [addPluginDependency] contributions, in the project's extra properties so it is
+   * project-scoped and never aliases an equal consumer dependency.
    */
   private fun pluginInjectedDependencies(project: Project): MutableSet<Dependency> {
     val extra = project.extensions.extraProperties
@@ -300,28 +252,22 @@ internal object AndroidPreviewSupport {
   private const val PLUGIN_INJECTED_DEPENDENCIES_KEY = "composeai.pluginInjectedDependencies"
 
   /**
-   * The `androidx.compose` version the render classpath's Compose Multiplatform artifacts resolve
-   * to, which only matters for a Compose-less consumer. Bump with the `compose-multiplatform`
-   * catalog entry, reading the mapping off the published CMP `ui` POM (1.11.1 maps to 1.11.2).
+   * The `androidx.compose` version our CMP artifacts resolve to; only relevant to Compose-less
+   * consumers. Bump with `compose-multiplatform`, reading the mapping off CMP's `ui` POM.
    */
   internal const val RENDERER_COMPOSE_CMP_RUNTIME_VERSION: String = "1.11.2"
 
   /**
-   * Lowest compose-ui-line version the renderer's bytecode links against; a consumer below it is
-   * raised by [applyRenderGraphResolutionRules]. Below it every preview fails with
-   * `NoSuchMethodError: ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()`
-   * (issue #3590), which first appears in 1.10.0.
-   *
-   * Not [RENDERER_COMPOSE_CMP_RUNTIME_VERSION]: over-raising consumers that already rendered fine
-   * drags in newer transitives with their own constraints (issues #3603, #3602). Distinct from
-   * [RENDERER_COMPOSE_FLOOR_VERSION], which only versions injected coordinates that have no other
-   * version source.
+   * Lowest compose-ui version the renderer links against; [applyRenderGraphResolutionRules] raises
+   * consumers below it (else `NoSuchMethodError` on `getApplyOnDeactivatedNodeAssertion`, #3590).
+   * Not [RENDERER_COMPOSE_CMP_RUNTIME_VERSION]: raising further drags in transitives with their own
+   * constraints (#3603, #3602).
    */
   internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String = "1.10.0"
 
   /**
-   * The `androidx.compose.*` groups on the compose-ui version line. Not material / material3, which
-   * version independently (raising them to the floor would name versions that don't exist).
+   * `androidx.compose.*` groups on the compose-ui version line; not material / material3, which
+   * version independently.
    */
   private val COMPOSE_UI_LINE_GROUPS =
     setOf(
@@ -333,8 +279,7 @@ internal object AndroidPreviewSupport {
 
   /**
    * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] if [group] is on the compose-ui line and [version] is
-   * provably below it, else `null`. Dynamic or unparseable versions are left alone, since forcing
-   * one we can't compare could move a consumer backwards.
+   * provably below it, else `null`. Dynamic or unparseable versions are left alone.
    */
   internal fun composeLineFloorUpgrade(group: String, version: String?): String? {
     if (group !in COMPOSE_UI_LINE_GROUPS) return null
@@ -347,8 +292,7 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Whether [candidate] orders below [floor] by dotted numeric components, with a pre-release below
-   * its stable (`1.11.2-alpha01` < `1.11.2`). False for anything non-numeric.
+   * Dotted numeric comparison, with a pre-release below its stable. False for non-numeric input.
    */
   private fun isBelowVersion(candidate: String, floor: String): Boolean {
     val candidateBase = candidate.substringBefore('-')
@@ -365,12 +309,10 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
-   * class in the merged unit-test resource APK and so must match whichever Compose actually runs:
-   * our CMP runtime ([RENDERER_COMPOSE_CMP_RUNTIME_VERSION]) for a Compose-less consumer, else the
-   * link floor the render graph raises a consumer to. Pinning only the render graph would
-   * trade #3590's `NoSuchMethodError` for #3484's `R$id` `NoSuchFieldError`. Consumers above the
-   * floor keep their own line through max-version conflict resolution.
+   * Version for the main-variant `ui` / `foundation` pins, which decide the R class in the merged
+   * unit-test resource APK and so must match the Compose that runs: the CMP runtime for a
+   * Compose-less consumer, else the link floor. Pinning only the render graph would trade #3590 for
+   * #3484's `R$id` `NoSuchFieldError`.
    */
   internal fun mainVariantComposeVersion(
     project: Project,
@@ -393,11 +335,8 @@ internal object AndroidPreviewSupport {
     listOf("org.jetbrains.kotlin.plugin.compose", "androidx.compose.compiler")
 
   /**
-   * Dependency-group roots that mean "this consumer has Compose of its own". Matched exactly or as
-   * a `<prefix>.` parent, so `androidx.compose` (the BOM) counts alongside `androidx.compose.ui`.
-   * Deliberately NOT `androidx.wear.compose`: Wear Compose is additive on top of `androidx.compose`
-   * rather than a substitute for it, so a module that has it also has the real thing and is caught
-   * by these roots anyway.
+   * Group roots meaning "the consumer has its own Compose", matched exactly or as a `<prefix>.`
+   * parent. Not `androidx.wear.compose`, which is additive on top of `androidx.compose`.
    */
   private val COMPOSE_CONSUMER_GROUP_PREFIXES = listOf("androidx.compose", "org.jetbrains.compose")
 
@@ -415,114 +354,42 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Applies the resolution rules every render-graph configuration needs, to [configuration].
+   * Resolution rules shared by `composePreviewAndroidRenderer<Variant>` and
+   * `composePreviewAndroidDaemon<Variant>`. `extendsFrom` inherits dependencies but not
+   * `resolutionStrategy`, so without this the render and daemon JVMs would load different versions.
    *
-   * Shared between `composePreviewAndroidRenderer<Variant>` and
-   * `composePreviewAndroidDaemon<Variant>`. The daemon config `extendsFrom` the renderer config,
-   * but `extendsFrom` inherits *dependencies* only — `resolutionStrategy` is per-configuration — so
-   * without this helper the two graphs would silently drift apart and the render JVM and the daemon
-   * JVM would load different versions of the same module for the same previews.
+   * Rule 1 — KMP-Android sibling substitution. Force `-desktop` / `-jvmstubs` siblings of AndroidX
+   * / CMP modules to `-android`. Kotlin's `platform.type` attribute only disambiguates when the
+   * Kotlin plugin is applied, so AGP-only consumers otherwise get desktop variants (e.g. the KMP
+   * `ViewModelProvider`, which lacks the constructor `lifecycle-viewmodel-savedstate-android` calls
+   * → `NoSuchMethodError`). By coordinate rather than attribute, since forcing `androidJvm` breaks
+   * pure-JVM artifacts. Reuses `requested.version`, and is scoped to families that publish
+   * `-android` siblings.
    *
-   * Rule 1 — KMP-Android sibling substitution. Force AndroidX / Compose Multiplatform KMP-published
-   * modules (`-desktop` / `-jvmstubs` siblings of the same coordinate) to their `-android` sibling.
-   * Kotlin's `org.jetbrains.kotlin.platform.type` attribute (`androidJvm` vs `jvm`) is the official
-   * disambiguator, but its compatibility/disambiguation rules are only registered when the Kotlin
-   * plugin is applied — a consumer that builds Kotlin via AGP alone never picks `androidJvm` and
-   * Gradle then selects the desktop variant. (WearTilesKotlin was that shape when this rule was
-   * written; upstream has since moved its app module to `kotlin.android`, so it no longer is. The
-   * rule stays: it is scoped to coordinates that publish `-android` siblings and is a no-op once
-   * the attribute resolves correctly, and AGP-only consumers still exist.) The desktop
-   * `ViewModelProvider` is the KMP rewrite (only `<init>(ViewModelProviderImpl)` survives — the
-   * legacy `(ViewModelStoreOwner, Factory)` constructor is gone), while
-   * `lifecycle-viewmodel-savedstate-android:2.8.7`'s `getSavedStateHandlesVM` bytecode at line 107
-   * still calls that legacy constructor. Result: `NoSuchMethodError: 'void
-   * ViewModelProvider.<init>(ViewModelStoreOwner, ViewModelProvider$Factory)'` the first time
-   * `createAndroidComposeRule<ComponentActivity>()` launches the host activity, in the
-   * `ReportFragment` → `LifecycleRegistry` → `SavedStateHandleAttacher.onStateChanged` chain.
+   * Rule 2 — Hamcrest. Espresso needs Hamcrest 1.3's 2-arg `AllOf.allOf`, removed in 2.x. The
+   * merged 2.x jar and the split 1.3 jars are different coordinates, so Gradle can't dedup them;
+   * substitute 2.x back to `hamcrest-core:1.3`.
    *
-   * Substitute by coordinate rather than attribute: setting `platform.type=androidJvm` on the
-   * config breaks resolution of pure-JVM artifacts like `kotlin-stdlib` (no `androidJvm` variant)
-   * because the compat rule isn't installed. Scoped to the render-graph configs only — consumer
-   * test runs are untouched. Re-using `requested.version` keeps it future-proof: whatever version
-   * Gradle picks for the `-desktop`/`-jvmstubs` sibling is what gets re-routed to `-android`, so
-   * the rule doesn't pin AndroidX to a stale floor. Scoped to `androidx.*` and
-   * `org.jetbrains.compose.*` because those KMP module families publish matching `-android`
-   * siblings; other JVM artifacts (kotlinx-coroutines, okio, kotlin-stdlib) are genuinely JVM-only
-   * at the published name and must not be rewritten.
-   *
-   * Rule 2 — Hamcrest. Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
-   * compiled against Hamcrest 1.3, whose `Matchers.java:33` invokes
-   * `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — an explicit 2-arg overload that 2.x removed
-   * in favour of varargs. When a consumer adds `org.hamcrest:hamcrest:2.x` (e.g. via
-   * `junit-jupiter:5.x`), the merged 2.x jar coexists with the legacy split `hamcrest-core` /
-   * `hamcrest-library` 1.3 jars — different module coordinates, so Gradle's conflict resolution
-   * doesn't dedup them. Whichever class wins for `AllOf` vs `Matchers` is classpath-order
-   * dependent; in the failing case `Matchers` comes from 1.3 and calls into 2.x's `AllOf` —
-   * `NoSuchMethodError` at `Espresso.<clinit>`, triggered the first time `runUntilIdle` walks
-   * through `EspressoLink`. Substituting the merged artifact back to `hamcrest-core:1.3` on the
-   * render graph settles it. Note this is a *split-family* conflict, the same shape as
-   * `org.bouncycastle:bcprov`/`bcutil`/`bcpkix` — Gradle can only align coordinates it knows are
-   * the same module, so families published under several names need an explicit rule.
-   *
-   * Rule 3 — keep OUR OWN Compose off the consumer's Android render graph. `renderer-android`
-   * declares Compose `compileOnly` (mitigation #1 in `docs/RENDERER_COMPATIBILITY.md`) precisely so
-   * the consumer's versions win at runtime and the classes match the resource APK AGP built from
-   * the consumer's own graph. Its **transitives** bypassed that: `:data-render-compose` does
-   * `api(libs.jetbrains.compose.runtime)` / `api(libs.jetbrains.compose.ui)` at the repo's
-   * `compose-multiplatform` version, and every `data-*` connector re-exports it via
-   * `api(project(":data-render-compose"))`, so `renderer-android` dragged
-   * `org.jetbrains.compose.ui:ui` onto the render graph. That module's Android variant pins
-   * `androidx.compose.ui:ui`, which then won conflict resolution against the consumer's own Compose
-   * — silently upgrading it. The consumer's merged unit-test resource APK is still built from *its*
-   * graph, so the newer Compose bytecode looked up an `R.id` the older resources never declared:
+   * Rule 3 — keep our own Compose off the consumer's render graph. `renderer-android` declares
+   * Compose `compileOnly` so the consumer's versions win, but our `data-*` modules export
+   * `org.jetbrains.compose.ui:ui`, whose Android variant pins a newer `androidx.compose.ui:ui`.
+   * That silently upgraded the consumer's Compose against resources built from its own graph:
    * ```
    * NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
    *   'int androidx_compose_ui_view_compose_view_context'
-   *     at ComposeView_androidKt.getComposeViewContext(ComposeView.android.kt:762)
    * ```
    *
-   * Every preview in the module fails, at `onAttachedToWindow`, before any user code runs
-   * (issue #3447 fallout — `wear-os-samples/ComposeStarter` on Compose 1.10.6 against a repo pinned
-   * to CMP 1.11.1, which resolves `androidx.compose.ui:ui:1.11.2`).
-   *
-   * Excluding costs nothing *for our own dependencies*: those Android variants are
-   * **dependency-only** (no files), so they contribute no classes to an Android classpath — the
-   * `androidx.compose.*` artifacts provide every class our modules were compiled against. Dropping
-   * them from our subtree removes only the version pressure.
-   *
-   * It matters **where** the exclusion is attached. This started life as a configuration-wide
-   * `configuration.exclude(group = …)`, which is not the same rule: the render configuration
-   * `extendsFrom` the consumer's unit-test classpath, so a config-wide exclude strips the
-   * CONSUMER's `org.jetbrains.compose.*` dependencies too. That is invisible for an Android
-   * consumer declaring `androidx.compose.*` directly, and fatal for a pure Compose Multiplatform
-   * consumer whose only path to those classes IS the redirector —
-   * `implementation(compose.material3)` resolves `org.jetbrains.compose.material3:material3`, and
-   * excluding it takes `androidx.compose.material3` with it. Every preview then dies in the
-   * renderer's own `CaptureMaterialTheme`, before user code runs:
-   * ```
-   * NoClassDefFoundError: androidx/compose/material3/ColorScheme
-   *     at ee.schimke.composeai.daemon.RenderEngine…evaluate$lambda$1$0$2(RenderEngine.kt:442)
-   * ```
-   *
-   * (issue #3483 — `yschimke/cadence`, a CMP consumer, lost all 41 previews on 0.19.45; the mixed
-   * `yschimke/meshcore-mobile` lost the 38 whose modules take material3 from the same redirector.)
-   *
-   * So the exclusion is attached to the dependencies WE add, via [addRenderGraphDependency], and
-   * never to the configuration. Our transitive `org.jetbrains.compose.ui:ui` is still dropped —
-   * which is all Rule 3 ever needed — while the consumer's identical coordinate survives on its own
-   * merit.
-   *
-   * This is symmetric, which is the point: the consumer's Compose wins whether it is **older** than
-   * ours (the case above) or **newer** (a consumer on 1.12 is not dragged back to our floor). It
-   * also fixes consumers of already-published artifacts, since the rule lives in the plugin rather
-   * than in the POMs. Scoped to the Android render graph only — the desktop renderer genuinely
-   * needs Compose Multiplatform and is aligned by a different mechanism
-   * (`alignDesktopToolWithConsumerGraph`).
+   * Those CMP Android variants carry no files, so excluding them only removes version pressure. The
+   * exclusion must be attached to the dependencies we add ([addRenderGraphDependency]), never
+   * configuration-wide: the render configuration extends the consumer's classpath, and a CMP
+   * consumer reaches `androidx.compose.material3` only through the redirector (#3483). The
+   * consumer's Compose then wins whether older or newer. Android render graph only; desktop uses
+   * `alignDesktopToolWithConsumerGraph`.
    */
   /**
-   * What the render graph should resolve a requested module to: a [name] to substitute (the
-   * KMP-Android sibling) and/or a [version] to use, plus whether that version came from the
-   * compose-line floor. `null` from [renderGraphTarget] means "leave it alone".
+   * What the render graph resolves a module to: a substitute [name] (the KMP-Android sibling)
+   * and/or a [version], plus whether it came from the compose-line floor. `null` from
+   * [renderGraphTarget] means leave it alone.
    */
   internal class RenderGraphTarget(
     val name: String?,
@@ -531,34 +398,17 @@ internal object AndroidPreviewSupport {
   )
 
   /**
-   * The single decision behind [applyRenderGraphResolutionRules]' first rule, kept pure so the
-   * interaction between its two halves is unit-testable without resolving a configuration.
-   *
-   * Both halves have to be decided together. Gradle hands every `eachDependency` action the
-   * ORIGINAL `requested` selector, so a `useTarget` carrying `requested.version` through undoes a
-   * `useVersion` an earlier action applied. A below-floor KMP sibling
-   * (`androidx.compose.ui:ui-jvmstubs:1.9.5`) hits exactly that: floored to
-   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION], then re-pinned to `ui-android:1.9.5` — the artifact the
-   * floor exists to keep off the graph. So the substitution carries the floored version.
-   *
-   * [floorComposeLine] is `false` under `composePreview.manageDependencies = false`: the floor is
-   * only safe while the main-variant `ui` / `foundation` pins move with it, and the opt-out branch
-   * deliberately leaves those to the consumer.
+   * The decision behind Rule 1 and the compose-line floor, pure for testing. Both halves are
+   * decided together because every `eachDependency` action sees the original `requested`:
+   * substituting with `requested.version` would undo an earlier floor (e.g. `ui-jvmstubs:1.9.5` →
+   * `ui-android:1.9.5`). [floorComposeLine] is `false` under `manageDependencies = false`, since
+   * the floor is only safe while the main-variant pins move with it.
    */
   /**
-   * The configuration error for a consumer whose Compose is below
-   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] on a graph we are not allowed to raise.
-   *
-   * Under `composePreview.manageDependencies = false` the main-variant `ui` / `foundation` pins are
-   * the consumer's to declare, so flooring the render graph alone would put floor-version classes
-   * over their older resources — the #3484 `R$id` `NoSuchFieldError`. Leaving the graph alone
-   * instead means the renderer cannot link against it at all — #3590's `NoSuchMethodError`, on
-   * every preview, with nothing explaining why.
-   *
-   * Both silent outcomes are worse than saying so. [ValidateComposeFloorTask] therefore walks the
-   * resolved render graph at task execution time. It sees Gradle's selected module versions after
-   * platforms, constraints, and conflict resolution have run, including BOM consumers that declare
-   * no versions themselves.
+   * The error for a consumer below [RENDERER_COMPOSE_LINK_FLOOR_VERSION] on a graph we may not
+   * raise (`manageDependencies = false`): flooring alone causes #3484, leaving it causes #3590.
+   * [ValidateComposeFloorTask] checks the resolved graph at execution time, after platforms and
+   * constraints have applied.
    */
   internal fun composeFloorOptOutMessage(module: String, resolved: String): String =
     """
@@ -598,13 +448,7 @@ internal object AndroidPreviewSupport {
     configuration: Configuration,
     floorComposeLine: Boolean = true,
   ) {
-    // ONE rule for both the sibling substitution and the compose-line floor, because
-    // `eachDependency` actions all see the ORIGINAL `requested` selector: a later `useTarget` that
-    // passes `requested.version` through silently undoes an earlier `useVersion`. Split across two
-    // blocks, a below-floor KMP sibling (`androidx.compose.ui:ui-jvmstubs:1.9.5` — the shape the
-    // sibling tests already cover) would be floored to
-    // `$RENDERER_COMPOSE_LINK_FLOOR_VERSION` and then re-pinned to `ui-android:1.9.5`, landing on
-    // exactly the artifact the floor exists to keep off the graph.
+    // One rule for substitution and floor; see [renderGraphTarget].
     configuration.resolutionStrategy.eachDependency {
       val req = requested
       val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
@@ -654,20 +498,14 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Wires [GenerateRobolectricPropertiesTask] inputs from the consumer's configuration. The task
-   * resolves the final `sdk=N` from these via:
-   * 1. `composePreview.sdkVersion = N` — explicit consumer override (validated strictly against
-   *    Robolectric's supported range; out-of-range values fail the task).
-   * 2. `android.compileSdk` — auto-detected from AGP's `finalizeDsl`; clamped to
-   *    [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK] with a build warning when the consumer
-   *    is on a newer compileSdk than Robolectric ships (e.g. `compileSdk = 37` against Robolectric
-   *    4.16.1's API 36 ceiling — Tiles consumers often hit this via transitive minCompileSdk
-   *    requirements).
-   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — fallback when neither is set; AGP normally
-   *    fails the build before reaching this branch, so it's mostly a unit-test guard.
+   * Wires [GenerateRobolectricPropertiesTask] inputs. The task resolves `sdk=N` from:
+   * 1. `composePreview.sdkVersion` — strict; out-of-range fails.
+   * 2. `android.compileSdk` — from `finalizeDsl`, clamped to
+   *    [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK] with a warning.
+   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — fallback, mostly for unit tests.
    *
-   * The decision lives inside the task action (see [GenerateRobolectricPropertiesTask.resolveSdk])
-   * so the clamp warning fires at execution time alongside the file write.
+   * Decided in the task action ([GenerateRobolectricPropertiesTask.resolveSdk]) so the clamp
+   * warning fires at execution time.
    */
   internal fun wireSdkInputs(
     task: GenerateRobolectricPropertiesTask,
@@ -677,17 +515,13 @@ internal object AndroidPreviewSupport {
     task.sdkOverride.set(extensionOverride)
     task.consumerCompileSdk.set(consumerCompileSdk)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
-    // `buildJavaMajor` is wired separately (below, in registerAndroidTasks) to the Gradle build
-    // JVM, with the SDK matrix overriding it to its forked test toolchain.
+    // `buildJavaMajor` is wired separately in registerAndroidTasks.
   }
 
   /**
-   * [kmpAndroidFallback] is run, once, when a `com.android.kotlin.multiplatform.library` module
-   * turns out NOT to want the Robolectric lane — either because `composePreview {
-   * kmpAndroidRobolectric = true }` was never set, or because it was set on a module with no
-   * host-test compilation to render on. It re-routes to the Desktop renderer, which is what such a
-   * module got before this branch existed. Null for classic Android modules, which have no other
-   * lane.
+   * [kmpAndroidFallback] runs once when a KMP-Android module doesn't take the Robolectric lane (not
+   * opted in, or no host-test compilation), re-routing it to Desktop. Null for classic Android
+   * modules.
    */
   fun configure(
     project: Project,
@@ -696,33 +530,22 @@ internal object AndroidPreviewSupport {
   ) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
-    // Captures the consumer's `android.compileSdk` from `finalizeDsl` so the
-    // `composePreviewGenerateRobolectricProperties` task can stamp the matching `sdk=N` into
-    // the generated `robolectric.properties`. Robolectric must run at the same
-    // API level the consumer's `apk-for-local-test.ap_` was compiled against;
-    // otherwise `PackageParser` rejects the manifest with "Requires newer sdk
-    // version" at sandbox bootstrap (issue #1248).
+    // Robolectric must run at the API level `apk-for-local-test.ap_` was compiled against, or
+    // `PackageParser` rejects the manifest (#1248).
     val consumerCompileSdk = project.objects.property(Int::class.java)
-    // The module's `defaultConfig.minSdk`, captured here so the doctor task can compare it against
-    // transitive libraries' declared minSdk (the `process<Variant>UnitTestManifest` merge conflict
-    // CompatRules.checkLibraryMinSdk surfaces). Left unset when the consumer omits minSdk.
+    // For the doctor's library-minSdk check (`CompatRules.checkLibraryMinSdk`); unset when omitted.
     val consumerMinSdk = project.objects.property(Int::class.java)
 
     androidComponents.finalizeDsl { android: Any ->
-      // Two DSL surfaces reach here. `com.android.application` / `com.android.library` hand over a
-      // [CommonExtension]; `com.android.kotlin.multiplatform.library` hands over a
-      // [KotlinMultiplatformAndroidLibraryExtension], which is NOT one — it carries `compileSdk`
-      // and `minSdk` directly instead of behind `defaultConfig`, and replaces
-      // `testOptions.unitTests` with `withHostTest { }`.
+      // `com.android.application` / `library` give a [CommonExtension]; KMP-Android gives a
+      // [KotlinMultiplatformAndroidLibraryExtension], which has `compileSdk` / `minSdk` directly
+      // and `withHostTest { }` instead of `testOptions.unitTests`.
       when (android) {
         is CommonExtension -> {
           if (extension.enabled.get()) {
             android.testOptions.unitTests.isIncludeAndroidResources = true
           }
-          // `compileSdk` is nullable on `CommonExtension` (consumers can omit it,
-          // though AGP usually fails the build later). Only propagate when set so
-          // [GenerateRobolectricPropertiesTask.sdk]'s `.orElse(...)` chain falls
-          // through to the user override / floor when AGP couldn't supply one.
+          // Only propagate when set so the task's `.orElse(...)` chain can fall through.
           val resolvedCompileSdk: Int? = android.compileSdk
           if (resolvedCompileSdk != null) {
             consumerCompileSdk.set(resolvedCompileSdk)
@@ -733,27 +556,14 @@ internal object AndroidPreviewSupport {
           }
         }
         is KotlinMultiplatformAndroidLibraryExtension -> {
-          // KMP-Android leaves android resources OFF by default — `variant.sources.res` is null
-          // and AGP generates no R classes for the variant's AAR dependencies. Robolectric needs
-          // them: `ViewTreeLifecycleOwner.get` reads `androidx.lifecycle.runtime.R.id`, so the
-          // first `setContent` dies with `NoClassDefFoundError: androidx/lifecycle/runtime/R$id`.
-          // Unlike `withHostTest { }` this is a plain property AGP is happy to see set here.
-          //
-          // Gated on the OPT-IN, not on `enabled`. `finalizeDsl` runs on every KMP-Android module
-          // the plugin is applied to, including the ones that keep the Desktop lane — and turning
-          // resource processing on there would be a real behaviour change (an existing
-          // `src/androidMain/res` tree starts being processed and packaged) for a module that
-          // never asked for the lane that needs it. The promise is that upgrading the plugin
-          // changes nothing for them.
+          // KMP-Android leaves android resources off, so no R classes are generated and Robolectric
+          // fails on `androidx/lifecycle/runtime/R$id`. Gated on the opt-in so modules keeping the
+          // Desktop lane see no behaviour change.
           if (extension.enabled.get() && extension.kmpAndroidRobolectric.get()) {
             android.androidResources.enable = true
           }
-          // NOT the `isIncludeAndroidResources` flip the classic branch does. `withHostTest { }`
-          // both CREATES the host-test compilation and configures it, and AGP rejects a second
-          // call with "Android host tests have already been enabled" — so the plugin cannot turn
-          // the flag on for a consumer who wrote a bare `withHostTest { }`, and calling it on a
-          // consumer who wrote none would conjure a compilation they never asked for. The
-          // consumer owns that line; [routeKmpAndroid] says so when it matters.
+          // No `isIncludeAndroidResources` flip here: `withHostTest { }` can only be called once,
+          // so the consumer owns it; [routeKmpAndroid] reports when it matters.
           val resolvedCompileSdk: Int? = android.compileSdk
           if (resolvedCompileSdk != null) {
             consumerCompileSdk.set(resolvedCompileSdk)
@@ -766,24 +576,13 @@ internal object AndroidPreviewSupport {
       }
     }
 
-    // Stage-2 BTA configurations + afterEvaluate dep wiring must happen at apply / config
-    // time, BEFORE the `tasks.register {…}` block in `registerAndroidTasks` runs (which
-    // executes at task-realization time, by which point Gradle's MutationGuard rejects
-    // `Project.afterEvaluate(...)` calls — same constraint the desktop path hit).
-    // Idempotent: `maybeCreate` no-ops if the configurations already exist from a
-    // sibling CMP applyToDesktop call.
+    // Must run at apply time: by task realization, Gradle's MutationGuard rejects `afterEvaluate`.
+    // Idempotent via `maybeCreate`.
     ComposePreviewTasks.setupBtaConfigurationsFor(project, extension)
 
-    // Register render tasks once, for the variant the user picked. onVariants
-    // fires after AGP has created variant-specific configurations like
-    // `${variant}UnitTestRuntimeClasspath`, so everything we need is there.
-    // Fetching `sdkComponents.bootClasspath` eagerly (at apply time) forces
-    // AGP to read `compileOptions.targetCompatibility` before it's finalized
-    // and crashes — grab it inside onVariants instead.
-    // `com.android.kotlin.multiplatform.library` publishes ONE variant, named after its main
-    // source set (`androidMain`) rather than a build type — there are no build types. The
-    // `variant` property's `debug` convention can therefore never match it, and there is nothing
-    // to disambiguate, so the single variant is taken as-is unless the consumer named it exactly.
+    // Register render tasks once, for the selected variant, inside onVariants (reading
+    // `bootClasspath` earlier crashes AGP). KMP-Android publishes one variant named after its main
+    // source set (`androidMain`), so it's taken as-is unless named exactly.
     val kmpAndroid = isKmpAndroidModule(project)
     var registered = false
     androidComponents.onVariants(androidComponents.selector().all()) { variant ->
@@ -809,11 +608,7 @@ internal object AndroidPreviewSupport {
         return@onVariants
       }
       registered = true
-      // Snap the extension's variant Property to the resolved variant name so
-      // downstream readers (DiscoverPreviewsTask.variantName,
-      // ComposePreviewModelBuilder.resolveVariant, doctor task) report the
-      // actually-selected name instead of the unresolved target. No-op when
-      // the match was already exact.
+      // Store the resolved name so downstream readers report the actually-selected variant.
       if (variant.name != target) extension.variant.set(variant.name)
       val naming =
         if (kmpAndroid) {
@@ -835,38 +630,18 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Matches an AGP variant name against the target the consumer asked for. Used to gate task
-   * registration in [configure] and to resolve the right `${variant}RuntimeClasspath` in
-   * [ComposePreviewModelBuilder] when a flavored module has no exact match.
+   * Matches an AGP variant name against the requested target:
+   * 1. **Exact match.** A flavored target (`demoDebug`) matches only itself, so `paidDebug` doesn't
+   *    match `minApi23PaidDebug`.
+   * 2. **Build-type suffix.** A bare build type (no uppercase, e.g. `debug`) also matches
+   *    `demoDebug` etc., so the default works on flavored apps (#1546).
    *
-   * Two rules, in order:
-   * 1. **Exact match.** `target=demoDebug` matches `demoDebug` only — explicit `--variant
-   *    demoDebug` pins a specific flavor and any other variant is ignored. Suffix matching is
-   *    skipped for flavored targets so `--variant paidDebug` does NOT silently match
-   *    `minApi23PaidDebug` on a multi-dimension flavored module.
-   * 2. **Build-type suffix match.** A bare build-type target (`debug`, `release`) also matches
-   *    `demoDebug`, `prodDebug`, `uatDebug` — anything whose name ends with the capitalized target.
-   *    Keeps the default `--variant=debug` working on flavored apps (issue #1546) without making
-   *    the consumer add `--variant demoDebug` every run.
-   *
-   * "Bare build-type" is detected as a target containing no uppercase characters — matches AGP's
-   * convention that build types are lowercase identifiers while combined variant names carry an
-   * uppercased segment (`paidDebug`, `minApi23PaidDebug`). If the target itself has an internal
-   * uppercase, it's a flavored variant name and rule 2 is bypassed.
-   *
-   * Rule 2 is intentionally one-directional: a target like `demoDebug` does NOT match a flavorless
-   * `debug` variant. The user picked a flavor and the module doesn't have it, so the module is
-   * silently skipped — same outcome as today.
+   * One-directional: `demoDebug` never matches a flavorless `debug`.
    */
   /**
-   * Whether a KMP-Android module should take the Robolectric lane rather than the Desktop one.
-   *
-   * Two conditions, both required. The consumer has to ask — see
-   * [PreviewExtension.kmpAndroidRobolectric] for why this is opt-in and not inferred — and AGP has
-   * to have a host-test compilation to hang the Android test classpath off, which only
-   * `withHostTest { }` creates. Asking without it is a build-script mistake rather than a state to
-   * render badly in, so it warns and hands back to Desktop instead of failing: the module still
-   * gets whatever previews Desktop can capture.
+   * Whether a KMP-Android module takes the Robolectric lane: the consumer must opt in
+   * ([PreviewExtension.kmpAndroidRobolectric]) and AGP must have a host-test compilation. Opting in
+   * without one warns and falls back to Desktop.
    */
   private fun kmpAndroidWantsRobolectric(
     project: Project,
@@ -881,10 +656,8 @@ internal object AndroidPreviewSupport {
     }
 
   /**
-   * The decision itself, separated from the `Variant` it is read off so it can be pinned by a test
-   * — the "a module that did not opt in keeps the Desktop lane" half is the guarantee that every
-   * existing KMP-Android consumer relies on, and it is not otherwise visible without standing up
-   * AGP. [onMissingHostTest] fires only for the one case that is a build-script mistake.
+   * The decision, separate from `Variant` so it can be tested — notably that non-opted-in modules
+   * keep Desktop. [onMissingHostTest] fires only for the build-script mistake.
    */
   internal fun kmpAndroidLaneDecision(
     optedIn: Boolean,
@@ -905,20 +678,15 @@ internal object AndroidPreviewSupport {
       "through Robolectric. Falling back to the Compose Multiplatform Desktop renderer."
 
   /**
-   * True on a `com.android.kotlin.multiplatform.library` module — AGP 9's replacement for nesting
-   * `com.android.library` inside KMP. Its variant, configuration and task names follow the KMP
-   * target and host-test compilation rather than a build type, which is what [kmpAndroidNaming]
-   * translates.
+   * True on a `com.android.kotlin.multiplatform.library` module, whose names follow the KMP target
+   * and host-test compilation (see [kmpAndroidNaming]).
    */
   internal fun isKmpAndroidModule(project: Project): Boolean =
     project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")
 
   /**
-   * The KMP target behind a KMP-Android variant. The plugin names its variant after the main source
-   * set of the target — target `android` gives `androidMain` — so the target is the name with that
-   * suffix removed. Verified against the configuration it has to address before it is trusted: a
-   * consumer who renames the target keeps the convention, but a future AGP that breaks it should
-   * fall back to the default rather than address a configuration that isn't there.
+   * The KMP target behind a variant (`androidMain` → `android`), verified against an existing
+   * configuration, else the default.
    */
   internal fun kmpAndroidTargetName(project: Project, variantName: String): String {
     val derived = variantName.removeSuffix("Main")
@@ -932,11 +700,9 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * [AndroidVariantNaming] for a KMP-Android variant, with the host-test compilation's own name
-   * taken from the variant rather than assumed. `unitTest` is null until the consumer opts in with
-   * `withHostTest { }`, and the naming carries that through as "no unit-test classpath, no
-   * `test_config.properties`" — a render then still runs, it just has no merged AAR resources,
-   * exactly as on a classic module with `isIncludeAndroidResources` left off.
+   * [AndroidVariantNaming] for a KMP-Android variant. `unitTest` is null until `withHostTest { }`,
+   * meaning no unit-test classpath or `test_config.properties`; renders still run without merged
+   * AAR resources.
    */
   internal fun kmpAndroidNaming(project: Project, variant: Variant): AndroidVariantNaming =
     AndroidVariantNaming.kmpAndroid(
@@ -955,11 +721,9 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Registers `composePreviewDiscoverAndroidResources` for the targeted [variant], gated on
-   * `composePreview.resourcePreviews.enabled`. Wires the task's inputs from the variant's lazy
-   * `sources.res.all` and `artifacts.get(MERGED_MANIFEST)` providers so the task picks up flavour
-   * overrides + manifest-merger output without duplicating AGP's resolution logic. Renderer wiring
-   * lands in a follow-up commit; until then the task writes `resources.json` only.
+   * Registers `composePreviewDiscoverAndroidResources` for [variant] (when
+   * `resourcePreviews.enabled`), wired from the variant's lazy `sources.res.all` and
+   * merged-manifest providers.
    */
   private fun registerAndroidResourcePreviewTasks(
     project: Project,
@@ -996,47 +760,17 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Config-time decision: does this module *potentially* host previewable composables, such that we
-   * should register the renderer tasks?
+   * Config-time gate: could this module host previews? Two IP-safe tiers, no eager resolution:
+   * 1. [hasDirectPreviewDependency] — a preview-tooling coord is declared directly.
+   * 2. [isComposeModule] + [hasAnyProjectDependency] — tooling could arrive transitively
+   *    (`:composeApp -> :shared`, #241 / #1549); [ValidatePreviewToolingPresentTask] verifies
+   *    against the resolved graph at task time.
    *
-   * Two-tier check, both IP-safe and CC-friendly (no eager resolution at config time):
-   * 1. **Direct declared deps** ([hasDirectPreviewDependency]) — a preview-tooling coord is in this
-   *    module's `*Implementation` / `*Api` / `*RuntimeOnly` buckets. Authoritative win.
-   * 2. **Compose plugin applied AND has project deps**
-   *    ([isComposeModule] + [hasAnyProjectDependency]) — the module compiles Compose code and
-   *    declares at least one `project(":...")` dep, so the renderer-required preview-tooling coord
-   *    could arrive transitively (the CMP-Android `:composeApp -> :shared` shape from issues #241
-   *    / #1549). Tier 1 of the gate stays cheap; the actual transitive verification happens at task
-   *    time via [ValidatePreviewToolingPresentTask], which walks `${variant}RuntimeClasspath`'s
-   *    resolved graph through a wired `Provider<ResolvedComponentResult>` (the documented IP-safe,
-   *    CC-safe pattern for "I want the authoritative answer at task time").
+   * The Compose-plugin requirement keeps auto-injected non-Compose modules (e.g. `:core:network`)
+   * from getting Compose test dependencies. Modules declaring `androidx.xr.compose`
+   * ([moduleDeclaresXrCompose]) also pass, so pure-XR modules get zero-config XR rendering.
    *
-   * **Why the Compose-plugin gate.** Auto-inject applies this plugin to *every* AGP module in a
-   * multi-module build (the init script's `withPlugin("com.android.application" /
-   * "com.android.library")` hooks don't filter), including pure utility / network modules that
-   * don't compile Compose at all (e.g. nowinandroid's `:core:network`). Without the Compose-plugin
-   * gate, the project-deps tier would register tasks on those modules — and
-   * [registerAndroidTasks]'s `testImplementation(ui-test-manifest)` / `(ui-test-junit4)` injections
-   * then leak Compose into builds that didn't want it. Requiring the Compose compiler plugin keeps
-   * the tier-2 gate scoped to modules that already compile Compose code and could plausibly host
-   * `@Preview` annotations.
-   *
-   * The previous IP-safe implementation walked sibling project `build.gradle[.kts]` text via a
-   * BuildService — fast, but a heuristic that missed coords contributed by convention plugins.
-   * Switching tier-2 verification to the resolved graph closes that gap: the resolved classpath is
-   * exactly what AGP gives the test JVM, so any coord that would actually be on the renderer's
-   * classpath gets seen.
-   *
-   * **Why XR modules pass.** A module that declares `androidx.xr.compose` (see
-   * [moduleDeclaresXrCompose]) hosts `@XrSubspacePreview` spatial previews even when it declares no
-   * traditional `@Preview` tooling coord — `androidx.xr.compose` is the standalone signal that the
-   * module has XR preview surface, the same way `ui-tooling-preview` is the signal for flat
-   * `@Preview`. Without this tier a pure-XR module would fail the gate, `onVariants` would return
-   * before [registerAndroidTasks], and the `androidx.xr.compose`-driven auto-enable of
-   * `composePreviewRenderXr` would never run — defeating the documented zero-config XR path.
-   *
-   * The `variantName` argument is unused but kept on the public signature for test-fixture
-   * compatibility.
+   * `variantName` is unused, kept for test-fixture compatibility.
    */
   internal fun hasPreviewDependency(
     project: Project,
@@ -1047,27 +781,16 @@ internal object AndroidPreviewSupport {
       (isComposeModule(project) && hasAnyProjectDependency(project))
 
   /**
-   * True when this module applies a Kotlin-Compose-compiler-bearing plugin. Used as the tier-2
-   * sanity check in [hasPreviewDependency] so utility / network modules that auto-inject the plugin
-   * but don't actually compile Compose stay silent (no preview-related dep injection, no preview
-   * tasks registered). The two plugins covered:
-   * - **`org.jetbrains.kotlin.plugin.compose`** — the modern Kotlin 2.x Compose Compiler plugin
-   *   used by AGP modules with Compose UI (and also by Compose Multiplatform modules in
-   *   `kotlin("multiplatform")`-only mode through the same id).
-   * - **`org.jetbrains.compose`** — Compose Multiplatform's umbrella plugin.
-   *
-   * Plugin lookup is via [PluginManager.hasPlugin], which is IP-safe (scoped to the current
-   * project's plugin state).
+   * True when the module applies `org.jetbrains.kotlin.plugin.compose` or `org.jetbrains.compose`;
+   * the tier-2 sanity check in [hasPreviewDependency].
    */
   internal fun isComposeModule(project: Project): Boolean =
     project.pluginManager.hasPlugin("org.jetbrains.kotlin.plugin.compose") ||
       project.pluginManager.hasPlugin("org.jetbrains.compose")
 
   /**
-   * Direct-only variant — declared preview-tooling coord in this module's `*Implementation` /
-   * `*Api` / `*RuntimeOnly` buckets. Used by the doctor task to surface the "pin the dep locally"
-   * soft recommendation even when the gate passed via the project-dep tier of
-   * [hasPreviewDependency].
+   * Direct preview-tooling declaration only; the doctor uses it to recommend pinning the dep
+   * locally when the gate passed via tier 2.
    */
   internal fun hasDirectPreviewDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
@@ -1082,17 +805,9 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when this module declares a dependency on Jetpack XR Compose (`androidx.xr.compose:*`) in
-   * any declarable `*Implementation` / `*Api` / `*RuntimeOnly` bucket.
-   *
-   * Drives auto-enablement of the XR subspace render path so a module's `@XrSubspacePreview`s
-   * render with zero `composePreview { }` configuration — the same declared-dependency-signal
-   * approach the Wear Tiles renderer auto-injection uses. Declarative-only (no classpath
-   * resolution), so it's cheap and IP-safe, mirroring [hasDirectPreviewDependency]. The
-   * `androidx.xr.compose` group is the signal because that artifact is what provides `Subspace` /
-   * `SpatialPanel` — a module with no XR Compose dependency can't host an `@XrSubspacePreview`, and
-   * gating the (minCompileSdk-36, heavyweight) XR `*-testing` fakes on it keeps non-XR consumers
-   * off that classpath.
+   * True when the module declares `androidx.xr.compose:*`. Auto-enables the XR render path;
+   * declarative-only, like [hasDirectPreviewDependency]. Gating on it keeps the heavy
+   * minCompileSdk-36 XR fakes off non-XR classpaths.
    */
   internal fun moduleDeclaresXrCompose(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
@@ -1104,14 +819,9 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when this module declares at least one `project(":...")` dep in any declarable bucket.
-   * IP-safe via [ProjectDependency.getPath] (Gradle 8.11+) — returns the target project's path as a
-   * string without touching the other `Project` object the way the legacy `getDependencyProject()`
-   * does.
-   *
-   * Used as a config-time over-approximation of "could preview tooling reach this module
-   * transitively"; the resolved-graph walk in [ValidatePreviewToolingPresentTask] is what confirms
-   * or rejects at task time.
+   * True when any `project(":...")` dependency is declared. IP-safe via
+   * [ProjectDependency.getPath]. An over-approximation; [ValidatePreviewToolingPresentTask]
+   * confirms at task time.
    */
   internal fun hasAnyProjectDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
@@ -1144,23 +854,15 @@ internal object AndroidPreviewSupport {
     consumerMinSdk: org.gradle.api.provider.Provider<Int>,
     naming: AndroidVariantNaming,
   ) {
-    // Every AGP-derived name goes through [naming]: `com.android.kotlin.multiplatform.library`
-    // names
-    // its configurations and tasks after the KMP target and host-test compilation rather than after
-    // the variant, so `"${'$'}{variantName}RuntimeClasspath"` and friends are wrong there. The two
-    // locals stay for the names that ARE the variant's own — the source-set buckets, task
-    // descriptions and intermediate paths AGP keys by variant in both worlds.
+    // AGP-derived names go through [naming], since KMP-Android names configurations and tasks after
+    // the target and host-test compilation. These locals are for names keyed by the variant in both
+    // worlds.
     val variantName = variant.name
     val capVariant = variantName.cap()
-    // The host-test declarable bucket. `testImplementation` on classic AGP; named after the
-    // host-test compilation on KMP-Android. The elvis is unreachable on the Robolectric lane —
-    // `kmpAndroidWantsRobolectric` refuses a module with no host test — and keeps the classic
-    // default readable rather than making every call site handle a null that cannot arrive.
+    // The host-test bucket; the elvis is unreachable on the Robolectric lane.
     val testImplementationBucket = naming.testImplementation ?: "testImplementation"
-    // AGP's own host-test `Test` task, looked up by name because it is registered later than this
-    // block runs. `""` on a module with no host test: `findByName("")` is null, which every call
-    // site already treats as "no AGP test task", so the classic `?: project.files()` fallbacks
-    // stand unchanged.
+    // AGP's host-test `Test` task, looked up by name since it's registered later. `""` when absent:
+    // `findByName("")` is null, which call sites already treat as "no AGP test task".
     val unitTestTaskName = naming.unitTestTask ?: ""
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
     val artifactType = Attribute.of("artifactType", String::class.java)
@@ -1171,31 +873,16 @@ internal object AndroidPreviewSupport {
         }
       } ?: project.providers.provider { "" }
 
-    // `com.android.compose.screenshot` (Google's alpha Layoutlib-based
-    // screenshot testing plugin) adds its own `screenshotTest` source set
-    // alongside `main` / `test` / `androidTest`. We don't drive its
-    // validate/update tasks — we keep using our Robolectric renderer — but
-    // we DO want to discover and render any `@Preview` functions consumers
-    // put under `src/screenshotTest/`, so modules that already adopted the
-    // Google plugin (e.g. Confetti's `:androidApp`) surface those previews
-    // in the CLI / VS Code grid without duplicating them in `main`.
-    //
-    // Detection is by plugin id rather than the
-    // `android.experimental.enableScreenshotTest` gradle property, because
-    // the property is a global flag while the plugin is applied per-module
-    // — and only the latter actually causes AGP to register
-    // `compile${Cap}ScreenshotTestKotlin` and the
-    // `${variant}ScreenshotTestRuntimeClasspath` configuration we need.
+    // Google's `com.android.compose.screenshot` plugin adds a `screenshotTest` source set; we don't
+    // drive its tasks but do discover and render previews under `src/screenshotTest/`. Detected by
+    // plugin id rather than the global `enableScreenshotTest` property, since only the plugin makes
+    // AGP register the compile task and runtime classpath we need.
     val screenshotTestEnabled = project.pluginManager.hasPlugin("com.android.compose.screenshot")
 
-    // `kotlin("multiplatform") + com.android.library` (issue #1492 / Confetti `:shared` shape):
-    // KGP creates per-target compile tasks like `compileDebugKotlinAndroid` instead of the plain
-    // `compileDebugKotlin` an android-library-only module exposes, and routes class output to
-    // `build/classes/kotlin/<targetName>/<variantName>/` rather than `build/tmp/kotlin-classes/…`.
-    // Both names / paths are added as candidates — whichever exists in the consumer's actual
-    // shape is picked up by `tasks.matching` / DiscoverPreviewsTask's silent skip-missing-dirs
-    // behaviour. The default `androidTarget()` name is "android"; consumers who renamed it
-    // (`androidTarget("foo")`) still need the workaround flagged in the issue.
+    // `kotlin("multiplatform") + com.android.library` (#1492): KGP names compile tasks per target
+    // (`compileDebugKotlinAndroid`) and outputs to `build/classes/kotlin/<target>/<variant>/`. Both
+    // shapes are added as candidates; missing ones are skipped. A renamed `androidTarget("foo")`
+    // still needs the issue's workaround.
     val isKmp = project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
 
     val sourceClassDirs =
@@ -1207,15 +894,11 @@ internal object AndroidPreviewSupport {
         ),
       )
     if (isKmp) {
-      // Both KMP shapes, both named after the TARGET rather than hardcoded to `android`: a
-      // consumer who renamed it (`androidTarget("mobile")`, or the KMP-Android plugin under a
-      // renamed target) compiles into `classes/kotlin/mobile/…`, and the render classpath has to
-      // carry it or `composePreviewRender` cannot load a class discovery already found. Listing
-      // both is safe — [DiscoverPreviewsTask] skips directories that don't exist.
+      // Named after the target, not hardcoded `android`, so renamed targets reach the render
+      // classpath. Non-existent dirs are skipped by [DiscoverPreviewsTask].
       naming.extraClassDirs.forEach { sourceClassDirs.from(project.layout.buildDirectory.dir(it)) }
-      // The `androidTarget()` + `com.android.library` shape (issue #1492) keeps `android` as its
-      // default target name and the variant as its compilation, which `classic` naming does not
-      // carry — add it here so that path is unchanged.
+      // The `androidTarget()` + `com.android.library` shape (#1492), which `classic` naming doesn't
+      // carry.
       if (naming.extraClassDirs.isEmpty()) {
         sourceClassDirs.from(
           project.layout.buildDirectory.dir("classes/kotlin/android/$variantName")
@@ -1241,20 +924,16 @@ internal object AndroidPreviewSupport {
 
     val mainCompileTaskNames =
       if (isKmp)
-        // `compile${'$'}{capVariant}` is the KMP-Android plugin's own name for the single android
-        // compilation (`compileAndroidMain`); the other two are the `androidTarget()` shape.
-        // Matched by name, so the ones that don't exist cost nothing.
+        // `compile$capVariant` is KMP-Android's single compilation; the other two are the
+        // `androidTarget()` shape. Matched by name, so missing ones cost nothing.
         listOf(
           "compile${capVariant}Kotlin",
           "compile${capVariant}KotlinAndroid",
           "compile$capVariant",
         )
       else listOf("compile${capVariant}Kotlin")
-    // Includes the screenshotTest *javac* task: `sourceClassDirs` adds both the Kotlin
-    // (`built_in_kotlinc/…ScreenshotTest/…Kotlin/classes`) and the javac
-    // (`intermediates/javac/${variantName}ScreenshotTest/classes`) outputs to the render classpath,
-    // so consumers must depend on both compile tasks or Gradle's strict validation fails for a
-    // module with Java sources under `src/screenshotTest/java`. Empty-safe via `tasks.matching`.
+    // Include the screenshotTest javac task too: both its Kotlin and javac outputs are on the
+    // render classpath, so strict validation needs both dependencies.
     val screenshotCompileTaskNames =
       if (isKmp)
         listOf(
@@ -1283,30 +962,17 @@ internal object AndroidPreviewSupport {
               include("**/*.java")
             },
       ) {
-        // Lazy `tasks.matching` rather than strict `dependsOn(taskName)` so KMP-Android modules
-        // (where `compileDebugKotlin` doesn't exist — only `compileDebugKotlinAndroid` does)
-        // don't crash whole-project listings at task-graph-build time. See issue #1492.
+        // Lazy `tasks.matching` so modules lacking `compileDebugKotlin` (KMP) don't crash at
+        // task-graph time (#1492).
         dependsOn(project.tasks.matching { it.name in mainCompileTaskNames })
-        // No opt-in-extension wiring on `composePreviewDiscover` — a11y is daemon-only.
-        // Lottie asset discovery: scan the module's Java-resource *source* dirs (the documented
-        // `src/main/resources` convention — classpath-loadable and rendered via the desktop
-        // Compottie path, so no Android/Robolectric Lottie player is needed). Source dirs are used
-        // rather than AGP's `java_res` intermediates because the latter's path is AGP-version- and
-        // module-type-specific; the same source dirs are linked onto the Lottie render task's
-        // classpath (`composePreviewRenderLottie`) so `loadLottieAsset`'s `getResourceAsStream`
-        // resolves the asset at render time. Non-existent dirs resolve to nothing — harmless on
-        // resource-free modules and on classic-AGP modules that only ship `src/main/res`.
+        // Lottie assets from Java-resource source dirs (`src/main/resources`), rendered via desktop
+        // Compottie. Source dirs rather than AGP's version-specific `java_res` intermediates; the
+        // same dirs go on `composePreviewRenderLottie`'s classpath.
         resourceDirs.from(androidLottieResourceDirs(project))
-        // Place Lottie captures in a dir disjoint from `renders/` so the JVM Lottie render task
-        // (`composePreviewRenderLottie`) doesn't share an output directory with the Robolectric
-        // `composePreviewRender` — overlapping task outputs disable Gradle's build cache for both.
+        // Disjoint from `renders/` to keep both render tasks cacheable.
         lottieRenderSubdir.set(LOTTIE_RENDER_SUBDIR)
         svgRenderSubdir.set(SVG_RENDER_SUBDIR)
-        // The variant's merged manifest lets discovery detect a Wear OS module (the
-        // `android.hardware.type.watch` uses-feature) and retarget its frame-less, device-less
-        // component previews to wear density/width instead of the phone default (issue #1985).
-        // It also drives app-level discovery: `<activity>` entries become manifest metadata +
-        // synthetic `kind=ACTIVITY` previews (the launcher activity's render is the hero image).
+        // Lets discovery detect Wear modules (#1985) and drives activity discovery.
         mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
         // Committed tour scripts: each `compose-previews/tours/<name>.json` becomes a synthetic
         // `kind=APP_TOUR` preview whose captures are the tour's steps (launch → click/intent/back).
@@ -1326,9 +992,8 @@ internal object AndroidPreviewSupport {
                 .artifactView { attributes.attribute(artifactType, "android-classes") }
                 .files
             )
-            // Coordinates for the same two views, for the reason given where the main consumer
-            // classpath is wired in [ComposePreviewTasks]: on Android the jar's path names the
-            // module but not its group, so the scan-classpath filter needs the coordinate.
+            // Coordinates too: on Android a jar path names the module but not its group (see
+            // [ComposePreviewTasks]).
             for (attributeValue in listOf("jar", "android-classes")) {
               dependencyJarCoordinates.putAll(
                 stConfig.incoming
@@ -1346,17 +1011,10 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    // Feed the variant's OWN compiled classes into discovery via AGP's scoped-artifact API rather
-    // than relying solely on the hardcoded `sourceClassDirs` directory candidates. The scoped
-    // PROJECT CLASSES artifact is populated regardless of whether Kotlin was compiled by the
-    // standalone Kotlin Gradle Plugin (`compile<Variant>Kotlin` → `build/tmp/kotlin-classes/…`) or
-    // by AGP 9.x built-in Kotlin (`built_in_kotlinc`, whose output never lands in the legacy
-    // directory), so discovery no longer finds 0 previews on built-in-Kotlin modules (issue #1924).
-    // Resolving the artifact also wires the implicit task dependency on whichever task produced the
-    // classes — so `composePreviewDiscover` compiles them first even when no standalone
-    // `compile<Variant>Kotlin` task exists to `dependsOn`. This is additive: `sourceClassDirs`
-    // stays
-    // wired for the KGP layout, and ClassGraph dedupes overlapping class FQNs across the two.
+    // The variant's own classes via AGP's scoped PROJECT CLASSES artifact, which is populated even
+    // under AGP 9 built-in Kotlin, whose output never lands in the legacy directory (#1924). Also
+    // wires the dependency on whichever task produced them. Additive to `sourceClassDirs`;
+    // ClassGraph dedupes.
     variant.artifacts
       .forScope(ScopedArtifacts.Scope.PROJECT)
       .use(discoverTask)
@@ -1366,26 +1024,16 @@ internal object AndroidPreviewSupport {
         DiscoverPreviewsTask::projectClassDirs,
       )
 
-    // `composePreviewCompile` — the daemon-mode save loop calls this instead of
-    // `composePreviewDiscover`
-    // so the recompile (and on-disk `.class` refresh) runs without re-walking the dependency-JAR
-    // classpath through ClassGraph on every keystroke. We deliberately stop at the main compile —
-    // ScreenshotTest sources matter only for `composePreviewDiscover`'s dependency-JAR scan, not
-    // for the
-    // user's edited preview-bearing file.
+    // `composePreviewCompile`: the daemon save loop recompiles without re-walking dependency JARs.
+    // Main compile only.
     ComposePreviewTasks.registerCompileOnlyTask(
       project,
       extension,
       compileTaskNames = mainCompileTaskNames,
     )
 
-    // `composePreviewCheckDebugPreviews` — only meaningful when the Google
-    // screenshot plugin is on the project, so we register conditionally
-    // rather than as a permanent no-op task. See [CheckDebugPreviewsTask]
-    // for the motivation; tl;dr `src/debug/` previews compiled against the
-    // `screenshotTest` dependency closure routinely fail in confusing ways
-    // (compile-time NoSuchSymbol or render-time `.error.json` with no PNG),
-    // and the fix is to move them to `src/screenshotTest/{java,kotlin}/`.
+    // Only when the screenshot plugin is applied. See [CheckDebugPreviewsTask]: `src/debug/`
+    // previews compiled against the `screenshotTest` closure fail confusingly.
     if (screenshotTestEnabled) {
       val debugSrcTree =
         project.fileTree(project.projectDir.resolve("src/debug")) {
@@ -1403,26 +1051,14 @@ internal object AndroidPreviewSupport {
           debugSourceFiles.from(debugSrcTree)
           projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
         }
-      // `finalizedBy` rather than `dependsOn` so discovery itself never
-      // waits on this check, and a check failure (shouldn't happen — the
-      // task only warns) doesn't block downstream render tasks. Runs once
-      // per discover invocation, skipped when no debug sources exist
-      // (`@SkipWhenEmpty` on `debugSourceFiles`).
+      // `finalizedBy` so discovery never waits on this warn-only check.
       discoverTask.configure { finalizedBy(checkDebugTask) }
     }
 
-    // Writes the plugin-side compat findings (CompatRules) to
-    // `build/compose-previews/doctor.json`. The CLI doesn't need this
-    // file (it reads the same data via the ComposePreviewModel Tooling
-    // API), but tools that invoke Gradle tasks rather than BuildActions
-    // — specifically the VS Code extension — do. Same JSON schema as
-    // `compose-preview doctor --json`'s per-module shape, so both
-    // surfaces converge on one contract.
-    // Resolve the runtime classpaths' root components at configuration
-    // time so the task action stays config-cache safe (no `task.project`
-    // access at execution). `findByName` may return null on variants that
-    // don't have a paired unit-test classpath; the task tolerates an
-    // unset Property as "no deps to inspect".
+    // Plugin-side compat findings (CompatRules) to `build/compose-previews/doctor.json`, for
+    // task-driven tools like VS Code; same schema as `compose-preview doctor --json`. Root
+    // components are resolved at configuration time for config-cache safety; a missing unit-test
+    // classpath is tolerated.
     val mainRuntimeRoot =
       project.configurations
         .findByName(naming.runtimeClasspath)
@@ -1435,9 +1071,7 @@ internal object AndroidPreviewSupport {
         ?.incoming
         ?.resolutionResult
         ?.rootComponent
-    // AAR `AndroidManifest.xml`s on the unit-test classpath — resolved lazily so the doctor task
-    // can read each library's declared `minSdkVersion` (CompatRules.checkLibraryMinSdk) without
-    // forcing artifact resolution at configuration time.
+    // AAR manifests on the unit-test classpath, resolved lazily for the library-minSdk check.
     val testManifestArtifacts =
       naming.unitTestRuntimeClasspath
         ?.let { project.configurations.findByName(it) }
@@ -1449,24 +1083,14 @@ internal object AndroidPreviewSupport {
         ?.artifacts
         ?.resolvedArtifacts
 
-    // Capture the running Gradle version at configuration time so the
-    // task action stays config-cache safe (GradleVersion.current() is a
-    // static call but keeping the read out of `@TaskAction` avoids
-    // surprises if Gradle ever namespaces it differently).
+    // Read at configuration time to keep it out of the task action.
     val currentGradleVersion = org.gradle.util.GradleVersion.current().version
-    // Accumulator for inject records. The unconditional and
-    // conditional blocks below each append; the doctor task reads the
-    // list lazily via `project.provider { ... }` so it's evaluated
-    // AFTER the `afterEvaluate` block populates the tiles entry.
+    // Inject records; read lazily so the afterEvaluate tiles entry is included.
     val injectedDependencies =
       mutableListOf<ee.schimke.composeai.plugin.tooling.InjectedDependency>()
     val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
-    // Captured at registration time so the doctor task's `@Input Boolean` is a plain serializable
-    // value (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
-    // so the consumer's `dependencies { }` block has finished evaluating. The "transitive
-    // detection" signal that used to ride alongside this is computed at the doctor's action time
-    // from `mainRuntimeRoot` — that's the IP-safe, CC-safe way to ask "is preview tooling
-    // reachable through the resolved graph?" without forcing config-time resolution (issue #1549).
+    // A plain serializable `@Input`; the transitive check happens at the doctor's action time via
+    // `mainRuntimeRoot` (#1549).
     val previewToolingDeclaredAtRegistration = hasDirectPreviewDependency(project)
     project.tasks.register(
       "composePreviewDoctor",
@@ -1496,23 +1120,10 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // Task-time preview-tooling validation (issue #1549). When the config-time gate passed via
-    // the project-deps tier rather than a direct declared coord, we don't yet know whether the
-    // resolved runtime classpath actually contains preview tooling — only Gradle's resolution
-    // engine can answer that authoritatively, and it can only be invoked at task-action time
-    // without tripping the "Configuration was resolved during configuration time" CC warning.
-    // Wiring `ValidatePreviewToolingPresentTask` as a `dependsOn` of `composePreviewRender` runs
-    // the resolved-graph walk first; if no preview-tooling coord is reachable, render bails fast
-    // with a remediation-oriented error instead of hitting Robolectric with a missing-class
-    // explosion. When the direct check already passed we know the coord is on the classpath and
-    // skip registering the validator entirely — saves a resolution at execution time.
-    //
-    // Opt-in by default: gated on `composePreview.failOnMissingPreviewTooling`. The hard fail is
-    // useful for CI fast-fail but actively hurts multi-module apps that have an aggregator module
-    // (e.g. a `:demo-app` that pulls together cards from sibling modules without hosting any
-    // `@Preview` itself). Those modules pass the tier-2 over-approximation but legitimately don't
-    // host previews — letting `composePreviewDiscover` find zero and silently no-op is the right
-    // outcome for them.
+    // Task-time preview-tooling validation (#1549) for modules that passed the gate only via
+    // project deps: resolving the graph is only safe at execution time. Skipped when a direct
+    // declaration already proves it. Opt-in via `failOnMissingPreviewTooling`, because aggregator
+    // modules legitimately pass tier 2 without hosting previews.
     val validatePreviewToolingPresentTask =
       if (
         !previewToolingDeclaredAtRegistration &&
@@ -1529,60 +1140,21 @@ internal object AndroidPreviewSupport {
         }
       } else null
 
-    // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
-    // `testImplementation`:
+    // Always inject into `testImplementation`:
+    // * `ui-test-manifest` — the `ComponentActivity` manifest entry `createAndroidComposeRule`
+    //   needs; our renderer config is outside AGP's graph, so the manifest merger wouldn't see it.
+    // * `ui-test-junit4` — `createAndroidComposeRule` / `mainClock`, used unconditionally by the
+    //   renderer.
     //
-    //  * `ui-test-manifest` contributes the `<activity android:name=
-    //    "androidx.activity.ComponentActivity">` entry that has to land in
-    //    the consumer's merged unit-test AndroidManifest before
-    //    `createAndroidComposeRule<ComponentActivity>()` can launch its
-    //    ActivityScenario. Our plugin bypasses the normal AGP dep graph
-    //    (renderer classpath lives in our own resolvable config, not
-    //    `testImplementation`), so the manifest merger never sees it
-    //    otherwise.
-    //  * `ui-test-junit4` is where `createAndroidComposeRule` /
-    //    `ComposeTestRule` / `mainClock` live. The renderer test references
-    //    these unconditionally from its default `renderDefault` path (we
-    //    use `mainClock.autoAdvance = false` + explicit frame pumping to
-    //    make infinite animations terminate deterministically — see
-    //    RobolectricRenderTest.renderDefault), so the consumer's test
-    //    classpath needs these classes too, not just the resource/manifest
-    //    half of the story.
-    //
-    // `composePreview.manageDependencies = false` opts out of all
-    // plugin-side injection. Deps are recorded as SKIPPED_BY_CONFIG
-    // in `doctor.json` so consumers can see what they need to add,
-    // and the afterEvaluate block below validates the consumer did
-    // add them — the build fails during configuration with an
-    // explicit coordinate list instead of surfacing a
-    // ClassNotFoundException from Robolectric at render time.
+    // `manageDependencies = false` skips injection, records SKIPPED_BY_CONFIG in `doctor.json`, and
+    // the afterEvaluate block fails configuration with the missing coordinates.
     val manageDependencies = extension.manageDependencies.get()
 
-    // Pin to the renderer-android compile floor (`compose-bom-compat` 2025.11.01 → Compose
-    // [RENDERER_COMPOSE_FLOOR_VERSION]) rather than emitting an unversioned coordinate. Two
-    // consumer shapes need the explicit version:
-    //
-    //  * Tile-only / non-Compose-UI Android apps that still go through `composePreviewRender` (e.g.
-    //    wear-os-samples WearTilesKotlin, where the only `androidx.compose.ui:*` artifact in main
-    //    is `ui-tooling`). Those projects ship no Compose BOM and no `ui-test-*` artifact ever
-    //    appears on the dependency graph, so an unversioned `androidx.compose.ui:ui-test-manifest`
-    //    fails resolution with `Could not find androidx.compose.ui:ui-test-manifest:.` — and
-    //    config-cache serialization then surfaces it as a wrapping `ConfigurationCacheError` on
-    //    `:app:compileDebugUnitTestKotlin` instead of the underlying coordinate. Renderer rendering
-    //    even for `kind=TILE` previews still wraps the tile composable in
-    //    `createAndroidComposeRule<ComponentActivity>()`, so these artifacts ARE reached at test
-    //    time — skipping the injection isn't an option.
-    //
-    //  * Compose-app consumers with a BOM declared in `implementation(platform(...))` rely on the
-    //    BOM to align ui-test-manifest / ui-test-junit4 to their Compose line. Gradle's default
-    //    conflict resolution picks the maximum among declared sources, so our floor pin is
-    //    overridden by any consumer-BOM-aligned higher version automatically — we don't need a
-    //    separate BOM-detection branch.
-    //
-    // Picking 1.9.x specifically: it's the version surface renderer-android compiles against
-    // (`compose-bom-compat` in libs.versions.toml), so the bytecode references in the renderer's
-    // ui-test entry points are guaranteed to exist. Bumping it later means bumping the renderer's
-    // compile floor in lockstep — keep the two in sync.
+    // Pinned to [RENDERER_COMPOSE_FLOOR_VERSION] rather than unversioned: tile-only apps have no
+    // Compose BOM, so an unversioned coordinate fails resolution (surfacing as an opaque
+    // config-cache error), yet tile renders still use `createAndroidComposeRule`. Consumers with a
+    // BOM get their higher version via conflict resolution. Keep in sync with the renderer's
+    // compile floor.
     if (manageDependencies) {
       addPluginDependency(
         project,
@@ -1594,54 +1166,37 @@ internal object AndroidPreviewSupport {
         testImplementationBucket,
         "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
-      // Main-variant floor pins for tile-only / non-Compose-UI consumers.
-      //
-      // AGP builds the merged unit-test resource APK (`apk-for-local-test.ap_`) from the
-      // consumer's MAIN variant, while the renderer's compose-ui arrives on the JVM *test*
-      // classpath via roborazzi-compose. A consumer whose main variant carries neither compose-ui
-      // nor its resource dependencies (e.g. wear-os-samples' WearTilesKotlin) is therefore missing
-      // R classes the renderer's classes read, and Robolectric dies at class-init. Each pin below
-      // adds the missing artifact to `${variantName}Implementation` so AGP merges its R class.
-      // All are floors only — Gradle's conflict resolution picks the max, so they are no-ops for
-      // Compose-app consumers already on their own BOM.
-      //
-      // The `reason` strings on the matching `recordInjectedDependency` calls below are the
-      // user-facing version of this (surfaced by `composePreviewDoctor`); the notes here add the
-      // exact failure each pin prevents.
+      // Main-variant floor pins for tile-only / non-Compose-UI consumers. AGP builds the merged
+      // unit-test resource APK from the main variant, so a main variant without compose-ui and its
+      // resource deps lacks R classes the renderer reads. Floors only; no-ops for consumers with
+      // their own BOM. Each note gives the failure the pin prevents; `composePreviewDoctor` shows
+      // the user-facing `reason`.
 
       // compose-ui 1.10+'s `InsetsListener.onViewAttachedToWindow` reads
       // `androidx.core.R.id.tag_compat_insets_dispatch`, added in core 1.16.0:
       //   NoSuchFieldError: androidx.core.R$id … 'int tag_compat_insets_dispatch'
       project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
 
-      // compose-ui's `ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool` reads
-      // `androidx.customview.poolingcontainer.R.id.*` from `PoolingContainer.<clinit>`:
+      // compose-ui's `PoolingContainer.<clinit>` reads
+      // `androidx.customview.poolingcontainer.R.id.*`:
       //   NoClassDefFoundError: androidx/customview/poolingcontainer/R$id
-      // 1.0.0 is the only published version (compose-ui 1.9.x → 1.11.x all depend on it unchanged).
+      // 1.0.0 is the only published version.
       project.dependencies.add(
         "${variantName}Implementation",
         "androidx.customview:customview-poolingcontainer:1.0.0",
       )
 
-      // `ComponentActivity.initializeViewTreeOwners` → `ViewTreeOnBackPressedDispatcherOwner.set`
-      // reads `androidx.activity.R.id.view_tree_on_back_pressed_dispatcher_owner`, added in
-      // activity 1.5.0 (WearTilesKotlin resolves 1.1.0 via old transitives):
+      // `ViewTreeOnBackPressedDispatcherOwner.set` reads an `androidx.activity.R.id` added in
+      // 1.5.0:
       //   NoSuchFieldError: androidx.activity.R$id … 'view_tree_on_back_pressed_dispatcher_owner'
       project.dependencies.add("${variantName}Implementation", "androidx.activity:activity:1.10.0")
 
-      // compose-ui's `AndroidComposeViewAccessibilityDelegateCompat.<clinit>` reads
-      // `androidx.compose.ui.R.id.*`:
+      // compose-ui's accessibility delegate reads `androidx.compose.ui.R.id.*`:
       //   NoClassDefFoundError: androidx/compose/ui/R$id
       //
-      // Version, unlike the pins above, is NOT the renderer's compile floor: the merged APK's R
-      // class has to agree with the compose-ui CLASSES on the render classpath. A Compose consumer
-      // keeps Rule 3, so its own BOM wins and both come from it; a Compose-less consumer runs on
-      // OUR compose-ui (the CMP runtime), and pinning main at the 1.9.5 floor mismatches by two
-      // minors — `ui-android` 1.9.5's `R.txt` has no
-      // `androidx_compose_ui_view_compose_view_context`, which the newer classes read.
-      //
-      // Resolved once and reused for `foundation` below and for both `recordInjectedDependency`
-      // entries, so `composePreviewDoctor` reports the version actually injected.
+      // Not the compile floor: the merged R class must match the compose-ui classes that run — the
+      // consumer's BOM, or our CMP runtime for a Compose-less consumer (1.9.5's `R.txt` lacks
+      // fields the newer classes read). Reused for `foundation` and the doctor records.
       val mainComposeVersion =
         mainVariantComposeVersion(project, variantName, naming.unitTestRuntimeClasspath)
       addPluginDependency(
@@ -1650,10 +1205,9 @@ internal object AndroidPreviewSupport {
         "androidx.compose.ui:ui:$mainComposeVersion",
       )
 
-      // Class-loading rather than R.id lookup: `TilePreviewRenderer.TilePreviewComposable` calls
-      // `Modifier.fillMaxSize()` from `androidx.compose.foundation.layout.SizeKt`:
+      // `TilePreviewComposable` calls `Modifier.fillMaxSize()`:
       //   NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt
-      // Versioned with compose-ui above — foundation and ui have to stay on one line.
+      // Versioned with compose-ui, since foundation and ui share a line.
       addPluginDependency(
         project,
         "${variantName}Implementation",
@@ -1786,38 +1340,16 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // Conditionally inject `androidx.wear.tiles:tiles-renderer` into the
-    // consumer's variant `implementation` when the consumer signals they
-    // want Tile previews. Detection is deferred to `afterEvaluate` so the
-    // consumer's declared deps are complete.
-    //
-    // Why we inject at all: TilePreviewRenderer.renderTileInto calls
-    // `TileRenderer(...)`, whose constructor builds `ProtoLayoutThemeImpl`
-    // which holds a Java reference to
-    // `androidx.wear.protolayout.renderer.R$style.ProtoLayoutBaseTheme`.
-    // That R class is only compiled into the consumer's merged R.jar when
-    // `wear.tiles:tiles-renderer` is on the MAIN compile classpath —
-    // `testImplementation` and `compileOnly` don't participate in AGP's R
-    // class generation. Consumer apps shouldn't have to restate a purely
-    // preview-rendering dep in their main `implementation`.
-    //
-    // Why the signal is "tiles-tooling-preview / tiles-renderer / tiles":
-    // these are the modules a consumer actually declares when they write
-    // `@Preview`-annotated tile functions. Horologist projects go through
-    // `horologist-tiles` so we include that too.
-    //
-    // No version — the consumer's wear.tiles atomic group constrains
-    // `tiles-renderer` to their wear.tiles version. When the detection
-    // misfires in a non-tiles project (shouldn't happen under the
-    // heuristic above), Gradle fails with a clear "no version for
-    // tiles-renderer" error.
+    // Inject `androidx.wear.tiles:tiles-renderer` into the variant's `implementation` when the
+    // consumer declares tile dependencies (checked in `afterEvaluate`, once deps are complete).
+    // `TileRenderer` references `protolayout.renderer.R$style.ProtoLayoutBaseTheme`, which is only
+    // generated when the artifact is on the main compile classpath. Unversioned: the consumer's
+    // wear.tiles atomic group constrains it.
     project.afterEvaluate {
       val composeAiTraceEnabled = resolveComposeAiTraceEnabled(project, extension).get()
       if (composeAiTraceEnabled) {
         if (manageDependencies) {
-          // Pinned to the same renderer-compile-floor as ui-test-manifest above so consumers
-          // without a Compose BOM (tile-only / older-Compose) still resolve a version. See the
-          // [RENDERER_COMPOSE_FLOOR_VERSION] KDoc for the resolution model.
+          // Same floor pin as ui-test-manifest; see [RENDERER_COMPOSE_FLOOR_VERSION].
           addPluginDependency(
             project,
             testImplementationBucket,
@@ -1845,30 +1377,9 @@ internal object AndroidPreviewSupport {
         }
       }
 
-      // Scan every configuration whose name ends in `Implementation` so
-      // the detection works for ANY buildType / flavor / variant combo
-      // (e.g. `uatImplementation`, `stagingImplementation`,
-      // `uatStagingImplementation`). The earlier hardcoded list of
-      // `debugImplementation` / `releaseImplementation` only fired on
-      // the default AGP buildTypes, missing custom flavored layouts
-      // like `uatDebug`. The group+name filter below is precise enough
-      // that casting a wider net is safe — false positives require a
-      // dep literally in the `androidx.wear.tiles` / horologist-tiles
-      // groups, which is the signal we're looking for.
-      // Scan every declarative dep-bucket name so the detection works
-      // regardless of which bucket (and which sourceSet / buildType /
-      // flavor / variant) the consumer used to declare their tile deps:
-      //   - `implementation` / `<sourceSet>Implementation` — the common case.
-      //   - `api` / `<sourceSet>Api` — Android library modules that
-      //     re-export tile APIs to their consumers.
-      //   - `runtimeOnly` / `<sourceSet>RuntimeOnly` — rare, but tile
-      //     deps declared runtime-only still need the R-class injection.
-      // Resolving the actual runtime classpath would be authoritative
-      // but triggers config-cache invalidation and is awkward under
-      // Isolated Projects, so we stay declarative. The group+name
-      // filter inside is precise enough (exact match on `androidx.wear.tiles` /
-      // horologist-tiles coords) that widening the config scan can't
-      // introduce false positives.
+      // Scan every declarable bucket (`implementation`/`api`/`runtimeOnly`, any source set, build
+      // type or flavor), not a hardcoded list. Declarative rather than resolving, for config cache
+      // and Isolated Projects; the exact group+name filter keeps the wide scan precise.
       val matchedConfigs = mutableListOf<String>()
       project.configurations
         .asSequence()
@@ -1926,13 +1437,9 @@ internal object AndroidPreviewSupport {
         )
       }
 
-      // `manageDependencies=false`: verify the consumer actually
-      // declared the coords we would otherwise have injected. Fail
-      // during configuration (in afterEvaluate) with an explicit
-      // coordinate list rather than letting the render task die
-      // later with a ClassNotFoundException. Check by group/name
-      // across the relevant declarative buckets so the consumer
-      // can place them wherever their project conventions prefer.
+      // `manageDependencies=false`: verify the consumer declared what we'd have injected and fail
+      // configuration with the coordinates, rather than a ClassNotFoundException at render time.
+      // Any declarable bucket counts.
       if (!manageDependencies) {
         validateExternallyManagedDependencies(
           project = project,
@@ -1946,45 +1453,25 @@ internal object AndroidPreviewSupport {
 
     val testConfig = naming.unitTestRuntimeClasspath?.let { project.configurations.findByName(it) }
 
-    // `composePreview { renderGraph { exclude(…) } }` / `-PcomposePreview.renderGraphExcludes=…`.
-    // Read once here: this runs inside `onVariants`, so the consumer's build script has already
-    // been evaluated, and Gradle's exclude rules are an eager `Set` on the configuration rather
-    // than a lazy provider — there is nothing to defer.
+    // Read eagerly: we're in `onVariants`, and Gradle exclude rules are an eager `Set` anyway.
     val renderGraphExclusions = extension.renderGraph.excludes.get()
 
-    // The default path for external consumers: resolve
-    // `ee.schimke.composeai:renderer-android:<plugin-version>` from Maven.
-    // The plugin's own version is baked into the jar at build time so the
-    // matching renderer AAR is chosen automatically — see [PluginVersion].
-    //
-    // Dev-mode shortcut: when the plugin runs *inside* the compose-ai-tools
-    // build itself (in-repo samples), bypass Maven and depend on the sibling
-    // `:renderer-android` Gradle project directly. That way live renderer
-    // edits show up without a publish step. The signal is the presence of
-    // the sibling build script on disk; we deliberately avoid calling
-    // `rootProject.findProject(...)` here because reading the sibling's
-    // model under Isolated Projects is disallowed — a filesystem check is
-    // IP-safe, and only the in-repo layout matches it.
+    // External consumers resolve `renderer-android:<plugin-version>` from Maven (see
+    // [PluginVersion]). Inside this repository, depend on the sibling `:renderer-android` project
+    // directly so renderer edits apply without publishing; detected via a filesystem check because
+    // `findProject` is banned under Isolated Projects.
     val rendererProjectDir = project.rootDir.resolve("renderers/android")
     val useLocalRenderer =
       rendererProjectDir.resolve("build.gradle.kts").exists() ||
         rendererProjectDir.resolve("build.gradle").exists()
 
-    // Renderer's transitive runtime dependencies come through a dedicated
-    // resolvable configuration in *this* project. Attributes are copied
-    // from the sample's unit-test runtime classpath so Gradle picks the
-    // right Android variant without us declaring them by hand.
+    // Renderer runtime deps resolve through a dedicated configuration with the unit-test
+    // classpath's attributes.
     //
-    // `extendsFrom(testConfig)` is load-bearing: it tells Gradle to resolve
-    // renderer deps in the SAME graph as the consumer's test-runtime deps,
-    // so version conflicts pick a single coherent max version instead of
-    // two separate graphs that clash at class-load time. Without it, the
-    // renderer's transitive `androidx.core:1.8.0` and consumer's
-    // `androidx.core:1.16.0` both end up on the test classpath in different
-    // JARs — whichever is listed first wins for each class, and the loaded
-    // activity/lifecycle/compose-ui versions don't all agree. Symptoms:
-    //   - `NoSuchFieldError: androidx.lifecycle.ReportFragment.Companion`
-    //   - `NoSuchFieldError: … tag_compat_insets_dispatch`
+    // `extendsFrom(testConfig)` is load-bearing: renderer and consumer deps resolve in one graph to
+    // a single coherent version each. Separate graphs put e.g. two `androidx.core` versions on the
+    // classpath, giving `NoSuchFieldError`s like `ReportFragment.Companion` or
+    // `tag_compat_insets_dispatch`.
     val rendererConfig =
       project.configurations.maybeCreate("composePreviewAndroidRenderer$capVariant").apply {
         isCanBeResolved = true
@@ -1993,31 +1480,15 @@ internal object AndroidPreviewSupport {
           copyAttributes(attributes, testConfig.attributes)
           extendsFrom(testConfig)
         }
-        // …and the screenshotTest source set's runtime classpath, when Google's screenshot plugin
-        // is applied. `screenshotTestImplementation(...)` deps are invisible to `testConfig`, so
-        // previews under `src/screenshotTest/` need them — but resolving that configuration
-        // separately and concatenating it is the same mistake as the unit-test graph: a module it
-        // upgrades lands next to the renderer graph's copy at a different version. Folding it in
-        // here keeps one graph. `extendsFrom` only contributes dependencies; they resolve under
-        // THIS configuration's (unit-test-flavoured) attributes, which is what the render JVM
-        // wants.
+        // Also the screenshotTest runtime classpath when that plugin is applied, folded in so it
+        // stays one graph (resolving it separately repeats the version-skew problem).
         screenshotTestRuntimeConfig?.let { extendsFrom(it) }
-        // The KMP-Android sibling substitution and the Hamcrest rule — see
-        // [applyRenderGraphResolutionRules] for why each exists and what breaks without it. They
-        // live in a shared helper because `composePreviewAndroidDaemon$capVariant` extends this
-        // configuration and needs the identical graph: `extendsFrom` inherits dependencies but
-        // NOT `resolutionStrategy`, so the rules have to be applied to each config by hand.
-        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
-        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
-        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
-        // Raising the render graph there would put floor-version classes over the consumer's
-        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
-        // line, whatever it is.
+        // Shared rules (see [applyRenderGraphResolutionRules]); also applied to the daemon config,
+        // since `extendsFrom` doesn't inherit `resolutionStrategy`. `floorComposeLine` follows
+        // `manageDependencies`: without our main-variant pins, flooring would cause #3484.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
-        // Consumer-declared exclusions, applied AFTER the rules above so a module the consumer
-        // keeps off the graph stays off it even when one of our substitutions would have pulled it
-        // back in. See [RenderGraphExtension] for the strict-constraint platform this exists for
-        // (issue #4995).
+        // Consumer exclusions after our rules, so substitutions can't pull an excluded module back.
+        // See [RenderGraphExtension] (#4995).
         RenderGraphExclusions.applyTo(project, this, renderGraphExclusions)
       }
 
@@ -2039,21 +1510,10 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // XR render backend. Adds `:renderer-xr`'s `XrSubspaceRenderTest` + the fake XR runtime to the
-    // render config so `composePreviewRenderXr` (below) can render `@XrSubspacePreview` to
-    // `scene.json`. Auto-enabled for any module that declares an `androidx.xr.compose` dependency
-    // (the same declared-dependency signal the Wear Tiles renderer auto-injection uses), so XR
-    // previews render with zero `composePreview { }` configuration; `enableXrPreviews = true` still
-    // forces it on for the transitive-only case. Gated on that signal rather than always-on because
-    // `androidx.xr.compose` declares `minCompileSdk = 36` and the `*-testing` fakes are heavyweight
-    // —
-    // a non-XR consumer (especially below compileSdk 36) must never get them on its render
-    // classpath.
-    // The fakes are inert for compose/tile/notification/glance renders anyway (they only engage
-    // when
-    // a `Subspace` reaches `Session.create`); the fake `SceneRuntimeFactory` /
-    // `RenderingRuntimeFactory` ServiceLoader registration ships in `:renderer-xr`'s main
-    // resources.
+    // XR render backend: `:renderer-xr`'s `XrSubspaceRenderTest` plus the fake XR runtime, for
+    // `composePreviewRenderXr`. Auto-enabled by a declared `androidx.xr.compose` dependency (or
+    // `enableXrPreviews`); not always-on because XR Compose needs compileSdk 36 and the fakes are
+    // heavy. The fakes are inert for non-XR renders.
     val xrPreviewsEnabled = extension.enableXrPreviews.get() || moduleDeclaresXrCompose(project)
     val xrRendererProjectDir = project.rootDir.resolve("renderers/xr")
     val useLocalXrRenderer =
@@ -2067,9 +1527,8 @@ internal object AndroidPreviewSupport {
             rendererConfig.name,
             project.dependencies.project(mapOf("path" to ":renderer-xr")),
           )
-          // `XrSubspaceRenderer` calls the connector's `ComposeSemanticsDataProducer.buildPayload`
-          // to project each panel's 2D semantics into the `compose/spatial-semantics` tree; it's
-          // `compileOnly` on `:renderer-xr`, so put it on the render runtime classpath here.
+          // `compileOnly` on `:renderer-xr`, so supply it at runtime for spatial-semantics
+          // projection.
           addRenderGraphDependency(
             project,
             rendererConfig.name,
@@ -2109,11 +1568,8 @@ internal object AndroidPreviewSupport {
         rendererConfig.name,
         "androidx.xr.compose:compose-testing:${XrFakeVersions.compose}",
       )
-      // Fake ARCore perception runtime so `rotateToLookAtUser` (the billboard modifier, which reads
-      // the head pose from an `ArDevice`) renders offline. `:renderer-xr`'s `FakeXrHeadPose` seeds
-      // a
-      // viewer head pose into it; the `FakePerceptionRuntimeFactory` ServiceLoader registration
-      // ships in `:renderer-xr`'s main resources, alongside the scene/rendering fakes.
+      // Fake ARCore perception runtime so `rotateToLookAtUser` renders offline; `FakeXrHeadPose`
+      // seeds the head pose.
       addRenderGraphDependency(
         project,
         rendererConfig.name,
@@ -2121,11 +1577,7 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // Mirror of rendererConfig for `:daemon:android`. The daemon
-    // module depends on :renderer-android, so transitive deps flow through
-    // the same `extendsFrom(testConfig)` graph and stay version-coherent
-    // with the consumer's classpath. Used by composePreviewDaemonStart to
-    // place the daemon's main class on the launch descriptor's classpath.
+    // Daemon counterpart of rendererConfig, providing `DaemonMain` for the launch descriptor.
     val daemonRendererConfig =
       project.configurations.maybeCreate("composePreviewAndroidDaemon$capVariant").apply {
         isCanBeResolved = true
@@ -2133,29 +1585,14 @@ internal object AndroidPreviewSupport {
         if (testConfig != null) {
           copyAttributes(attributes, testConfig.attributes)
         }
-        // `extendsFrom(rendererConfig)` (which itself extends `testConfig`) makes this a strict
-        // superset of the render graph *by construction*, resolved in ONE pass. The daemon JVM
-        // classpath used to be `daemonRendererConfig ++ rendererConfig ++ testConfig ++ AGP's
-        // test classpath` — four independent resolutions concatenated, so a module any one of
-        // them upgraded appeared several times at several versions. That's why the BouncyCastle
-        // failure (homeassistant-remotecompose#495) hit a11y previews specifically: a11y renders
-        // run through the daemon, which stacked the most graphs.
+        // `extendsFrom(rendererConfig)` makes this a strict superset of the render graph resolved
+        // in one pass; concatenating separate resolutions put modules on the classpath at several
+        // versions.
         extendsFrom(rendererConfig)
-        // `extendsFrom` inherits DEPENDENCIES, not `resolutionStrategy` — so the KMP-Android
-        // sibling substitution and the Hamcrest rule have to be applied here as well, or the
-        // daemon resolves `-desktop` KMP siblings and Hamcrest 2.x while the render task resolves
-        // the Android siblings and 1.3. Two JVMs rendering the same previews off different graphs
-        // is precisely the divergence this change exists to remove.
-        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
-        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
-        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
-        // Raising the render graph there would put floor-version classes over the consumer's
-        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
-        // line, whatever it is.
+        // `resolutionStrategy` isn't inherited, so apply the same rules here or the two JVMs render
+        // off different graphs.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
-        // Same reason `extendsFrom` does not carry `resolutionStrategy`: exclude rules are not
-        // inherited either. The daemon has to exclude exactly what the render config excludes, or
-        // the two JVMs render the same previews off different graphs.
+        // Exclude rules aren't inherited either.
         RenderGraphExclusions.applyTo(project, this, renderGraphExclusions)
       }
 
@@ -2175,12 +1612,9 @@ internal object AndroidPreviewSupport {
         project.logger.debug("compose-ai-tools: :daemon:android project not found, skipping", e)
       }
     } else {
-      // External-consumer mode: pull `daemon-android` from Maven Central — published as part of
-      // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
-      // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
-      // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`. Versionless through the
-      // daemon BOM like the renderer above — see [PreviewDaemonModules]; the config inherits the
-      // render config's platform via `extendsFrom`, and gets its own so it never depends on that.
+      // External mode: `daemon-android` from Maven, versionless through the daemon BOM (see
+      // [PreviewDaemonModules]). This config gets its own platform rather than relying on the
+      // inherited one.
       addRenderGraphDependency(
         project,
         daemonRendererConfig.name,
@@ -2188,10 +1622,9 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // `eachDependency` exposes every edge's original requested selector, not the version Gradle
-    // selects after constraints, platforms and conflict resolution (issue #4959). Validate the
-    // authoritative resolved graph lazily at task execution instead. The daemon has a strict
-    // superset graph and can select a different version, so it gets its own validator.
+    // `eachDependency` only sees requested selectors, not what constraints and platforms select
+    // (#4959), so validate the resolved graph at execution time. The daemon's superset graph gets
+    // its own validator.
     val validateComposeFloorTask =
       if (!manageDependencies) {
         project.tasks.register(
@@ -2211,23 +1644,13 @@ internal object AndroidPreviewSupport {
         }
       } else null
 
-    // Classes used for Gradle's test-class scanning. Local mode: the
-    // renderer-android project's compiled output directories. External
-    // mode: the AAR's `classes.jar`, expanded via `zipTree` so Gradle's
-    // `Test.include("**/…Test.class")` filter can walk it — the include
-    // filter traverses file trees but does NOT descend into JAR entries,
-    // so feeding a raw JAR here silently produces `composePreviewRender NO-SOURCE`
-    // and every preview ends up with no PNG. `android-classes` is AGP's
-    // `ArtifactType.CLASSES_JAR` (a JAR), not the extracted directory
-    // (that would be `android-classes-directory`).
+    // Classes for Gradle's test-class scanning. Local mode: the project's class dirs. External
+    // mode: the AAR's `classes.jar` via `zipTree`, because `Test.include` doesn't descend into JARs
+    // (a raw JAR yields `NO-SOURCE`).
     //
-    // [rendererClasspathEntries] is the same classes as RUNTIME classpath entries. The two differ
-    // in external mode: a `zipTree` added to a `classpath` contributes its LEAF FILES, so every
-    // extracted `.class` became its own classpath element (298 of them, issue #5562). A bare
-    // `.class` file is not a valid classpath element; upstream OpenJDK ignores it, but some vendor
-    // JDK builds stop resolving from every entry after the first invalid one — hiding
-    // `android.jar` and failing every `@PreviewParameter` provider that touches `android.*`. The
-    // runtime classpath therefore gets the `classes.jar` itself; only test scanning sees the tree.
+    // [rendererClasspathEntries] is the runtime counterpart and uses the jar itself: a `zipTree` on
+    // a classpath contributes each `.class` as an invalid element, which some vendor JDKs choke on
+    // (#5562).
     val rendererClassDirs: FileCollection
     val rendererClasspathEntries: FileCollection
     if (useLocalRenderer) {
@@ -2251,17 +1674,8 @@ internal object AndroidPreviewSupport {
             }
           }
           .files
-      // Wire the zipTree expansion through `elements.map { ... }` so Gradle's
-      // task-graph walk sees a Provider (build-dependency-aware, value
-      // resolved lazily) instead of a Callable. A Callable here forces
-      // `rendererConfig` to resolve during task-graph construction —
-      // `DefaultConfigurableFileCollection.visitDependencies` unwraps Callables
-      // eagerly via `DeferredUtil.unpackNestableDeferred`, which calls into
-      // `rendererJars.getFiles()` and trips AGP's
-      // `DependencyResolutionChecks` "resolved during configuration time"
-      // warning (issue #1038). The Provider chain below participates in the
-      // build-dependency graph through `rendererJars.elements` without
-      // realising the configuration until task execution.
+      // `elements.map { … }` so task-graph construction sees a Provider; a Callable would resolve
+      // `rendererConfig` at configuration time (#1038).
       rendererClassDirs =
         project.files(
           rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
@@ -2269,11 +1683,8 @@ internal object AndroidPreviewSupport {
       rendererClasspathEntries = rendererJars
     }
 
-    // Class dirs for `:renderer-xr`'s `XrSubspaceRenderTest` entry — same local-vs-published shape
-    // as
-    // [rendererClassDirs] above (the lazy `elements.map { zipTree }` keeps the config off the
-    // configuration-time resolution path). Only `composePreviewRenderXr` reads this.
-    // [xrRendererClasspathEntries] is the runtime-classpath counterpart, as for the renderer.
+    // Same shape for `:renderer-xr` (only `composePreviewRenderXr` reads it);
+    // [xrRendererClasspathEntries] is its runtime counterpart.
     val xrRendererClassDirs: FileCollection
     val xrRendererClasspathEntries: FileCollection
     if (useLocalXrRenderer) {
@@ -2304,34 +1715,19 @@ internal object AndroidPreviewSupport {
       xrRendererClasspathEntries = xrRendererJars
     }
 
-    // AGP's `generate${Variant}UnitTestConfig` task emits
-    // `com/android/tools/test_config.properties` under
-    // `intermediates/unit_test_config_directory/<variant>UnitTest/.../out/`.
-    // Robolectric loads it from the classpath and uses it to find the merged
-    // resource APK (`apk-for-local-test.ap_`) — the one that contains every
-    // AAR's merged resources (protolayout-renderer's `ProtoLayoutBaseTheme`
-    // etc.). Without this directory on the classpath, `getIdentifier` returns
-    // 0 for any library-provided style and TileRenderer's theme construction
-    // explodes on `Unknown resource value type 0`. Compose-only previews
-    // don't read AAR resources, which is why this only surfaced with tiles.
-    // Null on a module with no host-test component — the KMP-Android default, where
-    // `withHostTest { }` is opt-in. `project.files()` of nothing is an empty, dependency-free
-    // input, which is what every consumer of this directory already tolerates.
+    // AGP's `generate${Variant}UnitTestConfig` emits `com/android/tools/test_config.properties`,
+    // which Robolectric uses to find the merged resource APK with every AAR's resources. Without it
+    // library styles resolve to 0 (TileRenderer fails on `Unknown resource value type 0`). Null
+    // without a host-test component (KMP-Android's default).
     val unitTestConfigDir = naming.unitTestConfigDir?.let { project.layout.buildDirectory.dir(it) }
 
-    // `unitTestConfigDir` is a bare buildDir path with no producer wired in, but it IS the output
-    // of AGP's `generate${capVariant}UnitTestConfig` task. Any task that reads it via the render
-    // classpath (`composePreviewCompileRenderShards`, `composePreviewRender`) must therefore
-    // declare a dependency on that generator, or Gradle's strict task-dependency validation
-    // (AGP 9 / Gradle 9) fails the build with a `WorkValidationException` ("uses this output …
-    // without declaring an explicit or implicit dependency"). Match by name so it's empty-safe:
-    // modules with unit tests disabled have no such task, and then nothing consumes the dir either.
+    // A bare buildDir path with no producer wired, so every task reading it through the render
+    // classpath must depend on the generator or Gradle 9's strict validation fails. Matched by name
+    // so it's empty when unit tests are disabled.
     val unitTestConfigProducer = project.tasks.matching { it.name == naming.unitTestConfigTask }
 
-    // Generates `ee/schimke/composeai/renderer/robolectric.properties`
-    // onto the render classpath so Robolectric overrides the consumer's
-    // `Application` with a stub by default — see
-    // [GenerateRobolectricPropertiesTask] for rationale and the opt-out.
+    // Generates the package-level `robolectric.properties` that stubs the consumer's `Application`
+    // by default; see [GenerateRobolectricPropertiesTask].
     val robolectricPropertiesDir =
       project.layout.buildDirectory.dir("generated/composeai/robolectric/$variantName")
     val generateRobolectricPropertiesTask =
@@ -2347,11 +1743,9 @@ internal object AndroidPreviewSupport {
         outputDir.set(robolectricPropertiesDir)
       }
 
-    // A stand-in `androidx.customview.poolingcontainer.R$id`, appended to the END of every render
-    // classpath below so a real merged `R.jar` always wins and this is inert. It is the floor for
-    // the module where AGP's unit-test R.jar never arrives, which loses EVERY preview to one
-    // `PoolingContainer.<clinit>` failure — see [GeneratePoolingContainerRTask] for why two
-    // fabricated ints are the correct answer for these two ids specifically, and issue #5026.
+    // A stand-in `poolingcontainer.R$id`, appended last so a real merged `R.jar` always wins; the
+    // floor for modules where AGP's unit-test R.jar never arrives (#5026). See
+    // [GeneratePoolingContainerRTask].
     val poolingContainerRDir =
       project.layout.buildDirectory.dir("generated/composeai/r-shim/$variantName")
     val generatePoolingContainerRTask =
@@ -2367,28 +1761,18 @@ internal object AndroidPreviewSupport {
       }
     val poolingContainerRFiles = project.files(generatePoolingContainerRTask.map { it.outputDir })
 
-    // Renderer classpath FIRST — renderer depends on kotlinx-serialization
-    // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
-    // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
-    // doesn't do conflict resolution, so whichever JAR comes first wins at
-    // classload time. Putting the renderer's dependencies first ensures the
-    // test code gets the versions it was compiled against.
-    //
-    // Construction is delegated to [AndroidPreviewClasspath.buildTestClasspath] so
-    // preview daemon can build the same classpath without re-implementing the inline DSL.
-    // AGP-only generated files also have a shared late-bound collection below: an upstream
-    // `tasks.withType<Test> { ... }` can eagerly realize our Test before AGP registers its own.
+    // Renderer classpath first: `FileCollection.from()` doesn't resolve conflicts, so the first JAR
+    // wins and the renderer must see the versions it was compiled against. Built by
+    // [AndroidPreviewClasspath.buildTestClasspath], shared with the daemon. AGP-only generated
+    // files use a late-bound collection, since an upstream `tasks.withType<Test>` can realize our
+    // task before AGP registers its own.
     val bootClasspathFallback = AndroidPreviewClasspath.buildBootClasspathFallback(project)
-    // Escape hatch back to the pre-#2731 behaviour, where the consumer's separately-resolved
-    // unit-test graph was concatenated on top of the renderer graph. That concatenation is what
-    // put two versions of one module in front of the render classloader (see
-    // [RenderClasspathDuplicates]); the flag exists only so a consumer who turns out to depend on
-    // a testConfig-only artifact has a one-line unblock while we fix the real gap.
+    // Escape hatch to the pre-#2731 concatenated classpath (which caused duplicate versions, see
+    // [RenderClasspathDuplicates]), for consumers depending on a testConfig-only artifact.
     val legacyClasspathUnion =
       project.providers.gradleProperty("composePreview.legacyClasspathUnion").orNull == "true"
-    // warn (default) | fail | off — see [RenderClasspathDuplicates]. Read once at configuration
-    // time so the render task's doFirst closure captures a plain String (configuration-cache safe;
-    // the task action must never touch `project.*`).
+    // warn (default) | fail | off; read at configuration time so the action captures a plain
+    // String.
     val classpathDuplicatesMode =
       project.providers
         .gradleProperty("composePreview.classpathDuplicates")
@@ -2402,40 +1786,28 @@ internal object AndroidPreviewSupport {
               RenderClasspathDuplicates.MODE_OFF,
             )
         } ?: RenderClasspathDuplicates.MODE_WARN
-    // Exact file → `group:name:version` map for the duplicate guard, covering every configuration
-    // that can put a module artifact on a render classpath. Lazy: nothing resolves here.
+    // File → `group:name:version` map for the duplicate guard, lazily built.
     //
-    // **One map per consumer classpath, and only configurations that classpath actually resolves.**
-    // The map is read with `.get()` from a `doFirst`, which resolves the artifacts of every
-    // configuration folded into it. A configuration that is NOT on the reading task's own
-    // `classpath` contributes no task dependency, so when its artifacts come from a project in the
-    // same build — `project(":daemon:android")`, whose consumable jar is produced by
-    // `:daemon:android:createFullJarDebug` — Gradle refuses the read with `Querying the mapped
-    // value of provider(java.util.Set) before task ':daemon:android:createFullJarDebug' has
-    // completed is not supported`, and only when the producer happens not to have run yet for some
-    // other reason (so it presents as an intermittent whole-render failure, not a reliable one).
-    // Hence the split: the render `Test` tasks read [renderArtifactCoordinates] (built from the
-    // configurations `buildTestClasspath` resolves for them), and the daemon-descriptor task reads
-    // [daemonArtifactCoordinates], which swaps in the daemon config it — and only it — puts on its
-    // classpath. Adding a configuration here that the reading task's classpath doesn't carry
-    // reintroduces the failure.
+    // **Only include configurations the reading task's classpath resolves.** The `doFirst` read
+    // resolves every configuration in the map; one not on the task's classpath has no task
+    // dependency, so a same-build producer (e.g. `:daemon:android`'s jar) may not have run and
+    // Gradle intermittently refuses the read. Hence render tasks read [renderArtifactCoordinates]
+    // and the daemon-descriptor task reads [daemonArtifactCoordinates].
     val renderArtifactCoordinates =
       AndroidPreviewClasspath.buildArtifactCoordinates(
         project = project,
         configurations = listOfNotNull(rendererConfig, testConfig, screenshotTestRuntimeConfig),
       )
-    // The daemon descriptor task's classpath resolves `daemonRendererConfig` in place of
-    // `rendererConfig` (it extends it, so one resolution covers both — see the `classpath.from`
-    // below), which is what makes `:daemon:android`'s jar a dependency of that task and this read
-    // legal there.
+    // The descriptor task resolves `daemonRendererConfig` (a superset of `rendererConfig`), making
+    // `:daemon:android`'s jar its dependency.
     val daemonArtifactCoordinates =
       AndroidPreviewClasspath.buildArtifactCoordinates(
         project = project,
         configurations =
           listOfNotNull(daemonRendererConfig, testConfig, screenshotTestRuntimeConfig),
       )
-    // AGP's unit-test task, bound late for the same reason: its test classes, JVM args and
-    // toolchain launcher must reach the render / daemon tasks even when configured first.
+    // Bound late for the same reason: AGP's test classes, JVM args and launcher must reach our
+    // tasks even when configured first.
     val lateAgpTestTask = LateAgpTestTask(project, unitTestTaskName)
     val lateAgpClasspathExtras =
       AndroidPreviewClasspath.lateAgpClasspathExtras(
@@ -2464,23 +1836,11 @@ internal object AndroidPreviewSupport {
     val dataProductsDirectory = previewOutputDir.map { it.dir("data") }
     val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
-    // Resolve the optional `xr-composite` native tool location at CONFIG time (Isolated Projects is
-    // on / the configuration cache is strict — the task action must not touch `project.*`). The
-    // binary comes, in order, from:
-    //   (a) the `composePreview.xrCompositeBinary` Gradle property (explicit override),
-    //   (b) the `XR_COMPOSITE_BIN` env var,
-    //   (c) the shared auto-provision cache for THIS plugin version + the host platform — the path
-    //       the CLI writes when it fetches the per-OS Release tarball (see
-    //       [xrCompositeCacheBinaryPath] / `XrCompositeProvision` in `:cli`). The plugin only READS
-    //       this cache; it never downloads. Raw `./gradlew` therefore stays
-    // override-or-prepopulated
-    //       — only the CLI populates the cache.
-    // The materials dir comes from `composePreview.xrCompositeMaterials` or, by default,
-    // `<binaryDir>/materials` (where `build.sh` and the Release tarball emit it next to the
-    // binary).
-    // Every tier may be absent — the task degrades gracefully (logs + skips) when the binary isn't
-    // configured / found, and the cache-tier path is only USED when the file actually exists (the
-    // task action's `isFile` check), so an empty cache falls through to the same skip.
+    // Resolve the optional `xr-composite` tool at configuration time (no `project.*` in the
+    // action). Binary, in order: `composePreview.xrCompositeBinary`, `XR_COMPOSITE_BIN`, or the
+    // shared auto-provision cache the CLI populates ([xrCompositeCacheBinaryPath]; the plugin never
+    // downloads). Materials default to `<binaryDir>/materials`. Every tier may be absent; the task
+    // then logs and skips.
     val xrCompositeCachePath =
       xrCompositeCacheBinaryPath(
         version = XrFakeVersions.composite,
@@ -2503,23 +1863,15 @@ internal object AndroidPreviewSupport {
           }
         )
 
-    // ATF / hierarchy data products are produced only by the daemon path
-    // (`:daemon:android`'s RenderEngine). The standalone Robolectric `composePreviewRender` Test
-    // task
-    // never writes accessibility artefacts, so no per-preview / aggregate output dirs are
-    // declared here.
+    // ATF / hierarchy data products come only from the daemon, so no a11y outputs are declared.
 
     val shardCount =
       resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
     val shardsEnabled = shardCount > 1
 
-    // When sharded, generate N Java subclasses of RobolectricRenderTestBase, each with
-    // its own static @Parameters method that loads only that shard's slice of the manifest.
-    // Gradle distributes tests across forks at the class level, so a single parameterized
-    // class can't be split — we give it N classes. Each shard subclass resolves its
-    // Robolectric config via the generated package-level `robolectric.properties`
-    // (sdk/graphicsMode/application/shadows), so every JVM's sandbox key matches and
-    // each fork reuses its own cached sandbox across all previews in its slice.
+    // When sharded, generate N subclasses of RobolectricRenderTestBase, each loading one manifest
+    // slice: Gradle distributes forks per class. Each resolves config from the package-level
+    // `robolectric.properties`, so every fork reuses its cached sandbox.
     val shardSourcesDir =
       project.layout.buildDirectory.dir("generated/composeai/render-shards/java")
     val shardClassesDir =
@@ -2546,19 +1898,15 @@ internal object AndroidPreviewSupport {
           source(generateShardsTask.map { it.outputDir.asFileTree })
           classpath = resolvedClasspath
           destinationDirectory.set(shardClassesDir)
-          // Target JDK 17: the toolchain that builds this repo (and the common consumer floor —
-          // AGP requires JDK 17+) runs javac 17, which rejects `--release 21` with
-          // "release version 21 not supported". The generated shards are trivial JUnit
-          // subclasses with no need for a newer language level, and release-17 bytecode still
-          // loads on the (17-or-newer) render test JVM.
+          // Release 17: javac 17 (AGP's floor) rejects `--release 21`, and the trivial shards need
+          // nothing newer.
           options.release.set(17)
           dependsOn(generateShardsTask)
           validateComposeFloorTask?.let { dependsOn(it) }
           // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
           dependsOn(unitTestConfigProducer)
-          // …and the screenshotTest classes dir, which `sourceClassDirs` adds to the render
-          // classpath when the screenshot plugin is applied — same strict-validation requirement,
-          // matched by name like `composePreviewDiscover` above.
+          // The screenshotTest classes dir is on the render classpath too; same strict-validation
+          // requirement.
           if (screenshotTestEnabled) {
             dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           }
@@ -2568,16 +1916,11 @@ internal object AndroidPreviewSupport {
         }
       } else null
 
-    // --- Render JVM selection ---------------------------------------------------------------
-    // The render/daemon subprocess must fork on a JDK new enough to LOAD the consumer's compiled
-    // classes. AGP's unit-test javaLauncher follows the consumer *toolchain*, but Kotlin can emit
-    // newer bytecode than that toolchain JDK (and the VS Code daemon may fall back to its own older
-    // bundled JDK), so blindly inheriting it throws UnsupportedClassVersionError on every preview —
-    // the situation meshcore-mobile#271 worked around by downgrading app bytecode across a dozen
-    // modules. Instead pick the max of {inherited toolchain, Gradle daemon JVM, detected bytecode
-    // target}, overridable via `composePreview.renderJavaVersion`, and provision it through the
-    // toolchain service. See [RenderJvmSelection]. Computed once here and reused across the render,
-    // resource, XR and daemon-start tasks below.
+    // Render JVM selection: the subprocess must load the consumer's classes, but Kotlin can emit
+    // bytecode newer than the toolchain JDK AGP's launcher follows, causing
+    // `UnsupportedClassVersionError`. Pick the max of {inherited toolchain, Gradle JVM, detected
+    // bytecode target}, overridable via `composePreview.renderJavaVersion`. See
+    // [RenderJvmSelection]. Reused by the tasks below.
     val javaToolchains = project.extensions.getByType(JavaToolchainService::class.java)
     val gradleDaemonMajor = JavaVersion.current().majorVersion.toInt()
     val renderJavaOverride =
@@ -2597,12 +1940,10 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRender", RobolectricRenderTask::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
-        // Preview filters (issues #2066 / #2966 / #2977). Conventions from the same Gradle
-        // properties the desktop task uses; the `--preview` / `--preview-id` /
-        // `--exclude-preview-id` options on this task override them. Forwarded to the render JVM as
-        // `composeai.preview.*` system properties below, where `PreviewFilter` applies them. The
-        // `--exclude-preview-row` axis rides along: this backend expands `@PreviewParameter` rows
-        // itself, so it needs the same label filter the desktop renderer got.
+        // Preview filters (#2066 / #2966 / #2977) from the same properties as desktop; this task's
+        // CLI options override them. Forwarded as `composeai.preview.*` system properties for
+        // `PreviewFilter`, including the row filter since this backend expands `@PreviewParameter`
+        // itself.
         previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
         previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
         previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
@@ -2619,15 +1960,12 @@ internal object AndroidPreviewSupport {
             permutations = permutations,
           )
         )
-        // Bail fast (with remediation) when the gate passed via project-deps tier but the
-        // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
-        // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
+        // Fail fast when tooling isn't actually reachable (#1549); null when direct tooling was
+        // found.
         validatePreviewToolingPresentTask?.let { dependsOn(it) }
         validateComposeFloorTask?.let { dependsOn(it) }
         // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
         dependsOn(unitTestConfigProducer)
-        // …and the screenshotTest classes dir on the render classpath (see the compile-shards
-        // task).
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
         }
@@ -2639,24 +1977,10 @@ internal object AndroidPreviewSupport {
           } else {
             rendererClassDirs + lateAgpTestTask.testClassesDirs
           }
-        // Append AGP's own `test${Cap}UnitTest` classpath at the END so we
-        // pick up files that only exist there: specifically, the unit-test
-        // merged R.jar for library modules (`com.android.library` variants
-        // publish their AAR-transitive R classes — e.g.
-        // `androidx.customview.poolingcontainer.R$id`, pulled in by
-        // `ViewCompositionStrategy` — via
-        // `compile_and_runtime_r_class_jar/${variant}UnitTest/process${Cap}UnitTestResources/R.jar`,
-        // which is added to `debugUnitTestRuntimeClasspath` as a raw file
-        // dep without the `artifactType=jar` attribute, so our
-        // attribute-filtered `artifactView` above silently drops it).
-        // No-op on applications, since `process${Cap}Resources` puts the
-        // merged R.jar on the main runtime classpath where our existing
-        // `artifactView` already picks it up. See issue #136.
-        //
-        // Only those AGP-only extras are taken: `buildAgpClasspathExtras` subtracts the module
-        // artifacts, which the renderer graph already supplies at coherent versions. Appending
-        // them raw is what produced two-versions-of-one-module classpaths (issue #2731 /
-        // homeassistant-remotecompose#495).
+        // Append AGP's `test${Cap}UnitTest` classpath extras at the end, for files only it has —
+        // notably a library module's unit-test merged R.jar, added as a raw file without
+        // `artifactType=jar` so our artifact view drops it (#136). `buildAgpClasspathExtras`
+        // subtracts module artifacts, which appended raw caused duplicate versions (#2731).
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
@@ -2679,88 +2003,53 @@ internal object AndroidPreviewSupport {
         } else {
           include("**/RobolectricRenderTest.class")
         }
-        // The app-tour lane is a class of its own in a package of its own, because Robolectric
-        // resolves the Application per test class and an Activity needs the manifest's while a
-        // composable wants the stub (see `AppTourRobolectricRenderTest`). It is included either way
-        // and never sharded: a module has at most a handful of app-level previews, and the cost
-        // that matters is the Application init the class pays once per sandbox — which sharding
-        // would multiply rather than divide. `PreviewManifestLoader.Lane` keeps the two classes'
-        // selections disjoint, so nothing renders twice.
+        // The app-tour lane is its own class and package because Robolectric resolves the
+        // Application per test class. Never sharded: few previews, and sharding multiplies the
+        // Application init. `PreviewManifestLoader.Lane` keeps selections disjoint.
         include("**/AppTourRobolectricRenderTest.class")
         useJUnit()
 
-        // Locale-proof this task's reporting — see [configureRenderTaskReporting] for why a
-        // non-UTF-8 sandbox locale otherwise fails the render outright on em-dashed preview names.
+        // See [configureRenderTaskReporting]: a non-UTF-8 locale otherwise fails renders with
+        // em-dashed names.
         configureRenderTaskReporting(this)
 
-        // Copy JVM args from AGP's test task. AGP registers `test${capVariant}UnitTest` after
-        // onVariants, and an upstream `tasks.withType<Test>().all {}` can run this lambda before
-        // that, so [LateAgpTestTask] applies them (and the launcher below) once the task exists.
-        // Static JVM open flags live in [AndroidPreviewClasspath.buildJvmArgs] so the
-        // preview daemon can reuse the same set when launching its own JVM.
+        // AGP registers its test task after onVariants, so [LateAgpTestTask] applies its JVM args
+        // and launcher once it exists. Static flags are in [AndroidPreviewClasspath.buildJvmArgs],
+        // shared with the daemon.
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
 
-        // Fork the render worker on AGP's unit-test javaLauncher — the JDK
-        // `test${capVariant}UnitTest` uses, wired to the project's Java toolchain
-        // (`java { toolchain { … } }` / `kotlin { jvmToolchain(…) }`) or the daemon
-        // JVM otherwise — UNLESS the consumer's bytecode target is newer than that
-        // JDK, in which case [renderJavaLauncher] raises it (via the toolchain
-        // service) so the classes actually load. Inheriting matters for the base
-        // case: a custom `Test` task's `javaLauncher` otherwise defaults to the first
-        // `java` on PATH, not the daemon JVM, producing `ClassNotFoundException:
-        // android.app.Application` during JUnit discovery on some JVM/classloader
-        // combinations (#142); raising it matters for newer bytecode, else every
-        // preview fails with `UnsupportedClassVersionError` (meshcore-mobile#271).
+        // Fork on AGP's unit-test launcher unless the bytecode needs a newer JDK
+        // ([renderJavaLauncher]). Inheriting avoids the PATH `java` default
+        // (`ClassNotFoundException: android.app.Application`, #142); raising avoids
+        // `UnsupportedClassVersionError`.
         lateAgpTestTask.inheritJvmSettings(this, ::renderJavaLauncher)
 
-        // GoogleFont interceptor cache lives in the shared, machine-local
-        // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`).
-        // The renderer class no-ops when this property is absent, so the feature
-        // is fully additive for existing consumers.
+        // GoogleFont cache in `$XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`);
+        // the renderer no-ops without it.
         val fontsCacheDir = composeAiFontsCacheDir(project)
-        // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
-        // on a CI profile) skips network on cache miss so the render
-        // shows the fallback font rather than silently fetching from
-        // `fonts.googleapis.com`.
+        // `-PcomposePreview.fontsOffline=true` skips network on cache miss and renders the fallback
+        // font.
         val fontsOffline =
           project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
         val svgEmbedFonts = composeAiSvgEmbedFonts(project)
-        // Whether the figma-svg export injects the preview's declared background. Off by default;
-        // forwarded so `-Dcomposeai.svg.background=true` (or `-PcomposePreview.svgBackground=true`)
-        // reaches the JVM that reads it rather than dying on the Gradle JVM.
+        // The following are read in the forked render JVM, so they must be forwarded. Figma-svg
+        // background injection; off by default.
         val svgBackground = composeAiSvgBackground(project)
-        // Whether an unresolved downloadable font fails its preview (default) or degrades to a
-        // `<png>.warnings.json` warning. Forwarded so `-Dcomposeai.fonts.failOnFallback=false`
-        // (or `-PcomposePreview.fontsFailOnFallback=false`) on the Gradle invocation actually
-        // reaches the forked render JVM — the property is read there, not on the Gradle JVM.
+        // Whether an unresolved downloadable font fails its preview (default) or only warns.
         val fontsFailOnFallback = composeAiFontsFailOnFallback(project)
-        // The Android theme the preview host activity runs under. Only a library module needs to
-        // set it (an app module inherits `<application android:theme>`); forwarded here because
-        // `PreviewHostTheme` reads it in the forked render JVM, not on the Gradle JVM.
+        // Host activity theme; only library modules need it.
         val hostTheme = composeAiHostTheme(project, extension)
-        // The instant the render JVM pins its wall clock to (default `10:10`), so a preview showing
-        // the time doesn't diff on every run. `PreviewClock` reads it in the forked render JVM.
+        // Pinned wall clock (default `10:10`).
         val fixedTime = composeAiFixedTime(project, extension)
-        // Whether this render uses the Compose runtime's rewritten `SlotTable`. Read by
-        // `LinkBufferComposer` inside the Robolectric sandbox, so like the two above it has to be
-        // forwarded onto the forked render JVM rather than resolved on the Gradle one.
+        // Link-buffer composer flag.
         val linkBufferComposer = composeAiLinkBufferComposer(project, extension)
-        // Which player replays a Remote Compose preview's captured document (`androidx-embedded`
-        // by default, `androidx-view` for the `AndroidView`-hosted player). Read by
-        // `RemoteComposePlayerSelection`
-        // inside the Robolectric sandbox, so it is forwarded onto the forked render JVM rather
-        // than resolved on the Gradle one.
+        // Remote Compose player: `androidx-embedded` (default) or `androidx-view`.
         val rcPlayer = composeAiRcPlayer(project)
-        // Whether a Remote Compose capture bakes density and font scale in as constants (`fixed`)
-        // or defers them to the player's variables (`host`). Read by `RemoteDensitySelection`
-        // inside the Robolectric sandbox — the JVM that captures — so it is forwarded onto the
-        // forked render JVM alongside the player selection above.
+        // Whether Remote Compose captures bake density / font scale (`fixed`) or defer them
+        // (`host`).
         val rcDensity = composeAiRcDensity(project)
-        // Static system properties (Robolectric modes + the path-bearing composeai.*
-        // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
-        // preview daemon can replay the same set when launching its own JVM. The
-        // dynamic per-task ArgumentProviders (a11y, tier) stay below — they need
-        // lazy `Provider<>` evaluation at task-execution time.
+        // Static system properties live in [AndroidPreviewClasspath.buildSystemProperties], shared
+        // with the daemon; dynamic ones use lazy providers below.
         AndroidPreviewClasspath.buildSystemProperties(
             manifestPath = manifestFile.get(),
             rendersDir = rendersDir.get(),
@@ -2777,26 +2066,17 @@ internal object AndroidPreviewSupport {
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
-        // No a11y JVM-arg providers — the standalone Robolectric path doesn't run ATF or write
-        // accessibility sidecars. The daemon is the single source of truth for a11y data
-        // products; consumers route through it (VS Code chip → daemon subscription,
-        // `compose-preview a11y` → temporary daemon, MCP → daemon directly).
-        // Display filters — lazy-input pattern so `-PcomposePreview.displayFilter
-        // .filters=grayscale,invert` toggles don't invalidate the configuration cache.
-        // RobolectricRenderTest reads `composeai.displayfilter.filters` after each capture and
-        // calls DisplayFilterDataProducer.writeArtifacts when non-empty.
+        // No a11y providers: the daemon is the only a11y producer. Display filters use a lazy input
+        // so toggling them doesn't invalidate the configuration cache.
         jvmArgumentProviders.add(
           DisplayFilterSystemPropsProvider(filters = resolveDisplayFilterFilters(project))
         )
-        // Device frame — same lazy-input pattern. RobolectricRenderTest reads
-        // `composeai.deviceframe.device` after each capture and composites the PNG into a real
-        // device-art bezel when set.
+        // Device frame: composites each PNG into device-art when set.
         jvmArgumentProviders.add(
           DeviceFrameSystemPropsProvider(device = resolveDeviceFrameDevice(project))
         )
-        // Fill the device-art cache before the Robolectric render runs — Ktor/OkHttp here in the
-        // Gradle JVM, never on the render classpath. CC-safe: the doFirst captures only the
-        // resolved provider, not the Project.
+        // Prefetch device art in the Gradle JVM (never on the render classpath). Captures only the
+        // provider.
         val deviceFrameForPrefetch = resolveDeviceFrameDevice(project)
         doFirst {
           val selection = deviceFrameForPrefetch.get()
@@ -2808,26 +2088,13 @@ internal object AndroidPreviewSupport {
             )
           }
         }
-        // Render-tier filter — fed via the same lazy `@Input` provider
-        // pattern so VS Code can flip `-PcomposePreview.tier=fast` on
-        // every save without paying a config-cache reconfigure. Renderer
-        // reads `composeai.render.tier` in [PreviewManifestLoader.loadShard]
-        // to drop HEAVY captures from each entry before sharding.
+        // Render tier via a lazy input so VS Code can pass `tier=fast` per save without
+        // reconfiguring; read by [PreviewManifestLoader.loadShard] to drop heavy captures.
         val tierProvider = resolveTier(project)
         jvmArgumentProviders.add(TierSystemPropProvider(tier = tierProvider))
-        // Disable build-cache participation for `tier=fast` runs. A cache
-        // hit restores the cached `renders/` snapshot, which on a fast
-        // run only contains the cheap captures — heavy outputs from a
-        // previous full run would get wiped, breaking the "stale image"
-        // story VS Code shows on heavy cards. Up-to-date checks still
-        // apply, so a `tier=fast` re-run with no input changes is a
-        // no-op and the renders dir stays as-is. Full-tier runs cache
-        // normally.
-        //
-        // A filtered run (`--preview` / `--preview-id` / `--exclude-preview-id`) is partial for the
-        // same reason (issue #2977): it renders only the named subset and leaves every other
-        // (possibly stale) PNG in place, so storing that mixed directory could restore an unrelated
-        // stale render on a clean checkout. Mirrors the desktop `RenderPreviewsTask.cacheIf` gate.
+        // Don't cache partial runs: a `tier=fast` or filtered (#2977) run leaves other renders
+        // stale in place, and caching that directory could wipe heavy outputs or restore stale
+        // ones. Up-to-date checks still apply. Mirrors desktop's `RenderPreviewsTask.cacheIf`.
         outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
           tierProvider.get().equals("full", ignoreCase = true) &&
             previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
@@ -2836,32 +2103,19 @@ internal object AndroidPreviewSupport {
             previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
             !PreviewPermutations.expandsAccessibility(permutations.getOrElse(emptyList()))
         }
-        // The PNG files are written to `rendersDirectory` via the
-        // `composeai.render.outputDir` system property, not through any
-        // Gradle-managed output. Declare the directory as an additional
-        // output so the build cache round-trips the PNGs alongside the
-        // test reports; without this the task gets a cache hit on a fresh
-        // checkout but the renders are never restored, which is exactly
-        // how previous modules silently vanished from `compose-preview/main`.
+        // PNGs are written via a system property, not a Gradle output, so declare the directory or
+        // cache hits restore nothing.
         outputs.dir(rendersDirectory).withPropertyName("rendersDir")
-        // Heavy preview extensions such as @ScrollingPreview(LONG/GIF)
-        // write their artefacts under build/compose-previews/data rather
-        // than renders/. Declare that tree too so remote cache hits restore
-        // the files that composePreviewRenderAll validates from manifest
-        // dataProducts.
+        // Data products (e.g. scrolling LONG/GIF) live under `data/`; declare them for cache
+        // restore too.
         outputs.dir(dataProductsDirectory).withPropertyName("dataProductsDir")
 
-        // Fail fast with a clear, fixable error if android.jar isn't actually
-        // on the resolved classpath — otherwise the user sees Robolectric's
-        // own `Config.<clinit>` -> `NoClassDefFoundError: android/app/Application`
-        // (issue #1243), which doesn't hint at the root cause (missing
-        // compileSdk / unresolved SDK location). doFirst runs in the Gradle
-        // process at task-execution time, so `classpath.files` is fully
-        // resolved by the time we inspect it.
+        // Fail fast if android.jar isn't on the classpath, instead of Robolectric's opaque
+        // `NoClassDefFoundError: android/app/Application` (#1243).
         doFirst {
           AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
-          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
-          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          // Duplicate-jar backstop ([RenderClasspathDuplicates]);
+          // `-PcomposePreview.classpathDuplicates=fail` makes it fatal.
           RenderClasspathDuplicates.check(
             this,
             classpath.files,
@@ -2878,14 +2132,8 @@ internal object AndroidPreviewSupport {
         if (screenshotTestEnabled) {
           dependsOn("compile${capVariant}ScreenshotTestKotlin")
         }
-        // `process${Cap}Resources` only exists on `com.android.application`
-        // variants — AGP 9.x libraries expose the resource pipeline through
-        // `merge${Cap}Resources` / `generate${Cap}RFile` / the unit-test-
-        // specific `process${Cap}UnitTestResources`. The unit-test resource
-        // APK we actually consume is already routed via
-        // `generate${Cap}UnitTestConfig` below, so the `processResources`
-        // dep is just belt-and-suspenders; skip it when absent so library
-        // modules configure cleanly. See issue #136.
+        // `process${Cap}Resources` exists only on application variants; the resource APK comes via
+        // `generate${Cap}UnitTestConfig` anyway, so skip it when absent (#136).
         dependsOn(
           project.tasks.matching {
             it.name in
@@ -2897,18 +2145,9 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    // Feed the JDK-aware Robolectric SDK ceiling with the JVM the render actually forks into —
-    // which is exactly what [renderJavaLauncher] resolves (the raised toolchain when the consumer's
-    // bytecode outruns their toolchain, else the inherited AGP launcher, else the build JVM).
-    // Keying
-    // off the real render launcher rather than `JavaVersion.current()` also fixes the toolchain=17
-    // /
-    // Gradle-daemon=21 case, where the render forks on 17 but the ceiling used to be computed as if
-    // it were 21. Derived from `agpTestTask.javaLauncher` / the toolchain service (NOT from
-    // `renderTask`, which already dependsOn this generator — that would be a circular dependency),
-    // so no task dependency is introduced. The SDK matrix still overrides this input directly (see
-    // `samples/sdk-matrix/build.gradle.kts`). See
-    // [GenerateRobolectricPropertiesTask.buildJavaMajor].
+    // The JDK-aware Robolectric SDK ceiling must use the JVM the render actually forks into
+    // ([renderJavaLauncher]), not `JavaVersion.current()`. Derived from AGP's launcher / toolchain
+    // rather than the render task to avoid a cycle. The SDK matrix overrides it.
     generateRobolectricPropertiesTask.configure {
       fun setFrom(launcher: Provider<JavaLauncher>?) {
         if (launcher != null) {
@@ -2924,15 +2163,10 @@ internal object AndroidPreviewSupport {
     }
 
     if (extension.resourcePreviews.enabled.get()) {
-      // Resource render task — same Robolectric harness as `composePreviewRender`, different test
-      // class + manifest sysprops. Reuses the renderer/test/runtime classpaths computed above.
-      // Kept as a sibling task (not folded into composePreviewRender) so consumers can run resource
-      // discovery + render without paying for composable rendering, and vice versa.
-      // Output dir is the shared `renders/` parent (same as `composeai.render.outputDir`),
-      // NOT the `renders/resources/` subtree — the manifest's `renderOutput` paths are already
-      // module-relative starting `renders/resources/...` and the renderer strips the leading
-      // `renders/` segment when resolving. The Gradle `outputs.dir` declaration below scopes
-      // the cache key to the narrower `renders/resources/` subtree this task actually writes.
+      // Resource render: same Robolectric harness, different test class and manifest. A separate
+      // task so resource and composable rendering can run independently. The output dir is the
+      // shared `renders/` parent because `renderOutput` paths start with `renders/resources/`; the
+      // declared output is the narrower subtree.
       val resourcesManifestPath = previewOutputDir.map {
         it.file("resources.json").asFile.absolutePath
       }
@@ -2943,8 +2177,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Render Android XML resource previews via Robolectric"
         testClassesDirs = rendererClassDirs + lateAgpTestTask.testClassesDirs
-        // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
-        // from the single renderer graph. Same rationale as composePreviewRender above.
+        // AGP-only extras, as for composePreviewRender.
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
@@ -2960,12 +2193,8 @@ internal object AndroidPreviewSupport {
         include("**/ResourcePreviewRenderTest.class")
         useJUnit()
         validateComposeFloorTask?.let { dependsOn(it) }
-        // Reads AGP's unit-test-config dir via `resolvedClasspath`, exactly as
-        // `composePreviewRender` and `composePreviewCompileRenderShards` do — and so needs the
-        // same declared dependency on its producer (see `unitTestConfigProducer`). Missing here
-        // since the task was added; on a clean `composePreviewRenderAndroidResources` that is
-        // either a `WorkValidationException` under Gradle 9's strict validation or a render with
-        // no `test_config.properties`, which is the silent half.
+        // Reads the unit-test-config dir, so it needs the producer dependency too (see
+        // `unitTestConfigProducer`).
         dependsOn(unitTestConfigProducer)
         // Same locale exposure as the main render task — resource names reach the report path too.
         configureRenderTaskReporting(this)
@@ -2980,22 +2209,15 @@ internal object AndroidPreviewSupport {
         systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
         systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
 
-        // No preview-filter forwarding here (issue #2977): resource previews are XML assets in a
-        // separate manifest with no `@Preview` function, and this task owns a single shared
-        // `resource-render-errors.json` sidecar keyed across the whole set — a filtered (partial)
-        // run would overwrite it and erase diagnostics for the skipped resources. Resources always
-        // render in full; the composable render is where a filter narrows the output. See
-        // `ResourcePreviewRenderTest`.
+        // No preview filters (#2977): resource previews have no `@Preview`, and the shared
+        // `resource-render-errors.json` would lose diagnostics on a partial run.
 
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
 
-        // Same #1243 guard as composePreviewRender above — the resource render task
-        // boots Robolectric through the identical classpath and hits the same
-        // `Config.<clinit>` -> `Application.class` resolution at runner init.
+        // Same #1243 guard.
         doFirst {
           AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
-          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
-          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          // Duplicate-jar backstop.
           RenderClasspathDuplicates.check(
             this,
             classpath.files,
@@ -3018,25 +2240,12 @@ internal object AndroidPreviewSupport {
       }
     }
 
-    // XR subspace render task — same Robolectric harness as `composePreviewRender`, a different
-    // test
-    // entry (`:renderer-xr`'s `XrSubspaceRenderTest`) and no pixel capture. Reuses the renderer /
-    // test / runtime classpaths computed above (the XR backend + fakes were added to
-    // `rendererConfig`
-    // so they're already in `resolvedClasspath`); `xrRendererClassDirs` puts the entry class on the
-    // test class dirs. It reads the SAME `previews.json` the compose render does, filtering to
-    // `XR_SUBSPACE` itself, and writes `scene.json` per preview under `renders/`. Opt-in via
-    // `composePreview.enableXrPreviews` (see the renderer-config gate above) — registered only when
-    // the consumer asked for XR, so non-XR consumers don't get the task (or its deps) at all.
-    // Read at configuration time so the `outputs.cacheIf` spec below closes over these
-    // **Providers**
-    // and not over `project`. A `cacheIf` spec is serialised into the configuration-cache entry, so
-    // calling `ComposePreviewTasks.previewFilterProperty(project)` inside it captures
-    // `DefaultProject` and fails the whole build with `cannot serialize object of type
-    // 'org.gradle.api.internal.project.DefaultProject' … not supported with the configuration
-    // cache` — which sank every render, not just XR ones, because storing the entry fails the build
-    // (issue #2994's gate, fixed here). The sibling `composePreviewRender` gate reads its own task
-    // properties and was never affected.
+    // XR subspace render: `XrSubspaceRenderTest` on the same classpaths, reading the same
+    // `previews.json` (filtered to `XR_SUBSPACE`) and writing `scene.json` per preview. Registered
+    // only when XR is enabled.
+    //
+    // Filter providers are read here so the `cacheIf` spec doesn't capture `project`, which the
+    // configuration cache can't serialise — that failed every build, not just XR.
     val xrFilterPatterns = ComposePreviewTasks.previewFilterProperty(project)
     val xrIdFilterPatterns = ComposePreviewTasks.previewIdFilterProperty(project)
     val xrIdExcludePatterns = ComposePreviewTasks.previewIdExcludeProperty(project)
@@ -3047,8 +2256,7 @@ internal object AndroidPreviewSupport {
         description = "Render XR subspace previews to scene.json via Robolectric"
         validateComposeFloorTask?.let { dependsOn(it) }
         testClassesDirs = xrRendererClassDirs + lateAgpTestTask.testClassesDirs
-        // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
-        // from the single renderer graph. Same rationale as composePreviewRender above.
+        // AGP-only extras.
         val agpTestClasspath =
           AndroidPreviewClasspath.buildAgpClasspathExtras(
             project = project,
@@ -3061,26 +2269,12 @@ internal object AndroidPreviewSupport {
               xrRendererClasspathEntries +
               lateAgpTestTask.testClassesDirs +
               agpTestClasspath +
-              // Last here too, and inside the filter below — which only drops scenecore's spatial
-              // backends, so the generated directory passes through untouched.
+              // Last, and unaffected by the scenecore filter below.
               poolingContainerRFiles)
-            // Drop scenecore's on-device spatial backends (`scenecore-spatial-core` /
-            // `scenecore-spatial-rendering`, runtime deps of `androidx.xr.scenecore:scenecore`
-            // since alpha16). Their `SpatialCoreXrExtensionsHolderProvider`'s static init
-            // references the device-only `com.android.extensions.xr.XrExtensions`, and
-            // `XrExtensionsHolderAccessor` (probed by xr-compose alpha15's `Meter.DP_PER_METER`
-            // on the first `Subspace` layout) only catches `ClassNotFoundException` — a present
-            // class whose <clinit> throws `NoClassDefFoundError` fails the whole render. With
-            // the artifacts absent the probe misses cleanly and falls back to
-            // `scenecore-testing`'s `FakeXrExtensionsHolderProvider`, matching the fake
-            // scene/rendering/perception runtimes this classpath already runs on.
-            //
-            // Matched per path segment against the artifact naming shapes Gradle produces
-            // (`scenecore-spatial-core-<version>.aar`, the extracted-AAR dir
-            // `…/transformed/scenecore-spatial-core-<version>/jars/classes.jar`, the
-            // module-cache dir `…/scenecore-spatial-core/<version>/…`) rather than a bare
-            // substring of the absolute path, so a consumer checkout or module directory
-            // that merely contains "scenecore-spatial-" in its name is never filtered out.
+            // Drop scenecore's on-device spatial backends: their static init references device-only
+            // `XrExtensions`, and xr-compose's probe only catches `ClassNotFoundException`, not a
+            // failing `<clinit>`. Absent, the probe falls back to `scenecore-testing`'s fake.
+            // Matched per path segment so directories merely containing the name are kept.
             .filter { file ->
               file.toPath().none { segment ->
                 SCENECORE_SPATIAL_BACKEND_SEGMENT.matches(segment.toString())
@@ -3097,21 +2291,14 @@ internal object AndroidPreviewSupport {
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
         systemProperty("robolectric.conscryptMode", "OFF")
-        // Each panel's content view is rasterised to its `<id>.png` texture (under NATIVE graphics,
-        // above) and written via roborazzi's `captureRoboImage`, which only writes when its task
-        // type is enabled — so the render task must opt in, or texture capture silently no-ops.
-        // pixelCopyRenderMode mirrors the Compose `@Preview` render task for parity.
+        // Panel textures are written via roborazzi's `captureRoboImage`, which only writes when
+        // enabled.
         systemProperty("robolectric.pixelCopyRenderMode", "hardware")
         systemProperty("roborazzi.test.record", "true")
         systemProperty("composeai.render.manifest", manifestFile.get())
         systemProperty("composeai.render.outputDir", rendersDir.get())
 
-        // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the composable
-        // render
-        // honours (issue #2977), forwarded as `composeai.preview.*` — XR previews are ordinary
-        // `@Preview` composables, so `XrSubspaceRenderTest` filters them by name/id exactly like
-        // the
-        // image render. Property conventions only (the CLI options live on `composePreviewRender`).
+        // Same name/id filters as the composable render (#2977); property conventions only.
         jvmArgumentProviders.add(
           PreviewFilterSystemPropsProvider(
             nameFilters = ComposePreviewTasks.previewFilterProperty(project),
@@ -3119,23 +2306,14 @@ internal object AndroidPreviewSupport {
             idFilterFile = ComposePreviewTasks.previewIdFilterFileProperty(project),
             idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
             idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
-            // Forwarded for uniformity; the XR subspace render has no `@PreviewParameter` fan-out
-            // to thin, so it is inert there rather than meaningful.
+            // Inert here: XR has no `@PreviewParameter` fan-out.
             rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
             permutations = project.providers.provider { emptyList() },
           )
         )
-        // The row filter joins the gate even though it can't change what this task renders: XR has
-        // no
-        // `@PreviewParameter` fan-out. What matters is the OUTPUT — this task declares the whole
-        // shared `rendersDirectory` below, so under a row-filtered run it would happily store a
-        // snapshot containing the excluded rows' stale PNGs (left there by whatever ran last,
-        // exactly
-        // as the image render intends) and a clean machine would later restore them for the same
-        // filtered key. `composePreviewRender` refuses to cache such a run for that very reason;
-        // the
-        // sibling that shares its directory has to refuse too, or the gate leaks through the back
-        // door.
+        // The row filter still gates caching: this task declares the whole shared
+        // `rendersDirectory`, so a filtered run could store and later restore stale PNGs, just as
+        // `composePreviewRender` refuses to.
         outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
           xrFilterPatterns.get().none { it.isNotBlank() } &&
             xrIdFilterPatterns.get().none { it.isNotBlank() } &&
@@ -3145,12 +2323,10 @@ internal object AndroidPreviewSupport {
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
 
-        // Same #1243 guard as composePreviewRender — boots Robolectric through the same classpath
-        // and hits the same `Config.<clinit>` -> `Application.class` resolution at runner init.
+        // Same #1243 guard.
         doFirst {
           AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
-          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
-          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          // Duplicate-jar backstop.
           RenderClasspathDuplicates.check(
             this,
             classpath.files,
@@ -3172,30 +2348,19 @@ internal object AndroidPreviewSupport {
         )
       }
 
-    // Bake the XR subspace scenes into composite stills via the native `xr-composite` tool. Runs
-    // after `composePreviewRenderXr` (which writes each `renders/<dir>/scene.json` + panel
-    // textures) and BEFORE the renderAll validation/clean step so the gate sees the produced
-    // composites and `cleanStaleRenders` keeps them (they're referenced by the manifest's optional
-    // capture). Degrades gracefully: a missing / unconfigured binary, or no display + no
-    // `xvfb-run`,
-    // logs at lifecycle level and returns without failing — the optional capture simply has no
-    // file.
+    // Bake XR scenes into composite stills with `xr-composite`, after `composePreviewRenderXr` and
+    // before renderAll's validation, so the composites count and survive `cleanStaleRenders`.
+    // Degrades gracefully without a binary or display.
     if (xrPreviewsEnabled)
       project.tasks.register("composePreviewCompositeXr", org.gradle.api.DefaultTask::class.java) {
         group = "compose preview"
         description = "Bake XR subspace scene.json files into composite.png stills via xr-composite"
-        // Captured as providers at config time — the doLast body never touches `project.*` (IP /
-        // strict configuration cache).
+        // Providers only; the action never touches `project.*`.
         val binaryProvider = xrCompositeBinary
         val materialsProvider = xrCompositeMaterials
         val rendersDirProvider = rendersDirectory
-        // The render dir is shared with `composePreviewRender` (PNGs) and `composePreviewRenderXr`
-        // (scene.json + panel textures). This task both reads it (scene.json) and writes into it
-        // (composite.png), so declaring it as a tracked input/output would clash with those
-        // producers' outputs and with this task's own writes. Instead we stay untracked and order
-        // explicitly: depend on the XR render (our real producer) and run after the PNG render
-        // (the other writer to the shared dir). Best-effort + native-shell-out means there's no
-        // useful up-to-date / caching story to gain from tracking anyway.
+        // The render dir is shared with two other writers, so it's untracked; order explicitly
+        // instead. Best-effort native output gains nothing from caching.
         dependsOn("composePreviewRenderXr")
         mustRunAfter("composePreviewRender")
         doLast {
@@ -3216,9 +2381,8 @@ internal object AndroidPreviewSupport {
             logger.lifecycle("no XR renders dir at $rendersRoot; skipping XR composite stills")
             return@doLast
           }
-          // `xr-composite` is an OpenGL/Filament tool — it needs a display. When `DISPLAY` is unset
-          // we wrap the invocation in `xvfb-run -a` if available; otherwise we skip gracefully
-          // rather than failing the build (the composite is best-effort).
+          // `xr-composite` needs a display: wrap in `xvfb-run -a` when `DISPLAY` is unset, else
+          // skip.
           val hasDisplay = !System.getenv("DISPLAY").isNullOrBlank()
           val xvfbRun =
             if (hasDisplay) null
@@ -3282,20 +2446,11 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    // `aggregateAccessibility` was the rollup task that turned per-preview ATF sidecars into a
-    // top-level `accessibility.json`. With a11y now produced exclusively by the daemon (which
-    // streams findings on demand via `data/fetch`), nothing on the standalone Gradle path
-    // writes those sidecars — so there is nothing to roll up and the task is no longer
-    // registered.
+    // No `aggregateAccessibility` task: a11y is daemon-only, so there are no sidecars to roll up.
 
-    // Lottie previews discovered in this Android module render through the JVM desktop Compottie
-    // path — the asset is portable IR, so no Android/Robolectric Lottie player is needed. The
-    // Robolectric `composePreviewRender` skips `kind=LOTTIE` (it can't inflate Compottie — see
-    // `RobolectricRenderTest`); this task renders just those entries via `DesktopRendererMain` on a
-    // `:renderer-desktop` classpath plus the module's Java-resource source dirs (where the `.json`
-    // /
-    // `.lottie` asset lives, matching the path `composePreviewDiscover` recorded). It's folded into
-    // `composePreviewRenderAll` so the still PNG is present when the missing-render gate validates.
+    // Lottie previews render through the JVM desktop Compottie path (Robolectric skips
+    // `kind=LOTTIE`), via `DesktopRendererMain` on a `:renderer-desktop` classpath plus the
+    // module's resource source dirs. Part of `composePreviewRenderAll`.
     val lottieRendererConfig =
       ComposePreviewTasks.ensureRendererDesktopConfig(project, "composePreviewLottieRenderer")
     val lottieRenderTask =
@@ -3310,41 +2465,25 @@ internal object AndroidPreviewSupport {
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
-        // Honour the same `--preview` / `--preview-id` / `--exclude-preview-id` selection (issue
-        // #2977) so a filtered Android workflow doesn't render every Lottie asset. This is a
-        // `RenderPreviewsTask`, which applies the name/id filter over the FULL manifest before the
-        // `includeKinds` restriction below — so a filter naming a non-Lottie preview matches in the
-        // manifest (no fail-fast) and is simply dropped by the kind filter, while a global typo
-        // still fails fast. Conventions only; the CLI options live on `composePreviewRender`.
+        // Same filters (#2977). The filter applies over the full manifest before `includeKinds`, so
+        // a non-Lottie name doesn't fail fast while a typo still does.
         previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
         previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
         previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         includeKinds.add(PreviewKind.LOTTIE.name)
-        // Lazy artifact view (not the raw `Configuration`) so the @Classpath collection stays
-        // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
-        // `composePreviewLottieRenderer` is the JVM Compottie renderer (plain jars), so the default
-        // empty view resolves it exactly as `from(config)` did.
+        // Artifact view keeps the classpath config-cache serializable (#1796).
         renderClasspath.from(lottieRendererConfig.incoming.artifactView {}.files)
         renderClasspath.from(androidLottieResourceDirs(project))
-        // Disjoint output dir (matching the `lottieRenderSubdir` discovery stamps into each Lottie
-        // capture's `renderOutput`) so this task and the Robolectric `composePreviewRender` never
-        // share an output directory — both stay build-cacheable (overlapping task outputs disable
-        // Gradle's build cache). The missing-render gate resolves `renderOutput` relative to the
-        // compose-previews root, so the carousel / validation find the PNG here just the same.
+        // Matches discovery's `lottieRenderSubdir`, so both render tasks stay cacheable; the gate
+        // resolves `renderOutput` relative to the compose-previews root.
         outputDir.set(previewOutputDir.map { it.dir(LOTTIE_RENDER_SUBDIR) })
         dataProductsDir.set(dataProductsDirectory)
         dependsOn(discoverTask)
       }
 
-    // SVG assets discovered in an Android module render through the JVM desktop path too — Skia's
-    // `loadSvgPainter` inflates the portable `.svg`, and Robolectric has no SVG decoder (the
-    // Robolectric `composePreviewRender` skips `kind=SVG`, see `RobolectricRenderTest`). Mirrors
-    // the
-    // Lottie pass exactly: same `:renderer-desktop` classpath + the module's Java-resource dirs
-    // (where the `.svg` lives), a disjoint `svg-renders/` output dir so it never shares `renders/`
-    // with the Robolectric render, and folded into `composePreviewRenderAll` so the still is
-    // present
-    // when the missing-render gate validates.
+    // SVG assets render through the JVM desktop path too (Robolectric has no SVG decoder and skips
+    // `kind=SVG`). Mirrors the Lottie pass: same classpath, disjoint `svg-renders/` output, part of
+    // `composePreviewRenderAll`.
     val svgRendererConfig =
       ComposePreviewTasks.ensureRendererDesktopConfig(project, "composePreviewSvgRenderer")
     val svgRenderTask =
@@ -3359,9 +2498,7 @@ internal object AndroidPreviewSupport {
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
-        // Honour the preview filters (issue #2977), same as the Lottie task above — filter over the
-        // full manifest, then restrict to `kind=SVG`, so filtered Android workflows don't render
-        // every SVG asset. Conventions only.
+        // Same filters (#2977), then restricted to `kind=SVG`.
         previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
         previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
         previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
@@ -3374,16 +2511,12 @@ internal object AndroidPreviewSupport {
       }
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
-    // Fold the JVM Lottie render into the aggregate so a `kind=LOTTIE` asset's PNG is produced
-    // before the missing-render gate validates the manifest.
+    // Render Lottie stills before the missing-render gate.
     project.tasks.named("composePreviewRenderAll").configure { dependsOn(lottieRenderTask) }
     // Same for the JVM SVG render — a `kind=SVG` asset's PNG must exist before the gate validates.
     project.tasks.named("composePreviewRenderAll").configure { dependsOn(svgRenderTask) }
-    // Fold the XR render + composite into the user-facing aggregate so `composePreviewRenderAll`
-    // produces scene.json alongside the PNGs, then bakes the composite stills (only when the XR
-    // path is enabled / the tasks exist). `composePreviewCompositeXr` itself `dependsOn`
-    // `composePreviewRenderXr`, so both run before the renderAll `doLast` validation/clean — the
-    // gate sees the produced composites and `cleanStaleRenders` keeps them.
+    // XR render + composite run before renderAll's validation/clean, so composites count and are
+    // kept.
     if (xrPreviewsEnabled) {
       project.tasks.named("composePreviewRenderAll").configure {
         dependsOn("composePreviewRenderXr")
@@ -3391,20 +2524,13 @@ internal object AndroidPreviewSupport {
       }
     }
 
-    // Register the portable-bundle task on the Android path too. `composePreviewBundle` was
-    // previously desktop/JVM-only, so `compose-preview render --bundle` against a project with
-    // Android modules failed task-not-found before rendering anything. Wire it with the same
-    // variant class dirs and `${variant}RuntimeClasspath` the render path consumes — the bundle's
-    // `artifactType=jar` view already transforms AARs to extracted classes.jar, so the closure walk
-    // sees real bytecode. `backendId = "android"` is recorded in bundle.json so players know the
-    // bundle was packed for the Robolectric/Android renderer.
+    // Portable bundle on the Android path, with the same class dirs and runtime classpath as
+    // rendering; the `artifactType=jar` view turns AARs into classes.jar. `backendId = "android"`
+    // is recorded in bundle.json.
     //
-    // AAR-backed Maven deps are recorded as real `ClasspathEntry.Maven` coordinates (not inlined):
-    // registerBundleTask keys the coordinate map off the same `artifactType=jar` view, so the
-    // transformed classes.jar paths match what the closure walk sees. Limitation carried for now
-    // (only matters for coordinate-mode re-rendering on an Android player, which isn't built yet):
-    // the coordinate type is recorded as `jar` even for AAR-published deps, and Android-merged
-    // resources aren't packed. `--embed-deps` sidesteps the type concern by inlining resolved jars.
+    // AAR deps are recorded as Maven coordinates, but typed `jar`, and Android-merged resources
+    // aren't packed; only relevant to coordinate-mode re-rendering on an Android player.
+    // `--embed-deps` sidesteps it.
     val bundleTask =
       ComposePreviewTasks.registerBundleTask(
         project = project,
@@ -3414,12 +2540,9 @@ internal object AndroidPreviewSupport {
         resolveDependencyConfigName = { dependencyConfigName },
         discoverTaskName = "composePreviewDiscover",
         backendId = "android",
-        // (v6) Feed the AGP artefacts a protolayout-IR bundle carries for tile replay on a detached
-        // daemon: `unitTestConfigDir`'s `test_config.properties` names the merged resource APK +
-        // manifest, and the pack action reads those by absolute path — so union the artefacts they
-        // point at (the `apk_for_local_test` output dir + the merged manifest) into the tracked
-        // `@InputFiles` so the cacheable task re-packs when their content changes even if the paths
-        // don't.
+        // (v6) Track the files `test_config.properties` points at (resource APK dir, merged
+        // manifest), since the pack action reads them by absolute path; this re-packs when content
+        // changes.
         androidUnitTestConfigFiles =
           project.files(
             unitTestConfigDir,
@@ -3428,51 +2551,28 @@ internal object AndroidPreviewSupport {
             ),
             variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
           ),
-        // The generated library R classes the tile renderer links
-        // (`androidx.wear.protolayout.renderer.R$style`) are generated only into the unit-test
-        // merged
-        // R.jar. That jar lives on AGP's `test<Variant>UnitTest` task classpath (a raw file dep
-        // added
-        // without the `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view
-        // —
-        // and a configuration `artifactView` — drop it). Source it from the Test task's *resolved*
-        // classpath, the SAME collection `composePreviewRender` links it from (so it resolves
-        // cleanly
-        // without the `AmbiguousArtifactsFailure` a raw configuration read hits). Supplied lazily
-        // and
-        // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
+        // Library R classes for tile replay exist only in the unit-test merged R.jar, which only
+        // AGP's test task classpath carries (raw file dep, dropped by attribute-filtered views).
+        // Read from the resolved task classpath like `composePreviewRender`, lazily once the task
+        // exists.
         androidUnitTestRuntimeClasspath = { lateAgpTestTask.classpath },
       )
 
-    // Resolve `kind=SVG` / `kind=LOTTIE` asset IR off the Android source resource roots. AGP
-    // doesn't
-    // stage java resources into the JVM `build/resources/main` dir the shared bundle task probes
-    // for `moduleResourcesDir`, so without these roots the Android bundle drops the raw `.svg` /
-    // `.json` even though discovery found it under the same dirs. Same source set the Android
-    // render
-    // classpath links (`androidLottieResourceDirs`), so the assetPath discovery recorded resolves.
+    // Asset IR from the Android resource source roots: AGP doesn't stage them into
+    // `build/resources/main`.
     bundleTask.configure { moduleResourceRoots.from(androidLottieResourceDirs(project)) }
     if (xrPreviewsEnabled) {
-      // `renderFiles` tracks the shared renders tree, including XR scene directories. Preserve
-      // render-less packing, but order a combined render+bundle invocation after both XR writers
-      // so Gradle never sees the bundle reading their outputs concurrently.
+      // `renderFiles` tracks the shared renders tree including XR scenes; order after both XR
+      // writers.
       bundleTask.configure {
         mustRunAfter("composePreviewRenderXr")
         mustRunAfter("composePreviewCompositeXr")
       }
     }
 
-    // Feed the variant's OWN compiled classes into the bundle packer via AGP's scoped-artifact API,
-    // mirroring the identical `forScope(PROJECT).toGet(CLASSES, …)` wiring `composePreviewDiscover`
-    // uses (issue #1924). Discovery resolves previews from the scoped artifact, so without this the
-    // bundle's class set could be strictly narrower than the manifest discovery wrote — a preview
-    // resolved only from a scoped element (e.g. AGP 9.x built-in Kotlin output, which never lands
-    // in
-    // the hardcoded `sourceClassDirs`) would be listed in `previews.json` but missing from
-    // `classes/app.jar`, breaking detached/portable rendering of that preview (issue #1926).
-    // Resolving the artifact also wires the implicit dependency on whichever task produced the
-    // classes, so the bundle's bytecode is compiled first even when no standalone
-    // `compile<Variant>Kotlin` task exists.
+    // The variant's own classes via the scoped artifact, as for `composePreviewDiscover` (#1924),
+    // so `classes/app.jar` covers every preview discovery found (#1926). Also wires the producing
+    // task.
     variant.artifacts
       .forScope(ScopedArtifacts.Scope.PROJECT)
       .use(bundleTask)
@@ -3482,15 +2582,9 @@ internal object AndroidPreviewSupport {
         BundlePreviewTask::projectClassDirs,
       )
 
-    // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
-    // unconditionally so the VS Code extension can sniff the output file
-    // even when `daemon.enabled = false` (it then refuses to
-    // launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
-    // composePreviewRender task's so the spawned daemon JVM is byte-for-byte
-    // equivalent. See `docs/daemon/DESIGN.md` § 4 / § 6.
-    //
-    // Built lazily via providers so the AGP unit-test task's javaLauncher
-    // resolves at execution time (same reason composePreviewRender above defers it).
+    // Preview daemon bootstrap descriptor. Registered unconditionally so VS Code can read it even
+    // when `daemon.enabled = false` (see [DaemonClasspathDescriptor]). Inputs mirror
+    // composePreviewRender so the daemon JVM matches. See `docs/daemon/DESIGN.md` § 4 / § 6.
     val daemonFontsCacheDir = composeAiFontsCacheDir(project)
     val daemonHistoryDir = composeAiHistoryDir(project)
     val daemonFontsOffline =
@@ -3498,36 +2592,18 @@ internal object AndroidPreviewSupport {
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
     val daemonSvgBackground = composeAiSvgBackground(project)
     val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
-    // The Android theme the preview host activity runs under, forwarded to the daemon JVM exactly
-    // as the one-shot `composePreviewRender` path forwards it. `PreviewHostTheme` reads this in the
-    // daemon, not on the Gradle JVM, so without it a library module's `composePreview.hostTheme`
-    // reaches the standalone render but NOT the VS Code / MCP / a11y daemon paths — the same
-    // `AndroidView` inflation failure, just on the routes consumers actually use.
+    // Daemon JVM settings mirror the one-shot render path, since the daemon reads them itself;
+    // otherwise the VS Code / MCP / a11y routes would diverge from batch renders. Host theme:
     val daemonHostTheme = composeAiHostTheme(project, extension)
-    // The pinned wall clock, forwarded to the daemon JVM exactly as the one-shot render path
-    // forwards it — `PreviewClock` reads it there, so without this line a daemon render of a
-    // clock-bearing screen would drift while the batch render stayed fixed.
+    // Pinned wall clock.
     val daemonFixedTime = composeAiFixedTime(project, extension)
     val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
-    // Which player replays a Remote Compose preview, forwarded for the same reason as the two
-    // above: `RemoteComposePlayerSelection` reads it in the daemon JVM, so without this line the VS
-    // Code / MCP / a11y routes would keep drawing on whichever player the daemon defaults to while
-    // a `-PcomposePreview.rcPlayer=view` batch render used the other one.
+    // Remote Compose player.
     val daemonRcPlayer = composeAiRcPlayer(project)
-    // And how that document was captured in the first place. Forwarded for the same reason: the
-    // daemon does its own captures, so without this line a `-PcomposePreview.rcDensity=host` batch
-    // render would bake host-scaling documents while the VS Code / MCP / serve routes kept baking
-    // constant-folded ones from the same sources.
+    // Remote Compose capture density mode.
     val daemonRcDensity = composeAiRcDensity(project)
-    // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
-    // mustn't capture `project`. The cheap-signal set used to be collected at task-action
-    // time so newly-added subproject scripts were seen on the same run, but doing it
-    // there forces the systemProperties Provider closure to capture `project`, which the
-    // configuration cache (`org.gradle.configuration-cache.problems=fail`) refuses to
-    // serialise. A subproject add is itself a `settings.gradle.kts` edit, which IS in the
-    // cheap-signal set, so the next run picks it up — net behaviour unchanged after one
-    // re-run of `composePreviewDaemonStart` and the config-cache invalidation that the
-    // edit triggers.
+    // Resolved at configuration time: these feed `@Input` providers that mustn't capture `project`.
+    // A new subproject is a settings edit, which is itself a cheap signal.
     val daemonCheapSignalFiles =
       collectCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) { it.absolutePath }
     val consumerBuildDir = project.layout.buildDirectory.asFile.get().absolutePath
@@ -3542,9 +2618,7 @@ internal object AndroidPreviewSupport {
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
       validateDaemonComposeFloorTask?.let { dependsOn(it) }
-      // AGP's unit-test task via [lateAgpTestTask]: an upstream `tasks.withType<Test>().all {}`
-      // can realise this task before AGP registers its own, so its classpath and launcher are bound
-      // once it exists, still at configuration time (no `project` captured in a Provider chain).
+      // Bound via [lateAgpTestTask], as for the render task.
 
       this.modulePath.set(project.path)
       this.variant.set(variantName)
@@ -3553,16 +2627,10 @@ internal object AndroidPreviewSupport {
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
       this.backgroundSandboxBoot.set(extension.daemon.backgroundSandboxBoot)
-      // Stage-2 BTA wiring. The AGP unit-test task's `classpath` carries every input
-      // `compileDebugKotlin` would see — Compose runtime, kotlin-stdlib, AGP-generated
-      // R.jar / BuildConfig outputs, the consumer's transitive dependencies. Feed that
-      // straight into BTA's compileClasspath. The output dir is the one Gradle's own
-      // `compile<Variant>Kotlin` writes — and so the one `composeai.daemon.userClassDirs` names
-      // (see [AndroidVariantNaming.btaOutputDir]) — so a successful BTA compile drops .class
-      // files where the daemon's child classloader actually loads them. MODULE_NAME mirrors KGP's
-      // default for AGP variants — the variant-specific kotlinc compile uses
-      // `project.name` (no variant suffix), confirmed against `samples-android`'s
-      // kotlin.Metadata.d2[] entries.
+      // Stage-2 BTA: AGP's unit-test classpath carries everything `compileDebugKotlin` sees. Output
+      // goes to the dir `compile<Variant>Kotlin` uses — the one `composeai.daemon.userClassDirs`
+      // names ([AndroidVariantNaming.btaOutputDir]) — so the daemon's child classloader loads it.
+      // MODULE_NAME is `project.name`, matching KGP's default for AGP variants.
       val agpTestClasspath = lateAgpTestTask.classpath
       ComposePreviewTasks.wireBtaInputs(
         project = project,
@@ -3584,19 +2652,11 @@ internal object AndroidPreviewSupport {
           },
         ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
       )
-      // Conventional entry-point name — `daemon/android` / Stream B
-      // (task B1.1) will provide the implementation. Surfacing it as a
-      // Property leaves room for future variants (foreground / debug) without
-      // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
+      // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
-      // Bake an explicit render JVM into `daemon-launch.json` the same way composePreviewRender
-      // forks — the raised toolchain when the consumer's bytecode outruns their toolchain, else the
-      // inherited AGP launcher (the project toolchain rather than the first `java` on PATH). This
-      // is
-      // the load-bearing fix for the VS Code daemon: its `javaLauncher` is `@Optional`, and when
-      // left null the extension falls back to *its own* bundled JDK (commonly 17), which then can't
-      // load Java-21 classes (meshcore-mobile#271). Both branches are config-cache-safe Providers
-      // from the toolchains service, so mapping to an absolute path introduces no new captures.
+      // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks. Load-bearing:
+      // when unset, the VS Code extension uses its own bundled JDK, which may be too old for the
+      // classes.
       fun setLauncher(launcher: Provider<JavaLauncher>?) {
         launcher?.let { l ->
           this.javaLauncher.set(l.map { it.executablePath.asFile.absolutePath })
@@ -3605,25 +2665,10 @@ internal object AndroidPreviewSupport {
       if (!lateAgpTestTask.whenAvailable { setLauncher(renderJavaLauncher(it)) }) {
         setLauncher(renderJavaLauncher(null))
       }
-      // Daemon module's classes FIRST so [mainClass] resolves before
-      // anything in the consumer's transitive graph shadows it. Both
-      // `jar` and `android-classes` artifact views are pulled because
-      // the daemon module is an AGP library — `android-classes` is its
-      // built classes JAR, `jar` would be a plain Kotlin JAR if Stream
-      // B ever splits the module. Same defensive pair as
-      // AndroidPreviewClasspath uses for testConfig.
-      // One graph, not three. `daemonRendererConfig` extends `rendererConfig` (which extends
-      // `testConfig`), so a single resolution of it covers the daemon module, the renderer and
-      // the consumer's test-runtime dependencies with exactly one version per module.
-      // `buildTestClasspath` is therefore given the DAEMON config as its module-artifact source —
-      // the non-module entries it adds (Robolectric properties dir, renderer class dirs, the
-      // consumer's own class dirs, the unit-test config dir, the SDK boot classpath) are
-      // identical to the render task's.
-      //
-      // Before: `daemonRendererConfig ++ rendererConfig ++ testConfig ++ AGP's test classpath`,
-      // four independent resolutions stacked in front of one classloader. Only the AGP-only
-      // extras (unit-test merged R.jar, generated dirs) are still appended, via
-      // [AndroidPreviewClasspath.buildAgpClasspathExtras].
+      // One graph: `daemonRendererConfig` extends `rendererConfig` and `testConfig`, so one
+      // resolution covers daemon, renderer and consumer with one version per module; daemon classes
+      // come first so [mainClass] resolves. The other entries match the render task's; only
+      // AGP-only extras are appended ([AndroidPreviewClasspath.buildAgpClasspathExtras]).
       this.classpath.from(
         AndroidPreviewClasspath.buildTestClasspath(
           project = project,
@@ -3649,16 +2694,9 @@ internal object AndroidPreviewSupport {
           legacyClasspathUnion = legacyClasspathUnion,
         )
       )
-      // Same duplicate guard the render Test tasks run, applied to the classpath that goes into
-      // `daemon-launch.json`. This is the path that matters most: a11y renders and the VS Code
-      // extension drive the daemon, never the standalone Test task, so the motivating failure
-      // (homeassistant-remotecompose#495) happened HERE. Checking only the Test tasks would leave
-      // a duplicate surviving in the AGP extras — or introduced by a future daemon-only addition —
-      // invisible to both the warning and `composePreview.classpathDuplicates=fail`. Runs before
-      // the descriptor is written, so a `fail` build never emits a descriptor the daemon would
-      // then launch from. Reads the DAEMON-scoped coordinate map — this is the one task whose
-      // classpath resolves `daemonRendererConfig`, so it's the one task allowed to resolve that
-      // config's artifacts (see [renderArtifactCoordinates]).
+      // Duplicate guard on the daemon classpath, which a11y and VS Code actually use. Runs before
+      // the descriptor is written so `fail` never emits one. Reads the daemon-scoped coordinate map
+      // (see [renderArtifactCoordinates]).
       doFirst {
         RenderClasspathDuplicates.check(
           this,
@@ -3667,23 +2705,12 @@ internal object AndroidPreviewSupport {
           daemonArtifactCoordinates.get(),
         )
       }
-      // Static JVM open flags from the shared helper, plus the
-      // daemon-specific heap ceiling. AGP test task's own jvmArgs are
-      // intentionally NOT inherited here — they're test-runner specific
-      // (e.g. `-ea` and JUnit-internal opens) and may collide with the
-      // daemon's own runner. Stream B can opt back in if needed.
+      // AGP's test jvmArgs aren't inherited; they're test-runner specific.
       this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
       this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
-      // Same path-bearing system properties the composePreviewRender Test task uses, plus
-      // daemon-specific keys for [DaemonExtension] config the daemon reads at startup.
-      //
-      // Per-key `put(...)` calls (rather than a single `set(provider { wholeMap })`) so
-      // each entry's Provider chain only captures serialisable references — Property
-      // values from the extension, layout-derived providers, the static markers list,
-      // and the eagerly-resolved cheap-signal string. A single map-building lambda
-      // would have to capture `project` and `this` (to call `collectCheapSignalFiles`
-      // and read `this.classpath.files`), which the configuration cache rejects with
-      // `error writing value of type DefaultMapProperty`.
+      // Same system properties as the render task, plus daemon keys from [DaemonExtension]. Per-key
+      // `put` so each provider captures only serialisable references; one map-building lambda would
+      // capture `project` and fail the configuration cache.
       this.systemProperties.put("robolectric.graphicsMode", "NATIVE")
       this.systemProperties.put("robolectric.looperMode", "PAUSED")
       this.systemProperties.put("robolectric.conscryptMode", "OFF")
@@ -3719,11 +2746,8 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.backgroundSandboxBoot",
         extension.daemon.backgroundSandboxBoot.map { it.toString() },
       )
-      // Mirrors the `application=android.app.Application` line
-      // GenerateRobolectricPropertiesTask writes for the composePreviewRender Test path.
-      // SandboxHoldingRunner.buildGlobalConfig reads this and supplies the Application
-      // default. Without it, the daemon falls back to the consumer's manifest-declared
-      // Application — see RobolectricHost.SandboxRunner KDoc for the URL factory cascade.
+      // Mirrors the generated `application=android.app.Application`; otherwise the daemon uses the
+      // manifest Application.
       this.systemProperties.put(
         "composeai.daemon.useConsumerApplication",
         extension.useConsumerApplication.map { it.toString() },
@@ -3737,11 +2761,8 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.moduleProjectDir",
         project.layout.projectDirectory.asFile.absolutePath,
       )
-      // B2.0 — `composeai.daemon.userClassDirs`. The closure captures only the
-      // `daemonUserClassMarkers` List<String> (a configuration-time constant);
-      // `classpath.elements` is a Provider<Set<FileSystemLocation>> wired via the task's
-      // own @Classpath FileCollection, which the configuration cache serialises as part
-      // of the task's input snapshot.
+      // The closure captures only a configuration-time list; `classpath.elements` is serialised
+      // with the task inputs.
       this.systemProperties.put(
         "composeai.daemon.userClassDirs",
         this.classpath.elements.map { elements ->
@@ -3757,28 +2778,17 @@ internal object AndroidPreviewSupport {
       // know about the renderer-shared key.
       this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
       this.systemProperties.put("composeai.daemon.resDirs", daemonResDirs)
-      // Same path the daemon's `PreviewManifestRouter` reads to map the protocol-level
-      // `previewId` payload into the `RenderSpec(className, functionName)` the engine needs.
-      // Without it, `JsonRpcServer.handleRenderNow`'s `previewId=<id>` payload bottoms out in
-      // the host's `renderStubFallback` and the daemon emits a stub PNG path that doesn't
-      // exist on disk — see issue #314. The "harness" prefix is historical (only the harness
-      // launchers used to set this); now any production-mode launcher needs it.
+      // Lets the daemon's `PreviewManifestRouter` map a `previewId` to a `RenderSpec`; without it
+      // renders fall back to a stub (#314). The "harness" prefix is historical.
       this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
-      // H1+H2 — `composeai.daemon.historyDir` flips daemon-side history recording on. Default
-      // location is under the user-level cache root, NOT the project tree — see
-      // [composeAiHistoryDir]. Without this sysprop the daemon's `HistoryManager` stays null and
-      // the VS Code history view shows an empty drawer.
+      // Enables daemon history recording, under the user-level cache root ([composeAiHistoryDir]).
       this.systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
       this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
-      // @Optional @InputFile — present when composePreviewDiscover has populated previews.json,
-      // missing on the very first warm. Drives Gradle to invalidate the launch descriptor (and
-      // therefore re-trigger VS Code's descriptor-watcher respawn path) when the manifest first
-      // appears or its content changes. Use a conditional Provider that returns `null` when the
-      // file is absent: `@Optional` on an @InputFile means the *property* may be unset, but if it
-      // is set the underlying file must exist (Gradle fails the task otherwise). A null-returning
-      // Provider leaves the property unset, which is what `@Optional` actually consumes.
+      // Invalidates the descriptor (triggering VS Code's respawn) when the manifest appears or
+      // changes. A null-returning provider leaves the property unset when the file is absent, which
+      // is what `@Optional` needs.
       this.previewsManifest.fileProvider(
         previewOutputDir.flatMap { dir ->
           project.providers.provider {
@@ -3787,31 +2797,17 @@ internal object AndroidPreviewSupport {
           }
         }
       )
-      // …but that Provider is derived from a layout directory, not from `composePreviewDiscover`'s
-      // output, so it carries no build dependency. Gradle's strict validation rejects that the
-      // moment both tasks are in one graph:
-      //
-      //   Task ':composePreviewDaemonStart' uses this output of task ':composePreviewDiscover'
-      //   without declaring an explicit or implicit dependency.
-      //
-      // `mustRunAfter`, not `dependsOn`: the daemon must be warmable *before* anything has been
-      // discovered — that's the whole reason `previewsManifest` is `@Optional` (see its kdoc, and
-      // DaemonMain's `manifestFile.isFile` check). Forcing discovery here would make every VS Code
-      // warm pay for a full discovery pass and would delete the fresh-module path the optionality
-      // exists to serve. Ordering-only is exactly the relation that holds: if discovery is in the
-      // graph it must land first, and if it isn't, nothing changes.
+      // The provider carries no build dependency, which strict validation rejects. `mustRunAfter`
+      // rather than `dependsOn`: the daemon must be warmable before any discovery.
       mustRunAfter(discoverTask)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
   }
 
   /**
-   * Forwards the `composePreview.displayFilter.filters` Gradle property as the
-   * `composeai.displayfilter.filters` system property on the spawned renderer JVM. The
-   * `CommandLineArgumentProvider` shape (vs `test.systemProperty(...)`) means values are resolved
-   * at task execution time, so toggling `-PcomposePreview.displayFilter.filters=grayscale,invert`
-   * doesn't invalidate the configuration cache. Empty / unset is forwarded as an empty string;
-   * `DisplayFilterConfig.fromSystemProperties()` treats blank input as "feature disabled".
+   * Forwards `composePreview.displayFilter.filters` as `composeai.displayfilter.filters`. A
+   * `CommandLineArgumentProvider` resolves at execution time, so toggling doesn't invalidate the
+   * configuration cache. Blank means disabled.
    */
   internal class DisplayFilterSystemPropsProvider(
     @get:org.gradle.api.tasks.Input val filters: org.gradle.api.provider.Provider<String>
@@ -3821,10 +2817,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Lazy `Provider<String>` for the comma-separated display-filter list. Reads
-   * `-PcomposePreview.displayFilter.filters=...`; defaults to empty (feature off) so existing
-   * builds don't change behaviour. Returns a Provider — not a String — so consumers can pass it to
-   * lazy task inputs without invalidating the configuration cache on toggle.
+   * `-PcomposePreview.displayFilter.filters`, default empty (off). A Provider so it can feed lazy
+   * inputs.
    */
   internal fun resolveDisplayFilterFilters(
     project: org.gradle.api.Project
@@ -3832,12 +2826,8 @@ internal object AndroidPreviewSupport {
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
 
   /**
-   * Forwards the `composePreview.deviceFrame.device` Gradle property as the
-   * `composeai.deviceframe.device` system property on the spawned renderer JVM, using the same
-   * execution-time `CommandLineArgumentProvider` shape as [DisplayFilterSystemPropsProvider] so
-   * toggling `-PcomposePreview.deviceFrame.device=auto` doesn't invalidate the configuration cache.
-   * Empty / unset is forwarded as an empty string; `DeviceFrameConfig.fromSystemProperties()`
-   * treats blank input as "feature disabled".
+   * Forwards `composePreview.deviceFrame.device` as `composeai.deviceframe.device`, like
+   * [DisplayFilterSystemPropsProvider]. Blank means disabled.
    */
   internal class DeviceFrameSystemPropsProvider(
     @get:org.gradle.api.tasks.Input val device: org.gradle.api.provider.Provider<String>
@@ -3845,8 +2835,7 @@ internal object AndroidPreviewSupport {
     override fun asArguments(): Iterable<String> {
       val d = device.get()
       if (d.isBlank()) return listOf("-Dcomposeai.deviceframe.device=")
-      // Point the renderer at the cache the Test task's doFirst prefetch fills (Ktor/OkHttp can't
-      // run on the Robolectric render classpath — docs/RENDERER_COMPATIBILITY.md).
+      // The cache the doFirst prefetch fills (network clients can't run on the render classpath).
       return listOf(
         "-Dcomposeai.deviceframe.device=$d",
         "-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}",
@@ -3855,10 +2844,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Lazy `Provider<String>` for the device-frame selection (`auto`, a Device Art Generator id like
-   * `wear_round` / `pixel_5`, or empty to disable). Reads
-   * `-PcomposePreview.deviceFrame.device=...`; defaults to empty (feature off) so existing builds
-   * are unaffected.
+   * `-PcomposePreview.deviceFrame.device`: `auto`, a Device Art Generator id, or empty (default,
+   * off).
    */
   internal fun resolveDeviceFrameDevice(
     project: org.gradle.api.Project
@@ -3866,12 +2853,9 @@ internal object AndroidPreviewSupport {
     project.providers.gradleProperty("composePreview.deviceFrame.device").orElse("")
 
   /**
-   * Java-resource *source* roots scanned for Lottie assets in an Android module, and linked onto
-   * the `composePreviewRenderLottie` render classpath so the desktop renderer resolves the asset by
-   * classpath name. Covers the classic-AGP `src/main/resources` and the KMP source-set layout
-   * (`src/commonMain/resources`, `src/androidMain/resources`). Non-existent dirs are skipped by
-   * discovery and contribute nothing to the classpath, so this is safe on modules that ship no Java
-   * resources.
+   * Java-resource source roots for Lottie assets in an Android module (classic `src/main/resources`
+   * and KMP layouts), also linked onto the Lottie render classpath. Missing dirs contribute
+   * nothing.
    */
   internal fun androidLottieResourceDirs(
     project: org.gradle.api.Project
@@ -3890,14 +2874,9 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
     val typed = extension.previewExtensions.composeAiTrace
-    // `findByName(...)` is safe to call eagerly because `PreviewExtensionsExtension` eagerly
-    // registers the built-in ids in its generic container — see the `init` block there.
-    // A `composePreview { previewExtensions { extension("composeAiTrace") { ... } } }` block in
-    // the build script reaches the same instance via `maybeCreate`, so the user's
-    // `enableAllChecks()` / `checks` settings flow through this Property chain regardless of
-    // whether plugin-apply runs before or after the build-script body. The lazy-`Provider` wrap
-    // we tried instead captured `project` into the lambda, which the strict configuration cache
-    // rejects.
+    // Safe eagerly: `PreviewExtensionsExtension` pre-registers the built-in ids, and the build
+    // script's `extension(...)` reaches the same instance. A lazy wrap captured `project`, which
+    // the configuration cache rejects.
     val generic = extension.previewExtensions.extensions.findByName("composeAiTrace")
     val genericAllChecks =
       generic?.allChecksEnabledProvider ?: project.providers.provider<Boolean> { false }
@@ -3929,14 +2908,8 @@ internal object AndroidPreviewSupport {
     setOf("trace", "perfetto", "perfettoTrace", "composeAiTrace", "render/composeAiTrace")
 
   /**
-   * Resolve the active render tier from `-PcomposePreview.tier=<fast|full>`. `fast` tells the
-   * renderer to skip captures classified as [ee.schimke.composeai.plugin.CaptureCost.HEAVY]
-   * (`@AnimatedPreview` and non-TOP `@ScrollingPreview` modes); `full` (the default) renders
-   * everything as before.
-   *
-   * Returned as a `Provider<String>` (not a String) so feeding `.get()` to a
-   * `CommandLineArgumentProvider` resolves the tier at task-execution time — VS Code flipping the
-   * property between saves doesn't invalidate the configuration cache.
+   * `-PcomposePreview.tier=<fast|full>`: `fast` skips heavy captures; `full` (default) renders
+   * everything. A Provider so VS Code's per-save toggle doesn't invalidate the configuration cache.
    */
   internal fun resolveTier(
     project: org.gradle.api.Project
@@ -3946,11 +2919,7 @@ internal object AndroidPreviewSupport {
       .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
       .orElse("full")
 
-  /**
-   * Lazy holder for the render-tier system property on the `composePreviewRender` `Test` task. The
-   * Provider is `@Input`, so flipping `-PcomposePreview.tier` re-runs the task without invalidating
-   * the configuration cache.
-   */
+  /** Lazy render-tier system property for `composePreviewRender`. */
   internal class TierSystemPropProvider(
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
   ) : org.gradle.process.CommandLineArgumentProvider {
@@ -3958,32 +2927,22 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Forwards the `--preview` / `--preview-id` / `--exclude-preview-id` / `--exclude-preview-row`
-   * selection to the Robolectric render JVM as the `composeai.preview.*` system properties
-   * `PreviewFilter` reads (issue #2977). Lazy `@Input` providers so a filter change re-runs the
-   * render without invalidating the configuration cache more than the underlying `composePreview.*`
-   * property already does; an empty list emits no argument ("render everything").
-   *
-   * The property names are the wire contract with the renderer-side
-   * `ee.schimke.composeai.data.render.PreviewFilter` constants (`NAME_FILTER_PROPERTY` etc.) — the
-   * plugin can't depend on the renderer module, so they're duplicated here and must stay in sync.
+   * Forwards the preview selection as the `composeai.preview.*` properties `PreviewFilter` reads
+   * (#2977), via lazy inputs; an empty list emits nothing. The property names duplicate
+   * `PreviewFilter`'s constants (no module dependency) and must stay in sync.
    */
   internal class PreviewFilterSystemPropsProvider(
     @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
     /**
-     * Path to the newline-delimited UTF-8 id-filter file, when the build was given one
-     * (issue #5172). `@Internal` for the same reason as [idExcludeFile]: [idFilters] already
-     * carries this file's RESOLVED lines, so the contents drive the up-to-date check and the path
-     * must not.
+     * Path of the newline-delimited id-filter file (#5172). `@Internal`: [idFilters] carries its
+     * resolved lines, which drive up-to-date checks.
      */
     @get:org.gradle.api.tasks.Internal val idFilterFile: org.gradle.api.provider.Provider<String>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
     /**
-     * Path to the newline-delimited exclusion file, when the build was given one. `@Internal`
-     * deliberately: [idExcludes] already carries this file's RESOLVED lines, so the contents drive
-     * the up-to-date check and the path itself must not — a workspace that moves would otherwise
-     * invalidate a render whose exclusion set never changed.
+     * Path of the exclusion file. `@Internal` for the same reason, so a moved workspace doesn't
+     * invalidate the render.
      */
     @get:org.gradle.api.tasks.Internal val idExcludeFile: org.gradle.api.provider.Provider<String>,
     @get:org.gradle.api.tasks.Input val rowExcludes: org.gradle.api.provider.Provider<List<String>>,
@@ -3992,14 +2951,10 @@ internal object AndroidPreviewSupport {
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
-      // The id filter travels as a PATH when it came from `composePreview.idFilterFile`, for both
-      // reasons the exclude file below travels that way — an id may contain a comma — plus the one
-      // the file property was added for (issue #5172): this argument is encoded with the Gradle
-      // daemon's `sun.jnu.encoding`, so on a C/POSIX-locale daemon every non-ASCII character in an
-      // id would be replaced by `?` on the way to the render JVM and match nothing there. Same
-      // "only while the file is still what the list came FROM" test as the excludes: an explicit
-      // `--preview-id` on the task overrides the property convention, and must not lose to a stale
-      // `-PcomposePreview.idFilterFile`.
+      // Pass the filter file's path rather than its contents: ids may contain commas, and arguments
+      // are encoded with the daemon's `sun.jnu.encoding`, mangling non-ASCII on a POSIX locale
+      // (#5172). Only when the list still came from the file, so an explicit `--preview-id` wins
+      // over a stale property.
       val filterFile = idFilterFile.orNull?.trim().orEmpty()
       val resolvedFilters =
         idFilters.getOrElse(emptyList()).map(String::trim).filter(String::isNotEmpty)
@@ -4015,16 +2970,8 @@ internal object AndroidPreviewSupport {
       } else {
         arg("composeai.preview.idFilter", resolvedFilters)
       }
-      // The FILE wins when there is one, and the comma-joined form is then not emitted at all.
-      // Re-joining here is what the file exists to avoid: a preview id may contain a comma, so the
-      // round trip shatters each id into fragments that — matching by substring — exclude the whole
-      // module. Pass the path and let `PreviewFilter.idExcludesFrom` read the lines.
-      // …but only while the file is still what [idExcludes] came FROM. `--exclude-preview-id` on
-      // the task overrides the property convention (see RenderPreviewsTask's option help), and the
-      // file property is read independently, so forwarding the path unconditionally would let a
-      // stale `-PcomposePreview.idExcludeFile` silently win over an explicit option. Comparing the
-      // resolved lists is what tells the two apart: equal ⇒ the file is the source and travels as
-      // a path; different ⇒ the caller overrode it and their patterns travel as before.
+      // Likewise the exclude file wins when it's the source (re-joining would split ids on commas);
+      // comparing resolved lists detects an explicit `--exclude-preview-id` override.
       val excludeFile = idExcludeFile.orNull?.trim().orEmpty()
       val resolved = idExcludes.getOrElse(emptyList()).map(String::trim).filter(String::isNotEmpty)
       val fromFile =
@@ -4039,9 +2986,8 @@ internal object AndroidPreviewSupport {
       } else {
         arg("composeai.preview.idExclude", resolved)
       }
-      // The `@PreviewParameter` row axis. It has to travel separately from the id patterns because
-      // this backend, like the desktop one, applies the id filters to DISCOVERED entries — before
-      // `expandParameterProvider` mints the per-row ids — so an id pattern can never name a row.
+      // Rows travel separately: id filters apply before `@PreviewParameter` rows get their ids, so
+      // they can't name a row.
       arg("composeai.preview.rowExclude", rowExcludes.getOrElse(emptyList()))
       arg(
         PreviewPermutations.SYSTEM_PROPERTY,
@@ -4056,26 +3002,13 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Highest JVM bytecode target the consumer's classes compile to, across the Java
-   * (`compileOptions.targetCompatibility` on AGP's `CommonExtension`) and Kotlin
-   * (`compilerOptions.jvmTarget`) toolchains, or `null` when neither can be read. Feeds
-   * [RenderJvmSelection] so the render JVM is raised to match the classes it must load. Fully
-   * defensive — a probe that throws (no Kotlin plugin, a renamed KGP accessor, no AGP
-   * `compileOptions`) is skipped rather than failing configuration.
-   *
-   * Probes both `compile<Variant>Kotlin` (android-library-only modules) and
-   * `compile<Variant>KotlinAndroid` (KMP Android modules, which route their real compile through
-   * the per-target task) — the same pair the discovery/compile wiring uses above, so a KMP module
-   * on `jvmTarget = 21` with a 17 unit-test toolchain isn't missed.
+   * Highest bytecode target across Java `targetCompatibility` and Kotlin `jvmTarget`, or `null`;
+   * feeds [RenderJvmSelection]. Probes are defensive and skipped on failure.
    */
   /**
-   * [compileTaskNames] is the same candidate list the render classpath is built from, threaded in
-   * rather than re-derived. It matters on KMP-Android, where BOTH of this function's sources would
-   * otherwise come back empty: the compile task is `compileAndroidMain`, which neither
-   * `compile${'$'}{capVariant}Kotlin` spelling matches, and the DSL is not a [CommonExtension], so
-   * there is no `compileOptions.targetCompatibility` to read either. A module compiling to 21 would
-   * be read as "unknown", the renderer would fork on the daemon's 17, and the consumer's classes
-   * would fail to load with `UnsupportedClassVersionError`.
+   * [compileTaskNames] is the render classpath's candidate list. Needed for KMP-Android, where the
+   * task is `compileAndroidMain` and there's no [CommonExtension], so both probes would otherwise
+   * come back empty.
    */
   private fun detectRenderBytecodeMajor(
     project: Project,
@@ -4104,11 +3037,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Resolves the effective shard count from [PreviewExtension.shards]:
-   * - `≥1`: use the value as-is.
-   * - `0` (auto): read [previewsJson] if it exists from a previous discover run and hand the count
-   *   to [ShardTuning.autoShards]. If the file is missing (very first build), fall back to 1 — the
-   *   next run will have better data and can pick a higher count then.
+   * Effective shard count: `≥1` as-is; `0` (auto) feeds a previous `previews.json` to
+   * [ShardTuning.autoShards], or falls back to 1 when absent.
    */
   private fun resolveShardCount(
     project: Project,
@@ -4123,15 +3053,9 @@ internal object AndroidPreviewSupport {
       )
       return 1
     }
-    // Size by preview *row*, not by capture. The renderer shards whole preview
-    // rows (`RobolectricRenderTest.assignToShard`) — every capture of one
-    // preview stays on the same fork — so a preview with many heavy captures
-    // (paused-clock / GIF frames) is one indivisible unit. Counting captures
-    // here would let auto pick more forks than there are rows to spread, so the
-    // extra forks sit idle and the run ends up slower than a single fork.
-    // [ShardTuning.perPreviewRowCosts] groups captures + data products per
-    // preview entry, mirroring the renderer's per-row cost. `@PreviewParameter`
-    // expansion only adds rows in the renderer, so this is a safe lower bound.
+    // Size by preview row: the renderer keeps a row's captures on one fork, so counting captures
+    // would pick idle extra forks. [ShardTuning.perPreviewRowCosts] mirrors the renderer's per-row
+    // cost.
     val text = previewsJson.readText()
     val rowCosts = ShardTuning.perPreviewRowCosts(text)
     val rowCount = rowCosts.size
@@ -4160,10 +3084,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Append an [ee.schimke.composeai.plugin.tooling.InjectedDependency] record and emit a uniform
-   * `info`-level line. Central helper so every injection site — unconditional or conditional —
-   * contributes to the doctor.json accumulator and the grep-friendly log format with the same
-   * shape:
+   * Records an [ee.schimke.composeai.plugin.tooling.InjectedDependency] for doctor.json and logs it
+   * uniformly:
    *
    *     compose-ai-tools: inject[<coord>] <OUTCOME> → <config>  (<reason>)
    */
@@ -4187,11 +3109,8 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Validates that the consumer has declared every coordinate the plugin would otherwise have
-   * injected. Called from the `afterEvaluate` block in [registerAndroidTasks] when
-   * `composePreview.manageDependencies = false`. Fails during configuration (not at render time) so
-   * the error message carries the exact coordinate list to add, in the exact buckets the plugin
-   * would have used.
+   * For `manageDependencies = false`: fails configuration with the exact coordinates and buckets
+   * the plugin would have used.
    */
   private fun validateExternallyManagedDependencies(
     project: Project,
@@ -4200,13 +3119,8 @@ internal object AndroidPreviewSupport {
     tilesRendererRequired: Boolean,
     composeAiTraceRequired: Boolean,
   ) {
-    // Declared-dependency scan, not resolved-classpath: we want to
-    // fail before Gradle resolves anything, and to accept the coord
-    // regardless of whether the consumer placed it in the explicit
-    // bucket below or any parent config that extends into it (Android
-    // library's `api` into variant `Implementation`, custom buckets,
-    // etc.). Group + name match only — versions are out of scope,
-    // matching how `manageDependencies=true` also passes no version.
+    // Declared, not resolved, so it fails before resolution and accepts any parent bucket. Group +
+    // name only.
     fun declared(configName: String): Sequence<org.gradle.api.artifacts.Dependency> =
       project.configurations.findByName(configName)?.allDependencies?.asSequence()
         ?: emptySequence()
@@ -4268,35 +3182,21 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * B2.1 — collects the cheap-signal file set per
-   * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
-   * `gradle/libs.versions.toml`, this project's `build.gradle.kts` / `build.gradle`,
-   * `settings.gradle.kts` / `settings.gradle`, `gradle.properties`, `local.properties`. Only files
-   * that exist on disk are returned (a missing `local.properties` is the common case in CI; we
-   * don't want a ghost path in the daemon's hash baseline).
+   * Cheap-signal files per [DESIGN § 8 Tier
+   * 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed): version
+   * catalog, this project's build script, settings, `gradle.properties`, `local.properties` —
+   * existing files only. Shared with desktop.
    *
-   * Shares implementation with the desktop registration; both call sites consume the same shape.
-   *
-   * **Sibling subprojects deliberately not walked.** Issue #1549 originally asked for sibling
-   * `build.gradle[.kts]` files to flip Tier-1 dirty, restoring the pre-#1546 behaviour. The
-   * intermediate fix (settings-parsing ValueSource) was dropped on review: Tier-1 is the
-   * "fundamentally changed" signal that forces a full daemon reload, and Tier-2 (variant runtime
-   * classpath fingerprint) already invalidates on any sibling build-file edit that changes the
-   * resolved graph. The only edits the sibling walk would have caught and Tier-2 wouldn't are
-   * pure-formatting / comment-only changes on a sibling — and those shouldn't trigger a full
-   * reload. Re-adding the walk under IP needs a settings plugin to expose the project tree
-   * authoritatively; until then, the Tier-2 path covers the meaningful cases.
+   * Sibling build scripts aren't walked: Tier-2 (runtime classpath fingerprint) already catches
+   * meaningful sibling changes, and walking siblings under IP would need a settings plugin.
    */
   internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
 }
 
 /**
- * IP-safe cheap-signal file collector shared by the Android (`AndroidPreviewSupport`) and Desktop
- * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot) and the current
- * project's own `projectDir` only — no `rootProject.file(...)` / `rootProject.allprojects` access.
- * Sibling subprojects are intentionally excluded; see the kdoc on
- * [AndroidPreviewSupport.collectCheapSignalFiles] for the rationale.
+ * IP-safe collector: only `project.rootDir` and the project's own dir. See
+ * [AndroidPreviewSupport.collectCheapSignalFiles].
  */
 internal object CheapSignalFiles {
   internal fun collect(project: org.gradle.api.Project): List<java.io.File> {
@@ -4313,11 +3213,7 @@ internal object CheapSignalFiles {
     val moduleDir = project.projectDir
     out += java.io.File(moduleDir, "build.gradle.kts")
     out += java.io.File(moduleDir, "build.gradle")
-    // Only emit paths that actually exist — missing files contribute their absolute path string
-    // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
-    // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
-    // daemon's [ClasspathFingerprint] handles missing files defensively even when they are in
-    // its list, but the gradle plugin's role is to feed it real paths only.
+    // Existing files only, so missing ones don't put ghost paths into the fingerprint.
     return out.filter { it.isFile }
   }
 }

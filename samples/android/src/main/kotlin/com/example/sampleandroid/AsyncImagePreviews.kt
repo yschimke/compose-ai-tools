@@ -24,26 +24,13 @@ import coil.request.ImageRequest
 import java.io.ByteArrayOutputStream
 
 /**
- * Regression fixture for issue #2952 — coil-backed images captured blank.
+ * Regression fixture for coil-backed images captured blank: an `AsyncImage` fed a `ByteArray`,
+ * sized on one axis with `ContentScale.FillWidth`, in a centred `Column` with a caption. If the
+ * load doesn't resolve, the painter has no intrinsic size, so the image expands to full height and
+ * pushes the caption out of frame too — easy to spot. `AsyncImagePixelTest` asserts both halves.
  *
- * This is a deliberately faithful copy of the shape that broke: an `AsyncImage` fed a `ByteArray`,
- * sized only on one axis (`Modifier.width(100.dp)`) with `ContentScale.FillWidth`, sitting in a
- * centred `Column` next to a caption. Two things go wrong at once when the load doesn't resolve,
- * and the second is the nastier one:
- *
- * 1. the artwork is missing, and
- * 2. an unresolved `AsyncImagePainter` reports **no intrinsic size**, so `FillWidth` has nothing to
- *    scale from and the image expands to the parent's full height — shoving the caption out of
- *    frame. The whole screen captures as a solid block with neither element visible.
- *
- * So this preview is a good detector: if the fix regresses, the PNG doesn't just lose the rings —
- * it loses the "Living room speaker" line too, which is impossible to miss in a visual diff.
- * `AsyncImagePixelTest` asserts both halves.
- *
- * The bytes are generated rather than checked in as a drawable on purpose: a `ByteArray` model is
- * the case the issue hit (artwork arriving from a network response or a database blob), and it is
- * the case that has no `LocalInspectionMode` escape hatch — coil's inspection-mode branch only
- * paints the *placeholder*, never the model.
+ * Bytes rather than a drawable because a `ByteArray` model is the case that broke, and coil's
+ * inspection-mode branch only paints the placeholder, never the model.
  */
 @Composable
 fun DeviceStatusCard(image: Any?, description: String?) {
@@ -72,18 +59,10 @@ fun AsyncImageArtworkPreview() {
 }
 
 /**
- * The unresolvable case, kept as a fixture so the placeholder fallback has a regression test too.
- *
- * A preview render deliberately doesn't hit the network — coil runs inline on the render thread so
- * local models resolve, which puts any HTTP fetch under Android's main-thread network guard, and a
- * preview whose pixels depend on live egress wouldn't be reproducible anyway. `.invalid` is a
- * reserved TLD that resolves nowhere, so this fixture behaves identically in a sandbox, in CI and
- * on a laptop regardless. The renderer should keep the real inline load path, diagnose the failed
- * request in `<png>.warnings.json`, and still paint the request placeholder instead of dropping to
- * transparent empty pixels.
- *
- * The placeholder is bright and flat on purpose: `AsyncImagePixelTest` can assert those pixels
- * survived even though the URL did not.
+ * The unresolvable case: preview renders don't hit the network, and `.invalid` resolves nowhere, so
+ * this behaves the same everywhere. The renderer should log the failed request in
+ * `<png>.warnings.json` and still paint the (bright, flat) placeholder, which `AsyncImagePixelTest`
+ * asserts.
  */
 @Preview(name = "Async Image Unreachable", widthDp = 200, heightDp = 220, showBackground = true)
 @Composable
@@ -110,12 +89,8 @@ fun unreachablePlaceholderBitmap(size: Int = 96): Bitmap =
   }
 
 /**
- * A small procedurally-drawn PNG, encoded exactly the way an app's artwork would arrive — as
- * compressed bytes rather than a `Painter` or an `R.drawable`.
- *
- * Concentric rings over a two-axis gradient: busy enough that a pixel test can assert "this area
- * has more than one colour in it" and a human can see at a glance whether the render resolved the
- * image, cheap enough to regenerate on every composition.
+ * A small procedurally-drawn PNG, as compressed bytes the way app artwork arrives. Rings over a
+ * gradient, so tests can assert "more than one colour" and humans can see it resolved.
  */
 fun deviceArtworkPngBytes(size: Int = 96): ByteArray {
   val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

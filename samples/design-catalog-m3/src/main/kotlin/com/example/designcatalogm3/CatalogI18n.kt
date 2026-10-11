@@ -7,31 +7,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.preview.CatalogVariant
 
-// --- Internationalisation / accessibility axes ---
-//
-// The same two representative components — the filled button and the on switch — rendered under the
-// i18n/a11y dimensions, declared as named `props` variants (`locale` / `direction` / `fontScale`)
-// on their parent sticker in `catalog.spec.json`, mirroring the `content: icon+label` content-axis
-// variant. Pure Compose, no renderer change:
-//   * **pseudolocale** reuses the repo's existing pseudolocale-in-previews mechanism —
-//     `@Preview(locale = "ar-XB")`, the `Pseudolocale.BIDI` tag the desktop renderer recognises and
-//     flips to RTL (see `:samples:cmp`'s `CmpPseudoBidi`). Desktop CMP pseudolocalises layout
-//     direction, not text (`org.jetbrains.compose.resources` doesn't go through
-//     `LocalContext.resources`), so `en-XA` accent-expansion isn't visible here; the `ar-XB` bidi
-//     pseudolocale is, so it's the one that carries visible evidence.
-//   * **direction** forces `LocalLayoutDirection = Rtl` directly (layout direction is a composition
-//     property the renderer captures, so an override is faithful in both the PNG and the SVG
-// export).
-//   * **fontScale** is set on the `@Preview` itself (`fontScale = 2f`), not via a `LocalDensity`
-//     override: the design-artifacts SVG export reads `fontScale` from the render spec (the preview
-//     params), so driving it from the annotation keeps the PNG and the exported SVG/text metadata
-// in
-//     lockstep at 2.0 (large-text / dynamic-type).
+// Internationalisation / accessibility axes: representative components rendered as `props` variants
+// (`locale` / `direction` / `fontScale`):
+//   * pseudolocale: `@Preview(locale = "ar-XB")`, which the desktop renderer flips to RTL. Desktop
+//     CMP pseudolocalises direction, not text, so `en-XA` would show nothing.
+//   * direction: forces `LocalLayoutDirection = Rtl`, captured faithfully in PNG and SVG.
+//   * fontScale: set on the `@Preview` (not `LocalDensity`) because the SVG export reads it from the
+//     preview params, keeping PNG and SVG in step at 2.0.
 
-// The filled button carries only the fontScale axis: a centred label has nothing to mirror, so its
-// pseudolocale and forced-RTL captures were pixel-identical to the plain one (three previews, one
-// result). The switch row below keeps both — RTL genuinely mirrors its thumb, so the axis shows
-// something there.
+// The filled button carries only fontScale: a centred label has nothing to mirror. The switch keeps
+// both, since RTL mirrors its thumb.
 
 @CatalogVariant(
   of = "Button/Filled",
@@ -82,17 +67,9 @@ fun SwitchOnRtl() =
 @Composable
 fun SwitchOnLargeFont() = Sticker("switch-on")
 
-// A REAL RTL locale, as opposed to the `ar-XB` pseudolocale above. This is the regression guard for
-// the bug where the desktop batch renderers keyed their `LayoutDirection` flip off
-// `Pseudolocale.isRtl` alone: `ar-XB` mirrored, `ar` did not, so a catalog with real Arabic
-// translations rendered correctly shaped Arabic inside a left-to-right container — the leading
-// swatch still on the left, the text column still starting at the left edge. It read as "RTL is
-// fine" precisely where RTL had never been exercised.
-//
-// The slotted card is the sticker that shows it: it has BOTH a leading region and a text column, so
-// a mirror is unmistakable, and its headline/supporting copy comes from `strings.xml` — so this one
-// capture proves the two halves of a locale override together (translated copy AND mirrored
-// layout), which no `ar-XB` capture can (desktop CMP pseudolocalises direction, not text).
+// A real RTL locale (`ar`), guarding that layout direction follows real locales and not just the
+// `ar-XB` pseudolocale. The slotted card has a leading region and translated `strings.xml` copy, so
+// one capture shows both translated text and mirrored layout.
 @CatalogVariant(
   of = "Card/Slots",
   props = ["locale=ar"],

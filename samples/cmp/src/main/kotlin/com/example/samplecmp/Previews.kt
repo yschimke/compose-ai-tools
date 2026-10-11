@@ -62,18 +62,9 @@ fun WallpaperDemoPreview() {
 }
 
 /**
- * Issue #1930: rendering a known phone (Pixel 8) with `showSystemUi = true` on the **desktop /
- * Compose-Multiplatform** backend should produce a PNG that *looks* like a phone screenshot — full
- * device canvas plus the synthetic system bars (status bar at the top, gesture-pill nav at the
- * bottom). The desktop/Skiko renderer has no Android `SystemUI` process to draw real bars, so it
- * simulates them via `SystemBarsFrame` to match what the Android renderer (issue #256) and Android
- * Studio draw for the same `@Preview`, so a single committed design reference matches either
- * candidate.
- *
- * Two variants — light and dark — exercise the `uiMode`-aware tint branches of the frame so
- * reviewers can confirm the bars adapt to the theme rather than always rendering as light chrome on
- * a dark surface. This is the CMP-desktop counterpart of the Android sample's
- * `Pixel8SystemUiPreview`.
+ * A known phone with `showSystemUi = true` on the desktop backend: the renderer simulates status
+ * and nav bars via `SystemBarsFrame`, matching the Android renderer and Studio. Light and dark
+ * variants exercise the `uiMode`-aware tints. Counterpart of the Android `Pixel8SystemUiPreview`.
  */
 @Preview(name = "Pixel 8", device = "id:pixel_8", showSystemUi = true)
 @Preview(

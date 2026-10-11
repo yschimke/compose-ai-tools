@@ -6,13 +6,9 @@ import org.gradle.api.GradleException
 import org.junit.Test
 
 /**
- * Unit tests for the preview-**id** filter (issue #2966), the per-fan-out-member counterpart of
- * [selectNamedPreviews].
- *
- * The fixture is the shape that motivates the filter: one `@Preview` function fanned out over
- * several themes. All three ids share `functionName`, so a name filter can only keep or drop the
- * whole set — which is why a design catalog deferring every palette but the primary could thin its
- * published bundle but not its render.
+ * The preview-**id** filter, the per-fan-out-member counterpart of [selectNamedPreviews] (see
+ * #2966). Fixture: one `@Preview` fanned out over themes; all ids share `functionName`, so only an
+ * id filter can keep one.
  */
 class SelectPreviewIdsTest {
 
@@ -97,10 +93,9 @@ class SelectPreviewIdsTest {
   }
 
   /**
-   * Issue #5172: `compose-preview --filter` resolves an ASCII request to full preview ids itself,
-   * so a `?` in the requested id is not something the caller typed — it is a non-ASCII character
-   * the platform argument encoding replaced in transit. Say that, or the failure reads as a typo in
-   * a filter nobody wrote.
+   * `compose-preview --filter` resolves ASCII requests to full ids itself, so a `?` in a requested
+   * id is a non-ASCII character mangled by argument encoding, and the message should say so (see
+   * #5172).
    */
   @Test
   fun `a mangled non-ASCII id names the argument encoding`() {

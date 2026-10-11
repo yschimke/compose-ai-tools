@@ -1,12 +1,8 @@
-// `:appwidget-preview-runtime` — composable-helper authoring path for legacy `RemoteViews`-backed
-// App Widget previews. Sister to `:notification-preview-runtime` and `:glance-preview-runtime`.
-// `AppWidgetContent { ctx -> RemoteViews(...) }` inflates the consumer's `RemoteViews` factory
-// into the surrounding Compose `@Preview` tree — the same `RemoteViews.apply(context, parent)`
-// path `AppWidgetHost.createView(...)` takes on-device — and auto-discovers
-// `<appwidget-provider>` metadata by looking up the inflated layout id against the consumer's
-// registered AppWidget providers. The resulting `supportedCells` / `resizeAxes` flow through
-// `LauncherWidgetMetadataChannel` into the launcher-widget data product so a picker UI can gate
-// itself to what the widget actually supports.
+// `:appwidget-preview-runtime` — `AppWidgetContent { ctx -> RemoteViews(...) }` inflates a
+// `RemoteViews` into the surrounding `@Preview` via `RemoteViews.apply(context, parent)`, as
+// `AppWidgetHost.createView(...)` does on-device. `<appwidget-provider>` metadata is found from the
+// inflated layout id, and its `supportedCells` / `resizeAxes` flow via
+// `LauncherWidgetMetadataChannel` into the launcher-widget data product.
 
 plugins {
   id("composeai.base-conventions")

@@ -71,15 +71,12 @@ constructor(
     project.pluginManager.withPlugin("com.android.application") { androidHandler() }
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
 
-    // `com.android.kotlin.multiplatform.library` defaults to the CMP Desktop lane (issue #248),
-    // registered in [ComposePreviewTasks.registerDesktopTasks] once `org.jetbrains.compose` is
-    // applied. `kmpAndroidRobolectric = true` opts into Robolectric;
-    // [AndroidPreviewSupport.configure]
-    // decides in `onVariants` and calls back into `registerDesktop` when it can't.
+    // KMP-Android defaults to the CMP Desktop lane (#248), registered once `org.jetbrains.compose`
+    // applies; `kmpAndroidRobolectric = true` opts into Robolectric, decided in
+    // [AndroidPreviewSupport.configure] with a callback to `registerDesktop` when it can't.
     //
     // `androidConfigured`: classic AGP owns registration. `kmpAndroidRouting`: the KMP-Android lane
-    // is deciding, so desktop must wait for its fallback. `desktopDeferred`: desktop would have run
-    // but KMP-Android may still be applied.
+    // is deciding. `desktopDeferred`: desktop waits because KMP-Android may still be applied.
     var kmpAndroidRouting = false
     var desktopRegistered = false
     var desktopDeferred = false
@@ -93,12 +90,9 @@ constructor(
       if (!androidConfigured && !kmpAndroidRouting) registerDesktop()
     }
 
-    // A convention plugin may apply `org.jetbrains.compose` before the KMP-Android plugin;
-    // committing to Desktop then would make the Robolectric lane's registration fail. So when KMP
-    // is
-    // applied but KMP-Android isn't yet, the commit waits for `afterEvaluate`
-    // (`:samples:cmp-android-robolectric` pins this order). Every other shape registers
-    // immediately.
+    // A convention plugin may apply `org.jetbrains.compose` before KMP-Android, so with KMP applied
+    // but not KMP-Android, desktop registration waits for `afterEvaluate`
+    // (`:samples:cmp-android-robolectric` pins this).
     fun kmpAndroidStillPossible(): Boolean =
       project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform") &&
         !project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")

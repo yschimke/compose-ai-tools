@@ -6,35 +6,22 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Asserts the additive-RGB capture contract that `:samples:xr-glimmer:composePreviewRenderAll` is
- * supposed to deliver — the renderer mirror of `:samples:android`'s
- * `TransparentBackgroundPreviewPixelTest`, on the other channel.
+ * The additive-RGB capture contract for `:samples:xr-glimmer` (the counterpart of
+ * `:samples:android`'s `TransparentBackgroundPreviewPixelTest`). Glimmer's display is additive, so
+ * captures are opaque RGB on black, later `ADD`-blended onto an environment image:
  *
- * Glimmer's display model is additive: pure black pixels render as 100% transparent on-device, so
- * the capture uses **Encoding B** — opaque RGB on a `Color.Black` background, then `ADD`-blend onto
- * an environment image to recover what a wearer sees. The contract this test guards:
+ * - the PNG has an alpha plane, fully opaque (`0xFF`) everywhere;
+ * - the four outer corners are `RGB == (0, 0, 0)`, so `backgroundColor = 0xFF000000` survived and
+ *   no compositor mutated the capture in place.
  *
- * - The captured PNG carries an alpha plane (i.e. it's loaded as RGBA, not RGB-flattened).
- * - Alpha is fully opaque in every pixel (`0xFF`) — Encoding B is NOT a transparent capture.
- * - The four outer corners read `RGB == (0, 0, 0)` — additive-zero. These pixels sit well outside
- *   the centred title chip / card, so any drift away from black would mean either (a) the
- *   background-fill path lost the explicit `backgroundColor = 0xFF000000` from `@Preview`, or (b) a
- *   future env compositor mutated the original capture in place (it must write a sibling file
- *   instead).
- *
- * Without this test, Encoding-B drift slips through silently: an opaque-grey background still looks
- * "fine" in a manual review, but breaks the eventual `ADD`-blend env compositor because grey +
- * scene > 0 everywhere and the scene gets washed out across every pixel.
+ * An opaque grey background would look fine to a reviewer but wash out every composited pixel.
  */
 class GlimmerCaptureAdditivePixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
-  // Captures discovered for `NowPlayingCard` — one per `@Preview` env name. Filenames are
-  // the renderer's sanitised form: the middle dot in `Glimmer · Light` lands outside the
-  // `[A-Za-z0-9._-]` allowlist defined by `docs/RENDER_FILENAMES.md` and gets stripped,
-  // with the surrounding spaces compacted to a single underscore, so the on-disk file is
-  // `NowPlayingCard_Glimmer_Light.png` (not `_·_`).
+  // One capture per `@Preview` environment name; sanitising drops the middle dot (see
+  // `docs/RENDER_FILENAMES.md`), giving `NowPlayingCard_Glimmer_Light.png`.
   private val nowPlayingCaptures =
     listOf(
       "NowPlayingCard_Glimmer_Light",
@@ -72,11 +59,8 @@ class GlimmerCaptureAdditivePixelTest {
   }
 
   /**
-   * The four `NowPlayingCard` captures are pixel-identical today — Encoding B doesn't see the env
-   * name at render time; the future `:data-glimmer-environment-connector` is what differentiates
-   * them by writing a sibling composited PNG. If a regression starts varying the captures across
-   * env names (e.g. the renderer accidentally reads `Preview.name` and synthesises something
-   * env-specific in-process), this test catches it.
+   * The four captures are pixel-identical today (the environment compositor writes separate files);
+   * catches the renderer starting to vary them by `Preview.name`.
    */
   @Test
   fun `four NowPlayingCard env variants land at pixel-identical captures`() {

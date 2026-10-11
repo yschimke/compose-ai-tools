@@ -1,16 +1,7 @@
 #!/usr/bin/env node
-// Validates the published report schemas under `schema/` against
-// representative payloads, so the schema and the payloads it documents
-// can't silently drift. Two payload sources are checked:
-//
-//   1. The canonical example referenced by each schema's
-//      `x-composeai.example` (hand-authored from the Kotlin type).
-//   2. Every matching data-product payload embedded in the committed
-//      preview-harness fixtures (independently maintained) — for any
-//      `{ kind, payload }` whose `kind` a report schema claims.
-//
-// Dependency-free: a focused draft-07 subset validator lives below, so
-// this runs under plain `node` with no install step. Run:
+// Validates the report schemas under `schema/` against each schema's `x-composeai.example` and
+// every matching `{ kind, payload }` in the committed preview-harness fixtures, so schemas and
+// payloads can't drift. Dependency-free (a focused draft-07 subset validator below):
 //   node scripts/validate-report-schemas.mjs
 //
 // Exit 0 = all payloads conform; exit 1 = at least one violation.

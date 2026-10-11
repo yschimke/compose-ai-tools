@@ -7,23 +7,12 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * A module that declares previews, as it crosses the wire.
+ * A module that declares previews, as it crosses the wire: the mirror of [PreviewModule], whose
+ * `java.io.File` is meaningless in another process. [projectDir] is its path.
  *
- * The mirror of [PreviewModule], and it exists for one reason: that type carries a `java.io.File`,
- * and a file handle is meaningless in another process. [projectDir] is its path.
- *
- * **Absolute and normalised, always.** The build host runs in the user's project and the server may
- * not share its working directory — it can be started from anywhere, and in the deployed case is
- * not started by a human at all. A relative path would resolve against whichever process happened
- * to read it, which is the kind of bug that reproduces on one machine in ten. [from] resolves
- * before sending rather than trusting the caller, so a relative `projectDir` cannot reach the wire
- * even if one is constructed.
- *
- * Normalised because absolute is not enough to compare: the CLI's project-root discovery
- * legitimately produces paths like `/w/project/.`, which is the same directory as `/w/project` and
- * not the same string. A server keying anything by module directory would see two. [normalize] is
- * lexical, so unlike `canonicalPath` it does not resolve symlinks — a project reached through a
- * symlinked home keeps the path the user recognises.
+ * Always absolute (the server may not share the host's working directory; [from] resolves before
+ * sending) and lexically normalised so `/w/project/.` and `/w/project` compare equal. Symlinks are
+ * not resolved, so the path stays the one the user recognises.
  */
 @Serializable
 public data class WireModule(val gradlePath: String, val projectDir: String) {
@@ -46,12 +35,9 @@ public data class WireModule(val gradlePath: String, val projectDir: String) {
 public data class WireModuleManifest(val module: WireModule, val manifest: PreviewManifest)
 
 /**
- * What the server asks the build host to do — the seven `ServeBuildHost` operations, plus a
- * handshake.
- *
- * Sealed and polymorphic: a request the host does not know is a deserialisation failure, which is
- * the behaviour worth having. The alternative — a string `op` field with a `when` — turns an
- * unknown operation into a silent default at exactly the moment the two sides have skewed.
+ * What the server asks the build host to do: the seven `ServeBuildHost` operations, plus a
+ * handshake. Sealed and polymorphic so an unknown request fails to deserialise rather than silently
+ * defaulting when the two sides skew.
  */
 @Serializable
 public sealed interface BuildHostRequest {
@@ -63,11 +49,9 @@ public sealed interface BuildHostRequest {
     BuildHostRequest
 
   /**
-   * Init-script arguments to add for [projectRoot], if any.
-   *
-   * Build work despite reading like a flag: it decides whether to inject the preview plugin into a
-   * project that does not declare it. The host holds the invocation's own argv, which is what lets
-   * it tell an explicit `--init-script` from an injected one; the server cannot compute this.
+   * Init-script arguments to add for [projectRoot], if any — i.e. whether to inject the preview
+   * plugin into a project that doesn't declare it. Only the host, holding the invocation's argv,
+   * can tell an explicit `--init-script` from an injected one.
    */
   @Serializable
   @SerialName("autoInjectInitScriptArgs")
@@ -92,11 +76,8 @@ public sealed interface BuildHostRequest {
   @Serializable @SerialName("gradleProjects") public data object GradleProjects : BuildHostRequest
 
   /**
-   * Run [tasks] in the project's Gradle build.
-   *
-   * [silenceStdout] is carried rather than applied by the host: it decides whether
-   * [BuildHostEvent.Log] events are emitted at all. Dropping them here rather than at the server
-   * keeps a long build from writing megabytes into a pipe nobody reads.
+   * Run [tasks] in the project's Gradle build. [silenceStdout] suppresses [BuildHostEvent.Log] at
+   * the host, so a long build doesn't fill a pipe nobody reads.
    */
   @Serializable
   @SerialName("runGradleTasks")
@@ -141,13 +122,8 @@ public sealed interface BuildHostResponse {
   public data class BuildResult(val buildOk: Boolean) : BuildHostResponse
 
   /**
-   * Answer to [BuildHostRequest.DiscoverAndBuild].
-   *
-   * Carries the manifests rather than paths to them. Both processes are on one machine and could
-   * share the files, but a path says nothing about *when* it was written — the server would have no
-   * way to tell a manifest this build produced from one left by a previous run that failed. Sending
-   * the parsed value makes the answer self-contained, and `PreviewManifest` is already
-   * `@Serializable` because it is written to disk in this same shape.
+   * Answer to [BuildHostRequest.DiscoverAndBuild]. Carries the parsed manifests rather than paths,
+   * since a path can't say whether this build wrote it or a previous failed run did.
    */
   @Serializable
   @SerialName("discovery")
@@ -155,13 +131,9 @@ public sealed interface BuildHostResponse {
     BuildHostResponse
 
   /**
-   * The operation could not be performed.
-   *
-   * Distinct from a build that ran and failed — that is [BuildResult] with `buildOk = false`. This
-   * is the host being unable to answer at all: a protocol mismatch, a malformed request, or an
-   * exception escaping the Gradle call. The distinction matters because the server's response
-   * differs: a failed build is shown to the user, a failed host means fall back to serving without
-   * one.
+   * The host could not answer at all (protocol mismatch, malformed request, exception from Gradle)
+   * — distinct from a build that ran and failed ([BuildResult] with `buildOk = false`). The server
+   * then falls back to serving without a build host.
    */
   @Serializable
   @SerialName("failure")
@@ -169,10 +141,8 @@ public sealed interface BuildHostResponse {
 }
 
 /**
- * Something the host emits while an operation is in flight, rather than in answer to one.
- *
- * Events carry the id of the operation that produced them, so a server showing build progress can
- * attribute a line to the task it came from.
+ * Something the host emits while an operation is in flight. Carries that operation's id so output
+ * can be attributed to its task.
  */
 @Serializable
 public sealed interface BuildHostEvent {
@@ -182,11 +152,8 @@ public sealed interface BuildHostEvent {
 }
 
 /**
- * One framed line: an id, and exactly one of the three payload kinds.
- *
- * A single envelope type rather than three streams because there is one pipe, and the alternative —
- * inferring the kind from which fields are present — is the ambiguity this protocol exists to
- * avoid.
+ * One framed line: an id and exactly one of the three payload kinds. One envelope because there is
+ * one pipe, and inferring the kind from present fields would be ambiguous.
  */
 @Serializable
 public data class BuildHostEnvelope(

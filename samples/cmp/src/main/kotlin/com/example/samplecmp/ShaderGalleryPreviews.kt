@@ -35,30 +35,20 @@ import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 
 /**
- * SkSL feature-survey gallery — a spread of well-known shader techniques (raymarched SDF, fBm
- * noise, Julia escape-time, content-sampling render effect), each chosen to exercise a *different*
- * SkSL capability so we can see which the desktop/skiko capture path handles. The Android (AGSL)
- * twins live in `:samples:android` `ShaderGalleryPreviews.kt`; comparing the two PNGs is the "what
- * works / what differs across backends" matrix.
+ * SkSL feature-survey gallery: raymarched SDF, fBm noise, Julia set and a content-sampling render
+ * effect, each exercising a different SkSL capability on the desktop/skiko path. The Android (AGSL)
+ * twins live in `:samples:android`'s `ShaderGalleryPreviews.kt`; compare the PNGs. `iTime` is fixed
+ * for deterministic captures; 240×240dp ShaderBrush fills unless noted.
  *
- * All static: `iTime` is pinned to a fixed phase so each capture is deterministic (no
- * `@AnimatedPreview`). Captures are 240×240dp ShaderBrush fills unless noted.
- *
- * Technique credits — these are textbook GPU techniques adapted from Inigo Quilez's writing/shaders
- * (released under the MIT License). The SkSL here is rewritten for Compose, but the maths is his:
- * - Raymarching loop, SDF primitives & tetrahedron-normal:
- *   https://iquilezles.org/articles/raymarchingdf/ and
- *   https://iquilezles.org/articles/distfunctions/
+ * Techniques adapted from Inigo Quilez's articles and shaders (MIT License):
+ * - Raymarching, SDF primitives, tetrahedron normal: https://iquilezles.org/articles/raymarchingdf/
+ *   and https://iquilezles.org/articles/distfunctions/
  * - Value noise + fBm and the `sin(dot(p, vec2(127.1, 311.7))) * 43758.5453` hash:
  *   https://www.shadertoy.com/view/lsf3WH and https://iquilezles.org/articles/fbm/
- * - Cosine palette (`0.5 + 0.5*cos(...)`): https://iquilezles.org/articles/palettes/ The Julia
- *   escape-time iteration is classic public-domain complex-dynamics maths; only its colouring uses
- *   the palette above.
+ * - Cosine palette: https://iquilezles.org/articles/palettes/
  *
- * Boundary note — every loop here uses a **literal constant bound**. Skia's shading language (both
- * SkSL on this backend and AGSL on Android) rejects a uniform/dynamic trip count with `error: loop
- * index must be compared with a constant expression`; the pipeline surfaces that as a clean
- * `.error.json` sidecar rather than a crash, but the shader won't render. Keep loop bounds literal.
+ * Every loop uses a literal constant bound: SkSL and AGSL reject dynamic trip counts ("loop index
+ * must be compared with a constant expression"), which surfaces as an `.error.json`.
  */
 private const val FIXED_TIME = 1.2f
 
@@ -81,10 +71,8 @@ private fun ShaderCard(sksl: String) {
 }
 
 /**
- * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π`
- * every 2s, captured as a GIF by the desktop `@AnimatedPreview` path. Reading `time` in composition
- * rebuilds the shader with the new phase each frame. Only used with programs that loop seamlessly
- * over a `2π` `iTime` (the raymarch light + wobble, the Julia `c`-orbit, the fBm domain orbit).
+ * Animated twin of [ShaderCard]: `iTime` ramps 0 → 2π every 2s, captured as a GIF via
+ * `@AnimatedPreview`. Only for programs that loop seamlessly over 2π.
  */
 @Composable
 private fun AnimatedShaderCard(sksl: String) {
@@ -239,11 +227,7 @@ private val JULIA_SKSL =
 @Composable
 fun ShaderJuliaPreview() = ShaderCard(JULIA_SKSL)
 
-// ---------------------------------------------------------------------------------------------
-// Animated companions — the three procedural fills above, looped as GIFs via @AnimatedPreview.
-// Each program is already periodic in `iTime` (raymarch light + wobble, Julia c-orbit, fBm domain
-// orbit), so a 0..2π ramp produces a seamless 2s loop.
-// ---------------------------------------------------------------------------------------------
+// Animated companions: each program is periodic in `iTime`, so a 0..2π ramp loops seamlessly.
 @Preview(name = "Shader Gallery — Raymarch SDF (animated)")
 @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
 @Composable
@@ -259,11 +243,8 @@ fun ShaderFbmAnimatedPreview() = AnimatedShaderCard(FBM_SKSL)
 @Composable
 fun ShaderJuliaAnimatedPreview() = AnimatedShaderCard(JULIA_SKSL)
 
-// ---------------------------------------------------------------------------------------------
-// 4. Content-sampling RenderEffect — `uniform shader content` distorts the real composable beneath
-//    it via Modifier.graphicsLayer(renderEffect = ...). Tests the child-shader / renderEffect path
-//    rather than a ShaderBrush fill.
-// ---------------------------------------------------------------------------------------------
+// 4. Content-sampling RenderEffect: `uniform shader content` distorts the composable beneath it via
+//    `Modifier.graphicsLayer(renderEffect = ...)`, exercising the child-shader path.
 private val DISTORT_SKSL =
   """
   uniform float2 iResolution;

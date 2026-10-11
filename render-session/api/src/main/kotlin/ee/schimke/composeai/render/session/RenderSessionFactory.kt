@@ -5,11 +5,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Factory for opening [RenderSession]s. Lives in `:render-session-api` so consumers can hold the
- * factory shape without committing to a specific backend module at compile time; backend
- * implementations register themselves through this interface.
+ * Factory for opening [RenderSession]s, so consumers can hold the factory shape without depending
+ * on a backend module.
  *
- * Typical usage from `:render-session-subprocess`:
  * ```kotlin
  * val factory: RenderSessionFactory = SubprocessRenderSessions
  * val session = factory.open(
@@ -33,9 +31,8 @@ public interface RenderSessionFactory {
 }
 
 /**
- * Inputs shared by every backend's [RenderSessionFactory.open]. Backend-specific knobs (e.g.
- * subprocess JVM args overrides) live on per-backend extensions; this base record holds the minimum
- * every backend needs.
+ * Inputs shared by every backend's [RenderSessionFactory.open]; backend-specific knobs live
+ * elsewhere.
  */
 public data class RenderSessionConfig(
   /**
@@ -44,8 +41,7 @@ public data class RenderSessionConfig(
    */
   val descriptorPath: File,
   /**
-   * Workspace root reported to the daemon as the user's project root. Defaults to inferring from
-   * [descriptorPath] (two directories up from the `build/compose-previews/` subdirectory). Pass
+   * Workspace root reported to the daemon. Inferred from [descriptorPath] by default; pass
    * explicitly when the descriptor lives outside the workspace tree.
    */
   val workspaceRoot: File = inferWorkspaceRoot(descriptorPath),
@@ -65,8 +61,8 @@ public data class RenderSessionConfig(
    */
   val systemPropertyOverrides: Map<String, String> = emptyMap(),
   /**
-   * Log sink for the backend's diagnostic output (subprocess stderr, embedded driver
-   * stderr-equivalent). Defaults to forwarding to `System.err` with a `[render-session]` prefix.
+   * Log sink for the backend's diagnostic output; defaults to `System.err` with a
+   * `[render-session]` prefix.
    */
   val logSink: (String) -> Unit = { System.err.println("[render-session] $it") },
   /** Upper bound on the initialize handshake. */

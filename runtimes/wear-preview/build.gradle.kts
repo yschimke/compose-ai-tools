@@ -1,33 +1,15 @@
-// `:wear-preview-runtime` — composable-helper authoring path for **Wear TransformingLazyColumn item
-// scaling** in an isolated `@Preview`. Sister to `:splash-preview-runtime` /
-// `:slot-preview-runtime`:
-// a tiny helper consumed inside a regular `@Preview`, no new renderer strategy.
+// `:wear-preview-runtime` — composable helpers used inside a regular `@Preview` (no renderer
+// strategy).
 //
-// `TlcScalingHost { spec -> … }` hosts a real single-item `TransformingLazyColumn` (the item
-// flanked
-// by spacer items so the list genuinely scrolls) and hands the caller the *genuine*
-// `TransformingLazyColumnItemScope` + `TransformationSpec` — so the preview body is exactly the
-// code a
-// live list item uses (`Modifier.transformedHeight(this, spec)` + `SurfaceTransformation(spec)`),
-// with real Wear scaling. Pair it with a plain `@Preview` for a still, `@ScrollingPreview(GIF,
-// reduceMotion = false)` for the scaling scroll GIF, or `ProvideTlcScalePosition` to pin a
-// position.
+// `TlcScalingHost { spec -> … }` hosts a real single-item `TransformingLazyColumn` and hands the
+// caller the genuine `TransformingLazyColumnItemScope` + `TransformationSpec`, so the body is
+// exactly a live item's code with real Wear scaling. Pair with `@Preview`, `@ScrollingPreview(GIF,
+// reduceMotion = false)`, or `ProvideTlcScalePosition`.
 //
-// `wear-compose` is `compileOnly`: consumers are Wear apps that already bring it, and keeping it
-// off
-// the published POM avoids pinning a specific `wear-compose` alpha onto every consumer (same model
-// as `:splash`/`:notification` for Compose).
+// `CapturingWearWidgetPreview` renders a Glance Wear widget and also emits its RemoteCompose
+// document as the `.rc` sidecar (upstream's `WearWidgetPreview` keeps the bytes to itself).
 //
-// The module's second helper is `CapturingWearWidgetPreview` — a Glance Wear **widget** preview
-// that
-// renders the host's squircle container AND surfaces the widget's encoded RemoteCompose document as
-// the render's `.rc` sidecar, so a bundled widget travels as data rather than compiled `@Preview`
-// bytecode. Upstream's `WearWidgetPreview` builds that document internally and keeps the bytes to
-// itself, so a preview calling it directly emits no IR. Shared by `:samples:wear-widget` and
-// the `remote-m3` catalog (yschimke/wear-m3-catalog). Unlike `TlcScalingHost` it does take a real
-// dependency on
-// `:data-render-core` (the `IrSidecarChannel` hand-off it offers into) and on coroutines — see the
-// `dependencies` block for why the latter can't be `compileOnly`.
+// Wear/Glance/Remote Compose deps are `compileOnly` so consumers' own alpha versions aren't pinned.
 
 plugins {
   id("composeai.base-conventions")
@@ -47,10 +29,8 @@ android {
 
   buildFeatures { compose = true }
 
-  // `CapturingWearWidgetPreview` touches Glance Wear / Remote Compose APIs marked
-  // `@RestrictTo(LIBRARY_GROUP)`. The file-level `@Suppress("RestrictedApiAndroidX")` quiets the
-  // IDE inspection, but AGP lint runs `RestrictedApi` separately — disable it here as AndroidX's
-  // own samples (and `:samples:wear-widget` / `:data-remotecompose-connector`) do.
+  // `CapturingWearWidgetPreview` uses `@RestrictTo(LIBRARY_GROUP)` APIs; AGP lint's `RestrictedApi`
+  // runs separately from the file-level suppression.
   lint { disable += "RestrictedApi" }
 
   // Robolectric + a real Compose/Remote Compose graph (`CapturingWearWidgetPreviewTest`).
@@ -65,51 +45,28 @@ dependencies {
   compileOnly(libs.wear.compose.material3)
   compileOnly(libs.wear.compose.foundation)
 
-  // `CapturingWearWidgetPreview` — the second helper in this module: a Glance Wear widget preview
-  // that ALSO surfaces the widget's encoded RemoteCompose document as the render's `.rc` sidecar,
-  // so a bundled widget travels as data rather than compiled `@Preview` bytecode.
-  // `IrSidecarChannel`
-  // is the render-harness hand-off it offers the bytes into, so it's a real (published) dependency
-  // rather than `compileOnly` — the helper calls it at render time.
+  // The render-harness hand-off for the captured `.rc` bytes, called at render time.
   implementation(libs.composeai.data.render.core)
-  // `runBlocking` for the one-shot document capture. Deliberately NOT `compileOnly`: consumers do
-  // have coroutines transitively, but at whatever version their own graph resolves — the alpha
-  // Compose/glance-wear artifacts drag in 1.9.0, while this module compiles against the repo's
-  // pinned 1.11.0. `runBlocking` is not ABI-compatible across that gap (1.11 mangles the call site
-  // to `BuildersKt.runBlockingK$default`, which 1.9.0 doesn't declare), so a `compileOnly` edge
-  // throws `NoSuchMethodError` at render time and the capture silently degrades to "no `.rc`".
-  // Declaring it as a real dependency puts the matching version on every consumer's runtime
-  // classpath so compile and runtime agree.
+  // `runBlocking` for the one-shot capture. A real dependency, not `compileOnly`: consumers' alpha
+  // deps may resolve coroutines 1.9.0, where the 1.11 call site's mangled `runBlocking` doesn't
+  // exist, and the capture would silently lose its `.rc`.
   implementation(libs.kotlinx.coroutines.core)
 
-  // Glance Wear + the Remote Compose creation API the widget document is built from. `compileOnly`
-  // for the same reason as `wear-compose` above: consumers are Wear widget modules that already
-  // bring these alpha artifacts themselves (`:samples:wear-widget`,
-  // the `remote-m3` catalog), and keeping them off the published POM avoids pinning a
-  // specific glance-wear / compose-remote alpha onto every consumer of this runtime.
+  // Glance Wear + Remote Compose creation API, `compileOnly` like `wear-compose`.
   compileOnly(libs.glance.wear)
   compileOnly(libs.glance.wear.core)
   compileOnly(libs.glance.wear.tooling.preview)
   compileOnly(libs.compose.remote.creation.compose)
 
-  // The players `CapturingWearWidgetPreview` can replay the captured document through. The default
-  // is the embedded Compose player (`ExperimentalRemoteDocumentPlayer`) — see
-  // `WearWidgetPreviewPlayer` for why — reached through `RemoteDocument` from `remote-player-core`.
-  // `compileOnly` for the same reason as everything above it: a consumer that doesn't ship the
-  // embedded player still loads this runtime, and `embeddedWearWidgetPlayerAvailable` gates the
-  // call site so it degrades to the upstream View-backed `WearWidgetPreview` instead of dying.
+  // Players for replaying the captured document; the embedded Compose player is the default (see
+  // `WearWidgetPreviewPlayer`). `compileOnly`: `embeddedWearWidgetPlayerAvailable` falls back to
+  // the upstream View-backed `WearWidgetPreview` when absent.
   compileOnly(libs.compose.remote.player.core)
   compileOnly(libs.rcplayer.embedded.android)
 
-  // `WearWidgetPreviewPlayerTest` covers the property parsing; `EmbeddedWearWidgetPlayerTest`
-  // resolves the real embedded-player facade off the test classpath and asserts the pinned entry
-  // point still describes it — which is the whole value of the pin, so the player has to be a real
-  // (test-scoped) dependency here even though it is `compileOnly` for consumers.
-  //
-  // The Compose BOM + runtime are here for the *compiler*, not for the tests: this module applies
-  // the Compose compiler plugin, which runs over the test source set too and fails outright when
-  // no Compose runtime is on that classpath ("requires the Compose Runtime to be on the class
-  // path"). Main gets its own through `compileOnly`; the test source set has to say so itself.
+  // `EmbeddedWearWidgetPlayerTest` checks the pinned entry point against the real player, so it's a
+  // real test dependency. The Compose BOM + runtime are for the Compose compiler plugin, which also
+  // runs over test sources.
   testImplementation(platform(libs.compose.bom.stable))
   testImplementation(platform(libs.rcplayers.bom))
   testImplementation(libs.compose.runtime)
@@ -117,12 +74,8 @@ dependencies {
   testImplementation(libs.truth)
   testImplementation(libs.rcplayer.embedded.android)
 
-  // `CapturingWearWidgetPreviewTest` renders the wrapper under Robolectric on both replay lanes, so
-  // the Glance Wear / Remote Compose artifacts main compiles against `compileOnly` are real here —
-  // at the SAME pins, which is the point: the View lane executes this module's compiled call into
-  // upstream `WearWidgetPreview`, and a Glance Wear bump that moves that overload's JVM signature
-  // (issue #5420: alpha18 inserted `useSafeFallbackRendererVersion`) fails that test with
-  // `NoSuchMethodError` instead of failing consumers' renders.
+  // The `compileOnly` artifacts at the same pins, so a Glance Wear bump that changes the upstream
+  // `WearWidgetPreview` signature fails here with `NoSuchMethodError` rather than in consumers.
   testImplementation(libs.robolectric)
   testImplementation(libs.glance.wear)
   testImplementation(libs.glance.wear.core)

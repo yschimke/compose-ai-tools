@@ -46,48 +46,22 @@ import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 import kotlin.math.roundToInt
 
 /**
- * A **deterministic filmstrip** of a shared-element container transform — one static, diffable PNG
- * that lays the same transition out at five fixed progress fractions (0% → 100%) stacked top to
- * bottom.
+ * A deterministic filmstrip of a shared-element container transform: one static, diffable PNG with
+ * the transition at five fixed progress fractions (0% → 100%), top to bottom. The static
+ * counterpart to [ContainerTransformAnimatedPreview]'s GIF.
  *
- * Where [ContainerTransformAnimatedPreview] uses the `@AnimatedPreview` paused-clock GIF (great for
- * *watching* the motion), this preview is the static counterpart: the in-between bounds
- * interpolation is legible in a single image, and a visual-diff bot can compare it pixel-for-pixel
- * without the frame-timing jitter a GIF carries.
+ * Not `SeekableTransitionState.seekTo`: it seeks a fraction of `Transition.totalDurationNanos`,
+ * which shared-element transitions keep changing as animations register, so the image differed per
+ * run.
  *
- * ## How a panel is frozen, and why it is not `seekTo`
+ * Instead the filmstrip freezes on the paused clock:
+ * - `@RoboComposePreviewOptions(ManualClockOptions(advanceTimeMillis = …))` captures exactly at
+ *   [FILMSTRIP_CAPTURE_MS] of virtual time, with no further advance or quiescence probe.
+ * - Each panel scales all its specs to [panelDurationMillis], so at the capture instant panel `f`
+ *   is exactly `f` through its own transition (a tween evaluates to `e(t / d)`).
  *
- * The obvious spelling — give each panel its own `SeekableTransitionState` and `seekTo(fraction =
- * 0.25f, targetState = Expanded)` from a `LaunchedEffect` — renders a *different image on every
- * run* (issue #4097), and no amount of extra settle time fixes it. `seekTo` takes a fraction **of
- * the transition's total duration**, and that total is not a constant here:
- * `Transition.totalDurationNanos` is the max over the child animations that have registered so far,
- * a set that shared-element transitions keep growing (each `sharedBounds`/`sharedElement` match
- * adds its own bounds animation, and seeking adds initial-value animations on top). Measured on
- * this preview with every spec pinned to a fixed `tween`, the five panels still reported totals of
- * 600ms / 787ms / 1050ms / 1387ms / 1800ms — and two of the five moved again between consecutive
- * frames, differently on each run. Seeking a *fraction of a moving total* is a feedback loop: the
- * seek changes which animations exist, which changes the total, which changes what the fraction
- * meant. The fraction was always exactly right; the duration it was a fraction of was not.
- *
- * So the filmstrip freezes on the **clock** instead, which the renderer already runs paused and
- * deterministic:
- * - `@RoboComposePreviewOptions(ManualClockOptions(advanceTimeMillis = …))` pins the capture to
- *   exactly [FILMSTRIP_CAPTURE_MS] of virtual time. A capture with an explicit time is an exact
- *   snapshot — the renderer neither advances past it nor runs its adaptive pixel-quiescence probe.
- * - Each panel scales *all* of its animation specs to `FILMSTRIP_WINDOW_MS / fraction`
- *   ([panelDurationMillis]), so at the capture instant panel `f` sits exactly `f` of the way
- *   through its own transition. A `tween(durationMillis = d, easing = e)` evaluates to `e(t / d)`,
- *   so scaling `d` and reading at a fixed `t` produces the same eased pose the seek was asking for
- *   — while depending on nothing but the paused clock.
- *
- * Every panel starts its transition in the same composition and therefore on the same frame, so
- * nothing here depends on the order Compose happens to recompose the five siblings in — which is
- * what made the `seekTo` version drift a *different* panel on each run.
- *
- * If you add a panel, keep every spec derived from [panelDurationMillis]: a stray default spec
- * (`fadeIn()` and `AnimatedContent`'s default `SizeTransform()` are springs) puts one animation on
- * a different timeline from the rest and the panel stops matching its own label.
+ * If you add a panel, derive every spec from [panelDurationMillis]: a stray default spring (e.g.
+ * `fadeIn()`, `AnimatedContent`'s `SizeTransform()`) breaks the panel's label.
  */
 @Preview(name = "Shared Element Filmstrip", widthDp = 340, heightDp = 820, showBackground = true)
 @RoboComposePreviewOptions(
@@ -108,25 +82,16 @@ fun SharedElementFilmstripPreview() {
 }
 
 /**
- * Virtual time the renderer captures this preview at, in milliseconds — the constant the
- * `@RoboComposePreviewOptions` above pins and [panelDurationMillis] scales against. Must be a
- * compile-time constant to be usable as an annotation argument.
+ * Virtual capture time in ms, pinned by `@RoboComposePreviewOptions` above (hence a compile-time
+ * constant).
  */
 internal const val FILMSTRIP_CAPTURE_MS = 600L
 
 /**
- * Virtual time at which a panel's transition actually starts running, in milliseconds.
- *
- * Two things push it off zero, and both are load-bearing:
- * - the panel waits one frame before flipping its target state, so the collapsed pose gets a layout
- *   pass first. Without that pass the shared elements have no initial bounds to animate *from* and
- *   snap straight to the expanded pose — every panel then renders at ~100% regardless of its label.
- * - Compose needs two more frames to observe the flip and put the transition on its clock.
- *
- * Measured, not guessed: a `tween(600, LinearEasing)` probe on the 100% panel reads 0 at 16/32/48ms
- * and `0.0267 = 16/600` at 64ms, so the animation's own zero is 48ms. Subtracting it from
- * [FILMSTRIP_CAPTURE_MS] is what makes a panel land on *exactly* its labelled fraction rather than
- * 2.7% short of it.
+ * Virtual time at which a panel's transition actually starts, in ms: the panel waits one frame so
+ * the collapsed pose gets a layout pass (else shared elements snap to expanded), and Compose takes
+ * two more frames to start the transition. Measured with a linear tween probe; subtracting it lands
+ * each panel exactly on its labelled fraction.
  */
 internal const val FILMSTRIP_START_MS = 48L
 
@@ -136,9 +101,8 @@ internal const val FILMSTRIP_WINDOW_MS = FILMSTRIP_CAPTURE_MS - FILMSTRIP_START_
 internal val FILMSTRIP_FRACTIONS = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 
 /**
- * Duration that puts a panel exactly [fraction] of the way through its transition at
- * [FILMSTRIP_CAPTURE_MS]. The 0% panel never leaves its start state, so it has no duration to scale
- * and is rendered without a transition at all.
+ * Duration that puts a panel exactly [fraction] through its transition at [FILMSTRIP_CAPTURE_MS].
+ * The 0% panel renders without a transition.
  */
 internal fun panelDurationMillis(fraction: Float): Int =
   (FILMSTRIP_WINDOW_MS / fraction.coerceAtLeast(MIN_FRACTION)).roundToInt()
@@ -189,11 +153,8 @@ private fun FilmstripPanel(fraction: Float) {
 }
 
 /**
- * Every animation spec a panel uses, all built from one duration.
- *
- * Bundled rather than passed one by one so a panel physically cannot mix timelines: the bounds
- * transform, the content swap and the shared-element fades are the three places a default spring
- * would otherwise slip in.
+ * Every animation spec a panel uses, built from one duration so the bounds transform, content swap
+ * and fades can't mix timelines.
  */
 private class FilmstripSpecs(durationMillis: Int) {
   val bounds = BoundsTransform { _, _ -> tween(durationMillis = durationMillis) }

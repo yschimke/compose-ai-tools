@@ -7,45 +7,27 @@ import kotlin.system.exitProcess
 import okio.FileSystem
 
 /**
- * `compose-preview pin [VERSION] [--cli] [--remove] [--json]`
+ * `compose-preview pin [VERSION] [--cli] [--remove] [--json]`: read and write the project version
+ * pin, so the CLI, VS Code extension and `install` / `apply` actions drive one release.
  *
- * Reads and writes the **project version pin** — the single place a project names the
- * compose-preview version, so the CLI, the VS Code extension and the `install` / `apply` GitHub
- * actions all drive the same release instead of each picking one independently (issue #3738).
- *
- * Forms:
- * - `compose-preview pin` — report the resolved pin, where it came from, and whether the CLI on
- *   `$PATH` matches it. Exits 0 whether or not a pin exists; "no pin" is a legitimate state (the
- *   zero-config path), not an error.
- * - `compose-preview pin <version>` — write `composePreview.version=<version>` into the project's
+ * - `compose-preview pin` — report the resolved pin, its source, and whether the CLI matches. Exits
+ *   0
+ *   either way; no pin is legitimate.
+ * - `compose-preview pin <version>` — write `composePreview.version=<version>` to
  *   `gradle.properties`.
- * - `compose-preview pin --cli` — the same, using the version of the CLI you are running. This is
- *   the common flow: install a CLI, then make the project agree with it.
- * - `compose-preview pin --remove` — delete the pin line, returning the project to "every
- *   entrypoint uses its own bundled version".
+ * - `compose-preview pin --cli` — the same, using this CLI's version (the common flow).
+ * - `compose-preview pin --remove` — delete the pin line.
  *
- * `--json` prints the machine-readable form of the report, for agents and CI steps.
- *
- * Writes only ever touch `gradle.properties`. A pin already expressed in a version catalog
- * (`[versions] composePreviewCli`, the convention the composite actions document) is *read* as a
- * pin but never rewritten: catalogs are Renovate-managed, and silently editing one behind the bot's
- * back is how a pin and its update automation start fighting. Build scripts are never rewritten
- * either — the pin governs the **auto-injected** plugin, and a module that declares
- * `id("ee.schimke.composeai.preview") version "…"` itself is one auto-inject already skips, so its
- * own declaration stays the single source of truth for that module. Scope note:
- * [resolveVersionPin].
+ * `--json` prints the report machine-readably. Only `gradle.properties` is ever written: a version
+ * catalog pin (`[versions] composePreviewCli`) is read but never rewritten (Renovate owns it), and
+ * build scripts are never touched. See [resolveVersionPin].
  */
 class PinCommand(
   private val args: List<String>,
   private val projectRoot: File? = findGradleProjectRoot(),
   private val cliVersion: String = BUNDLE_VERSION,
-  // What `--cli` actually writes. [MAVEN_LINE_VERSION], not [cliVersion]: the pin becomes
-  // `composePreview.version`, which every entrypoint hands to Gradle as a plugin coordinate, so
-  // it has to name a version that exists on Central. They differ only on a release whose Central
-  // publish `maven-publish-guard` skipped — and on such a release `--cli` writing [cliVersion]
-  // would produce a pin that resolves nothing. [cliVersion] stays the identity this command
-  // *reports* (`CLI:`, `cliVersion` in --json, the skew comparison), which is a different
-  // question. See the KDoc on MAVEN_LINE_VERSION.
+  // What `--cli` writes: [MAVEN_LINE_VERSION], not [cliVersion], because the pin becomes a plugin
+  // coordinate and must exist on Central. [cliVersion] remains what this command reports.
   private val mavenLineVersion: String = MAVEN_LINE_VERSION,
   private val fileSystem: FileSystem = SystemFileSystem,
   private val env: (String) -> String? = System::getenv,
@@ -82,10 +64,8 @@ class PinCommand(
         val removed = removeGradlePropertiesPin(root, fileSystem)
         if (removed) stderr("compose-preview: removed the version pin from gradle.properties.")
         else stderr("compose-preview: no $VERSION_PIN_PROPERTY pin in gradle.properties.")
-        // Removing the gradle.properties line does not necessarily unpin the project: a catalog
-        // `[versions] composePreviewCli` entry is a pin too, and we deliberately don't rewrite
-        // catalogs. Saying "removed" and stopping there would be a lie the very next command
-        // exposes, so name what is still pinning and where.
+        // A catalog `composePreviewCli` entry still pins the project after the line is removed; say
+        // so.
         val remaining =
           resolveVersionPin(root, args = emptyList(), env = env, fileSystem = fileSystem)
         if (remaining != null) {
@@ -114,9 +94,8 @@ class PinCommand(
   }
 
   /**
-   * Prints the current pin state. [warnSkew] is off right after a write or a remove: the user just
-   * told us what they want, and echoing "…but the CLI is on X" as a warning in the same breath
-   * reads as the write having failed. The report line still shows both versions.
+   * Print the current pin state. [warnSkew] is off right after a write or remove, where a skew
+   * warning would read as a failed write; the report still shows both versions.
    */
   private fun report(root: File, json: Boolean, warnSkew: Boolean) {
     val pin = resolveVersionPin(root, args = emptyList(), env = env, fileSystem = fileSystem)
@@ -144,8 +123,7 @@ class PinCommand(
     }
     stdout("pinned:  ${pin.version}   (${pin.source.display})")
     stdout("CLI:     $cliVersion")
-    // Fresh latch: `pin` exists to answer this question, so it always reports skew even if an
-    // earlier call in the same process already warned.
+    // Fresh latch: `pin` always reports skew, even if an earlier call warned.
     if (warnSkew) warnOnCliSkew(pin, cliVersion, stderr, once = AtomicBoolean(false))
   }
 

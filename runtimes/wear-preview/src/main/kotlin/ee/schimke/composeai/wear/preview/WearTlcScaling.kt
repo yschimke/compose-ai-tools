@@ -15,15 +15,11 @@ import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 
 /**
- * Shows Wear `TransformingLazyColumn` (TLC) item scaling — scaled and faded toward the curved edges
- * — for a single component in an isolated `@Preview`, with the component authored in the **exact
- * normal list-item code**.
- *
- * Both `Modifier.transformedHeight(this, spec)` and `SurfaceTransformation(spec)` need a
- * [TransformingLazyColumnItemScope] (the `this`), which is `sealed` and only exists inside a real
- * `TransformingLazyColumn`. (A bare [rememberTransformationSpec] gives you the spec but not that
- * scope.) So [TlcScalingHost] hosts a real single-item list — the item flanked by tall spacer items
- * so it can genuinely scroll — and hands its **genuine** scope + spec to [content]:
+ * Shows Wear `TransformingLazyColumn` item scaling for one component in an isolated `@Preview`,
+ * authored in the exact list-item code. `transformedHeight(this, spec)` and
+ * `SurfaceTransformation(spec)` need a sealed [TransformingLazyColumnItemScope] that only a real
+ * list provides, so this hosts a real single-item list (padded with spacers so it scrolls) and
+ * passes the genuine scope and spec to [content]:
  * ```
  * TlcScalingHost { spec ->
  *   TitleCard(
@@ -33,16 +29,9 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
  *   ) { … }
  * }
  * ```
- *
- * The item rests **centred at full scale** — a plain `@Preview` renders the unscaled resting state,
- * doing nothing special. To show the scaling, let the capture **harness drive the scroll** rather
- * than pinning a position in the preview:
- * - **Stills** — `@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], reduceMotion =
- *   false)`. `TOP` captures the centred, unscaled frame; `END` (bound it with `maxScrollPx`) rides
- *   the item up into the top scaling zone so it renders scaled + faded. One preview, two states,
- *   harness- controlled.
- * - **A scaling GIF** — `@ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)`
- *   animates the item riding through the viewport.
+ * At rest the item is centred and unscaled. Let the harness drive the scroll to show scaling:
+ * `@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], reduceMotion = false)` for stills
+ * (bound END with `maxScrollPx`), or `modes = [ScrollMode.GIF]` for an animation.
  */
 @Composable
 fun TlcScalingHost(

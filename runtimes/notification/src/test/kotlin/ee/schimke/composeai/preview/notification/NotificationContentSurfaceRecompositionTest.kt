@@ -23,18 +23,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Regression test for #1363 — `NotificationContent`'s [NotificationSurface] parameter used to be
- * read inside `AndroidView`'s `factory` block, which Compose only runs once per view instance. Any
- * caller binding `surface` to state (a runtime toggle between collapsed / expanded / heads-up)
- * would see the rendered notification freeze on whichever surface was active at first composition.
- *
- * The fix wraps the `AndroidView` in `key(surface) { ... }`, which forces a fresh view instance
- * (and therefore a fresh RemoteViews inflation) whenever `surface` changes. We exercise that by
- * setting a Compose `mutableStateOf(NotificationSurface)`, asserting the initial render produced
- * the collapsed layout (no expanded big-text body visible), then flipping the state and asserting
- * the next composition produced the expanded layout. We compare against the structural signature of
- * the inflated RemoteViews tree — different surfaces inflate different layout XML, so the resolved
- * set of `TextView` strings differs.
+ * `NotificationContent` must re-inflate when its [NotificationSurface] changes (it's keyed on
+ * `surface`, since `AndroidView`'s factory runs once). Flips a `mutableStateOf` surface from
+ * collapsed to expanded and compares the inflated trees' `TextView` strings, which differ per
+ * layout.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])

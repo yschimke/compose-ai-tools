@@ -13,40 +13,18 @@ import ee.schimke.composeai.data.layoutinspector.SlotBounds
 import ee.schimke.composeai.data.theme.ThemePayload
 
 /**
- * Derive the viewer's **typography**, **theme** and **layout** inspection layers from a render's
- * own capture.
+ * Derive the viewer's typography, theme and layout inspection layers from a render's own capture,
+ * as [DesignAnnotation]s — the code-side counterpart of producer-authored annotations
+ * ([ServeAnnotationStore]), drawn with the same box + legend idiom.
  *
- * The compare page reads [DesignAnnotation]s a producer authored into a bundle
- * ([ServeAnnotationStore]) — the spec side of a design ↔ code comparison. The viewer needs the same
- * shape for the *code* side, and the daemon already captures it: every semantics node carries its
- * resolved typographic identity ([ComposeSemanticsNode.typography] — the size, face, weight, line
- * height, and variation axes the render actually resolved), while [ThemePayload.consumers]
- * attributes that resolved style back to its Material typography role. Projecting those onto
- * [DesignAnnotation] means the viewer draws them with exactly the numbered-box + legend idiom the
- * compare page already uses, with no second overlay model to maintain.
+ * Typography comes from `compose/semantics` ([ComposeSemanticsNode.typography], with Material roles
+ * from [ThemePayload.consumers]). Container layers come from `layout/inspector`, the canonical home
+ * of [ComposeSemanticsTokens], because it covers every `LayoutNode` — a padded `Column` declares no
+ * semantics at all. Without a layout tree they fall back to the semantics tree's mirrored tokens.
  *
- * **Two trees, deliberately.** Typography exists only on `compose/semantics`, so that layer is
- * walked there. The container layers read `layout/inspector` instead, because that is the tree the
- * facts actually live in: `LayoutInspectorProduct` is the canonical home for
- * [ComposeSemanticsTokens] (they are modifier-derived, and that product models the modifier chain;
- * `compose/semantics` merely mirrors them), and it walks every `LayoutNode` rather than only the
- * nodes that carry semantics. A `Column(Modifier.padding(16.dp), Arrangement.spacedBy(8.dp))`
- * declares no semantics at all, so on the semantics tree the very padding and gap these layers
- * advertise are invisible. A capture without the layout product falls back to the semantics tree's
- * mirrored tokens — fewer boxes, same projection — rather than dropping the layers.
- *
- * The **layout** layer is the code-side counterpart of the producer-authored
- * [AnnotationKind.LAYOUT] the compare page has always drawn on the reference side (issue #4328).
- * Until it existed the viewer could only inspect *paint* — fill, radius, type — and the redline
- * values a layout diff is actually argued in (the box's own size, its padding per edge, the
- * arrangement gap, a `defaultMinSize` floor) had no surface at all. Those are the same tokens the
- * published layout wireframe (`render-layout-wireframe-svg.mjs`) draws off the same tree, so the
- * two agree by construction.
- *
- * No typography metrics are re-measured here, and no geometry is inferred: every number is one the
- * capture already resolved. Material roles use the theme producer's resolved-value attribution and
- * may therefore contain multiple honest candidates when two roles resolve identically. A node that
- * resolved no typography (or no container tokens) simply contributes no annotation to that layer.
+ * The layout layer is the code-side counterpart of [AnnotationKind.LAYOUT] (size, padding per edge,
+ * arrangement gap, min-size floor), matching the published layout wireframe. Nothing is re-measured
+ * or inferred; nodes that resolved nothing contribute nothing.
  */
 public object ServeDesignAnnotations {
   /** The OpenType registered axes whose default is the same in every face. */
@@ -54,18 +32,12 @@ public object ServeDesignAnnotations {
     mapOf("wdth" to 100f, "slnt" to 0f, "ital" to 0f, "GRAD" to 0f, "ROND" to 0f)
 
   /**
-   * The typography, theme and layout annotations for one render, in depth-first order (the order
-   * the legend numbers them in).
+   * The annotations for one render, in depth-first (legend) order.
    *
-   * Bounds are absolute-to-root **render pixels** — `boundsInRoot` on the semantics tree,
-   * [LayoutInspectorNode.bounds] on the layout tree, and the node's captured paint box where the
-   * theme layer has one. All are the space the served PNG is in, so the viewer scales one layer to
-   * the on-screen image and is done. A node with malformed or zero-area bounds is skipped; it can't
-   * be drawn and would only produce a legend row pointing at nothing.
-   *
-   * `enclosing` threads the nearest **annotated** layout box down the walk rather than the literal
-   * parent, so a chain of wrappers that all reproduce one box collapses to one rectangle instead of
-   * comparing each node only against the one directly above it and emitting the whole stack.
+   * Bounds are absolute render pixels (semantics `boundsInRoot`, [LayoutInspectorNode.bounds], or
+   * the captured paint box), the served PNG's space. Malformed or zero-area bounds are skipped.
+   * `enclosing` carries the nearest annotated layout box, so stacked wrappers reproducing one box
+   * collapse to one rectangle.
    */
   public fun annotations(
     payload: ComposeSemanticsPayload,
@@ -74,17 +46,12 @@ public object ServeDesignAnnotations {
   ): List<DesignAnnotation> {
     val out = mutableListOf<DesignAnnotation>()
     val typographyTokensByNode = theme.typographyTokensByNode()
-    // The semantics walk always carries typography; it carries the container layers too only when
-    // there is no layout tree to take them from, so the two trees can never both describe one node.
+    // Containers come from the semantics walk only when there's no layout tree, so no node is
+    // described twice.
     val containersFromSemantics = layout == null
     fun walkSemantics(node: ComposeSemanticsNode, enclosing: AnnotationBounds?) {
-      // An unplaced node was measured but never positioned, so it draws nothing and its bounds
-      // read as the frame's ORIGIN rather than as "nowhere" — the same rule the layout walk below
-      // applies, and the same reason. Wear's `AlertDialogContent` is the case that found this: it
-      // subcomposes a full trial copy of the dialog to decide whether the content has to scroll,
-      // and that copy reached the typography layer as a second title stacked in the top-left
-      // corner (yschimke/wear-m3-catalog#77). The whole subtree goes with it: nothing under a node
-      // that was never placed is on the frame either.
+      // Unplaced nodes (measured but never positioned, e.g. a subcomposed trial copy) report the
+      // origin as their bounds; skip the whole subtree.
       if (!node.placed) return
       val bounds = SlotBounds.parse(node.boundsInRoot)?.takeIf { it.hasArea() }
       var nextEnclosing = enclosing
@@ -107,9 +74,7 @@ public object ServeDesignAnnotations {
 
     if (layout != null) {
       fun walkLayout(node: LayoutInspectorNode, enclosing: AnnotationBounds?) {
-        // An unplaced node was measured but never positioned, so its bounds describe nowhere on
-        // the frame — and nothing beneath it is on the frame either, whatever its own `placed`
-        // says. Suppressing only this node's box left a descendant free to draw one.
+        // An unplaced node's whole subtree is off-frame, whatever descendants report.
         if (!node.placed) return
         val box = node.bounds.toAnnotationBounds()
         var nextEnclosing = enclosing
@@ -139,9 +104,8 @@ public object ServeDesignAnnotations {
     else null
 
   /**
-   * `"14.0sp/20.0sp · Roboto · 500 · italic"` — the one-line spec a designer reads off a type ramp,
-   * dropping whatever the render left ambiguous. Null when the node resolved no size *and* no face:
-   * an annotation whose label would be empty is not worth a box.
+   * `"14.0sp/20.0sp · Roboto · 500 · italic"`, omitting what the render left ambiguous. Null when
+   * neither size nor face resolved.
    */
   private fun typographyAnnotation(
     node: ComposeSemanticsNode,
@@ -182,18 +146,15 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * The weight actually drawn. A variable face carries its real weight on the `wght` axis of
-   * [ComposeSemanticsTypography.fontVariationSettings] while its `Font` stays at the declared
-   * `W400`, so reading [ComposeSemanticsTypography.fontWeight] alone labelled Glimmer's 520/650/750
-   * roles as 400.
+   * The weight actually drawn: variable faces carry it on the `wght` axis while their `Font` stays
+   * at the declared weight.
    */
   private fun effectiveWeight(type: ComposeSemanticsTypography): String? =
     axisValue(type, "wght") ?: type.fontWeight?.toString()
 
   /**
-   * The value of one variable-font axis, read from
-   * [ComposeSemanticsTypography.fontVariationSettings] (`"ROND 100.0, wght 520.0"`), or null when
-   * the face declares no such axis.
+   * One variable-font axis value from `fontVariationSettings` (`"ROND 100.0, wght 520.0"`), or
+   * null.
    */
   private fun axisValue(type: ComposeSemanticsTypography, tag: String): String? =
     variationAxes(type).firstOrNull { it.first == tag }?.second
@@ -207,11 +168,8 @@ public object ServeDesignAnnotations {
     }
 
   /**
-   * The variable-font axes worth a mention: every axis the face was asked for except `wght` (which
-   * the label already shows as the weight) and except an axis sitting at its registered default,
-   * where saying so adds nothing. `opsz` and any custom axis have no universal default, so an
-   * explicit setting is always shown. That is what surfaces Glimmer's `ROND 100` without also
-   * printing `GRAD 0` / `slnt 0` / `wdth 100` on every label.
+   * Variable-font axes worth showing: all except `wght` (shown as weight) and axes at their
+   * registered default; `opsz` and custom axes are always shown.
    */
   private fun nonDefaultAxes(type: ComposeSemanticsTypography): List<String> =
     variationAxes(type)
@@ -239,9 +197,8 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * Theme consumers contain colour, typography, and shape names in one flat list. Intersecting with
-   * the payload's resolved typography keys retains only type-scale roles while preserving the
-   * consumer's stable attribution order. Both products use the same Compose `SemanticsNode.id`.
+   * Theme consumers mix colour, typography and shape names; intersect with resolved typography keys
+   * to keep type-scale roles in attribution order. Both products share `SemanticsNode.id`.
    */
   private fun ThemePayload?.typographyTokensByNode(): Map<String, List<String>> {
     if (this == null || resolvedTokens.typography.isEmpty()) return emptyMap()
@@ -257,15 +214,9 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * `"fill #FF6750A4 · radius 12.0dp · border 1.0dp #FF79747E · elevation 6.0dp"` — the resolved
-   * theme attributes of a container. Null for the common node that declares none of them (pure
-   * layout / text nodes).
-   *
-   * Anchored to [ComposeSemanticsTokens.paintBox] when the capture read one, falling back to the
-   * node's placement bounds. The two differ whenever a `padding` sits before the paint modifiers in
-   * the chain (`padding(4.dp).clip(CircleShape).background(…)`), and the box being described is the
-   * one the fill and ring were actually drawn into — outlining the placement box instead reports a
-   * radius against geometry that was never painted.
+   * `"fill #FF6750A4 · radius 12.0dp · border 1.0dp #FF79747E · elevation 6.0dp"`, or null when the
+   * node declares none. Anchored to [ComposeSemanticsTokens.paintBox] when captured (it differs
+   * from placement bounds when padding precedes paint modifiers), else the placement bounds.
    */
   private fun themeAnnotation(
     tokens: ComposeSemanticsTokens?,
@@ -296,13 +247,9 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * `"120×48px · pad 16.0dp · gap 8.0dp"` — the box a layout diff is argued in.
-   *
-   * Every node with a drawable box contributes one, because a redline's value is the *nesting*: a
-   * component that measures 4px wider than the kit is only diagnosable when the slot boxes inside
-   * it are on screen too. The one exclusion is a node that exactly reproduces its nearest annotated
-   * ancestor's box **and** declares no layout tokens of its own — a wrapper that adds nothing but a
-   * second rectangle on the same pixels and a legend row pointing at the row above it.
+   * `"120×48px · pad 16.0dp · gap 8.0dp"`. Every drawable node contributes one, since nesting is
+   * what makes a redline diagnosable — except a token-less wrapper that exactly reproduces its
+   * nearest annotated ancestor's box.
    */
   private fun layoutAnnotation(
     tokens: ComposeSemanticsTokens?,
@@ -341,8 +288,7 @@ public object ServeDesignAnnotations {
     val px = tokens.cornerRadiusPx?.let { "radius $it" }
     return when {
       dp != null && px != null -> "$dp ($px)"
-      // A shape none of the corner tokens could describe (an `Outline.Generic` morph/star): say so
-      // rather than print a radius the render does not have.
+      // Shapes no corner token describes (generic outlines) say so rather than invent a radius.
       else -> dp ?: px ?: "custom shape".takeIf { tokens.shapePath != null }
     }
   }
@@ -361,11 +307,7 @@ public object ServeDesignAnnotations {
     }
   }
 
-  /**
-   * `"gradient #FF6750A4→#FF625B71"` — a linear brush named by its endpoints rather than the bare
-   * word "gradient" the layer used to print, which told a reader nothing they couldn't already see.
-   * More than two stops keep the ends and count the middle.
-   */
+  /** `"gradient #FF6750A4→#FF625B71"`: endpoints, with any middle stops counted. */
   private fun gradientText(gradient: LayoutInspectorGradient): String {
     val colours = gradient.colors
     return when (colours.size) {
@@ -377,9 +319,8 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * `"pad 16.0dp"` when every edge agrees, `"pad 8.0dp/16.0dp"` for the symmetric vertical/
-   * horizontal case, else all four edges in CSS order (top, end, bottom, start) so an asymmetric
-   * inset stays readable on one line. Null for an inset that pads nothing.
+   * `"pad 16.0dp"` when uniform, `"pad 8.0dp/16.0dp"` when symmetric, else four edges in CSS order
+   * (top, end, bottom, start). Null when nothing is padded.
    */
   private fun insetsText(prefix: String, insets: ComposeSemanticsInsets): String? {
     val edges = listOf(insets.top, insets.end, insets.bottom, insets.start)
@@ -404,10 +345,8 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * The whole resolved container token set, not the eight fields this used to carry (issue #4328).
-   * The hover card and any machine consumer read this map, so a token the capture resolved and the
-   * label had no room for — the gradient's stops, the shadow, the effective alpha, the clip — is
-   * dropped here or nowhere.
+   * The full resolved container token set for the hover card and machine consumers, including what
+   * the label has no room for.
    */
   private fun themeDetail(
     tokens: ComposeSemanticsTokens,
@@ -430,10 +369,8 @@ public object ServeDesignAnnotations {
     tokens.padding?.let { insets -> insetsDetail(insets)?.let { put("padding", it) } }
     tokens.paintInset?.let { insets -> insetsDetail(insets)?.let { put("paintInset", it) } }
     tokens.gap?.let { put("gap", it) }
-    // Which rectangle the numbered box is on, present only when it is NOT the node's placement box
-    // — otherwise every ordinary container would carry a `box placement` row saying nothing. The
-    // padded paint chain this exists for is exactly the case where the label's radius and the
-    // Layout layer's size describe two different rectangles, and nothing else says so.
+    // Only when the box is the paint box rather than the placement box, so ordinary containers
+    // don't carry a redundant row.
     if (paintBoxAnchored) put("box", "paint")
   }
 
@@ -467,13 +404,8 @@ public object ServeDesignAnnotations {
   }
 
   /**
-   * All the gradient's stops (the label only had room for its endpoints) **and its direction**.
-   *
-   * The direction is not decoration: two brushes with identical colours and stops paint visibly
-   * differently when one runs left-to-right and the other top-to-bottom, so a detail map that
-   * serialised only the colours could not tell them apart — and this map is what a machine consumer
-   * diffs. Named where the axis is one of the three obvious ones, and given as its unit-space
-   * endpoints otherwise.
+   * All the gradient's stops and its direction (which changes the paint), named for the three
+   * obvious axes and given as unit-space endpoints otherwise.
    */
   private fun gradientDetail(gradient: LayoutInspectorGradient): String {
     val stops = gradient.stops
@@ -504,22 +436,14 @@ public object ServeDesignAnnotations {
     return if (rounded == Math.floor(rounded)) rounded.toLong().toString() else rounded.toString()
   }
 
-  /**
-   * The node's drawn text, trimmed to a legend-sized handle. The legend shows this as the
-   * annotation's title, so a whole paragraph would push the spec — the thing being inspected — off
-   * the row.
-   */
+  /** The node's drawn text, trimmed for a legend title. */
   private fun ComposeSemanticsNode.textSnippet(): String? {
     val raw = (text ?: layoutText ?: label)?.trim()?.replace(Regex("\\s+"), " ") ?: return null
     if (raw.isEmpty()) return null
     return if (raw.length <= 32) raw else raw.take(31) + "…"
   }
 
-  /**
-   * A resolved face identity is whatever handle the platform exposes — a generic name
-   * (`"sans-serif"`), but on desktop routinely an absolute font-file path. Show the file's own name
-   * so the legend reads `Roboto-Medium.ttf` rather than 90 characters of directory.
-   */
+  /** A face's file name rather than its full path (desktop reports absolute font paths). */
   private fun shortFace(family: String): String =
     family.substringAfterLast('/').substringAfterLast('\\').ifBlank { family }
 }

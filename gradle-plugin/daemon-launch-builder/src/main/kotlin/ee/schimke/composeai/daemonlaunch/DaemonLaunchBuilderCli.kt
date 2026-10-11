@@ -4,11 +4,9 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * CLI entry point over [DaemonLaunchBuilder.build] for non-Gradle build systems. A Bazel `genrule`
- * or an Amper task can shell out here without buying into a Kotlin/JVM client.
- *
- * The published `ee.schimke.composeai:daemon-launch-builder` JAR is a **slim library JAR** (no
- * shaded uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
+ * CLI over [DaemonLaunchBuilder.build] for non-Gradle build systems (Bazel, Amper). The published
+ * JAR is slim, so run it with the caller-resolved runtime closure; `java -jar` fails with
+ * `NoClassDefFoundError` (see `docs/NON_GRADLE_INTEGRATION.md`):
  * ```
  * java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli \
  *   --module-path <path> \
@@ -23,19 +21,10 @@ import kotlin.system.exitProcess
  *   --manifest-path <previews.json> \
  *   --out <daemon-launch.json>
  * ```
+ * `--classpath` takes `File.pathSeparator`-separated values and may repeat (concatenated in order);
+ * `--jvm-arg` / `--system-property` take one value per occurrence.
  *
- * where `<resolved-classpath>` is the runtime closure of
- * `ee.schimke.composeai:daemon-launch-builder` as resolved by the caller's dep system (Bazel
- * `rules_jvm_external`, Amper m2 cache, `mvn dependency:build-classpath`, etc.) and joined with the
- * platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar` against the bare published
- * JAR will fail with `NoClassDefFoundError` — see the "CLI invocation" section in
- * `docs/NON_GRADLE_INTEGRATION.md`.
- *
- * `--classpath` accepts a `File.pathSeparator`-separated list and can be repeated; entries are
- * concatenated in order. `--jvm-arg` and `--system-property` are repeatable single-value flags (one
- * arg / key=value per occurrence).
- *
- * Exit codes: `0` on success, `2` on argument parsing failure.
+ * Exit codes: `0` success, `2` bad arguments.
  */
 public object DaemonLaunchBuilderCli {
 

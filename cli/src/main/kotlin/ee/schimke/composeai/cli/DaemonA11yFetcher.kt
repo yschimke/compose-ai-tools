@@ -27,16 +27,12 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Drives a short-lived [RenderSession] for one module, walks every preview through `data/fetch` for
- * `a11y/atf`, aggregates the findings into the canonical `build/compose-previews
- * /accessibility.json` shape that [A11yReportRenderer] reads, and closes the session.
+ * Drives a short-lived [RenderSession] for one module, fetches `a11y/atf` per preview, and
+ * aggregates the findings into `build/compose-previews/accessibility.json` for
+ * [A11yReportRenderer]. The aggregation is a CLI/agent contract, so it lives here rather than in
+ * the render-session library.
  *
- * Lives in the CLI rather than the render-session library because the aggregation shape is a CLI /
- * agent contract — third-party consumers that want raw `a11y/atf` payloads use the
- * [RenderSession.fetchData] API directly without buying into this aggregation format.
- *
- * @param factory pluggable render-session factory; defaults to the subprocess backend. Test
- *   scaffolding can inject a fake by constructing a custom [RenderSessionFactory].
+ * @param factory render-session factory; defaults to the subprocess backend, tests inject a fake.
  */
 internal class DaemonA11yFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
@@ -50,45 +46,21 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Fetch a11y findings for [previewIds] in one module, aggregate into
-   * `<projectDir>/build/compose-previews/accessibility.json`, return the result.
+   * Fetch a11y findings for [previews] in one module, write
+   * `<projectDir>/build/compose-previews/accessibility.json`, and return the result.
    *
-   * [projectDir] is the module's project directory (i.e. [PreviewModule.projectDir]), already
-   * resolved by the Tooling API — `daemon-launch.json` sits directly under
-   * `<projectDir>/build/compose-previews/` regardless of the module's gradle path, so we don't
-   * route through [SubprocessRenderSessions.descriptorFile] (which derives the dir from a workspace
-   * root + gradle path).
+   * [projectDir] is the resolved module directory (where `daemon-launch.json` lives).
+   * [workspaceRoot] is reported to the daemon; defaults to [projectDir].
    *
-   * [workspaceRoot] is the repository root the daemon reports back through the initialize
-   * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
-   * handy (single-module projects).
+   * [previews] pairs the id a fetch is addressed with and the id its entry is filed under: a
+   * `--permutations` variant `Foo_dark` is fetched as `Foo` with overrides and filed as `Foo_dark`.
+   * Permutations are fetched before the declared preview and their artefacts snapshotted as each
+   * lands, because the daemon keys `data/<previewId>/` by the addressed id.
    *
-   * [previews] pairs the id each fetch is *addressed* with against the id its entry is *filed*
-   * under. They differ for a `--permutations` variant: the daemon only knows the previews the
-   * plugin discovered, so `Foo_dark` is fetched as `Foo` carrying the dark-mode
-   * [ee.schimke.composeai.daemon.protocol.PreviewOverrides] in the params bag, and filed as
-   * `Foo_dark` (issue #3762).
-   *
-   * Permutations are fetched **before** the declared preview, and their artefacts snapshotted as
-   * each one lands. The daemon writes overlay + hierarchy to `data/<previewId>/`, keyed by the id
-   * it was asked for rather than by the overrides — so without both of those, four permutations of
-   * one preview would overwrite each other and every entry would end up pointing at whichever
-   * render finished last.
-   *
-   * [narrowed] says whether [previews] is a subset of what the module declares — true when `--id` /
-   * `--filter` cut the fan-out down (issue #3742). It decides **merge vs. wholesale rewrite**: a
-   * narrowed run carries forward the entries of previews it didn't ask about (minus the ones that
-   * never really ran — see [carryForward]), the same bargain the `.cli-state.json` carry-forward
-   * strikes for previews a narrowed render skipped (#3730), while a full run rewrites and so stays
-   * the one thing that evicts the entry of a preview that no longer exists.
-   *
-   * [modulePreviewIds] is every id a **consumer** of this report may look up, which is a different
-   * question and deliberately a different parameter. It decides [AccessibilityReport.partial]: the
-   * report is stamped partial when the merged entries don't cover this set, so consumers read an
-   * absent id as "not checked" rather than folding it in as a clean row. The two can disagree —
-   * under `--permutations`, an unnarrowed run fetches every *declared* preview (so nothing is
-   * carried forward) and still leaves every *synthetic* id uncovered (so the report is partial).
-   * Deriving one from the other conflates them and costs the wholesale rewrite.
+   * [narrowed] decides merge vs. wholesale rewrite: a narrowed run carries forward entries it
+   * didn't fetch ([carryForward]); a full run rewrites, evicting entries for removed previews.
+   * [modulePreviewIds] is every id a consumer may look up and decides
+   * [AccessibilityReport.partial]; the two differ under `--permutations`.
    */
   fun fetch(
     projectDir: File,
@@ -122,20 +94,16 @@ internal class DaemonA11yFetcher(
       }
 
     return session.use { live ->
-      // The daemon registers `a11y` as inactive metadata; `extensions/enable` flips it on so
-      // `data/fetch` for `a11y/atf` resolves instead of returning `kind not advertised`. Mirrors
-      // the MCP supervisor's handshake. Failures here are logged but non-fatal — we still try
-      // the fetches so the user sees the error mode per preview rather than a single blanket
-      // open-failed message.
+      // `a11y` is registered inactive; enable it so `a11y/atf` fetches resolve. Failures are logged
+      // and the fetches still attempted, so errors show per preview.
       try {
         live.enableExtensions(listOf("a11y"))
       } catch (e: RenderSessionException) {
         onLog("extensions/enable for 'a11y' failed: ${e.message}")
       }
       val entries = mutableListOf<AccessibilityEntry>()
-      // Ids whose `a11y/atf` fetch produced nothing this run. They still get an entry — a full run
-      // has to show that the preview was attempted (#1453) — but that entry is not an observation,
-      // so it must not overwrite what a previous run actually found. See [mergeEntries].
+      // Ids whose fetch produced nothing. They still get an entry (a full run shows every attempt),
+      // but it must not overwrite a previous run's findings ([mergeEntries]).
       val failedIds = mutableSetOf<String>()
       var anyFetchOk = false
 
@@ -158,25 +126,20 @@ internal class DaemonA11yFetcher(
           null
         }
 
-      // Group by the id the daemon is addressed with, because everything that needs care here is
-      // per *declared* preview: its permutations share one artefact directory, one cached
-      // data-product file, and one `renders/<id>.png`.
+      // Group by the addressed id: permutations share its artefact directory, cached data product
+      // and `renders/<id>.png`.
       for ((previewId, group) in previews.groupBy { it.previewId }) {
         val permutations = group.filter { it.isPermutation }
         val base = group.firstOrNull { !it.isPermutation }
-        // Take a copy of whatever `data/<previewId>/` holds *before* any override renders as this
-        // preview, so the state can be put back if the restoring fetch below fails. Held rather
-        // than reconstructed: what's there now is this preview's own last render, which is true of
-        // it and may be what an existing report entry points at.
+        // Hold a copy of `data/<previewId>/` before any override renders as this preview, so it can
+        // be restored if the restoring fetch fails.
         val heldArtifacts =
           if (permutations.isEmpty()) null else holdArtifacts(projectDir, previewId)
         for (preview in permutations) {
           val payload = fetchOne(previewId, preview.entryId, fetchParams(preview))
           if (payload != null) anyFetchOk = true else failedIds += preview.entryId
-          // Copy this render's artefacts out before the next fetch of the same preview replaces
-          // them — but only when the fetch produced something. On a failure the directory still
-          // holds the *previous* configuration's files, and snapshotting those would file another
-          // permutation's overlay and hierarchy under this one's id.
+          // Snapshot this render's artefacts before the next fetch replaces them — only on success,
+          // or we'd file the previous configuration's files under this id.
           if (payload != null) snapshotArtifacts(projectDir, from = previewId, to = preview.entryId)
           entries.add(
             AccessibilityEntry(
@@ -190,8 +153,7 @@ internal class DaemonA11yFetcher(
         }
 
         if (permutations.isEmpty()) {
-          // Nothing overrode this preview, so the ordinary cached path is fine — this is the narrow
-          // fast fetch #3742 exists to keep.
+          // Nothing overrode this preview, so the cached fast path is fine.
           val preview = base ?: continue
           val payload = fetchOne(previewId, preview.entryId, null)
           if (payload != null) anyFetchOk = true else failedIds += preview.entryId
@@ -206,36 +168,24 @@ internal class DaemonA11yFetcher(
           continue
         }
 
-        // A permutation is rendered *as* this preview, so once one has run, two things under the
-        // declared id describe the override rather than the preview: the data product it wrote sits
-        // at this preview's own cache path — and an unforced fetch serves that existing file rather
-        // than re-rendering, since `FileBackedDataProductRegistry` only queues a re-render when the
-        // file is *missing* — and `renders/<previewId>.png`, which `buildResults` hashes as this
-        // preview, holds the override's pixels. One forced fetch at default overrides fixes both,
-        // so it runs even when the declared preview has no entry to file (`--id Foo_dark`): the
-        // report gains nothing, but the render on disk stops lying about which configuration it is.
+        // After a permutation, both the cached data product and `renders/<previewId>.png` describe
+        // the override (an unforced fetch would serve the stale file), so force one default render
+        // — even when the declared preview has no entry to file.
         val payload = fetchOne(previewId, base?.entryId ?: previewId, forcedFetchParams(null))
         if (payload == null) {
           onLog(
             "could not restore the default render of '$previewId' after its permutations; " +
               "renders/$previewId.png may still hold a permutation's pixels"
           )
-          // Nothing replaced the permutation's files, so `data/<previewId>/` still describes an
-          // override — including the `a11y-atf.json` at this preview's own cache path, which the
-          // *next* run's unforced fetch would serve as the base's findings. Roll the directory
-          // back to what it held before the permutations ran.
-          //
-          // Rolling back rather than deleting matters for the entry that isn't rewritten: on
-          // `--id Foo_dark` there is no fresh `Foo` entry, so a narrowed run carries the previous
-          // one forward — `annotatedPath` and all. Deleting would leave that carried entry
-          // pointing at a file this run had just removed.
+          // The forced fetch failed, so roll `data/<previewId>/` back rather than leave override
+          // files that a later unforced fetch would serve. Rolling back, not deleting, keeps a
+          // carried-forward entry's `annotatedPath` valid.
           restoreArtifacts(projectDir, previewId, heldArtifacts)
         }
         releaseHeldArtifacts(heldArtifacts)
         if (base == null) continue
         if (payload != null) anyFetchOk = true else failedIds += base.entryId
-        // Read unconditionally: this fetch either rendered, or the roll-back put this preview's own
-        // previous render back, so either way the directory is the declared preview's.
+        // The directory now holds the declared preview's own render either way.
         entries.add(
           AccessibilityEntry(
             previewId = base.entryId,
@@ -245,11 +195,8 @@ internal class DaemonA11yFetcher(
           )
         )
       }
-      // If we attempted at least one preview and none succeeded, the empty-findings entries we
-      // accumulated above are indistinguishable from a clean run. Stamp the report-level status
-      // so downstream consumers (the python PR-comment helper, CLI exit-code policy) can tell
-      // "ATF didn't run" apart from "ATF ran cleanly." When `previewIds` is empty there's nothing
-      // to report on either way, so leave `status` null.
+      // If every attempt failed, empty entries would look like a clean run; stamp the report status
+      // so consumers can tell. Null when there was nothing to attempt.
       val atfAvailable = anyFetchOk || previews.isEmpty()
       val status = if (atfAvailable) null else A11Y_REPORT_STATUS_ATF_UNAVAILABLE
       val reportFile =
@@ -267,12 +214,8 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries of its
-   * own, for cases where we can't even open a render session (descriptor missing / open failed).
-   * Lets the python PR-comment helper see the same signal it gets on a per-preview-failure run
-   * instead of silently finding nothing on disk. On a narrowed run the entries already on disk
-   * survive — a run that couldn't reach the daemon has learned nothing about the previews it wasn't
-   * going to fetch either — and the stamped status still fails the CLI.
+   * Write an `accessibility.json` stamped `atf-unavailable` with no entries of its own, when no
+   * session could be opened. A narrowed run keeps existing entries; the stamp still fails the CLI.
    */
   private fun writeAtfUnavailableReport(
     projectDir: File,
@@ -318,23 +261,12 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * The entries of [existing] that are worth keeping — everything, unless that report was stamped
-   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case only the ones **carrying findings** do.
+   * The entries of [existing] worth keeping: all of them, unless it was stamped
+   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case only those carrying findings.
    *
-   * An entry with no findings under that stamp records a fetch that produced nothing — quite
-   * possibly one that never ran at all (#1453) — so keeping it would let a later narrowed success
-   * republish it with no stamp of its own and have every consumer read it as "checked, found
-   * nothing". Dropping it instead leaves that preview *uncovered*, which
-   * [AccessibilityReport.partial] already reports honestly, so the run needs no second mechanism to
-   * say "don't trust these". Findings are the only sound proof: they can only come from a decoded
-   * `a11y/atf` payload, and an entry that has them is data whatever the report-level stamp says (a
-   * stamp can come from a failed session open landing on top of a previous run's genuine results).
-   *
-   * **Not `nodes`** — tempting, and wrong. [readNodes] reads `a11y-hierarchy.json` off disk for
-   * every preview whether or not its ATF fetch succeeded, and that file can be left over from an
-   * earlier render, so a node list says nothing about whether ATF ran. The cost of the strict rule
-   * is that a genuinely clean preview carried through a stamped report reads as "not checked" until
-   * the next full run — an understatement of coverage, which is the safe direction to be wrong in.
+   * An empty entry under that stamp may record a fetch that never ran; dropping it leaves the
+   * preview uncovered, which [AccessibilityReport.partial] reports honestly. Findings can only come
+   * from a decoded payload. Not `nodes`: [readNodes] may read a leftover `a11y-hierarchy.json`.
    */
   private fun carryForward(existing: AccessibilityReport?): List<AccessibilityEntry> {
     val entries = existing?.entries.orEmpty()
@@ -343,10 +275,8 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * The `accessibility.json` a previous run left at [reportFile], or `null` when there is none / it
-   * can't be parsed. A report we can't read is one we can't preserve, and refusing to write over it
-   * would leave the run with no report at all — so an unreadable file degrades to the non-merging
-   * behaviour rather than failing the fetch.
+   * The previous run's `accessibility.json`, or null when absent or unparseable (then the run
+   * simply doesn't merge).
    */
   private fun readExistingReport(reportFile: File): AccessibilityReport? {
     if (!reportFile.isFile) return null
@@ -359,15 +289,9 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * [fresh] layered over [existing], keyed by `previewId`: a preview this run fetched takes the new
-   * entry, one it didn't keeps the old, and each id appears once. Existing order is preserved (new
-   * ids append) so consecutive narrowed runs produce a stable file rather than reshuffling it.
-   *
-   * An id in [failedIds] is the exception: its fresh entry records a fetch that produced nothing,
-   * so letting it win would delete findings a previous run really observed — and, if some *other*
-   * preview in the same run succeeded, republish the deleted one as checked-and-clean under this
-   * run's null status. Those entries only land where there is nothing to keep, which is what makes
-   * a full run still show every attempted preview.
+   * [fresh] over [existing], keyed by `previewId`, preserving existing order (new ids append) for
+   * stable output. Fresh entries for [failedIds] only land where there is nothing to keep, so a
+   * failed fetch never deletes real findings.
    */
   private fun mergeEntries(
     existing: List<AccessibilityEntry>,
@@ -390,23 +314,17 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * The `params` bag for one fetch: `null` for a declared preview with no permutations in play,
-   * which wants its own defaults and may reuse a cached render — that reuse is the narrow fast
-   * fetch #3742 exists to keep. Every permutation gets [forcedFetchParams].
-   *
-   * The force flag hangs off **being a permutation**, not off carrying a non-empty override bag. A
-   * declared `@Preview(fontScale = 2.0f)` expands to a `_fontscale-2x` variant whose params equal
-   * the base's, so [PreviewPermutationsCli.overridesFor] returns `null` for it — and an unforced
-   * fetch of that variant would serve whatever the *previous* permutation left at the shared cache
-   * path, filing the RTL render's findings under the 2× id. Forced with no overrides is the honest
-   * request for it: its configuration genuinely is the base's.
+   * The `params` bag for one fetch: null for a declared preview with no permutations in play (may
+   * reuse a cached render); every permutation gets [forcedFetchParams]. Forcing follows being a
+   * permutation, not having overrides: a variant whose overrides equal the base's would otherwise
+   * be served the previous permutation's cached file.
    */
   private fun fetchParams(preview: ReportCommand.RequestedPreview): JsonElement? =
     if (preview.isPermutation) forcedFetchParams(preview.overrides) else null
 
   /**
-   * A forced re-render carrying [overrides] (or none), so the daemon produces the artefact at
-   * *that* configuration rather than serving whatever the shared per-preview file already holds.
+   * A forced re-render at [overrides] (or none), so the daemon doesn't serve the shared cached
+   * file.
    */
   private fun forcedFetchParams(overrides: PreviewOverrides?): JsonElement = buildJsonObject {
     put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
@@ -419,35 +337,22 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Delete every per-render artefact under `data/[previewId]/`, because what's there describes a
-   * render this preview isn't and no fresh render replaced it.
-   *
-   * Includes `a11y-atf.json`, which is not a report input but *is* the file
-   * `FileBackedDataProductRegistry` serves: it only queues a re-render when that file is
-   * **missing**, so leaving a permutation's copy behind would hand the next unforced fetch of this
-   * preview the override's findings. Deleting makes that next fetch a real render.
+   * Delete every per-render artefact under `data/[previewId]/`, including `a11y-atf.json`: the
+   * registry only re-renders when that file is missing, so a leftover would serve the override's
+   * findings.
    */
   /**
-   * Copy `data/[previewId]/`'s per-render artefacts aside, before any permutation renders as this
-   * preview, and return the directory holding them. [restoreArtifacts] puts them back.
-   *
-   * A file that was absent is recorded by its absence in the hold directory, so a roll-back deletes
-   * it — the permutation created it, and this preview had nothing there.
-   *
-   * A file that can't be copied is recorded the same way, deliberately: after a failed hold we no
-   * longer know what this preview's own artefact was, and rolling back to "absent" costs a
-   * re-render on the next fetch, while rolling back to "whatever the override left" would serve
-   * another configuration's findings under this id. The re-render is the cheaper mistake.
+   * Copy `data/[previewId]/`'s per-render artefacts aside before permutations render, returning the
+   * hold directory for [restoreArtifacts]. Absent or uncopyable files are recorded as absent, so a
+   * roll-back deletes them (a re-render is cheaper than serving the wrong configuration).
    */
   private fun holdArtifacts(projectDir: File, previewId: String): File? {
     val dir = projectDir.resolve("build/compose-previews/data/$previewId")
     val hold = projectDir.resolve("build/compose-previews/.a11y-pre-permutation/$previewId")
     return try {
       hold.deleteRecursively()
-      // `deleteRecursively()` reports failure by returning false, and a hold directory that still
-      // holds an *earlier* run's files is worse than none: a file this run's base doesn't have
-      // would look held, and the roll-back would reinstate a stale overlay or ATF payload as the
-      // preview's current one. An empty directory is the only usable starting point.
+      // A hold dir with an earlier run's files would reinstate stale artefacts; start empty or not
+      // at all.
       if (PER_RENDER_FILES.any { hold.resolve(it).exists() }) {
         onLog(
           "could not clear the pre-permutation hold for '$previewId' at ${hold.path}; " +
@@ -468,12 +373,8 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Put `data/[previewId]/` back to what [holdArtifacts] captured: each held file copied in, each
-   * file it did not hold deleted.
-   *
-   * With no [held] directory — the hold itself failed — every per-render file is deleted instead.
-   * The directory then reads as "nothing rendered", which the registry answers with a real
-   * re-render; leaving the override's files would answer it with the wrong configuration's cache.
+   * Restore `data/[previewId]/` to what [holdArtifacts] captured, deleting files it didn't hold.
+   * With no [held] directory, delete every per-render file so the next fetch re-renders.
    */
   private fun restoreArtifacts(projectDir: File, previewId: String, held: File?) {
     val dir = projectDir.resolve("build/compose-previews/data/$previewId")
@@ -490,9 +391,8 @@ internal class DaemonA11yFetcher(
       } catch (e: Exception) {
         onLog("could not roll back $name for '$previewId': ${e.message}")
       }
-      // `File.delete()` returns false rather than throwing when the file is locked or its directory
-      // isn't writable, so check rather than assume: a surviving `a11y-atf.json` is exactly what a
-      // later unforced fetch would serve as this preview's findings.
+      // `File.delete()` returns false rather than throwing; a surviving `a11y-atf.json` would be
+      // served.
       if (source == null && target.exists()) {
         onLog(
           "could not roll back $name for '$previewId'; a later fetch of that preview may serve " +
@@ -502,11 +402,7 @@ internal class DaemonA11yFetcher(
     }
   }
 
-  /**
-   * Drop the hold directory once the outcome is decided, restored from or not. A failure here is
-   * not fatal — [holdArtifacts] re-checks that the directory is clear before trusting it — but it
-   * is worth saying, since the leftovers cost the *next* run its roll-back.
-   */
+  /** Drop the hold directory. Non-fatal ([holdArtifacts] re-checks), but worth logging. */
   private fun releaseHeldArtifacts(held: File?) {
     if (held == null) return
     val cleared =
@@ -520,18 +416,10 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Copy the artefacts the daemon just wrote for [from] into [to]'s own directory, so a permutation
-   * keeps the overlay and hierarchy of *its* render.
-   *
-   * The daemon keys `data/<previewId>/` by the id it was asked for, and a permutation is fetched
-   * under its declared preview's id — so these files are transient: the next fetch of the same
-   * preview replaces them. `fetchData` returns only after the render completes, so copying here is
-   * safe. Best-effort: a permutation whose artefacts can't be copied still keeps its findings,
-   * which came back inline in the payload rather than through the filesystem.
-   *
-   * A file the latest render *didn't* produce is deleted from [to] rather than left alone: the
-   * target directory may hold an earlier run's copy, and keeping it would let [readNodes] and
-   * [relativeOverlayPath] hand this permutation a hierarchy or overlay from a render it isn't.
+   * Copy the daemon's fresh artefacts for [from] into [to]'s directory, so a permutation keeps its
+   * own overlay and hierarchy (the daemon's copy is overwritten by the next fetch of the same
+   * preview). Best-effort; findings came inline anyway. Files this render didn't produce are
+   * deleted from [to].
    */
   private fun snapshotArtifacts(projectDir: File, from: String, to: String) {
     val sourceDir = projectDir.resolve("build/compose-previews/data/$from")
@@ -553,8 +441,8 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Resolve the daemon-side overlay PNG (`a11y-overlay.png`) for [previewId] relative to the
-   * accessibility.json that will be written. Returns null when the file is absent.
+   * The daemon-side `a11y-overlay.png` for [previewId], relative to the report, or null when
+   * absent.
    */
   private fun relativeOverlayPath(projectDir: File, previewId: String): String? {
     val overlay = projectDir.resolve("build/compose-previews/data/$previewId/a11y-overlay.png")
@@ -562,11 +450,8 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Read the daemon-side `a11y-hierarchy.json` for [previewId] and decode its `nodes` so the
-   * aggregated `accessibility.json` carries the "what a screen reader sees" node list alongside the
-   * overlay PNG — the desktop overlay-only path populates these even when `findings` is empty.
-   * Reads off disk (rather than a second `data/fetch`) so it's robust to the file being a sibling
-   * of the overlay the re-render already produced; returns empty when absent or unparseable.
+   * Decode `a11y-hierarchy.json`'s `nodes` for [previewId] from disk (the screen-reader view,
+   * present even without findings). Empty when absent or unparseable.
    */
   private fun readNodes(projectDir: File, previewId: String): List<AccessibilityNode> {
     val file = projectDir.resolve("build/compose-previews/data/$previewId/a11y-hierarchy.json")
@@ -599,11 +484,8 @@ internal class DaemonA11yFetcher(
 
   sealed interface Outcome {
     /**
-     * Render session opened and per-preview fetches completed (possibly with some failures — see
-     * [atfAvailable]). [atfAvailable] is `true` when at least one preview's `a11y/atf` fetch
-     * succeeded, or when the module had no previews to attempt; `false` only when every attempted
-     * fetch failed. The on-disk `accessibility.json` carries the same signal via its `status`
-     * field.
+     * Session opened and fetches completed. [atfAvailable] is false only when every attempted fetch
+     * failed; the report's `status` carries the same signal.
      */
     data class Ok(val reportFile: File, val entryCount: Int, val atfAvailable: Boolean) : Outcome
 
@@ -615,18 +497,13 @@ internal class DaemonA11yFetcher(
   companion object {
     private const val ATF_KIND = "a11y/atf"
 
-    /**
-     * The per-preview artefacts a permutation needs a copy of. Both are written by the daemon into
-     * `data/<previewId>/` and read back from there by [readNodes] / [relativeOverlayPath].
-     */
+    /** Per-preview artefacts a permutation needs its own copy of. */
     private val SNAPSHOT_FILES = listOf("a11y-overlay.png", "a11y-hierarchy.json")
 
     /**
-     * Everything `AccessibilityDataProducer.writeArtifacts` puts under `data/<previewId>/` for one
-     * render — the two [SNAPSHOT_FILES] plus the cached data product and the touch-target
-     * derivation, neither of which this report reads but both of which describe the render that
-     * produced them. [holdArtifacts] / [restoreArtifacts] move the set as a unit, so the directory
-     * is never left half-describing one configuration and half another.
+     * Everything `AccessibilityDataProducer.writeArtifacts` writes under `data/<previewId>/` for
+     * one render, moved as a unit by [holdArtifacts] / [restoreArtifacts] so the directory never
+     * mixes configurations.
      */
     private val PER_RENDER_FILES =
       listOf("a11y-atf.json", "a11y-hierarchy.json", "a11y-touchTargets.json", "a11y-overlay.png")

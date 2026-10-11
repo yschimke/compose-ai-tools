@@ -18,19 +18,12 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Drives a short-lived [ee.schimke.composeai.render.session.RenderSession] for one module and
- * renders a single preview across every cell of a display-axis matrix (issue #1788), returning the
- * rendered PNG bytes per cell. The CLI's `render-matrix` command turns those into per-cell hashes
- * and an optional contact sheet.
+ * Drives a short-lived [ee.schimke.composeai.render.session.RenderSession] for one module,
+ * rendering one preview across every cell of a display-axis matrix and returning PNG bytes per cell
+ * (for `render-matrix`). Cells render serially, each waiting for its terminal event, since they
+ * share a preview id with different overrides.
  *
- * Cells render **serially** through one session: `renderNow` only queues, and each cell carries its
- * own overrides on the same preview id, so we wait for each cell's `renderFinished` before queueing
- * the next — mirroring how the daemon MCP server serialises different-override renders of the same
- * preview. Lives in the CLI (not the render-session library) because the per-cell aggregation is a
- * CLI / agent contract; third-party tooling uses [RenderSessionFactory] / `renderNow` directly.
- *
- * @param factory pluggable render-session factory; defaults to the subprocess backend. Tests inject
- *   a fake by constructing a custom [RenderSessionFactory].
+ * @param factory render-session factory; defaults to the subprocess backend, tests inject a fake.
  */
 internal class MatrixRenderFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
@@ -38,10 +31,8 @@ internal class MatrixRenderFetcher(
   private val fileSystem: FileSystem = SystemFileSystem,
 ) {
   /**
-   * Render [previewId] across [cells] in [projectDir]'s module. [projectDir] is the module's
-   * project directory (`daemon-launch.json` sits under `<projectDir>/build/compose-previews/`).
-   * [workspaceRoot] is the repository root the daemon reports through the initialize handshake;
-   * defaults to [projectDir] for single-module projects.
+   * Render [previewId] across [cells] in [projectDir]'s module (where `daemon-launch.json` lives).
+   * [workspaceRoot] is reported to the daemon; defaults to [projectDir].
    */
   fun fetch(
     projectDir: File,
@@ -69,9 +60,7 @@ internal class MatrixRenderFetcher(
       }
 
     return session.use { live ->
-      // A single notification listener feeds whichever cell is currently in flight. Because cells
-      // render serially (we await each finish before queueing the next), there is exactly one
-      // pending latch at a time.
+      // One listener feeds the single in-flight cell's latch.
       val pending = AtomicReference<CountDownLatch?>(null)
       val pngPath = AtomicReference<String?>(null)
       live
@@ -80,11 +69,8 @@ internal class MatrixRenderFetcher(
           if ((method != "renderFinished" && !failedEvent) || params == null) return@onNotification
           val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
           if (id != previewId) return@onNotification
-          // Either terminal event releases the cell — the daemon owes exactly one per queued
-          // render, and a composition that throws emits only `renderFailed`. Without this a broken
-          // preview made every cell sit out the full RENDER_TIMEOUT_SECONDS, so an N-cell matrix
-          // took N × 180s to report what the daemon knew in seconds. `pngPath` stays null on
-          // failure, which the caller already reads as "no PNG for this cell".
+          // Either terminal event releases the cell, so a broken preview doesn't cost each cell the
+          // full timeout. `pngPath` stays null on failure.
           if (failedEvent) {
             onLog(
               "render failed for '$id': " +
@@ -92,8 +78,7 @@ internal class MatrixRenderFetcher(
                   ?: "daemon reported renderFailed")
             )
           } else {
-            // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either
-            // way.
+            // `unchanged` renders still carry a reused pngPath.
             params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pngPath.set(it) }
           }
           pending.get()?.countDown()
@@ -101,12 +86,9 @@ internal class MatrixRenderFetcher(
         .use {
           val results = mutableListOf<CellResult>()
           for (cell in cells) {
-            // The daemon clears its per-preview override-in-flight flag just *after* emitting
-            // `renderFinished` (JsonRpcServer), and every cell here re-queues the same previewId
-            // the moment the previous cell's `renderFinished` lands — so without honouring the
-            // daemon's coalesced-retry contract, cell 2 is rejected inside that window and the
-            // rejection loop then burns through every remaining cell while the flag is still set.
-            // Same bounded backoff as ServeRenderHost.
+            // The daemon clears its override-in-flight flag just after `renderFinished`, so the
+            // next cell can be rejected as coalesced; retry with the same bounded backoff as
+            // ServeRenderHost.
             var attempt = 0
             var queued = false
             var failed: String? = null
@@ -125,8 +107,7 @@ internal class MatrixRenderFetcher(
                     timeout = RENDER_ACK_TIMEOUT,
                   )
                 } catch (e: RenderSessionException) {
-                  // renderNow threw: nothing was queued, so no renderFinished will arrive — don't
-                  // burn the full render timeout waiting on a render that never started.
+                  // Nothing was queued, so don't wait for a terminal event.
                   failed = "renderNow failed for cell '${cell.label}': ${e.message}"
                   break
                 }
@@ -174,10 +155,7 @@ internal class MatrixRenderFetcher(
   class CellResult(val cell: MatrixCell, val png: ByteArray?)
 
   sealed interface Outcome {
-    /**
-     * Session opened and every cell attempted. [cells] is in input order; failed cells have null
-     * PNG.
-     */
+    /** Session opened and every cell attempted, in input order; failed cells have a null PNG. */
     data class Ok(val cells: List<CellResult>) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome
@@ -193,9 +171,8 @@ internal class MatrixRenderFetcher(
     const val RENDER_TIMEOUT_SECONDS = 180L
 
     /**
-     * Bounded retries when the daemon coalesces an override-bearing render already in flight — the
-     * same contract ServeRenderHost honours. The window only needs to outlast the daemon clearing
-     * its in-flight flag right after `renderFinished`.
+     * Bounded retries when the daemon coalesces an in-flight override render, as in
+     * ServeRenderHost.
      */
     const val MAX_COALESCED_RETRIES = 50
     const val COALESCED_RETRY_BACKOFF_MS = 100L

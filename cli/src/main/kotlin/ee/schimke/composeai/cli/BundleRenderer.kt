@@ -25,40 +25,20 @@ import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 
 /**
- * Re-renders a packed `.png` (PNG+ZIP polyglot bundle) outside of any Gradle project: extract the
- * appended zip, expand `classes/app.jar` into a temp classes dir, spawn `DesktopRendererMain` as a
- * subprocess per preview with the renderer classpath shipped alongside the CLI (`lib-renderer/`).
+ * Re-renders a packed `.png` bundle outside any Gradle project: extract the zip, expand
+ * `classes/app.jar`, and spawn `DesktopRendererMain` per preview using the renderer jars in
+ * `lib-renderer/`.
  *
- * # Why subprocess-per-preview
+ * Subprocess per preview because the Compose Desktop + Skiko runtime must stay off the CLI's own
+ * classpath (`CheckCliDaemonLibraryBoundary`), matching `RenderPreviewsTask`; the cold start is
+ * acceptable for "open and look".
  *
- * The renderer brings the full Compose Multiplatform Desktop + Skiko runtime — too much to load
- * into the CLI's own classpath (see the `CheckCliDaemonLibraryBoundary` guard in
- * `cli/build.gradle.kts`). Isolating each render in a subprocess JVM also matches what
- * `RenderPreviewsTask` does today, so the call shape (args / JVM flags / output convention) stays
- * familiar. The cost — JVM cold-start per preview — is acceptable for the "open and look" flow; the
- * daemon path is reserved for editor-driven hot loops.
+ * Classpath order: expanded classes, embedded `libs/`, Maven coordinates resolved by
+ * [CoordinateResolver] (local caches, then download, sha256-checked; misses only warn), then
+ * `lib-renderer/`. Consumer deps resolve while the bundled Compose wins on shared symbols.
  *
- * # Classpath
- *
- * The subprocess JVM's classpath, in order: extracted `classes/app.jar` directory, any embedded
- * `libs/` jars, any `maven` coordinates resolved from local repositories ([CoordinateResolver]),
- * then every jar in `<APP_HOME>/lib-renderer/`. The consumer's deps sit ahead of the renderer's own
- * Compose Multiplatform graph, so a preview's own deps resolve while the bundled Compose still wins
- * on shared symbols (same layering the desktop viewer's URLClassLoader uses).
- *
- * Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps in
- * `libs/`. Coordinate-mode bundles (the default) carry only references; [CoordinateResolver]
- * re-attaches them from the machine's local Maven / Gradle caches and, on a miss, downloads from
- * Maven Central / Google Maven (Tier 3), hash-checking against the v4 `sha256` — a miss or mismatch
- * warns but never fails, since the renderer's bundled Compose covers the common surface and an
- * almost-compatible jar still renders.
- *
- * # Renderer / Java location
- *
- * The generated `bin/compose-preview` script exports `APP_HOME` pointing at the install root.
- * `lib-renderer/` lives next to `lib/` (the CLI's own classpath). The Java binary is the same one
- * running the CLI — `java.home/bin/java`. Both are overridable via system properties for tests
- * (`composeai.cli.appHome`, `composeai.cli.javaBinary`).
+ * `APP_HOME` (from the launcher script) locates `lib-renderer/`; Java is `java.home/bin/java`.
+ * Tests override via `composeai.cli.appHome` / `composeai.cli.javaBinary`.
  */
 class BundleRenderer(
   private val bundleFile: File,
@@ -67,10 +47,8 @@ class BundleRenderer(
   private val logSink: (String) -> Unit = { System.err.println(it) },
   private val fileSystem: FileSystem = SystemFileSystem,
   /**
-   * A published bundle's externalized resource pool (`bundle/res/<sha>`, from `--res`). When the
-   * bundle lifted its fonts out of `classes/app.jar` via `bundle externalize`, they're rehydrated
-   * back into the expanded classes dir so the subprocess renderer resolves `/fonts/…`. Null for a
-   * self-contained bundle (nothing to rehydrate).
+   * A published bundle's externalized resource pool (`--res`), rehydrated into the classes dir so
+   * `/fonts/…` resolves. Null for a self-contained bundle.
    */
   private val resPoolDir: File? = null,
 ) {
@@ -104,19 +82,11 @@ class BundleRenderer(
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
 
-    // A published bundle externalized its fonts out of `classes/app.jar` (via `bundle externalize`)
-    // to stay slim; rehydrate the `--res` pool back into the expanded classes dir — already first
-    // on
-    // the render classpath — so the subprocess renderer resolves `/fonts/…`. No-op for a
-    // self-contained bundle; fail-closed when it externalized resources but no pool was supplied,
-    // or
-    // an entry fails its sha256/size check.
+    // Rehydrate externalized fonts into the classes dir (first on the classpath). Fail-closed when
+    // resources are needed but the pool is missing or an entry fails verification.
     materializeExternalResources(manifest.externalResources, resPoolDir, classesDir)
 
-    // A preview that isn't replayed from an intermediate representation needs its class from
-    // `classes/app.jar`; a fully IR-backed bundle legitimately omits it. Re-impose the fast-fail
-    // for a class-backed (or mixed) bundle that's missing the jar, rather than letting the renderer
-    // start against an empty classes dir — or, for android, trip its sidecar/SDK checks first.
+    // A fully IR-backed bundle may omit `classes/app.jar`; a class-backed or mixed one must not.
     if (!hasAppJar) {
       val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
       check(previews.previews.all { it.id in irIds }) {
@@ -141,8 +111,8 @@ class BundleRenderer(
     manifest: BundleReader.Manifest,
     previews: PreviewManifest,
   ): Result {
-    // The renderer is fetched from the compose-preview-daemon release on first use; an explicit
-    // `-Dcomposeai.cli.libRendererDir` or a `lib-renderer/` inside the install wins over that.
+    // Fetched from the compose-preview-daemon release on first use;
+    // `-Dcomposeai.cli.libRendererDir` or an installed `lib-renderer/` wins.
     DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP, log = logSink)
     val rendererJars = locateBundleSidecarJars("lib-renderer")
     if (rendererJars.isEmpty()) {
@@ -153,12 +123,8 @@ class BundleRenderer(
       )
     }
     val skikoNative = SkikoNativeProvision.prepare(rendererJars)
-    // Resolve the bundle's detached `maven` coordinates from local repos, downloading on a miss
-    // (Tier 3). Misses and hash mismatches warn but never fail — see CoordinateResolver. Embedded
-    // `libs/` jars and
-    // resolved coordinate jars both sit between the consumer classes and the renderer's own Compose
-    // stack, so a preview's own deps resolve while the renderer's bundled Compose still wins on
-    // shared symbols (same layering the desktop viewer's URLClassLoader uses).
+    // Resolve detached `maven` coordinates (misses and hash mismatches only warn; see
+    // CoordinateResolver), layered between consumer classes and the renderer's Compose.
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
       CoordinateResolver(warn = { logSink("compose-preview: $it") })
@@ -171,13 +137,8 @@ class BundleRenderer(
         it.absolutePath
       }
 
-    // Previews replayed from a captured intermediate representation (schema v5) have NO consumer
-    // class in `classes/app.jar` — their bytecode was intentionally dropped at pack time. They are
-    // replayed through the Remote Compose / ProtoLayout runtime by the Android daemon
-    // (`compose-preview bundle daemon`), not by the desktop subprocess renderer, which can't drive
-    // those Android-only libraries. Skip them here rather than spawn `DesktopRendererMain` against
-    // a
-    // class that isn't present (which would fail every IR preview with a ClassNotFoundException).
+    // IR-replayed previews (schema v5) have no consumer class; the Android daemon replays them, so
+    // skip them here rather than fail with ClassNotFoundException.
     val irById = manifest.intermediateRepresentations.associateBy { it.previewId }
 
     outputDir.mkdirs()
@@ -207,17 +168,11 @@ class BundleRenderer(
   }
 
   /**
-   * Re-render an `backend="android"` bundle by spawning the Android (Robolectric) renderer
-   * (`AndroidRendererMainKt`, which reads `composeai.render.manifest` and renders the whole
-   * `previews.json` into `composeai.render.outputDir` — one subprocess for the batch, vs the
-   * desktop per-preview spawn). Classpath/JVM-arg/property assembly lives in the unit-tested
-   * [AndroidBundleLaunch].
+   * Re-render a `backend="android"` bundle with the Robolectric renderer (`AndroidRendererMainKt`),
+   * one subprocess for the whole `previews.json`. Launch assembly lives in [AndroidBundleLaunch].
    *
-   * Phase 1: the Android renderer sidecar (`lib-renderer-android/`) isn't packaged into the CLI
-   * distribution yet, so absent an override this surfaces an actionable diagnostic rather than the
-   * old blunt "backend not supported". The assembly + spawn path is real and exercisable today by
-   * pointing `-Dcomposeai.cli.libRendererAndroidDir=<dir>` at a built renderer; packaging + the
-   * end-to-end Robolectric validation land in Phase 2 (the SDK-gated Android CI chain).
+   * The Android renderer sidecar isn't packaged in the CLI yet, so without
+   * `-Dcomposeai.cli.libRendererAndroidDir=<dir>` this reports an actionable diagnostic.
    */
   private fun renderAndroid(
     workDir: File,
@@ -227,14 +182,9 @@ class BundleRenderer(
     previews: PreviewManifest,
     previewsJsonRaw: String,
   ): Result {
-    // IR-backed previews (schema v5) are replayed by the Android daemon (`compose-preview bundle
-    // daemon`), not this one-shot renderer: their consumer class was dropped from the bundle at
-    // pack
-    // time, so handing them to AndroidRendererMain (which reflects the enclosing class) would fail.
-    // Compute the IR/non-IR split FIRST and report IR previews as skipped — parity with
-    // renderDesktop's per-preview IR skip. An all-IR bundle has nothing for this renderer to do, so
-    // return before requiring the Android sidecar/SDK (which Phase 1 doesn't package), rather than
-    // throwing on prerequisites we don't actually need.
+    // IR-backed previews are replayed by the Android daemon, not this renderer; split them out
+    // first and report them as skipped. An all-IR bundle returns before requiring the sidecar or
+    // SDK.
     val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
     for (preview in previews.previews.filter { it.id in irIds }) {
       logSink(
@@ -278,16 +228,14 @@ class BundleRenderer(
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }
 
-    // Strip the IR previews from the manifest the renderer sees so AndroidRendererMain never
-    // attempts the classless preview (it renders the whole previews.json in one batch).
+    // Hide IR previews from the batch renderer's manifest.
     val rendererPreviewsJson =
       if (irIds.isEmpty()) previewsJsonRaw else filterPreviewsJson(previewsJsonRaw, irIds)
     val previewsJsonFile =
       workDir.resolve("previews.json").apply { writeText(rendererPreviewsJson) }
 
-    // Synthesized robolectric.properties wins first; then consumer classes + deps; then the Android
-    // renderer's own runtime; android.jar last (discovery-only stub — Robolectric's android-all
-    // sandbox supplies the real framework).
+    // Synthesized robolectric.properties first, then consumer classes and deps, the renderer
+    // runtime, and android.jar last (a discovery stub; Robolectric supplies the real framework).
     val classpath =
       (listOf(configRoot, classesDir) + libJars + resolvedJars + rendererJars + listOf(androidJar))
         .joinToString(File.pathSeparator) { it.absolutePath }
@@ -326,11 +274,9 @@ class BundleRenderer(
   }
 
   /**
-   * Start a render subprocess, drain its merged stdout/stderr on a daemon thread, and wait up to
-   * [RENDER_PROCESS_TIMEOUT_SECONDS]. Reading the pipe on a separate thread (rather than
-   * `readText()` on the caller) means a subprocess that hangs without closing stdout can't block us
-   * past the timeout — `destroyForcibly()` closes the stream and ends the drain thread. Returns
-   * exit code (124 on timeout) and the last [tailLines] lines of output.
+   * Start a render subprocess, drain its merged output on a separate thread, and wait up to
+   * [RENDER_PROCESS_TIMEOUT_SECONDS] so a hung child can't block past the timeout. Returns the exit
+   * code (124 on timeout) and the last [tailLines] lines.
    */
   private fun runRenderProcess(pb: ProcessBuilder, tailLines: Int): Pair<Int, String> {
     pb.redirectErrorStream(true)
@@ -370,11 +316,8 @@ class BundleRenderer(
   }
 
   /**
-   * Find the nearest `local.properties` (carrying `sdk.dir`) by walking up from the working
-   * directory — `bundle render` runs outside Gradle, but it's commonly invoked from inside an
-   * Android project whose SDK is configured only via `local.properties` (not `ANDROID_HOME`).
-   * Returns null when none is found within a few levels; the env-var fallback in
-   * [AndroidBundleLaunch.resolveAndroidJar] still applies.
+   * The nearest `local.properties` (with `sdk.dir`) walking up from the working directory, or null;
+   * [AndroidBundleLaunch.resolveAndroidJar] still falls back to env vars.
    */
   private fun findLocalProperties(): File? {
     var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
@@ -423,10 +366,7 @@ class BundleRenderer(
       requireNotNull(bundleJson) { "bundle render: bundle.json missing in ${bundleFile.path}" }
     val previewsJsonNonNull =
       requireNotNull(previewsJson) { "bundle render: previews.json missing in ${bundleFile.path}" }
-    // `classes/app.jar` is absent from a fully IR-backed bundle (schema v5+), whose previews replay
-    // from `ir/` rather than from reflected consumer bytecode. Expand the consumer classes only
-    // when the bundle carries them; the caller validates that a class-backed preview isn't left
-    // without its jar.
+    // Absent from fully IR-backed bundles; the caller validates class-backed previews have it.
     appJarBytes?.let {
       expandZipBytesSafely(it, classesDir, fileSystem, "bundle render: app jar entry")
     }
@@ -444,9 +384,8 @@ class BundleRenderer(
       ProcessBuilder(
           javaBin,
           "--enable-native-access=ALL-UNNAMED",
-          // Run the desktop renderer JVM as a macOS background agent (LSUIElement) so it
-          // doesn't claim a Dock icon or steal focus. Must be a launch -D (before AWT inits);
-          // macOS-only, ignored on Linux/Windows.
+          // macOS: run as a background agent (no Dock icon or focus steal); must be set before AWT
+          // inits.
           "-Dapple.awt.UIElement=true",
           "-cp",
           classpath,
@@ -465,14 +404,9 @@ class BundleRenderer(
     //  6 backgroundColor  7 outputFile  8 wrapperClassName  9 wrapWidth  10 wrapHeight
     //  11 previewParameterProviderFqn  12 previewParameterLimit  13 locale
     //
-    // Sizing: the bundle's previews.json carries discovery-resolved widthDp/heightDp/density
-    // when a `@Preview(device=...)` or explicit dims are present. When unset, fall back to a
-    // wrap-content sandbox (400×800 dp @ 2.625× default density = 1050×2100 px) and let the
-    // renderer's wrap flags crop to the composable's intrinsic size on both axes. A preview may
-    // narrow that sandbox per-axis without fixing it (`wrapSandbox*Dp` — a Wear module's
-    // device-less
-    // previews measure against the 227dp watch screen and still crop); the wrap flags below key off
-    // `widthDp`/`heightDp` only, so the crop survives.
+    // Without discovery-resolved dims, render in a wrap-content sandbox (400×800 dp at 2.625×) and
+    // crop to intrinsic size. `wrapSandbox*Dp` narrows the sandbox per axis without disabling the
+    // crop, which keys off `widthDp`/`heightDp` only.
     val widthDp = preview.params.widthDp ?: preview.params.wrapSandboxWidthDp ?: 400
     val heightDp = preview.params.heightDp ?: preview.params.wrapSandboxHeightDp ?: 800
     val density = preview.params.density ?: DEFAULT_DENSITY
@@ -497,11 +431,8 @@ class BundleRenderer(
         preview.params.previewParameterLimit.toString(),
         preview.params.locale.orEmpty(),
       )
-    // Wrapped-axis size bounds (Max / Min / Within), when the bundle carries them, land at
-    // DesktopRendererMain arg indices 28–31. The intervening optional slots (14–27: scroll / kind /
-    // fontScale / systemUi / anim / siblings) aren't driven by the bundle path, so pad them with
-    // empty strings that DesktopRendererMain's `getOrNull(...)` reads as "unset". Emit nothing when
-    // no bound is set so the common case keeps the short, positional-stable arg list.
+    // Wrapped-axis bounds go at arg indices 28–31; slots 14–27 are padded with empty strings (read
+    // as unset). Nothing is emitted when no bound is set.
     val bounds =
       listOf(
         preview.params.minWidthPx,
@@ -545,10 +476,8 @@ class BundleRenderer(
 
   companion object {
     /**
-     * Return [raw] (a `previews.json` body) with every preview whose `id` is in [drop] removed from
-     * the top-level `previews` array, preserving all other fields verbatim (operates on the JSON
-     * tree, not the lossy `ignoreUnknownKeys` model). Used to hide IR-backed previews from the
-     * batch Android renderer, whose consumer classes were dropped from the bundle at pack time.
+     * [raw] `previews.json` with previews whose `id` is in [drop] removed, other fields preserved
+     * verbatim (JSON tree, not the lossy model).
      */
     internal fun filterPreviewsJson(raw: String, drop: Set<String>): String {
       val root = Json.parseToJsonElement(raw).jsonObject
@@ -563,11 +492,8 @@ class BundleRenderer(
     }
 
     /**
-     * Leaf filename the Android renderer writes for a preview's primary capture: the first
-     * capture's `renderOutput` basename, or `"<id>.png"` when unset. Reconciling against this,
-     * rather than a name derived from the preview id, keeps successful Android renders from being
-     * mis-reported as failures. Fan-out captures write additional files; the primary capture is the
-     * render signal.
+     * Filename the Android renderer writes for a preview's primary capture: its `renderOutput`
+     * basename, or `"<id>.png"`. Matching this avoids misreporting successful renders as failures.
      */
     internal fun androidOutputLeaf(preview: PreviewInfo): String {
       val leaf = preview.captures.firstOrNull()?.renderOutput?.substringAfterLast('/')
@@ -575,16 +501,11 @@ class BundleRenderer(
     }
 
     /**
-     * Reconcile the Android batch renderer's exit code + produced PNGs into per-preview
-     * succeeded/failed lists. `AndroidRendererMainKt` renders the whole manifest into [outputDir];
-     * each preview is matched by its capture's `renderOutput` leaf (the exact name
-     * `RobolectricRenderTest.outputFileFor` writes — NOT an id-derived name, which the renderer
-     * normalizes, e.g. `com.example.FooKt.CardPreview` → `CardPreview.png`).
-     *
-     * A force-killed run (timeout → [RENDER_TIMEOUT_EXIT]) fails *every* preview regardless of
-     * on-disk PNGs: it may have written some before the kill, and [outputDir] can hold stale PNGs
-     * from a prior run — either would falsely pass the file check. A normal non-zero exit keeps
-     * partial-success semantics (some previews render, others don't), matching the desktop path.
+     * Reconcile the Android batch renderer's exit code and output PNGs into per-preview
+     * succeeded/failed, matching by each capture's `renderOutput` leaf (the renderer normalizes
+     * names, so id-derived names won't match). A timeout ([RENDER_TIMEOUT_EXIT]) fails every
+     * preview, since partial or stale PNGs could falsely pass; a normal non-zero exit keeps partial
+     * success.
      */
     internal fun reconcileAndroidRenders(
       renderable: List<PreviewInfo>,
@@ -610,9 +531,7 @@ class BundleRenderer(
     private const val DEFAULT_DENSITY: Float = 2.625f
 
     /**
-     * Upper bound on a single render subprocess (cold JVM start + one preview). Matches the
-     * generous Gradle-render ceiling in [serve.GradleRevisionBuilder]; a wedged render (composition
-     * that never settles, native Skiko stall) is force-killed rather than hanging `bundle render`.
+     * Upper bound on one render subprocess (cold start + render); a wedged render is force-killed.
      */
     private const val RENDER_PROCESS_TIMEOUT_SECONDS = 600L
     private const val DRAIN_FLUSH_MILLIS = 2000L

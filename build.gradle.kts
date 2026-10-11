@@ -6,38 +6,22 @@ plugins {
   alias(libs.plugins.compose.multiplatform) apply false
   alias(libs.plugins.android.application) apply false
   alias(libs.plugins.android.library) apply false
-  // ktfmt is no longer declared here: `ComposeAiBaseConventionsPlugin` (build-logic) applies and
-  // configures it on every project from settings.gradle.kts via `gradle.lifecycle.beforeProject` —
-  // the Isolated Projects-safe replacement for the old `allprojects {}` block. ktfmt + the Kotlin
-  // Gradle plugin it links against ride on the build-logic classpath, so declaring the alias here
-  // too would put a second ktfmt on a different classloader.
-  // Loaded into the root scope so :renderer-android and :daemon:android (and
-  // any future sibling) share the plugin's ClassLoader. Without this, each
-  // sibling instantiates its own MavenCentralBuildService class and Gradle
-  // refuses to share the build service across them — fails configuration
-  // with "Cannot set the value of task ':daemon:android:dropMavenCentral
-  // Deployment' property 'buildService'".
+  // ktfmt is applied by `ComposeAiBaseConventionsPlugin` (build-logic); declaring it here too would
+  // load a second ktfmt on a different classloader.
+  // Loaded into the root scope so :renderer-android and :daemon:android share the plugin's
+  // ClassLoader; otherwise Gradle refuses to share its MavenCentralBuildService between them.
   alias(libs.plugins.maven.publish) apply false
 }
 
-// The root's aggregate and release tasks (ktfmt, the functional-test entrypoints,
-// `printPublishTasks`) live in `root-tasks.gradle.kts`, not here. This file is a shared build input
-// to `.github/scripts/maven-publish-plan.sh` -- the plugins above reach every module, so a change to
-// it publishes all of them -- while those tasks decide which tasks run and build nothing. Keeping
-// them apart means a change to the release wiring stops re-uploading every unchanged coordinate
-// (v2.21.1 did, for #5527's fix to `printPublishTasks`).
+// The root's aggregate and release tasks live in `root-tasks.gradle.kts`. This file is a shared
+// build input to `.github/scripts/maven-publish-plan.sh` (a change here republishes every module),
+// so release-wiring changes stay out of it.
 apply(from = "root-tasks.gradle.kts")
 
-// The vendored TypeScript Remote Compose player's browser bundle, staged to a stable path.
-//
-// The `rc-*` browser tests and the design-artifacts job drive this player by *file path*
-// (`--player <bundle.js>`). That path used to be `third_party/remote-compose-player/dist/bundle.js`
-// in this checkout; the players are published by yschimke/rc-players now, so the bundle arrives as
-// a zip and is unpacked here instead. The staged location is the contract those callers use — see
-// `.github/workflows/ci.yml` and `design-artifacts-reusable.yml`.
-//
-// Its own resolvable configuration, not a `dependencies {}` entry: this is a static asset, and it
-// has no business on any compile or runtime classpath.
+// The TypeScript Remote Compose player's browser bundle (published by yschimke/rc-players),
+// unpacked to a stable path. Callers (`rc-*` browser tests, the design-artifacts job) pass it by
+// path — see `.github/workflows/ci.yml` and `design-artifacts-reusable.yml`. Its own resolvable
+// configuration, since it's a static asset that belongs on no classpath.
 val vendoredRcPlayerJs =
   configurations.create("vendoredRcPlayerJs") {
     isCanBeResolved = true
@@ -55,14 +39,9 @@ dependencies {
   )
 }
 
-// The CMP/Wasm player distribution, staged to a stable path — the same arrangement as the
-// TypeScript bundle above, one layer up the stack.
-//
-// `:rc-player-wasm:wasmPlayerDist` used to produce this directory in-tree. The player is published
-// by yschimke/rc-players now, so what is staged here is the *released* bundle: exactly the bytes
-// the CLI's `rc-player-wasm/` sidecar ships. `design-artifacts-reusable.yml`'s CMP/Wasm comparison
-// lane passes it to the export driver's `rc-compare --cmp-wasm`. (The driver's browser guards that
-// used to read it here run in design-parity's CI now, against the same published bundle.)
+// The released CMP/Wasm player distribution (the bytes the CLI's `rc-player-wasm/` sidecar ships),
+// staged like the TypeScript bundle above; `design-artifacts-reusable.yml` passes it to
+// `rc-compare --cmp-wasm`.
 val vendoredRcPlayerWasm =
   configurations.create("vendoredRcPlayerWasm") {
     isCanBeResolved = true

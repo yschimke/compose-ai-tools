@@ -13,28 +13,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Stage-2 checkpoint #4 — Gradle vs BTA bytecode parity.
+ * Gradle vs BTA bytecode parity. `:daemon:bta-host-fixture`'s `fixture/Greeting.kt` is compiled by
+ * Gradle's `compileKotlin` and, here, by BTA with the same `MODULE_NAME`; both `.class` files are
+ * compared.
  *
- * Companion `:daemon:bta-host-fixture` module holds a single `fixture/Greeting.kt` source that
- * Gradle's standard `compileKotlin` builds during the test's task graph. This test compiles the
- * **same source** through BTA (matching Gradle's `MODULE_NAME` so the kotlin.Metadata "module name"
- * entry agrees), reads both `.class` files off disk, and reports:
- *
- * - Whether they're byte-identical.
- * - If not, the first byte offset where they differ + the size delta.
- * - That both contain the Compose-transformed descriptor + `kotlin.Metadata` annotation — the
- *   structural invariant the daemon's child-classloader hot-swap actually depends on.
- *
- * Byte-identical is the strict goal; structural-equivalence is the production-acceptable outcome.
- * The assertions enforce structural-equivalence; byte equality is logged but not required. If the
- * two outputs are byte-identical that's printed as `[parity] ok=true`, and any future divergence
- * (e.g. Gradle bumps a kotlinc flag we don't pass) will print `ok=false firstDiff=…` for triage
- * without flaking the test.
- *
- * The test is INTENTIONALLY loose about byte equality. A strict assertion here would couple the
- * spike's CI to upstream Gradle KGP version drift, which has nothing to do with the question we
- * want answered ("can the daemon hot-swap rely on BTA output?"). The structural invariants are what
- * answer that question — those are the things we fail on.
+ * Asserts structural equivalence — the Compose-transformed descriptor and `kotlin.Metadata` the
+ * daemon's hot-swap depends on. Byte equality is only logged (`[parity] ok=…`), so KGP flag drift
+ * doesn't flake the test.
  */
 class BtaCompilerGradleParityTest {
 
@@ -62,10 +47,8 @@ class BtaCompilerGradleParityTest {
               emptySet(),
             )
           ),
-        // Match what `:daemon:bta-host-fixture`'s Gradle compile emits — Gradle uses the
-        // project name as the kotlin module name; we read it back from the .class's
-        // kotlin.Metadata `d2[]` entry below, so a future rename of the fixture module
-        // would surface as a parity mismatch rather than a silent module-name drift.
+        // Gradle uses the project name as the module name; checked below via `kotlin.Metadata`, so
+        // a fixture rename shows up as a mismatch.
         moduleName = "bta-host-fixture",
       )
     val btaClass = produced.first { it.fileName.toString() == "GreetingKt.class" }
@@ -118,11 +101,8 @@ class BtaCompilerGradleParityTest {
       indexOf(btaBytes, classFqnBytes) >= 0,
     )
 
-    // (5) Module-name sanity — both should carry "bta-host-fixture" in their kotlin.Metadata
-    // d2 array. If BTA emitted the default "bta-spike" instead (i.e. our moduleName param
-    // didn't take effect), the substring would be missing. This also asserts the test wired
-    // through the matching module name; otherwise a byte mismatch from divergent module
-    // names would be the dominant signal and obscure other differences.
+    // Both should carry "bta-host-fixture" in `kotlin.Metadata` d2, proving `moduleName` took
+    // effect (otherwise a module-name mismatch would dominate any byte diff).
     val moduleNameBytes = "bta-host-fixture".toByteArray(Charsets.US_ASCII)
     assertEquals(
       "BTA and Gradle should both embed the matching module name in kotlin.Metadata",

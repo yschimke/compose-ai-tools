@@ -15,31 +15,14 @@ import okio.source
 
 /**
  * Opens a `compose-preview` bundle (PNG+ZIP polyglot) and exposes its `@Preview` composables ready
- * to invoke inside an active Compose composition.
+ * to invoke inside an active composition.
  *
- * # Classloading
+ * The bundle's `classes/app.jar` and any embedded `libs/` jars (or resolved coordinate jars) go on
+ * a child [URLClassLoader] whose parent is the viewer's loader, so `androidx.compose.*` resolves to
+ * the viewer's Compose runtime while a preview's own third-party deps come from the bundle.
  *
- * The bundle's inlined `classes/app.jar` is written to a temp file (URLClassLoader needs a URL, and
- * a `file:` URL is simpler than a `jar:` polyglot URL). Any jars the bundle carries under `libs/` —
- * the schema-v3 `resolution = "embedded"` / `"mixed"` mode, where reachable third-party (and
- * project-local) deps are packed inside the bundle rather than referenced by Maven coordinate — are
- * extracted alongside it and added to the same child [URLClassLoader]. That loader uses the
- * viewer's own classloader as parent, so every `androidx.compose.*` symbol still resolves against
- * the viewer's bundled Compose runtime (shared composer state, cross-loader `@Composable`
- * invocation), while a preview's *own* third-party dependencies (an icon pack, Coil, a
- * `:design-system` jar, …) resolve from the embedded `libs/` jars instead of blowing up with
- * `NoClassDefFoundError`.
- *
- * A `coordinates`-mode bundle carries no `libs/`; the loader simply finds none and behaves exactly
- * as before (Compose-only previews work; previews needing un-bundled third-party deps still won't,
- * which is what `--embed-deps` is for).
- *
- * # Lifecycle
- *
- * Call [close] to release the URLClassLoader (mandatory on Windows before the temp app.jar can be
- * deleted) and remove the extraction dir. Designed for swap-on-drop: closing a previous
- * [LoadedBundle] before constructing the next one avoids accumulating loaders / temp files in
- * long-running sessions.
+ * Call [close] to release the loader (required on Windows before the temp jar can be deleted) and
+ * remove the extraction dir; close the previous bundle before loading the next.
  */
 data class LoadedBundle(
   val sourceFile: Path,
@@ -62,9 +45,8 @@ data class LoadedPreview(
   /** Resolved enclosing class loaded via the bundle's child classloader. */
   val ownerClass: Class<*>,
   /**
-   * Result of [getDeclaredComposableMethod]. Nullable when resolution fails (e.g. the preview uses
-   * `@PreviewParameter` or non-default arguments — the viewer's v1 ignores those and surfaces a
-   * clear error instead of crashing the window).
+   * Result of [getDeclaredComposableMethod], null when resolution fails (e.g. `@PreviewParameter`),
+   * which surfaces as an error rather than a crash.
    */
   val composableMethod: ComposableMethod?,
   /** Reason resolution failed, when [composableMethod] is null. Human-readable, English. */
@@ -72,16 +54,12 @@ data class LoadedPreview(
 )
 
 /**
- * Parses [bundleFile] and returns a [LoadedBundle]. Throws [IllegalArgumentException] if the file
- * isn't a recognised polyglot or zip, [IllegalStateException] when required entries are absent.
- * Per-preview resolution failures are recorded inside [LoadedPreview.errorMessage] rather than
- * aborting the whole load.
+ * Parses [bundleFile] and returns a [LoadedBundle]. Throws [IllegalArgumentException] for an
+ * unrecognised file and [IllegalStateException] for missing entries; per-preview failures go in
+ * [LoadedPreview.errorMessage].
  *
- * This deliberately uses the real [SystemFileSystem] rather than an injected one: the extracted
- * `app.jar` / `libs/` are handed to a [URLClassLoader] via `file:` URLs, which can only read the
- * real process filesystem — so a non-real `FileSystem` would pass the Okio existence checks here
- * and then fail to resolve any preview class. (The dependency [CoordinateResolver] is separately
- * injectable; it has no classloader boundary.)
+ * Uses the real [SystemFileSystem], since extracted jars are handed to a [URLClassLoader] by
+ * `file:` URL.
  */
 fun loadBundle(bundleFile: Path): LoadedBundle {
   require(SystemFileSystem.metadataOrNull(bundleFile)?.isRegularFile == true) {
@@ -109,9 +87,7 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
         name == "classes/app.jar" ->
           SystemFileSystem.sink(appJarPath).buffer().use { it.writeAll(zin.source()) }
         !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
-          // Flatten to a safe basename under workDir/libs/; `libs/` paths in our own bundles
-          // never contain `..` or nested dirs, but guard against a hostile bundle escaping
-          // workDir.
+          // Flatten to a basename under workDir/libs/ so a hostile bundle can't escape workDir.
           val safe = workDir / "libs" / name.substringAfterLast('/')
           safe.parent?.let { SystemFileSystem.createDirectories(it) }
           SystemFileSystem.sink(safe).buffer().use { it.writeAll(zin.source()) }
@@ -131,23 +107,16 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
     throw IllegalStateException("bundle has no previews: $bundleFile")
   }
 
-  // `classes/app.jar` carries the consumer module's bytecode, but a preview replayed from a
-  // captured intermediate representation (schema v5+, `ir/<id>.<ext>`) intentionally drops its
-  // enclosing class at pack time — so a fully IR-backed bundle (e.g. a Remote Compose `.rc` bundle)
-  // legitimately ships without an app.jar. Only insist on it when a preview still needs its class
-  // loaded; before this, every such bundle had to carry a dummy jar purely to clear the check.
+  // A preview replayed from an intermediate representation (schema v5+, `ir/<id>.<ext>`) drops its
+  // class, so a fully IR-backed bundle legitimately has no app.jar; only require it when needed.
   val hasAppJar = SystemFileSystem.exists(appJarPath)
   val irPreviewIds =
     bundleManifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
   val needsAppJar = previewManifest.previews.any { it.id !in irPreviewIds }
   check(hasAppJar || !needsAppJar) { "classes/app.jar missing in $bundleFile" }
 
-  // Default (coordinate-mode) bundles reference their deps by `maven` coordinate rather than
-  // carrying them; resolve those from the machine's local Maven / Gradle caches (warn-not-fail) so
-  // the preview's own third-party deps are available the same way embedded `libs/` jars are.
-  // (v9) A bundle names any repository beyond Central + Google that its coordinates need — the
-  // producing build's JitPack fork, internal mirror, or androidx.dev snapshot build. Without it
-  // those coordinates resolve nowhere and the preview loads on an incomplete classpath.
+  // Coordinate-mode bundles reference deps by `maven` coordinate; resolve them from local caches
+  // (warn-not-fail), using any extra repositories the bundle names (v9).
   val resolvedCoordJars =
     CoordinateResolver.resolve(
       bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>(),
@@ -157,12 +126,8 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
     )
 
   val parentLoader = LoadedBundle::class.java.classLoader
-  // app.jar first, then embedded lib jars (path-sorted), then resolved coordinate jars. The
-  // viewer's
-  // bundled Compose still wins on shared symbols because it sits on the parent loader; these jars
-  // only supply classes the parent doesn't have (the preview's own third-party deps).
-  // URLClassLoader is a hard `java.io.File` boundary (it wants `file:` URLs) — bridge each Okio
-  // path to a File here.
+  // app.jar, then embedded lib jars (sorted), then resolved coordinate jars. The parent loader's
+  // Compose still wins on shared symbols.
   val classpathUrls =
     (listOfNotNull(appJarPath.takeIf { hasAppJar }) + libJarFiles.values + resolvedCoordJars).map {
       it.toFile().toURI().toURL()
@@ -199,9 +164,7 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
       )
     }
 
-  // Resolution mirrors the renderer's reflective lookup. Composables with `@PreviewParameter` or
-  // wrapper providers are out of scope for v1 — fall through to a friendly error so the window
-  // shows what went wrong instead of crashing on `IllegalArgumentException`.
+  // `@PreviewParameter` and wrapper providers aren't supported; show an error instead of crashing.
   if (info.params.previewParameterProviderClassName != null) {
     return LoadedPreview(
       info = info,
@@ -215,11 +178,8 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
 
   val method =
     try {
-      // A Kotlin `private fun` preview resolves here (the lookup scans `declaredMethods`) but
-      // `ComposableMethod.invoke` in [Main]'s render body would throw `IllegalAccessException`
-      // without opening the JVM method — the same fix the desktop renderers and the daemon carry
-      // (issue #3873). `runCatching` so a SecurityManager refusal degrades to "try the invoke
-      // anyway" rather than failing resolution for public previews.
+      // A `private fun` preview resolves but needs its method opened for `ComposableMethod.invoke`.
+      // `runCatching` so a SecurityManager refusal still lets public previews try the invoke.
       ownerClass.getDeclaredComposableMethod(info.functionName).also { resolved ->
         runCatching { resolved.asMethod().isAccessible = true }
       }
@@ -250,11 +210,8 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
 }
 
 /**
- * Reads [bundleFile] and returns the trailing zip bytes. Detects the PNG signature and walks chunks
- * to the IEND marker; plain zips (signature `PK\x03\x04`) are returned as-is.
- *
- * Mirrors the same routine in `:cli/BundleCommand.kt` — duplicated rather than depended on to keep
- * the viewer's module graph clean.
+ * Reads [bundleFile] and returns the trailing zip bytes, walking PNG chunks to IEND; plain zips are
+ * returned as-is. Duplicated from `:cli` to keep the viewer's module graph clean.
  */
 private fun extractZipBytes(file: Path): ByteArray {
   val bytes = SystemFileSystem.read(file) { readByteArray() }

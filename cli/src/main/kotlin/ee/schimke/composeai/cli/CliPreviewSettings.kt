@@ -12,26 +12,17 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 /**
- * The defaults a person sets once in `~/.compose-preview/settings.json` — the file the MCP server's
- * `settings_update` writes (compose-preview-server#1242, `PreviewSettings.kt`) — reduced to the
- * keys the CLI has an equivalent for. The CLI only **reads** the file; writing it is the server's
- * job.
+ * Defaults set once in `~/.compose-preview/settings.json` (written by the MCP server's
+ * `settings_update`, `PreviewSettings.kt`), reduced to keys the CLI has an equivalent for.
+ * Read-only here.
  *
  * ```json
  * { "schema": "compose-preview-settings/v1", "values": { "darkTheme": true, "locale": "fr" } }
  * ```
  *
- * Every field has the server's "not set" sentinel as its default ([PREVIEW_DEVICE], `false`, `0`,
- * `""`), and a sentinel contributes nothing, so a missing file behaves exactly like an empty one.
- *
- * Precedence is the server's: an explicit CLI flag beats a setting, which beats the built-in
- * default. [fillOverrides] and [matrixAxis] implement that by only filling what the caller left
- * unset.
- *
- * The validation rules mirror `PreviewSettings.updated` key for key, so a value the server would
- * refuse is refused here too. Keys the CLI does not use (`renderResult`, `imageToModel`,
- * `replicasPerDaemon`, `uiBuilderMcpAppLayout`, or anything a newer writer adds) are ignored
- * without a warning: they are valid in the file, just not ours to act on.
+ * Fields default to the server's "not set" sentinels, so a missing file equals an empty one. An
+ * explicit flag beats a setting, which beats the built-in default ([fillOverrides], [matrixAxis]).
+ * Validation mirrors `PreviewSettings.updated`; keys the CLI doesn't use are ignored silently.
  */
 data class CliPreviewSettings(
   /** `id:<device>` applied as the device, or [PREVIEW_DEVICE] for each preview's own. */
@@ -56,8 +47,7 @@ data class CliPreviewSettings(
   }
 
   /**
-   * [explicit] with each setting filled in where it is silent — the CLI twin of the server's
-   * `applyToRenderPreview` overrides step (`putIfAbsent`). A field the caller set always wins; a
+   * [explicit] with each setting filled in where it is silent (the server's `putIfAbsent` step); a
    * setting at its sentinel adds nothing.
    */
   fun fillOverrides(explicit: PreviewOverrides?): PreviewOverrides? {
@@ -73,9 +63,8 @@ data class CliPreviewSettings(
   }
 
   /**
-   * One `render-matrix` axis: [flagValues] when the flag was passed, else the setting's single
-   * value, else null (the axis is not varied). [axis] is one of [DEVICE], [DARK_THEME],
-   * [FONT_SCALE], [LOCALE].
+   * One `render-matrix` axis: [flagValues] when passed, else the setting's single value, else null
+   * (not varied). [axis] is [DEVICE], [DARK_THEME], [FONT_SCALE] or [LOCALE].
    */
   fun matrixAxis(axis: String, flagValues: List<String>?): List<String>? {
     if (flagValues != null) return flagValues
@@ -115,9 +104,8 @@ data class CliPreviewSettings(
       if (scale % 1.0 == 0.0) "${scale.toLong()}.0" else scale.toString()
 
     /**
-     * Settings from a stored `values` object: each known key that is valid, the default for the
-     * rest. A bad value warns and keeps its default without dropping the other keys — the server's
-     * `fromStored` rule. Unknown keys are skipped silently.
+     * Settings from a stored `values` object: valid known keys, defaults for the rest. A bad value
+     * warns and keeps its default (the server's `fromStored` rule); unknown keys are skipped.
      */
     fun fromValues(values: JsonObject, warn: (String) -> Unit = {}): CliPreviewSettings {
       var out = CliPreviewSettings()
@@ -157,11 +145,9 @@ data class CliPreviewSettings(
 }
 
 /**
- * Reads the shared settings file: [FILE_ENV] when set, else `~/.compose-preview/settings.json` —
- * the same resolution as the server's `PreviewSettingsStore.defaultFile`.
- *
- * Missing file → defaults, silently. Unreadable or malformed file → one warning and defaults; a
- * settings file must never stop a render.
+ * Reads [FILE_ENV], else `~/.compose-preview/settings.json` (as the server's
+ * `PreviewSettingsStore.defaultFile`). Missing → silent defaults; unreadable or malformed → one
+ * warning and defaults. Never stops a render.
  */
 object CliPreviewSettingsFile {
   const val SCHEMA: String = "compose-preview-settings/v1"

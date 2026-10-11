@@ -4,13 +4,10 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * `enforceOutputUniqueness` is the manifest-wide backstop for render output paths.
- *
- * Stem resolution only covers the annotation-derived previews; Lottie/SVG assets, the token
- * catalogs, activities and app tours are all appended afterwards with literal stems, and several
- * land in the same `renders/` directory. These tests pin that the assembled manifest never contains
- * two entries claiming one file — including case-insensitively, which is what APFS and NTFS
- * compare.
+ * `enforceOutputUniqueness`, the manifest-wide backstop for render output paths. Assets, token
+ * catalogs, activities and app tours are appended with literal stems after stem resolution, so the
+ * manifest must never have two entries claiming one file, case-insensitively (as APFS and NTFS
+ * compare).
  */
 class PreviewDiscoveryOutputUniquenessTest {
 
@@ -148,10 +145,8 @@ class PreviewDiscoveryOutputUniquenessTest {
   }
 
   /**
-   * The trap the old positional `_<idx>` tiebreaker fell into: the disambiguated name must not
-   * itself land on a path some untouched preview already owns. Here the retag of `Clash` is
-   * pre-empted by a third preview genuinely occupying that exact path, so the pass must escalate
-   * rather than hand two previews the same file.
+   * The disambiguated name must not land on a path another preview already owns; here it would, so
+   * the pass must escalate.
    */
   @Test
   fun `a retag that would collide with an untouched preview escalates instead`() {

@@ -27,13 +27,8 @@ public class ServeBackgroundWork(
   maxConcurrentRenders: Int = CONSERVATIVE_MAX_CONCURRENT_RENDERS,
   private val clock: () -> Long = System::currentTimeMillis,
   /**
-   * How many catalogs may be inside an optimizer pass at once. A pass without a render permit still
-   * holds a turn, a warm daemon and a seat; uncapped, every catalog entered at once and most of
-   * their time went to waiting and re-warming.
-   *
-   * Must not be below [maxConcurrentRenders]: a pass holds exactly one permit for its whole batch,
-   * so permits beyond the pass count are unreachable. `ServeCommand` passes the render lane for
-   * both.
+   * How many catalogs may be inside an optimizer pass at once (each holds a turn, a warm daemon and
+   * a seat). Must not be below [maxConcurrentRenders]: a pass holds one permit for its whole batch.
    */
   maxConcurrentOptimizers: Int = DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
   private val hostCoordinator: OptimizerHostCoordinator = OptimizerHostCoordinator.NONE,
@@ -69,11 +64,7 @@ public class ServeBackgroundWork(
   private val optimizerPauseReason = ConcurrentHashMap<String, String>()
   private val optimizerHostRefusals = AtomicLong()
 
-  /**
-   * The clocks [idleClock] handed out, kept so `/status.json` can publish the gate's input and say
-   * why it reads busy (session lease vs catalog load). Without it, a gate that never opens looks
-   * the same as nothing left to do.
-   */
+  /** The clocks [idleClock] handed out, so `/status.json` can say why the gate reads busy. */
   @Volatile private var publishedIdleClock: (() -> Long?)? = null
   @Volatile private var publishedRequestIdleClock: (() -> Long?)? = null
 
@@ -232,11 +223,9 @@ public class ServeBackgroundWork(
   }
 
   /**
-   * How many parked catalogs are worth making resident again: free lanes plus
-   * [PLUS_ONE_CHALLENGER]. Resuming costs a cold daemon and ~1 GB, so only catalogs that will get a
-   * lane are resumed; the one challenger queues at the door and, by [acquireOptimizerLane]'s
-   * fairness, takes the next released lane, so parked catalogs rotate in instead of waiting for an
-   * incumbent's whole backlog. Advisory; races just make a resumed pass queue.
+   * How many parked catalogs to make resident again: free lanes plus [PLUS_ONE_CHALLENGER].
+   * Resuming costs a cold daemon (~1 GB), so only catalogs that will get a lane are resumed; the
+   * challenger takes the next released lane so parked catalogs rotate. Advisory.
    */
   public fun optimizerResumeSlots(): Int =
     if (optimizersPaused()) 0
@@ -410,11 +399,9 @@ public class ServeBackgroundWork(
     public const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
 
     /**
-     * Background renders admitted at once, given the live-seat budget. A single permit was the
-     * optimizer's dominant bottleneck (74% of its time waiting), and a warm background render holds
-     * it only briefly. Widening is only safe when seats bound daemon count, since each admitted
-     * catalog can open several daemons, so an unbounded budget (local `--live-seats 0`) keeps
-     * [CONSERVATIVE_MAX_CONCURRENT_RENDERS]. `-Dcomposeai.serve.backgroundRenders=<n>` overrides.
+     * Background renders admitted at once, given the live-seat budget. Widened only when seats
+     * bound the daemon count; an unbounded budget keeps [CONSERVATIVE_MAX_CONCURRENT_RENDERS].
+     * `-Dcomposeai.serve.backgroundRenders=<n>` overrides.
      */
     public fun renderLaneFor(seats: LiveSeatLimiter?): Int {
       System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.let {

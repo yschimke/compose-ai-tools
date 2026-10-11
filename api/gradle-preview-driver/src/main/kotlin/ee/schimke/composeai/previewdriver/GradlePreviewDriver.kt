@@ -37,25 +37,22 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
     )
 
   /**
-   * Last `BuildEnvironment` / `GradleProject` model query failure, or `null` if the most recent
-   * model access succeeded. Forwarded from the wrapped [GradleConnection] so callers can
-   * differentiate "no preview modules found" from "couldn't talk to gradle at all."
+   * Last model-query failure, or `null` if the most recent model access succeeded, so callers can
+   * tell "no preview modules" from "couldn't talk to Gradle".
    */
   val lastModelAccessFailure: GradleAccessFailure?
     get() = connection.lastModelAccessFailure
 
   /**
-   * Per-project configuration failures from the most recent [discoverModules] call — modules that
-   * were skipped because building their `ComposePreviewModel` threw. Lets consumers explain an
-   * empty discovery instead of reporting a bare "no modules" (issue #3).
+   * Modules skipped by the last [discoverModules] because building their `ComposePreviewModel`
+   * threw, so an empty discovery can be explained.
    */
   val lastDiscoveryFailures: List<ProjectDiscoveryFailure>
     get() = connection.lastDiscoveryFailures
 
   /**
    * Every subproject that applies the plugin, found through its `ComposePreviewModel` (see
-   * [DiscoverPreviewModulesAction]) so unrelated tasks aren't realized (issue #1620). Needs plugin
-   * 0.11.13+, which auto-inject always supplies.
+   * [DiscoverPreviewModulesAction]) so unrelated tasks aren't realized. Needs plugin 0.11.13+.
    */
   fun discoverModules(): List<PreviewModule> = connection.findPreviewModules(options.timeoutSeconds)
 
@@ -108,10 +105,7 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
   }
 }
 
-/**
- * Driver-wide configuration. Bound at construction time — these knobs map straight onto the
- * `GradleConnection`'s constructor parameters and the per-build timeout.
- */
+/** Driver-wide configuration, mapped onto the `GradleConnection` and the per-build timeout. */
 data class DriverOptions(
   /** Stream Gradle stdout/stderr to the driver's stderr instead of swallowing it. */
   val verbose: Boolean = false,
@@ -120,17 +114,13 @@ data class DriverOptions(
   /** Gradle build timeout; defaults to the connection's own so the two never drift. */
   val timeoutSeconds: Long = GradleConnection.DEFAULT_TIMEOUT_SECONDS,
   /**
-   * Extra Tooling-API arguments prepended to every build / model query — primarily for
-   * `--init-script <path>` injection. The CLI uses this to auto-apply its plugin to projects that
-   * haven't manually wired it; contrib consumers typically leave this empty.
+   * Extra Tooling-API arguments prepended to every build / model query, e.g. the CLI's
+   * `--init-script <path>` auto-apply.
    */
   val extraArguments: List<String> = emptyList(),
 )
 
-/**
- * Per-render request. Bound at call time so callers can swap module sets, extensions, and task
- * paths across multiple renders on the same driver.
- */
+/** Per-render request: module set, extensions and task paths can vary between renders. */
 data class RenderRequest(
   /** Modules to render. Typically the result of [GradlePreviewDriver.discoverModules]. */
   val modules: List<PreviewModule>,
@@ -141,9 +131,7 @@ data class RenderRequest(
    */
   val extensions: Set<String> = emptySet(),
   /**
-   * Task path to invoke per module. Default `:<path>:composePreviewRenderAll` matches the standard
-   * CLI behaviour. Override for narrower drives (`composePreviewDiscover` only, resource-only
-   * renders, etc.).
+   * Task path to invoke per module; override for narrower drives (e.g. `composePreviewDiscover`).
    */
   val taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:composePreviewRenderAll" },
   /** Pass `--rerun-tasks` (the CLI's `--force=<reason>`). */
@@ -153,10 +141,8 @@ data class RenderRequest(
 )
 
 /**
- * Outcome of one [GradlePreviewDriver.render] call. [buildOk] is `false` when Gradle reported a
- * build failure; [previews] is non-empty only if at least one module's manifest landed on disk (a
- * render that failed early before writing previews.json produces empty results plus `buildOk =
- * false`).
+ * Outcome of one [GradlePreviewDriver.render] call. [buildOk] is `false` on a Gradle build failure;
+ * [previews] is empty unless at least one module's manifest was written.
  */
 data class RenderOutcome(
   val buildOk: Boolean,

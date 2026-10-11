@@ -28,25 +28,13 @@ import ee.schimke.composeai.discovery.ScreenNode
 import ee.schimke.composeai.discovery.ScreenValue
 
 /**
- * Draws a [ScreenDocument] with the real Material 3 components its ids name.
+ * Draws a [ScreenDocument] with the real Material 3 components its ids name, live beside the code
+ * `ScreenGenerator` emits from the same document; a component rendered here without a record
+ * refuses in the code pane, so divergence is visible.
  *
- * ### Why this exists next to a generator that already knows the mapping
- *
- * `ScreenGenerator` turns a document into **source**; it does not render. The builder needs the
- * pixels beside the code, live, with no compile step — so this walks the same document and calls
- * the same components the generated source calls. The two are kept honest by construction: a
- * component that renders here and has no record refuses in the code pane, and the builder shows
- * both, so a divergence is visible rather than silent.
- *
- * ### Reading a value, not guessing one
- *
- * Every argument is matched on the **structure the generator emits** — a chain link's
- * `callableFqn`, a reference's `rootFqn` plus `members` — rather than on the label a palette
- * happened to give it. Labels are for people; two surfaces agreeing on a label while disagreeing on
- * a value is exactly the silent divergence this pane exists to prevent. `padding` is the cautionary
- * case: it once read a bare `Whole`, and when the palette started passing a `Dp` (a chain, because
- * `dp` is an extension property) the match quietly failed and the pane drew `padding(0.dp)` while
- * the source said `padding(8.dp)`. [dpOf] unwraps it.
+ * Arguments are matched on the structure the generator emits (a chain link's `callableFqn`, a
+ * reference's `rootFqn` + `members`), never on palette labels — e.g. `padding` arrives as a `Dp`
+ * chain, unwrapped by [dpOf].
  */
 @Composable
 fun ScreenDocumentRender(document: ScreenDocument, modifier: Modifier = Modifier) {
@@ -54,10 +42,8 @@ fun ScreenDocumentRender(document: ScreenDocument, modifier: Modifier = Modifier
 }
 
 /**
- * The `Int` inside a `Dp` value — `8.dp` is `Chain(Whole(8), [.dp])`, not a number.
- *
- * Null when the value is not shaped like one, so a caller falls back rather than drawing a zero
- * that looks like a deliberate absence of spacing.
+ * The `Int` inside a `Dp` value (`8.dp` is `Chain(Whole(8), [.dp])`), or null when not shaped like
+ * one, so callers fall back rather than draw a misleading zero.
  */
 private fun dpOf(value: ScreenValue?): Int? {
   val chain = value as? ScreenValue.Chain ?: return null

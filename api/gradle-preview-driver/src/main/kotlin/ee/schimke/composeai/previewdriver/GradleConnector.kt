@@ -54,11 +54,9 @@ class GradleConnection(
 ) : AutoCloseable {
   /**
    * Optional advice on a build failure: given Gradle's captured stderr plus the exception chain,
-   * returns one message to print after the report, or null. The CLI uses it to explain the plugin
-   * marker publication race (issue #5034).
-   *
-   * A property rather than a constructor parameter so the published constructor's JVM signature
-   * stays binary-compatible.
+   * returns one message to print after the report, or null (e.g. the CLI's explanation of the
+   * plugin marker publication race). A property to keep the published constructor's signature
+   * stable.
    */
   var failureAdvice: ((String) -> String?)? = null
 
@@ -406,13 +404,10 @@ class GradleConnection(
   }
 
   /**
-   * Every project that applies the plugin, with its Gradle path and its configured `projectDir`
-   * (which can be anywhere, so it is read from the Tooling API rather than derived from the path).
-   *
-   * Uses [DiscoverPreviewModulesAction] rather than the `GradleProject` model, which realizes every
-   * task and runs unrelated configuration side effects (issue #1620). A Tooling API failure yields
-   * an empty list with [lastModelAccessFailure] set; per-project failures land in
-   * [lastDiscoveryFailures].
+   * Every project that applies the plugin, with its Gradle path and configured `projectDir` (read
+   * from the Tooling API, since it can be anywhere). Uses [DiscoverPreviewModulesAction] to avoid
+   * realizing every task. A Tooling API failure yields an empty list with [lastModelAccessFailure] set;
+   * per-project failures land in [lastDiscoveryFailures].
    */
   // Published artifact: @JvmOverloads keeps the no-arg signature existing consumers link against.
   @JvmOverloads
@@ -573,12 +568,9 @@ private fun Throwable.causeMessages(): List<String> {
 }
 
 /**
- * The lines worth showing from Gradle's captured stderr when a build fails without `--verbose`.
- *
- * The whole `* What went wrong:` block is kept verbatim (minus blank lines): plain-prose reasons
- * match none of the per-line patterns, and an empty block also suppresses the exception-chain
- * fallback in `printBuildFailure`. The block ends only at a real [GRADLE_FAILURE_SECTIONS] header,
- * since an exception message may contain its own `* ` bullets.
+ * The lines worth showing from Gradle's captured stderr when a build fails without `--verbose`. The
+ * whole `* What went wrong:` block is kept (minus blank lines), ending only at a real
+ * [GRADLE_FAILURE_SECTIONS] header since exception messages may contain `* ` bullets.
  */
 internal fun actionableFailureLines(captured: String): List<String> {
   var inWhatWentWrong = false

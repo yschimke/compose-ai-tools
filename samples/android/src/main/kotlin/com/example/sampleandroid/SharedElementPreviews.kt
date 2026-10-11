@@ -41,21 +41,11 @@ import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * Shared-element transition samples, captured as GIFs through the `@AnimatedPreview` paused-clock
- * pipeline.
- *
- * Compose's shared transition APIs (`SharedTransitionLayout`, `Modifier.sharedBounds` /
- * `Modifier.sharedElement`, `rememberSharedContentState`) became **stable in 1.10** (Dec 2025) and
- * are what these previews exercise. Because Android Studio's Animation Preview does **not** inspect
- * shared-element transitions, the headless GIF capture here is the only way to *see* a container
- * transform stepped frame-by-frame outside a running device — it's the shared-element analogue of
- * the existing `FadeInBoxAnimatedPreview`.
- *
- * Each preview kicks the transition off on the first frame: the `AnimatedContent` target flips from
- * the "collapsed" to the "expanded" state inside a `LaunchedEffect`, so the inspector sees a
- * transition in flight across the whole captured window. A fixed `tween` [boundsSpec] keeps the
- * bounds morph deterministic (the default `sharedBounds` spec is a spring, whose settle time drifts
- * between Compose versions and makes diffs noisy).
+ * Shared-element transitions (`SharedTransitionLayout`, `sharedBounds` / `sharedElement`, stable
+ * since Compose 1.10) captured as GIFs via `@AnimatedPreview`; Studio's Animation Preview can't
+ * inspect them. Each preview flips its `AnimatedContent` target in a `LaunchedEffect` on the first
+ * frame. A fixed `tween` [boundsSpec] keeps the morph deterministic (the default spring drifts
+ * across Compose versions).
  */
 private val boundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
 
@@ -65,10 +55,8 @@ private enum class CardScreen {
 }
 
 /**
- * The canonical **container transform**: a compact list row morphs into a full detail pane. The
- * avatar (`sharedElement`), the title (`sharedBounds`), and the card surface (`sharedBounds`) all
- * carry continuous identity, so the row visually grows into the detail screen rather than
- * cross-fading.
+ * The canonical container transform: a list row grows into a detail pane, with the avatar
+ * (`sharedElement`), title and card surface (`sharedBounds`) carrying continuous identity.
  */
 @Preview(name = "Container Transform", widthDp = 300, heightDp = 520, showBackground = true)
 @AnimatedPreview(durationMs = 750)
@@ -197,11 +185,9 @@ private enum class FabScreen {
 }
 
 /**
- * **FAB → sheet** container transform: a floating action button morphs into a bottom sheet. Shows
- * `sharedBounds` with an explicit enter/exit ([fadeIn] / [fadeOut]) so the FAB's icon cross-fades
- * out while the sheet's content fades in over the shared, resizing container — the resize behaviour
- * Material's `ResizeMode.scaleToBounds()` would otherwise scale, here remeasured so the text stays
- * crisp.
+ * FAB → sheet: `sharedBounds` with explicit [fadeIn] / [fadeOut], so the icon fades out while sheet
+ * content fades in over the resizing container (remeasured rather than scaled, so text stays
+ * crisp).
  */
 @Preview(name = "FAB To Sheet", widthDp = 320, heightDp = 360, showBackground = true)
 @AnimatedPreview(durationMs = 750)

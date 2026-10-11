@@ -13,24 +13,15 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /*
- * On-disk shape mirrors the daemon-side aggregation in
- * `ee.schimke.composeai.daemon.AccessibilityDataProductRegistry`. The standalone gradle path no
- * longer produces this file; it's strictly a daemon-mode artefact now.
- *
- * The DTOs (`AccessibilityFinding`, `AccessibilityEntry`, `AccessibilityReport`) live in
- * `:preview-data-api/A11yWireFormat.kt` — they're the JVM-side typed-decode surface for the
- * `compose-preview-data-a11y/v1` payload body. The renderer-side `:data-a11y-core` ships the
- * canonical types in `ee.schimke.composeai.renderer`; this module mirrors them so JVM consumers
- * (CLI, contrib) don't have to pull an `android-library` to decode.
+ * On-disk shape mirrors the daemon's aggregation (`AccessibilityDataProductRegistry`); the Gradle
+ * path no longer produces it. The DTOs live in `:preview-data-api/A11yWireFormat.kt`, mirroring
+ * `:data-a11y-core` so JVM consumers needn't pull an Android library to decode.
  */
 
 /**
- * [ExtensionReportRenderer] for the built-in `a11y` extension. Reads each module's
- * `accessibility.json`, packages each entry as a `dataExtensions["a11y"]` payload on the matching
- * [PreviewResult], and prints findings grouped by preview with optional `--fail-on` thresholding.
- *
- * Owned state: [a11yByKey] is the per-preview lookup the [annotate] step reads from. It's built by
- * [load] and cached for the duration of one CLI invocation.
+ * [ExtensionReportRenderer] for the built-in `a11y` extension: reads each module's
+ * `accessibility.json`, attaches entries as `dataExtensions["a11y"]` payloads, and prints findings
+ * by preview with optional `--fail-on`. [a11yByKey], built by [load], backs [annotate].
  */
 class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) :
   ExtensionReportRenderer {
@@ -53,10 +44,8 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
   private var enabledModules: Set<String> = emptySet()
 
   /**
-   * Module gradle-paths whose report declared itself [AccessibilityReport.partial] — it covers only
-   * the previews a narrowed `--id` / `--filter` run asked about (issue #3742). For these the
-   * "module enabled ⇒ an unlisted preview was checked and came back clean" shortcut in [annotate]
-   * is a lie, so those previews get no carrier at all.
+   * Modules whose report is [AccessibilityReport.partial] (a narrowed run). Their unlisted previews
+   * were never checked, so they get no carrier rather than a false clean row.
    */
   private var partialModules: Set<String> = emptySet()
 
@@ -75,12 +64,8 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
       manifest.previews
         .filterNot { it.includeInA11y }
         .mapTo(excluded) { "${module.gradlePath}/${it.id}" }
-      // Prefer the manifest pointer when a producer stamped one (legacy gradle-aggregated reports,
-      // future daemon-stamped pointer); fall back to the conventional `accessibility.json`
-      // location so a freshly-written daemon-aggregated report is still picked up even when no
-      // producer touched the manifest. The standalone gradle plugin no longer writes the
-      // pointer at all — that's a daemon / CLI concern now — so the fallback is the primary
-      // path for `compose-preview a11y`.
+      // Prefer a manifest pointer when one was stamped, else the conventional `accessibility.json`
+      // location — the usual path now, since the Gradle plugin no longer writes the pointer.
       val pointer = manifest.reportsView[id]
       val reportFile =
         pointer?.let { module.projectDir.resolve("build/compose-previews/$it") }
@@ -105,9 +90,8 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
             ?.let { reportDir.resolve(it).canonicalFile }
             ?.takeIf { it.exists() }
             ?.absolutePath
-        // Resolve `annotatedPath` to an absolute path now so downstream consumers don't have
-        // to know the sidecar dir. `null` when the renderer didn't produce one — same signal as
-        // before.
+        // Absolute `annotatedPath` so consumers needn't know the sidecar dir; null when none was
+        // produced.
         out["${module.gradlePath}/${entry.previewId}"] = entry.copy(annotatedPath = annotatedAbs)
       }
     }
@@ -123,12 +107,10 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
     val key = "${module.gradlePath}/${result.id}"
     if (key in excludedPreviewKeys) return result
     val listed = a11yByKey[key]
-    // A preview the report doesn't list, in a module whose report only covers part of its previews,
-    // was never checked — leave the carrier off so `a11yEntry()` reads null ("checks didn't run")
-    // rather than manufacturing a clean row for a preview ATF never saw (issue #3742).
+    // Unlisted preview in a partial report: never checked, so leave the carrier off (null = didn't
+    // run).
     if (listed == null && module.gradlePath in partialModules) return result
-    // Module had a11y enabled but no findings for this preview: empty entry (not null) tells
-    // downstream consumers "checks ran and found nothing" vs "feature off."
+    // Module enabled but nothing listed: an empty entry means "ran, found nothing", unlike null.
     val entry = listed ?: AccessibilityEntry(previewId = result.id, findings = emptyList())
     val payload =
       ExtensionPayload(
@@ -183,13 +165,9 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
 private val a11yDecodeJson = Json { ignoreUnknownKeys = true }
 
 /**
- * Decode the `dataExtensions["a11y"]` payload (if any) into a typed [AccessibilityEntry]. Returns
- * `null` when ATF didn't run for this preview's module (no payload), the payload's schema doesn't
- * match the v1 pin, or the body fails to decode. Same null-vs-empty semantics every consumer in
- * this file relies on: `null` means "checks didn't run"; an entry with empty `findings` means
- * "checks ran, nothing tripped."
- *
- * Internal — also used by `Commands.kt`'s `--brief` encoder for the a11y count.
+ * Decode the `dataExtensions["a11y"]` payload into an [AccessibilityEntry], or null when absent,
+ * off-schema or undecodable. Null means "checks didn't run"; empty `findings` means "ran, clean".
+ * Also used by `Commands.kt`'s `--brief` encoder.
  */
 internal fun PreviewResult.a11yEntry(): AccessibilityEntry? {
   val payload = dataExtensions["a11y"] ?: return null
@@ -200,10 +178,7 @@ internal fun PreviewResult.a11yEntry(): AccessibilityEntry? {
     .getOrNull()
 }
 
-/**
- * a11y-finding count for `--brief` output. `null` when ATF didn't run for the preview's module,
- * matching the v1 wire-format semantics agents already grep for.
- */
+/** a11y finding count for `--brief`; null when ATF didn't run. */
 internal fun decodeA11yFindingsCount(result: PreviewResult): Int? =
   result.a11yEntry()?.findings?.size
 
@@ -211,16 +186,13 @@ internal fun decodeA11yFindingsCount(result: PreviewResult): Int? =
 internal const val EXIT_UNKNOWN_FAIL_ON = 1
 
 /**
- * Pure exit-code policy for `compose-preview a11y`. Kept top-level (not on [A11yReportRenderer]) so
- * the existing unit-test matrix in `A11yCommandTest` stays callable without instantiating a
- * renderer. Same semantics as before the strategy refactor:
- * - `0` — clean run, build succeeded, threshold not tripped.
- * - `2` — Gradle build failed, OR the CLI-side `--fail-on` threshold tripped.
- * - [EXIT_UNKNOWN_FAIL_ON] (`1`) — `failOn` is set to something other than `errors` / `warnings` /
- *   `none`. Caller is responsible for printing the user-facing message.
+ * Exit-code policy for `compose-preview a11y` (top-level so `A11yCommandTest` can call it):
+ * - `0` — build succeeded, threshold not tripped.
+ * - `2` — Gradle build failed, or the `--fail-on` threshold tripped.
+ * - [EXIT_UNKNOWN_FAIL_ON] (`1`) — `failOn` isn't `errors` / `warnings` / `none`; the caller prints
+ *   the message.
  *
- * `failOn` semantics: `null`/`"none"` never trip on findings; `"errors"` trips on any ERROR;
- * `"warnings"` trips on any ERROR or WARNING.
+ * `null`/`"none"` never trips; `"errors"` trips on any ERROR; `"warnings"` on any ERROR or WARNING.
  */
 internal fun a11yExitCode(buildOk: Boolean, errorCount: Int, warnCount: Int, failOn: String?): Int {
   val cliFailed =

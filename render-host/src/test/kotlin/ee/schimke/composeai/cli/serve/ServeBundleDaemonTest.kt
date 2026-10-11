@@ -22,20 +22,14 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Exercises [ServeBundleDaemon.materialize] against a real **packed desktop bundle** — the same
- * shape `serve --catalogs --allow-render-trusted` fetches for a catalog's `liveBundle`. Needs a
- * bundle on disk (produced by `compose-preview bundle pack --module :samples:design-catalog-m3 -o
- * <path>`, e.g. via `NonGradleContractTest`'s pattern) plus the CLI's own `:cli:installDist`
- * sidecars (`lib-daemon-desktop` / `lib-renderer`) to resolve a real daemon classpath — neither is
- * produced by a normal `:cli:test` run, so this self-skips (same convention as
- * `NonGradleContractTest` in `:render-session-subprocess`) rather than failing when they're
- * missing.
+ * Exercises [ServeBundleDaemon.materialize] against a real packed desktop bundle (as `serve
+ * --catalogs --allow-render-trusted` fetches). Needs a bundle on disk (from `compose-preview bundle
+ * pack --module :samples:design-catalog-m3 -o <path>`) and the CLI's `:cli:installDist` sidecars,
+ * neither produced by `:cli:test`, so it self-skips without them.
  *
- * Point `-Dcomposeai.test.bundlePath=<file>` at a pre-packed bundle (defaults to
- * `/tmp/m3-bundle.png`, the path this feature's own verification pass packs to). The
- * `lib-daemon-desktop`/`lib-renderer` sidecars are auto-discovered from this checkout's
- * `cli/build/install/compose-preview/` when present (i.e. after `./gradlew :cli:installDist`);
- * override via `-Dcomposeai.cli.appHome=<install-root>` to point elsewhere.
+ * `-Dcomposeai.test.bundlePath=<file>` points at the bundle (default `/tmp/m3-bundle.png`).
+ * Sidecars are found under this checkout's `cli/build/install/compose-preview/`, or via
+ * `-Dcomposeai.cli.appHome=<install-root>`.
  */
 class ServeBundleDaemonTest {
 
@@ -216,11 +210,9 @@ class ServeBundleDaemonTest {
       ),
       "bundle resource APIs must share the parent-loaded LocalResourceReader with the daemon",
     )
-    // Compose Multiplatform is `org.jetbrains.compose.*` by group but ships `androidx.compose.*`
-    // packages, which `mustDelegateToParent` force-delegates. Keyed on the group alone, these fell
-    // into the isolated child, were never consulted, and the sidecar's own Compose answered — a
-    // consumer pinning a different version got NoSuchMethodError mid-render (meshcore-mobile on
-    // material3 1.10.0-alpha05: `AppBarKt.TopAppBar-gNPyAyM`).
+    // CMP artifacts ship `androidx.compose.*` packages, which `mustDelegateToParent` delegates;
+    // left in the child loader, the sidecar's Compose answers and mismatched versions fail with
+    // NoSuchMethodError.
     for (group in
       listOf(
         "org.jetbrains.compose.material3",
@@ -235,11 +227,8 @@ class ServeBundleDaemonTest {
         "$group ships androidx.compose.* packages, so the consumer ABI must win over the sidecar",
       )
     }
-    // Skiko must travel WITH Compose. `skiko-awt` carries the `org.jetbrains.skia.*` bindings that
-    // mustDelegateToParent force-delegates as well as `org.jetbrains.skiko.*`; promoting Compose
-    // without it pairs the consumer's newer bindings with the sidecar's older native library —
-    // the UnsatisfiedLinkError on skia.paragraph.TextStyleKt._nSetFontEdging that
-    // DesktopRendererGraphAlignmentFunctionalTest documents (#1844).
+    // Skiko must move with Compose: `skiko-awt`'s `org.jetbrains.skia.*` bindings are delegated
+    // too, and must match the native library (see DesktopRendererGraphAlignmentFunctionalTest).
     assertTrue(
       ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("org.jetbrains.skiko", "skiko-awt")),
       "Skiko bindings and native must stay version-coherent with the promoted Compose graph",
@@ -345,11 +334,8 @@ class ServeBundleDaemonTest {
     assertEquals(previewsJsonPath, parsed.manifestPath)
     assertEquals(state.workspaceRoot.absolutePath, parsed.workingDirectory)
 
-    // The render-output dir must be set so DaemonMain.dataRoot is non-null and the file-based data
-    // products register — notably compose/figma-svg, without which an override-bearing .svg render
-    // fails "-32020 kind not advertised". It must sit under the working dir so its sibling `data/`
-    // (where both DaemonMain's registry and RenderEngine's producer resolve) is inside this
-    // session's temp tree.
+    // The output dir makes DaemonMain.dataRoot non-null, which registers file-based products like
+    // compose/figma-svg; it must sit under the working dir so `data/` is inside the temp tree.
     val outputDir = parsed.systemProperties["composeai.render.outputDir"]
     assertTrue(
       !outputDir.isNullOrBlank(),
@@ -364,11 +350,8 @@ class ServeBundleDaemonTest {
     assertTrue(state.previews.isNotEmpty(), "materialize should discover at least one preview")
     assertEquals("compose-m3", state.label)
 
-    // The author-declared knob sidecars (`previews/<id>.overrides.json`) must be folded into the
-    // ServePreview set so the daemon-backed session (and, via ServeCatalogLiveHost, the baked
-    // browse
-    // surface) can advertise the editable knobs. The M3 catalog's FilledButton declares a `label`
-    // string knob; assert it round-trips from the packed bundle.
+    // Knob sidecars must be folded into the ServePreview set; the M3 FilledButton declares a
+    // `label` string knob.
     val filled = state.previews.firstOrNull { it.id.endsWith("FilledButton_Light") }
     if (filled != null) {
       assertTrue(
@@ -490,16 +473,12 @@ class ServeBundleDaemonTest {
   }
 
   /**
-   * Production compatibility proof for a published Android catalog whose Compose/AndroidX/Kotlin
-   * dependencies differ from the daemon sidecar's. This caught Jetcaster's
-   * `MotionScheme.expressive()` / mangled `TopAppBar` failures: materialization used to leave the
-   * catalog dependency graph in the child loader even though those packages delegate to the parent,
-   * so the older sidecar APIs won.
+   * Compatibility proof for a published Android catalog whose Compose/AndroidX/Kotlin versions
+   * differ from the sidecar's: those parent-delegated packages must come from the catalog.
    *
-   * Self-skips unless `-Dcomposeai.test.androidCompatibilityBundlePath=<bundle.png>` is supplied.
-   * Optionally select a known compatibility-sensitive preview with
-   * `-Dcomposeai.test.androidCompatibilityPreviewContains=<substring>`; otherwise the first preview
-   * is rendered.
+   * Self-skips without `-Dcomposeai.test.androidCompatibilityBundlePath=<bundle.png>`;
+   * `-Dcomposeai.test.androidCompatibilityPreviewContains=<substring>` picks a preview (default:
+   * the first).
    */
   @Test
   fun `android bundle renders against its carried dependency versions`() {
@@ -568,18 +547,14 @@ class ServeBundleDaemonTest {
   }
 
   /**
-   * The load-bearing proof for the **android** backend: an Android/Wear catalog's `liveBundle`
-   * materialises to a Robolectric daemon whose `compose/figma-svg` lane is **per-variant** — the
-   * fix for the baked `figma/<slug>.svg` collapsing every state/selection variant of a component
-   * onto one vector (`FilledButton` == `ButtonDisabled` == … in the served SVG). Renders the SVG
-   * for pairs that share a slug but differ in state and asserts the bytes differ.
+   * The android backend: a Wear catalog's `liveBundle` materialises to a Robolectric daemon whose
+   * `compose/figma-svg` lane is per-variant, unlike a baked per-slug SVG. Renders slug-sharing
+   * pairs that differ in state and asserts the bytes differ.
    *
-   * Self-skips unless pointed at a packed **android** bundle via
-   * `-Dcomposeai.test.androidBundlePath` (pack one with
-   * `:samples:design-catalog-wear-m3:composePreviewBundle`) with the Android daemon sidecar
-   * reachable (`-Dcomposeai.cli.libDaemonAndroidDir=<…>/staged-daemon-android-libs`) and a local
-   * Android SDK (`ANDROID_HOME`/`ANDROID_SDK_ROOT`). The first render cold-starts Robolectric
-   * (fetches `android-all-instrumented`), so the budget is generous.
+   * Self-skips unless `-Dcomposeai.test.androidBundlePath` names a packed android bundle
+   * (`:samples:design-catalog-wear-m3:composePreviewBundle`), the Android sidecar is reachable
+   * (`-Dcomposeai.cli.libDaemonAndroidDir=<…>/staged-daemon-android-libs`), and an SDK is present.
+   * The first render cold-starts Robolectric, so the budget is generous.
    */
   @Test
   fun `android bundle serves per-variant SVG through a real Robolectric daemon`() {
@@ -646,13 +621,8 @@ class ServeBundleDaemonTest {
 
     host.use {
       val ids = state.previews.map { it.id }
-      // Warm the Robolectric daemon: its FIRST render cold-starts (android-all instrumentation +
-      // Compose init) and can blow the host's internal 180s render budget. The daemon stays alive
-      // across a timed-out render, so retry a throwaway PNG render until one lands before timing
-      // the
-      // real per-variant SVG lane. Skip (not fail) if it never warms — that's an
-      // environment-too-slow
-      // signal, not a regression.
+      // Warm the daemon with throwaway renders first: the cold first render can exceed the host's
+      // 180s budget. Skip (not fail) if it never warms.
       val warmId = ids.firstOrNull { it.endsWith("CatalogPreviewsKt.FilledButton") } ?: ids.first()
       var warm = false
       for (attempt in 1..4) {
@@ -664,19 +634,15 @@ class ServeBundleDaemonTest {
           else -> System.err.println("[android daemon] warm-up attempt $attempt: $r")
         }
       }
-      // A daemon that never warms is an environment signal (a box too slow/small to cold-start
-      // Robolectric), NOT a pass — mark it SKIPPED via Assume so it can't masquerade as green while
-      // the per-variant assertions below never ran.
+      // A daemon that never warms is an environment signal; skip rather than pass silently.
       org.junit.jupiter.api.Assumptions.assumeTrue(
         warm,
         "android daemon never warmed after 4 render attempts (cold Robolectric start too slow " +
           "for this box) — skipping the per-variant SVG assertions",
       )
 
-      // Slug-sharing state pairs that the baked per-slug SVG collapses; each must now differ.
-      // The `off` / `disabled` halves are `@OverrideVariant` captures riding the primary function,
-      // so they are `<fn>_VARIANT_<name>` rather than separate `*Off` / `*Disabled` functions —
-      // naming those long-deleted wrappers made every pair `continue` past its assertion.
+      // Slug-sharing state pairs that a baked per-slug SVG collapses. The `off` / `disabled` halves
+      // are `<fn>_VARIANT_<name>` captures of the primary function.
       val pairs =
         listOf(
           "CatalogPreviewsKt.FilledButton" to "CatalogPreviewsKt.FilledButton_VARIANT_disabled",
@@ -743,10 +709,8 @@ class ServeBundleDaemonTest {
   }
 
   /**
-   * If no explicit `-Dcomposeai.cli.appHome` override is set, point it at this checkout's own
-   * `cli/build/install/compose-preview/` when that `:cli:installDist` output exists — lets the test
-   * run end to end in a normal dev/CI checkout without extra flags, while still respecting an
-   * explicit override.
+   * Point `-Dcomposeai.cli.appHome` at this checkout's `cli/build/install/compose-preview/` when it
+   * exists and no override is set.
    */
   private fun ensureAppHomeConfigured() {
     if (System.getProperty(APP_HOME_PROPERTY) != null) return

@@ -5,32 +5,14 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 /**
- * Checks the JVM a launched distribution will actually run on, before launching it.
+ * Checks the JVM a launched distribution will actually run on, before launching it. The server's
+ * Gradle start script resolves `java` from `JAVA_HOME`/`PATH`, not this CLI's JVM, so a too-old JVM
+ * otherwise surfaces as a bare `UnsupportedClassVersionError` from a process the user didn't know
+ * existed.
  *
- * `serve`, `browse`, `ui-builder` and `mcp serve` are launchers: [ServerBinaryDiscovery] finds a
- * binary and [ServeCommand] execs it as a separate process. That binary is a Gradle start script,
- * and it resolves `java` from `JAVA_HOME`/`PATH` — it does **not** inherit this CLI's JVM. So the
- * JVM that loads the server's classes is one nobody has checked on either side, and when it is too
- * old the user gets an `UnsupportedClassVersionError` on the stderr of a process they did not know
- * existed: no Java version named, no binary named, no hint.
- * [ServerBinaryDiscovery.installationHint] does not fire, because the binary is not missing — it is
- * present and unrunnable ([#344](https://github.com/yschimke/compose-preview-server/issues/344)).
- *
- * ## The number is theirs
- *
- * The floor belongs to `compose-preview-server` and moves on its schedule, so a copy here is a copy
- * that drifts — which is why nothing in this file names a version. The distribution states it, in
- * `java-min.properties` at its root, beside `bin/` and `lib/`. A launcher that resolved a binary
- * resolved `<root>/bin/<name>`, so the file is one `../..` away, and reading it costs no process: a
- * `--java-min` the start script answered would need the very JVM in question to answer it.
- *
- * ## Silence beats a guess
- *
- * Every step here fails open. No file (a distribution older than the one that started shipping it),
- * no resolvable `java`, an unparseable `-version` — each returns null and the launch proceeds
- * exactly as it did before. This turns a bad error message into a good one; it must never turn a
- * working launch into a refusal, and a CLI that outlives several server releases will meet all
- * three cases.
+ * The floor is the server's, read from the distribution's `java-min.properties` (beside `bin/` and
+ * `lib/`), never hard-coded here. Every step fails open — no file, no resolvable `java`, an
+ * unparseable `-version` all return null and launch as before.
  */
 internal object ServerJavaPreflight {
 
@@ -38,10 +20,8 @@ internal object ServerJavaPreflight {
   const val MANIFEST: String = "java-min.properties"
 
   /**
-   * The message to print and abort on, or null to launch.
-   *
-   * [javaFeatureVersion] and [javaExecutable] are seams so the decision can be tested without a
-   * second JDK on the machine, which is the whole difficulty of testing this.
+   * The message to print and abort on, or null to launch. [javaFeatureVersion] and [javaExecutable]
+   * are test seams.
    */
   fun failure(
     choice: ServerBinaryDiscovery.Choice,
@@ -58,11 +38,8 @@ internal object ServerJavaPreflight {
   }
 
   /**
-   * The floor [binary]'s distribution declares, or null when it declares none.
-   *
-   * `canonicalFile` first: `PATH` and `--server-binary` both routinely name a symlink, and the
-   * distribution root is two levels above the *real* script, not above the link farm pointing at
-   * it.
+   * The floor [binary]'s distribution declares, or null. Uses `canonicalFile` since `PATH` and
+   * `--server-binary` often name a symlink.
    */
   fun declaredMinimum(binary: File): Int? {
     val root = binary.canonicalFile.parentFile?.parentFile ?: return null
@@ -76,11 +53,8 @@ internal object ServerJavaPreflight {
   }
 
   /**
-   * The `java` the start script will pick: `JAVA_HOME` first, then `PATH` — its own ordering.
-   *
-   * Deliberately not `java.home`. This process's JVM is the one thing that is certainly *not* what
-   * the start script runs, and reading it here would produce a preflight that passes on exactly the
-   * machines the failure happens on.
+   * The `java` the start script will pick: `JAVA_HOME`, then `PATH`. Not `java.home`, which is
+   * certainly not what the script runs.
    */
   fun resolveJava(env: (String) -> String? = System::getenv): File? {
     val executable = if (isWindows()) "java.exe" else "java"
@@ -89,8 +63,8 @@ internal object ServerJavaPreflight {
       ?.takeIf { it.isNotEmpty() }
       ?.let { home ->
         val candidate = File(File(home, "bin"), executable)
-        // A JAVA_HOME that names no executable is the start script's error to report, in its own
-        // words. Falling through to PATH here would check a JVM the script will never run.
+        // A bad `JAVA_HOME` is the start script's error to report; don't check a `PATH` JVM it
+        // won't use.
         return candidate.takeIf { it.isFile }
       }
     return env("PATH")
@@ -122,11 +96,8 @@ internal object ServerJavaPreflight {
   }
 
   /**
-   * The feature version out of `java -version` output.
-   *
-   * Every JVM prints `… version "<v>"` on its first line, and the quoted value is the only part of
-   * that output whose shape is stable across vendors. `1.8.0_452` is the pre-9 spelling, where the
-   * feature version is the *second* component; from 9 on it is the first.
+   * The feature version from `java -version`'s quoted value: the second component for pre-9
+   * `1.8.0_452`, the first from 9 on.
    */
   fun parseFeatureVersion(output: String): Int? {
     val quoted = Regex("""version "([^"]+)"""").find(output)?.groupValues?.get(1) ?: return null
@@ -144,8 +115,7 @@ internal object ServerJavaPreflight {
     env: (String) -> String? = System::getenv,
   ): String {
     val javaHome = env("JAVA_HOME")?.trim()?.takeIf { it.isNotEmpty() }
-    // Where the JVM came from, because that is what the reader has to change, and the two sources
-    // are changed in different places.
+    // Name where the JVM came from, since that is what the reader must change.
     val found =
       if (javaHome != null) "${java.path} (JAVA_HOME=$javaHome)"
       else "${java.path} (first `java` on PATH)"

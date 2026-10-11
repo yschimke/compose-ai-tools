@@ -13,44 +13,29 @@ import java.util.UUID
 import kotlinx.coroutines.runBlocking
 
 /**
- * Auto-provisions the native `xr-composite` binary so XR "panels-in-previews" composites bake with
- * zero manual setup after a release. The CLI is the *writer* of a well-known cache that the Gradle
- * plugin's `composePreviewCompositeXr` task *reads* (see
- * `AndroidPreviewSupport.xrCompositeCacheBinaryPath` for the matching reader-side path derivation —
- * the two must stay in sync, exactly like the `BUNDLE_VERSION` / `PluginVersion` split across the
- * includeBuild boundary).
+ * Auto-provisions the native `xr-composite` binary into the cache the plugin's
+ * `composePreviewCompositeXr` task reads (keep in sync with
+ * `AndroidPreviewSupport.xrCompositeCacheBinaryPath`).
  *
- * Flow, driven from the render commands before they invoke `composePreviewRenderAll`:
- * 1. Gate on XR work — only fetch when a discovered preview is `kind == "XR_SUBSPACE"` (the CLI
- *    learns this from `previews.json` after discovery). A non-XR render never touches the network.
- * 2. If the version+platform binary is already cached, do nothing (idempotent — the common case
- *    after the first run). The version here is the `xr-composite` PIN, not the CLI's, so upgrading
- *    the CLI no longer orphans a cached copy of an unchanged binary.
- * 3. Otherwise download the per-OS Release tarball, unpack it into the cache (binary +
- *    `materials/`) and continue.
+ * Before `composePreviewRenderAll`:
+ * 1. Only fetch when a discovered preview is `XR_SUBSPACE`; non-XR renders never touch the network.
+ * 2. Do nothing if the pinned version + platform is already cached.
+ * 3. Otherwise download the per-OS release tarball and unpack it (binary + `materials/`).
  *
- * Best-effort by contract: ANY failure (offline, 404 for a `-SNAPSHOT` with no published asset,
- * unsupported platform, corrupt archive) logs a concise note to stderr and returns without failing
- * the render — mirroring the plugin task's graceful skip. The composite still is an optional
- * capture.
- *
- * The daemon path does NOT auto-provision yet; that's a follow-up tied to the daemon actually
- * producing composites (the renderer-service RFC). Today only the CLI→Gradle path bakes composites.
+ * Best-effort: any failure logs a note and the render proceeds without composites. The daemon path
+ * doesn't auto-provision yet.
  */
 object XrCompositeProvision {
   /** `params.kind` value discovery stamps onto XR subspace previews in `previews.json`. */
   internal const val XR_SUBSPACE_KIND = "XR_SUBSPACE"
 
   /**
-   * Pure platform token derivation from JVM `os.name` / `os.arch`, matching the Release asset
-   * matrix [XR_COMPOSITE_REPO]'s `release.yml` publishes:
+   * Platform token from `os.name` / `os.arch`, matching the release matrix of [XR_COMPOSITE_REPO]:
    * - linux + x86_64/amd64 → `linux-x86_64`
    * - mac + aarch64/arm64 → `macos-arm64`
    * - windows + amd64/x86_64 → `windows-x86_64`
    *
-   * Returns `null` for any other combination (e.g. linux-arm64, mac-x86_64) — no asset is published
-   * for it, so the caller skips provisioning rather than fetching a 404. Kept pure (params, not
-   * `System.getProperty`) so unit tests can exercise every matrix cell.
+   * Null for anything else (no asset is published). Pure for testing.
    */
   internal fun platformToken(osName: String, osArch: String): String? {
     val os = osName.lowercase()
@@ -69,26 +54,21 @@ object XrCompositeProvision {
     platformToken(System.getProperty("os.name") ?: "", System.getProperty("os.arch") ?: "")
 
   /**
-   * Release asset filename for a version + platform — `xr-composite-<platform>-<version>.tar.gz`.
-   * Exactly the name [XR_COMPOSITE_REPO]'s `release.yml` packs
-   * (`xr-composite-${asset}-${XR_VERSION}.tar.gz`).
+   * Release asset filename, `xr-composite-<platform>-<version>.tar.gz`, as `release.yml` packs it.
    */
   internal fun assetName(version: String, platform: String): String =
     "xr-composite-$platform-$version.tar.gz"
 
   /**
-   * Download URL on the [XR_COMPOSITE_REPO] Release tagged `v<version>`, where `version` is the
-   * pinned `xr-composite` release rather than the CLI's own — so a CLI release that did not rebuild
-   * the compositor still resolves the last one that did. A pin naming a release with no published
-   * asset 404s and the caller falls through to a graceful skip.
+   * Download URL on the [XR_COMPOSITE_REPO] release `v<version>`, where `version` is the pinned
+   * `xr-composite` release, not the CLI's. A missing asset 404s and is skipped.
    */
   internal fun assetUrl(version: String, platform: String): String =
     "https://github.com/$XR_COMPOSITE_REPO/releases/download/v$version/${assetName(version, platform)}"
 
   /**
-   * Root of the shared, well-known cache: `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite`.
-   * Honours `XDG_CACHE_HOME` (Linux/BSD), else `~/.cache` per the XDG default — the same convention
-   * the plugin-side reader derives. [env]/[userHome] are injectable for tests.
+   * `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite`, as the plugin-side reader derives it.
+   * [env]/[userHome] are injectable for tests.
    */
   internal fun cacheRoot(
     env: (String) -> String? = System::getenv,
@@ -107,10 +87,7 @@ object XrCompositeProvision {
     userHome: String = System.getProperty("user.home") ?: ".",
   ): File = File(File(cacheRoot(env, userHome), version), platform)
 
-  /**
-   * Cached binary path: `<cacheDir>/xr-composite` (`xr-composite.exe` on Windows). The plugin reads
-   * the exact same path — see the reader-side derivation.
-   */
+  /** `<cacheDir>/xr-composite` (`.exe` on Windows); the plugin reads the same path. */
   internal fun cacheBinary(
     version: String,
     platform: String,
@@ -122,12 +99,8 @@ object XrCompositeProvision {
   }
 
   /**
-   * Whether [dir] holds a *complete* provisioned layout — the [binaryName] executable AND a
-   * non-empty `materials/` directory (the `.filamat` blobs the binary loads, and which the plugin
-   * task passes as the sibling `--materials` dir). A partial extraction (binary written but
-   * `materials/` missing/empty — e.g. an interrupted or failed `tar`) is deliberately NOT complete,
-   * so it is re-provisioned rather than trusted forever. Without this, a partial cache would short-
-   * circuit every future run and make composites fail until the user manually wiped the cache.
+   * Whether [dir] holds a complete layout: the [binaryName] executable and a non-empty `materials/`
+   * (the `.filamat` blobs). A partial extraction is re-provisioned rather than trusted forever.
    */
   internal fun isComplete(dir: File, binaryName: String): Boolean {
     val materials = File(dir, "materials")
@@ -136,11 +109,7 @@ object XrCompositeProvision {
       (materials.listFiles()?.isNotEmpty() == true)
   }
 
-  /**
-   * Fetch + unpack seam, injectable so tests exercise the "already cached" / "download failure"
-   * branches without hitting GitHub. [fetchTo] downloads [url] to a destination file, throwing on a
-   * non-2xx / network error.
-   */
+  /** Fetch seam for tests. [fetchTo] downloads [url], throwing on non-2xx or network errors. */
   fun interface Fetcher {
     fun fetchTo(url: String, dest: File)
   }
@@ -160,13 +129,12 @@ object XrCompositeProvision {
   }
 
   /**
-   * Ensure the cache holds the [version]+host-platform binary, fetching the Release tarball when
-   * absent. Best-effort: returns the cached binary [File] on success, or `null` on any skip/failure
-   * (and logs a one-line note). Never throws — the render proceeds regardless.
+   * Ensure the cache holds the [version] + host-platform binary, fetching when absent. Returns it,
+   * or null (with a one-line note) on any skip or failure; never throws.
    *
-   * @param version the pinned `xr-composite` release ([XR_COMPOSITE_VERSION]), NOT the CLI's own
-   *   version — see that property for why they are separate.
-   * @param log sink for the concise status/skip note (stderr by default).
+   * @param version the pinned `xr-composite` release ([XR_COMPOSITE_VERSION]), not the CLI's
+   * version.
+   * @param log sink for the status note (stderr by default).
    */
   fun ensureCached(
     version: String,
@@ -188,15 +156,14 @@ object XrCompositeProvision {
     val binaryName = if (platform.startsWith("windows")) "xr-composite.exe" else "xr-composite"
     val dir = cacheDir(version, platform, env, userHome)
     val binary = File(dir, binaryName)
-    // Fast path: only short-circuit on a COMPLETE cache. A partial layout (e.g. an earlier
-    // interrupted unpack that left the binary but no materials/) falls through and re-provisions.
+    // Only a complete cache short-circuits; a partial one re-provisions.
     if (isComplete(dir, binaryName)) return binary
 
     val url = assetUrl(version, platform)
     val parent = dir.parentFile
     val tmp = File(parent, ".${dir.name}.dl-${UUID.randomUUID()}.tar.gz")
-    // Unpack into a staging dir and only swap it into place once validated, so the live cache path
-    // is never observed half-written — readers see either a complete layout or nothing.
+    // Unpack to a staging dir and move it into place once validated, so readers never see a partial
+    // cache.
     val stage = File(parent, ".${dir.name}.stage-${UUID.randomUUID()}")
     return try {
       parent?.mkdirs()
@@ -210,10 +177,8 @@ object XrCompositeProvision {
         return null
       }
       File(stage, binaryName).setExecutable(true, false)
-      // Atomically replace any prior (incomplete) cache dir with the validated staging dir. We only
-      // get here when `dir` wasn't complete, so removing it first is safe; the move is atomic on
-      // the
-      // shared cache filesystem so a concurrent reader never sees a partial swap.
+      // `dir` is incomplete here, so replacing it is safe; the move is atomic on the cache
+      // filesystem.
       dir.deleteRecursively()
       try {
         Files.move(stage.toPath(), dir.toPath(), StandardCopyOption.ATOMIC_MOVE)
@@ -233,12 +198,8 @@ object XrCompositeProvision {
   }
 
   /**
-   * Unpack a `.tar.gz` into [destDir] (created if absent) by shelling out to the system `tar`. The
-   * Release tarball is `tar -C dist` of `xr-composite[.exe]` + `materials/`, so `tar -xzf <tgz> -C
-   * <destDir>` restores that layout (including the binary's executable bit) verbatim. `tar` is
-   * present on Linux/macOS and ships as `bsdtar` on Windows 10+; if it's missing or fails, the
-   * thrown exception bubbles to [ensureCached]'s best-effort catch. Kept as a shell-out rather than
-   * pulling in a new archive dependency for one call site.
+   * Unpack a `.tar.gz` into [destDir] with the system `tar` (bsdtar on Windows 10+), preserving the
+   * executable bit. Failures propagate to [ensureCached]'s best-effort catch.
    */
   internal fun unpackTarGz(tarGz: File, destDir: File) {
     destDir.mkdirs()

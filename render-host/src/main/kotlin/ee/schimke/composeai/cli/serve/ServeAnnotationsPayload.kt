@@ -10,13 +10,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 
 /**
- * The `/render/<id>.annotations` response body, written in one place.
- *
- * Two hosts answer that URL from different sources — [ServeRenderHost] projects the layers off a
- * render's own `compose/semantics` tree, [ServeBundleHost] replays what the catalog published over
- * its baked frame — and the viewer's `<cp-inspect-layers>` parses one shape. A second copy of the
- * encoding is the kind of drift nothing fails on: the overlay simply draws nothing for whichever
- * lane's key it does not recognise, which reads as a broken layer rather than a wrong response.
+ * The `/render/<id>.annotations` response body, encoded in one place: [ServeRenderHost] and
+ * [ServeBundleHost] answer it from different sources, and a second encoder could drift silently
+ * (the overlay would just draw nothing).
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
@@ -48,18 +44,9 @@ public object ServeAnnotationsPayload {
       .encodeToByteArray()
 
   /**
-   * `{"previewId":…, "tags":{…}}` — the **published** tag index on its own, for `GET /tags/{id}`.
-   *
-   * Two keys of the three above, and the same encoder for the one that matters, because the wire
-   * type is the load-bearing part: [ServeSemanticsTags.TagEntry] carries `space`, and
-   * [ServeTagIndexStore] refuses an entry that declares none rather than defaulting it. A second
-   * hand-rolled copy of this map is how one of the two lanes quietly stops naming its plane, and
-   * the symptom of that is not a parse failure anywhere — it is an element gate comparing bounds in
-   * a plane nobody stated.
-   *
-   * No `annotations` key, deliberately, rather than an empty one: this route answers from the
-   * catalog's published `tags/index.json` and performs no render, so it has no annotation layer to
-   * describe and must not look as though it found none.
+   * `{"previewId":…, "tags":{…}}` — the published tag index alone, for `GET /tags/{id}`. Shares the
+   * encoder because [ServeSemanticsTags.TagEntry]'s `space` must always be on the wire. No
+   * `annotations` key (not an empty one): this route renders nothing.
    */
   public fun encodeTags(
     previewId: String,

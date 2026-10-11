@@ -19,12 +19,9 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * [RenderSessionFactory] singleton for the daemon-subprocess backend. Open a session via
- * `SubprocessRenderSessions.open(config)` or the convenience overloads below.
- *
- * Constructs a [DaemonClientRenderSession] from the daemon launch descriptor at
- * [RenderSessionConfig.descriptorPath] — the heavy lifting (subprocess fork, JSON-RPC handshake)
- * happens before the factory returns, so consumers never see an un-initialized session.
+ * [RenderSessionFactory] for the daemon-subprocess backend. Builds a [DaemonClientRenderSession]
+ * from the launch descriptor at [RenderSessionConfig.descriptorPath]; the fork and handshake
+ * complete before the factory returns.
  */
 public object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
@@ -93,32 +90,26 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   }
 
   /**
-   * Open a session against a self-contained preview bundle, with no Gradle project on disk. The
-   * [DaemonLaunchDescriptor] is synthesized here (so its schema stays owned by this module) from
-   * the shipped sidecar jars and the bundle's extracted classes and `previews.json`, passed via the
-   * same system properties `compose-preview bundle daemon` uses.
+   * Open a session against a self-contained preview bundle, with no Gradle project. The
+   * [DaemonLaunchDescriptor] is synthesized here from the sidecar jars and the bundle's extracted
+   * classes and `previews.json`, with the same system properties `compose-preview bundle daemon`
+   * uses.
    *
-   * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath.
-   * @param classesDir directory holding the bundle's extracted `classes/app.jar` contents; also the
-   *   default single entry of [userClasspath] when the caller doesn't pass a fuller one.
-   * @param previewsJson the bundle's extracted `previews.json` discovery manifest.
-   * @param workspaceRoot a scratch directory used as the daemon's working directory + workspace id.
-   * @param modulePath informational module label surfaced in diagnostics (defaults to the bundle).
-   * @param jvmArgs JVM args for the daemon subprocess. Defaults to the desktop set
-   *   (`--enable-native-access=ALL-UNNAMED`); an Android/Robolectric caller passes
-   *   `AndroidBundleLaunch().jvmArgs()` (which adds the `--add-opens` set JDK 17+ Robolectric
-   *   needs).
-   * @param extraSystemProperties merged over the base daemon sysprops (last-wins). An
-   *   Android/Robolectric caller passes `AndroidBundleLaunch().robolectricSystemProperties()`.
-   * @param userClasspath the child-loaded user classpath (`composeai.daemon.userClassDirs`, a
-   *   `File.pathSeparator`-joined list of dirs **and** jars — the same shape the Gradle plugin's
-   *   launch emits). Defaults to just [classesDir] (a bundle already carries its deps on
-   *   [daemonClasspath]); a playground snippet passes its full compile classpath so the catalog's
-   *   library jars reach the render.
-   * @param jailCommand optional argv prefix the daemon JVM launches behind — the playground's
-   *   per-session sandbox (`bwrap`/`unshare`/`systemd-run`); empty launches the JVM directly.
-   * @param hardTtlSeconds optional wall-clock deadline after which the spawner force-kills the JVM.
-   *   Set for a sandboxed playground snippet; null for an ordinary bundle daemon.
+   * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath. @param
+   * classesDir the bundle's extracted `classes/app.jar`; the default [userClasspath]. @param
+   * previewsJson the bundle's extracted `previews.json`. @param workspaceRoot a scratch directory,
+   * the daemon's working directory and workspace id. @param modulePath informational module label
+   * for diagnostics. @param jvmArgs daemon JVM args; defaults to the desktop set. Android callers
+   * pass
+   *   `AndroidBundleLaunch().jvmArgs()` (Robolectric's `--add-opens`).
+   * @param extraSystemProperties merged over the base sysprops (last wins); Android callers pass
+   *   `AndroidBundleLaunch().robolectricSystemProperties()`.
+   * @param userClasspath the child-loaded user classpath (`composeai.daemon.userClassDirs`: dirs
+   * and
+   *   jars, `File.pathSeparator`-joined). A playground snippet passes its full compile classpath.
+   * @param jailCommand optional argv prefix the daemon JVM launches behind (the playground
+   * sandbox). @param hardTtlSeconds optional wall-clock deadline after which the JVM is
+   * force-killed.
    */
   public fun openBundleDaemon(
     daemonClasspath: List<String>,
@@ -178,11 +169,9 @@ public object SubprocessRenderSessions : RenderSessionFactory {
   }
 
   /**
-   * Refuse a descriptor whose schema version is not exactly this module's (#5105). The reader
-   * ignores unknown keys, so a newer descriptor would otherwise launch silently against defaults.
-   * Same exact-match gate as VS Code's `daemonProcess.ts` and `doctor`; the message names the
-   * remedy, regenerate (older) or upgrade the consumer (newer). [openBundleDaemon] builds its own
-   * descriptor and needs no gate.
+   * Refuse a descriptor whose schema version isn't exactly this module's: unknown keys are ignored,
+   * so a newer descriptor would otherwise silently launch with defaults. The message names the
+   * remedy.
    */
   private fun checkSchemaVersion(descriptor: DaemonLaunchDescriptor, path: String) {
     val found = descriptor.schemaVersion

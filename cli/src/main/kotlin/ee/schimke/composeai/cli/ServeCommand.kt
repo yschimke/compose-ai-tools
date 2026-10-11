@@ -3,53 +3,31 @@ package ee.schimke.composeai.cli
 import kotlin.system.exitProcess
 
 /**
- * `compose-preview serve` — a launcher for the published preview server.
+ * `compose-preview serve` — a launcher for the published preview server. It execs the server
+ * binary; when the server needs a local build it spawns `compose-preview build-host --stdio`
+ * ([BuildHostCommand]). Neither side links the other.
  *
- * This command used to *be* the server: it implemented the server's `ServeBuildHost` interface and
- * ran `ServeRunner` in this process, which is why `:cli` linked `compose-preview-serve` and why the
- * dependency cycle in yschimke/compose-preview-server#180 had a forward edge at all. An offline CLI
- * carried `ktor-server-*`, `jmdns` and `kotlin-reflect` so that four commands which never open a
- * socket could reach types filed in the same package as a web server.
- *
- * Now it execs the server binary, and the Gradle work the server needs travels the other way: the
- * server spawns `compose-preview build-host --stdio` (see [BuildHostCommand]) when it wants a local
- * build. Neither side links the other.
- *
- * **The binary is found, and failing that fetched.** [ServerBinaryDiscovery] answers which one to
- * run — an explicit flag, the environment, `PATH`, then a copy this CLI has already downloaded —
- * and [ServerDistributionProvision] fetches the pinned release when the machine has none, because
- * nothing else installs it (#5183). Only a failed fetch is fatal.
- *
- * **Arguments pass through untouched.** This deliberately parses nothing beyond finding the binary:
- * the server owns its own flags, and a launcher that validated them would be a second copy of that
- * surface, drifting from the first. `--help` reaches the server too, which is where the answer
- * actually lives.
+ * [ServerBinaryDiscovery] picks the binary (flag, environment, `PATH`, then a cached download) and
+ * [ServerDistributionProvision] fetches the release when there is none; only a failed fetch is
+ * fatal. Arguments, including `--help`, pass through untouched: the server owns its flags.
  */
 class ServeCommand(
   private val args: List<String>,
   private val browseProject: Boolean = false,
   /**
-   * Which of the server's commands to launch. `serve` for `serve` and `browse`; `ui` for
-   * `ui-builder`, whose whole difference lives on the server side — the builder flags, the
-   * component record and the page to open are the server's business, and a launcher that assembled
-   * them here would be a second copy of a surface that already exists.
+   * Which server command to launch: `serve` for `serve`/`browse`, `ui` for `ui-builder` (whose
+   * differences all live server-side).
    */
   private val serverCommand: String = "serve",
   /**
-   * Extra environment for the server process, applied on top of what this process inherited.
-   *
-   * Empty by default — a launcher adds nothing the caller did not ask for. [DesignCommand] and
-   * [A2uiCommand] use it: they bridge a grant this CLI holds in its own store to the server-side
-   * verb runner, which can only see environment variables.
+   * Extra environment for the server process on top of the inherited one; empty by default.
+   * [DesignCommand] and [A2uiCommand] use it to pass a grant from this CLI's store to the server.
    */
   private val childEnvironment: Map<String, String> = emptyMap(),
   /**
-   * The oldest server release that has [serverCommand], or null when every release does.
-   *
-   * A cached copy is reused without asking what is newest, so a machine that fetched a server
-   * before a command existed keeps launching that one and hears "unknown command". A launcher for a
-   * newer command names the release that added it, and a cached copy below that is replaced by the
-   * newest before the exec — see [ServerBinaryDiscovery.meetsMinimum].
+   * The oldest server release that has [serverCommand], or null. A cached copy older than this is
+   * replaced by the newest before the exec ([ServerBinaryDiscovery.meetsMinimum]), so stale caches
+   * don't answer "unknown command".
    */
   private val minimumServerVersion: String? = null,
 ) {
@@ -69,9 +47,8 @@ class ServeCommand(
       System.err.println(ServerBinaryDiscovery.installationHint())
       exitProcess(1)
     }
-    // Before the exec, not after: the start script resolves its own `java`, so a JVM below the
-    // distribution's floor fails inside it with `UnsupportedClassVersionError` and no mention of
-    // Java versions. `null` means launch — every step of that check fails open.
+    // Before the exec: the start script resolves its own `java`, and a too-old JVM fails there with
+    // an opaque `UnsupportedClassVersionError`. `null` means launch (the check fails open).
     ServerJavaPreflight.failure(choice, ReleasedDistribution.SERVER)?.let {
       System.err.println(it)
       exitProcess(1)
@@ -96,13 +73,9 @@ class ServeCommand(
   }
 
   /**
-   * Fetch the pinned server when the machine has none, and name the copy that results.
-   *
-   * Nothing installs this binary — that is #5183, and it made `serve` fail for everyone who
-   * installed the documented way — so a miss means "not fetched yet", not "not wanted". The fetch
-   * happens once, prints what it is doing (a 120 MB transfer that appeared as silence would read as
-   * a hang), and returns null having explained any failure, which the caller turns into
-   * [ServerBinaryDiscovery.installationHint].
+   * Fetch the server when the machine has none (nothing else installs it), announcing the large
+   * download so it doesn't read as a hang. Returns null after explaining any failure; the caller
+   * prints [ServerBinaryDiscovery.installationHint].
    */
   private fun provision(): ServerBinaryDiscovery.Choice? =
     ServerDistributionProvision.ensure()?.let {
@@ -110,15 +83,8 @@ class ServeCommand(
     }
 
   /**
-   * The argv handed to the server.
-   *
-   * `--server-binary` is this launcher's own flag and is dropped rather than forwarded — the server
-   * has no such option, and passing it through would make every invocation fail on an unknown
-   * argument. Everything else, including a command word the server accepts itself, is the caller's.
-   *
-   * Nothing is added for the build host. The server discovers `compose-preview` itself, by the same
-   * flag/environment/PATH ordering this class uses, and a launcher that guessed a path here would
-   * override an operator who had already chosen one.
+   * The argv for the server: everything except this launcher's own `--server-binary`. Nothing is
+   * added for the build host; the server discovers `compose-preview` itself.
    */
   internal fun launchCommand(binary: String): List<String> = buildList {
     add(binary)

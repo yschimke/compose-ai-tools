@@ -6,13 +6,8 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Pinned to the prerelease compose-material3 line. Isolated from
-// `:samples:android` (which sticks to `compose-bom-stable`) so the
-// alpha-channel APIs and the transitive Compose 1.12.x bump they pull in
-// don't leak into the stable sample's classpath. Mirrors the pattern of
-// `:samples:remotecompose` riding alpha compose for a feature the BOM
-// doesn't have yet — see [docs/RENDERER_COMPATIBILITY.md] for the version
-// alignment story.
+// Pinned to the prerelease compose-material3 line, isolated from `:samples:android`'s stable BOM so
+// the alpha APIs and transitive Compose bump don't leak. See [docs/RENDERER_COMPATIBILITY.md].
 
 composePreview {
   // Pin Robolectric to SDK 35; this module compiles against `compileSdk = 37` but Robolectric
@@ -20,10 +15,7 @@ composePreview {
   // `:samples:android` for the broader JDK 17 toolchain rationale.
   sdkVersion.set(35)
 
-  // `FocusedPreviewPixelTest` reads PNGs under
-  // `build/compose-previews/renders/`; opt the unit-test tasks into a
-  // `dependsOn(composePreviewRenderAll)` chain so `:samples:android-alpha:check`
-  // renders before asserting.
+  // `FocusedPreviewPixelTest` reads rendered PNGs, so render before unit tests.
   renderBeforeUnitTests.set(true)
 }
 
@@ -45,25 +37,15 @@ dependencies {
 }
 
 dependencies {
-  // Pinning material3 directly: the inset-focus-ring APIs
-  // (RippleThemeConfiguration, LocalRippleThemeConfiguration,
-  // RippleDefaults.{Inset,Opacity}Focus*RippleThemeConfiguration) graduated
-  // to stable in 1.5.0-alpha18; alpha19 is the latest at time of writing.
-  // material3 1.5.0-alphaNN's metadata pulls compose-foundation/runtime/ui
-  // 1.12.0-alphaNN transitively, so no separate compose-bom application is
-  // needed (and would only fight conflict resolution).
+  // material3 directly for the inset-focus-ring APIs (stable since 1.5.0-alpha18); its metadata
+  // pulls the matching Compose alpha, so no separate BOM.
   implementation("androidx.compose.material3:material3:1.5.0-alpha29")
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)
-  // material3 1.5.0-alphaNN drags activity 1.11+ onto the test classpath, which
-  // transitively pulls androidx.navigationevent:1.0.0. AGP builds the merged
-  // test resource APK from the *main* variant, so unless the main variant also
-  // resolves activity >= 1.11 the `androidx.navigationevent.R$id.*` resources
-  // never get merged and previews crash at render time with
-  // `NoClassDefFoundError: androidx/navigationevent/R$id`. This is the
-  // `activity-vs-navigationevent` finding `compose-preview doctor` reports;
-  // pinning activity-compose here keeps the main variant ahead of the floor.
+  // material3's activity 1.11+ pulls androidx.navigationevent, whose R classes are only merged if
+  // the main variant also resolves activity >= 1.11; otherwise renders fail with
+  // `NoClassDefFoundError: androidx/navigationevent/R$id` (what `compose-preview doctor` reports).
   implementation(libs.activity.compose)
   // `@AnimatedPreview` and `@FocusedPreview` live here — source-retained
   // metadata read by `DiscoverPreviewsTask` at FQN.

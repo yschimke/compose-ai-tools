@@ -17,26 +17,18 @@ import javax.imageio.metadata.IIOMetadataNode
 import kotlin.math.roundToInt
 
 /**
- * Draws a preview's findings over its render: an outline on every node a `fail` names (from the
- * accessibility bounds, which are pixels of the same render) and a dashed outline on every region,
- * each with a numbered badge. Plain AWT, so it runs headless in CI.
+ * Draws a preview's findings over its render: an outline on every node a `fail` names and a dashed
+ * outline on every region, each with a numbered badge. Plain AWT, so it runs headless.
  *
- * Nothing is filled over the content: the finding is usually about exactly what is under the mark
- * (text too small, a clipped line), so the outline is drawn around it, as a bright stroke over a
- * dark halo that reads on light and dark renders alike. Rule ids are not written on the picture —
- * at the width a PR comment shows it they were illegible and overlapped — the badge carries a
- * number, and the report lists the findings under the same numbers.
- *
- * Numbering follows the findings as given — the CLI passes `failures()`, by descending confidence,
- * which is the order `guidelines-report.py` lists them in — the first finding with something to
- * draw is 1, the next is 2, and a finding with nothing on this picture gets no number. Every mark
- * of one finding carries its number.
+ * Outlines only (bright stroke over a dark halo), never fills, since the finding is about what's
+ * underneath. Badges carry numbers rather than illegible rule ids; numbering follows the given
+ * findings order (the CLI passes `failures()`, as `guidelines-report.py` lists them), skipping
+ * findings with nothing to draw.
  */
 public object GuidelineAnnotator {
   /**
-   * [png] with [failures] drawn on it — their nodes, and the regions they point at
-   * ([GuidelineVerdictV1.regions]) that belong to [subjectId] — the input unchanged when it cannot
-   * be read.
+   * [png] with [failures] drawn on it (their nodes, and regions belonging to [subjectId]), or the
+   * input unchanged when unreadable.
    */
   public fun annotate(
     png: ByteArray,
@@ -67,9 +59,8 @@ public object GuidelineAnnotator {
   }
 
   /**
-   * The PNG `tEXt` keyword naming the overlay's format, so a reader can tell numbered badges from
-   * the rule-id labels older CLIs drew: `guidelines-report.py` numbers its findings only when the
-   * picture says [FORMAT].
+   * PNG `tEXt` keyword marking the overlay format, so `guidelines-report.py` numbers findings only
+   * for pictures with numbered badges.
    */
   internal const val FORMAT_KEY: String = "compose-preview-guidelines-overlay"
 
@@ -149,10 +140,9 @@ public object GuidelineAnnotator {
   }
 
   /**
-   * A centre for each mark's badge, in [marks] order: diameter [size], wholly inside the
-   * [width]×[height] picture, overlapping no earlier badge where any spot allows it, and preferring
-   * the spot that covers the least of the marked boxes — just outside a corner of its own box, so
-   * the badge sits beside what the finding is about rather than on it.
+   * A centre for each mark's badge, in [marks] order: inside the picture, overlapping no earlier
+   * badge where possible, preferring just outside a corner of its own box so it sits beside the
+   * finding.
    */
   internal fun placeBadges(
     marks: List<Mark>,
@@ -276,8 +266,8 @@ public object GuidelineAnnotator {
   }
 
   /**
-   * Sizes relative to the picture's width, so a mark reads the same however wide the picture is
-   * shown: a badge about 7.5% of the width (24px when a 408px Wear render is shown 320px wide).
+   * Sizes relative to the picture's width, so marks read the same at any display width (a badge is
+   * ~7.5% of the width).
    */
   private class Style(val stroke: Float, val halo: Float, val badge: Int) {
     /** How far outside a box its outline is drawn: the stroke and the halo's inner half. */

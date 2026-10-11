@@ -3,25 +3,12 @@ package ee.schimke.composeai.screen
 /**
  * Categorises generated Kotlin into [SourceToken]s for the builder's source pane.
  *
- * ### Why this lexes, when the spec said not to
+ * A small lexer rather than spans emitted by codegen: generation is
+ * [ee.schimke.composeai.discovery.ScreenGenerator], shared with the Gradle plugin and server, which
+ * shouldn't carry a browser rendering concern. Kept honest by the tiling invariant.
  *
- * The advice it reverses was: *do not re-lex your own output — codegen knows what every token is at
- * the moment it writes it, and a lexer is a parser that can disagree with the thing it parses.*
- * That was right while the builder generated the source. It no longer does. Generation is
- * [ee.schimke.composeai.discovery.ScreenGenerator], which is shared source compiled into the
- * published `preview-discovery` jar and used by the Gradle plugin and the server — instrumenting it
- * with span emission for a browser highlighter would push a rendering concern into the one place
- * that must stay about correctness.
- *
- * So the premise changed rather than the reasoning being wrong, and this is the trade that follows:
- * a small lexer here, kept honest by the same **tiling** invariant the span-emitting version had.
- *
- * ### What it deliberately does not do
- *
- * It is not a Kotlin parser and cannot become one. It has no notion of scope, type or resolution:
- * an identifier followed by `(` reads as a [SourceTokenKind.CALL] whether it is a composable, a
- * constructor or a local function. That is exactly enough to colour a pane and exactly as much as a
- * highlighter should claim.
+ * Not a parser: no scope, type or resolution — an identifier followed by `(` is a
+ * [SourceTokenKind.CALL], which is enough to colour a pane.
  */
 public object SourceHighlighter {
 
@@ -47,12 +34,8 @@ public object SourceHighlighter {
     )
 
   /**
-   * [source] as tokens that **tile it exactly**: sorted, non-overlapping, and covering every offset
-   * once.
-   *
-   * Tiling is the property a renderer relies on to walk the list with no gap handling, and the one
-   * a test can assert cheaply — an off-by-one fails it rather than showing up as a single wrongly
-   * coloured character nobody notices.
+   * [source] as tokens that tile it exactly: sorted, non-overlapping, covering every offset once —
+   * so renderers need no gap handling and an off-by-one fails a cheap test.
    */
   public fun tokenize(source: String): List<SourceToken> {
     if (source.isEmpty()) return emptyList()

@@ -12,14 +12,9 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * The colour scheme a preview catalog has pinned over every `MaterialTheme` in the preview, or
- * `null` when no theme is selected.
- *
- * A catalog's theme switcher wraps a preview from the outside, but an app almost always installs
- * its own theme further in — `AppScaffold { AppTheme { … } }` — and the innermost `MaterialTheme`
- * wins, so every theme chip used to render the same pixels. Pinning reverses that precedence: a
- * theme selected outside is provided here, and [PreviewMaterialTheme] prefers it over whatever
- * scheme the app's own theme passes in, however deep that call is.
+ * The colour scheme a preview catalog pinned over every `MaterialTheme` in the preview, or `null`.
+ * Apps install their own theme further in, and the innermost `MaterialTheme` normally wins;
+ * [PreviewMaterialTheme] prefers this pinned scheme instead, however deep the app's theme is.
  */
 public val LocalPinnedColorScheme: ProvidableCompositionLocal<ColorScheme?> =
   staticCompositionLocalOf {
@@ -27,14 +22,10 @@ public val LocalPinnedColorScheme: ProvidableCompositionLocal<ColorScheme?> =
   }
 
 /**
- * Drop-in for `androidx.compose.material3.MaterialTheme(colorScheme, shapes, typography, content)`
- * with the same parameters and defaults.
- *
- * Nothing calls this by hand. The compose-preview Kotlin compiler plugin, when a build opts into
- * theme pinning, redirects the app's own calls to `MaterialTheme` here at compile time — because it
- * has the identical signature, the redirect is a change of callee and nothing else. With no pinned
- * scheme (the default, and every render that has not selected a theme) it calls `MaterialTheme`
- * with exactly the arguments it was given.
+ * Drop-in for `androidx.compose.material3.MaterialTheme(colorScheme, shapes, typography, content)`.
+ * Not called by hand: with theme pinning enabled, the compose-preview compiler plugin redirects the
+ * app's `MaterialTheme` calls here. With no pinned scheme it passes its arguments through
+ * unchanged.
  */
 @Composable
 public fun PreviewMaterialTheme(
@@ -74,16 +65,10 @@ public fun PreviewMaterialTheme(
 }
 
 /**
- * Pins the colour scheme in effect here over every `MaterialTheme` [content] installs.
- *
- * A generated theme provider calls the app's own theme with the selected palette and wraps the
- * preview in this: `AppTheme(theme = Agami) { PinMaterialTheme { preview() } }`. The app's theme
- * reaches `MaterialTheme` through [PreviewMaterialTheme] too, so the scheme read here is the
- * selected palette — the generator never has to know how the app builds one — and every theme the
- * preview installs further in renders with it.
- *
- * Only the colour scheme is pinned. Typography and shapes stay whatever each nested theme sets, so
- * a preview keeps the app's own type scale.
+ * Pins the colour scheme in effect here over every `MaterialTheme` [content] installs. A generated
+ * theme provider calls the app's theme with the selected palette and wraps the preview in this:
+ * `AppTheme(theme = Agami) { PinMaterialTheme { preview() } }`. Only colours are pinned; typography
+ * and shapes stay as each nested theme sets them.
  */
 @Composable
 public fun PinMaterialTheme(content: @Composable () -> Unit) {

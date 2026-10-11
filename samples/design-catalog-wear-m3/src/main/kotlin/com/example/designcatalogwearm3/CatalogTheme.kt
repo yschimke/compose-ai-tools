@@ -19,20 +19,14 @@ import ee.schimke.composeai.overrides.previewOverrideFont
 import ee.schimke.composeai.overrides.previewOverrideString
 
 /**
- * The catalog's **component** sticker frame: a single component wrapped in the stock Wear
- * [MaterialTheme] on a **transparent** background, cropped tight to the component. Transparency
- * lets a designer drop the sticker onto any canvas; the `compose/theme` tokens the renderer
- * extracts still come from the real Wear Material 3 system (read from the theme, not the pixels).
- * Full-screen components use [FullScreenWear] instead, which keeps the black round device shape.
+ * The catalog's component sticker frame: one component in the stock Wear [MaterialTheme] on a
+ * transparent background, cropped tight. Full-screen components use [FullScreenWear] instead.
  *
- * Deliberately no `fillMaxSize()` / centring. `PreviewDiscovery.retargetWearStickers` hands a
- * device-less Wear preview the 227dp watch screen as its *measuring bound*, not as a fixed frame —
- * a fill-width component (Card, ListHeader) sizes to the watch, everything else wraps and the
- * renderer crops the PNG to it. Filling here would defeat that crop and put every sticker back on a
- * full 454×454 canvas, which is what #2404 did while the retarget still pinned the frame.
+ * Deliberately no `fillMaxSize()` / centring: `PreviewDiscovery.retargetWearStickers` gives a
+ * device-less Wear preview the 227dp watch screen as a measuring bound, and the renderer crops the
+ * PNG to the component. Filling would put every sticker back on a full 454×454 canvas.
  *
- * TLC item scaling is shown separately (see `CardScalingPreview.kt`), which hosts a component in a
- * real `TransformingLazyColumn` via `:wear-preview-runtime`; a plain sticker here is unchanged.
+ * TLC item scaling is shown separately in `CardScalingPreview.kt`.
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
@@ -40,23 +34,19 @@ fun WearSticker(content: @Composable () -> Unit) {
 }
 
 /**
- * The Wear catalog theme, with the typeface and palette read from the override surface so the
- * preview server can re-skin any sticker (`knob.theme.font` / `knob.theme.colors`) without a
- * preview change — the previews stay clean. Absent an override both resolve to the Wear M3 default,
- * so an un-overridden render is pixel-identical. The choices are the declared `@TypographyCatalog`
- * / `@ColorCatalog` names in `WearCatalogFonts.kt`; this is the one place that maps a selected name
- * to its family / scheme.
+ * The Wear catalog theme, with typeface and palette read from the override surface
+ * (`knob.theme.font` / `knob.theme.colors`) so the preview server can re-skin any sticker; absent
+ * an override both resolve to the Wear M3 default. Choices are the names in `WearCatalogFonts.kt`.
  *
- * The type scale comes from [wearCatalogTypography] — which re-points each role explicitly, because
- * `Typography(defaultFontFamily = …)` silently does nothing on Wear (see its KDoc) — and the
- * palette re-tints the default Wear scheme.
+ * The type scale comes from [wearCatalogTypography] (re-pointing each role explicitly, since
+ * `Typography(defaultFontFamily = …)` is a no-op on Wear) and the palette re-tints the default
+ * scheme.
  */
 @Composable
 fun WearCatalogTheme(content: @Composable () -> Unit) {
-  // A server-selected @WearThemeCatalog provider already installed the requested theme outside
-  // this preview. Do not immediately replace it with the catalog default from inside the sticker.
-  // This mirrors Confetti Wear's PreviewThemeOverrideInstalled contract and is what makes a theme
-  // choice affect the component previews themselves, not only the generated theme specimen.
+  // A server-selected @WearThemeCatalog provider already installed the requested theme outside this
+  // preview; don't replace it with the catalog default (mirrors Confetti Wear's
+  // PreviewThemeOverrideInstalled contract).
   if (LocalWearCatalogThemeOverride.current) {
     content()
     return
@@ -88,48 +78,28 @@ fun wearCatalogFont(name: String): FontFamily =
   }
 
 /**
- * The Wear type scale for a selected theme [name] — the **typographic** half of a theme, alongside
- * [wearColorScheme]'s palette half.
- *
- * A theme that only re-tints is only half a theme: Confetti Wear's KotlinConf identity is a
- * *typeface pairing* as much as a seed colour (`design/STYLE_GUIDE.md` in joreilly/Confetti:
- * "JetBrains Mono titles + Inter body" for the terminal/IDE feel, Inter keeping session cards
- * readable), and this catalog's KotlinConf sheet used to render in the stock Wear face because the
- * `@WearThemeCatalog` providers passed a `colorScheme` and nothing else. Pairings are expressed as
- * `display`/`body` rather than a single family so a two-face identity survives the round trip.
- *
- * `Typography(defaultFontFamily = …)` re-points the whole scale — including the [CurvedTextStyle]
- * arc roles, which have no `TextStyle.copy(fontFamily = …)` path — so the body face is applied that
- * way and only the display/title/numeral roles are then re-pointed at the display face. Numerals
- * ride with the display face: they're the glanceable hero digits, and JetBrains Mono's tabular
- * figures are exactly what that role wants.
+ * The Wear type scale for a selected theme [name] — the typographic half of a theme, alongside
+ * [wearColorScheme]. Pairings are `display`/`body` so a two-face identity (e.g. Confetti's
+ * KotlinConf "JetBrains Mono titles + Inter body") survives. Numerals ride with the display face.
  */
 fun wearCatalogTypography(name: String): Typography =
   when {
     name == "KotlinConf" -> wearTypography(body = Inter, display = JetBrainsMono)
     // A single declared typeface — either the "Google Sans Flex" theme or a `knob.theme.font` pick.
     name != "Roboto Flex" && name in WEAR_FONT_NAMES -> wearTypography(body = wearCatalogFont(name))
-    // "Roboto Flex", and every palette-only theme ("M3" / "Coral" / "Teal"): the stock scale,
-    // untouched. Roboto Flex already IS the Wear default face, and the stock tokens reach it as a
-    // *device* font carrying per-role `variationSettings` — the expressive variable axes.
-    // Re-pointing them at a downloadable GoogleFont family of the same name would drop those axes
-    // to buy nothing, so don't; it also keeps an un-themed render pixel-identical.
+    // Roboto Flex and the palette-only themes keep the stock scale: Roboto Flex is already the Wear
+    // device font with per-role variable axes, which a GoogleFont re-point would drop.
     else -> Typography()
   }
 
 /**
  * A Wear [Typography] on [body], with the display / title / numeral roles on [display].
  *
- * Every role is re-pointed **explicitly**. The `Typography(defaultFontFamily = …)` constructor
- * parameter looks like the one-liner for this and is in fact a **no-op** on Wear: it applies via
- * `TextStyle.withDefaultFontFamily`, which only fills in a family when the style has none, and
- * every `TypographyTokens` role already declares one (`Font(DeviceFontFamilyName("roboto-flex"),
- * variationSettings = …)`). That is why this catalog's KotlinConf sheet — and its `knob.theme.font`
- * override — rendered in the stock face no matter what was selected.
+ * Every role is re-pointed explicitly: `Typography(defaultFontFamily = …)` is a no-op on Wear,
+ * since it only fills styles with no family and every `TypographyTokens` role declares one.
  *
- * The three **arc** (curved) roles are deliberately left on the stock face: the only
- * `CurvedTextStyle.copy` overload that takes a `fontFamily` is deprecated, and the arc roles draw
- * the curved status strip, which is system chrome rather than app typography.
+ * The three arc roles stay on the stock face: the only `CurvedTextStyle.copy` taking a `fontFamily`
+ * is deprecated, and they draw system chrome, not app typography.
  */
 private fun wearTypography(body: FontFamily, display: FontFamily = body): Typography {
   val base = Typography()
@@ -161,9 +131,7 @@ private fun wearTypography(body: FontFamily, display: FontFamily = body): Typogr
  */
 fun wearColorScheme(name: String, base: ColorScheme): ColorScheme =
   when (name) {
-    // Confetti Wear's KotlinConf identity uses the JetBrains seed purple (#7F52FF) to build a
-    // dynamic dark scheme. This compact catalog keeps Wear's complete dark role ramp and applies
-    // that same signature seed to its primary family.
+    // Confetti Wear's KotlinConf seed purple (#7F52FF) on Wear's dark role ramp's primary family.
     "KotlinConf" ->
       base.copy(
         primary = Color(0xFF7F52FF),
@@ -186,29 +154,22 @@ fun wearColorScheme(name: String, base: ColorScheme): ColorScheme =
 internal val LocalWearCatalogThemeOverride = compositionLocalOf { false }
 
 /**
- * The catalog's **component** multipreview: a single transparent capture, cropped to the component
- * (no device frame — that's for full-screen components, see [CatalogWearBreakpoints]).
- * `showBackground = false` keeps the background transparent so the sticker carries alpha.
+ * The catalog's component multipreview: a single transparent capture cropped to the component (no
+ * device frame; full-screen components use [CatalogWearBreakpoints]).
  */
 @Preview(showBackground = false) annotation class CatalogWearModes
 
 /**
- * A frozen curved [TimeText]: the real Wear M3 status strip drawing a fixed "10:10" instead of the
- * system clock, so every render is deterministic and the weekly design-artifacts bundle doesn't
- * churn on wall-clock time.
+ * A curved [TimeText] frozen at "10:10", so renders are deterministic and the weekly bundle doesn't
+ * churn.
  */
 @Composable fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
 
 /**
- * Frame for **full-screen** Wear screens (scaffolds, lists, the EdgeButton) — as opposed to the
- * centred component [WearSticker]. The Wear dark [MaterialTheme] fills the round display black and
- * [AppScaffold] supplies the screen structure, including the curved [FixedTimeText] status strip
- * every real Wear screen carries. The content supplies its own `ScreenScaffold`.
- *
- * The clock is *frozen*, not dropped: a Wear screen without its status strip isn't the screen a
- * designer or app author is copying — the strip reserves the curved top margin the content has to
- * lay out around, so a capture without it under-reports the usable height. Determinism comes from
- * the fixed "10:10", not from omitting the clock.
+ * Frame for full-screen Wear screens: the dark [MaterialTheme] filling the round display, and
+ * [AppScaffold] with the [FixedTimeText] strip. The content supplies its own `ScreenScaffold`. The
+ * clock is frozen rather than dropped because the strip reserves the curved top margin content lays
+ * out around.
  */
 @Composable
 fun FullScreenWear(content: @Composable () -> Unit) {
@@ -216,10 +177,8 @@ fun FullScreenWear(content: @Composable () -> Unit) {
 }
 
 /**
- * Frame for the **scaffold templates** — full-screen skeletons an app copies whole (list screen
- * with a status strip, pager, edge-button screen). Identical to [FullScreenWear]: both supply the
- * dark theme, the [AppScaffold], and the frozen [FixedTimeText] strip. Kept as its own name because
- * a template's *content* is a whole screen skeleton rather than a single full-screen component.
+ * Frame for scaffold templates (whole screen skeletons). Identical to [FullScreenWear]; a separate
+ * name because the content is a skeleton rather than one component.
  */
 @Composable
 fun WearScaffoldTemplate(content: @Composable () -> Unit) {
@@ -227,18 +186,11 @@ fun WearScaffoldTemplate(content: @Composable () -> Unit) {
 }
 
 /**
- * Full-screen **size-breakpoint** multipreview: the three round Wear screen sizes a layout must
- * adapt to — 192 dp (small round), 227 dp (large round), and 240 dp (extra-large round) — each
- * black on the device shape. Stack on a full-screen component (placed via [FullScreenWear] +
- * `ScreenScaffold`) to capture it at each breakpoint, mirroring how the official Wear samples
- * verify a screen across sizes.
+ * Full-screen size-breakpoint multipreview: 192 dp (small round), 227 dp (large round) and 240 dp
+ * (extra-large round), black on the device shape.
  *
- * All three are **direct** `@Preview`s rather than the nested `@WearPreviewSmallRound` /
- * `@WearPreviewLargeRound` aliases: `PreviewDiscovery.resolveMultiPreview` returns an annotation
- * class's direct previews without recursing into nested multipreviews, so a mix would silently drop
- * the nested 192/227 and render only the last. All three use the Wear tooling **device ids**
- * (192/227/240, round, 2.0×) — the render pipeline only exercises named-id devices, not custom
- * `spec:` strings.
+ * All direct `@Preview`s with Wear device ids rather than nested `@WearPreview*` aliases, because
+ * `PreviewDiscovery.resolveMultiPreview` doesn't recurse into nested multipreviews.
  */
 @Preview(
   name = "Small Round",

@@ -8,15 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Four real screens, from four different sample apps, rebuilt as builder documents.
- *
- * This is the palette's acceptance test and the reason it holds what it holds. Each document below
- * is a screen that already exists in this repository as a `@Preview` — the source it is measured
- * against is checked in, and its render is what `composePreviewRender` produces for it. The
- * generated source will never be *identical*, because the originals call their own composables and
- * read their own string resources, but the **padding, the modifiers and the arguments** should be
- * the same ones. That is the question being asked: can this vocabulary express a real screen, or
- * only a demo.
+ * Four real `@Preview` screens from four sample apps, rebuilt as builder documents: the palette's
+ * acceptance test. Generated source won't be identical (originals call their own composables and
+ * strings), but padding, modifiers and arguments should match.
  */
 class M3PaletteScreenTest {
 
@@ -66,11 +60,8 @@ class M3PaletteScreenTest {
     M3Palette.choicesFor("androidx.compose.ui.graphics.Color").first { it.first == name }.second
 
   /**
-   * `samples/android-library` — `LibraryGreetingPreview`.
-   *
-   * `Surface { Column(Modifier.padding(16.dp)) { Text(…) } }`. The simplest of the four, and the
-   * one that pins the padding amount: the original is 16, and a palette offering only 8 could not
-   * build it.
+   * `samples/android-library` — `LibraryGreetingPreview`: `Surface {
+   * Column(Modifier.padding(16.dp)) { Text(…) } }`, pinning the 16dp padding.
    */
   @Test
   fun `library greeting`() {
@@ -100,10 +91,8 @@ class M3PaletteScreenTest {
   }
 
   /**
-   * `samples/android` — `PermissionGatedCameraScreen`, denied branch.
-   *
-   * The one that asks the most of the *argument* vocabulary: a themed surface colour, a `spacedBy`
-   * arrangement, two typography styles and a button's content padding.
+   * `samples/android` — `PermissionGatedCameraScreen`, denied branch: a themed surface colour,
+   * `spacedBy`, two typography styles and button content padding.
    */
   @Test
   fun `camera permission denied`() {
@@ -163,11 +152,8 @@ class M3PaletteScreenTest {
   }
 
   /**
-   * `samples/design-catalog-m3` — `AppScaffoldTemplate`.
-   *
-   * A `Scaffold` filling three different slots, which is what makes it worth building: `topBar`,
-   * `floatingActionButton` and `content` are distinct drop targets, and a builder that offers one
-   * slot per container cannot express any screen shaped like an app.
+   * `samples/design-catalog-m3` — `AppScaffoldTemplate`: a `Scaffold` filling `topBar`,
+   * `floatingActionButton` and `content`, which needs per-slot drop targets.
    */
   @Test
   fun `app scaffold template`() {
@@ -227,10 +213,8 @@ class M3PaletteScreenTest {
     assertTrue(source, source.contains("FloatingActionButton("))
     assertTrue(source, source.contains("ListItem("))
     assertTrue(source, source.contains("HorizontalDivider("))
-    // `TopAppBar` is experimental, so the screen carries the opt-in rather than failing to
-    // compile. `ExperimentalMaterial3Api` is declared with Kotlin's `@RequiresOptIn`, not the
-    // AndroidX one, so it belongs under `kotlin.OptIn` — the two annotations reject each other's
-    // markers, and the generator splits them by the mechanism the record names.
+    // `TopAppBar` is experimental; `ExperimentalMaterial3Api` uses Kotlin's `@RequiresOptIn`, so it
+    // goes under `kotlin.OptIn` (the generator splits markers by mechanism).
     assertTrue(
       source,
       source.contains("@kotlin.OptIn(ExperimentalMaterial3Api::class)"),

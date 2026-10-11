@@ -9,15 +9,9 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * `compose-preview profile <path.json>` — runs a saved [Profile] by translating its fields into the
- * equivalent CLI flag set and delegating to [ReportCommand]. Thin on purpose: profiles are a
- * "captured flag combination," not a programming model. Anything richer (predicate filters,
- * per-result hooks, multi-renderer orchestration) is tracked on issue #1084 (Kotlin scripting).
- *
- * Flags passed alongside the profile path are appended **after** the synthesised args from the
- * profile, so ad-hoc tweaks like `compose-preview profile auth-a11y.json --json --changed-only`
- * override / extend the profile rather than being overridden by it. Same left-to-right semantics as
- * every other CLI command — the last `--flag value` wins.
+ * `compose-preview profile <path.json>`: run a saved [Profile] by translating it into the
+ * equivalent flags and delegating to [ReportCommand]. Flags given alongside the path are appended
+ * after the synthesised ones, so they override (last `--flag value` wins).
  */
 class ProfileCommand(
   private val rawArgs: List<String>,
@@ -79,10 +73,8 @@ class ProfileCommand(
   }
 
   /**
-   * Returns the renderer id `ReportCommand` will use. Defaults to [Profile.report] if set,
-   * otherwise the first entry of [Profile.extensions]. Exits 1 if the chosen id has no registered
-   * renderer — the profile is asking us to "print the canned report for X" and we don't know how to
-   * print one for X.
+   * The renderer id `ReportCommand` will use: [Profile.report], else the first of
+   * [Profile.extensions]. Exits 1 if no renderer is registered for it.
    */
   internal fun resolveReportExtension(profile: Profile): String {
     val known = builtInExtensionReporters().keys
@@ -106,12 +98,9 @@ class ProfileCommand(
   }
 
   /**
-   * Synthesises the flag list `ReportCommand` will parse. Mirrors what a user would have typed:
-   * `--with-extension <id>` per profile extension (except the chosen report extension, which
-   * `ReportCommand.implicitExtensions()` adds automatically), `--module` / `--filter` / `--id` /
-   * `--changed-only` per filter axis, and `--fail-on <level>` for the report extension's threshold
-   * if set. Trailing [extraArgs] preserve user overrides — last write wins, same as on the real
-   * CLI.
+   * The flags `ReportCommand` will parse: `--with-extension <id>` per extension (except the report
+   * extension, added implicitly), `--module` / `--filter` / `--id` / `--changed-only` per filter
+   * axis, `--fail-on <level>` when set, then [extraArgs] so user overrides win.
    */
   internal fun synthesiseArgs(
     profile: Profile,

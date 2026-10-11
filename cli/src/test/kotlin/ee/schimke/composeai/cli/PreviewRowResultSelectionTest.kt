@@ -17,21 +17,11 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 /**
- * Issue #3819 — a `@PreviewParameter` **row id** must select its row on the result-shaped commands
- * (`show` / `list` / `render`), not just on `serve`.
- *
- * `show --id Foo_PARAM_1` used to render and then print "No previews matched.", while printing —
- * for any wider selector — the very rows it refused to select. The rows were there; their **ids**
- * were not: `PreviewResultBuilder` expanded a fan-out into one capture per provider value carrying
- * `parameterLabel` ("parameter 1"), a lossy human coordinate that can't be turned back into a
- * selector. So the id is now derived once, by `PreviewParameterFanout`, carried as
- * [CaptureResult.parameterRowId], and matched by [selectRequestedResults] — the same derivation
- * `serve` addresses its cards with, pinned as such by
- * [serve and the rendered results agree on every row id].
- *
- * Driven against a real fan-out on disk (a temp module dir + `previews.json` + PNG files) rather
- * than hand-built [PreviewResult]s, because the premise under test is precisely that the ids
- * survive the builder and are present by the time filtering runs.
+ * A `@PreviewParameter` row id must select its row on `show` / `list` / `render`, not just `serve`.
+ * The id is derived once by `PreviewParameterFanout`, carried as [CaptureResult.parameterRowId],
+ * and matched by [selectRequestedResults] — the same derivation `serve` uses (pinned by [serve and
+ * the rendered results agree on every row id]). Driven against a real fan-out on disk so the ids
+ * are shown to survive the builder.
  */
 class PreviewRowResultSelectionTest {
 
@@ -143,11 +133,7 @@ class PreviewRowResultSelectionTest {
     )
   }
 
-  /**
-   * `--filter` is a case-insensitive substring of the final row id — a perfectly ordinary way to
-   * ask for one state, and one that matches no base id anywhere (#3795's
-   * `previewMatchesRequestIncluding Rows` keeps the module for exactly this).
-   */
+  /** `--filter` is a case-insensitive substring of the final row id, matching no base id. */
   @Test
   fun `a substring selector narrows to the rows it names`() {
     assertEquals(
@@ -161,11 +147,9 @@ class PreviewRowResultSelectionTest {
   }
 
   /**
-   * The #3798 / #3799 gate, one step later in the pipeline. A real `Swatch_Dark` preview and a
-   * parameterized `Swatch` whose fan-out happens to include a `Dark` value: `--id Swatch_Dark`
-   * names the preview that exists, and the row lane is off entirely — precise selection stays
-   * precise. Deliberately `--id` only; the substring cases above show why the loose selectors must
-   * not inherit it.
+   * A real `Swatch_Dark` and a parameterized `Swatch` with a `Dark` value: `--id Swatch_Dark` names
+   * the real preview and turns the row lane off. `--id` only; substring selectors must not inherit
+   * this.
    */
   @Test
   fun `an exact id that names a real preview wins over a row of the same name`() {
@@ -207,14 +191,9 @@ class PreviewRowResultSelectionTest {
   }
 
   /**
-   * The anti-drift assertion, and the reason the derivation moved into `PreviewParameterFanout`
-   * rather than being written a second time: `serve` routes on these ids, the result-shaped
-   * commands now select on them, and a disagreement would not merely misreport — it would hand back
-   * a different row than the one asked for.
-   *
-   * The sibling case is the one that had already drifted: with `Swatch` and `Swatch_Dark` both
-   * real, `Swatch_Dark_Alice.png` is a row of the more specific `Swatch_Dark`. The builder excluded
-   * it; `serve` claimed it for `Swatch` as row `Dark_Alice`.
+   * Anti-drift: `serve` routes on these ids and the result commands select on them, so a
+   * disagreement would return a different row. With `Swatch` and `Swatch_Dark` both real,
+   * `Swatch_Dark_Alice.png` is `Swatch_Dark`'s row, not `Swatch`'s `Dark_Alice`.
    */
   @Test
   fun `serve and the rendered results agree on every row id`() {

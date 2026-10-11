@@ -1,22 +1,11 @@
 package ee.schimke.composeai.cli
 
 /**
- * `compose-preview design` — the launcher for the preview server's `design` command.
- *
- * Fourth of the launchers, beside [ServeCommand], [BrowseCommand] and [UiBuilderCommand]: the
- * server binary renders a UI-builder design, exports its generated source, or reads its document,
- * and writes the result to a file
- * ([yschimke/compose-preview-server#529](https://github.com/yschimke/compose-preview-server/issues/529)).
- *
- * It adds nothing of its own — no defaults, no flag rewriting — for the reason `ui-builder` adds
- * nothing: the work needs the UI-builder renderer, the export executor and the asset store, all of
- * which the layer rule places in that repository, and this side has no useful opinion about any of
- * it. `--help` therefore reaches the server too, which is where the answer lives.
- *
- * **It is the one launcher whose target does not serve anything.** `design` runs against a server
- * that is already up — `--server`, defaulting to a local one — and exits with a code that says
- * whether the export was refused. [ServeCommand] already inherits IO and propagates the child's
- * exit code, so a one-shot command needs nothing more from this side than the command word.
+ * `compose-preview design`: launcher for the preview server's `design` command, which renders a
+ * UI-builder design, exports its source, or reads its document into a file. Adds nothing of its own
+ * (the work lives server-side); `--help` reaches the server. Unlike the other launchers it serves
+ * nothing: it talks to an already-running server (`--server`, default local) and propagates the
+ * exit code via [ServeCommand].
  */
 class DesignCommand(private val args: List<String>) {
   fun run() {
@@ -24,24 +13,11 @@ class DesignCommand(private val args: List<String>) {
   }
 
   /**
-   * The grant this CLI already holds for the design client's target server, as environment for the
-   * server process that runs the verbs.
-   *
-   * The verbs are the server's, and the server resolves credentials from `$COMPOSE_PREVIEW_TOKEN` —
-   * but the *store* is this CLI's: `compose-preview auth request` wrote it, and its success line
-   * says other commands against that server will use it automatically. A child process cannot read
-   * this CLI's credential home, so without a bridge the verbs never saw the grant and went straight
-   * to an interactive device-flow ask — even with a live, scope-correct token on disk.
-   *
-   * The bridge is deliberately narrow:
-   *
-   * - Only an explicit `--server` names the origin. Without one, the server-side default decides
-   *   which port answers, and injecting a token for a guessed origin could hand the wrong server's
-   *   credential to the right-looking URL. No `--server`, no injection.
-   * - A token the caller exported themselves (`$COMPOSE_PREVIEW_TOKEN`, or the older
-   *   `$COMPOSE_PREVIEW_UI_BUILDER_TOKEN`) always wins; nothing here overrides it.
-   * - No entry for that origin, or no credential home at all, means no injection and behaviour
-   *   exactly as before — the server's own flow asks, or fails with `--no-authorize`.
+   * The grant this CLI holds for the design target server, as environment for the server process
+   * (which reads `$COMPOSE_PREVIEW_TOKEN` but can't read this CLI's credential store). Narrow:
+   * - only an explicit `--server` names the origin (no injection for a guessed default);
+   * - a caller-exported `$COMPOSE_PREVIEW_TOKEN` / `$COMPOSE_PREVIEW_UI_BUILDER_TOKEN` always wins;
+   * - no stored entry or credential home means no injection.
    */
   internal fun storedGrantEnv(
     env: (String) -> String? = System::getenv,
@@ -55,8 +31,7 @@ class DesignCommand(private val args: List<String>) {
       try {
         storeFactory().tokenFor(server)
       } catch (_: NoCredentialHomeException) {
-        // A machine with nowhere to keep credentials has no grant to bridge; the server's own
-        // flow (env token, device-code ask, --no-authorize) applies unchanged.
+        // No credential home: nothing to bridge.
         null
       } ?: return emptyMap()
     return mapOf(DESIGN_TOKEN_ENV to token)
@@ -65,9 +40,7 @@ class DesignCommand(private val args: List<String>) {
   internal companion object {
     const val SERVER_COMMAND: String = "design"
 
-    // The variable names the server's verb runner reads. They live there; spelling them here a
-    // second time is the bridge's whole job, and a drift would surface as a grant that stops
-    // being picked up — the kind of thing a rename on either side must catch together.
+    // The variable names the server's verb runner reads; a rename must change both sides together.
     const val DESIGN_TOKEN_ENV: String = "COMPOSE_PREVIEW_TOKEN"
     const val DESIGN_LEGACY_TOKEN_ENV: String = "COMPOSE_PREVIEW_UI_BUILDER_TOKEN"
   }

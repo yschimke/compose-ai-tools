@@ -12,14 +12,12 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 
 /**
- * Reads the **literal default value** of a preview's value parameters out of its compiled body.
+ * Reads the **literal default** of a preview's value parameters from its compiled body.
  *
- * ### Why this has to read bytecode
+ * ### Why bytecode
  *
- * Kotlin metadata records *that* a parameter declares a default, never what the default is, and the
- * Compose compiler does not emit a separate `$default` bridge whose constant pool could be read
- * either — it compiles the default expressions **inline** into the function, each guarded by a bit
- * of the synthetic `$default` mask:
+ * Kotlin metadata records only *that* a default exists, and the Compose compiler inlines default
+ * expressions into the function, each guarded by a bit of the synthetic `$default` mask:
  * ```
  * iload  <mask>          // the trailing `int $default` parameter
  * iconst_1               // 1 shl <parameter index>
@@ -30,61 +28,34 @@ import org.objectweb.asm.Type
  * L1:
  * ```
  *
- * So the value is there, in the one place a reader can reach it, and nowhere else.
- *
  * ### Why it matters
  *
- * A knob without its default is a control a viewer cannot draw: `PreviewOverrideDeclaration`
- * carries `default` and `current`, which is how an editor shows what a field holds before anyone
- * touches it and how it offers "reset". The `previewOverride*` surface gets both for free because
- * the author passes the default at the call site; a parameter knob's is compiled away. That
- * asymmetry is the single reason a preview cannot yet move from one format to the other — see
+ * An editor needs a knob's default to show its value and offer reset. `previewOverride*` passes it
+ * at the call site; a parameter knob's is compiled away. See
  * [`docs/design/PARAMETER_KNOB_MIGRATION.md`](../../../../../../../../docs/design/PARAMETER_KNOB_MIGRATION.md).
  *
- * ### What it deliberately refuses
+ * ### What it refuses
  *
- * **Only a lone constant push counts.** `title: String = "Shopping list"` is one `LDC` and a store;
- * `label: String = stringResource(Res.string.label)` is a call, `accent: Color = Color(0xFF3366FF)`
- * is a call, `modifier: Modifier = Modifier` is a field read. Each of those is reported as *no
- * constant default* rather than guessed at, because a wrong default is worse than a missing one: a
- * viewer showing an absent default knows to say nothing, while one showing an invented value tells
- * the reader the preview does something it does not.
- *
- * The refusal is structural, not a heuristic — the pattern matched is exactly the six-instruction
- * shape above, with the guard bit and the store slot both checked against the parameter's own
- * position. Anything else falls out.
+ * **Only a lone constant push counts.** Calls (`stringResource(…)`, `Color(…)`) and field reads
+ * (`Modifier`) report *no constant default*: a missing default is better than an invented one. The
+ * match is exactly the shape above, with the guard bit and store slot checked against the
+ * parameter's own position.
  */
 internal object PreviewKnobDefaults {
 
   /**
-   * The literal default of each value parameter of [method] on [classInfo], keyed by the
-   * parameter's index in the full value-parameter list, rendered as the text a seed would carry.
-   *
-   * Absent from the map means "no constant default" — either the parameter has none, or its default
-   * is an expression this cannot read. [valueParameterCount] is the count Kotlin metadata reported,
-   * used to pick the right overload and to reconstruct the synthetic tail.
+   * The literal default of each value parameter, keyed by full-list index, as seed text. Absent
+   * means none or unreadable. [valueParameterCount] (from metadata) selects the overload and
+   * reconstructs the synthetic tail.
    */
   /**
-   * The constants of the enum [classInfo] describes, in declaration order, as `name to seed text`
-   * pairs — or empty when its class file cannot be read.
+   * The constants of the enum [classInfo] describes, in declaration order, as `name to seed text`,
+   * or empty when unreadable. The name is what a default reads as (`GETSTATIC`); the seed text is
+   * what a picker offers.
    *
-   * Both halves are needed and they are not always the same string: the seed text is what a viewer
-   * offers and an `@OverrideVariant` carries, while the name is what the *default* is read as out
-   * of the compiled body's `GETSTATIC`, so translating one to the other is what keeps a knob's
-   * declared default in the same vocabulary as its options.
-   *
-   * Read out of the class file rather than from ClassGraph's `fieldInfo`, which would require
-   * `enableFieldInfo()` on the scan — a cost every build of every project would pay, on every
-   * class, to serve the rare preview that declares an enum knob. The class file is already how this
-   * object reads defaults, and `ACC_ENUM` names exactly the constants: the synthetic `$VALUES`
-   * array does not carry it.
-   *
-   * Field order in a class file is declaration order, which is the order an author wrote and the
-   * order a picker should offer.
-   *
-   * A constant carrying `@KnobValue` reports the text it declares instead of its own name — see
-   * that annotation for why a migration needs it. Empty when two constants claim the same text: an
-   * ambiguous seed must not bind to whichever was read first.
+   * Read from the class file (`ACC_ENUM` fields, declaration order) rather than ClassGraph
+   * `fieldInfo`, which would cost every build. A `@KnobValue` constant reports its declared text.
+   * Empty when two constants claim the same text.
    */
   private const val KNOB_VALUE_DESCRIPTOR = "Lee/schimke/composeai/preview/KnobValue;"
 
@@ -104,8 +75,7 @@ internal object PreviewKnobDefaults {
                 value: Any?,
               ): FieldVisitor? {
                 if (access and Opcodes.ACC_ENUM == 0) return null
-                // Reserve this constant's slot now and let the annotation visitor overwrite it, so
-                // the list stays in declaration order whether or not an alias is declared.
+                // Reserve the slot so declaration order holds whether or not an alias is declared.
                 val slot = values.size
                 values += name to name
                 return object : FieldVisitor(Opcodes.ASM9) {
@@ -126,9 +96,7 @@ internal object PreviewKnobDefaults {
             },
             ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES or ClassReader.SKIP_DEBUG,
           )
-        // Two constants claiming one seed text make the seed ambiguous, and binding to whichever
-        // was seen first would be a silent wrong answer. Dropping the options degrades the knob to
-        // "not seedable", which `ComposableSignature` then reports as not a knob at all.
+        // Ambiguous seed texts degrade the knob to "not seedable" rather than binding arbitrarily.
         val seeds = values.map { it.second }
         if (seeds.size != seeds.toSet().size) emptyList() else values
       }
@@ -152,10 +120,8 @@ internal object PreviewKnobDefaults {
   }
 
   /**
-   * [readFrom] against raw class bytes. Split out so a test can drive the matcher with a method it
-   * built instruction by instruction: the shape this reads is one the *Compose compiler* emits, so
-   * a fixture written in Kotlin in this module — which has no Compose plugin — would compile to the
-   * ordinary `name$default` bridge instead and prove nothing about the pattern.
+   * [readFrom] on raw class bytes, so tests can hand-build the Compose-emitted shape (this module
+   * has no Compose plugin).
    */
   fun readFrom(
     classBytes: java.io.InputStream,
@@ -169,9 +135,8 @@ internal object PreviewKnobDefaults {
   }
 
   /**
-   * Compose packs 31 parameters per `$default` int (one bit each). A preview with more than that
-   * carries a second mask word and the single-guard pattern below no longer describes it — a shape
-   * rare enough that refusing it is cheaper than supporting it.
+   * Compose packs 31 parameters per `$default` int; more needs a second mask word, which this
+   * refuses.
    */
   private const val BITS_PER_DEFAULT_INT = 31
 
@@ -197,17 +162,12 @@ internal object PreviewKnobDefaults {
       exceptions: Array<out String>?,
     ): MethodVisitor? {
       if (name != methodName) return null
-      // Static only: an instance method shifts every local slot by the receiver, and a `@Preview`
-      // on
-      // a member function is resolved through a receiver the renderer constructs rather than the
-      // defaults path this reads.
+      // Static only: instance methods shift local slots, and member previews aren't on this path.
       if (access and Opcodes.ACC_STATIC == 0) return null
       val argumentTypes = Type.getArgumentTypes(descriptor)
       val layout = layoutOf(argumentTypes) ?: return null
       if (found != null) {
-        // Two overloads of one name with the same defaulted shape. Discovery records the function
-        // name only, so nothing here can tell which one carries the `@Preview`; reading either
-        // one's defaults would be a coin flip presented as fact.
+        // Two same-named overloads with the same defaulted shape: can't tell which is the preview.
         ambiguous = true
         return null
       }
@@ -222,10 +182,8 @@ internal object PreviewKnobDefaults {
     }
 
     /**
-     * The local-slot layout of a defaulted composable overload, or null when [argumentTypes] is not
-     * one: `(realParams…, Composer, changed…, default)`, with the counts the calling convention
-     * fixes. Checking the whole shape — not merely "ends in two ints" — is what stops this reading
-     * an unrelated overload's body and reporting its constants as this preview's defaults.
+     * Slot layout of a defaulted composable overload, `(realParams…, Composer, changed…, default)`,
+     * or null. Checking the whole shape stops this reading an unrelated overload.
      */
     private fun layoutOf(argumentTypes: Array<Type>): SlotLayout? {
       val changedInts =
@@ -241,8 +199,7 @@ internal object PreviewKnobDefaults {
         parameterSlots[i] = slot
         slot += argumentTypes[i].size
       }
-      // Past the real parameters: the Composer (one slot) then the ints, the last of which is the
-      // `$default` mask this reads the guard bits from.
+      // After the real parameters: the Composer, then the ints, the last being the `$default` mask.
       var tail = slot + 1
       repeat(changedInts) { tail += 1 }
       return SlotLayout(
@@ -262,11 +219,8 @@ internal object PreviewKnobDefaults {
   )
 
   /**
-   * Walks a method body looking for the guarded-assignment shape, one parameter at a time.
-   *
-   * Labels, frames and line numbers are ignored rather than recorded, so "the instruction after the
-   * branch" means the next *real* instruction — a jump target label sitting between them would
-   * otherwise break the adjacency the match depends on.
+   * Walks a body for the guarded-assignment shape. Labels, frames and line numbers are skipped so
+   * adjacency means real instructions.
    */
   private class DefaultsMethodVisitor(private val layout: SlotLayout) :
     MethodVisitor(Opcodes.ASM9) {
@@ -333,10 +287,8 @@ internal object PreviewKnobDefaults {
     }
 
     override fun visitFieldInsn(opcode: Int, owner: String, name: String, descriptor: String) {
-      // An enum-constant default compiles to `GETSTATIC Owner.CONST : LOwner;` rather than a
-      // constant-pool load, so it never reaches `visitLdcInsn`. Recorded only when the field's own
-      // type is its owner, which is what distinguishes a constant from any other static this
-      // method reads — including the synthetic `$VALUES` array.
+      // Enum defaults compile to `GETSTATIC Owner.CONST : LOwner;`; recorded only when the field's
+      // type is its owner (excluding `$VALUES` and other statics).
       insns +=
         if (opcode == Opcodes.GETSTATIC && descriptor == "L$owner;") Insn.EnumConst(owner, name)
         else Insn.Other
@@ -351,13 +303,9 @@ internal object PreviewKnobDefaults {
     }
 
     /**
-     * The constant defaults this body assigns, keyed by parameter index.
-     *
-     * The shape matched is `iload <mask>; push (1 shl i); iand; ifeq …; push <constant>; store
-     * <slot of parameter i>`. Both the guard bit and the store slot are checked against the
-     * parameter's own position, so the *other* place a body reads the mask — the "dirty bits"
-     * computation, which is `iload <mask>; push bit; iand; ifeq …; iload <dirty>; …` — cannot
-     * match: a load, not a constant, follows its branch.
+     * Constant defaults by parameter index. Matches `iload <mask>; push (1 shl i); iand; ifeq …;
+     * push <constant>; store <slot i>`, with bit and slot checked, so the "dirty bits" computation
+     * (a load after the branch) can't match.
      */
     fun harvest(): Map<Int, String> {
       val defaults = mutableMapOf<Int, String>()
@@ -378,10 +326,8 @@ internal object PreviewKnobDefaults {
         if (store.opcode != storeOpcodeFor(type)) continue
         val rendered =
           when (value) {
-            // The constant's own name is the seed text: it is what `Enum.valueOf` accepts and what
-            // the picker's option values hold. Checked against the parameter's declared type for
-            // the same reason every other kind is — a static read of some OTHER enum here would
-            // mean the pattern matched something this does not understand.
+            // The constant's name is its seed text; checked against the declared type like every
+            // other kind.
             is Insn.EnumConst -> value.name.takeIf { type.internalName == value.owner }
             is Insn.Const -> renderConstant(value.value, type)
             else -> null
@@ -392,14 +338,9 @@ internal object PreviewKnobDefaults {
     }
 
     /**
-     * The seed text for [constant] when it is a valid value of [type], or null when the two
-     * disagree.
-     *
-     * The type check is what turns `iconst_1` into `"true"` for a `Boolean` and `"1"` for an `Int`:
-     * both compile to the same instruction, and the parameter's declared type is the only thing
-     * that says which the author wrote. A constant whose Java type doesn't match the parameter's is
-     * dropped — that means the pattern matched something this doesn't understand, and a default it
-     * doesn't understand is one it must not report.
+     * Seed text for [constant] if valid for [type], else null. The type disambiguates (`iconst_1`
+     * is `"true"` for Boolean, `"1"` for Int); a mismatch means an unexpected match, which must not
+     * be reported.
      */
     private fun renderConstant(constant: Any, type: Type): String? =
       when (type.sort) {

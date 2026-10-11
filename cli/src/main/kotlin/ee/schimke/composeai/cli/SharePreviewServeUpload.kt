@@ -11,51 +11,23 @@ import okhttp3.RequestBody.Companion.asRequestBody
 
 /**
  * The client half of the serve host's image lane (`POST /images`), for `share-preview --mechanism
- * serve`.
+ * serve`. What it sends is a GitHub credential with write access to the caller's repository, so the
+ * rules are about where that credential may go:
+ * - HTTPS, or loopback only: plain `http://` elsewhere is refused, not warned about.
+ * - No redirects ([OkHttpClient.followRedirects] off; a `3xx` is an error naming its `Location`).
+ * - No credentials in the URL (`https://user:pass@host/` is refused).
+ * - The token is never an argument ([AgentGithubToken]) and never printed.
  *
- * Everything here exists because of what is being sent: a **GitHub credential with write access to
- * the caller's repository**, to a host named on the command line. The upload itself is one POST;
- * the care is all in making sure that credential cannot end up somewhere it shouldn't.
- *
- * ## The rules, and why each one is here
- *
- * - **HTTPS, or loopback.** A `http://` URL to anything but `127.0.0.1` / `localhost` / `::1` is
- *   refused rather than warned about: the token would cross the network in the clear, and a warning
- *   an agent doesn't read is not a control. Loopback is exempt because that's a developer's own
- *   `compose-preview serve`, where there is no network to sniff.
- * - **No redirects.** [OkHttpClient.followRedirects] is off and a `3xx` is an error naming the
- *   `Location` it refused. A redirect is the classic way to walk a credential onto another origin,
- *   and there is no legitimate reason for this endpoint to move.
- * - **No credentials in the URL.** A `https://user:pass@host/` form is refused — it puts a secret
- *   into every log line that records the destination, and it is never what the caller meant.
- * - **The token is never an argument.** It is read from a file, the environment, or `gh auth
- *   token`'s stdout — never from `--github-token`, which would put it in shell history, in `ps`
- *   output, and in any CI log that echoes the command. See [AgentGithubToken].
- * - **The token is never printed.** Not in the summary, not in an error, not in `--json` output.
- *   Errors quote the host and the status, which is what a caller needs to act.
- *
- * ## What the caller is trusting
- *
- * And what the *reader* gets: the URL that comes back is unguessable but not access-controlled, so
- * an upload is a publication decision rather than a share with the repo's collaborators. That is
- * the trade that makes the lane work — GitHub's image proxy fetches a PR body's images anonymously
- * — but it means a render of something unreleased does not belong on a public host.
- *
- * The host verifies the presented token by asking GitHub who it belongs to, which means it *holds*
- * that credential for the length of a request. Its side promises not to keep it (used for two
- * reads, dropped, cache keyed by SHA-256) — but that is a promise made by whoever runs the box.
- * Point this at a host you trust with a repo-scoped credential, and prefer a short-lived one: in
- * CI, `${'$'}{{ github.token }}` expires with the job, where a personal access token does not.
+ * The returned URL is unguessable but public (GitHub's proxy fetches PR images anonymously), so an
+ * upload is a publication decision. The host verifies the token with GitHub, so it briefly holds
+ * it: use a host you trust, and prefer a short-lived token (`${'$'}{{ github.token }}` in CI).
  */
 internal class ServeImageUploader(
   baseUrl: String,
   /**
-   * The GitHub credential, or **null** when the caller holds none.
-   *
-   * Null is not an error case here: a host that admits an agent grant carrying `images` wants no
-   * GitHub token, and sending an empty bearer would be worse than sending none — the host would ask
-   * GitHub about the empty string and refuse a caller it was about to admit. So the header is
-   * omitted entirely, and [hostToken] (the grant) is what identifies the caller.
+   * The GitHub credential, or null. A host admitting an agent grant with `images` needs none, and
+   * an empty bearer would get the caller refused, so the header is omitted and [hostToken]
+   * identifies the caller.
    */
   private val token: String?,
   /** The host's own browse token (`--token`), for a serve box that isn't `--public`. */
@@ -73,11 +45,8 @@ internal class ServeImageUploader(
   }
 
   /**
-   * Upload one image and return the absolute URL to embed.
-   *
-   * [label] is what the host uses as a display name and alt text; it is the file's basename, never
-   * its path — the server treats it as a label, and there is no reason to disclose the caller's
-   * directory layout to it.
+   * Upload one image and return the absolute URL to embed. [label] (display name / alt text) is a
+   * basename, never a path.
    */
   fun upload(file: File, label: String = file.name): Result {
     val request =
@@ -100,13 +69,9 @@ internal class ServeImageUploader(
             val detail = response.body.string().trim().take(400)
             Result.Failed(
               "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}" +
-                // A bodyless 404 — or 405 — is what a host WITHOUT `--accept-images` gives: the
-                // route was never registered, so there is nobody to write a refusal. Which of the
-                // two arrives depends on the box's other routes: a catch-all that matches the path
-                // but not POST answers 405, which is why the server's own
-                // [ServeImageRoutingTest] accepts either. Left bare, both read as "wrong URL" and
-                // send the caller looking for a typo they didn't make — the host is right, the
-                // lane is simply off, which only its operator can change.
+                // A bodyless 404 or 405 is what a host without `--accept-images` returns (405 when
+                // a catch-all matches the path); say the lane may be off rather than suggest a
+                // typo.
                 if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) IMAGE_LANE_OFF else ""
             )
           }
@@ -114,8 +79,7 @@ internal class ServeImageUploader(
         }
       }
     } catch (e: Exception) {
-      // The message may name the host but can never name the credential — it was a header, and
-      // OkHttp's exceptions carry the URL, not the headers.
+      // OkHttp exceptions carry the URL, never headers, so the credential can't leak here.
       Result.Failed("could not reach $base: ${e.message ?: e.javaClass.simpleName}")
     }
   }
@@ -132,9 +96,8 @@ internal class ServeImageUploader(
   }
 
   /**
-   * A non-public host wants its browse token on the request too. It rides in the query because that
-   * is where every other serve route reads it from, and unlike the GitHub credential it is only
-   * ever pointed at the host that issued it.
+   * A non-public host's browse token, in the query like every other serve route; it only ever goes
+   * to the host that issued it.
    */
   private fun String?.tokenQuery(): String =
     if (isNullOrBlank()) "" else "&token=${encodeQuery(this)}"
@@ -147,18 +110,15 @@ internal class ServeImageUploader(
 
   companion object {
     /**
-     * The bodyless statuses an absent image lane produces — 404 where nothing matches the path, 405
-     * where a catch-all matches it but not `POST`.
+     * Bodyless statuses from an absent image lane: 404 (no match) or 405 (catch-all without
+     * `POST`).
      */
     private val LANE_ABSENT_CODES = setOf(404, 405)
 
     /**
-     * Appended to a bodyless [LANE_ABSENT_CODES] answer, which is what a host with no image lane
-     * gives — but not *only* that. [rejectUnsafeUrl] constrains the scheme, the host and the
-     * userinfo, never the path, so a `--serve-url` carrying a stray prefix asks a real image host
-     * for `<base>/typo/images` and gets the same empty 404; so can a proxy in between. Naming the
-     * lane as the certain cause would just relocate the misdiagnosis, so this offers the likely
-     * reading and the cheap thing to check.
+     * Hint for a bodyless [LANE_ABSENT_CODES] answer. [rejectUnsafeUrl] doesn't check the path, so
+     * a stray `--serve-url` prefix or a proxy gives the same 404; offer the likely cause and what
+     * to check.
      */
     private const val IMAGE_LANE_OFF =
       " — most likely that host does not accept image uploads (it was started without " +
@@ -173,28 +133,21 @@ internal class ServeImageUploader(
     private val LOOPBACK = setOf("127.0.0.1", "localhost", "::1", "[::1]")
 
     /**
-     * [url] with any `user:password@` stripped, for printing.
-     *
-     * Every message that names a destination goes through this. A URL carrying credentials is
-     * refused rather than used, but *refusing* it is exactly when its text gets printed to a
-     * terminal, a CI log and `--json` output — so the refusal must not be the thing that publishes
-     * the secret. Unparseable input is redacted by shape rather than trusted.
+     * [url] with any `user:password@` stripped, for every message naming a destination — refusing
+     * such a URL is exactly when it would otherwise be printed. Unparseable input is redacted by
+     * shape.
      */
     fun redactedUrl(url: String): String {
       val uri = runCatching { URI(url.trim()) }.getOrNull()
       if (uri?.userInfo == null) {
-        // Not parseable as a URI (so the check above proves nothing): strip anything that looks
-        // like userinfo in an authority, which is the only place a secret can hide in a URL.
+        // Not a parseable URI: strip anything shaped like userinfo in an authority.
         return url.replace(Regex("""(?<=://)[^/@\s]*@"""), "***@")
       }
       val port = if (uri.port >= 0) ":${uri.port}" else ""
       return "${uri.scheme}://***@${uri.host}$port${uri.rawPath.orEmpty()}"
     }
 
-    /**
-     * Whether [url] is somewhere a GitHub credential may be sent, or the reason it isn't. Null when
-     * the URL is acceptable.
-     */
+    /** Null when [url] may be sent a GitHub credential, else the reason it may not. */
     fun rejectUnsafeUrl(url: String): String? {
       val uri =
         try {
@@ -222,16 +175,9 @@ internal class ServeImageUploader(
 }
 
 /**
- * Where the GitHub credential for an upload comes from, in order, and deliberately **not** from a
- * command-line argument.
- *
- * A `--github-token <value>` flag is the obvious API and the wrong one: it lands in shell history,
- * in `ps` output for every process on the box while the upload runs, and in the log of any CI job
- * that echoes its commands. Every source below avoids that — a file the caller already protects, an
- * environment variable (what CI hands a job anyway), or `gh`'s own stdout.
- *
- * The order puts the explicit choice first and the ambient ones after, so a caller who names a file
- * is never silently overridden by an inherited `GITHUB_TOKEN`.
+ * Where the upload's GitHub credential comes from, in order — never a command-line argument, which
+ * would leak via shell history, `ps` and CI logs. Explicit sources (a file) come before ambient
+ * ones (environment, `gh`), so a named file is never overridden by an inherited `GITHUB_TOKEN`.
  */
 internal object AgentGithubToken {
 
@@ -283,35 +229,26 @@ internal object AgentGithubToken {
 }
 
 /**
- * Rewrites a report's image references onto the URLs they were uploaded to.
- *
- * The gist and branch mechanisms both publish the markdown *beside* its images, so a relative
- * `![](before.png)` resolves on its own. The serve host has no page to publish the markdown to —
- * the whole output is text the caller pastes into a PR body, where a relative link resolves to
- * nothing. So this is the one mechanism that must rewrite, and it rewrites by **basename**, which
- * is the reference shape the command already documents.
+ * Rewrites a report's image references to their uploaded URLs. Only the serve mechanism needs this:
+ * gist and branch publish the markdown beside its images. Matches by basename, the documented
+ * reference shape.
  */
 internal object SharePreviewMarkdown {
 
-  /**
-   * [uploaded] maps a basename to its absolute URL. A reference whose basename isn't in the map is
-   * left exactly as it was: this rewrites what it knows about and never guesses at the rest.
-   */
+  /** [uploaded] maps basename → absolute URL; unknown references are left untouched. */
   fun rewrite(markdown: String, uploaded: Map<String, String>): String =
     IMAGE_REFERENCE.replace(markdown) { match ->
       val alt = match.groupValues[1]
       val target = match.groupValues[2]
-      // Basename of whatever the reference points at, so `./shots/before.png` and `before.png`
-      // both resolve to the file that was uploaded under that name.
+      // So `./shots/before.png` and `before.png` both match the uploaded name.
       val basename = target.substringAfterLast('/').substringBefore('?').substringBefore('#')
       val url = uploaded[basename] ?: return@replace match.value
       "![$alt]($url)"
     }
 
   /**
-   * `![alt](target)`, with the target stopping at whitespace so a markdown title (`![a](b "t")`)
-   * doesn't get swallowed — and deliberately not matching a target already wrapped in backticks,
-   * which is the malformed shape the PR-body rule warns about and which this must not propagate.
+   * `![alt](target)`, stopping at whitespace so a title isn't swallowed, and not matching backtick-
+   * wrapped targets (a malformed shape that must not be propagated).
    */
   private val IMAGE_REFERENCE = Regex("""!\[([^\]]*)]\(([^)\s`]+)\)""")
 }

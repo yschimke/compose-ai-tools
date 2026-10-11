@@ -25,21 +25,11 @@ import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 
 /**
- * Compose Multiplatform / Desktop runtime-shader smoke test.
- *
- * This is the CMP-backend half of "shader support" in the preview pipeline. The desktop renderer is
- * `ImageComposeScene` on a skiko **CPU raster** surface ([DesktopRendererMain]), and skiko's
- * [RuntimeEffect] compiles and runs SkSL directly on that surface — no GPU context required. So a
- * `@Preview` whose background is a [ShaderBrush] built from a compiled SkSL program rasterises
- * through the existing pipeline with **zero renderer changes**: it's the low-risk proof that
- * runtime shaders capture to PNG outside Android Studio.
- *
- * The Android counterpart (`android.graphics.RuntimeShader` / AGSL under Robolectric NATIVE
- * graphics) is tracked separately — AGSL is nearly a subset of SkSL, but the capture path runs
- * through Robolectric's native runtime rather than skiko, so it needs its own end-to-end proof.
- *
- * `skiko` (`org.jetbrains.skia.*`) is compile-visible here transitively through
- * `compose.desktop.currentOs`; the same dependency the desktop renderer itself uses to encode PNGs.
+ * Compose Multiplatform / Desktop runtime-shader smoke test. The desktop renderer is
+ * `ImageComposeScene` on a skiko CPU raster surface, where [RuntimeEffect] runs SkSL directly — so
+ * a [ShaderBrush] from compiled SkSL captures with no renderer changes. The Android (AGSL)
+ * counterpart goes through Robolectric's native runtime and has its own samples. Skiko is
+ * compile-visible via `compose.desktop.currentOs`.
  */
 private val GRADIENT_BLOB_SKSL =
   """
@@ -64,9 +54,8 @@ private val GRADIENT_BLOB_SKSL =
     .trimIndent()
 
 /**
- * Builds a [ShaderBrush] from [GRADIENT_BLOB_SKSL], feeding the draw-area resolution (in px) as the
- * `iResolution` uniform so the pattern is centred regardless of capture density. The effect and
- * builder are `remember`ed so recomposition doesn't recompile the SkSL.
+ * A [ShaderBrush] from [GRADIENT_BLOB_SKSL] with the draw size as `iResolution`, so it's centred at
+ * any density. The effect and builder are remembered to avoid recompiling.
  */
 @Composable
 private fun gradientBlobBrush(widthPx: Float, heightPx: Float): Brush {
@@ -76,11 +65,7 @@ private fun gradientBlobBrush(widthPx: Float, heightPx: Float): Brush {
   return ShaderBrush(builder.makeShader().asComposeShader())
 }
 
-/**
- * A 220×220dp box filled with the runtime-shader brush. If this captures as a ringed radial
- * gradient (rather than a flat or blank box), the desktop renderer's SkSL path is working end to
- * end.
- */
+/** A 220×220dp box with the shader brush: ringed radial gradient means the SkSL path works. */
 @Preview(name = "Runtime Shader — Gradient Blob")
 @Composable
 fun RuntimeShaderGradientBlobPreview() {
@@ -95,8 +80,8 @@ fun RuntimeShaderGradientBlobPreview() {
 }
 
 /**
- * Animated variant — an `iTime` uniform phase-shifts the rings so they travel outward. `38·d −
- * iTime` over a `2π` ramp is one seamless loop (the `sin` period).
+ * Animated variant: `iTime` phase-shifts the rings outward; `38·d − iTime` over 2π loops
+ * seamlessly.
  */
 private val GRADIENT_BLOB_ANIMATED_SKSL =
   """
@@ -119,18 +104,9 @@ private val GRADIENT_BLOB_ANIMATED_SKSL =
     .trimIndent()
 
 /**
- * The animated SkSL shader as a GIF.
- *
- * Animation is driven the ordinary Compose way — a `rememberInfiniteTransition` ramps `iTime` from
- * `0` to `2π` every 2s — and captured by the desktop renderer's `@AnimatedPreview` path
- * ([ee.schimke.composeai.renderer.renderAnimatedPreview]): a `runSkikoComposeUiTest` paused-clock
- * loop advances `mainClock` by `frameIntervalMs` across the window, re-reads the uniform each step,
- * and encodes the frames as `renders/<id>.gif`. Reading `time` in composition rebuilds the shader
- * with the new phase each frame.
- *
- * `durationMs = 2000` matches the ramp's period to capture one seamless loop; an
- * `InfiniteTransition` has no inherent duration. `showCurves = false` — the desktop backend emits a
- * screenshot-only GIF.
+ * The animated shader as a GIF: `iTime` ramps 0 → 2π every 2s via `rememberInfiniteTransition`, and
+ * the desktop `@AnimatedPreview` path advances the paused clock and encodes `renders/<id>.gif`.
+ * `durationMs = 2000` captures exactly one loop (an `InfiniteTransition` has no inherent duration).
  */
 @Preview(name = "Runtime Shader — Animated Blob")
 @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)

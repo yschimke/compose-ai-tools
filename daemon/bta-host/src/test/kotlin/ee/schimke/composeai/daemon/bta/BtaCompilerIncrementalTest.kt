@@ -14,26 +14,12 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Stage-2 checkpoint #2 — incremental compilation through BTA.
+ * Incremental compilation through BTA: compiles a three-file fixture with
+ * [BtaCompiler.compileIncremental], mutates one source and recompiles, asserting both succeed and
+ * an IC working directory is populated.
  *
- * Builds a small multi-file fixture (one `@Composable` source plus two siblings), compiles all
- * three under [BtaCompiler.compileIncremental], then mutates only one source and recompiles. The
- * test asserts both calls succeed and that an IC working directory was actually populated on disk —
- * the cheap structural signal that BTA's classpath snapshotting + IC config wired through.
- *
- * What we deliberately do NOT assert here:
- *
- * - That IC was faster than non-IC for this fixture. The fixture is too small for BTA's
- *   classpath-snapshot reuse to dominate; per-compile cost is mostly compiler-frontend init, which
- *   is amortised across calls regardless of IC. Stage-2 promotion criteria measure that against a
- *   real consumer module.
- * - That only the modified source was recompiled. The current `JvmCompilationOperation.compile` API
- *   doesn't surface the recompile-set as a structured return — KGP infers it from the IC working
- *   directory's `caches-jvm/inputs` / `compile-iteration` files, which is a more involved probe
- *   than the spike needs.
- *
- * Both gaps are tracked as next-checkpoint items, not blockers for stage-2 viability — which is
- * what this test asks: "does the IC pathway through BTA survive a two-call sequence at all?".
+ * Not asserted: that IC is faster (the fixture is too small) or that only the changed file
+ * recompiled (the API doesn't expose the recompile set).
  */
 class BtaCompilerIncrementalTest {
 
@@ -130,8 +116,7 @@ class BtaCompilerIncrementalTest {
   )
 
   /**
-   * Three sources in one package, only one of which the test will mutate. Two unchanged siblings
-   * give BTA's IC something to *skip* on pass 2.
+   * Three sources in one package; two unchanged siblings give IC something to skip on pass 2.
    */
   private fun newMultiFileFixture(): Fixture {
     val (implClasspath, composePluginJar, compileClasspath) = splitRuntimeClasspath()
@@ -193,8 +178,8 @@ class BtaCompilerIncrementalTest {
   )
 
   /**
-   * Same classpath partition as [BtaCompilerTest.newFixture]; duplicated rather than shared so each
-   * spike test reads top-to-bottom without cross-file indirection.
+   * Same classpath partition as [BtaCompilerTest.newFixture], duplicated so each test reads on its
+   * own.
    */
   private fun splitRuntimeClasspath(): ClasspathSplit {
     val raw =

@@ -27,45 +27,26 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A pool of long-lived `RcJvmRenderWorkerMain` processes, so a cmp-jvm render costs a frame on a
- * warm JVM (~85 ms) instead of a fresh Compose Desktop + Skiko boot (~2.3 s).
+ * A pool of long-lived `RcJvmRenderWorkerMain` processes, so a cmp-jvm render costs ~85 ms on a
+ * warm JVM instead of a ~2.3 s Compose Desktop + Skiko boot. `.rc` documents are self-describing,
+ * so any worker serves any document: no affinity or keying (unlike the per-module `@Preview`
+ * daemon).
  *
- * A worker holds nothing project-derived — a `.rc` document is self-describing, which is why the
- * browser's JS player draws the same bytes with no knowledge of any catalog — so **any** worker can
- * serve **any** document, from any module or repository, in any order. There is deliberately no
- * affinity, no per-catalog warmup and no keying: that is the whole difference from the `@Preview`
- * daemon, which must stay per-module because it holds the consumer's classloader.
+ * Rendering must not depend on worker history, since `rc-compare` gates PRs on pixel parity;
+ * `RcJvmHotWorkerDeterminismTest` asserts byte identity after churn. If it fails, disable the pool
+ * ([SYS_PROP_ENABLED]`=off`) rather than relax the test.
  *
- * ## Why this is allowed to exist
+ * Failures degrade to the one-shot subprocess:
+ * * an old sidecar or failed spawn reports [PoolResult.Unusable] and the caller falls back;
+ * * after [MAX_START_FAILURES] consecutive spawn/handshake failures the pool disables itself;
+ * * a wedged worker is destroyed by the watchdog and never reused;
+ * * an undrawable document reports [PoolResult.Failed], which is not retried one-shot.
  *
- * `rc-compare` gates the PR on pixel parity, so a render that depended on how many documents a
- * worker had already drawn would convert a correctness gate into a flake source.
- * `RcJvmHotWorkerDeterminismTest` is the standing proof that it does not: it renders a corpus cold,
- * churns the process with dozens of renders at varied sizes, densities, seeds and formats, then
- * re-renders and asserts byte identity. If that test ever fails, the correct response is to disable
- * this pool ([SYS_PROP_ENABLED]`=off`), not to relax the assertion.
- *
- * ## Failure posture
- *
- * Every failure mode degrades to the pre-existing one-shot subprocess rather than to a broken
- * render:
- * * a sidecar too old to speak the protocol, or a worker that cannot be spawned, reports
- *   [PoolResult.Unusable] and the caller falls back;
- * * after [MAX_START_FAILURES] consecutive spawn/handshake failures the pool disables itself for
- *   the life of the process, so a systematically broken pool costs one failed spawn, not one per
- *   render;
- * * a worker that wedges is destroyed by the watchdog and never returned to the idle set;
- * * a document the player genuinely cannot draw reports [PoolResult.Failed] — that is a real answer
- *   and is **not** retried on the one-shot path, which would double the cost of every bad document.
- *
- * Workers are recycled after [maxRendersPerWorker] renders or [maxWorkerAgeMillis], bounding any
- * native leak without giving up the amortisation.
- *
- * Thread-safe: [maxWorkers] permits gate admission, and a worker is only ever checked out to one
- * thread at a time, so a worker's streams are never touched concurrently.
+ * Workers recycle after [maxRendersPerWorker] renders or [maxWorkerAgeMillis] to bound native
+ * leaks. Thread-safe: [maxWorkers] permits gate admission and a worker is checked out to one thread
+ * at a time.
  */
-// Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-// and the `:server` call sites are in a different module now. Not a widened API by intent.
+// Public because `:server` call sites live in another module; not a widened API by intent.
 public class RcJvmWorkerPool(
   private val classpath: List<File>,
   private val javaBin: String,
@@ -76,9 +57,8 @@ public class RcJvmWorkerPool(
   private val renderTimeoutSeconds: Long,
   private val clock: () -> Long = System::currentTimeMillis,
   /**
-   * The worker entry point to spawn. Overridden only by tests, which point it at a stub that speaks
-   * the same frames without Compose or Skiko — so the protocol, the retire policy and every failure
-   * path are covered on a machine with no native render stack.
+   * The worker entry point; tests point it at a stub speaking the same frames without
+   * Compose/Skiko.
    */
   private val workerMainClass: String = WORKER_MAIN_CLASS,
 ) : AutoCloseable {
@@ -97,13 +77,8 @@ public class RcJvmWorkerPool(
   private val idle = ArrayDeque<Worker>()
 
   /**
-   * Every worker this pool has started and not yet discarded — **including** the ones currently
-   * checked out to a render thread.
-   *
-   * [idle] alone is not enough to shut down: a worker that is mid-render is absent from it, so
-   * closing only the parked ones would leave its child JVM alive and its caller blocked on a pipe
-   * read that nothing will ever complete (shutting the watchdog down drops the scheduled kill that
-   * would otherwise free it).
+   * Every started, undiscarded worker, including checked-out ones: [close] must kill those too, or
+   * their callers stay blocked on a pipe read forever.
    */
   private val liveWorkers = LinkedHashSet<Worker>()
   private val lock = Any()
@@ -121,16 +96,9 @@ public class RcJvmWorkerPool(
     spec: RcJvmRenderSpec,
     seedsText: String,
     format: RcJvmServerRenderer.Format,
-    /**
-     * The `ColorTheme` branch to select — see `RcJvmServerRenderer.render`. Light by default,
-     * matching that entry point: a headless render has no host theme to follow, and one that varied
-     * with the machine's desktop setting would not be reproducible.
-     */
+    /** The `ColorTheme` branch; light by default for reproducible headless renders. */
     theme: RcJvmServerRenderer.RenderTheme = RcJvmServerRenderer.RenderTheme.LIGHT,
-    /**
-     * Budget for this render, so the caller can bound pool-attempt + fallback together rather than
-     * letting each lane spend the full timeout in turn. Defaults to the pool's own timeout.
-     */
+    /** Budget for this render, so pool attempt + fallback share one timeout. */
     timeoutSeconds: Long = renderTimeoutSeconds,
   ): PoolResult {
     synchronized(lock) {
@@ -161,8 +129,8 @@ public class RcJvmWorkerPool(
           timeoutSeconds,
         )
       if (result is PoolResult.Unusable) {
-        // The worker broke mid-request (wedged, died, desynchronised). It is already destroyed;
-        // dropping it here means the next caller spawns a fresh one.
+        // The worker broke mid-request and is already destroyed; the next caller spawns a fresh
+        // one.
         discard(worker)
         worker = null
       }
@@ -181,9 +149,8 @@ public class RcJvmWorkerPool(
   }
 
   /**
-   * Hand out a parked worker, discarding any that died while idle (an OOM-killer, a stray `pkill
-   * java`) or that aged out while parked — handing back a corpse would surface its EOF as a render
-   * failure on a document that is perfectly fine.
+   * Hand out a parked worker, discarding any that died or aged out while idle so a corpse's EOF
+   * isn't reported as a document failure.
    */
   private fun takeIdle(): Worker? {
     val doomed = ArrayList<Worker>()
@@ -220,8 +187,7 @@ public class RcJvmWorkerPool(
   }
 
   /**
-   * Forget a worker and destroy its process. Idempotent, so the races that can double-discard one —
-   * [close] running while a render thread is finishing with it, say — are harmless.
+   * Forget a worker and destroy its process. Idempotent, so racing double-discards are harmless.
    */
   private fun discard(worker: Worker) {
     synchronized(lock) {
@@ -251,8 +217,7 @@ public class RcJvmWorkerPool(
       val registered =
         synchronized(lock) {
           startFailures = 0
-          // `close()` may have run while this worker was booting. Registering it now would leak a
-          // child JVM that nothing will ever reap.
+          // [close] may have run while this worker booted; registering it would leak its JVM.
           if (closed) false else liveWorkers.add(worker)
         }
       if (!registered) {
@@ -282,17 +247,13 @@ public class RcJvmWorkerPool(
         idle.clear()
         liveWorkers.toList().also { liveWorkers.clear() }
       }
-    // Every worker, not just the parked ones. Destroying a checked-out worker's process is what
-    // unblocks the render thread waiting on its pipe — and it has to happen *before* the watchdog
-    // stops, because `shutdownNow()` drops the scheduled kill that is the only other way out of
-    // that read.
+    // Kill every worker, including checked-out ones, before the watchdog stops — `shutdownNow()`
+    // drops the scheduled kills that would otherwise unblock their pipe reads.
     doomed.forEach { it.close() }
     watchdog.shutdownNow()
   }
 
-  /**
-   * One worker process plus the frame streams and the bookkeeping that decides when to retire it.
-   */
+  /** One worker process with its frame streams and retirement bookkeeping. */
   private class Worker(
     command: List<String>,
     private val watchdog: java.util.concurrent.ScheduledExecutorService,
@@ -330,9 +291,8 @@ public class RcJvmWorkerPool(
       renders >= maxRenders || (now - bornAtMillis) >= maxAgeMillis
 
     /**
-     * Read the worker's hello frame, under a watchdog: a JVM that starts but never speaks (a broken
-     * classpath that hangs, a native loader stuck on a lock) must not block a render thread
-     * forever.
+     * Read the hello frame under a watchdog, so a JVM that never speaks can't block a render
+     * thread.
      */
     fun handshake(timeoutSeconds: Long) {
       val guard = armWatchdog(timeoutSeconds)
@@ -377,8 +337,8 @@ public class RcJvmWorkerPool(
         toWorker.writeInt(
           if (format == RcJvmServerRenderer.Format.SVG) WIRE_FORMAT_SVG else WIRE_FORMAT_PNG
         )
-        // After `format`, matching `RcJvmRenderWorkerMain`. Both ends ship from the same build, so
-        // the frame is versioned by the build rather than negotiated.
+        // After `format`, matching `RcJvmRenderWorkerMain`; both ship from one build, so no
+        // negotiation.
         toWorker.writeInt(theme.frame)
         toWorker.writeInt(seeds.size)
         toWorker.write(seeds)
@@ -411,8 +371,7 @@ public class RcJvmWorkerPool(
           } else {
             "cmp-jvm pooled worker failed: ${e.message}${stderrSuffix()}"
           }
-        // Unusable, not Failed: the *worker* broke, so nothing was learned about the document and
-        // the caller is entitled to try the one-shot path.
+        // Unusable, not Failed: the worker broke, so the caller may try the one-shot path.
         return PoolResult.Unusable(reason)
       } finally {
         guard.disarm()
@@ -420,12 +379,8 @@ public class RcJvmWorkerPool(
     }
 
     /**
-     * Arm the kill-switch that bounds a blocking frame read.
-     *
-     * A pipe read has no timeout, so destroying the process is the only thing that can unblock the
-     * render thread. The returned guard records whether it actually *fired*: inferring that from
-     * `!process.isAlive` instead would race, because `destroyForcibly` returns before the OS has
-     * reaped the process, and a timeout would then be reported as a generic worker failure.
+     * Arm the kill switch that bounds a blocking pipe read (which has no timeout). The guard
+     * records whether it fired, since `!process.isAlive` races with `destroyForcibly`.
      */
     private fun armWatchdog(timeoutSeconds: Long): Guard {
       val fired = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -464,18 +419,14 @@ public class RcJvmWorkerPool(
     }
   }
 
-  // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
-  // and the `:server` call sites are in a different module now. Not a widened API by intent.
+  // Public because `:server` call sites live in another module; not a widened API by intent.
   public companion object {
     public const val WORKER_MAIN_CLASS: String =
       "ee.schimke.composeai.rcjvm.RcJvmRenderWorkerMainKt"
 
-    // Mirrors `RcJvmRenderWorkerMain.kt` in `:rc-render-jvm`. The cli cannot depend on that module
-    // (its Skiko
-    // natives are deliberately kept off the cli classpath — that is why the render is a subprocess
-    // at all), so the wire constants are duplicated here on purpose. The version check in
-    // [Worker.handshake] is what keeps the duplication honest: a sidecar that disagrees is refused
-    // and the caller falls back, rather than the two sides silently misreading each other.
+    // Mirrors `RcJvmRenderWorkerMain.kt` in `:rc-render-jvm`, which the CLI can't depend on (its
+    // Skiko natives stay off this classpath). The handshake's version check refuses a disagreeing
+    // sidecar.
     public const val MAGIC_HELLO: Int = 0x52435731
     public const val MAGIC_REQUEST: Int = 0x52435131
     public const val MAGIC_RESPONSE: Int = 0x52435231
@@ -498,9 +449,8 @@ public class RcJvmWorkerPool(
     public const val SYS_PROP_MAX_AGE_MINUTES: String = "composeai.rcjvm.pool.maxAgeMinutes"
 
     /**
-     * Default worker count. Each worker is a full Compose Desktop JVM, so this is deliberately
-     * small and independent of core count past a point — serve's own render semaphore already
-     * bounds concurrency, and more workers buy resident memory rather than throughput.
+     * Default worker count: deliberately small, since each is a full Compose Desktop JVM and
+     * serve's render semaphore already bounds concurrency.
      */
     public fun defaultWorkers(): Int =
       (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 3)

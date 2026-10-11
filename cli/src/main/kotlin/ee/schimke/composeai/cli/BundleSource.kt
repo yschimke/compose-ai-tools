@@ -17,17 +17,12 @@ import okio.FileSystem
 import okio.buffer
 
 /**
- * Resolves a bundle argument — a local path **or** a URL — to a local [File] every bundle-open
- * command can operate on. A bundle is a PNG+ZIP polyglot, so once it's on disk the rest of the
- * pipeline ([BundleReader], [BundleRenderer], `bundle daemon`, the viewer) is unchanged.
+ * Resolves a bundle argument (local path or URL) to a local [File] for every bundle-open command:
+ * - `http(s)://…` — downloaded to a temp file (follows redirects; non-2xx fails);
+ * - `file://…` — the referenced file;
+ * - anything else — a local path.
  *
- * - `http(s)://…` — downloaded to a temp file (follows redirects; fails loudly on a non-2xx).
- * - `file://…` — the referenced local file.
- * - anything else — treated as a local filesystem path.
- *
- * Downloaded temp files are marked delete-on-exit; callers that want eager cleanup can delete the
- * returned file themselves once done. The `.png` suffix is preserved so downstream name-derivation
- * (`<name>-render`, `<name>-extracted`, the daemon's `bundleSource` tag) stays sensible.
+ * Downloads are delete-on-exit and keep the `.png` suffix so derived names stay sensible.
  */
 object BundleSource {
 

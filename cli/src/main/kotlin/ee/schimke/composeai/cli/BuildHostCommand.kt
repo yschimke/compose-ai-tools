@@ -16,18 +16,10 @@ import java.io.PrintStream
 import java.io.Writer
 
 /**
- * `compose-preview build-host --stdio` — serves the Gradle operations a preview server needs, over
- * a pipe.
- *
- * The server used to get these by *being* the CLI: `ServeCommand` was the only real implementation
- * of the server's `ServeBuildHost` interface, which is why `serve` could not leave this repository
- * and why the standalone server binary stubbed every method. This command is the same work behind a
- * process boundary instead of a linked interface, so the Gradle Tooling API stays here — layer 1,
- * per `docs/design/REPOSITORY_LAYERS.md` — and the server links only `:build-host-protocol`.
- *
- * It is deliberately a thin adapter. Every operation delegates to the same [Command] members
- * `ServeCommand` delegates to, so there is one implementation of "build the previews" and this
- * translates it rather than reimplementing it.
+ * `compose-preview build-host --stdio`: serves the Gradle operations a preview server needs over a
+ * pipe, so the Tooling API stays in this repository (layer 1, `docs/design/REPOSITORY_LAYERS.md`)
+ * and the server links only `:build-host-protocol`. A thin adapter over the same [Command] members
+ * `ServeCommand` uses.
  */
 class BuildHostCommand(args: List<String>) : Command(args) {
 
@@ -46,15 +38,9 @@ class BuildHostCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * The request loop, with its channels injected so a test can drive it without a process.
-   *
-   * Requests are answered in order and one at a time. That is not a simplification to revisit: the
-   * operations mutate a Gradle build, so two in flight at once is a bug rather than throughput.
-   *
-   * **Cancellation is stdin closing.** There is no cancel message in v1, because the honest
-   * implementation of one is killing the Gradle build, and the server already has that lever —
-   * close the pipe, and the host exits. A message that only set a flag would be a cancellation that
-   * does not cancel, which is worse than not having one.
+   * The request loop, with injected channels for tests. Requests are answered strictly in order:
+   * the operations mutate a Gradle build. Cancellation is closing stdin (the host exits); a cancel
+   * message that couldn't actually stop the build would be worse than none.
    */
   internal fun serve(requests: BufferedReader, responses: Writer) {
     var handshaken = false
@@ -66,8 +52,8 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         try {
           BuildHostCodec.decode(line)
         } catch (t: Throwable) {
-          // No id to correlate against — the envelope is what failed to parse — so answer on id 0
-          // and keep serving. Exiting here would turn one bad line into a dead build host.
+          // No id to correlate (the envelope itself failed to parse): answer on id 0 and keep
+          // serving.
           write(responses, BuildHostEnvelope(id = 0, response = failure(t)))
           continue
         }
@@ -88,8 +74,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         continue
       }
 
-      // The handshake gates everything, so a version skew is reported once, up front, rather than
-      // as a puzzling failure several operations into a build.
+      // The handshake gates everything, so version skew is reported once, up front.
       if (!handshaken && request !is BuildHostRequest.Handshake) {
         write(
           responses,
@@ -137,11 +122,8 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         )
 
       BuildHostRequest.GradleProjectRoot ->
-        // Through `WireModule.wirePath` for the same reason module directories are: the server need
-        // not share this working directory, and a relative root would resolve against whichever
-        // process read it. Normalising is not cosmetic here — `findProjectRoot()` legitimately
-        // returns `<root>/.`, so without it the server would see a root that never string-matches
-        // the module directories underneath it.
+        // Normalised via `WireModule.wirePath` like module dirs: the server may not share this
+        // working directory, and `findProjectRoot()` can return `<root>/.`.
         BuildHostResponse.Path(findProjectRoot()?.let(WireModule::wirePath))
 
       BuildHostRequest.GradleVariantArgs -> BuildHostResponse.Strings(variantGradleArgs())
@@ -186,19 +168,9 @@ class BuildHostCommand(args: List<String>) : Command(args) {
     }
 
   /**
-   * Runs [block] with `System.out` diverted into [BuildHostEvent.Log] events.
-   *
-   * This is the load-bearing part of speaking a protocol on stdout. The Gradle plumbing below
-   * prints build output to `System.out`, and `System.out` is the protocol channel — inherited, that
-   * output would interleave with framed JSON and corrupt the stream on the first task that printed
-   * anything.
-   *
-   * So it is captured and reframed. The server then decides what to do with it, which is the right
-   * place for that decision: the host cannot know whether the invocation wants `--progress`.
-   *
-   * When [silenceStdout] the lines are dropped here rather than forwarded and discarded at the far
-   * end — a long build should not push megabytes into a pipe nobody reads. The same flag is passed
-   * down to the Gradle call, so most of it is never produced either; this catches what still is.
+   * Run [block] with `System.out` diverted into [BuildHostEvent.Log] events, since stdout is the
+   * protocol channel and raw Gradle output would corrupt it. With [silenceStdout] lines are dropped
+   * here (and mostly never produced, since the flag also reaches Gradle).
    */
   private fun streamingBuildOutput(
     id: Long,
@@ -216,8 +188,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
     try {
       block()
     } finally {
-      // Flush a trailing partial line before restoring, or the last line of a build that did not
-      // end in a newline is silently lost.
+      // Flush a trailing partial line before restoring, or it is lost.
       runCatching { sink.flushPartialLine() }
       System.setOut(original)
     }
@@ -255,11 +226,8 @@ class BuildHostCommand(args: List<String>) : Command(args) {
 }
 
 /**
- * Buffers bytes and calls [onLine] once per complete line, without the terminator.
- *
- * Line-oriented because the protocol is: a `Log` event carries one line, and the framing supplies
- * the break. `\r\n` is normalised to one line so Gradle output captured on Windows does not arrive
- * with a trailing carriage return baked into every event.
+ * Buffers bytes and calls [onLine] per complete line (without terminator; `\r\n` normalised), since
+ * a `Log` event carries one line.
  */
 internal class LineSplittingOutputStream(private val onLine: (String) -> Unit) : OutputStream() {
 

@@ -1,39 +1,16 @@
 /*
- * The Compose UI builder's own output, checked in unchanged, so a real Wear render can be held
- * against the canvas that authored it.
- *
- * ## What this file is
- *
- * What `WearScreenCodeExporter` emits for the `wear-list` template in
- * yschimke/compose-preview-server — the design a `wear-m3` screen is created from. Two edits, and
- * only two: a package declaration, and `ktfmt`, which this repository's format gate requires and
- * which moves no code. Regenerate by running that repository's `WearScreenCodeExporterTest`, which
- * writes the source to `ui-builder/build/generated-wear-screen-source/ActivityScreen.kt`, then
+ * The Compose UI builder's output for the `wear-list` template (`WearScreenCodeExporter` in
+ * yschimke/compose-preview-server), checked in unchanged except for a package declaration and
+ * ktfmt. Regenerate with that repository's `WearScreenCodeExporterTest` (writes
+ * `ui-builder/build/generated-wear-screen-source/ActivityScreen.kt`), then
  * `./gradlew :samples:design-catalog-wear-m3:ktfmtFormat`.
  *
- * ## Why it lives in this catalog
+ * The builder's Wasm canvas can't draw Wear Compose, so it draws a stand-in; this tests that claim.
+ * `ActivityScreenLongPreview` stitches the whole scroll untransformed (comparable pixel for pixel with
+ * the builder's canvas); `ActivityScreenPreview` shows it as a watch does. The generated scaffold
+ * suppresses the scroll indicator during long captures (`LocalScrollCaptureInProgress`).
  *
- * `wear-m3` is a harness catalog: it exists to exercise the preview pipeline rather than to be a
- * design system, and this is the pipeline being exercised end to end. It is also the catalog those
- * designs are pinned to, so the pairing reads without a mapping table.
- *
- * ## What it proves
- *
- * The builder cannot draw Wear Compose — its canvas is Compose Multiplatform for Wasm, which cannot
- * link an Android AAR — so it draws a stand-in and claims the stand-in is honest. This is the claim
- * under test. `ActivityScreenLongPreview` stitches the whole scroll into one tall PNG with the row
- * transformation off, which is exactly the picture the builder's stadium canvas draws, so the two
- * are comparable pixel for pixel; `ActivityScreenPreview` is the same screen as a watch actually
- * shows it, one screenful at a time, transformed.
- *
- * Note what the scaffold does with `LocalScrollCaptureInProgress`. That is generated, not added
- * here: a stitched capture composites many frames, and an indicator drawn at a different offset in
- * each of them lands as a column of dashes down the edge. Suppressing transient chrome while the
- * platform is taking a long screenshot is what the signal is for, and it is why this capture is
- * clean enough to compare.
- *
- * Do not edit by hand. A change here that is not a regeneration is a claim that the builder emits
- * something it does not.
+ * Do not edit by hand.
  */
 
 package com.example.designcatalogwearm3

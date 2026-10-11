@@ -1,33 +1,17 @@
 package ee.schimke.composeai.bundle
 
 /**
- * Longest-edge bound (px) for a hybrid figma-svg's raster crops, applied in **two** places that
- * must agree:
- * - `bundle pack` / the export, when a crop is written into the bundle
- *   ([injectFigmaRasterIntoBundle]);
- * - the serve host, when a crop is base64-inlined into a self-contained figma-svg
- *   (`inlineFigmaRasters`).
- *
- * One constant, deliberately. A crop is captured at device resolution, so a full-screen photo
- * region runs to megabytes, and the serve host has always downsampled to this bound before anyone
- * saw the pixels — storing the originals bought nothing for the only consumer and cost the bundle
- * real bytes. Jetchat's profile stickers were 1176x1050 crops at ~1.9MB each; six of them made its
- * live bundle 27MB, past the serve host's 25MiB per-file fetch cap, so the catalog silently fell
- * back to baked PNGs. Bounding at pack time took that bundle to ~22.5MB and the crops stayed
- * pixel-identical to what the server was already serving.
- *
- * 1024px keeps a component-sized crop untouched and a screen-sized one at roughly
- * thumbnail-to-retina fidelity — right for a design reference layer. If these two call sites ever
- * diverge, the waste comes straight back, so change the bound here rather than at either site.
+ * Longest-edge bound (px) for a hybrid figma-svg's raster crops, shared by `bundle pack`
+ * ([injectFigmaRasterIntoBundle]) and the serve host's inlining (`inlineFigmaRasters`) — change it
+ * here, never at either site. Device-resolution crops can be megabytes and push a bundle past
+ * serve's 25MiB fetch cap, while serve downsamples to this bound anyway. 1024px leaves
+ * component-sized crops untouched.
  */
 public const val MAX_FIGMA_RASTER_EDGE_PX: Int = 1024
 
 /**
- * [png] re-encoded with its longest edge capped at [maxEdgePx] (aspect preserved, bilinear), or the
- * original bytes when it's already within the cap, fails to decode, or the re-encode doesn't
- * actually shrink the payload (a tiny palette PNG can grow when re-encoded as ARGB). Never throws —
- * both callers must degrade to the full-resolution bytes rather than a broken layer or a failed
- * pack.
+ * [png] with its longest edge capped at [maxEdgePx] (aspect preserved, bilinear), or the original
+ * bytes when already within the cap, undecodable, or not actually smaller re-encoded. Never throws.
  */
 public fun downscaleRaster(png: ByteArray, maxEdgePx: Int): ByteArray {
   if (maxEdgePx <= 0 || maxEdgePx == Int.MAX_VALUE) return png

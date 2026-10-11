@@ -18,21 +18,9 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 
 /**
- * `private` CMP `@Preview`s — the shape that used to fail the standalone Desktop renderer.
- *
- * Nothing but tooling ever calls a preview, so declaring one `private` is idiomatic and Android
- * Studio draws it happily. It compiles to a `private static final` method on `PrivatePreviewsKt`:
- * the renderer's `getDeclaredComposableMethod` lookup finds it (it scans `declaredMethods`), but
- * the reflective invoke that follows threw `IllegalAccessException: ComposableMethod cannot access
- * … with modifiers "private static final"` until the desktop renderer opened the method the way the
- * daemon and the Android renderer already did (issue #3873). `compose-preview serve --module`
- * bootstraps through this very renderer, so one private preview anywhere in a module could take the
- * whole server down before its (capable) daemon ever started.
- *
- * These live in the sample so the standing render pipeline covers private previews from now on: the
- * module's `composePreviewRenderAll` draws them on every run, [PrivatePreviewRenderTest] asserts
- * the PNGs landed, and the CI visual-diff bot picks the images up like any other sample preview. No
- * sample exercised a private `@Preview` before, which is exactly how the gap shipped.
+ * `private` CMP `@Preview`s: idiomatic, but they compile to `private static final` methods the
+ * desktop renderer must open before invoking reflectively. Covered by the standing render pipeline
+ * and [PrivatePreviewRenderTest].
  */
 @Preview(name = "Private badge", backgroundColor = 0xFFFFFFFF, showBackground = true)
 @Composable

@@ -3,10 +3,8 @@ package ee.schimke.composeai.cli
 import kotlin.system.exitProcess
 
 /**
- * Flat command dispatch table — the single source of truth for which verbs exist and how each is
- * constructed. [CliRouter] decides *what* to run (including group routing and back-compat aliases);
- * this map turns that decision into a command invocation. `CliRouterTest` pins that the keys here
- * match [CliRouter.KNOWN_FLAT], so the router and the dispatcher can't drift.
+ * Flat command dispatch table: which verbs exist and how each is constructed. [CliRouter] decides
+ * what to run; `CliRouterTest` pins these keys to [CliRouter.KNOWN_FLAT].
  */
 internal val COMMANDS: Map<String, (List<String>) -> Unit> =
   mapOf(
@@ -65,12 +63,8 @@ fun main(args: Array<String>) {
       try {
         COMMANDS.getValue(route.command).invoke(route.args)
       } catch (e: NoCredentialHomeException) {
-        // Handled here rather than in each caller. `AuthCommand` is not the only thing that opens
-        // the grant store — `share-preview --mechanism serve` reaches for it whenever no explicit
-        // token was given — so catching it there alone turned a deliberate refusal, whose whole
-        // point is a message naming the remedy, into an uncaught stack trace on the second
-        // consumer. One boundary means the next consumer inherits the right behaviour instead of
-        // reintroducing the bug.
+        // Handled at this one boundary so every consumer of the grant store (not just
+        // `AuthCommand`) prints the remedy instead of a stack trace.
         System.err.println("compose-preview: ${e.message}")
         exitProcess(1)
       }
@@ -112,11 +106,7 @@ private fun printGroupUsage(group: String) {
 }
 
 /**
- * Tiered help. The default (`full = false`) prints a short core view — the headline render-to-PNG
- * commands plus the handful most users reach for — and points at `help --all` for the rest. The
- * full reference (`help --all`, `--help --all`) is the complete command + flag catalogue. The
- * 160-line reference had become a manual; keeping it behind `--all` stops it from being the first
- * thing a new user hits.
+ * Tiered help: a short core view by default, the full command and flag reference with `help --all`.
  */
 private fun printUsage(full: Boolean = false) {
   if (full) {

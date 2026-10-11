@@ -21,15 +21,11 @@ import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.FocusedPreview
 
 /**
- * Android-only catalog theme that opts into the Material 3 **inset focus ring** — via
- * [RippleDefaults.InsetFocusRingThemeConfiguration] over [LocalRippleThemeConfiguration] (material3
- * 1.5.0-alpha+) — the keyboard-focus indicator the design system ships. CMP `material3` has no
- * equivalent yet, so the focus-ring stickers are rendered here (Robolectric) and folded into the
- * otherwise-CMP `compose-m3` catalog by the design-artifacts generator.
- *
- * Mirrors the ring-colour override the CMP-era catalog used: the stroke goes `primary` (outer) over
- * `surface` (inner gap) instead of the stock muted `secondary`/`onSecondary`, so the ring stays
- * legible at sticker size. Only the `focus` ripple is overridden; pressed/hover are untouched.
+ * Android-only catalog theme opting into Material 3's inset focus ring
+ * ([RippleDefaults.InsetFocusRingThemeConfiguration] via [LocalRippleThemeConfiguration], material3
+ * 1.5.0-alpha+). CMP `material3` lacks it, so these stickers render here and are folded into the
+ * `compose-m3` catalog. The ring is `primary` over `surface` (not the stock muted colours) so it
+ * reads at sticker size; only the `focus` ripple is overridden.
  */
 @Composable
 private fun FocusRingSticker(content: @Composable () -> Unit) {
@@ -53,27 +49,15 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
 }
 
 /**
- * The keyboard-focus (`focus-visible`) state of the filled button, showing the M3 inset focus ring.
- * The function name **must** stay `FilledButtonFocused` — the generator folds this render onto the
- * `Button/Filled` component's `keyboard-focus` variant in `catalog.spec.json` by matching it.
+ * The keyboard-focus state of the filled button, showing the inset focus ring. The function name
+ * must stay `FilledButtonFocused`: the generator folds it onto `Button/Filled`'s `keyboard-focus`
+ * variant by name.
  *
- * The focus is **real** (issue #3672). This sticker used to seed a held `FocusInteraction.Focus`
- * onto a `MutableInteractionSource` from a `LaunchedEffect` — a forged visual: nothing was actually
- * focused, no `Unfocus` ever paired the emission, and the capture depended on `Button` happening to
- * read its indication off the interaction source rather than off the focus system. Which is a
- * strange thing for a sticker whose entire subject is the keyboard-focus indicator.
- *
- * `@FocusedPreview` is the repo's mechanism and applies here because this supplement renders on
- * Robolectric: it runs a real `FocusManager.moveFocus` traversal and flips `LocalInputModeManager`
- * to Keyboard mode — which Robolectric needs, since its host environment is permanently Touch and
- * `Modifier.clickable` registers its focusable as `Focusability.SystemDefined` (refused in touch
- * mode). `indices = [0]` is the single `Button` in the sticker; a single-capture `@FocusedPreview`
- * keeps the plain `renders/<id>.png` filename (see `emitStaticCross` in `PreviewDiscovery.kt`), so
- * the by-function-name fold is untouched.
+ * Focus is real, via `@FocusedPreview` (a `FocusManager.moveFocus` traversal in Keyboard input mode,
+ * which Robolectric's permanent Touch mode otherwise refuses). A single capture keeps the plain
+ * `renders/<id>.png` name.
  */
-// Light + dark, matching the CMP catalog's `@CatalogModes` so the folded variant carries both.
-// The `@Preview`s are inlined (not a shared multipreview annotation) so discovery reliably resolves
-// them on this single-preview module.
+// Light + dark, like the CMP catalog's `@CatalogModes`; inlined so discovery resolves them reliably.
 @Preview(name = "Light", showBackground = true, group = "modes")
 @Preview(
   name = "Dark",

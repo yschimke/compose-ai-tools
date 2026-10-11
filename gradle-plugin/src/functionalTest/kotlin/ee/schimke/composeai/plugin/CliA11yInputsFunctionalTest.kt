@@ -15,24 +15,15 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the on-disk contract `compose-preview a11y` and (transitively) the `a11y-report.yml` CI
- * action consume. The CLI's daemon-driven a11y flow needs three things from Gradle before it can
- * open a `RenderSession`:
+ * Pins the on-disk contract `compose-preview a11y` (and `a11y-report.yml`) needs from Gradle before
+ * opening a `RenderSession`:
+ * 1. `build/compose-previews/previews.json`, loaded by the daemon's `PreviewManifestRouter`.
+ * 2. `build/compose-previews/daemon-launch.json` with a non-empty `classpath`, `mainClass` =
+ *    `ee.schimke.composeai.daemon.DaemonMain` (only checked at spawn), and `systemProperties`
+ *    including `composeai.daemon.previewsJsonPath` and `composeai.daemon.userClassDirs`.
  *
- * 1. `build/compose-previews/previews.json` — the preview manifest the daemon's
- *    `PreviewManifestRouter` loads. Without this, the daemon thread terminates on startup.
- * 2. `build/compose-previews/daemon-launch.json` with:
- *     - a non-empty `classpath` array (the JVM `-cp` for a forked daemon and the `URLClassLoader`
- *       source for the embedded backend),
- *     - `mainClass` pointing at `ee.schimke.composeai.daemon.DaemonMain` (resolved at runtime, so a
- *       typo or rename only surfaces when the daemon spawns),
- *     - `systemProperties` carrying the keys the daemon's `runDaemon(...)` reads at boot — most
- *       critically `composeai.daemon.previewsJsonPath` and `composeai.daemon.userClassDirs`.
- *
- * The end-to-end render path (daemon spawn → ATF walk → findings) is exercised by the
- * `a11y-report.yml` GitHub workflow on every PR; this test is the fast-feedback counterpart that
- * runs on every `./gradlew check` and catches regressions in the Gradle-side contract before they
- * reach CI.
+ * The full render path runs in the `a11y-report.yml` workflow; this is the fast-feedback
+ * counterpart.
  */
 class CliA11yInputsFunctionalTest {
 
@@ -123,9 +114,8 @@ class CliA11yInputsFunctionalTest {
   }
 
   /**
-   * CMP synthetic project — same shape as [DaemonBootstrapFunctionalTest]'s scaffolding. Kept
-   * verbatim (rather than DRY-extracted) so each functional-test file's setup is self-contained and
-   * a TestKit failure points at one fixture.
+   * CMP synthetic project, duplicated from [DaemonBootstrapFunctionalTest] so each test file's
+   * fixture is self-contained.
    */
   private fun createCmpTestProject(): File {
     val projectDir = tempDir.root

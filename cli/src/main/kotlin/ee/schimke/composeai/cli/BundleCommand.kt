@@ -41,44 +41,25 @@ import okio.Path.Companion.toPath
 import okio.source
 
 /**
- * `compose-preview bundle <pack|inspect|extract|render>` — produce, inspect, and play portable
- * preview bundles.
+ * `compose-preview bundle <pack|inspect|extract|render|embed|…>` — produce, inspect, and play
+ * portable preview bundles.
  *
- * # Bundle file shape
+ * A bundle is a PNG + ZIP polyglot: a valid cover PNG followed by a standard zip (found via the
+ * EOCD signature). Schema: `PreviewBundleFormat.kt` in the plugin module.
  *
- * The bundle is a PNG + ZIP polyglot. The leading bytes are a valid PNG (the cover preview's
- * rendered image — Finder, Preview.app, GitHub, Slack all show it as an image). The trailing bytes
- * are a standard zip archive that any tooling reads via the EOCD signature `PK\x05\x06`. See
- * `PreviewBundleFormat.kt` in the plugin module for the in-repo schema definitions.
- *
- * # Subcommands
- *
- * - **`pack`** — runs `composePreviewRenderAll` (for every renderer family, including XR) and
- *   `composePreviewBundle` against a Gradle module and writes the resulting `.png` polyglot.
- *   Selection is via repeatable `--id` flags; the first id becomes the cover. `--no-render` skips
- *   the render step and packs with a stub gray cover.
- * - **`inspect`** — open a bundle file and print its `bundle.json` + `report.json` summary,
- *   including the minimization report (how many module classes were kept vs total, which Maven
- *   coordinates contribute reachable classes). Read-only.
- * - **`extract`** — extract the zip portion of a bundle into a directory. Each entry's path is
- *   validated to live inside the target dir — `../` traversal in a hostile bundle is rejected.
- * - **`render`** — re-render the bundle's previews from a packed `.png`, not from a Gradle module.
- *   v1 is a stub: it extracts the bundle, prints the manifest + resolved classpath, and tells you
- *   what *would* render. Actual rendering (resolving Maven coords + spawning DesktopRendererMain)
- *   is the next milestone.
- * - **`embed`** — convert a packed bundle into a **self-contained web embed** (the "js bundle"): a
- *   `compose-preview-embed.js` web component plus an `index.html` demo page, with the baked
- *   previews inlined as `data:` URIs. An app drops the one script into its site and adds
- *   `<compose-preview-gallery>` to put the rendered previews on a web page — no build step, no
- *   framework, no network. By default the files land in a directory; `--in-bundle` instead writes
- *   them into the bundle's own zip under `web/` (the `.png` stays a valid polyglot). See
- *   [WebEmbed].
+ * - `pack` — render and run `composePreviewBundle` on a module; repeatable `--id`, the first is the
+ *   cover. `--no-render` packs with a stub cover.
+ * - `inspect` — print `bundle.json` + `report.json`, including the minimization report. Read-only.
+ * - `extract` — unzip into a directory, rejecting path traversal.
+ * - `render` — re-render the bundle's previews from the packed `.png`.
+ * - `embed` — convert to a self-contained web embed (`compose-preview-embed.js` + `index.html`,
+ *   previews inlined as `data:` URIs); `--in-bundle` writes it under `web/` in the bundle itself.
+ *   See [WebEmbed].
  */
 class BundleCommand(args: List<String>) : Command(args) {
 
   override fun run() {
-    // Find the subcommand skipping any leading valued flags (`bundle --module :app pack`), then
-    // hand the subcommand its args with only the subcommand token removed (the leading flags stay).
+    // Skip leading valued flags to find the subcommand; it keeps those flags in its args.
     val subIndex = CliFlags.firstPositionalIndex(args)
     val sub = if (subIndex >= 0) args[subIndex] else null
     val subArgs =
@@ -287,13 +268,9 @@ private class PackSubcommand(private val args: List<String>) {
   private val withSemantics: Boolean = "--with-semantics" in args
 
   /**
-   * Let a pack whose figma-svg export lost a font family succeed anyway.
-   *
-   * Off by default, and that default is the point. A lost family exports as missing-glyph boxes,
-   * which is loud in a rendered sticker and completely silent in a build log, so a degraded sheet
-   * published and sat in the catalog until somebody happened to look at one. Mirrors the render's
-   * own `-Dcomposeai.fonts.failOnFallback` gate, which fails a render that drew the wrong typeface
-   * for the same reason.
+   * Let a pack whose figma-svg export lost a font family succeed. Off by default: missing-glyph
+   * boxes are silent in logs and otherwise publish unnoticed (cf.
+   * `-Dcomposeai.fonts.failOnFallback`).
    */
   private val allowLostFontFamilies: Boolean = "--allow-lost-font-families" in args
   private val perPreview: Boolean = "--per-preview" in args
@@ -305,29 +282,21 @@ private class PackSubcommand(private val args: List<String>) {
   private val ids: List<String> = PackPreviewIdExclusions.selectedIds(args)
 
   /**
-   * `--exclude-preview-id` patterns (issue #2966) — the previews this pack must NOT render or
-   * semantics-capture. Falls back to the `ORG_GRADLE_PROJECT_composePreview.idExclude` env var so a
-   * caller that only sets the env var (the way the design-artifacts workflow passes the name filter
-   * through to `composePreviewRender`) still gets the semantics pass thinned, which the env var
-   * alone cannot do — the CLI, not Gradle, drives that capture.
+   * `--exclude-preview-id` patterns: previews this pack must not render or semantics-capture. Falls
+   * back to `ORG_GRADLE_PROJECT_composePreview.idExclude`, since only the CLI can thin the
+   * semantics pass.
    */
   private val excludePreviewIds: List<String> = PackPreviewIdExclusions.fromArgs(args)
 
   /**
-   * `--exclude-preview-id-file`, when one was passed: the same patterns as [excludePreviewIds], but
-   * kept as a FILE so the render can be handed the path instead of a comma-joined string.
-   *
-   * That distinction is the whole point of the flag. A preview id may contain a comma, so joining
-   * the list for `-PcomposePreview.idExclude` and splitting it back shatters each id into
-   * fragments; because a plain pattern matches on substring, a fragment such as `dpi=320` then
-   * excludes every preview in the module.
+   * `--exclude-preview-id-file`, kept as a file so the render gets the path: ids may contain
+   * commas, and re-joining them would split ids into fragments that match far too much.
    */
   private val excludePreviewIdFile: java.io.File? = PackPreviewIdExclusions.fileFromArgs(args)
 
   /**
-   * `--exclude-preview-row` labels — the `@PreviewParameter` rows this pack must not render. Render
-   * only: the semantics capture is per preview, so a parameterized preview costs one capture
-   * whatever its provider fans out to and there is nothing to thin there.
+   * `--exclude-preview-row` labels: `@PreviewParameter` rows not to render. Render only; semantics
+   * are captured per preview.
    */
   private val excludePreviewRows: List<String> = PackPreviewIdExclusions.rowsFromArgs(args)
 
@@ -347,13 +316,8 @@ private class PackSubcommand(private val args: List<String>) {
         add("--timeout")
         add(it)
       }
-      // `bundle pack` forwards a WHITELIST to the inner Command, so a flag missing from it is
-      // accepted at this level and then silently dropped. `--variant` was one: the inner
-      // Command's `variantOverride` stayed null, `variantGradleArgs()` produced nothing, and the
-      // plugin fell back to its `debug` convention. On a flavored module that is not a no-op — a
-      // bare build type suffix-matches, so the render silently ran whichever flavor sorted first
-      // (home-assistant/android's `minimalDebug`, the one that does not compile) while the caller
-      // had asked for `fullDebug` and the CLI had reported no error.
+      // `bundle pack` forwards a whitelist to the inner Command, so `--variant` must be passed
+      // explicitly; dropping it silently renders the wrong flavor.
       variant?.let {
         add("--variant")
         add(it)
@@ -378,13 +342,9 @@ private class PackSubcommand(private val args: List<String>) {
             val gradleArgs = buildList {
               if (ids.isNotEmpty())
                 add("-PbundlePreviewIds=${ids.joinToString(",") { encodePreviewId(it) }}")
-              // Thin the RENDER itself (issue #2966): `composePreviewRender` reads this as the
-              // `--exclude-preview-id` convention. Passed explicitly rather than relying on the
-              // inherited env var so `--exclude-preview-id` works from any shell, and so the
-              // patterns the semantics pass below skips are provably the same ones the render did.
-              // The FILE form when there is one — see [excludePreviewIdFile] for why joining is
-              // not equivalent. Absolute, because the render's Gradle build runs in the module's
-              // own directory rather than the CLI's.
+              // Thin the render itself, with the same patterns the semantics pass skips. The file
+              // form when available ([excludePreviewIdFile]); absolute because Gradle runs in the
+              // module directory.
               if (excludePreviewIdFile != null)
                 add(
                   "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
@@ -395,9 +355,7 @@ private class PackSubcommand(private val args: List<String>) {
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
                     excludePreviewIds.joinToString(",")
                 )
-              // Same for the `@PreviewParameter` row axis, which the render resolves one level
-              // deeper
-              // (the labels don't exist until the provider is enumerated inside the render JVM).
+              // Same for the `@PreviewParameter` row axis, resolved inside the render JVM.
               if (excludePreviewRows.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.ROW_GRADLE_PROPERTY}=" +
@@ -407,15 +365,9 @@ private class PackSubcommand(private val args: List<String>) {
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
             }
-            // `--with-semantics` carries the per-preview semantics blob (issue #1843). The
-            // semantics tree is produced exclusively by the daemon (the standalone
-            // composePreviewRender task writes no semantics sidecars), so we start the daemon and
-            // read the blobs back below. composePreviewDaemonStart runs in its OWN Gradle
-            // invocation (not bundled with render+bundle), AFTER the bundle is already written, so
-            // a
-            // daemon-start failure degrades gracefully instead of aborting the pack —
-            // `--with-semantics` is best-effort (issue #1885). Pointless without a render (the
-            // daemon needs something to capture), so skip when --no-render.
+            // `--with-semantics`: semantics come only from the daemon, started in its own Gradle
+            // invocation after the bundle is written, so a failure degrades gracefully. Skipped
+            // with `--no-render`.
             val packSemantics = withSemantics && !noRender
             if (withSemantics && noRender) {
               System.err.println(
@@ -453,16 +405,11 @@ private class PackSubcommand(private val args: List<String>) {
                 )
                 exitProcess(1)
               }
-            // Inject semantics (if requested) before the summary so its byte count reflects the
-            // enriched bundle; the summary line for semantics is printed after the main summary.
-            // The bundle is already written and valid at this point, so everything below is
-            // best-effort: a daemon-start / open / render failure warns and leaves the bundle as-is
-            // (issue #1885), never failing the pack.
+            // Inject semantics before the summary so its byte count is right. Best-effort: failures
+            // warn and leave the valid bundle as-is.
             val semanticsLine =
               if (packSemantics) {
-                // Start the daemon in a SEPARATE Gradle invocation — its failure must NOT abort the
-                // pack. The launch descriptor is regenerated fresh against the consumer's current
-                // classpath, then DaemonSemanticsFetcher reads the blobs back.
+                // Separate invocation so a daemon-start failure can't abort the pack.
                 val daemonStarted =
                   runGradle(
                     gradle,
@@ -488,10 +435,8 @@ private class PackSubcommand(private val args: List<String>) {
 
             printPackSummary(resolvedOutput, meta)
             semanticsLine?.let { println(it.summary) }
-            // A figma-svg export that lost a font family drew that preview's text as
-            // missing-glyph boxes. That is a defect in the artefact, not in the run that produced
-            // it, so it does not fall under the best-effort rule above: refuse the pack rather
-            // than let a sheet of boxes publish and be found by eye days later.
+            // Missing-glyph boxes are a defect in the artefact, not infrastructure, so refuse the
+            // pack.
             lostFontFamilyRefusal(
                 degradedPreviewIds = semanticsLine?.degradedPreviewIds.orEmpty(),
                 allowed = allowLostFontFamilies,
@@ -508,20 +453,10 @@ private class PackSubcommand(private val args: List<String>) {
   }
 
   /**
-   * `--per-preview`: emit one **valid, self-contained** single-preview bundle per discovered
-   * preview (`<out-dir>/<id>.png`) instead of a single sheet carrying them all. Each output is a
-   * real polyglot a reader can open / re-render on its own — the addressable-preview unit.
-   *
-   * Renders **once** (the expensive step) and then packs each preview through the same
-   * `composePreviewBundle` path a single `--id` pack uses, so every emitted bundle is minimized to
-   * just that preview's closure. Because the render daemon no longer rides a preview's classpath, a
-   * catalog sticker's bundle is ~tens of KB rather than the ~MB it was when `:daemon:core` was
-   * inlined.
-   *
-   * Trade-off (documented, not hidden): packing is N Gradle bundle invocations over one shared
-   * connection — the render is shared, but each pack re-runs the closure scan. A task-level "scan
-   * once, emit N" mode is the efficiency follow-up. `--with-semantics` is not yet carried per
-   * bundle here (it would start the daemon once per preview); it's skipped with a warning.
+   * `--per-preview`: emit one self-contained single-preview bundle per preview
+   * (`<out-dir>/<id>.png`). Renders once, then packs each through `composePreviewBundle` so each is
+   * minimized to its own closure. Each pack re-runs the closure scan; `--with-semantics` is skipped
+   * here with a warning.
    */
   private fun runPerPreview() {
     val cmdArgs = buildList {
@@ -561,15 +496,8 @@ private class PackSubcommand(private val args: List<String>) {
             outDir.mkdirs()
 
             val sharedArgs = buildList {
-              // The render filters ride the shared render too, not just the single-sheet path
-              // above:
-              // `--per-preview` runs `composePreviewRender` once and packs each result, so leaving
-              // them off here would accept the flags and then render every excluded preview/row
-              // anyway. `--id` still selects which previews get *packed*; these thin what is
-              // *drawn*.
-              // The FILE form when there is one — see [excludePreviewIdFile] for why joining is
-              // not equivalent. Absolute, because the render's Gradle build runs in the module's
-              // own directory rather than the CLI's.
+              // Apply the render filters to the shared render too; `--id` only selects what gets
+              // packed. File form and absolute path as above.
               if (excludePreviewIdFile != null)
                 add(
                   "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
@@ -589,8 +517,7 @@ private class PackSubcommand(private val args: List<String>) {
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
             }
 
-            // Render every preview once; the per-preview packs below reuse these render outputs, so
-            // the expensive render happens a single time rather than once per bundle.
+            // Render once; the per-preview packs reuse the outputs.
             if (!noRender) {
               val rendered =
                 runGradle(
@@ -618,9 +545,7 @@ private class PackSubcommand(private val args: List<String>) {
               exitProcess(1)
             }
             val allIds = manifest.previews.map { it.id }
-            // Fail on any unknown --id rather than silently dropping it (parity with the
-            // single-pack
-            // path's resolveSelection) — a renamed/mistyped id must not quietly omit a bundle.
+            // Fail on an unknown `--id` rather than silently omitting a bundle.
             if (ids.isNotEmpty()) {
               val known = allIds.toSet()
               val unknown = ids.filterNot { it in known }
@@ -638,9 +563,8 @@ private class PackSubcommand(private val args: List<String>) {
               exitProcess(1)
             }
 
-            // Map each id to a UNIQUE output file up front: distinct ids can sanitize to the same
-            // stem (e.g. `A B` and `A_B` both → `A_B`), which would silently overwrite. On a
-            // collision, append `-2`, `-3`, … so every preview gets its own bundle file.
+            // Distinct ids can sanitize to the same stem; disambiguate with `-2`, `-3`, … rather
+            // than overwrite.
             val usedStems = HashSet<String>()
             val idToFile = LinkedHashMap<String, File>()
             for (id in previewIdsToPack) {
@@ -654,8 +578,7 @@ private class PackSubcommand(private val args: List<String>) {
               idToFile[id] = outDir.resolve("$stem.png")
             }
 
-            // Pack each preview into its own single-preview bundle, reusing the already-rendered
-            // PNGs (bundle task only — no re-render).
+            // Pack each preview from the already-rendered PNGs (bundle task only).
             val written = mutableListOf<Pair<String, File>>()
             for ((id, outFile) in idToFile) {
               val perArgs =
@@ -715,11 +638,8 @@ private class PackSubcommand(private val args: List<String>) {
   }
 
   /**
-   * What a `--with-semantics` pack carried: the stdout [summary] to print after the main pack
-   * summary, and the previews whose figma-svg export degraded to missing-glyph boxes.
-   *
-   * [degradedPreviewIds] is empty on a healthy sheet — the export writes its font-warning sidecar
-   * only when it could not name a family the render drew.
+   * What a `--with-semantics` pack carried: the stdout [summary], and previews whose figma-svg
+   * export degraded to missing-glyph boxes (empty when healthy).
    */
   private data class PackedSemantics(
     val summary: String,
@@ -727,21 +647,13 @@ private class PackSubcommand(private val args: List<String>) {
   )
 
   /**
-   * Carry the per-preview semantics blob inside [bundleFile] (issue #1843). Drives a short-lived
-   * daemon ([DaemonSemanticsFetcher]) to render the bundle's selected previews and read back each
-   * one's `compose/semantics` tree (with resolved foreground/background colours), then injects them
-   * as `previews/<id>.semantics.json` — the location + shape the design-parity static bundle reader
-   * expects.
+   * Carry per-preview semantics inside [bundleFile]: a short-lived daemon
+   * ([DaemonSemanticsFetcher]) renders the selected previews and their `compose/semantics` trees
+   * are injected as `previews/<id>.semantics.json`.
    *
-   * Best-effort: any failure (missing descriptor, daemon open/render error, an unsupported backend)
-   * warns to stderr and leaves the already-written bundle untouched rather than failing the pack —
-   * the cover PNG and every other entry are preserved and the polyglot stays valid. Returns what
-   * was carried, or null when nothing was.
-   *
-   * "Best-effort" covers *infrastructure* — a daemon that would not start says nothing about the
-   * bundle already on disk. It deliberately does not cover a figma-svg export that lost a font
-   * family, which is a statement about the artefact itself: those previews come back in
-   * [PackedSemantics.degradedPreviewIds] for the caller to refuse the pack over.
+   * Best-effort for infrastructure failures (warn, leave the bundle valid; returns null when
+   * nothing was carried). Lost font families are a defect in the artefact, returned in
+   * [PackedSemantics.degradedPreviewIds] for the caller to refuse.
    */
   private fun packSemanticsBlob(
     target: PreviewModule,
@@ -751,11 +663,8 @@ private class PackSubcommand(private val args: List<String>) {
   ): PackedSemantics? {
     val previewIds = meta.manifest.previewIds
     if (previewIds.isEmpty()) return null
-    // The manifest's previewIds carry the sanitised in-bundle form; the daemon keys renders on the
-    // RAW discovery id. Fetch by raw (rawPreviewIds, parallel to previewIds — falling back to the
-    // bundle form for pre-field bundles, correct when nothing needed sanitising) and re-key each
-    // returned map to the bundle form before injecting, so `previews/<id>.semantics.json` matches
-    // the entry names readers reconstruct.
+    // The daemon keys on raw discovery ids; fetch by raw id (falling back to the bundle form for
+    // older bundles) and re-key to the sanitised bundle form before injecting.
     val rawIds =
       if (meta.manifest.rawPreviewIds.size == previewIds.size) meta.manifest.rawPreviewIds
       else previewIds
@@ -763,16 +672,10 @@ private class PackSubcommand(private val args: List<String>) {
     fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> = entries.associate { (raw, v) ->
       (bundleIdByRaw[raw] ?: raw) to v
     }
-    // The other half of the deferral saving (issue #2966): this capture is a daemon render per
-    // preview, so filtering only `composePreviewRender` would leave the axis cost here untouched.
-    // Excluded previews stay listed in the bundle (they must, to stay addressable on the serve host
-    // — see #2965) and simply carry no semantics/layout/figma-svg sidecar, exactly as they carry no
-    // PNG.
+    // Skip excluded previews here too (a daemon render each). They stay listed in the bundle so
+    // they remain addressable, just without sidecars.
     val captureIds = PackPreviewIdExclusions.retain(rawIds, excludePreviewIds)
-    // One line per pattern, before the totals (issue #5064). The totals below say how much was
-    // skipped; they cannot say which of three patterns did nothing, and a pattern at zero is
-    // almost always a typo whose cost is a whole capture pass spent on previews the caller meant
-    // to drop.
+    // One line per pattern: a pattern matching nothing is usually a typo.
     for (match in PackPreviewIdExclusions.matches(rawIds, excludePreviewIds)) {
       System.err.println("bundle pack: ${match.line}")
     }
@@ -818,27 +721,18 @@ private class PackSubcommand(private val args: List<String>) {
           )
         val written = injectSemanticsIntoBundle(bundleFile, canonical.semanticsById)
         val missing = captureCount - written
-        // The layout-inspector tree rides alongside the semantics blob (best-effort): a preview
-        // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
-        // redlines/wireframes. Injected after semantics so its byte count is reflected too.
+        // Layout-inspector trees ride along as `previews/<id>.layout.json` (best-effort).
         val layoutWritten = injectLayoutIntoBundle(bundleFile, canonical.layoutById)
-        // The fonts/used record rides the same render (best-effort, Android daemon only): carried
-        // so the design-catalog export can generate the Wasm tier's fonts.json from actual usage.
+        // `fonts/used` (Android only, best-effort), for generating the Wasm tier's fonts.json.
         val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById.keyedByBundleId())
-        // The layered `compose/figma-svg` export rides the same render (best-effort): carried so
-        // the
-        // design-catalog export can ship an editable vector per sticker beside the raster PNG.
+        // The editable `compose/figma-svg` export per sticker (best-effort).
         val figmaSvgWritten =
           injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById.keyedByBundleId())
-        // A hybrid figma-svg references `figma-raster/<node>.png` crops; carry them verbatim as
-        // `previews/<id>.figma-raster/<node>.png` so the SVG's `<image>` layers resolve once the
-        // export copies the SVG onto the delivery branch. Empty for the common vector-only case.
+        // Hybrid figma-svg raster crops, as `previews/<id>.figma-raster/<node>.png`; usually none.
         val figmaRasterWritten =
           injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
-        // The export's font-warning sidecars. Written only for a preview drawn in missing-glyph
-        // boxes, so this is a no-op on a healthy sheet and the entries ARE the defect on a
-        // degraded one. Carried so the warning reaches the delivery branch (and the viewer) with
-        // the artefact it describes, instead of staying on the build machine as it used to.
+        // Font-warning sidecars exist only for degraded previews; carried with the artefact they
+        // describe.
         val fontWarningsWritten =
           injectFigmaFontWarningsIntoBundle(
             bundleFile,
@@ -954,8 +848,7 @@ private class InspectSubcommand(private val args: List<String>) {
     println("size: ${file.length()} bytes")
     println("--- bundle.json ---")
     println(pretty.encodeToString(BundleReader.Manifest.serializer(), meta.manifest))
-    // Bound to a local: `report` is a public property of a class in another module now
-    // (`:bundle-format`), so the compiler can't smart-cast the null check across the boundary.
+    // Local so the cross-module property can be smart-cast.
     val report = meta.report
     if (report != null) {
       println("--- report.json ---")
@@ -1048,8 +941,7 @@ private class EmbedSubcommand(
     val targetPath = target.canonicalFile.toPath()
     for ((rel, bytes) in out.files) {
       val resolved = targetPath.resolve(rel).normalize()
-      // Generated paths are all controlled (script / index / previews/<id>.png), but resolve+verify
-      // anyway so a stray id can never write outside the output dir.
+      // Paths are generated, but verify anyway so an id can't escape the output dir.
       if (!resolved.startsWith(targetPath)) {
         System.err.println("bundle embed: refusing to write outside $target: $rel")
         exitProcess(1)
@@ -1067,16 +959,10 @@ private class EmbedSubcommand(
   }
 
   /**
-   * `--in-bundle` mode: append the web embed's files into the bundle's own zip under
-   * [BUNDLE_WEB_DIR] (`web/`), leaving the leading PNG cover and every existing entry untouched.
-   * The directory is additive — an older reader / the renderer ignores it — so the same `.png` is
-   * still a valid polyglot *and* now carries a `web/index.html` someone can open straight out of
-   * the unzipped bundle. Re-embedding replaces any prior `web/` entries (idempotent). Writes in
-   * place by default; `-o <file.png>` writes an enriched copy instead.
-   *
-   * A URL input resolves to a delete-on-exit temp file, so rewriting it "in place" would vanish on
-   * exit — `-o` is required for downloaded bundles ([resolveInBundleTarget] returns null and we
-   * error rather than silently lose the result).
+   * `--in-bundle`: append the web embed under [BUNDLE_WEB_DIR] (`web/`) in the bundle's zip,
+   * keeping the cover and existing entries; readers ignore it, so the polyglot stays valid.
+   * Replaces any prior `web/` entries. In place by default, or `-o <file.png>` for a copy (required
+   * for URL inputs, which resolve to a temp file).
    */
   private fun embedInBundle(
     file: File,
@@ -1124,17 +1010,13 @@ private class RenderSubcommand(private val args: List<String>) {
     // Positional bundle path, skipping any valued flag (`--knob k=v`, `--output dir`) value.
     val path = CliFlags.firstPositional(args)
     val outDir = args.flagValue("--output") ?: args.flagValue("-o")
-    // Repeatable `--knob key=value` theme overrides (e.g. `theme.colors=scheme:…`); see
-    // [parseKnobOverrides] for the split rules.
+    // Repeatable `--knob key=value` theme overrides; see [parseKnobOverrides].
     val knobs: Map<String, PreviewOverrideValue> = parseKnobOverrides(args)
-    // `--res <dir>` supplies a PUBLISHED bundle's externalized resource pool (the content-addressed
-    // `bundle/res/<sha>` dir published beside the bundle on its design-artifacts branch), needed to
-    // daemon-render a bundle whose fonts were lifted out by `bundle externalize`.
+    // `--res <dir>`: a published bundle's externalized resource pool (`bundle/res/<sha>`), needed
+    // when `bundle externalize` lifted its fonts out.
     val resPool = args.flagValue("--res")?.let { File(it) }
-    // `--svg` also exports each re-themed preview's editable vector (`compose/figma-svg`) beside
-    // its
-    // PNG, so `bundle repack` can swap the baked `previews/<id>.figma.svg` too — the catalog ships
-    // both raster and vector per sticker. Only the daemon/`--knob` path can produce it.
+    // `--svg`: also export each re-themed preview's `compose/figma-svg` for `bundle repack`. Daemon
+    // / `--knob` path only.
     val withSvg = "--svg" in args
     if (path == null) {
       System.err.println(
@@ -1155,19 +1037,15 @@ private class RenderSubcommand(private val args: List<String>) {
         .absoluteFile
     target.mkdirs()
 
-    // Theme overrides can't ride the source subprocess renderer (BundleRenderer →
-    // DesktopRendererMain, positional args). Render via the DAEMON path instead — the same one
-    // `serve` uses for `/render?knob…` — which applies `PreviewOverrides.namedOverrides` to the
-    // PUBLISHED bundle with no source rebuild. See [renderBundleWithOverrides].
+    // Theme overrides need the daemon path (the one `serve` uses) rather than the source subprocess
+    // renderer. See [renderBundleWithOverrides].
     if (knobs.isNotEmpty()) {
       if (!renderBundleWithOverrides(file, target, knobs, resPool, withSvg, verbose)) exitProcess(1)
       return
     }
 
     if (withSvg) {
-      // --svg re-exports the vector from a themed daemon render; without --knob there's nothing to
-      // re-theme (the bundle already ships its baked figma.svg), so the stock render can't honour
-      // it.
+      // Without `--knob` there's nothing to re-theme, so `--svg` doesn't apply.
       System.err.println(
         "bundle render: --svg exports re-themed vectors and only applies with --knob; the stock " +
           "render already carries the bundle's baked figma.svg. Ignoring --svg."
@@ -1202,15 +1080,9 @@ private class RenderSubcommand(private val args: List<String>) {
 }
 
 /**
- * `bundle repack <bundle> --renders <dir> -o <out.png>` — write a copy of [bundleFile] with its
- * baked per-preview artifacts swapped for the re-renders in `--renders` (the output of `bundle
- * render --knob … [--svg]`): each `<id>.png` replaces `previews/<id>.png`, and each `<id>.svg`
- * replaces the editable vector `previews/<id>.figma.svg`. Pure zip surgery: every other entry
- * (previews.json, bundle.json, classes/, libs/, JSON sidecars) and the leading PNG cover are
- * preserved verbatim, so the result is a drop-in re-themed bundle the catalog exporter
- * (`generate-design-catalog.mjs --renders`) consumes exactly like the original. A render whose
- * filename matches no baked slot is skipped (reported), so a partial re-render repacks what it
- * produced.
+ * `bundle repack <bundle> --renders <dir> -o <out.png>`: copy [bundleFile] with each `<id>.png` /
+ * `<id>.svg` from `--renders` replacing `previews/<id>.png` / `previews/<id>.figma.svg`. Everything
+ * else is preserved verbatim. Renders matching no baked slot are skipped and reported.
  */
 private class RepackSubcommand(private val args: List<String>) {
   private val verbose: Boolean = "--verbose" in args || "-v" in args
@@ -1256,8 +1128,8 @@ private class RepackSubcommand(private val args: List<String>) {
 }
 
 /**
- * Result of [repackRethemedPreviews]: how many baked raster [png] and vector [svg] slots were
- * swapped, and the render filenames that matched no baked preview slot. [repacked] is the total.
+ * Result of [repackRethemedPreviews]: swapped [png] and [svg] slot counts, and render filenames
+ * that matched no slot.
  */
 internal data class RepackOutcome(val png: Int, val svg: Int, val unmatched: List<String>) {
   val repacked: Int
@@ -1265,19 +1137,13 @@ internal data class RepackOutcome(val png: Int, val svg: Int, val unmatched: Lis
 }
 
 /**
- * Core of `bundle repack`: write [outFile] as a copy of [source] with its baked per-preview
- * artifacts replaced by the re-renders in [rendersDir] — a `<id>.png` swaps `previews/<id>.png`,
- * and a `<id>.svg` (from `bundle render --knob --svg`) swaps the editable vector
- * `previews/<id>.figma.svg`. Only top-level preview artifacts are swappable slots: nested
- * figma-raster crops (`previews/<id>.figma-raster/…`) and the JSON sidecars (semantics / layout /
- * overrides) are NOT re-themed here, so they stay verbatim, as does the leading PNG cover and every
- * other zip entry. The result is a drop-in re-themed bundle. Throws [IllegalStateException] if no
- * render matched a baked slot.
+ * Core of `bundle repack`: copy [source] to [outFile], swapping top-level `previews/<id>.png` and
+ * `previews/<id>.figma.svg` for the re-renders in [rendersDir]. Nested raster crops, JSON sidecars
+ * and the cover stay verbatim. Throws [IllegalStateException] if nothing matched.
  */
 internal fun repackRethemedPreviews(source: File, rendersDir: File, outFile: File): RepackOutcome {
-  // Top-level baked artifacts we can swap: the raster `previews/<id>.png` and its vector sibling
-  // `previews/<id>.figma.svg`. A path with a further `/` after the previews/ prefix is a nested
-  // figma-raster crop, not a swap target.
+  // Only top-level `previews/<id>.png` / `.figma.svg` are swap targets; deeper paths are raster
+  // crops.
   val baked =
     zipEntryNames(BundleReader.extractZipBytes(source))
       .filter {
@@ -1313,27 +1179,17 @@ internal fun repackRethemedPreviews(source: File, rendersDir: File, outFile: Fil
       "nothing to repack"
   }
   outFile.parentFile?.mkdirs()
-  // Copy the whole polyglot (leading PNG cover + every zip entry) then swap the baked previews in
-  // place; the cover thumbnail stays the source's, the re-themed pixels live in the zip.
+  // Copy the whole polyglot, then swap in place; the cover stays the source's.
   source.copyTo(outFile, overwrite = true)
   injectRawZipEntries(outFile, entries)
   return RepackOutcome(png, svg, unmatched)
 }
 
 /**
- * `bundle merge <base.png> <shard.png>… -o <out.png>` — union the per-preview artifacts of several
- * bundles that were packed from the SAME module and commit but with disjoint render selections,
- * into one bundle carrying every shard's pixels.
- *
- * This is the merge step of a sharded CI render: N jobs each run `bundle pack --exclude-preview-id
- * <everything-not-mine>`, so each emits a structurally identical bundle whose `previews.json` lists
- * every preview and whose `previews/` directory holds only its own partition. Merging them yields
- * exactly the bundle one serial render would have produced.
- *
- * Deliberately NOT `bundle repack`: repack swaps re-renders into slots the target already has and
- * only handles `previews/<id>.png` + `previews/<id>.figma.svg`, so a shard's previews would every
- * one of them be "unmatched" (the base has no slot) and its `.semantics.json` sidecar would be
- * dropped — which the design-catalog completeness gate fails on.
+ * `bundle merge <base.png> <shard.png>… -o <out.png>`: union the per-preview artifacts of bundles
+ * packed from the same module and commit with disjoint render selections — the merge step of a
+ * sharded CI render. Not `repack`, which only swaps existing slots and would drop the shards'
+ * sidecars.
  */
 private class MergeSubcommand(private val args: List<String>) {
   private val verbose: Boolean = "--verbose" in args || "-v" in args
@@ -1367,8 +1223,7 @@ private class MergeSubcommand(private val args: List<String>) {
         "(${outcome.entries} entries) → ${outFile.path}"
     )
     if (outcome.overlapping.isNotEmpty()) {
-      // Disjoint partitions are the contract; an overlap means the partition and the exclusion list
-      // disagree, which costs render time twice and silently picks a winner. Say so.
+      // Partitions should be disjoint; an overlap wastes render time and silently picks a winner.
       System.err.println(
         "  ${outcome.overlapping.size} preview(s) were baked by more than one shard — " +
           "the base's copy wins; the partition is not disjoint"
@@ -1379,36 +1234,22 @@ private class MergeSubcommand(private val args: List<String>) {
 }
 
 /**
- * Result of [mergeShardBundles]: how many preview ids gained a baked raster from a shard
- * ([previews]), how many zip [entries] were copied in total (rasters plus every sidecar), and the
- * ids more than one bundle had baked ([overlapping] — the base's copy wins).
+ * Result of [mergeShardBundles]: previews that gained a raster from a shard, total entries copied,
+ * and ids baked by more than one bundle (the base's copy wins).
  */
 internal data class MergeOutcome(val previews: Int, val entries: Int, val overlapping: List<String>)
 
 /**
- * Zip-entry prefixes that hold PER-PREVIEW render output, and are therefore what a shard
- * contributes. Everything else — `bundle.json`, `previews.json`, `classes/app.jar`, `libs/`,
- * `android/`, the leading PNG cover — is identical across shards by construction (same module, same
- * commit, same classpath; only the render selection differs) and is taken from the base verbatim.
- * That is also the answer to "does the live classpath survive the merge": it is never merged, it is
- * inherited, so `publish-live-bundle` needs no designated shard.
+ * Zip-entry prefixes holding per-preview render output, i.e. what a shard contributes. Everything
+ * else (manifests, classes, libs, cover) is identical across shards and inherited from the base.
  */
 private val MERGEABLE_SHARD_PREFIXES = listOf("$BUNDLE_PREVIEWS_DIR/", "ir/", "extensions/")
 
 /**
- * Core of `bundle merge`: write [outFile] as a copy of [base] with every per-preview artifact the
- * [shards] carry and [base] lacks added to its zip — the baked `previews/<id>.png`, its
- * `.semantics.json` / `.layout.json` / `.fonts.json` / `.figma.svg` / `.catalog.json` /
- * `.overrides.json` sidecars, the nested `previews/<id>.figma-raster/…` crops, the `ir/<id>.rc`
- * documents and the `extensions/<id>.json` data reports.
- *
- * Base-wins on collision, and earlier shards win over later ones, so the result is deterministic in
- * the order the shards are passed. Throws [IllegalArgumentException] if any input is not a bundle.
- *
- * Streams each shard's zip and retains only the entries it contributes, so the shared re-render
- * payload (`classes/app.jar` + `libs/`, hundreds of MB and identical in every shard) is read past
- * rather than held: peak memory is the base bundle plus the merged preview artifacts, not the sum
- * of the shards.
+ * Core of `bundle merge`: copy [base] to [outFile] and add every per-preview artifact the [shards]
+ * carry and the base lacks (rasters, sidecars, raster crops, `ir/` documents, `extensions/`
+ * reports). Base wins, then earlier shards. Throws [IllegalArgumentException] for a non-bundle.
+ * Streams shards so their large shared classpath payload is never held in memory.
  */
 internal fun mergeShardBundles(base: File, shards: List<File>, outFile: File): MergeOutcome {
   val baseNames = zipEntryNames(BundleReader.extractZipBytes(base)).toSet()
@@ -1433,8 +1274,7 @@ internal fun mergeShardBundles(base: File, shards: List<File>, outFile: File): M
     }
   }
   outFile.parentFile?.mkdirs()
-  // The base IS the merged bundle plus the other shards' pixels: same manifests, same classpath,
-  // same cover. Copy it whole, then inject what the shards rendered.
+  // The base already has the manifests, classpath and cover; inject the shards' renders.
   base.copyTo(outFile, overwrite = true)
   injectRawZipEntries(outFile, add)
   return MergeOutcome(
@@ -1445,10 +1285,8 @@ internal fun mergeShardBundles(base: File, shards: List<File>, outFile: File): M
 }
 
 /**
- * The preview id [name] is the top-level baked raster of (`previews/<id>.png`), or null for any
- * other entry — a sidecar, a nested `figma-raster` crop, an `ir/` document. Used to count and to
- * report overlap in whole previews rather than in zip entries, which is what a partition is
- * expressed in.
+ * The preview id of a top-level baked raster entry (`previews/<id>.png`), or null for anything
+ * else.
  */
 private fun bakedPreviewId(name: String): String? {
   if (!name.startsWith("$BUNDLE_PREVIEWS_DIR/") || !name.endsWith(".png")) return null
@@ -1469,10 +1307,9 @@ internal fun zipEntryNames(zip: ByteArray): List<String> = buildList {
 }
 
 /**
- * Parse repeatable `--knob key=value` flags into theme overrides. Each entry is split on its FIRST
- * `=` so a serialized value keeps its own `=`/`,`/`;` (e.g. `theme.colors=scheme:l=primary:…`).
- * Entries with no `=`, or a blank key, are dropped. Theme knobs are all string-valued, so every
- * value becomes a [PreviewOverrideValue.StringValue]. A repeated key takes its last value.
+ * Parse repeatable `--knob key=value` into string theme overrides, splitting on the first `=` so
+ * values keep their own `=`/`,`/`;`. Entries without `=` or with a blank key are dropped; the last
+ * repeated key wins.
  */
 internal fun parseKnobOverrides(args: List<String>): Map<String, PreviewOverrideValue> =
   args
@@ -1486,14 +1323,9 @@ internal fun parseKnobOverrides(args: List<String>): Map<String, PreviewOverride
     .toMap()
 
 /**
- * Render every preview of [bundleFile] to a PNG in [outDir] under theme [overrides] — the daemon
- * path `serve` uses for `/render?knob…`, wired to write files. Reuses
- * [ServeBundleDaemon.materialize]
- * + [ServeRenderHost], so a PUBLISHED bundle re-skins with NO source rebuild: the override rides
- *   `PreviewOverrides.namedOverrides` → the daemon's connector extension →
- *   `PreviewOverrideController`. A local `--bundle` path is rendered as-is (same trust posture as
- *   `bundle daemon`); the daemon just runs the bundle the operator handed it. Returns true iff
- *   every preview rendered.
+ * Render every preview of [bundleFile] to [outDir] under theme [overrides] via the daemon path
+ * `serve` uses ([ServeBundleDaemon.materialize] + [ServeRenderHost]), so published bundles re-skin
+ * without a rebuild. Returns true iff every preview rendered.
  */
 private fun renderBundleWithOverrides(
   bundleFile: File,
@@ -1505,8 +1337,7 @@ private fun renderBundleWithOverrides(
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
   val backend = readBundleBackendForRender(bundleFile) ?: return false
-  // Both sidecars come from the compose-preview-daemon release on first use; the Android one is
-  // too large to ship in the CLI tarball, so a clean install has neither until this runs.
+  // Sidecars are fetched from the compose-preview-daemon release on first use.
   try {
     when (backend) {
       "desktop" -> {
@@ -1519,15 +1350,10 @@ private fun renderBundleWithOverrides(
     System.err.println("bundle render: ${e.message}")
     return false
   }
-  // Materialize the daemon workspace in a private temp dir — NOT under outDir. `materialize`
-  // extracts the bundle's classes/libs/manifests here, which are implementation artifacts; the
-  // command's contract is that outDir holds only the rendered PNGs, so a `.daemon` tree beside them
-  // would leak bytecode/resources into whatever the caller publishes. Torn down once we're done.
+  // Private temp dir, not under outDir: outDir must contain only rendered PNGs.
   val workspace = Files.createTempDirectory("bundle-render-daemon").toFile()
   try {
-    // A PUBLISHED bundle externalizes its fonts to a content-addressed pool; rehydrate them (from
-    // --res) onto the daemon classpath at their original resource paths, or the render fails
-    // "catalog font resource missing". Fail-closed — a font missing would silently corrupt output.
+    // Rehydrate externalized fonts from `--res`; fail closed, since a missing font corrupts output.
     val extResourceDir =
       try {
         resolveExternalResources(bundleFile, resPoolDir, File(workspace, "extres"))
@@ -1598,14 +1424,9 @@ internal fun readBundleBackendForRender(
   }
 
 /**
- * Rehydrate [bundleFile]'s externalized resources (fonts lifted out by `bundle externalize`,
- * recorded in the manifest's `externalResources` as path+sha256+size) from the local
- * content-addressed [pool] (`bundle/res/<sha>`, published beside the bundle on its design-artifacts
- * branch) into [destDir], each materialized at its recorded classpath path so a daemon render
- * resolves `/fonts/…` exactly as it did with the resource inline. Returns [destDir] when the bundle
- * externalized anything, or `null` when it is self-contained (no `--res` needed). Throws
- * (fail-closed) if the bundle externalized resources but no [pool] was given, or a declared
- * resource is missing / fails its sha256+size check.
+ * Rehydrate [bundleFile]'s externalized resources from the content-addressed [pool] into [destDir]
+ * at their recorded classpath paths. Returns [destDir], or null for a self-contained bundle. Throws
+ * if resources are needed but [pool] is missing or an entry fails verification.
  */
 private fun resolveExternalResources(bundleFile: File, pool: File?, destDir: File): File? {
   val resources = runCatching {
@@ -1616,11 +1437,9 @@ private fun resolveExternalResources(bundleFile: File, pool: File?, destDir: Fil
 }
 
 /**
- * Core of [resolveExternalResources], split out so the rehydration is unit-testable without a real
- * bundle: given the manifest's [resources], copy each from the [pool] (keyed by sha256) to its
- * recorded path under [destDir], verifying size + sha256 and rejecting path traversal. Empty
- * [resources] ⇒ `null` (self-contained). A non-empty list with a null/absent [pool], a missing pool
- * entry, or any integrity failure throws [IllegalStateException].
+ * Core of [resolveExternalResources]: copy each of [resources] from [pool] (by sha256) to its
+ * recorded path under [destDir], verifying size + sha256 and rejecting traversal. Empty → null; any
+ * failure throws [IllegalStateException].
  */
 internal fun materializeExternalResources(
   resources: List<BundleReader.ExternalResource>,
@@ -1669,19 +1488,11 @@ private fun resSha256Hex(bytes: ByteArray): String =
   }
 
 /**
- * Render every preview [host] exposes to `<outDir>/<sanitized id>.png` under [seed], returning the
- * list of human-readable failure descriptions (empty iff every preview rendered). The theme [seed]
- * — `PreviewOverrides.namedOverrides` — is applied identically to every preview. Factored out of
- * [renderBundleWithOverrides] so the render-and-write loop is unit-testable against a
- * [ServeRenderHost] built over a fake [ee.schimke.composeai.render.session.RenderSession] — no
- * daemon subprocess, no native renderer. Does not close [host]; the caller owns its lifecycle.
+ * Render every preview [host] exposes to `<outDir>/<sanitized id>.png` under [seed], returning
+ * failure descriptions (empty iff all rendered). Does not close [host].
  *
- * When [withSvg] is set and the host can export vectors ([ServeRenderHost.hasSvgExport]), each
- * successfully-rendered preview also writes its re-themed `compose/figma-svg` to
- * `<outDir>/<sanitized id>.svg` — the editable vector `bundle repack` swaps into the baked
- * `previews/<id>.figma.svg`. SVG is a **best-effort companion**: the PNG re-theme is the contract,
- * so a host with no figma-svg lane (a single note is logged) or a per-preview SVG failure (logged,
- * not fatal) leaves the PNG output intact and does NOT add to the returned failures.
+ * With [withSvg] and [ServeRenderHost.hasSvgExport], also writes `<sanitized id>.svg`. SVG is
+ * best-effort: its failures are logged and never added to the returned failures.
  */
 internal fun renderPreviewsToDir(
   host: ServeRenderHost,
@@ -1717,8 +1528,7 @@ internal fun renderPreviewsToDir(
       }
       is RenderOutcome.Failed -> failures += "${preview.id} (${outcome.reason})"
       RenderOutcome.NotFound -> failures += "${preview.id} (not found)"
-      // This CLI renders previews sequentially on one thread, so the per-daemon lock is never
-      // contended — Busy shouldn't occur — but surface it as a failure rather than skip silently.
+      // Sequential, so Busy shouldn't happen; report it rather than skip.
       RenderOutcome.Busy -> failures += "${preview.id} (daemon busy)"
     }
   }
@@ -1737,12 +1547,8 @@ internal fun sanitizeBundleRenderName(id: String): String =
   }
 
 /**
- * Escape a preview id for the `-PbundlePreviewIds=` Gradle property: `,` and `\` are
- * backslash-escaped so an id carrying a `@Preview(name = "Phone, dark")` suffix survives the
- * comma-separated transport (an unescaped comma would otherwise split into two ids and the bundle
- * task would fail with "preview id not found"). Mirrors `BundlePreviewIds.encode` in
- * `:gradle-plugin` — the CLI can't depend on that module, same reason [BundleReader] mirrors the
- * on-disk schema. The plugin-side `BundlePreviewIds.parse` is the matching decoder.
+ * Escape `,` and `\` for the comma-separated `-PbundlePreviewIds=` property, so ids like `Phone,
+ * dark` survive. Mirrors `BundlePreviewIds.encode` in `:gradle-plugin`.
  */
 private fun encodePreviewId(id: String): String =
   buildString(id.length) {
@@ -1753,13 +1559,8 @@ private fun encodePreviewId(id: String): String =
   }
 
 /**
- * Why a `--with-semantics` pack must not publish, or null when it may.
- *
- * A figma-svg export that could not name a font family the render drew exports that preview's text
- * as missing-glyph boxes. Nothing downstream distinguishes that from a deliberate rendering, which
- * is how a whole sheet of boxes reached a live catalog and was found days later by eye — so the
- * pack refuses by default and names both the previews and the sidecar that says which face was
- * lost. [allowed] is the deliberate override.
+ * Why a `--with-semantics` pack must not publish, or null when it may: figma-svg exports that lost
+ * a font family render as missing-glyph boxes. [allowed] is the explicit override.
  */
 internal fun lostFontFamilyRefusal(
   degradedPreviewIds: List<String>,

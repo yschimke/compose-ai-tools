@@ -64,20 +64,13 @@ import ee.schimke.composeai.preview.slots.PreviewSlotConstraints
 import ee.schimke.composeai.preview.slots.PreviewSlotScope
 import ee.schimke.composeai.preview.slots.PreviewSlotSizing
 
-// ---------------------------------------------------------------------------
 // Buttons — the Wear M3 emphasis levels plus the screen-hugging EdgeButton.
-// ---------------------------------------------------------------------------
 
-// The `disabled` state rides this same function via `@OverrideVariant` (seeding the `enabled` knob)
-// instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
-// that folds under this sticker. `pressed` / `focused` stay separate functions below: they are
-// driven by `@FocusedPreview`, a per-function capture annotation rather than a `previewOverride*`
-// knob — `focused` through real focus traversal, and `pressed` through the focused component's
-// real input path.
-// The button family carries no state of its own, so each click is made
-// visible by [wearCounted] tallying into the label; the baked capture is unchanged. The `disabled`
-// variant is the deliberate exception — it stays inert, because that's the state it documents, and
-// `enabled = false` means the counter could never move anyway.
+// `disabled` rides this function via `@OverrideVariant` (seeding `enabled`), folding under this
+// sticker as a `_VARIANT_disabled` capture. `pressed` / `focused` are separate functions below,
+// since `@FocusedPreview` is a per-function capture annotation driven by real focus and input.
+// Clicks are made visible by [wearCounted] tallying into the label; the disabled variant stays
+// inert.
 @CatalogComponent(id = "Button/Filled", group = "Buttons")
 @CatalogWearModes
 @OverrideVariant(name = "disabled", booleans = ["enabled=false"])
@@ -115,9 +108,8 @@ fun ChildButtonSticker() = WearSticker {
   ChildButton(onClick = onClick) { Text(label) }
 }
 
-// A workout history the EdgeButton sticker scrolls through. Long enough to
-// overflow the viewport by a few screens so, scrolled to the end, the list fills
-// the space above the edge button.
+// A workout history long enough that, scrolled to the end, it fills the space above the edge
+// button.
 private val edgeButtonHistory =
   listOf(
     R.string.title_morning_run to "5.2 km · 28 min",
@@ -134,19 +126,10 @@ private val edgeButtonHistory =
     R.string.activity_row to "2.0 km · 9 min",
   )
 
-// EdgeButton hugs the bottom edge of the round screen via the
-// ScreenScaffold(edgeButton = …) slot — its curved shape *is* that placement, so
-// it's a full-screen component: placed via [FullScreenWear] + a real
-// ScreenScaffold + TransformingLazyColumn with the Wear M3 scaling transformation
-// (SurfaceTransformation), mirroring samples/wear's ActivityListScreen so the
-// button measures at its resting size, and captured at every size breakpoint.
-//
-// ScreenScaffold reveals the edge button from its scroll state: at the resting
-// top it's collapsed, expanding only once the list settles at the bottom. A
-// static capture freezes the hidden initial frame (the renderer pauses the
-// clock), so the sticker uses @ScrollingPreview(END) — scroll the overflowing
-// list to the end (the renderer settles post-scroll animations, so the EdgeButton
-// reveal lands at rest) and capture the single settled frame.
+// EdgeButton's curved shape is its placement in `ScreenScaffold(edgeButton = …)`, so it is a
+// full-screen component with a real ScreenScaffold + scaling TransformingLazyColumn, captured at
+// every breakpoint. ScreenScaffold only reveals the button once the list settles at the bottom, so
+// the sticker uses @ScrollingPreview(END) to capture the settled, revealed frame.
 @CatalogComponent(
   id = "EdgeButton",
   group = "Buttons",
@@ -194,11 +177,7 @@ fun EdgeButtonSticker() = FullScreenWear {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
-// the curved top/bottom edges via the SurfaceTransformation, the signature Wear
-// list treatment. Full-screen, captured at every size breakpoint.
-// ---------------------------------------------------------------------------
+// Lists — the Wear M3 scaling TransformingLazyColumn: items scale and fade toward the curved edges.
 
 private val scalingListItems =
   listOf(
@@ -249,19 +228,8 @@ fun ScalingListSticker() = FullScreenWear {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Scaffold templates — full-screen, pre-built screen skeletons an app copies
-// whole, captured at every breakpoint. Like every other full-screen capture they
-// carry the curved TimeText status strip, supplied once by [WearScaffoldTemplate]
-// (an alias of [FullScreenWear]) and frozen at "10:10" so the weekly
-// design-artifacts bundle doesn't churn on the live system time.
-//
-// Two variants mirror the Wear status-strip archetypes: the base list screen and
-// a horizontal pager with a page indicator. A third, `Template/EdgeButton`, was
-// dropped in the feature-scoping pass — it was a second full-screen
-// `@ScrollingPreview(END)` × breakpoint capture, which `EdgeButtonSticker`
-// already carries, and one of the two most expensive renders on the sheet.
-// ---------------------------------------------------------------------------
+// Scaffold templates — full-screen screen skeletons, captured at every breakpoint. The TimeText
+// strip comes from [WearScaffoldTemplate] and is frozen at "10:10" so the bundle doesn't churn.
 
 private val templateListItems =
   listOf(
@@ -271,8 +239,7 @@ private val templateListItems =
     R.string.activity_steps to "6,482",
   )
 
-// Base template: the canonical Wear list screen — TimeText status strip at the
-// curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
+// The canonical Wear list screen: TimeText, a ListHeader and a scaling column of TitleCards.
 @CatalogComponent(
   id = "Template/TimeText",
   group = "Scaffold templates",
@@ -296,20 +263,10 @@ fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
           modifier = Modifier.transformedHeight(this, spec),
           transformation = SurfaceTransformation(spec),
         ) {
-          // The slot wraps the header's **content**, not the `ListHeader` itself. Wrapping the
-          // surface put a plain `Box` between the `TransformingLazyColumn` item and the composable
-          // carrying `transformedHeight` / `SurfaceTransformation`, and the header stopped filling
-          // the item width — the label went from centred to left-aligned and every row below it
-          // shifted (~31% of pixels on the large round breakpoint). Rendering it caught that;
-          // reading the diff did not.
-          //
-          // Slotting the content is also the truer target: a builder dropping a component "into
-          // the header" means replacing what the header shows, not the Wear surface that owns the
-          // list's scaling transformation.
-          //
-          // `Lazy` is declared explicitly because a `TransformingLazyColumn` item body is not
-          // `LazyItemScope`, so the scope-receiver overload does not apply — it tells a builder the
-          // child lands in a scrolling container.
+          // The slot wraps the header's content, not the `ListHeader`: wrapping the surface puts a
+          // `Box` between the list item and the composable carrying `SurfaceTransformation`, and
+          // the header stops filling the item width. `Lazy` is explicit because a
+          // `TransformingLazyColumn` item body is not `LazyItemScope`.
           PreviewSlot(
             name = "header",
             scope = PreviewSlotScope.Lazy,
@@ -337,9 +294,7 @@ fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
   }
 }
 
-// Page-indicator template: a horizontal pager with the Wear M3
-// HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
-// the indicator reads as a real multi-page carousel, under the TimeText strip.
+// A horizontal pager with HorizontalPageIndicator on the bottom curve, seeded on the middle page.
 @CatalogComponent(
   id = "Template/PageIndicator",
   group = "Scaffold templates",
@@ -367,19 +322,13 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Selection controls.
-// ---------------------------------------------------------------------------
 
-// The off state rides this function via `@OverrideVariant` (seeding `checked = false`) instead of a
-// duplicated `SwitchButtonOff` — the render emits a `_VARIANT_off` capture that folds under this
-// sticker as the off state.
+// The off state rides this function via `@OverrideVariant` (seeding `checked = false`).
 //
-// The interaction capture rides the same function too, mirroring the mobile sheet's `SwitchOn`:
-// `targets = [0, 0]` is how a toggle is spelled — one tap off, one tap back on. It is also this
-// repo's standing regression net for `@InteractionPreview` on the Robolectric backend (issue
-// #4215): this is an Android module, CI renders every module, and if the backend stops honouring
-// the script the `.apng` stops being written and the missing-renders gate says so.
+// The interaction capture rides it too: `targets = [0, 0]` taps off and back on. This is also the
+// regression net for `@InteractionPreview` on the Robolectric backend — if the backend stops
+// honouring the script, the `.apng` goes missing and the missing-renders gate fails.
 @CatalogComponent(
   id = "SwitchButton/On",
   group = "Selection",
@@ -403,29 +352,22 @@ fun SwitchButtonOn() = WearSticker {
   )
 }
 
-// ---------------------------------------------------------------------------
 // Containment.
-// ---------------------------------------------------------------------------
 
-// The card content regions are wrapped in `PreviewSlot(name)` markers: a no-op in a normal render
-// (the label draws unchanged, tagged `dp-slot:<name>`), swapping to a labelled placeholder under
-// `LocalSlotMode`. Each slot is `fillMaxWidth` so its captured `dp-slot:*` bounds are the card's
-// full fillable content width — the region a structured-screen fill targets — not just the label
-// box. Height wraps the content, and Wear card/title content is already start-aligned and
-// full-width, so the baked render is unchanged.
+// Card content regions are wrapped in `PreviewSlot(name)` markers: a no-op in a normal render, a
+// labelled placeholder under `LocalSlotMode`. Each slot is `fillMaxWidth` so its `dp-slot:*` bounds
+// are the card's full content width.
 @CatalogComponent(id = "Card", group = "Containment")
 @CatalogWearModes
 @Composable
 fun CardSticker() = WearSticker {
-  // A Wear card is a clickable surface (`onClick` is required, unlike M3's plain `Card`), so it
-  // gets the same click tally the buttons do rather than a dead handler.
+  // A Wear card's `onClick` is required, so it gets the same click tally as the buttons.
   val (label, onClick) =
     wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
   Card(onClick = onClick) { PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) } }
 }
 
-// The outlined card variant (`OutlinedCard`) — the Wear parallel of remote-m3's `Card/Outlined`.
-// Same "Card" label as the filled `Card` above; only the outlined-vs-filled treatment differs.
+// The outlined card variant; only the outlined-vs-filled treatment differs from `Card`.
 @CatalogComponent(
   id = "Card/Outlined",
   group = "Containment",
@@ -457,40 +399,28 @@ fun TitleCardSticker() = WearSticker {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Communication.
-// ---------------------------------------------------------------------------
 
 @CatalogComponent(id = "Progress/Circular", group = "Communication")
 @CatalogWearModes
 @Composable
 fun CircularProgressSticker() =
-  // Determinate at a fixed 66% (matching the remote `Progress/Circular` parallel) rather than the
-  // animated indeterminate overload, so the static capture is deterministic and the pair lines up.
+  // Determinate at a fixed 66% so the static capture is deterministic.
   WearSticker { CircularProgressIndicator(progress = { 0.66f }, modifier = Modifier.size(72.dp)) }
 
-// The **indeterminate** counterpart to [CircularProgressSticker]: the animated Wear M3 progress
-// ring — the no-`progress` overload — sweeping continuously rather than sitting at a fixed value.
-// In the live interactive stream the held composition's clock advances by the wall-clock delta, so
-// the sweep actually animates (`CircularProgressIndicator`'s indeterminate mode is a
-// `rememberInfiniteTransition`); a static capture freezes it at the paused-clock frame, which is
-// deterministic because the renderer parks infinite animations at a fixed advance (see AGENTS.md —
-// "indeterminate CircularProgressIndicator" is a called-out case). Sized to match the determinate
-// sticker so the pair frames alike.
+// The indeterminate counterpart to [CircularProgressSticker]. It animates in the live interactive
+// stream; a static capture is deterministic because the renderer parks infinite animations at a
+// fixed advance.
 @CatalogComponent(
   id = "Progress/Circular/Indeterminate",
   group = "Communication",
   caption =
     "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; " +
       "animates in the live preview.",
-  // Claims [IndeterminateCircularProgressGif]'s recording for this component's Motion lane. The
-  // annotation cannot ride this function: `@CatalogWearModes` fans it out and the sticker is the
-  // determinate-shaped, cropped capture, while a GIF needs one pinned canvas for every frame. It is
-  // also this repo's standing end-to-end net for `motionPreview` itself — a recording that no
-  // component claims publishes NOWHERE (it renders, the join has nothing to fold it onto, and the
-  // catalog ships with no Motion section), which is what silently cost wear-m3-catalog all five of
-  // its captures. If the field stops being carried, `motion/` empties here and the export's
-  // unclaimed-motion warning names this function.
+  // Claims [IndeterminateCircularProgressGif] for this component's Motion lane (a GIF needs one
+  // pinned canvas, so the annotation can't sit on this fanned-out function). A recording no
+  // component claims is silently dropped from the catalog, so this is also the end-to-end net for
+  // `motionPreview`.
   motionPreview = "IndeterminateCircularProgressGif",
 )
 @CatalogWearModes
@@ -499,18 +429,10 @@ fun IndeterminateCircularProgressSticker() = WearSticker {
   CircularProgressIndicator(modifier = Modifier.size(72.dp))
 }
 
-// The same indeterminate ring captured as an **animated GIF** — the shareable, self-playing form of
-// the spinner (the static sticker above only moves in the live interactive lane).
-// `@AnimatedPreview`
-// drives the paused clock across the animation window and encodes `renders/<id>.gif`;
-// `showCurves = false` keeps it a screenshot-only GIF (no debug curve-plot panel), and the duration
-// auto-detects from the indeterminate `InfiniteTransition`'s iteration so the loop is seamless.
-// Standalone, not a `catalog.spec` component: the sticker-sheet join represents each component as a
-// static PNG, so a GIF-primary preview travels in the bundle as `previews/<id>.gif` (same treatment
-// as `CardScalingScrollGif`) rather than becoming a grid sticker. Standalone does NOT mean
-// unpublished, though — that was the trap. Motion is collected per component, so a recording no
-// component names is dropped at the join in silence; [IndeterminateCircularProgressSticker] claims
-// this one with `motionPreview`, which is what puts it under `motion/` on the delivery branch.
+// The same ring as an animated GIF. `@AnimatedPreview` drives the paused clock and encodes
+// `renders/<id>.gif`; `showCurves = false` omits the curve panel, and the duration auto-detects
+// from the `InfiniteTransition` so the loop is seamless. Not a catalog component itself: it is
+// published under `motion/` because [IndeterminateCircularProgressSticker] claims it.
 @Preview(showBackground = false)
 @AnimatedPreview(showCurves = false)
 @Composable
@@ -518,9 +440,7 @@ fun IndeterminateCircularProgressGif() = WearSticker {
   CircularProgressIndicator(modifier = Modifier.size(72.dp))
 }
 
-// ---------------------------------------------------------------------------
-// Text options — exercises the maxLines / overflow product on a round screen.
-// ---------------------------------------------------------------------------
+// Text options — exercises maxLines / overflow on a round screen.
 
 @CatalogComponent(
   id = "Text/MaxLines-Truncated",
@@ -538,53 +458,19 @@ fun TextMaxLinesTruncated() = WearSticker {
   )
 }
 
-// ---------------------------------------------------------------------------
-// States — interaction (pressed / focused; focus matters on Wear for rotary /
-// D-pad), disabled, and toggle off↔on.
+// States — pressed and focused (focus matters on Wear for rotary / D-pad).
 //
-// Both stickers are driven by REAL input, not by a forged interaction (issue
-// #3672). They used to seed a held Press / Focus interaction onto a
-// `MutableInteractionSource` from a `LaunchedEffect`, which paints a state layer
-// without anything actually being focused or pressed: the focus system doesn't
-// own the node, no `Unfocus` / `Release` ever pairs the emission, and any
-// component whose indication reads the focus system rather than the interaction
-// source captures identically to an untouched one.
+// Both are driven by real input via `@FocusedPreview`, not a forged interaction on a
+// `MutableInteractionSource` (which paints a state layer without the focus system owning the node).
+// On Robolectric it runs a real `FocusManager.moveFocus` traversal in Keyboard input mode. `indices
+// = [0]` is the single Button; a single capture keeps the plain `renders/<id>.png` name.
 //
-// `@FocusedPreview` is the repo's mechanism for this and it works here because
-// this catalog renders on Robolectric: it runs a real `FocusManager.moveFocus`
-// traversal and flips `LocalInputModeManager` to Keyboard mode — which Robolectric
-// needs, since its host environment is permanently Touch and `Modifier.clickable`
-// registers its focusable as `Focusability.SystemDefined` (refused while in touch
-// mode). `indices = [0]` is the single Button in either sticker; a single-capture
-// `@FocusedPreview` keeps the plain
-// `renders/<id>.png` filename (see `emitStaticCross` in PreviewDiscovery.kt), so
-// the design-artifacts fold by function name is untouched.
+// `pressed = true` takes the path where the renderer settles the platform `RippleDrawable` (Wear
+// M3's only press affordance); a hand-seeded press never reaches the PNG.
+// `WearFocusedPressPixelTest` pins that pressed differs from both focused and resting.
 //
-// The pressed sticker adds `pressed = true` and does NOT seed its own
-// `MutableInteractionSource`. Seeding one is what it used to do, and the capture
-// it produced was pixel-identical to the resting `FilledButton` — the reason is
-// the renderer, not the emission: Wear M3's only press affordance is
-// `material-ripple`, which on Android is a platform `RippleDrawable` rather than
-// a Compose animation, and `RobolectricRenderTest` settles that drawable ONLY for
-// a `focus.pressed` capture. A hand-seeded press never gets that settle, so it
-// never reaches the PNG. `@FocusedPreview(pressed = true)` takes the path that
-// does, and is also what a real Wear press looks like: focus arrives first over
-// rotary / D-pad, then the press lands on the focused component.
-//
-// Making that settle actually settle is what made this specimen trustworthy — see
-// `settlePressedRipple` in `RobolectricRenderTest`. From Android 12 the platform
-// ripple animates through `RenderNodeAnimator`, i.e. on a RenderThread Robolectric
-// does not have, so it never advanced here at all and the published pixels came
-// down to how many previews had rendered ahead of this one in the same JVM: a full
-// press early in a shard, no press at all behind the whole catalog. The renderer
-// now forces the ripple's software path and steps it on the looper clock, so the
-// same container fill renders at any shard count. `WearFocusedPressPixelTest` pins
-// the result — the pressed capture must differ from BOTH the focused and the
-// resting one.
-//
-// The function names `ButtonPressed` / `ButtonFocused` and the `@CatalogVariant`
-// ids are the join into `catalog.spec.json` — do not rename either.
-// ---------------------------------------------------------------------------
+// The function names and `@CatalogVariant` ids are the join into `catalog.spec.json` — don't
+// rename.
 
 @CatalogVariant(
   of = "Button/Filled",
@@ -614,41 +500,17 @@ fun ButtonFocused() = WearSticker {
   Button(onClick = onClick) { Text(label) }
 }
 
-// (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
-// their primary function via `@OverrideVariant`, seeding the `enabled` / `checked` knob.)
+// This catalog is the Wear harness for preview-pipeline features, not an exhaustive Wear M3
+// inventory (that's wear-m3-catalog): `@CatalogWearModes`, `perBreakpoint` fan-out,
+// `@ScrollingPreview`, `@AnimatedPreview`, `@FocusedPreview`, the `@OverrideVariant` fold,
+// `PreviewSlot`, `@ThemeCatalog` + `themeProvider`, and the scaling captures in
+// `CardScalingPreview.kt`. The remote-m3 parallels below are no longer depended on elsewhere and
+// could be cut (confirm against a published `matches.html` first; see DESIGN_CATALOGS.md).
 
-// --- What this sheet deliberately does NOT carry -----------------------------
-//
-// This catalog is compose-ai-tools' Wear harness, not an exhaustive Wear Material 3 inventory —
-// that is what the wear-m3-catalog project will be. So the sheet is scoped to preview-pipeline
-// FEATURES, with one or two carriers each: `@CatalogWearModes`, `perBreakpoint` fan-out,
-// `@ScrollingPreview`, `@AnimatedPreview`, `@FocusedPreview` (pressed + focused), the
-// `@OverrideVariant` knob fold, `PreviewSlot`, `@ThemeCatalog` + `themeProvider`, and the
-// `TlcScalingHost` scaling captures in `CardScalingPreview.kt`.
-//
-// `Layout/List`, `Template/EdgeButton`, `CheckboxButton/Checked` and `ListHeader` were dropped on
-// exactly that test. The by-component redundancy that LOOKS cuttable — the four other button
-// emphasis levels, `IconButton`, `CompactButton`, `ButtonGroup`, `AppCard`, `TitleCard`,
-// `Card/Outlined`, `Icon`, `Typography`, `ColorScheme` — used to be load-bearing elsewhere:
-// the remote-m3 sheet declared `compareWith: "wear-m3"` and authored a `parallel` into each of
-// those ids, so deleting one silently unpaired a row on its published compare page.
-//
-// **That hold is released.** remote-m3 pairs against the wear-m3-catalog REFERENCE sheet now, and
-// since #4588 it does so from inside that repo. Nothing outside this module depends on these ids
-// any more, so they are cuttable by the feature rule above — a separate change, and one that
-// should confirm against a published `matches.html` first (see DESIGN_CATALOGS.md).
+// Parallels of the Remote Compose Material 3 catalog (IconButton, CompactButton, ButtonGroup,
+// AppCard, Icon and the theme specimens).
 
-// ---------------------------------------------------------------------------
-// Parallels of the Remote Compose Material 3 catalog. These mirror the extra
-// components the remote-m3 sheet carries (IconButton, CompactButton, ButtonGroup,
-// AppCard, Icon, and the theme specimens). They were what paired every remote sticker
-// with a real Wear M3 counterpart rather than a placeholder; remote-m3 pairs against
-// wear-m3-catalog now, so this block documents a pairing that has moved on.
-// ---------------------------------------------------------------------------
-
-// A simple five-point star shared by the icon stickers — the catalog doesn't pull
-// in material-icons, so it carries one hand-built vector. `Icon` re-tints it, so
-// the path fill here is a placeholder.
+// A hand-built star so the catalog doesn't need material-icons; `Icon` re-tints it.
 private val catalogIcon: ImageVector =
   ImageVector.Builder(
       name = "Star",
@@ -678,9 +540,7 @@ private val catalogIcon: ImageVector =
 @CatalogWearModes
 @Composable
 fun IconButtonSticker() = WearSticker {
-  // No label to tally into, so the icon button's click toggles a "favourited" reading instead:
-  // the star fills with the theme's primary. Untapped — every baked capture — it renders in the
-  // stock content colour exactly as before.
+  // No label to tally into, so a click toggles the star to the primary colour instead.
   val (favourite, onFavouriteChange) = wearChecked(false)
   IconButton(onClick = { onFavouriteChange(!favourite) }) {
     Icon(
@@ -741,8 +601,7 @@ fun AppCardSticker() = WearSticker {
 @Composable
 fun IconSticker() = WearSticker { Icon(catalogIcon, "Star", Modifier.size(48.dp)) }
 
-// Theme specimens — the Wear M3 type ramp and colour-scheme swatches read straight
-// from MaterialTheme, parallels of the remote-m3 theme stickers.
+// Theme specimens — the Wear M3 type ramp and colour-scheme swatches from MaterialTheme.
 @CatalogComponent(
   id = "Typography",
   group = "Theme",

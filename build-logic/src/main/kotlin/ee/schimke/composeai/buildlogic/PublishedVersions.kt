@@ -1,25 +1,15 @@
 package ee.schimke.composeai.buildlogic
 
 /**
- * Which version each coordinate carries on a release where only some modules publish.
- *
- * A pure function over the three inputs a release has — the tag's version, the set of modules that
- * are publishing, and the committed record of what everything last published at — so the two
- * callers cannot drift. `ComposeAiMavenPublishingPlugin` uses it to set `project.version`, which is
- * what a POM names its project dependencies at; `:bom` uses it to pin every constraint. If those
- * two ever disagreed the BOM would promise a set that the POMs contradict.
+ * Which version each coordinate carries on a release where only some modules publish. One pure
+ * function shared by `ComposeAiMavenPublishingPlugin` (`project.version`, which POMs name) and
+ * `:bom` (its constraints), so the two can't disagree.
  */
 object PublishedVersions {
   /**
-   * The version [artifactId] carries.
-   *
-   * [publishSet] is `null` when the release publishes everything — a `workflow_dispatch` recovery
-   * run, or any release before the plan script has run — in which case everything takes
-   * [tagVersion].
-   *
-   * A module outside the publish set takes the version it last published at. Not finding one is an
-   * error rather than a fallback to [tagVersion]: silently stamping the tag onto a module that is
-   * not being uploaded is what publishes a POM naming a coordinate that does not exist.
+   * The version [artifactId] carries: [tagVersion] if [publishSet] is null (publish everything) or
+   * contains it, otherwise its last published version. Not finding one is an error, never a
+   * fallback to the tag, which would publish a POM naming a nonexistent coordinate.
    */
   fun resolve(
     artifactId: String,
@@ -38,10 +28,8 @@ object PublishedVersions {
   }
 
   /**
-   * The version the manifest records for [artifactId], or null.
-   *
-   * A regex rather than a JSON parser: build-logic carries no JSON dependency, and the file is
-   * written by this repository's own release job to a shape `PublishedVersionsTest` pins.
+   * The version the manifest records for [artifactId], or null. A regex (build-logic has no JSON
+   * dependency) over a shape `PublishedVersionsTest` pins.
    */
   fun recordedVersion(artifactId: String, manifestText: String): String? =
     Regex("\"${Regex.escape(artifactId)}\"\\s*:\\s*\"([^\"]+)\"")
@@ -50,21 +38,10 @@ object PublishedVersions {
       ?.get(1)
 
   /**
-   * Parses the `-Pcomposeai.publishSet` property.
-   *
-   * The distinction between absent and empty is load-bearing, and the two must not be collapsed:
-   *
-   *  * **absent** (`null`) -- the release did not compute a plan, so publish everything. This is the
-   *    old behaviour and the `workflow_dispatch` recovery path.
-   *  * **present but empty** (`""`) -- the plan ran and found nothing to publish, which happens for
-   *    a releasable change confined to `.github/` or the docs. Publish nothing, the BOM included:
-   *    `printPublishTasks` in `root-tasks.gradle.kts` schedules `:bom` only for a non-empty set,
-   *    because with no module moving every constraint stays at its already-published version and
-   *    a new BOM would be byte-identical to the last one.
-   *
-   * Treating an empty property as "publish everything" would upload all 26 coordinates on exactly
-   * the releases that need none of them, while `record-published.py` recorded none of them --
-   * defeating the saving and leaving the manifest disagreeing with Central.
+   * Parses `-Pcomposeai.publishSet`. Absent and empty must stay distinct:
+   *  * absent (`null`) — no plan ran: publish everything (the `workflow_dispatch` recovery path);
+   *  * empty (`""`) — the plan found nothing to publish (e.g. a docs-only release): publish nothing,
+   *    including the BOM, which would be byte-identical.
    */
   fun parsePublishSet(property: String?): Set<String>? =
     property?.split(",")?.map(String::trim)?.filter(String::isNotEmpty)?.toSet()

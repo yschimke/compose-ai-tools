@@ -7,19 +7,12 @@ import androidx.wear.compose.material3.MaterialTheme
 import ee.schimke.composeai.preview.WearThemeCatalog
 
 /**
- * `@WearThemeCatalog` providers — the Wear analogue of `samples/android`'s `ThemeCatalogs.kt`, and
- * the render-side proof that the Wear specimen reads the Wear theme.
- *
- * Each wraps the stock Wear [MaterialTheme] with one of the catalog's declared palettes (the same
- * `wearColorScheme` mapping the `knob.theme.colors` override uses) **and its type scale** (the same
- * `wearCatalogTypography` mapping), so the rendered sheets differ in their primary / secondary
- * families and in their typeface. Rendered by the `WEAR_THEME_CATALOG` strategy, which reads
- * `androidx.wear.compose.material3.MaterialTheme` reflectively; annotate these `@ThemeCatalog`
- * instead and all three collapse to the identical baseline mobile M3 palette, which is the bug this
- * kind exists to fix.
- *
- * They also populate the preview server's **Theme** select for this module. The local marker keeps
- * [WearCatalogTheme] inside each sticker from shadowing the selected outer provider.
+ * `@WearThemeCatalog` providers (the Wear analogue of `samples/android`'s `ThemeCatalogs.kt`): each
+ * wraps the Wear [MaterialTheme] with a declared palette (`wearColorScheme`) and type scale
+ * (`wearCatalogTypography`). Rendered by the `WEAR_THEME_CATALOG` strategy, which reads the Wear
+ * `MaterialTheme`; `@ThemeCatalog` would read mobile M3 and collapse them all to one palette. They
+ * also populate the preview server's Theme select; the local marker stops [WearCatalogTheme] in
+ * each sticker from overriding the selected provider.
  */
 @Composable
 private fun WearThemeOverride(name: String, content: @Composable () -> Unit) {

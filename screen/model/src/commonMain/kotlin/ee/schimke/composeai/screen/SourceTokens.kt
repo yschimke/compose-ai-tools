@@ -1,12 +1,8 @@
 package ee.schimke.composeai.screen
 
 /**
- * What one run of generated source *is* — enough for a renderer to colour it, and nothing more.
- *
- * Deliberately not a Kotlin token type. These are the categories a highlighter distinguishes, so
- * `true` is a [KEYWORD] alongside `import` and `fun` even though the language calls it a literal,
- * and `.dp` after a number is [PLAIN] rather than a property reference. [SourceHighlighter] is the
- * one thing that produces them, and it says why it lexes rather than being told.
+ * Highlighting categories for a run of generated source, not Kotlin token types (`true` is a
+ * [KEYWORD]; `.dp` after a number is [PLAIN]). Produced only by [SourceHighlighter].
  */
 public enum class SourceTokenKind {
   /** `import`, `fun`, `true`, `false`. */

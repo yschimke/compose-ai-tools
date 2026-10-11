@@ -77,27 +77,19 @@ public interface GuidelineModel {
 }
 
 /**
- * OpenRouter: chat completions for the verdicts and the decisions endpoint for Jev triage. Sends
- * `X-OpenRouter-Metadata: enabled`, so a routed model's choice comes back to be recorded. The
- * [apiKey] is never logged.
+ * OpenRouter: chat completions for verdicts and the decisions endpoint for Jev triage. Sends
+ * `X-OpenRouter-Metadata: enabled` so the routed model is recorded. [apiKey] is never logged.
  *
- * Each call is made once. Retrying is [GuidelineEngine]'s, which knows the cost cap and can ask
- * about fewer subjects instead; a request that got no answer comes back as
- * [ModelResponse.NO_ANSWER] with what gave up on it, and a `Retry-After` as
- * [ModelResponse.retryAfterMillis]. [http]'s call timeout bounds one request ([httpClient] builds
- * one with another).
+ * Each call is made once; retrying is [GuidelineEngine]'s job. A request with no answer returns
+ * [ModelResponse.NO_ANSWER], and a `Retry-After` is exposed as [ModelResponse.retryAfterMillis].
+ * [http]'s call timeout bounds one request.
  *
- * Completions are streamed ([stream]) and handed back assembled, shaped as a non-streamed
- * completion, so nothing downstream changes. Streaming is what makes a slow request cheap to give
- * up on: OpenRouter keeps a connection alive with `: OPENROUTER PROCESSING` comments, so no read
- * timeout ever fired, and "for non-streaming requests or unsupported providers, the model will
- * continue processing and you will be billed for the complete response" — a non-streamed request
- * abandoned at the timeout was paid for in full. A streamed one is cancelled, which stops the
- * provider (and its bill) where the provider supports it, as soon as no token has arrived for
- * [idleTimeout]: keep-alive comments do not count. [http]'s call timeout still caps the whole
- * request.
+ * Completions are streamed ([stream]) and reassembled into the non-streamed shape. Streaming makes
+ * abandoning a slow request cheap: OpenRouter's keep-alive comments defeat read timeouts, and an
+ * abandoned non-streamed request is billed in full, whereas a streamed one is cancelled after
+ * [idleTimeout] with no token.
  *
- * Calls may be made from several threads at once.
+ * Thread-safe.
  */
 public class OpenRouterClient(
   private val apiKey: String,
@@ -106,19 +98,17 @@ public class OpenRouterClient(
   private val title: String = "compose-preview guidelines",
 ) : GuidelineModel {
   /**
-   * Whether a request was routed without `provider.require_parameters`: no provider of the model
-   * honoured every parameter sent (the strict JSON schema, `max_tokens`), so OpenRouter answered
-   * 404 and the request was sent again without the requirement, as it is for the rest of this
-   * client's life. Its replies may then ignore the schema; one that does is unreadable and asked
-   * again like any other.
+   * Whether requests are routed without `provider.require_parameters`: set after OpenRouter answers
+   * 404 because no provider honours every parameter (strict schema, `max_tokens`). Replies may then
+   * ignore the schema and be retried as unreadable.
    */
   @Volatile
   public var relaxedParameters: Boolean = false
     private set
 
   /**
-   * Whether completions are streamed (`stream: true`) and given up on after [idleTimeout] without a
-   * token. Off sends one request and waits for the whole answer, as before.
+   * Whether completions are streamed and given up on after [idleTimeout] without a token. Off waits
+   * for the whole answer.
    */
   @Volatile public var stream: Boolean = true
 
@@ -129,9 +119,8 @@ public class OpenRouterClient(
   @Volatile public var idleTimeout: Duration = DEFAULT_IDLE_TIMEOUT
 
   /**
-   * OpenRouter's `provider.sort`: `price`, `throughput` or `latency`. Null (the default) keeps its
-   * load balancing across providers, weighted to price; any value turns that off and tries
-   * providers in that order instead, which buys speed with a dearer or less spread-out route.
+   * OpenRouter's `provider.sort`: `price`, `throughput` or `latency`. Null keeps its price-weighted
+   * load balancing; a value tries providers in that order instead.
    */
   @Volatile public var providerSort: String? = null
 
@@ -170,9 +159,8 @@ public class OpenRouterClient(
   }
 
   /**
-   * A streamed completion, assembled. Cancelled, and answered as a timeout, once [idleTimeout]
-   * passes with no data event (a keep-alive comment is not one); the socket's read timeout is the
-   * same, for a connection that sends nothing at all.
+   * A streamed completion, assembled. Cancelled and answered as a timeout after [idleTimeout] with
+   * no data event (keep-alive comments don't count).
    */
   private fun streamed(url: String, body: String): ModelResponse {
     val idleMillis = idleTimeout.toMillis().coerceAtLeast(1)
@@ -334,10 +322,9 @@ public class OpenRouterClient(
     public val DEFAULT_REQUEST_TIMEOUT: Duration = Duration.ofSeconds(300)
 
     /**
-     * An HTTP client whose calls give up after [requestTimeout], start to end: the bound on one
-     * guidelines request. The read timeout is the same, not shorter: OpenRouter keeps a slow
-     * completion's connection alive with whitespace while the model is still writing, so bytes keep
-     * arriving and the whole call is what has to be bounded.
+     * An HTTP client whose calls give up after [requestTimeout], start to end. The read timeout is
+     * the same, since OpenRouter keeps slow connections alive with whitespace and only the whole
+     * call can be bounded.
      */
     public fun httpClient(requestTimeout: Duration = DEFAULT_REQUEST_TIMEOUT): OkHttpClient =
       OkHttpClient.Builder()
@@ -349,10 +336,8 @@ public class OpenRouterClient(
     private val DEFAULT_HTTP: OkHttpClient by lazy { httpClient() }
 
     /**
-     * [e] as a request that got no answer, saying which limit of [http] gave up on it. OkHttp says
-     * only `timeout` for both its call timeout (an [InterruptedIOException]) and a read or connect
-     * timeout (a [SocketTimeoutException]), which is what reached the report as `the model answered
-     * 0: {"error":{"message":"timeout"}}`.
+     * [e] as a request that got no answer, saying which limit of [http] gave up — OkHttp reports
+     * both its call timeout and read/connect timeouts as just `timeout`.
      */
     internal fun noAnswer(e: IOException, http: OkHttpClient): ModelResponse {
       fun seconds(millis: Int) = "${millis / 1000} s"
@@ -410,11 +395,9 @@ internal data class ProviderRouting(
 }
 
 /**
- * A streamed chat completion read line by line (server-sent events), assembled into the
- * non-streamed shape [GuidelineResponse] reads: the content deltas joined into one message, the
- * last `finish_reason`, the `usage` (with its cost) from the final chunk, an `error` event
- * mid-stream, and every other top-level field (`id`, `model`, `provider`, `openrouter_metadata`) as
- * the last chunk carrying it had it.
+ * A streamed chat completion (server-sent events) assembled into the non-streamed shape
+ * [GuidelineResponse] reads: joined content deltas, the last `finish_reason`, the final `usage`,
+ * any mid-stream `error`, and other top-level fields as last seen.
  */
 internal class StreamAssembler {
   private val content = StringBuilder()

@@ -5,141 +5,48 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
 /**
- * On-disk format for `compose-preview` bundles — portable, self-contained artefacts that record one
- * or more `@Preview` composables together with the **minimal** classpath needed to re-render them.
+ * On-disk format for `compose-preview` bundles: portable artefacts that record one or more
+ * `@Preview` composables plus the **minimal** classpath needed to re-render them.
  *
  * # File shape
  *
- * The bundle is a **PNG + ZIP polyglot**:
- * 1. Bytes `0..n` are a valid PNG (the cover image — the first selected preview's rendered output,
- *    or a stub gray placeholder). Finder, Preview.app, browsers, GitHub, Slack — every PNG viewer
- *    renders the leading image. This is the bundle's **default** preview: the one thing every plain
- *    image viewer shows.
- * 2. Bytes `n+1..EOF` are a standard ZIP archive. ZIP parsers scan backwards from EOF for the
- *    End-Of-Central-Directory signature (`PK\x05\x06`), so the leading PNG bytes are invisible to
- *    them. `unzip foo.png` works.
- *
- * `file(1)` reports "PNG image data". The same file opened by `compose-preview bundle open` (or the
- * VS Code extension) extracts the appended zip and rehydrates the preview.
+ * A **PNG + ZIP polyglot**: the leading bytes are a valid PNG (the cover — the first selected
+ * preview's render, or a gray stub), so every image viewer shows it; the trailing bytes are a ZIP,
+ * whose parsers scan back from EOF for the End-Of-Central-Directory record and never see the PNG.
+ * `unzip foo.png` works.
  *
  * # ZIP layout
  *
  * ```
- * bundle.json              — manifest (this file's [BundleManifest])
- * previews.json            — filtered to selected preview ids; same shape as the original
- * previews/<id>.png        — the rendered PNG for EACH selected preview (see [BUNDLE_PREVIEWS_DIR]).
- *                            The cover's leading-bytes PNG is mirrored here under its own id so
- *                            iterating the well-known directory yields every preview uniformly.
- *                            A preview with no render on disk is simply absent from this directory.
- * previews/<id>.apng       — (also .gif) the motion capture a preview declared via
- *                            `@InteractionPreview` / `@AnimatedPreview`, named from the SAME id as
- *                            the still beside it so the two join by name downstream (see
- *                            [motionBundleEntryPath]). A function owning two motion outputs
- *                            disambiguates them with `_interaction` / `_anim`.
- * previews/<id>.error.json — structured render failure for a preview whose PNG is absent. Copied
- *                            verbatim from the renderer's `<png>.error.json` sidecar so detached
- *                            consumers can distinguish a broken render from an intentionally
- *                            unrendered preview.
- * previews/<id>.overrides.json — (v8) the author-declared editable knobs the preview exposed via the
- *                            `previewOverride*` lookups (a verbatim `compose/overrides` payload —
- *                            `PreviewOverridesPayload` from `:data-preview-overrides-core`, copied byte
- *                            for byte; the producer never parses it): label / list-length / per-item
- *                            indexed values. Captured during the normal
- *                            render, present only for previews that opted in, so a detached viewer can
- *                            offer the editable controls without a live daemon. Convention-discovered
- *                            (no manifest pointer), like the optional semantics sidecar.
- * previews/<id>.catalog.json — the resolved `@ColorCatalog` / `@TypographyCatalog` token values for a
- *                            `PreviewKind.CATALOG` sheet (a verbatim `compose-preview-catalog-tokens`
- *                            payload the renderer wrote under `data/catalog-tokens/`; copied byte for
- *                            byte, never parsed): hex per colour, size/weight metrics per type style.
- *                            Present only for catalog sheets, so a detached reader (design-parity's
- *                            `catalog-export`) can import an annotation-declared palette / type scale
- *                            without re-rendering. Convention-discovered (no manifest pointer). See
- *                            [BUNDLE_CATALOG_TOKENS_SIDECAR_EXT] and issue #2167.
- * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
- *                            selected previews (plus all module resources). For an IR-backed
- *                            preview (see below) the enclosing class is NOT a closure seed, so its
- *                            bytecode is omitted unless some other preview reaches it.
- * libs/<name>.jar          — third-party / project jars carried IN the bundle. Present only for
- *                            [ClasspathEntry.Project] fallbacks and, since v3, [ClasspathEntry.Embedded]
- *                            entries (`resolution = "embedded"` / `"mixed"`). Absent for a pure
- *                            `coordinates` pack.
- * ir/<id>.<ext>            — (v5) the captured **intermediate representation** for a preview whose
- *                            flavour has one: a Remote Compose document byte stream
- *                            (`<id>.rc`) or a Wear protolayout `Layout` proto (`<id>.tilelayout`,
- *                            with the companion resources proto as `<id>.tileresources`). A player
- *                            replays the IR directly through the Remote Compose / ProtoLayout
- *                            runtime — it needs neither the consumer's `@Preview` bytecode nor the
- *                            full Compose graph that produced it. See [BundleIr] and
- *                            [BundleManifest.intermediateRepresentations].
- * signatures.json          — (v8, optional) one or more detached producer signatures over the
- *                            bundle's **canonical digest** (see [BundleSignatures]). Lets a verifier
- *                            (the public preview server) prove a bundle came from a producer it
- *                            trusts before it will re-render the bundle's executable Compose. Purely
- *                            additive and **excluded from the digest it signs**, so a second producer
- *                            can append its own signature without invalidating the first. Absent on
- *                            an unsigned bundle.
- * extensions/<id>.json     — (v7, optional) a data extension's report (a11y findings, theme tokens,
- *                            drawn strings, …) **sliced to the cover (default) preview** — the one
- *                            shown as the leading PNG — so the headline image carries its detailed
- *                            results and the bundle doesn't drag along data for previews it doesn't
- *                            show. A detached reader surfaces the extension's data without
- *                            re-rendering. `previews.json`'s `dataExtensionReports` names these
- *                            reports by extension id; this directory carries their (scoped) *bytes*
- *                            and [BundleManifest.dataExtensions] records the mapping. Present only
- *                            for an opt-in `--include-data-extensions` pack. See [BundleDataExtension]
- *                            and [BUNDLE_EXTENSIONS_DIR].
- * report.json              — [MinimizationReport]: which deps contributed reachable classes
- * web/                     — (optional) a self-contained web embed added after packing by
- *                            `compose-preview bundle embed --in-bundle`: `web/index.html` +
- *                            `web/compose-preview-embed.js` (a `<compose-preview-gallery>` web
- *                            component with the baked previews inlined). Purely additive — the
- *                            renderer / daemon never read it — so a bundle with a `web/` directory is
- *                            still a valid polyglot. Not written by this task.
+ * bundle.json                  — manifest ([BundleManifest])
+ * previews.json                — filtered to the selected preview ids
+ * previews/<id>.png            — rendered PNG per selected preview, cover included ([BUNDLE_PREVIEWS_DIR])
+ * previews/<id>.apng|.gif      — motion capture, named from the same id ([motionBundleEntryPath])
+ * previews/<id>.error.json     — render failure sidecar, copied verbatim, for a preview with no PNG
+ * previews/<id>.overrides.json — (v8) verbatim `compose/overrides` knob payload, opt-in previews only
+ * previews/<id>.catalog.json   — resolved catalog token values ([BUNDLE_CATALOG_TOKENS_SIDECAR_EXT])
+ * classes/app.jar              — module bytecode minimized to classes reachable from the selected
+ *                                previews (IR-backed previews are not closure seeds)
+ * libs/<name>.jar              — [ClasspathEntry.Project] / [ClasspathEntry.Embedded] jars
+ * ir/<id>.<ext>                — (v5) captured IR: `.rc`, `.tilelayout` + `.tileresources` ([BundleIr])
+ * signatures.json              — (v8, optional) detached signatures, excluded from the signed digest
+ * extensions/<id>.json         — (v7, optional) data-extension report sliced to the cover preview
+ * report.json                  — [MinimizationReport]
+ * web/                         — (optional) web embed added by `bundle embed --in-bundle`; never read
  * ```
  *
- * # Multiple previews, detached from a project
- *
- * The leading PNG is a *single* default image, but a bundle can carry many previews. Their rendered
- * PNGs are baked into the well-known [BUNDLE_PREVIEWS_DIR] directory so a reader can show every
- * preview **without re-rendering and without the originating Gradle project on disk** — the bundle
- * is fully self-describing when opened from `~/Downloads`, a chat attachment, or a gist. The
- * `classes/app.jar` + classpath are still present for tooling that wants a *live* re-render (the VS
- * Code panel, the desktop daemon), but they are no longer required just to look at the images.
- *
- * **Dependency carriage.** In the default `resolution = "coordinates"` pack there is no `libs/`
- * directory: Maven / Google-resolvable dependencies are recorded as coordinates in
- * [BundleManifest.classpath] and the player (`compose-preview bundle open`, VS Code extension)
- * re-resolves them from the consumer's normal Gradle / Maven repos at open time. That keeps a
- * one-preview bundle ~100 KB instead of dragging the whole Compose graph in. A `resolution =
- * "embedded"` pack (and non-Gradle producers that can't emit coordinates) instead carries the
- * reachable jars in `libs/` as [ClasspathEntry.Embedded] so the bundle renders with no network and
- * no consumer build system — trading size for portability.
- *
- * For Android backends, [ClasspathEntry.Maven.type] = `"aar"` records that the player must resolve
- * the **unprocessed** AAR (not the extracted classes.jar) so AGP's artifact transforms run as they
- * would in a normal build.
+ * Baked PNGs let a reader show every preview without re-rendering or the source project;
+ * `classes/app.jar` + classpath remain for live re-render. The default `resolution = "coordinates"`
+ * pack records Maven coordinates that the player re-resolves (keeps a bundle ~100 KB); an
+ * `"embedded"` pack carries jars in `libs/` instead, trading size for offline portability. Android
+ * entries use `type = "aar"` so the player resolves the unprocessed AAR and AGP's transforms run.
  *
  * # Intermediate-representation previews (v5)
  *
- * Some preview flavours don't need their producing code re-executed to render again — they declare
- * a serialisable **intermediate representation** that a small runtime can replay on its own:
- * - **Remote Compose** (`@PreviewWrapper(RemotePreviewWrapper::class)` composables) captures a
- *   `RemoteDocument` byte stream — the "RC doc". A `RemoteDocumentPlayer` paints it back with no
- *   reference to the Kotlin that authored it.
- * - **Wear Tiles / ProtoLayout** (`@androidx.wear.tiles.tooling.preview.Preview`) produces a
- *   `LayoutElementBuilders.Layout` protobuf plus a `ResourceBuilders.Resources` proto. A
- *   `TileRenderer` inflates the proto with no reference to the `fun foo(): TilePreviewData` that
- *   built it.
- *
- * For such previews the bundle carries the IR bytes under `ir/<id>.<ext>` and records a [BundleIr]
- * in [BundleManifest.intermediateRepresentations]; the enclosing class is dropped from the
- * minimisation closure seed, so the consumer bytecode that produced it is **not** packed. The
- * player dispatches on the recorded [BundleIr.format] and replays through the Remote Compose /
- * ProtoLayout library instead of loading consumer classes. A bundle can mix IR-backed and
- * classpath-backed previews; each preview is independently either listed in
- * `intermediateRepresentations` (replayed from IR) or seeded into `classes/app.jar` (replayed by
- * re-running its composable).
+ * Remote Compose documents and Wear ProtoLayout protos can be replayed by a small runtime without
+ * re-running the producing Kotlin. Such previews carry their IR under `ir/` and a [BundleIr]
+ * record, and their enclosing class is dropped from the minimization seed. A bundle can mix
+ * IR-backed and classpath-backed previews.
  */
 @Serializable
 data class BundleManifest(
@@ -154,147 +61,80 @@ data class BundleManifest(
   /** Preview id whose PNG forms the polyglot's leading bytes. Usually `previewIds[0]`. */
   val coverPreviewId: String?,
   /**
-   * The raw discovery ids (`previews.json[].id` as the producing module knows them), parallel to
-   * [previewIds] — same order, same length. Sanitisation is lossy (`"A B"` and `"A_B"` both become
-   * `A_B`), so a consumer that must address the producing module's daemon or renderer — which key
-   * strictly on the raw id, e.g. `bundle pack --with-semantics`'s per-preview semantics fetch —
-   * translates through this list instead of guessing. Empty on bundles packed before the field
-   * existed; readers fall back to [previewIds], which is correct whenever the raw id needed no
-   * sanitising.
+   * The raw discovery ids, parallel to [previewIds]. Sanitisation is lossy (`"A B"` and `"A_B"`
+   * both become `A_B`), so consumers that address the producing daemon/renderer by raw id translate
+   * through this list. Empty on older bundles; readers fall back to [previewIds].
    */
   val rawPreviewIds: List<String> = emptyList(),
   /**
-   * Classpath in load order. First entry is always [ClasspathEntry.Module] for the inlined
-   * `classes/app.jar`; remaining entries are [ClasspathEntry.Maven] coordinates the player resolves
-   * at open time, [ClasspathEntry.Embedded] jars carried inside the bundle's `libs/` (no resolution
-   * needed), or [ClasspathEntry.Project] fallbacks for local artifacts that had to be inlined
-   * alongside the app jar.
+   * Classpath in load order. First entry is always [ClasspathEntry.Module] for `classes/app.jar`;
+   * the rest are [ClasspathEntry.Maven] coordinates, [ClasspathEntry.Embedded] jars in `libs/`, or
+   * [ClasspathEntry.Project] fallbacks.
    */
   val classpath: List<ClasspathEntry>,
   /** Source Gradle path that produced the bundle, e.g. `:samples:cmp`. */
   val modulePath: String,
   /**
-   * The producing project's directory, RELATIVE TO THE REPOSITORY ROOT — `bundle/format` for
-   * `:bundle-format`. Empty for the root project, and empty on a bundle packed before the field
-   * existed.
+   * The producing project's directory relative to the repository root (`bundle/format` for
+   * `:bundle-format`); empty for the root project and on older bundles.
    *
-   * Recorded rather than derived because [modulePath] is a LOGICAL name and the two need not agree:
-   * `project(":bundle-format").projectDir = file("bundle/format")` is legal, common, and invisible
-   * to every consumer downstream. This repository remaps 100 projects that way and not one of them
-   * derives correctly from its Gradle path, so a consumer joining [modulePath] to a component's
-   * module-relative `sourceFile` builds a repository path that resolves nowhere. Only Gradle knows
-   * the answer, so Gradle is what writes it down.
+   * Recorded rather than derived because [modulePath] is a logical name and `projectDir` can be
+   * remapped arbitrarily; only Gradle knows the real directory.
    */
   val moduleDirectory: String = "",
   /** `BUNDLE_VERSION`-shaped identifier of the producer for diagnostics. */
   val producedBy: String,
   /**
-   * Build system that produced the bundle: `"gradle"` (this plugin), `"amper"`, or `"bazel"` (the
-   * contrib drivers). Informational — lets a player report provenance and pick heuristics without
-   * sniffing the classpath. Defaults to `"gradle"` so a v2 bundle (which omits the field) decodes
-   * as Gradle-produced.
+   * Build system that produced the bundle: `"gradle"`, `"amper"`, or `"bazel"`. Informational.
+   * Defaults to `"gradle"` so a v2 bundle decodes as Gradle-produced.
    */
   val producer: String = PRODUCER_GRADLE,
   /**
-   * How the player is expected to assemble the third-party classpath:
+   * How the player assembles the third-party classpath:
    * - [RESOLUTION_COORDINATES] — resolve [ClasspathEntry.Maven] entries from the consumer's repos
-   *   (small bundle; the Gradle default, and the only mode a v2 bundle could express).
-   * - [RESOLUTION_EMBEDDED] — everything reachable is carried in `libs/` as
-   *   [ClasspathEntry.Embedded] (larger bundle, but renders with no network / no consumer build
-   *   system — the portable hand-off mode).
-   * - [RESOLUTION_MIXED] — coordinate-less deps embedded, the rest referenced by coordinate.
-   *
-   * Defaults to [RESOLUTION_COORDINATES] for v2 back-compat.
+   *   (default).
+   * - [RESOLUTION_EMBEDDED] — everything reachable is carried in `libs/` (no network / build system
+   *   needed).
+   * - [RESOLUTION_MIXED] — coordinate-less deps embedded, the rest by coordinate.
    */
   val resolution: String = RESOLUTION_COORDINATES,
   /**
-   * (v5) Per-preview intermediate-representation records. Each entry names a preview that is
-   * replayed from a captured IR ([BundleIr.format] = [IR_FORMAT_REMOTECOMPOSE] /
-   * [IR_FORMAT_PROTOLAYOUT]) rather than by re-running its composable. A preview appears here OR
-   * has its enclosing class in `classes/app.jar`, never both. Empty (the default) on a classic
-   * all-classes bundle, so a v4 reader that ignores this field still decodes a v5 classpath bundle
-   * correctly. See the "Intermediate-representation previews" section above.
+   * (v5) Previews replayed from a captured IR rather than by re-running their composable. A preview
+   * appears here OR has its enclosing class in `classes/app.jar`, never both.
    */
   val intermediateRepresentations: List<BundleIr> = emptyList(),
   /**
-   * (v6) Android resource carriage for IR replay. Present only when the bundle carries protolayout
-   * (Wear tile) IR: replaying a tile drives `TileRenderer`, which resolves the library theme
-   * `androidx.wear.protolayout.renderer.R.style.ProtoLayoutBaseTheme` through `getResources()` and
-   * links the non-final library `R$style` *class*. A detached daemon has neither the merged
-   * resource table (no AGP build) nor the generated R classes (an AAR's published `classes.jar`
-   * omits them), so without this carriage tile replay dies with `NoClassDefFoundError` on `R$style`
-   * and then `Unknown resource value type 0`. The record points at the AGP-built merged resource
-   * APK + manifest and the generated R classes packed under `android/`; the player rebuilds a
-   * Robolectric `com/android/tools/test_config.properties` from them. `null` for desktop bundles
-   * and for Android bundles with no protolayout IR (classic / Remote-Compose-only previews need
-   * none). Additive — a pre-v6 reader ignores the field and the `android/` entries.
+   * (v6) Android resources for protolayout IR replay: `TileRenderer` needs the merged resource
+   * table and the library `R$style` class, neither of which a detached daemon has. Points at the
+   * merged resource APK + manifest and R classes under `android/`, from which the player rebuilds
+   * Robolectric's `test_config.properties`. `null` when there is no protolayout IR.
    */
   val androidResources: BundleAndroidResources? = null,
   /**
-   * (v7) Optional carriage of the per-extension data reports a render produced. Each entry names a
-   * data extension whose report (the file `previews.json`'s `dataExtensionReports` points at) is
-   * packed under `extensions/<id>.json` ([BUNDLE_EXTENSIONS_DIR]) — **sliced to the cover (default)
-   * preview**, the one shown as the leading PNG — so a detached reader can surface a11y findings /
-   * theme tokens / drawn strings / … for the headline image without re-rendering. Empty unless the
-   * producer was asked to include extension data (the opt-in `--include-data-extensions` /
-   * `-PbundleIncludeDataExtensions=true` pack) — the default pack stays small and carries no
-   * reports. Additive: the field defaults to empty and `ignoreUnknownKeys` readers skip the
-   * `extensions/` entries, so a pre-v7 reader opening a v7 bundle still works; only a reader that
-   * wants the carried data needs to be v7-aware. See [BundleDataExtension].
-   *
-   * When this carriage is present the bundled `previews.json`'s `dataExtensionReports` map is
-   * realigned to the same in-bundle `extensions/<id>.json` paths, so the two pointers agree and
-   * both resolve inside the bundle (the producer's original module-relative report paths don't).
+   * (v7) Per-extension data reports packed under `extensions/<id>.json`, sliced to the cover
+   * preview. Empty unless the opt-in `--include-data-extensions` pack was requested. When present,
+   * the bundled `previews.json`'s `dataExtensionReports` is realigned to these in-bundle paths.
    */
   val dataExtensions: List<BundleDataExtension> = emptyList(),
   /**
-   * (v8, post-pack) Large binary resources (fonts, …) that were **lifted out** of `classes/app.jar`
-   * by the `compose-preview bundle externalize` step and are fetched on demand instead of carried
-   * inline. Each entry records the resource's original classpath path (e.g.
-   * `fonts/Roboto-Regular.ttf`), the lowercase-hex SHA-256 of its bytes, and its size. The
-   * externalize step publishes the bytes content-addressed (by [BundleExternalResource.sha256])
-   * beside the bundle, and a re-rendering server rehydrates them into a shared hash-keyed cache and
-   * back onto the daemon classpath at their recorded [BundleExternalResource.path], so
-   * `getResourceAsStream("/fonts/…")` resolves exactly as it did with the fonts inline. Empty on a
-   * normal pack (the bundle stays self-contained) — populated only after an explicit externalize,
-   * which is why it's additive and doesn't bump [schemaVersion] (a post-pack transform, like
-   * signing). A pre-externalize reader ignores it and just finds fewer resources in the jar; a
-   * font-parity render needs the rehydration. See [BundleExternalResource].
+   * (v8, post-pack) Large resources (fonts, …) lifted out of `classes/app.jar` by `bundle
+   * externalize`, published content-addressed by sha256 and rehydrated onto the daemon classpath at
+   * their original path. Doesn't bump [schemaVersion]: it is a post-pack transform, like signing.
    */
   val externalResources: List<BundleExternalResource> = emptyList(),
   /**
-   * (v8, post-split, opt-in) Whole classpath entries omitted from this addressable bundle and
-   * published once in the sibling content-addressed pool. Unlike [externalResources], which are
-   * individual resources materialized onto an extra classpath directory, these bytes restore the
-   * exact zip entry named by [BundleExternalClasspath.path] (currently `classes/app.jar`). A normal
-   * pack and the existing `bundle split` full mode remain self-contained; only the explicit
-   * shared-classpath split mode populates this field.
+   * (v8, post-split, opt-in) Whole classpath entries omitted from this bundle and published once in
+   * the sibling content-addressed pool; restores the exact zip entry named by
+   * [BundleExternalClasspath.path]. Only the shared-classpath split mode populates it.
    */
   val externalClasspath: List<BundleExternalClasspath> = emptyList(),
   /**
-   * (v9) Extra Maven repository base URLs a player needs to re-resolve this bundle's
-   * [ClasspathEntry.Maven] coordinates — the repositories the producing build declared beyond Maven
-   * Central and Google Maven, which every player already tries.
+   * (v9) Extra Maven repository base URLs, beyond Maven Central and Google Maven, needed to
+   * re-resolve this bundle's coordinates (e.g. an androidx.dev snapshot or a JitPack fork). Without
+   * them a player stands a daemon up on an incomplete classpath.
    *
-   * A coordinate is only a promise that the bytes can be re-attached from *somewhere*, and that
-   * promise silently breaks the moment a module resolves a dependency from anywhere else: a JitPack
-   * fork, an internal mirror, or — the case that produced this field — the androidx.dev snapshot
-   * build the `remote-m3` catalog takes its entire Remote Compose runtime from. The player found
-   * nothing for those coordinates, dropped them with a warning, and stood a daemon up on an
-   * incomplete classpath; the first render then died with `NoClassDefFoundError:
-   * androidx/compose/remote/player/view/RemoteComposePlayer` and the catalog fell back to baked
-   * PNGs (issues #4259 / #4265). Recording the repositories makes the bundle say where its bytes
-   * live instead of leaving a server operator to guess it into `--extra-maven-repos`, and keeps a
-   * pinned snapshot build id correct by construction: bump it in the producing build and the next
-   * pack carries the new URL.
-   *
-   * Only *extra* repositories are recorded — the two defaults are omitted so a bundle whose deps
-   * are all on Central/Google keeps an empty list, and so does a pre-v9 bundle. Purely additive: a
-   * player that ignores the field resolves exactly as it did before.
-   *
-   * These URLs are producer-declared, so a player must treat them with the trust it already extends
-   * to the bundle's executable classes — the recorded [ClasspathEntry.Maven.sha256] still governs
-   * whether the fetched bytes are the ones the producer packed.
+   * These URLs are producer-declared, so treat them with the same trust as the bundle's classes;
+   * [ClasspathEntry.Maven.sha256] still governs whether fetched bytes are the ones packed.
    */
   val repositories: List<String> = emptyList(),
 )
@@ -304,33 +144,23 @@ data class BundleManifest(
 data class BundleExternalClasspath(val path: String, val sha256: String, val size: Long)
 
 /**
- * One resource lifted out of `classes/app.jar` by `bundle externalize` and fetched on demand. See
- * [BundleManifest.externalResources]. The bytes are published content-addressed by [sha256] beside
- * the bundle (`bundle/res/<sha256>` on the design-artifacts branch); a server rehydrates them onto
- * the daemon classpath at [path] so resource lookups resolve unchanged.
+ * One resource lifted out of `classes/app.jar` by `bundle externalize`; a server rehydrates it onto
+ * the daemon classpath at [path]. See [BundleManifest.externalResources].
  */
 @Serializable
 data class BundleExternalResource(
-  /**
-   * The resource's classpath-relative path inside the original jar, e.g.
-   * `fonts/Roboto-Regular.ttf`.
-   */
+  /** Classpath-relative path inside the original jar, e.g. `fonts/Roboto-Regular.ttf`. */
   val path: String,
-  /**
-   * Lowercase-hex SHA-256 of the resource bytes — the content-addressed key it's published under.
-   */
+  /** Lowercase-hex SHA-256 of the bytes; the content-addressed key. */
   val sha256: String,
   /** Size of the resource in bytes, for diagnostics + a fetch sanity check. */
   val size: Long,
 )
 
 /**
- * One data-extension report carried inside the bundle, sliced to the cover (default) preview. The
- * bytes live under `extensions/<id>.json` ([path]); a reader keys on [extensionId] to know which
- * extension produced them and decodes the JSON against that extension's published DTOs (the same
- * shape its live render result carries). The id matches the key in `previews.json`'s
- * `dataExtensionReports` map (e.g. `"a11y"`). Join [BundleManifest.coverPreviewId] to the report's
- * per-preview entries to line the data up with the leading PNG.
+ * One data-extension report carried in the bundle under `extensions/<id>.json`, sliced to the cover
+ * preview. [extensionId] matches the key in `previews.json`'s `dataExtensionReports` (e.g.
+ * `"a11y"`).
  */
 @Serializable
 data class BundleDataExtension(
@@ -341,22 +171,18 @@ data class BundleDataExtension(
 )
 
 /**
- * (v6) Android resource artefacts carried for protolayout IR replay. See
- * [BundleManifest.androidResources]. All paths are posix zip paths inside the bundle.
+ * (v6) Android resource artefacts for protolayout IR replay; paths are posix zip paths. See
+ * [BundleManifest.androidResources].
  */
 @Serializable
 data class BundleAndroidResources(
-  /**
-   * Zip path of the merged resource APK (AAPT2 `apk-for-local-test.ap_`), e.g.
-   * `android/resources.ap_`.
-   */
+  /** Zip path of the merged resource APK, e.g. `android/resources.ap_`. */
   val resourceApkPath: String,
   /** Zip path of the merged `AndroidManifest.xml` Robolectric reads the package + theme from. */
   val mergedManifestPath: String,
   /**
-   * Zip path of the jar holding the generated library R classes (`androidx.wear.protolayout.*.R$*`
-   * etc.) the tile renderer links against, e.g. `android/r-classes.jar`. `null` when no R classes
-   * were found to carry (the renderer then relies on whatever is already reachable).
+   * Zip path of the jar holding generated library R classes, e.g. `android/r-classes.jar`; `null`
+   * when none were found.
    */
   val rClassesJarPath: String? = null,
   /**
@@ -366,9 +192,8 @@ data class BundleAndroidResources(
 )
 
 /**
- * One preview replayed from a captured intermediate representation rather than from its consumer
- * bytecode. The player keys on [format] to pick the replay library and reads the IR bytes from
- * [path] (and [resourcesPath] for protolayout).
+ * One preview replayed from a captured IR. The player keys on [format] and reads bytes from [path]
+ * (plus [resourcesPath] for protolayout).
  */
 @Serializable
 data class BundleIr(
@@ -382,42 +207,26 @@ data class BundleIr(
   /** Posix zip path of the IR bytes, e.g. `ir/<id>.rc` or `ir/<id>.tilelayout`. */
   val path: String,
   /**
-   * Posix zip path of a companion artefact the format needs, e.g. the protolayout
-   * `ResourceBuilders.Resources` proto (`ir/<id>.tileresources`). `null` for formats that carry
-   * everything in [path] (Remote Compose).
+   * Companion artefact path, e.g. the protolayout resources proto; `null` when [path] carries
+   * everything.
    */
   val resourcesPath: String? = null,
 )
 
 /**
- * (v8) The detached producer signatures carried in `signatures.json` ([BUNDLE_SIGNATURES_PATH]).
+ * (v8) Detached producer signatures carried in `signatures.json`.
  *
- * # Why a public preview server needs this
+ * Baked PNGs and IR are data, but re-rendering `classes/app.jar` runs the producer's code, so a
+ * public server only re-renders bundles signed by a producer in its trust store.
  *
- * A portable bundle's baked PNGs and IR (`previews/<id>.png`, `ir/<id>.rc`, …) are **data** —
- * replaying them executes no consumer code, so a public server renders them safely from any
- * uploader. But a bundle that carries `classes/app.jar` can be **re-rendered**, which runs the
- * producer's Kotlin on the server. A public server must therefore only re-render a bundle it can
- * attribute to a producer it trusts. A signature is that attribution: the producer signs the
- * bundle's canonical digest with a private key, and the server verifies it against an allowlist of
- * trusted public keys (multiple producers, each with a `keyId`). Unsigned / untrusted bundles still
- * serve their data tiers; only server-side re-render is gated.
+ * The canonical digest excludes `signatures.json` (so signatures can be appended independently):
+ * 1. For every non-directory entry except `signatures.json`, form
+ *    `"<posix-path>:<lowercase-hex-sha256>"`.
+ * 2. Sort by path (UTF-8 byte order) and join with `"\n"`.
+ * 3. SHA-256 the joined UTF-8 bytes.
  *
- * # Canonical digest (what a signature signs)
- *
- * The signed bytes are **not** the raw file (zip ordering / compression aren't stable and
- * `signatures.json` itself must be excluded so signatures can be appended independently). Instead
- * the digest is computed over the bundle's logical content:
- * 1. Enumerate every zip entry **except** `signatures.json` and directory entries.
- * 2. For each, form the line `"<posix-path>:<lowercase-hex-sha256-of-bytes>"`.
- * 3. Sort the lines by path (UTF-8 byte order), join with `"\n"`.
- * 4. The **canonical digest** is the SHA-256 of that joined string's UTF-8 bytes.
- *
- * A signature is `Ed25519(privateKey, canonicalDigest)`. Verification recomputes the digest from
- * the received bundle and checks each signature against the trusted public key named by its
- * `keyId`. Tampering with any covered entry changes a per-entry hash → changes the digest → every
- * signature fails. The reference implementation lives in `:cli` (`BundleSigning`), which the
- * `compose-preview bundle sign` / `verify` commands and the serve verifier share.
+ * A signature is `Ed25519(privateKey, canonicalDigest)`, checked against the public key named by
+ * `keyId`. Reference implementation: `:cli`'s `BundleSigning`.
  */
 @Serializable
 data class BundleSignatures(
@@ -431,27 +240,21 @@ data class BundleSignatures(
 @Serializable
 data class BundleSignature(
   /**
-   * Stable id of the signing key, e.g. `"compose-ai-tools-ci"`. The verifier's trust store maps
-   * this to a trusted public key; it's also how a second producer's signature is told apart from
-   * the first. Free-form but conventionally `[A-Za-z0-9._@-]+`.
+   * Stable id of the signing key, e.g. `"compose-ai-tools-ci"`, mapped to a public key by the
+   * verifier's trust store. Conventionally `[A-Za-z0-9._@-]+`.
    */
   val keyId: String,
   /** Signature algorithm. Only [SIGNATURE_ALG_ED25519] is defined today. */
   val algorithm: String = SIGNATURE_ALG_ED25519,
-  /**
-   * Lowercase-hex SHA-256 canonical digest the signature was computed over (see
-   * [BundleSignatures]).
-   */
+  /** Lowercase-hex canonical digest the signature covers (see [BundleSignatures]). */
   val digest: String,
   /** Base64 (standard, padded) of the raw Ed25519 signature bytes over [digest]'s raw bytes. */
   val signature: String,
   /** Human-readable producer label for diagnostics, e.g. `"Compose AI Tools CI"`. Optional. */
   val producer: String? = null,
   /**
-   * Optional keyless-provenance attestation (GitHub OIDC / Sigstore). When present the verifier can
-   * trust the signature by matching [BundleProvenance.identity] against its OIDC allowlist instead
-   * of (or in addition to) a pinned public key — useful for CI-produced bundles with no long-lived
-   * key.
+   * Optional keyless (GitHub OIDC / Sigstore) attestation, letting the verifier trust
+   * [BundleProvenance.identity] instead of a pinned key.
    */
   val provenance: BundleProvenance? = null,
 )
@@ -462,9 +265,8 @@ data class BundleProvenance(
   /** Provenance flavour: [PROVENANCE_GITHUB_OIDC] or [PROVENANCE_SIGSTORE]. */
   val type: String,
   /**
-   * The workload identity that produced the bundle, e.g. a GitHub Actions subject like
-   * `repo:yschimke/compose-ai-tools:ref:refs/heads/main`. The verifier matches this against its
-   * trusted-identity globs.
+   * Workload identity that produced the bundle, e.g.
+   * `repo:yschimke/compose-ai-tools:ref:refs/heads/main`, matched against trusted-identity globs.
    */
   val identity: String,
   /** Optional opaque attestation bundle / certificate (Sigstore) for full offline verification. */
@@ -485,14 +287,9 @@ sealed interface ClasspathEntry {
   ) : ClasspathEntry
 
   /**
-   * A Maven (or Google Maven, JitPack, …) coordinate the player resolves at open time. This is the
-   * **canonical** way a bundle carries a third-party dependency: the bytes stay *detached* and the
-   * player re-attaches them from wherever they live (Maven Central, the colleague's local Gradle /
-   * Coursier cache, an internal mirror, a future content-addressable store). Embedding
-   * ([ClasspathEntry.Embedded]) is only an offline fallback.
-   *
-   * Encoded as separate fields rather than a `group:artifact:version` string so consumers can pick
-   * a subset (e.g. only allow certain groups) without re-parsing.
+   * A Maven coordinate the player resolves at open time — the canonical way to carry a third-party
+   * dependency; [ClasspathEntry.Embedded] is the offline fallback. Separate fields so consumers can
+   * filter without re-parsing.
    */
   @Serializable
   @kotlinx.serialization.SerialName("maven")
@@ -501,32 +298,21 @@ sealed interface ClasspathEntry {
     val artifact: String,
     val version: String,
     /**
-     * Packaging the player must resolve. `"jar"` for pure-JVM deps (desktop), `"aar"` for Android
-     * library archives — the player resolves the unprocessed AAR so AGP can run its normal
-     * artifact-transform pipeline.
+     * `"jar"` for pure-JVM deps, `"aar"` for Android libraries (resolved unprocessed so AGP's
+     * transforms run).
      */
     val type: String,
     /**
-     * Lowercase hex SHA-256 of the resolved artifact's bytes at pack time, or null when the
-     * producer couldn't compute it (older bundles, non-Gradle producers). Lets a player that
-     * re-attaches a *detached* dep from **any** source (Maven, a local cache, a mirror, a CAS)
-     * check the fetched bytes against the bytes the bundle was built with.
+     * Lowercase-hex SHA-256 of the artifact at pack time, or null when unknown.
      *
-     * **Mismatch policy: warn, never fail.** A player MUST NOT refuse to render on a hash mismatch.
-     * A different artifact for the same coordinate is usually *almost* compatible — a point-release
-     * skew, a repackaged-but-equivalent jar, a stripped vs. full variant — and a preview that
-     * renders slightly off is far more useful than no preview at all. So a mismatch (or a
-     * missing/unverifiable hash) is a **noisy warning**: surface it loudly (which coordinate,
-     * expected vs. actual hash) and proceed with the resolved bytes. There is no strict mode that
-     * hard-fails. Verification is a fidelity signal, not a gate.
+     * **Mismatch policy: warn, never fail.** A different artifact for the same coordinate is
+     * usually almost compatible, and a slightly-off render beats none, so a player logs the
+     * mismatch loudly and proceeds.
      */
     val sha256: String? = null,
   ) : ClasspathEntry
 
-  /**
-   * Project-local dep that had no Maven coordinate. The bundle inlines it alongside the consumer
-   * jar so the artefact stays self-contained even when consumed offline.
-   */
+  /** Project-local dep with no Maven coordinate, inlined so the bundle stays self-contained. */
   @Serializable
   @kotlinx.serialization.SerialName("project")
   data class Project(
@@ -537,11 +323,8 @@ sealed interface ClasspathEntry {
   ) : ClasspathEntry
 
   /**
-   * A third-party dependency carried **inside** the bundle's `libs/` directory rather than
-   * referenced by coordinate — no resolution, no network, no consumer build system needed to put it
-   * on the classpath. Emitted by `--embed-deps` / `resolution = "embedded"` packs and by non-Gradle
-   * producers that can't (or don't want to) express resolvable Maven coordinates. Unlike [Project],
-   * an embedded entry carries no Gradle path — it's just "this jar, here".
+   * A third-party jar carried in `libs/` rather than by coordinate, from `resolution = "embedded"`
+   * packs or non-Gradle producers. Unlike [Project] it has no Gradle path.
    */
   @Serializable
   @kotlinx.serialization.SerialName("embedded")
@@ -567,19 +350,14 @@ const val IR_FORMAT_REMOTECOMPOSE: String = "remotecompose"
 const val IR_FORMAT_PROTOLAYOUT: String = "protolayout"
 
 /**
- * [BundleIr.format] for a Lottie animation asset. Unlike Remote Compose / protolayout — whose IR is
- * *captured* by running a composable — a Lottie preview's IR is the asset file itself, read
- * straight off the module resources at pack time. The zip entry keeps the asset's own extension
- * (`ir/<id>.json` or `ir/<id>.lottie`); `format` is what the replayer keys on.
+ * [BundleIr.format] for a Lottie asset; the IR is the asset file itself, read from module resources
+ * at pack time (`ir/<id>.json` or `ir/<id>.lottie`).
  */
 const val IR_FORMAT_LOTTIE: String = "lottie"
 
 /**
- * [BundleIr.format] for an SVG image asset. Like [IR_FORMAT_LOTTIE] its IR is the asset file itself
- * — the raw `.svg` read straight off the module resources at pack time — so the bundle is
- * self-contained and travels the source artwork regardless of which render subdir the still PNG
- * landed in. The zip entry keeps the `.svg` extension (`ir/<id>.svg`); `format` is what a replayer
- * keys on. Static, so there is no animated companion (contrast [IR_FORMAT_LOTTIE]).
+ * [BundleIr.format] for an SVG asset; like [IR_FORMAT_LOTTIE] the IR is the raw `.svg`
+ * (`ir/<id>.svg`). Static, so no animated companion.
  */
 const val IR_FORMAT_SVG: String = "svg"
 
@@ -621,158 +399,80 @@ const val ANDROID_MERGED_MANIFEST_PATH: String = "android/AndroidManifest.xml"
 /** Zip path of the carried generated R-class jar (v6). */
 const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
 
-/**
- * Well-known directory inside the bundle zip holding optional per-extension data reports
- * (`extensions/<extensionId>.json`), one verbatim sidecar per [BundleManifest.dataExtensions] entry
- * (v7).
- */
+/** Bundle directory holding per-extension data reports, `extensions/<extensionId>.json` (v7). */
 const val BUNDLE_EXTENSIONS_DIR: String = "extensions"
 
 /**
- * Conventional on-disk report filenames (relative to the preview output dir, i.e. `previews.json`'s
- * parent) for built-in data extensions that write their aggregated report **without** stamping
- * `previews.json`'s `dataExtensionReports` pointer. An `--include-data-extensions` pack probes
- * these for any registered extension the manifest names no report for, so a report produced by the
- * standard flow is still carried — the daemon / `compose-preview a11y` writes `accessibility.json`
- * but the standalone plugin leaves the manifest map empty (`ComposePreviewTasks` discovery). A
- * manifest pointer, when present, always wins over the conventional fallback. Keyed by the same
- * extension id as `dataExtensionReports` / [BundleDataExtension.extensionId]; mirrors the
- * conventional fallback in `:cli`'s `A11yReportRenderer`.
+ * Conventional report filenames (relative to `previews.json`'s parent) for built-in extensions that
+ * don't stamp `dataExtensionReports`. An `--include-data-extensions` pack probes these when the
+ * manifest has no pointer; a manifest pointer always wins. Mirrors `:cli`'s `A11yReportRenderer`.
  */
 val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "accessibility.json")
 
 /**
- * Schema version stamped into [BundleManifest.schemaVersion].
- * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
- *   polyglot's leading bytes only.
- * - v2 — adds the [BUNDLE_PREVIEWS_DIR] directory: a baked PNG per selected preview so the bundle
- *   renders detached from its project. Readers gate on `>= 2` before looking for
- *   `previews/<id>.png` (v1 bundles simply have no such directory); the additive zip entries are
- *   otherwise ignored by `ignoreUnknownKeys` readers, so a v1 reader opening a v2 bundle still
- *   works.
- * - v3 — adds [BundleManifest.producer] / [BundleManifest.resolution] and the
- *   [ClasspathEntry.Embedded] kind for `libs/`-carried third-party deps (the `--embed-deps` /
- *   `resolution = "embedded"` portable-hand-off mode and non-Gradle producers). Both new manifest
- *   fields default, and `ignoreUnknownKeys` readers skip the `embedded` discriminator they don't
- *   recognise, so a v2 reader opening a v3 *coordinate* bundle still works; only the embedded jars
- *   need a v3-aware player.
- * - v4 — adds [ClasspathEntry.Maven.sha256], the content hash that makes a *detached* coordinate
- *   safe to re-attach from any source (Maven, a local cache, a mirror, a CAS): the player resolves
- *   the coordinate however it can, then verifies the bytes against the hash. Purely additive —
- *   `sha256` defaults to null, so a v3 reader opening a v4 bundle just ignores it and an older
- *   bundle reads as "unverifiable coordinate".
- * - v5 — adds [BundleManifest.intermediateRepresentations] and the `ir/` directory: previews with a
- *   serialisable IR (Remote Compose doc, Wear protolayout proto) are replayed from the IR via the
- *   matching runtime library instead of by re-running their consumer bytecode, which is then
- *   dropped from `classes/app.jar`. Additive — the field defaults to empty and `ignoreUnknownKeys`
- *   readers skip the `ir/` entries, so a v4 reader opening a v5 *classpath* bundle still works;
- *   only the IR previews need a v5-aware player.
- * - v6 — adds [BundleManifest.androidResources] and the `android/` directory: an Android bundle
- *   carrying protolayout (Wear tile) IR also carries the AGP-built merged resource APK + manifest
- *   and the generated library R classes, so a detached daemon can resolve the tile renderer's theme
- *   resource and link its `R$style` class on replay. Additive — the field defaults to null and
- *   `ignoreUnknownKeys` readers skip the `android/` entries, so a v5 reader opening a v6 bundle
- *   still works; only protolayout IR replay on a detached Android daemon needs a v6-aware player.
- * - v7 — adds [BundleManifest.dataExtensions] and the `extensions/` directory: an opt-in pack
- *   (`--include-data-extensions`) carries the per-extension data reports (a11y findings, theme
- *   tokens, drawn strings, …) named by `previews.json`'s `dataExtensionReports`, sliced to the
- *   cover (default) preview, so a detached reader can surface the headline image's data without
- *   re-rendering. Additive — the field defaults to empty and `ignoreUnknownKeys` readers skip the
- *   `extensions/` entries, so a v6 reader opening a v7 bundle still works; only a reader that wants
- *   the carried data needs to be v7-aware.
- * - v8 — adds the `previews/<id>.overrides.json` sidecar: the author-declared editable knobs a
- *   preview exposed via the `previewOverride*` lookups (the `compose/overrides` payload), captured
- *   during the normal render so a detached viewer can present editable controls (label / list
- *   length / per-item indexed values) with no live daemon. Convention-discovered (no manifest
- *   field), present only for previews that opted in. Additive — the sidecar is ignored by older
- *   readers and absent for previews that declare no knobs, so a v7 reader opening a v8 bundle still
- *   works; only a reader that wants the editable knobs needs to be v8-aware.
- * - v9 — adds [BundleManifest.repositories]: the extra Maven repository base URLs (beyond Maven
- *   Central and Google Maven) a player must consult to re-resolve this bundle's coordinates. A
- *   coordinate resolved from a JitPack fork, an internal mirror, or an androidx.dev snapshot build
- *   was unfindable to every player before this, so the bundle stood a daemon up on an incomplete
- *   classpath and the first render died with a linkage error (issues #4259 / #4265). Additive — the
- *   field defaults to empty (which is also what a v8 bundle and any all-Central module carry), so a
- *   v8 reader opening a v9 bundle resolves exactly as it did before.
+ * Schema version stamped into [BundleManifest.schemaVersion]. Every bump is additive:
+ * `ignoreUnknownKeys` readers skip new fields and entries.
+ * - v1 — `bundle.json`, `previews.json`, `classes/app.jar`, `report.json`; cover PNG only.
+ * - v2 — [BUNDLE_PREVIEWS_DIR] with a baked PNG per preview.
+ * - v3 — [BundleManifest.producer], [BundleManifest.resolution], [ClasspathEntry.Embedded] in
+ *   `libs/`.
+ * - v4 — [ClasspathEntry.Maven.sha256].
+ * - v5 — [BundleManifest.intermediateRepresentations] and `ir/`.
+ * - v6 — [BundleManifest.androidResources] and `android/`.
+ * - v7 — [BundleManifest.dataExtensions] and `extensions/`.
+ * - v8 — `previews/<id>.overrides.json` knob sidecar.
+ * - v9 — [BundleManifest.repositories].
  *
- * Orthogonal to the version sequence above, the optional `signatures.json`
- * ([BUNDLE_SIGNATURES_PATH], [BundleSignatures]) carries detached producer signatures over the
- * bundle's canonical digest so a public preview server can attribute a bundle to a trusted producer
- * before re-rendering its executable Compose. It is excluded from the digest it signs and does
- * **not** bump [schemaVersion] (signing is a post-pack step, like `bundle embed`); an unsigned
- * bundle has no such entry and an unaware reader ignores it.
+ * `signatures.json` ([BUNDLE_SIGNATURES_PATH]) is orthogonal: a post-pack step that doesn't bump
+ * the version.
  */
 const val BUNDLE_SCHEMA_VERSION: Int = 9
 
 /**
- * File extension of the per-preview override sidecar the render step writes next to the PNG
- * (`renders/<stem>.overrides.json`) and the bundle packs under `previews/<id>.overrides.json`.
- * Holds the serialized `compose/overrides` payload — the editable knobs the preview declared. Kept
- * in lockstep with the consumer runtime's writer.
+ * Extension of the knob sidecar: `renders/<stem>.overrides.json` on disk,
+ * `previews/<id>.overrides.json` in the bundle. Kept in lockstep with the consumer runtime's
+ * writer.
  */
 const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
 
 /**
- * File extension of the per-preview Remote Compose knob sidecar the render step writes next to the
- * PNG (`renders/<stem>.remotecompose.json`) and the bundle packs under
- * `previews/<id>.remotecompose.json`. Holds the serialized `compose/remotecompose`
- * `RemoteComposeDeclarationsPayload` — the editable named-value knobs the preview declared through
- * `LocalRemoteComposeHost` (a separate channel from the plain-Compose `overrides.json`, since a
- * Remote Compose sticker's edits round-trip via `renderNow.overrides.remoteCompose` / the serve
- * `rc.<name>=` param, not the generic knob lane). Kept in lockstep with the consumer runtime's
- * writer (`RobolectricRenderTest.writeRemoteComposeSidecar`).
+ * Extension of the Remote Compose knob sidecar (`RemoteComposeDeclarationsPayload`), separate from
+ * `overrides.json` because Remote Compose edits round-trip through their own channel. Kept in
+ * lockstep with `RobolectricRenderTest.writeRemoteComposeSidecar`.
  */
 const val BUNDLE_REMOTECOMPOSE_SIDECAR_EXT: String = "remotecompose.json"
 
 /**
- * File extension of the structured per-preview render failure. The renderer writes
- * `<png>.error.json`; bundles carry it as `previews/<id>.error.json` beside the absent PNG.
+ * Extension of the render-failure sidecar: `<png>.error.json` on disk, `previews/<id>.error.json`
+ * in the bundle.
  */
 const val BUNDLE_RENDER_ERROR_SIDECAR_EXT: String = "error.json"
 
 /**
- * File extension of the per-sheet catalog-token sidecar the render step writes under
- * `data/catalog-tokens/<id>.catalog.json` (issue #2167) and the bundle packs under
- * `previews/<id>.catalog.json`. Holds the resolved `@ColorCatalog` / `@TypographyCatalog` token
- * values (hex / type metrics) so a detached reader — e.g. design-parity's `catalog-export` — can
- * import an annotation-declared palette or type scale without re-rendering. Only
- * `PreviewKind.CATALOG` sheets carry one. Kept in lockstep with the renderer's
- * `CatalogTokenSidecar` writer.
+ * Extension of the catalog-token sidecar (`data/catalog-tokens/<id>.catalog.json`), packed as
+ * `previews/<id>.catalog.json` so a detached reader can import catalog colours and type metrics.
+ * Kept in lockstep with the renderer's `CatalogTokenSidecar`.
  */
 const val BUNDLE_CATALOG_TOKENS_SIDECAR_EXT: String = "catalog.json"
 
 /**
- * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed
- * by preview id: `previews/<previewId>.png`. The cover (the polyglot's leading bytes) is mirrored
- * here under its own id so a reader can iterate this single directory to enumerate every preview.
+ * Bundle directory holding one PNG per selected preview, `previews/<previewId>.png`; the cover is
+ * mirrored here too.
  */
 const val BUNDLE_PREVIEWS_DIR: String = "previews"
 
 /**
- * Structural suffixes a motion render carries when one `@Preview` function owns more than one of
- * them — `@AnimatedPreview` beside `@InteractionPreview`, or either beside a scroll / time / resize
- * fan-out that already claims the plain name. Emitted by `PreviewDiscovery.buildOutputPlan` and
- * matched again on the way out by `@design-parity/export-driver/catalog-motion-publish.mjs`; kept
- * in step with both.
+ * Suffixes a motion render carries when one function owns more than one motion output. Kept in step
+ * with `PreviewDiscovery.buildOutputPlan` and design-parity's `catalog-motion-publish.mjs`.
  */
 val BUNDLE_MOTION_SUFFIXES: List<String> = listOf("_interaction", "_anim")
 
 /**
- * The bundle entry a motion capture (`@AnimatedPreview` / `@InteractionPreview`) is packed under:
- * `previews/<previewId>[_interaction|_anim].<ext>`.
+ * Bundle entry for a motion capture: `previews/<previewId>[_interaction|_anim].<ext>`.
  *
- * **Named from the preview id, like the still it accompanies** — never from the render's own leaf.
- * On disk a render is `<readable>-<digest>` (docs/RENDER_FILENAMES.md), deliberately not the id, so
- * naming a capture after its file put it in a different namespace from the
- * `previews/<previewId>.png` beside it. Both downstream joins are by name — the export reads a
- * capture's theme off the still sharing its stem, and names the published file after that still —
- * so a leaf-named capture published themeless (pinned to every card of its component, light card
- * playing the dark recording) under a filename derived from nothing a reader recognises.
- *
- * Reading the structural suffix off the leaf is safe because the render digest is unconditional: a
- * stem is always `<readable>-<8 hex>` unless a structural suffix follows it, so a stem can only end
- * in `_interaction` / `_anim` when the renderer actually put one there. A preview genuinely named
- * `Logo_animated` renders to `Logo_animated-<digest>` and matches neither.
+ * Named from the preview id, like its still, because downstream joins are by name; the render leaf
+ * is `<readable>-<digest>` and would land in a different namespace. Reading the suffix off the leaf
+ * is safe because a stem only ends in `_interaction` / `_anim` when the renderer put one there.
  *
  * @param bundleId the preview's in-bundle id (post-[sanitizeBundleEntryId]).
  * @param renderLeaf the render's own filename, whose structural suffix is carried through.
@@ -786,10 +486,7 @@ fun motionBundleEntryPath(bundleId: String, renderLeaf: String): String? {
   return "$BUNDLE_PREVIEWS_DIR/$bundleId$suffix.$extension"
 }
 
-/**
- * Diagnostic record describing how aggressive the minimization was. Always written into the bundle
- * as `report.json` so users can audit whether the closure walk was effective.
- */
+/** How aggressive minimization was; always written as `report.json` for auditing. */
 @Serializable
 data class MinimizationReport(
   val entryClassFqns: List<String>,
@@ -825,14 +522,8 @@ data class DependencyDecision(
 )
 
 /**
- * Writes a PNG + ZIP polyglot. The leading bytes are [coverPng] verbatim; the appended bytes are
- * [zipBytes] verbatim. Both inputs must already be valid in their respective formats; this writer
- * does not reframe chunks or rewrite the zip's central directory.
- *
- * Most image viewers and zip readers tolerate trailing/leading extra bytes respectively, so the raw
- * concatenation is enough to satisfy both formats. ZIP's End-Of-Central-Directory record is
- * searched from EOF (which is in the appended zip), and PNG's chunk loop terminates at the IEND
- * record (which is inside [coverPng]). See: <https://en.wikipedia.org/wiki/Polyglot_(computing)>.
+ * Writes a PNG + ZIP polyglot by concatenating [coverPng] and [zipBytes] verbatim. Works because
+ * ZIP's EOCD is searched from EOF and PNG parsing stops at IEND.
  */
 internal fun writePngZipPolyglot(coverPng: ByteArray, zipBytes: ByteArray, out: File) {
   out.parentFile?.mkdirs()
@@ -843,9 +534,7 @@ internal fun writePngZipPolyglot(coverPng: ByteArray, zipBytes: ByteArray, out: 
 }
 
 /**
- * Reads a bundle file produced by [writePngZipPolyglot] (or a plain `.zip`) and returns the zip
- * bytes. Detects the PNG signature on the leading bytes and seeks past the IEND chunk to find the
- * zip start; plain zips (signature `PK\x03\x04`) are returned as-is.
+ * Returns the zip bytes of a polyglot (or a plain `.zip`) by skipping past the PNG's IEND chunk.
  *
  * Throws [IllegalArgumentException] when neither signature is found.
  */
@@ -875,11 +564,7 @@ private fun isPngSignature(bytes: ByteArray): Boolean {
   return true
 }
 
-/**
- * Returns the byte offset of the first byte past the PNG's IEND chunk — equivalently, the length of
- * the leading PNG in the polyglot. Each chunk is `[length:4][type:4][data:length][crc:4]`; the
- * stream ends after IEND's CRC.
- */
+/** Byte offset just past the PNG's IEND chunk, i.e. the length of the leading PNG. */
 private fun pngLength(bytes: ByteArray): Int {
   var offset = PNG_SIGNATURE.size
   while (offset < bytes.size) {

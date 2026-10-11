@@ -8,16 +8,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Issue #248: applying `compose-preview` to a `:shared`-style module on
- * `com.android.kotlin.multiplatform.library` (the AGP 9 replacement for nesting
- * `com.android.library` inside KMP) should route through the Compose Multiplatform Desktop pipeline
- * — `androidRuntimeClasspath` runtime, `build/classes/kotlin/<targetName>/main` outputs — not the
- * Robolectric AGP path.
- *
- * The unit test pins the contract of [ComposePreviewTasks.registerDesktopTasks] without standing up
- * AGP or KGP: a synthetic Gradle project with the canonical KMP-Android configuration name
- * (`androidRuntimeClasspath`) and class dirs is enough to exercise the candidate-list logic the
- * desktop-routing fix relies on.
+ * #248: `compose-preview` on a `com.android.kotlin.multiplatform.library` module routes through the
+ * Desktop pipeline (`androidRuntimeClasspath`, `build/classes/kotlin/<target>/main`), not
+ * Robolectric. Pinned with a synthetic project (no AGP/KGP) carrying the canonical configuration
+ * name and class dirs.
  */
 class KmpAndroidDesktopRoutingTest {
 
@@ -28,15 +22,10 @@ class KmpAndroidDesktopRoutingTest {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
 
-    // Mimic the on-disk layout KMP-Android compiles into. The desktop
-    // discovery task filters [DiscoverPreviewsTask.classDirs] down to
-    // existing directories before scanning, so an empty placeholder here
-    // is enough to assert the candidate is wired up.
+    // Discovery filters class dirs to existing directories, so an empty placeholder suffices.
     project.layout.buildDirectory.dir("classes/kotlin/android/main").get().asFile.mkdirs()
 
-    // `androidRuntimeClasspath` is the resolvable runtime configuration the
-    // KMP-Android plugin publishes for its single `android` variant
-    // (replacing classic `debugRuntimeClasspath` / `releaseRuntimeClasspath`).
+    // The runtime configuration KMP-Android publishes for its single variant.
     project.configurations.create("androidRuntimeClasspath") {
       isCanBeResolved = true
       isCanBeConsumed = false
@@ -49,10 +38,7 @@ class KmpAndroidDesktopRoutingTest {
     val classDirPaths =
       discoverTask.classDirs.files.map { it.relativeTo(project.projectDir).invariantSeparatorsPath }
 
-    // The KMP-Android compile output path was added alongside the JVM /
-    // Desktop candidates as part of the issue #248 fix. Without it the
-    // ClassGraph scan would walk an empty input on `:shared`-style modules
-    // and report 0 previews even though the bytecode is on disk.
+    // Without the KMP-Android output path the scan finds 0 previews (#248).
     assertThat(classDirPaths).contains("build/classes/kotlin/android/main")
     // The legacy candidates remain so single-target JVM / Desktop modules
     // continue to work as before.
@@ -79,17 +65,8 @@ class KmpAndroidDesktopRoutingTest {
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
     val discoverTask = project.tasks.getByName("composePreviewDiscover") as DiscoverPreviewsTask
-    // dependencyJars on the discover task is fed from the picked
-    // `dependencyConfigName`. We can't read that name back as a property,
-    // but we CAN observe that the only way for `dependencyJars` to be
-    // wired up is via the configuration that exists on the project — so
-    // resolving the task's inputs against the project's configurations
-    // proves the candidate list is doing its job.
-    //
-    // Direct check: the discover task's dependencyJars must come back
-    // empty when resolved on a project whose only matching configuration
-    // is empty (no deps), and not throw with "Configuration X not found"
-    // for a misnamed candidate.
+    // `dependencyJars` comes from the picked configuration; resolving it against an empty one must
+    // yield nothing and not throw for a misnamed candidate.
     assertThat(discoverTask.dependencyJars.files).isEmpty()
   }
 
@@ -98,14 +75,8 @@ class KmpAndroidDesktopRoutingTest {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
 
-    // Mirror the canonical CMP-Android setup recommended by the
-    // CMP_SHARED guide: both an Android target and a `jvm("desktop")`
-    // target. The candidate list must pick `desktopRuntimeClasspath`
-    // first so the Desktop renderer's process gets JVM-flavor compose
-    // artifacts instead of AAR-flavored ones — picking
-    // `androidRuntimeClasspath` here would surface
-    // `compose-runtime-android` to the host JVM and explode at first
-    // `mutableStateOf` call with `ClassNotFoundException: android.os.Parcelable`.
+    // Android target plus `jvm("desktop")`: `desktopRuntimeClasspath` must win, or the host JVM
+    // gets `-android` artifacts and fails with `ClassNotFoundException: android.os.Parcelable`.
     project.configurations.create("desktopRuntimeClasspath") {
       isCanBeResolved = true
       isCanBeConsumed = false
@@ -117,15 +88,8 @@ class KmpAndroidDesktopRoutingTest {
 
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
-    // `dependencyJars` sources from a single configuration in
-    // `registerDiscoverTask` — the one whose name is at the head of the
-    // candidate list and exists on the project. Resolving its incoming
-    // shouldn't throw, which is the proof that the picked config is the
-    // empty-but-real `desktopRuntimeClasspath`. If `androidRuntimeClasspath`
-    // had been picked instead, this assertion would still hold (both are
-    // empty), so we additionally check that BOTH configurations stay
-    // resolvable side-by-side after registration — a stricter contract
-    // than just "doesn't throw" but still independent of network access.
+    // Both configurations must stay resolvable after registration (both are empty, so resolution
+    // alone wouldn't distinguish them).
     val discoverTask = project.tasks.getByName("composePreviewDiscover") as DiscoverPreviewsTask
     discoverTask.dependencyJars.files // resolves; throws on a misnamed config
     assertThat(project.configurations.findByName("desktopRuntimeClasspath")).isNotNull()
@@ -144,18 +108,9 @@ class KmpAndroidDesktopRoutingTest {
 
   @Test
   fun `the bundle renderability gate does not apply to the Android registration`() {
-    // `androidRuntimeClasspath` means two different things depending on who is asking. On the
-    // desktop registration it is the last-resort fallback of `desktopDependencyConfigName`, and a
-    // module that lands there has no JVM runtime to render against — the case above. On the
-    // ANDROID registration it is the ordinary, correct runtime configuration of every
-    // `com.android.kotlin.multiplatform.library` module, because `AndroidVariantNaming.kmpAndroid`
-    // derives it from the KMP target name.
-    //
-    // Reusing the desktop test for both is what made `composePreviewBundle` SKIPPED on every
-    // KMP-Android module: the render succeeded, the bundle task never ran, and `compose-preview
-    // bundle pack` failed with "Bundle task reported success but bundle.png is missing" — a
-    // skipped task being, to Gradle, a successful build. wear-m3-catalog's `:catalog` stopped
-    // publishing the moment it moved to that module shape.
+    // On the desktop registration `androidRuntimeClasspath` is the unrenderable fallback; on the
+    // Android registration it's the real runtime config of every KMP-Android module. Applying the
+    // desktop check there skipped `composePreviewBundle` and made `bundle pack` fail.
     assertThat(ComposePreviewTasks.bundleRenderable("android", "androidRuntimeClasspath")).isTrue()
     assertThat(ComposePreviewTasks.bundleRenderable("android", "debugRuntimeClasspath")).isTrue()
 
@@ -168,11 +123,9 @@ class KmpAndroidDesktopRoutingTest {
 
   @Test
   fun `non-renderable module skips only the guard and daemon, never discover or render`() {
-    // Issue #1855: the desktop-render classpath guard and the daemon-start task are skipped for a
-    // pure KMP-Android module (they'd otherwise hard-fail on its androidRuntimeClasspath), but
-    // composePreviewDiscover and composePreviewRender must NOT be gated — the Tooling-API model
-    // builder realizes those during CLI detection, and gating them is what regressed 0.15.3 to
-    // "detect nothing". They run as in 0.15.2; the module simply discovers 0 previews.
+    // #1855: the classpath guard and daemon-start skip pure KMP-Android modules, but discover and
+    // render must not be gated, since the Tooling-API model builder realizes them during CLI
+    // detection.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("androidRuntimeClasspath") {
@@ -220,11 +173,8 @@ class KmpAndroidDesktopRoutingTest {
 
   @Test
   fun `backgroundSandboxBoot opt-out flows from the daemon extension onto the bootstrap task`() {
-    // Extension -> task @Input half of the wiring. The other half — that it also lands in the
-    // descriptor's `systemProperties`, which is the only thing the daemon JVM actually reads —
-    // can't be asserted here: querying that map resolves the `composePreviewDesktopDaemon`
-    // configuration, and a bare ProjectBuilder project has no repositories to resolve it against.
-    // DaemonBootstrapFunctionalTest covers that end of it against a real build.
+    // Only the extension → task `@Input` half; the descriptor's `systemProperties` would need a
+    // resolvable daemon config (covered by DaemonBootstrapFunctionalTest).
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("desktopRuntimeClasspath") {
@@ -262,19 +212,10 @@ class KmpAndroidDesktopRoutingTest {
 
   @Test
   fun `desktop tasks can be registered from afterEvaluate`() {
-    // The mechanism behind the deferred lane decision in [ComposePreviewPlugin]. When
-    // `org.jetbrains.compose` lands on a KMP module before
-    // `com.android.kotlin.multiplatform.library`
-    // has had its chance, the desktop branch does NOT commit at that moment — it records the intent
-    // and registers in `afterEvaluate`, by which point the whole `plugins { }` block has been
-    // applied and the lane is known.
-    //
-    // That only works if `registerDesktopTasks` tolerates being called from inside `afterEvaluate`,
-    // which is not obvious: it schedules THREE `project.afterEvaluate` blocks of its own (the
-    // renderer-dependency default, the KMP dependency wiring, the stage-2 BTA configurations), so
-    // the deferral nests `afterEvaluate` inside `afterEvaluate`. Gradle rejects that outright once
-    // a project has FINISHED evaluating, which is why the deferral point matters and why it is
-    // pinned here rather than left to hold by luck.
+    // Backs the deferred lane decision in [ComposePreviewPlugin]: when `org.jetbrains.compose`
+    // lands before KMP-Android, desktop registration waits for `afterEvaluate`.
+    // `registerDesktopTasks` schedules its own `afterEvaluate` blocks, so this nests them, which
+    // Gradle rejects once evaluation has finished; pinned here.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("desktopRuntimeClasspath") {

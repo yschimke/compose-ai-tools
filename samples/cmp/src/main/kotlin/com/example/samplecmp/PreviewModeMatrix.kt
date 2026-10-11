@@ -24,29 +24,15 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * The **preview-mode matrix for the desktop / Compose-Multiplatform renderer** (issue #3082) — the
- * `ImageComposeScene` counterpart of `:samples:android`'s `PreviewModeMatrix.kt`.
- *
- * Same modes, same declared geometry, deliberately the same preview names: a `@Preview` shaped a
- * given way must resolve to the same dp frame on either backend, because both read the annotation
- * through the shared discovery step. What differs is only how each backend *applies* it
- * (Robolectric resource qualifiers vs. `Density` + `LocalSystemTheme` on an `ImageComposeScene`),
- * and that difference must not be visible in the resulting canvas — which is exactly what
- * [PreviewModeMatrixTest] pins here and its Android sibling pins there.
- *
- * Android-only params are deliberately absent: `showSystemUi` has its own desktop fixture
- * (`Pixel8SystemUiPreview` in `Previews.kt`, issue #1930), and `@PreviewScreenSizes` /
- * `@PreviewDynamicColors` pull in Android device semantics the desktop scene has no analogue for.
- * `@PreviewLightDark` and `@PreviewFontScale` do ship in the multiplatform artifact and are
- * covered.
- */
+// The preview-mode matrix for the desktop renderer, the `ImageComposeScene` counterpart of
+// `:samples:android`'s `PreviewModeMatrix.kt`. Same modes, geometry and preview names: both
+// backends must resolve an annotation to the same canvas, which each module's
+// [PreviewModeMatrixTest] pins. Android-only params are covered elsewhere (`Pixel8SystemUiPreview`)
+// or have no desktop analogue.
 
 /**
- * Fixed-size probe — 160×80dp of flat colour. Wrapped axes crop to exactly this.
- *
- * The default colour follows `isSystemInDarkTheme()` so a light/dark multipreview produces visibly
- * different captures; a flat colour would fan out into two identical PNGs and prove nothing.
+ * Fixed-size probe — 160×80dp of flat colour. The colour follows `isSystemInDarkTheme()` so a
+ * light/dark multipreview produces different captures.
  */
 @Composable
 private fun IntrinsicProbe(
@@ -121,9 +107,8 @@ fun MatrixBackgroundColorPreview() {
 }
 
 /**
- * `uiMode = 32` (`Configuration.UI_MODE_NIGHT_YES`; the CMP common source set has no `android.*`,
- * so the raw bit is used — discovery and the renderer both treat it as an int). Desktop applies it
- * via `LocalSystemTheme`, so `isSystemInDarkTheme()` flips exactly as it does under Robolectric.
+ * `uiMode = 32` is `UI_MODE_NIGHT_YES` as a raw bit (no `android.*` in common code); desktop
+ * applies it through `LocalSystemTheme`.
  */
 @Preview(name = "Night", widthDp = 200, heightDp = 100, uiMode = 32)
 @Composable
@@ -183,10 +168,8 @@ fun MatrixDeviceSpecPreview() {
 }
 
 /**
- * `orientation=portrait` on a landscape `spec:` — the exact device string AndroidX's own
- * `@PreviewScreenSizes` uses for its "Tablet" entry. 1280×800dp @1.5× rotated is 800×1280dp
- * (1200×1920px). Only `landscape` used to be honoured here, so this rendered landscape — pixel for
- * pixel identical to the un-rotated sibling above (issue #3547).
+ * `orientation=portrait` on a landscape `spec:` (AndroidX's "Tablet"): 1280×800dp @1.5× rotated
+ * renders 800×1280dp (1200×1920px).
  */
 @Preview(
   name = "Rotated device spec",
@@ -198,10 +181,8 @@ fun MatrixRotatedDeviceSpecPreview() {
 }
 
 /**
- * `spec:parent=…,orientation=…` — what Studio's device picker writes once you pick a catalog device
- * and rotate it. The parent supplies the frame (Small Phone, 360×640dp @2.0×) and `orientation`
- * trades the axes, so this renders 640×360dp landscape (1280×720px). `parent=` used to be unread
- * entirely, collapsing the picked device to the 400×800dp default.
+ * `spec:parent=…,orientation=…`, as Studio's device picker writes after rotating: renders 640×360dp
+ * (1280×720px) from Small Phone.
  */
 @Preview(name = "Parent device spec", device = "spec:parent=small_phone,orientation=landscape")
 @Composable
@@ -225,10 +206,7 @@ fun MatrixFontScaleMultiPreview() {
   IntrinsicProbe("font scales")
 }
 
-/**
- * App-declared multipreview meta-annotation — discovery walks it transitively on this backend too,
- * so a consumer's own annotation fans out identically to the shipped ones.
- */
+/** App-declared multipreview meta-annotation, walked transitively on this backend too. */
 @Preview(name = "Meta phone", device = "id:pixel_5")
 @Preview(name = "Meta watch", device = "id:wearos_small_round")
 annotation class PhoneAndWatchPreviews

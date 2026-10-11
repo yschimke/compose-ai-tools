@@ -3,38 +3,21 @@ package ee.schimke.composeai.discovery
 /**
  * The hole-filler a catalog's structural code templates are rendered by.
  *
- * ## What it exists for
- *
- * A record can print a *call site*: `Text(text = "Hello")`. It cannot print the structure a screen
- * needs around those call sites, because that structure is not in any signature — `ScreenScaffold`
- * takes a scroll state that has to be the same object the `TransformingLazyColumn` inside it holds,
- * `SurfaceTransformation(spec)` is declared on `TransformingLazyColumnItemScope` and can only be
- * written inside `item { }`, a dialog is a sibling of the scaffold rather than a child, and a
- * `CheckboxButton` without a hoisted `remember` is a picture of a checkbox.
- *
- * The preview server writes that structure today in 1,406 lines of Kotlin, per catalog, for
- * components it has never compiled. The catalog contract moves it into the catalog repository as
- * **templates**: Kotlin fragments with named holes, published in `ui-builder.policy.json`, one per
- * structural role. This is what fills the holes.
- *
- * ## A hole-filler, not a language
+ * A record can print a call site but not the structure a screen needs around it (a scroll state
+ * shared between `ScreenScaffold` and its `TransformingLazyColumn`, `SurfaceTransformation` only
+ * inside `item { }`, a hoisted `remember` for a `CheckboxButton`). Catalogs publish that structure
+ * as templates — Kotlin fragments with named holes, one per structural role, in
+ * `ui-builder.policy.json` — and this fills the holes.
  *
  * Two hole kinds and no third:
- *
  * - `${name}` — substitute the value the caller resolved for `name`.
  * - `${call(modifier = "Modifier.padding(8.dp)")}` — a record call site with named argument
- *   overrides, so a template can reach a parameter the surrounding structure requires without
- *   knowing which component sits in the hole.
+ *   overrides, so a template can set a parameter without knowing which component fills the hole.
  *
- * **No conditionals, no loops, no expressions.** A template that would need one is two roles, and
- * adding a role is a change to the engine with a test rather than a capability every catalog then
- * ships a compiler for. That restriction is the entire argument for templates-as-data over an
- * emitter published as a jar: the builder can *validate* what a catalog asks for, and the compile
- * and render round trip is the validation.
+ * No conditionals, loops or expressions: a template needing one is two roles. That keeps templates
+ * validatable data rather than an emitter jar.
  *
- * ## Indentation is the whole reason this is not `String.replace`
- *
- * A hole is nearly always filled with several lines, and the output is Kotlin somebody reads:
+ * Indentation is why this isn't `String.replace`:
  * ```
  * AppScaffold {
  *   ScreenScaffold(scrollState = ${listState}) {
@@ -42,12 +25,8 @@ package ee.schimke.composeai.discovery
  *   }
  * }
  * ```
- *
- * `${content}` sits at four spaces, and a naive replace would indent the substituted block's first
- * line and leave every other line at column zero. So a hole that begins a line (whitespace only
- * before it) re-indents every continuation line of its value to that hole's column. A hole in the
- * middle of a line does not: there is no single column to align to, and guessing one produces
- * output that is worse than unindented.
+ * A hole that begins a line re-indents every continuation line of its value to the hole's column.
+ * A mid-line hole does not, since there is no single column to align to.
  */
 object StructuralTemplate {
 
@@ -57,11 +36,8 @@ object StructuralTemplate {
     data class Named(val name: String) : Hole
 
     /**
-     * `${call(...)}` — a record call site, with named argument overrides the structure requires.
-     *
-     * The overrides are carried as **source text**, unparsed: `transformation =
-     * "SurfaceTransformation(spec)"` is a Kotlin expression the catalog wrote, and this engine is
-     * not the thing that decides whether it is a valid one. The compile round trip is.
+     * `${call(...)}` — a record call site with named argument overrides, carried as unparsed source
+     * text; the compile round trip decides whether they are valid.
      */
     data class Call(val overrides: Map<String, String>) : Hole
   }
@@ -75,12 +51,9 @@ object StructuralTemplate {
   }
 
   /**
-   * The holes [template] declares, in order, or the reasons it cannot be read.
-   *
-   * Split out from [render] because a catalog's templates are validated when the catalog is
-   * *published*, long before any design is exported through them. A policy naming a hole the
-   * builder will never resolve should be reported to the person editing the policy, not to the
-   * person who later drew a screen.
+   * The holes [template] declares, in order, or the reasons it cannot be read. Separate from
+   * [render] so templates are validated when the catalog is published, not when a screen is
+   * exported.
    */
   fun holes(template: String): Result2<List<Hole>> {
     val holes = mutableListOf<Hole>()
@@ -93,12 +66,8 @@ object StructuralTemplate {
   }
 
   /**
-   * Render [template], asking [resolve] for each hole's value.
-   *
-   * [resolve] returns null for a hole it cannot fill, which becomes a refusal naming the hole
-   * rather than an empty string: a screen root whose `content` silently vanished compiles, renders
-   * an empty box, and is the worst possible outcome for an export somebody is about to paste into
-   * an IDE.
+   * Render [template], asking [resolve] for each hole's value. A null from [resolve] becomes a
+   * refusal naming the hole, never an empty string that would silently drop content.
    */
   fun render(template: String, resolve: (Hole) -> String?): Result {
     val out = StringBuilder()
@@ -139,12 +108,8 @@ object StructuralTemplate {
     }
 
   /**
-   * The column a hole starting a line sits at, or null when it does not start one.
-   *
-   * "Starts a line" means only whitespace between the previous newline and the hole. A hole
-   * anywhere else has no column its value's continuation lines could be aligned to — the text
-   * before it on that line is not indentation — so nothing is added and the value is emitted as
-   * written.
+   * The column a hole starting a line sits at (only whitespace before it on its line), or null when
+   * it does not start one.
    */
   private fun holeIndent(template: String, start: Int): String? {
     var index = start - 1
@@ -173,11 +138,9 @@ object StructuralTemplate {
   }
 
   /**
-   * Walk `${…}` occurrences, reporting each as a hole plus the span it occupies.
-   *
-   * A `$` not followed by `{` is ordinary text — Kotlin templates are full of `$` — so only `${`
-   * opens a hole. Braces nest and string literals are respected, because a call override's value
-   * routinely contains both: `${call(modifier = "Modifier.padding(if (x) 8.dp else 0.dp)")}`.
+   * Walk `${…}` occurrences, reporting each as a hole plus its span. Only `${` opens a hole (Kotlin
+   * templates are full of `$`); braces nest and string literals are respected, since overrides
+   * contain both.
    */
   private inline fun scanWithSpans(
     template: String,
@@ -212,36 +175,9 @@ object StructuralTemplate {
   }
 
   /**
-   * Index of the `}` closing the `{` at [open], respecting nesting, string literals AND character
-   * literals.
-   *
-   * The third scanner in this file that has to know what a quote is, and the one that runs FIRST —
-   * so `${'$'}{call(separator = '}')}` ended here, at the brace inside the char literal, and was
-   * rejected as malformed before the argument splitter's own handling could ever see it. Fixing the
-   * two later scanners without this one left the feature exactly as broken for the input that
-   * motivated the fix.
-   */
-  /**
-   * How many characters of quoting start at [index]: 3 for `\"\"\"`, 1 for `"`, 0 otherwise.
-   *
-   * One place, because there are THREE scanners in this file that have to agree about what a quote
-   * is — [closingBrace], [splitTopLevel] and [topLevelEquals] — and they have twice been found
-   * disagreeing, each having been taught separately. A triple quote must be tested before a single
-   * one, or `\"\"\"` reads as an empty string followed by a stray quote and every state after it
-   * inverts.
-   */
-  /**
-   * Where a Kotlin comment starting at [index] ends, or -1 when none starts there.
-   *
-   * The same "one place, three scanners" argument as [quoteAt], and the same bug: [closingBrace],
-   * [splitTopLevel] and [topLevelEquals] each tracked quotes and none tracked comments, so
-   * `${'$'}{call(content = { /* } */ Text("x") })}` read the commented brace as syntax, took the
-   * lambda's closing brace for the end of the hole, and rejected valid Kotlin. An override's value
-   * is documented as arbitrary Kotlin source, so a comment in it is ordinary rather than exotic.
-   *
-   * Block comments NEST in Kotlin, unlike C — `/* /* */ */` is one comment — so this counts rather
-   * than searching for the first `*` + `/`. An unterminated comment runs to the end of the text,
-   * which is what a compiler would say about it too.
+   * Where a Kotlin comment starting at [index] ends, or -1 when none starts there. Shared by every
+   * scanner here so commented braces/commas are never read as syntax. Block comments nest in
+   * Kotlin, so this counts depth; an unterminated comment runs to the end.
    */
   private fun commentEnd(text: String, index: Int): Int {
     if (index + 1 >= text.length || text[index] != '/') return -1
@@ -267,9 +203,17 @@ object StructuralTemplate {
     return text.length
   }
 
+  /**
+   * How many characters of quoting start at [index]: 3 for `\"\"\"`, 1 for `"`, 0 otherwise. Shared
+   * so [closingBrace], [splitTopLevel] and [topLevelEquals] agree; triple quotes are tested first.
+   */
   private fun quoteAt(text: String, index: Int): Int =
     if (text.startsWith("\"\"\"", index)) 3 else if (text[index] == '"') 1 else 0
 
+  /**
+   * Index of the `}` closing the `{` at [open], respecting nesting, string and character literals
+   * (e.g. `${'$'}{call(separator = '}')}`) and comments.
+   */
   private fun closingBrace(template: String, open: Int): Int {
     var depth = 0
     var index = open
@@ -280,7 +224,7 @@ object StructuralTemplate {
       val ch = template[index]
       val quote = if (inChar) 0 else quoteAt(template, index)
       when {
-        // A raw string has no escapes at all, so a backslash inside one is an ordinary character.
+        // A raw string has no escapes, so a backslash inside one is an ordinary character.
         (inString || inChar) && ch == '\\' -> index++
         inRaw && quote == 3 -> {
           inRaw = false
@@ -310,10 +254,8 @@ object StructuralTemplate {
   }
 
   /**
-   * `a = "x", b = y` as a map, or null when it is not that.
-   *
-   * Values are kept verbatim, quotes and all where the catalog wrote them: a Kotlin expression is
-   * the unit here, and stripping quotes would turn `label = "Checkbox"` into an identifier.
+   * `a = "x", b = y` as a map, or null when it is not that. Values are kept verbatim, quotes
+   * included, since each is a Kotlin expression.
    */
   private fun parseOverrides(text: String): Map<String, String>? {
     val trimmed = text.trim()
@@ -325,37 +267,26 @@ object StructuralTemplate {
       val name = part.substring(0, equals).trim()
       val value = part.substring(equals + 1).trim()
       if (!isName(name) || value.isEmpty()) return null
-      // A repeated argument is a template that names one parameter twice, which no call site can
-      // honour; failing here is a message about the policy rather than a compile error later.
+      // A parameter named twice can't be honoured by any call site; report it against the policy.
       if (overrides.put(name, value) != null) return null
     }
     return overrides
   }
 
   /**
-   * The spans of [text] that are GENERIC ARGUMENT LISTS, so their commas are not separators.
+   * The spans of [text] that are generic argument lists, so their commas are not separators
+   * (`emptyMap<String, Int>()`).
    *
-   * `${'$'}{call(items = emptyMap<String, Int>())}` was rejected as malformed: the splitter tracked
-   * `()`, `[]` and `{}` and nothing else, so the comma between `String` and `Int` sat at depth zero
-   * and cut one named argument into two. An override's value is documented as arbitrary Kotlin, so
-   * rejecting valid Kotlin is a defect in the reader, not in the template.
-   *
-   * Angle brackets cannot simply be counted like the other three. `a < b` is a comparison, `->`
-   * ends in a `>` that closes nothing, and `List<Pair<String, Int>>` nests. So this is a pre-scan
-   * that PROVES a span before the splitter trusts it: a `<` is a generic opener only when it
-   * follows an identifier character directly, and only when a matching `>` is found while skipping
-   * `->` and refusing anything a type argument cannot contain. A `<` that fails any of those is
-   * left to the splitter as an ordinary character, which is exactly the old behaviour — so a
-   * comparison expression is no worse off than before, and this can only ever un-split.
+   * Angle brackets can't simply be counted (`a < b`, `->`, nested generics), so a `<` is an opener
+   * only when it directly follows an identifier character and a matching `>` is found, skipping
+   * `->` and abandoning on anything a type argument can't contain. A rejected `<` is an ordinary
+   * character, so this can only ever un-split.
    */
   private fun genericSpans(text: String): List<IntRange> {
     val spans = mutableListOf<IntRange>()
     var index = 0
     while (index < text.length) {
-      // A comment is not source, here as everywhere else. `commentEnd` exists for exactly this and
-      // three other scanners consult it; this one was written afterwards and did not, so `/` ended
-      // the scan the way `(` and `@` did — the same bug a third time, from not applying the shared
-      // helper to a scanner added after it.
+      // Skip comments, as every scanner here does.
       val skipped = commentEnd(text, index)
       if (skipped >= 0) {
         index = skipped
@@ -370,21 +301,10 @@ object StructuralTemplate {
       var scan = index
       var end = -1
       while (scan < text.length) {
-        // Everything a type argument list may hold, and nothing else. A quote or any other
-        // character means the `<` was a comparison, and the attempt is abandoned rather than
-        // guessed at.
-        //
-        // Parentheses are IN the set because a function type is an ordinary type argument —
-        // `emptyMap<String, (Int, Int) -> Unit>()` is valid Kotlin, and excluding `(` made the scan
-        // give up there, record no span, and let the comma after `String` split one override into
-        // two. Their depth is tracked so a `>` only closes the list at paren depth zero, which is
-        // what keeps `(Int, Int) -> Unit` from ending it early.
-        //
-        // `@` is in for the same reason, one shape further on: a type-use annotation is part of the
-        // type, and `@Composable () -> Unit` is the function type this codebase actually writes, so
-        // excluding `@` failed the identical way for the commoner input. It needs no depth of its
-        // own — an annotation is a prefix, not a bracket — and admitting the character cannot widen
-        // what the scan accepts as a list, because a `>` still has to close it at paren depth zero.
+        // Everything a type argument list may hold, and nothing else; anything else means the `<`
+        // was a comparison. Parentheses are allowed (function types like `(Int, Int) -> Unit`) with
+        // depth tracked so `>` only closes at paren depth zero; `@` is allowed for type-use
+        // annotations like `@Composable () -> Unit`.
         val commented = commentEnd(text, scan)
         if (commented >= 0) {
           scan = commented
@@ -429,10 +349,7 @@ object StructuralTemplate {
     val generics = genericSpans(text)
     var depth = 0
     var inString = false
-    // Kotlin CHARACTER literals, tracked alongside strings. An override's value is arbitrary Kotlin
-    // kept verbatim, and `separator = ','` is an ordinary thing to write — with only double quotes
-    // recognised, the comma inside it read as a top-level argument separator and split one argument
-    // into two, so a valid template was rejected as malformed.
+    // Character literals too: `separator = ','` must not split.
     var inChar = false
     var inRaw = false
     var index = 0
@@ -468,9 +385,7 @@ object StructuralTemplate {
           current.append(ch)
         }
         inString || inChar -> current.append(ch)
-        // Kept verbatim, like everything else in an override's value: the text is Kotlin source and
-        // a comment is part of it. Skipped only as SYNTAX, so a brace or a comma inside one stops
-        // being read as structure.
+        // Comments are kept verbatim but skipped as syntax.
         commentEnd(text, index) >= 0 -> {
           val end = commentEnd(text, index)
           current.append(text, index, end)
@@ -498,9 +413,8 @@ object StructuralTemplate {
   }
 
   /**
-   * Index of the `=` separating name from value, ignoring `==`, `>=` and anything in a string or a
-   * character literal — `'='` is a legal value, and reading the `=` inside it as the separator
-   * would split the argument in the wrong place.
+   * Index of the `=` separating name from value, ignoring `==`, `>=` and anything in a string or
+   * character literal (`'='`).
    */
   private fun topLevelEquals(part: String): Int {
     var inString = false

@@ -15,10 +15,9 @@ import okio.Path.Companion.toPath
 import okio.source
 
 /**
- * Well-known directory inside a bundle zip holding an optional, self-contained web embed
- * (`web/index.html` + `web/compose-preview-embed.js`, and `web/previews/<id>.png` in external-image
- * mode). Written by `bundle embed --in-bundle`. Additive: an older reader, the renderer, and the
- * daemon all ignore it, so a bundle carrying a `web/` directory is still a valid polyglot.
+ * Bundle directory holding an optional self-contained web embed (`web/index.html`,
+ * `web/compose-preview-embed.js`, and `web/previews/<id>.png` in external-image mode), written by
+ * `bundle embed --in-bundle`. Ignored by older readers, the renderer and the daemon.
  */
 public const val BUNDLE_WEB_DIR: String = "web"
 
@@ -107,10 +106,9 @@ public fun injectFigmaFontWarningsIntoBundle(
  * Inject a hybrid figma-svg's per-node raster crops (preview id → crop filename → PNG bytes) as
  * `previews/<id>.figma-raster/<node>.png`. Returns the number of crops written.
  *
- * Crops are bounded to [maxEdgePx] on the way in: the serve host downsamples to that bound anyway,
- * and full-resolution photo crops once pushed a bundle past its 25MiB fetch cap. [downscaleRaster]
- * returns already-bounded crops unchanged, so re-packing stays byte-stable. Pass `Int.MAX_VALUE` to
- * store crops verbatim.
+ * Crops are bounded to [maxEdgePx] (the serve host downsamples to that anyway, and full-size crops
+ * can exceed the 25MiB fetch cap); already-bounded crops pass unchanged so re-packing is
+ * byte-stable. Pass `Int.MAX_VALUE` to store crops verbatim.
  */
 public fun injectFigmaRasterIntoBundle(
   bundleFile: File,
@@ -159,12 +157,9 @@ public fun injectSidecarsIntoBundle(
 }
 
 /**
- * Inject arbitrary top-level entries (posix zip path → bytes) into [bundleFile]'s zip portion **in
- * place**, preserving the leading PNG cover and every existing entry; an entry with a colliding
- * path is replaced (idempotent). Unlike [injectSidecarsIntoBundle] the paths are used verbatim (no
- * `previews/` prefix), so this is the carrier for whole-bundle sidecars like `signatures.json`.
- * Same temp-sibling + atomic-move + DOS-epoch contract as the other injectors. Returns the count
- * written.
+ * Inject top-level entries (posix zip path → bytes) into [bundleFile]'s zip portion in place, with
+ * the same contract as [injectSidecarsIntoBundle] but verbatim paths (no `previews/` prefix) — the
+ * carrier for whole-bundle sidecars like `signatures.json`. Returns the count written.
  */
 public fun injectRawZipEntries(
   bundleFile: File,
@@ -205,10 +200,9 @@ public fun rewriteRawZipEntries(
 }
 
 /**
- * Return a copy of [existingZip] with [newEntries] (path → bytes) added, replacing any existing
- * entry with the same name (so the operation is idempotent). Every other original entry is
- * preserved verbatim. New entries are pinned to [ZIP_DOS_EPOCH_MS] for reproducibility. Operates on
- * raw zip bytes — the caller re-attaches the polyglot's leading PNG.
+ * Return a copy of [existingZip] with [newEntries] (path → bytes) added or replaced, other entries
+ * verbatim, new entries pinned to [ZIP_DOS_EPOCH_MS]. Operates on raw zip bytes; the caller
+ * re-attaches the leading PNG.
  */
 public fun addOrReplaceZipEntries(
   existingZip: ByteArray,
@@ -238,11 +232,8 @@ public fun addOrReplaceZipEntries(
 }
 
 /**
- * Return a copy of [existingZip] with [webFiles] (path → bytes) added. Every original entry is
- * preserved except ones already under `$BUNDLE_WEB_DIR/`, which are dropped first so re-embedding
- * is idempotent (no duplicate `web/…` entries on a second run). New entries are pinned to the DOS
- * epoch so the result is reproducible. Operates on raw zip bytes — the caller re-attaches the
- * polyglot's leading PNG.
+ * Return a copy of [existingZip] with [webFiles] added, first dropping existing `$BUNDLE_WEB_DIR/`
+ * entries so re-embedding is idempotent. DOS-epoch timestamps; raw zip bytes, as above.
  */
 public fun embedWebIntoZip(existingZip: ByteArray, webFiles: Map<String, ByteArray>): ByteArray {
   val baos = ByteArrayOutputStream()
@@ -275,11 +266,9 @@ public val ZIP_DOS_EPOCH_MS: Long =
   java.util.GregorianCalendar(1980, java.util.Calendar.JANUARY, 1, 0, 0, 0).timeInMillis
 
 /**
- * The output path for `bundle embed --in-bundle`, or `null` when the caller must error and demand
- * `-o`. An explicit [outArg] always wins. Otherwise we default to rewriting [inputPath] in place —
- * but only for a *local* input: a URL input ([sourceIsUrl]) resolved to a delete-on-exit temp file,
- * and rewriting that "in place" would lose the enriched bundle on exit, so we refuse and require an
- * explicit output instead.
+ * The output path for `bundle embed --in-bundle`, or `null` when the caller must demand `-o`. An
+ * explicit [outArg] wins; otherwise a local [inputPath] is rewritten in place. A URL input resolved
+ * to a delete-on-exit temp file, so it requires an explicit output.
  */
 public fun resolveInBundleTarget(
   outArg: String?,
@@ -293,10 +282,7 @@ public fun resolveInBundleTarget(
   }
 
 /**
- * In-CLI mirror of the bundle's on-disk schema. We re-declare the data classes here (rather than
- * dragging the gradle-plugin module onto the CLI's compile classpath) because the CLI links against
- * a different module graph; the schema is tiny and rarely changes.
- *
+ * In-CLI mirror of the bundle's on-disk schema, re-declared rather than linking `:gradle-plugin`.
  * Keep field names in lockstep with `PreviewBundleFormat.kt` in `:gradle-plugin`.
  */
 public object BundleReader {
@@ -315,10 +301,8 @@ public object BundleReader {
     val classpath: List<ClasspathEntry>,
     val modulePath: String,
     /**
-     * The producing project's directory relative to the repository root (`bundle/format` for
-     * `:bundle-format`). Empty for the root project and for any bundle packed before the field
-     * existed — [modulePath] is a LOGICAL name that `projectDir` may remap, so this cannot be
-     * derived from it.
+     * The producing project's directory relative to the repository root (`bundle/format`). Empty
+     * for the root project and older bundles; can't be derived from the logical [modulePath].
      */
     val moduleDirectory: String = "",
     val producedBy: String,
@@ -353,9 +337,8 @@ public object BundleReader {
     val externalClasspath: List<ExternalClasspath> = emptyList(),
     /**
      * v9+: extra Maven repository base URLs (beyond Maven Central / Google Maven) needed to
-     * re-resolve this bundle's [ClasspathEntry.Maven] coordinates — a JitPack fork, an internal
-     * mirror, an androidx.dev snapshot build. Empty on a pre-v9 bundle and on any module whose deps
-     * all live on the two defaults. See `BundleManifest.repositories` in `PreviewBundleFormat.kt`.
+     * re-resolve [ClasspathEntry.Maven] coordinates. See `BundleManifest.repositories` in
+     * `PreviewBundleFormat.kt`.
      */
     val repositories: List<String> = emptyList(),
   )
@@ -521,15 +504,12 @@ public object BundleReader {
   }
 
   /**
-   * Extract every embedded jar under `libs/` from a bundle's [zipBytes] into [libsDir], returning
-   * the written jar files sorted by name (stable classpath order). Embedded-mode bundles (schema-v3
-   * `resolution = "embedded"`) carry their reachable third-party deps here; coordinate bundles
-   * carry none, so this returns an empty list.
+   * Extract every embedded jar under `libs/` from [zipBytes] into [libsDir], sorted by name. Only
+   * embedded-mode bundles carry any.
    *
-   * Each entry is flattened to its basename under [libsDir] and the resolved path is verified to
-   * live inside [libsDir] — defeats Zip Slip (`../` traversal) on a hostile bundle. Nested paths
-   * and directory entries are ignored. Shared by [BundleRenderer] and [BundleDaemonCommand] so the
-   * two player paths extract identically.
+   * Entries are flattened to their basename and verified to resolve inside [libsDir] (defeats Zip
+   * Slip); nested paths and directories are ignored. Shared by [BundleRenderer] and
+   * [BundleDaemonCommand].
    */
   public fun extractEmbeddedLibs(
     zipBytes: ByteArray,

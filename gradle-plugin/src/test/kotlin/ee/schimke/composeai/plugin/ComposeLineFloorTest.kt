@@ -4,19 +4,15 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * The compose-ui line floor of [AndroidPreviewSupport.applyRenderGraphResolutionRules].
- *
- * Rule 3 defers the render classpath to the consumer's Compose, but the renderer's own bytecode
- * still has to link against whatever it lands on. Nothing pinned `ui` / `foundation` / `runtime` /
- * `animation` — [AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION] only ever reaches the
- * `ui-test-*` coordinates — so a consumer below the floor handed the renderer an unlinkable
- * classpath and every preview died before user code ran:
+ * The compose-ui line floor of [AndroidPreviewSupport.applyRenderGraphResolutionRules]. Rule 3
+ * defers the render classpath to the consumer's Compose, but the renderer must still link against
+ * it; [AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION] alone only reaches `ui-test-*`, so an
+ * older consumer failed every preview with:
  * ```
  * NoSuchMethodError: 'kotlin.jvm.functions.Function1
  *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
  * ```
- *
- * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00.)
+ * (see #3590)
  */
 class ComposeLineFloorTest {
 
@@ -69,11 +65,8 @@ class ComposeLineFloorTest {
 
   @Test
   fun `the floor sits inside the bracket the published artifacts prove`() {
-    // Probing androidx.compose.ui:ui-android for the accessor that actually fails:
-    //   1.9.5  — ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion ABSENT
-    //   1.10.0 — PRESENT
-    // Android fixtures also rendered end to end on 1.10.x before the stable BOM moved to 1.11.x.
-    // Therefore 1.9.5 remains below the floor, while 1.10.0 is the first accepted release.
+    // `ui-android` 1.9.5 lacks `ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion`; 1.10.0
+    // has it and renders the fixtures, so it's the first accepted release.
     assertThat(upgrade("androidx.compose.ui", "1.9.5")).isEqualTo(floor)
     assertThat(upgrade("androidx.compose.ui", "1.10.0")).isNull()
     assertThat(upgrade("androidx.compose.ui", "1.11.0")).isNull()
@@ -81,10 +74,8 @@ class ComposeLineFloorTest {
 
   @Test
   fun `the KMP sibling substitution carries the floor instead of dropping it`() {
-    // Gradle hands every `eachDependency` action the ORIGINAL requested selector, so a `useTarget`
-    // passing `requested.version` through silently undoes an earlier `useVersion`. Split across two
-    // rules, this exact coordinate would be floored and then re-pinned to `ui-android:1.9.5` — the
-    // artifact the floor exists to keep off the render graph.
+    // Every `eachDependency` action sees the ORIGINAL requested selector, so a `useTarget` passing
+    // `requested.version` would undo an earlier `useVersion` and re-pin `ui-android:1.9.5`.
     val target =
       AndroidPreviewSupport.renderGraphTarget(
         group = "androidx.compose.ui",
@@ -114,14 +105,10 @@ class ComposeLineFloorTest {
 
   @Test
   fun `manageDependencies=false leaves the compose line alone but still substitutes siblings`() {
-    // The floor is only safe while the main-variant ui/foundation pins move with it, and the
-    // opt-out branch deliberately leaves those to the consumer ("consumer must ensure
-    // androidx.compose.ui:ui is on the main variant"). Raising the render graph there would put
-    // floor-version classes over the consumer's older resources — the #3484 R$id NoSuchFieldError.
-    //
-    // The DECISION is still "do not raise"; ValidateComposeFloorTask checks the selected graph
-    // before rendering and reports composeFloorOptOutMessage for this case. Kept separate so the
-    // pure resolution-rule decision stays testable on its own.
+    // The opt-out leaves main-variant ui/foundation to the consumer, so raising the render graph
+    // would put newer classes over older resources (the #3484 `R$id` NoSuchFieldError). The
+    // decision is "do not raise"; ValidateComposeFloorTask reports composeFloorOptOutMessage
+    // separately.
     assertThat(
         AndroidPreviewSupport.renderGraphTarget(
           group = "androidx.compose.ui",

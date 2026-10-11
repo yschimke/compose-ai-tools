@@ -12,30 +12,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Renders the supplied [fontFamily] across [weights] as a labelled weight ladder so consumers can
- * verify a custom family ships every weight they target (a missing weight silently falls back to
- * the nearest available weight on-device and renders as a same-weight twin row here — easy to spot
- * in a PNG diff).
+ * Renders [fontFamily] across [weights] as a labelled weight ladder, so a missing weight (which
+ * silently falls back to the nearest one) shows up as a same-weight twin row.
  *
- * Pairs with a normal `@Preview`. Author one wrapper per family of interest (`Roboto`, a Google
- * Font, an OEM brand family) and the helper produces one row per [FontWeight] — each row labelled
- * with the weight token name (`Light` / `Normal` / `Medium` / `SemiBold` / `Bold`) and the
- * [sampleText] rendered at that weight.
- *
- * Defaults to the five most commonly shipped weights so the helper works out of the box for both
- * stock platform families (`FontFamily.SansSerif` etc., which the system synthesises every weight
- * for) and custom families with a typical Light → Bold range.
- *
- * @param fontFamily the family to specimen. Use the stock `FontFamily.SansSerif` / `Serif` /
- *   `Monospace` / `Cursive` constants if you don't have a custom family in mind, or a
- *   `FontFamily(Font(...))` built from the consumer's `res/font/` resources / Google Fonts provider
- *   for a real family check.
- * @param sampleText the pangram rendered in every row. Defaults to the canonical English pangram;
- *   override with a localised pangram (e.g. German "Falsches Üben von Xylophonmusik quält jeden
- *   größeren Zwerg.") to exercise diacritics or non-Latin scripts at each weight.
- * @param weights the weights to render. Defaults to `Light / Normal / Medium / SemiBold / Bold` —
- *   the five tokens most custom families ship variants for. Pass a wider list (`Thin`,
- *   `ExtraLight`, `ExtraBold`, `Black`) when speciming a variable font.
+ * @param fontFamily the family to specimen: a stock constant (`FontFamily.SansSerif`, …) or a
+ *   `FontFamily(Font(...))` from `res/font/` or a Google Fonts provider.
+ * @param sampleText the text in every row; override with a localised pangram to exercise
+ *   diacritics or non-Latin scripts.
+ * @param weights the weights to render; defaults to Light / Normal / Medium / SemiBold / Bold. Pass
+ *   a wider list for a variable font.
  */
 @Composable
 fun FontFamilySpecimen(
@@ -56,9 +41,8 @@ fun FontFamilySpecimen(
 }
 
 /**
- * Default weight ladder for [FontFamilySpecimen]. Kept narrow (five entries) so a `@Preview` with
- * no `heightDp` override still fits the full ladder without scrolling. Consumers speciming a
- * variable font or a family with extreme weights should pass an explicit list.
+ * Default weight ladder for [FontFamilySpecimen]: five entries, so it fits a default preview
+ * height.
  */
 internal val DefaultWeights: List<FontWeight> =
   listOf(
@@ -70,9 +54,8 @@ internal val DefaultWeights: List<FontWeight> =
   )
 
 /**
- * Maps a [FontWeight] to its M3 / token name so the specimen row labels read like the
- * `androidx.compose.ui.text.font.FontWeight` companion constants. Unknown / custom weights fall
- * through to the numeric value (e.g. `w350`) so the label always renders something deterministic.
+ * [weight]'s `FontWeight` companion name for row labels, or the numeric value (e.g. `w350`) for
+ * custom weights.
  */
 internal fun weightLabel(weight: FontWeight): String =
   when (weight) {

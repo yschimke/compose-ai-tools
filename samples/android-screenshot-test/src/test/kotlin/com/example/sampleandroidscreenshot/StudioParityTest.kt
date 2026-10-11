@@ -8,30 +8,21 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
- * **Studio parity gate.** Diffs our renderer's output against Android Studio's.
+ * Studio parity gate: diffs our renderer's output against Android Studio's.
  *
- * The reference images under `src/screenshotTestDebug/reference/` are produced by Google's
- * `com.android.compose.screenshot` plugin, which renders `@Preview`s through **Layoutlib** — the
- * same engine that draws Studio's preview pane. They are committed (that is the plugin's own
- * convention), so this test needs no Studio, no GUI and no network: it is a permanent, regenerable
- * snapshot of "what Studio shows" for the fixtures in [StudioParityMatrix].
- *
- * Regenerate them after changing a fixture:
+ * References under `src/screenshotTestDebug/reference/` come from Google's
+ * `com.android.compose.screenshot` plugin (Layoutlib, the engine behind Studio's preview pane) and
+ * are committed, so the test needs no Studio or network. Regenerate after changing a fixture:
  * ```
  * ./gradlew -Pandroid.experimental.enableScreenshotTest=true \
  *   :samples:android-screenshot-test:updateDebugScreenshotTest
  * ```
  *
- * Both engines' sizes are pinned exactly, per preview, rather than compared loosely. Where they
- * agree, that pins the parity. Where they *disagree*, the divergence is written down with its cause
- * and issue — so a fix flips the test instead of silently changing output, and a regression can't
- * hide behind a tolerance. [docs/STUDIO_PARITY.md](../../../../../../../docs/STUDIO_PARITY.md)
- * carries the fixture rationale.
- *
- * Same-size pairs are additionally compared pixel-by-pixel. Text rasterisation differs between
- * Layoutlib (native Skia + platform fonts) and our Robolectric renderer, so an exact match is not
- * achievable — the tolerance is on the *fraction of differing pixels*, which separates
- * anti-aliasing noise (well under 1%) from real layout divergence (20%+ here).
+ * Both engines' sizes are pinned exactly per preview; known divergences are written down with their
+ * cause so a fix flips the test. Rationale:
+ * [docs/STUDIO_PARITY.md](../../../../../../../docs/STUDIO_PARITY.md). Same-size pairs are also
+ * compared by fraction of differing pixels, separating text anti-aliasing noise (under 1%) from
+ * layout divergence (20%+).
  */
 class StudioParityTest {
 
@@ -74,13 +65,9 @@ class StudioParityTest {
       "ParityFixedWidthPreview" to Parity(630 to 210, 630 to 210),
       // Round Wear device previews are circularly clipped with transparent corners.
       "ParityWearDevicePreview" to Parity(384 to 384, 384 to 384),
-      // Defaulted value parameters: both engines apply the declared defaults and wrap to the
-      // resulting content. The picture is unremarkable; that both engines *find* the preview at all
-      // is the point, since it compiles to a `$default` bridge rather than `(Composer, int)`.
-      // Looser tolerance than the rest: the differing pixels are confined to the one text row
-      // (rows 25-50 of 163; the two boxes below are byte-identical), and this fixture is small
-      // enough that the same glyph-edge noise is 2.5% of it rather than the sub-1% it is on a
-      // 525x263 frame. The fraction is a property of the frame size, not of the divergence.
+      // Defaulted value parameters compile to a `$default` bridge; the point is that both engines
+      // find the preview. Looser tolerance because glyph-edge noise on this small frame is ~2.5%,
+      // all in the one text row.
       "ParityDefaultedParamsPreview" to Parity(154 to 163, 154 to 163, maxDiffFraction = 0.03),
     )
 
@@ -88,19 +75,10 @@ class StudioParityTest {
   fun `our renders match Android Studio's Layoutlib output, or diverge only in known ways`() {
     val references = collectReferences()
     val ours = collectOurRenders()
-    // Whether this gate is APPLICABLE, or BROKEN. The two look identical from in here — our Parity
-    // renders are missing either way, and the Layoutlib references are committed so their presence
-    // proves nothing — so the build says which it is (`studioParity.required`, set from the same
-    // property that materialises the source set).
-    //
-    // Getting this wrong in the safe-looking direction is what makes it worth the plumbing: a
-    // bare `assumeTrue` retires the whole Studio-parity gate the moment the `-P` flag is dropped
-    // from CI or `composePreviewRenderAll` quietly renders none of these fixtures. The suite stays
-    // green, the checks stay ticked, and nothing is comparing us to Studio any more.
-    // Only the wholesale case needs deciding here. A fixture that individually stopped rendering is
-    // already a failure below ("our renderer produced no PNG"); it is ALL of them going missing
-    // that short-circuits the test, because that is indistinguishable from the source set never
-    // having existed.
+    // Distinguish "not applicable" from "broken": both look like missing Parity renders, so the
+    // build says which (`studioParity.required`). A bare `assumeTrue` would silently retire the
+    // gate if the `-P` flag were dropped from CI. Only the all-missing case is decided here; a
+    // single missing fixture already fails below.
     val renderedOurs = ours.keys.any { it.startsWith("Parity") }
     if (System.getProperty("studioParity.required") == "true") {
       assertThat(renderedOurs).isTrue()

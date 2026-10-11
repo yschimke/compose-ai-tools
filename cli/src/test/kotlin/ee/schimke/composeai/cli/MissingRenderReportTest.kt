@@ -23,15 +23,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Issue #3741: a preview that produced no PNG used to be reported with one fixed paragraph blaming
- * the build wiring ("`composePreviewRender` reported NO-SOURCE — the renderer test class wasn't on
- * testClassesDirs"), even when the renderer had already written the precise cause to
- * `<render>.png.error.json` beside the would-be output.
- *
- * These cover the seam that decides between the two: [diagnoseMissingRenders] resolves who owns the
- * preview, what that owner did, and which sidecars it could have written;
- * [formatMissingRenderReport] turns those facts into the message. They are the behavioural
- * specification the #3796 restructuring had to preserve — every one of them predates it.
+ * A preview that produced no PNG must be reported from the renderer's `<render>.png.error.json`
+ * sidecar when there is one, not with the generic build-wiring paragraph. Covers
+ * [diagnoseMissingRenders] (who owns the preview, what it did, which sidecars it could have
+ * written) and [formatMissingRenderReport] (the wording).
  */
 class MissingRenderReportTest {
 
@@ -49,11 +44,9 @@ class MissingRenderReportTest {
     workspace.deleteRecursively()
   }
 
-  // The failure reported in issue #3741, verbatim in shape: the renderer invokes the preview
-  // reflectively, so the outermost throwable is a useless InvocationTargetException whose only
-  // stack frames belong to this project's own data-product plumbing, while the cause chain names
-  // the real problem (a Wear Services class that only exists on-device) and passes through the
-  // consumer's own source file.
+  // The outer throwable is a reflective InvocationTargetException with only tooling frames; the
+  // cause chain names the real problem (an on-device-only Wear class) and passes through the
+  // consumer's source.
   private val wearStackTrace =
     """
     java.lang.reflect.InvocationTargetException
@@ -127,13 +120,11 @@ class MissingRenderReportTest {
     val entries = diagnoseMissingRenders(listOf(missingResult()), manifests())
     val message = formatMissingRenderReport(entries, total = 35)
 
-    // The whole point of the issue: the render task demonstrably ran (it wrote a sidecar), so the
-    // build-wiring guess must not be printed at all.
+    // The render task ran (it wrote a sidecar), so the build-wiring guess must not appear.
     assertFalse(message.contains("NO-SOURCE"), message)
     assertFalse(message.contains("testClassesDirs"), message)
     assertContains(message, "1 of 35 preview(s)")
-    // The real cause, from the `Caused by:` chain — not the reflective wrapper the sidecar's own
-    // `exception` field names.
+    // The real cause from the `Caused by:` chain, not the reflective wrapper.
     assertContains(message, "NoClassDefFoundError")
     assertContains(message, "com/google/wear/services/ambient/AmbientComponentState")
     assertContains(message, "chain: InvocationTargetException → NoClassDefFoundError")
@@ -177,8 +168,7 @@ class MissingRenderReportTest {
 
   @Test
   fun `the sidecar is found beside a data product output too`() {
-    // A preview whose only declared output is a data product (no capture renderOutput) still gets
-    // its sidecar found — the renderer writes it beside whichever artefact it was producing.
+    // A preview whose only declared output is a data product still gets its sidecar found.
     val manifests =
       listOf(
         PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
@@ -250,14 +240,13 @@ class MissingRenderReportTest {
   fun `the preferred frame is the deepest one in the preview's own package`() {
     val frame = preferredAppFrame(wearStackTrace, "com.example.wear.WearAppKt")
     assertNotNull(frame)
-    // `com.example.wear.ambient` is a sibling package of the preview's own, reached by walking the
-    // package prefix outwards — and it sits deeper in the cause chain than `WearAppKt.WearApp`.
+    // `com.example.wear.ambient` is a sibling package found by walking prefixes outward, deeper in
+    // the cause chain than `WearAppKt.WearApp`.
     assertEquals("AmbientAwareActivity.kt", frame.file)
     assertEquals(76, frame.line)
     assertEquals("rememberAmbientState", frame.function)
 
-    // A preview class that shares nothing with any frame leaves the sidecar's own topAppFrame as
-    // the fallback (the caller does that; here the chooser simply declines).
+    // No shared package: the chooser declines and the caller falls back to `topAppFrame`.
     assertNull(preferredAppFrame(wearStackTrace, "zz.unrelated.PreviewsKt"))
     assertNull(preferredAppFrame(wearStackTrace, "NoPackagePreviews"))
   }
@@ -349,9 +338,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `each missing capture keeps its own sidecar`() {
-    // Two captures of one preview, failing differently — the later frame advances the clock into a
-    // coroutine that isn't ready. Collapsing to the first sidecar would report the 500ms exception
-    // against both coordinates and hide this entirely.
+    // Two captures failing differently; collapsing to one sidecar would misattribute the 500ms
+    // exception.
     writeSidecar(
       "renders/Wear_500ms.png",
       simpleSidecarJson(
@@ -380,16 +368,15 @@ class MissingRenderReportTest {
     assertContains(message, "no theme provided")
     assertContains(message, "NullPointerException")
     assertContains(message, "animation target was null")
-    // Each exception is tied to the output that produced it, so a reader can tell which coordinate
-    // died which way.
+    // Each exception is tied to the output that produced it.
     assertContains(message, "renders/Wear_500ms.png — threw IllegalStateException")
     assertContains(message, "renders/Wear_1000ms.png — threw NullPointerException")
   }
 
   @Test
   fun `one throwable across several outputs still reports one line`() {
-    // The common case: one broken composable fails every output with the same exception. Reporting
-    // it once per output would be noise, so identical sidecars collapse — and stay unlabelled.
+    // One broken composable fails every output identically, so identical sidecars collapse
+    // unlabelled.
     val json =
       simpleSidecarJson(
         "java.lang.IllegalStateException",
@@ -412,9 +399,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `a sidecar left by an earlier run is never reported as this run's finding`() {
-    // `composePreviewRender` was skipped this time (NO-SOURCE — the wiring bug the historical
-    // guidance was written for), so the `.error.json` on disk is last run's. Claiming "rendered and
-    // then threw — the build wiring is fine" would state the exact opposite of what happened.
+    // `composePreviewRender` was skipped (NO-SOURCE), so the sidecar is last run's; "rendered and
+    // then threw" would be false.
     writeSidecar("renders/WearAppPreview.png")
 
     val entries =
@@ -429,8 +415,7 @@ class MissingRenderReportTest {
     assertFalse(message.contains("the build wiring is fine"), message)
     assertContains(message, "did not run in this invocation")
     assertContains(message, "earlier run — threw NoClassDefFoundError")
-    // ...and the wiring guidance the sidecar had suppressed comes back, because that is now the
-    // live hypothesis.
+    // …and the wiring guidance returns as the live hypothesis.
     assertContains(message, "NO-SOURCE")
     assertContains(message, "testClassesDirs")
   }
@@ -454,8 +439,8 @@ class MissingRenderReportTest {
   }
 
   /**
-   * A `kind=LOTTIE` preview: Android renders it from `composePreviewRenderLottie` into its own
-   * `lottie-renders/` dir, never from the Robolectric task.
+   * A `kind=LOTTIE` preview: Android renders it from `composePreviewRenderLottie` into
+   * `lottie-renders/`, never from the Robolectric task.
    */
   private fun lottieManifests() =
     listOf(
@@ -483,9 +468,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `the owning task and what it did are resolved separately`() {
-    // Identity is manifest-derivable, so it is always known; behaviour is only knowable from the
-    // build, so it carries provenance. Splitting them is what makes "did not run" unwriteable
-    // without an observed disposition.
+    // Identity comes from the manifest; behaviour only from the build, so it carries provenance and
+    // "did not run" requires an observed disposition.
     val skipped = outcomes("composePreviewRender" to GradleTaskDisposition.SKIPPED)
     val mainTask =
       RendererTask("composePreviewRender", ":app:composePreviewRender", RendererTaskKind.MAIN)
@@ -508,8 +492,7 @@ class MissingRenderReportTest {
       )
     }
 
-    // Another module's skip says nothing about this one, and no evidence stays Unobserved rather
-    // than being guessed either way — `ownerRan` is null, not false.
+    // Another module's skip says nothing about this one: Unobserved, `ownerRan` null.
     assertEquals(Evidence.Unobserved, runOf("COMPOSE", skipped, module = ":other").ownerRun)
     assertEquals(Evidence.Unobserved, runOf("COMPOSE", emptyMap()).ownerRun)
     assertNull(runOf("COMPOSE", emptyMap()).ownerRan)
@@ -517,11 +500,9 @@ class MissingRenderReportTest {
 
   @Test
   fun `Lottie and SVG are owned by their own renderer task, not Robolectric`() {
-    // Android renders `kind=LOTTIE` / `kind=SVG` from separate tasks folded into
-    // `composePreviewRenderAll` — Robolectric can inflate neither. A NO-SOURCE
-    // `composePreviewRender` therefore says nothing about them: their sidecars are this run's.
-    // The owning task travels with the verdict: the report has to name the task that really
-    // skipped, not the one that happens to have a `testClassesDirs` remedy.
+    // Android renders `kind=LOTTIE` / `kind=SVG` from separate tasks, so a NO-SOURCE
+    // `composePreviewRender` says nothing about them; the verdict names the task that actually owns
+    // them.
     val robolectricSkipped =
       outcomes(
         "composePreviewRender" to GradleTaskDisposition.SKIPPED,
@@ -548,8 +529,7 @@ class MissingRenderReportTest {
     )
     assertEquals(true, runOf("LOTTIE", robolectricSkipped).ownerRan)
     assertEquals(true, runOf("SVG", robolectricSkipped).ownerRan)
-    // ...while an ordinary Compose preview in the same module *is* stale — the task that owns it
-    // was the one that didn't run.
+    // …while an ordinary Compose preview in the same module is stale.
     assertEquals(false, runOf("COMPOSE", robolectricSkipped).ownerRan)
 
     // And the converse: the Lottie task skipped while Robolectric ran.
@@ -561,8 +541,7 @@ class MissingRenderReportTest {
     assertEquals(false, runOf("LOTTIE", lottieSkipped).ownerRan)
     assertEquals(true, runOf("COMPOSE", lottieSkipped).ownerRan)
 
-    // The desktop backend has no kind tasks at all — `composePreviewRender` renders every kind
-    // there, so it is the owner and the answer must not degrade to Unobserved.
+    // On desktop `composePreviewRender` renders every kind, so it is the owner.
     val desktop = outcomes("composePreviewRender" to GradleTaskDisposition.SUCCESS)
     assertEquals(
       RendererTask("composePreviewRender", ":app:composePreviewRender", RendererTaskKind.MAIN),
@@ -590,11 +569,9 @@ class MissingRenderReportTest {
 
   @Test
   fun `the skipped-task diagnosis names the task that actually skipped`() {
-    // The converse scenario of the test above, carried all the way to the message: the Lottie task
-    // skipped, so the sidecar beside a Lottie preview is stale — but blaming `composePreviewRender`
-    // and its `testClassesDirs` would be a precise, checkable, false statement. That task ran fine,
-    // it is not what renders Lottie, and being a `RenderPreviewsTask` it has no testClassesDirs and
-    // never reports NO-SOURCE at all.
+    // The Lottie task skipped, so the Lottie sidecar is stale — but blaming `composePreviewRender`
+    // and `testClassesDirs` would be wrong: it ran, doesn't render Lottie, and never reports
+    // NO-SOURCE.
     val lottieManifests = lottieManifests()
     writeSidecar("lottie-renders/Wear.png")
 
@@ -616,8 +593,7 @@ class MissingRenderReportTest {
     // The remedy is the one that fits the task that skipped...
     assertContains(message, "composePreview { enabled = false }")
     assertContains(message, "kind=LOTTIE")
-    // ...and never the Robolectric one, which would be a wrong-task diagnosis here. `NO-SOURCE` is
-    // not even a state this task can report.
+    // …and never the Robolectric remedy.
     assertFalse(message.contains("testClassesDirs"), message)
     assertFalse(message.contains("NO-SOURCE"), message)
     assertFalse(message.contains("`composePreviewRender` did not run"), message)
@@ -625,8 +601,7 @@ class MissingRenderReportTest {
 
   @Test
   fun `a Lottie failure is not labelled stale when Robolectric was NO-SOURCE`() {
-    // End to end through the report: the Android Lottie renderer wrote this sidecar seconds ago.
-    // Calling it an "earlier run" and pointing at testClassesDirs is the original bug inverted.
+    // The Lottie renderer wrote this sidecar this run; calling it an earlier run's would be wrong.
     writeSidecar("lottie-renders/Wear.png")
     val lottieResult = missingResult().copy(params = PreviewParams(kind = "LOTTIE"))
 
@@ -649,10 +624,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `renderer guidance is per module, not per task name`() {
-    // Every Android module registers its own `composePreviewRenderLottie`, so a multi-module render
-    // has several tasks with one name and independently different outcomes. Grouping on the name
-    // alone merged them: one paragraph, the combined count, an unqualified task to go and inspect,
-    // and "in this module" said of two modules at once.
+    // Every Android module has its own `composePreviewRenderLottie`; grouping by name alone merged
+    // modules with different outcomes.
     val otherDir = workspace.resolve("feature").apply { mkdirs() }
     val otherId = "com.example.wear.FeatureKt.FeaturePreview"
     val manifests =
@@ -672,8 +645,7 @@ class MissingRenderReportTest {
                 )
               ),
           ))
-    // `:app`'s Lottie task skipped and left last run's sidecar behind; `:feature`'s ran and simply
-    // produced nothing.
+    // `:app`'s Lottie task skipped (stale sidecar); `:feature`'s ran and produced nothing.
     writeSidecar("lottie-renders/Wear.png")
     val taskOutcomes =
       mapOf(
@@ -714,9 +686,9 @@ class MissingRenderReportTest {
 
   @Test
   fun `the legacy default stem is only probed when the manifest declares no output`() {
-    // The preview used to render to `renders/<id>.png` and now declares a fanout output. Nothing
-    // deletes the old sidecar — `cleanStaleRenders` walks `png`/`gif` only — so probing the default
-    // stem alongside the declared one reports a years-old exception as if it happened just now.
+    // The preview moved from `renders/<id>.png` to a fan-out output; the old sidecar is never
+    // cleaned (`cleanStaleRenders` only walks `png`/`gif`), so the default stem must not be probed
+    // alongside.
     writeSidecar(
       "renders/Wear_500ms.png",
       simpleSidecarJson(
@@ -764,12 +736,9 @@ class MissingRenderReportTest {
 
   @Test
   fun `a blank capture output keeps the default stem as a candidate`() {
-    // A capture that declares no `renderOutput` is a supported manifest shape, and the Android
-    // renderer resolves it to `renders/<id>.png` — `capture.renderOutput.substringAfterLast('/')
-    // .ifEmpty { "<id>.png" }` — which is also the anchor its outer per-preview catch writes the
-    // sidecar to. With a data product declared alongside it, dropping the default stem would leave
-    // a render that died before producing the product with no sidecar found at all, and the CLI
-    // back on the NO-SOURCE wiring guess it is this whole file's job not to guess.
+    // A capture with no `renderOutput` resolves to `renders/<id>.png` on Android, which also
+    // anchors the per-preview sidecar; with a data product declared too, the default stem must
+    // still be probed.
     val blankCaptureWithProduct =
       listOf(
         PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
@@ -801,12 +770,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `a blank capture after a declared one does not reopen the default stem`() {
-    // The Android renderer anchors the preview-level sidecar on the *first* capture only
-    // (`captures.firstOrNull()`), deleting and rewriting it there; its two per-job writes need a
-    // `.gif` extension or a data-product path, so neither can land on the default stem. A blank
-    // second capture therefore cannot produce a fresh `renders/<id>.png` sidecar — anything found
-    // there is an older manifest's leftover, and quoting it as this run's finding is the stale-file
-    // trap through a narrower gap.
+    // Android anchors the preview-level sidecar on the first capture only, so a blank second
+    // capture can't produce a fresh `renders/<id>.png` sidecar; anything there is stale.
     val declaredThenBlank =
       listOf(
         PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
@@ -853,8 +818,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `the default stem still answers for a preview the manifest does not describe`() {
-    // The fallback's actual job: a manifest predating `renderOutput`, or a preview globbed away
-    // entirely, still renders to `renders/<id>.png` and its sidecar must be found there.
+    // A manifest predating `renderOutput` still renders to `renders/<id>.png`; find its sidecar
+    // there.
     writeSidecar("renders/$previewId.png")
 
     val bare =
@@ -879,8 +844,7 @@ class MissingRenderReportTest {
       diagnoseMissingRenders(listOf(missingResult()), bare).single().sidecars.firstOrNull()?.sidecar
     )
 
-    // ...and for a preview the manifest doesn't describe at all — `manifests()` knows only
-    // `previewId`, so this one falls back to its own default stem.
+    // …including for a preview the manifest doesn't describe.
     val unknownId = "com.example.wear.WearAppKt.OtherPreview"
     writeSidecar("renders/$unknownId.png")
     assertNotNull(
@@ -893,10 +857,9 @@ class MissingRenderReportTest {
 
   @Test
   fun `a PreviewParameter fan-out's per-value sidecars are found`() {
-    // The gap #3793 recorded and #3796 closes: a parameterised preview renders one output per
-    // provider value and writes the sidecar beside *that* — `renders/Wear_Alice.png.error.json` —
-    // which neither the declared template output nor the default stem ever pointed at, so a
-    // per-value failure was invisible to the CLI and came out as the NO-SOURCE wiring guess.
+    // A parameterised preview writes one sidecar per provider value
+    // (`renders/Wear_Alice.png.error.json`), which neither the template nor the default stem points
+    // at.
     val parameterised =
       listOf(
         PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
@@ -915,8 +878,7 @@ class MissingRenderReportTest {
                     ),
                   captures = listOf(Capture(renderOutput = "renders/Wear.png")),
                 ),
-                // A sibling that owns `renders/Wear_Bob.png` outright — the fan-out glob must not
-                // adopt another preview's declared output.
+                // A sibling that owns `renders/Wear_Bob.png`; the fan-out glob must not adopt it.
                 PreviewInfo(
                   id = "com.example.wear.WearAppKt.WearBob",
                   functionName = "WearBob",
@@ -992,10 +954,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `a more specific sibling template owns its own fan-out rows`() {
-    // `Foo.png` and `Foo_Dark.png` in one directory: `Foo_Dark_Alice.png` matches `Foo_` but is
-    // `Foo_Dark`'s row. Attributing it to `Foo` shows one preview's exception under another's name
-    // — the same ambiguity `PreviewResultBuilder` already solves, so the rule is shared rather than
-    // written twice.
+    // `Foo_Dark_Alice.png` matches `Foo_` but is `Foo_Dark`'s row; the shared
+    // `PreviewResultBuilder` rule resolves it.
     writeSidecar(
       "renders/Wear_Alice.png",
       simpleSidecarJson(
@@ -1031,10 +991,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `fan-out sidecars are found for data products and for a blank capture`() {
-    // The renderer suffixes whatever output path it is handed: `RenderPreviewsTask` forks it once
-    // per data product with the product's own path, and resolves a blank capture to
-    // `renders/<id>.png` before the suffix goes in. Enumerating only non-empty capture templates
-    // missed both, and the report fell back to unrelated wiring guidance.
+    // The renderer suffixes any output path it is handed, including data products and blank
+    // captures resolved to `renders/<id>.png`; all must be enumerated.
     writeSidecar(
       "renders/$previewId" + "_Alice.png",
       simpleSidecarJson(
@@ -1080,11 +1038,8 @@ class MissingRenderReportTest {
 
   @Test
   fun `a scanned parameter row is reported but never dated to this run`() {
-    // Neither renderer's `deleteStaleFanoutFiles` removes a fan-out `.error.json` — both match the
-    // template's png/gif extension — so a provider value that was renamed or removed leaves its
-    // sidecar behind. Presenting that as this invocation's failure is exactly the stale-sidecar
-    // claim this diagnostic exists to stop making, so a scanned row is reported *undated* even when
-    // the renderer demonstrably ran.
+    // Stale fan-out `.error.json`s are never cleaned up, so a scanned row is reported undated even
+    // when the renderer ran.
     writeSidecar(
       "renders/Wear_Alice.png",
       simpleSidecarJson(
@@ -1115,8 +1070,7 @@ class MissingRenderReportTest {
 
   @Test
   fun `a declared output's sidecar is still dated to this run`() {
-    // The counterpart: a declared output is one the manifest names, so the renderer targeted it —
-    // the scanned-row caution must not leak onto ordinary findings.
+    // Declared outputs were targeted by the renderer, so the scanned-row caution doesn't apply.
     writeSidecar("renders/WearAppPreview.png")
 
     val entry =
@@ -1136,9 +1090,7 @@ class MissingRenderReportTest {
 
   @Test
   fun `the single-preview report render --output prints carries the sidecar`() {
-    // `render --output` exits as soon as the one matched preview has no PNG. It goes through the
-    // same report as every other missing render, so the exception the renderer already wrote down
-    // reaches the user instead of a bare "Render produced no PNG".
+    // `render --output` goes through the same report, so the renderer's exception reaches the user.
     writeSidecar("renders/WearAppPreview.png")
 
     val message =
@@ -1149,9 +1101,8 @@ class MissingRenderReportTest {
     assertContains(message, "AmbientAwareActivity.kt:76")
   }
 
-  // A `use {}` body that threw and then failed to close: `printStackTrace()` prints the suppressed
-  // throwable's own `Caused by:` indented under it, *after* the primary chain's deepest cause.
-  // Verbatim JDK output shape (`Throwable.printEnclosedStackTrace`).
+  // A `use {}` body that threw and then failed to close: the suppressed throwable's own `Caused
+  // by:` is printed indented after the primary chain (`Throwable.printEnclosedStackTrace` shape).
   private val suppressedStackTrace =
     """
     java.lang.reflect.InvocationTargetException
@@ -1184,8 +1135,8 @@ class MissingRenderReportTest {
   fun `the preferred frame never comes from a suppressed branch`() {
     val frame = preferredAppFrame(suppressedStackTrace, "com.example.wear.WearAppKt")
 
-    // The deepest *primary* section is the IOException's, not the suppressed close failure's —
-    // whose frames sit in `com.example.wear.io` and would otherwise win by being printed last.
+    // The deepest primary section is the IOException's, not the suppressed close failure printed
+    // last.
     assertEquals("AmbientAwareActivity.kt", frame?.file)
     assertEquals(76, frame?.line)
   }

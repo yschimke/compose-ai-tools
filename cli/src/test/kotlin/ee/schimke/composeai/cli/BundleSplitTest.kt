@@ -17,9 +17,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Coverage for [splitBundleZip] — turning a sheet bundle into one bundle per preview. Exercises the
- * pure repackaging directly (no Gradle, no daemon): a synthetic sheet with three previews (one with
- * no baked image) is split in both modes and the outputs are inspected entry-by-entry.
+ * Coverage for [splitBundleZip]: a synthetic three-preview sheet (one without a baked image) split
+ * in both modes, inspected entry by entry.
  */
 class BundleSplitTest {
 
@@ -198,9 +197,8 @@ class BundleSplitTest {
   }
 
   /**
-   * An Android sheet also carries the app-resource payload under `android/` (the merged
-   * `resources.ap_` table, manifest, and generated R classes) plus an `androidResources` manifest
-   * pointer — the carriage a detached daemon needs to resolve `stringResource(R.string.…)`.
+   * An Android sheet also carries `android/` (`resources.ap_`, manifest, R classes) and an
+   * `androidResources` pointer, needed for `stringResource(R.string.…)` in a detached daemon.
    */
   private fun androidSheetZip(): ByteArray {
     val entries =
@@ -272,14 +270,8 @@ class BundleSplitTest {
   }
 
   /**
-   * The property that stopped a 181-preview catalog OOMing in CI: the splitter hands each bundle to
-   * the caller and keeps no reference, so peak memory is the source plus ONE output rather than one
-   * per preview. Every FULL bundle carries the shared classpath and Android resource payload, so
-   * accumulating them multiplies that payload by the preview count.
-   *
-   * Pinned structurally rather than by measuring heap: what the streaming pass emits must match the
-   * list API exactly, so the list API can stay a thin wrapper over it and callers that care about
-   * memory (the CLI) can write each bundle out and drop it.
+   * The splitter must not retain bundles (each FULL bundle carries the shared payload, so retaining
+   * N OOMs). Pinned structurally: the streaming pass must emit exactly what the list API returns.
    */
   @Test
   fun `streaming split emits the same bundles as the list API`() {
@@ -306,9 +298,8 @@ class BundleSplitTest {
   }
 
   /**
-   * The size of a FULL split is a function of the **preview count**, not of the backend — the
-   * carriage is a fixed per-bundle cost paid N times. Nothing measured that, so the growth was
-   * invisible on a green run; the split now reports it before it writes anything.
+   * A FULL split's size scales with preview count (a fixed per-bundle carriage), so the split
+   * reports it before writing.
    */
   @Test
   fun `full split measures the carriage it copies into every bundle`() {
@@ -351,9 +342,8 @@ class BundleSplitTest {
   }
 
   /**
-   * The old warning fired on bundle size and named `--view-only`, which a tier that exists to
-   * re-render cannot take — so it was noise on exactly the catalogs it should have caught. The
-   * signal now fires on the carriage share and names the remedy that fits the mode.
+   * The warning fires on the carriage share and names a remedy that fits the mode, not
+   * `--view-only` for a live tier.
    */
   @Test
   fun `a dominant carriage is reported with the remedy for its mode`() {

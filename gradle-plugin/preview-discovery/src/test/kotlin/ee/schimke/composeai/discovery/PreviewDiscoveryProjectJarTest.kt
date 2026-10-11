@@ -12,18 +12,12 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 
 /**
- * Regression coverage for issue #1924: discovery must find the consumer module's own `@Preview`
- * functions when they arrive packaged as a project JAR (AGP's scoped `PROJECT` `CLASSES` artifact)
- * rather than laid out in a [PreviewDiscovery.Input.classDirs] directory.
+ * Discovery must find the module's own `@Preview` functions when they arrive as a project JAR
+ * (AGP's scoped `PROJECT` `CLASSES` artifact), via [PreviewDiscovery.Input.projectClassJars], since
+ * AGP 9 built-in Kotlin never writes `build/tmp/kotlin-classes/<variant>` (see #1924). Unlike
+ * [PreviewDiscovery.Input.dependencyJars], these are method-walked as project classes.
  *
- * Under AGP 9.x built-in Kotlin (`built_in_kotlinc`) the module's classes never land in the legacy
- * `build/tmp/kotlin-classes/<variant>` directory the directory scan reads, so the Android backend
- * now feeds them in via [PreviewDiscovery.Input.projectClassJars]. Unlike
- * [PreviewDiscovery.Input.dependencyJars] those jars are method-walked as project classes.
- *
- * The hand-rolled class uses a `RuntimeInvisibleAnnotations`-encoded `@Preview` (ASM `visible =
- * false`) to mirror the real bytecode: `androidx.compose.ui.tooling.preview.Preview` has `CLASS`
- * retention, so the compiler emits it as invisible — exactly what `javap -v` showed in the issue.
+ * The fixture's `@Preview` is invisible (ASM `visible = false`), matching its `CLASS` retention.
  */
 class PreviewDiscoveryProjectJarTest {
 
@@ -63,12 +57,9 @@ class PreviewDiscoveryProjectJarTest {
 
   @Test
   fun `a dependency jar with the same shape is NOT method-walked`() {
-    // The dual to the test above: an identical jar handed in as a dependency (not a project jar)
-    // must NOT surface previews — dependency classes stay on the ClassGraph classpath for
-    // multi-preview resolution but are never walked for their own @Preview methods (issue #1039).
-    // Name the jar so it survives the preview-relevance filter (path must contain one of
-    // preview|tooling|compose|annotation) — otherwise it'd be dropped before the walk and the
-    // test wouldn't actually exercise the project-vs-dependency distinction.
+    // The dual: the same jar as a dependency must NOT surface previews (dependency classes serve
+    // only multi-preview resolution). Named to pass the preview-relevance path filter, so the walk
+    // is actually exercised.
     val jar = File(tempDir.root, "compose-classes.jar")
     writePreviewClassJar(
       jar,
@@ -209,11 +200,8 @@ class PreviewDiscoveryProjectJarTest {
   }
 
   /**
-   * Writes a JAR containing a single class with one parameterless `public static` method annotated
-   * with `androidx.compose.ui.tooling.preview.Preview`. The annotation is emitted as a
-   * `RuntimeInvisibleAnnotations` entry (`visible = false`) to match the CLASS-retention bytecode
-   * the Compose compiler produces. A parameterless `()V` method is the simplest shape discovery
-   * accepts as a preview (no `@PreviewParameter` wiring needed).
+   * A JAR with one parameterless static method annotated with an invisible (CLASS-retention)
+   * `androidx.compose.ui.tooling.preview.Preview`, the simplest shape discovery accepts.
    */
   private fun writePreviewClassJar(jar: File, internalName: String, methodName: String) {
     val cw = ClassWriter(0)

@@ -27,19 +27,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Robolectric test for [AnimatedSplashScreenSurface]. Mirrors [SplashScreenSurfaceTest]'s SDK 33 +
- * `GraphicsMode.NATIVE` pin, with two differences the static surface doesn't need.
+ * Robolectric test for [AnimatedSplashScreenSurface], with [SplashScreenSurfaceTest]'s SDK 33 +
+ * `GraphicsMode.NATIVE` pin.
  *
- * **The clock is driven manually.** `mainClock.autoAdvance = false` is the same mechanism
- * `@AnimatedPreview` uses at render time — the renderer advances a paused clock and captures each
- * frame — so a pulse that ticks here is a pulse that ticks in the GIF. That equivalence is the real
- * subject of these tests.
- *
- * **Assertions are on pixels, not bounds.** The pulse is applied through a `graphicsLayer`, which
- * by design does not participate in layout: semantics bounds are identical at rest and at peak
- * scale, so any bounds-based assertion about the scale would pass whether or not the scale was ever
- * applied. [probeArgb] reads the drawn output instead, sampling a point that the icon covers only
- * once it has grown.
+ * The clock is driven manually (`mainClock.autoAdvance = false`), as `@AnimatedPreview` does, so a
+ * pulse that ticks here ticks in the GIF. Assertions are on pixels ([probeArgb]), not bounds: the
+ * pulse is a `graphicsLayer`, which doesn't affect layout bounds.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -48,11 +41,7 @@ class AnimatedSplashScreenSurfaceTest {
 
   @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-  /**
-   * Structural parity with the static surface — the animated variant emits the same tagged layers,
-   * so anything keyed on those tags (downstream Compose UI tests, the semantics wireframe) keeps
-   * working across both entry points.
-   */
+  /** The animated variant emits the same tagged layers as the static surface. */
   @Test
   fun `renders the same tagged layers as the static surface`() {
     composeRule.mainClock.autoAdvance = false
@@ -86,14 +75,9 @@ class AnimatedSplashScreenSurfaceTest {
   }
 
   /**
-   * The pulse actually reaches the drawn output: a point 103dp from centre is outside the icon at
-   * rest (the masked circle's radius is half of the 192dp icon, i.e. 96dp) and inside it at peak
-   * scale (`1.15 × 96dp` ≈ 110dp). Sampling at rest and again a half-cycle later must therefore see
-   * the background first and the icon second.
-   *
-   * The ~7dp margin either side of the probe is what keeps this off a knife-edge; it is wide enough
-   * to absorb the mask's anti-aliased rim without being wide enough to pass on a scale that didn't
-   * apply.
+   * The pulse reaches the drawn output: a point 103dp from centre is outside the icon at rest
+   * (radius 96dp) and inside it at peak scale (`1.15 × 96dp` ≈ 110dp), with ~7dp margin each side
+   * for the anti-aliased rim.
    */
   @Test
   fun `pulse grows the rendered icon`() {
@@ -126,10 +110,8 @@ class AnimatedSplashScreenSurfaceTest {
   }
 
   /**
-   * The growth is centred, not anchored to a corner. `graphicsLayer` scales about the layer's
-   * centre by default; a regression that set `transformOrigin` to the top-left would grow the icon
-   * down and to the right only, leaving the left-hand probe on the background. Sampling
-   * symmetrically about the centre at peak scale catches that, where a bounds assertion cannot.
+   * Growth is centred: probing symmetrically at peak scale catches a regression that moved
+   * `transformOrigin` to a corner.
    */
   @Test
   fun `pulse grows symmetrically about the icon centre`() {
@@ -160,14 +142,11 @@ class AnimatedSplashScreenSurfaceTest {
   }
 
   /**
-   * Samples one pixel of the drawn splash surface, [offsetPx] to the right of the surface's centre
-   * (negative offsets sample to the left), on the centre row.
+   * Samples one pixel [offsetPx] right of the surface's centre (negative is left), on the centre
+   * row.
    *
-   * Draws the content view straight into a software `Canvas` rather than going through
-   * `captureToImage()`. The latter cannot be used here: it calls `forceRedraw`, which busy-waits on
-   * real time for a draw callback that only fires when the main looper is pumped — and the looper
-   * is only pumped by the test clock, which these tests keep paused on purpose. `View.draw` is
-   * synchronous and reads the current animation frame, so it needs no clock at all.
+   * Draws into a software `Canvas` rather than `captureToImage()`, whose `forceRedraw` busy-waits
+   * for a draw callback that only fires when the (deliberately paused) test clock pumps the looper.
    */
   private fun probeArgb(offsetPx: Int): Int {
     val view: ViewGroup = composeRule.activity.findViewById(android.R.id.content)

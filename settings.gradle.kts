@@ -7,11 +7,9 @@ pluginManagement {
   }
 }
 
-// Why this file is shaped the way it is — the lanes it can switch, the build cache policy, the
-// module layout — is docs/build-scripts/SETTINGS.md. Comments here state the live constraint only.
-// Per-project conventions (ktfmt, googleStyle, the history-gate system property) are applied by
-// each module via `plugins { id("composeai.base-conventions") }`, never from the root build.
-// docs/build-scripts/SETTINGS.md#base-conventions
+// Rationale for this file's shape (lanes, build cache policy, module layout) is in
+// docs/build-scripts/SETTINGS.md; comments here state the live constraint only. Per-project
+// conventions are applied by each module via `plugins { id("composeai.base-conventions") }`.
 
 // Snapshot probe for the SDK compatibility matrix's snapshot cells: lets `:samples:sdk-matrix`
 // render at SDK 37 against a Robolectric snapshot.
@@ -20,13 +18,11 @@ val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
 // Which line the three Remote Compose groups (`androidx.compose.remote`,
-// `androidx.wear.compose.remote`, `androidx.glance.wear`) resolve from: `release` (default, the
-// alpha coordinates pinned in `gradle/libs.versions.toml`) or `snapshot`
-// (`-Pcomposeai.remoteCompose=snapshot`, androidx-main post-submit).
+// `androidx.wear.compose.remote`, `androidx.glance.wear`) resolve from: `release` (default, pinned
+// in `gradle/libs.versions.toml`) or `snapshot` (`-Pcomposeai.remoteCompose=snapshot`).
 //
-// CONSTRAINT: the whole trio moves together. They only work when built against the same
-// `remote-creation*`, so the mode flips all three keys at once and one group must never straddle
-// the two lines. docs/build-scripts/SETTINGS.md#remote-compose-lane
+// CONSTRAINT: the trio must move together (they must share `remote-creation*`).
+// docs/build-scripts/SETTINGS.md#remote-compose-lane
 val remoteComposeLine =
   providers.gradleProperty("composeai.remoteCompose").orElse("release").get().trim().lowercase()
 
@@ -36,10 +32,8 @@ require(remoteComposeLine == "release" || remoteComposeLine == "snapshot") {
 
 val useRemoteComposeSnapshot = remoteComposeLine == "snapshot"
 
-// androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from when
-// `composeai.remoteCompose=snapshot`. Bump this one line to move all three groups to a newer
-// snapshot; build ids age out of androidx.dev after a few weeks, so if the artifacts 404 pick a
-// fresh one from https://androidx.dev/snapshots/builds.
+// androidx-main build id for `composeai.remoteCompose=snapshot`. Build ids age out of androidx.dev
+// after a few weeks; if artifacts 404, pick a fresh one from https://androidx.dev/snapshots/builds.
 val androidxSnapshotBuildId = "16155060"
 
 dependencyResolutionManagement {
@@ -81,8 +75,8 @@ dependencyResolutionManagement {
   // coordinates — the released ones. docs/build-scripts/SETTINGS.md#catalog-override
   if (useRemoteComposeSnapshot) {
     versionCatalogs {
-      // `create`, not `named` — `named` fails here, and `create("libs")` returns the builder with
-      // the TOML already imported, so these three lines override three versions and nothing else.
+      // `create`, not `named` (which fails here); `create("libs")` returns the builder with the
+      // TOML already imported, so this overrides just these three versions.
       create("libs") {
         version("compose-remote", "1.0.0-SNAPSHOT")
         version("wear-compose-remote", "1.0.0-SNAPSHOT")
@@ -92,15 +86,13 @@ dependencyResolutionManagement {
   }
 }
 
-// BuildFetch remote Gradle build cache, complementing the local one. Writes are restricted to
-// trusted CI builds (ON_CI=true on main); PRs and developer machines are read-only, and the gate is
-// value-based so an explicit ON_CI=false stays read-only. Token resolution order and the rest of
-// the policy: docs/build-scripts/SETTINGS.md#build-cache
+// BuildFetch remote build cache. Writes only from trusted CI (ON_CI=true on main); everything else
+// is read-only, and an explicit ON_CI=false stays read-only.
+// docs/build-scripts/SETTINGS.md#build-cache
 val onCi = providers.environmentVariable("ON_CI").orElse("false").get().toBoolean()
 
-// Non-blank view of a single env var / gradle property: trims and drops empties so a present-but-
-// empty source (an unset secret CI still exports) never shadows a later fallback and never enables
-// the cache with an empty credential.
+// Trims and drops empty values so an unset-but-exported secret never shadows a later fallback or
+// enables the cache with an empty credential.
 val nonBlank = { source: Provider<String> -> source.map { it.trim() }.filter { it.isNotEmpty() } }
 val cacheToken =
   nonBlank(providers.environmentVariable("BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN"))
@@ -109,18 +101,15 @@ val cacheToken =
     .orElse(nonBlank(providers.gradleProperty("BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN")))
     .orNull
 
-// TEMPORARY (issue #2824): kill switch for the BuildFetch remote cache — two entries are stored
-// truncated at rest and Gradle treats the short read as FATAL, so any build resolving either key
-// dies. Skip the remote until BuildFetch evicts them; the local cache stays on regardless.
-// TO REVERT: delete this flag + the `composeai.remoteCache` line in gradle.properties.
-// docs/build-scripts/SETTINGS.md#remote-cache-kill-switch
+// TEMPORARY (#2824): kill switch for the BuildFetch remote cache — two truncated entries make any
+// build resolving them fail. TO REVERT: delete this flag + `composeai.remoteCache` in
+// gradle.properties. docs/build-scripts/SETTINGS.md#remote-cache-kill-switch
 val remoteCacheDisabled =
   providers.gradleProperty("composeai.remoteCache").orElse("on").get().trim().lowercase() == "off"
 
 buildCache {
-  // The local cache stays ON everywhere, including on the trusted main runs that push — it
-  // suppresses the redundant pushes, not the useful ones, so every trusted run can contribute.
-  // Don't gate this on push again. docs/build-scripts/SETTINGS.md#local-cache-always-on
+  // The local cache stays on everywhere, including trusted pushing runs; don't gate it on push.
+  // docs/build-scripts/SETTINGS.md#local-cache-always-on
   local { isEnabled = true }
   remote<HttpBuildCache> {
     url = uri("https://cache.eu-central-a.buildfetch.com/8ESz2z/gradle/")
@@ -142,71 +131,53 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
-// Modules that used to live here and where they went: docs/build-scripts/SETTINGS.md#extractions
+// Extracted modules and where they went: docs/build-scripts/SETTINGS.md#extractions
 
 // Compose/Wasm client for the preview server, staged into the CLI distribution as `preview-ui/`.
-// It is a FORK of compose-preview-server's `wasm-ui`, gated byte-identical against a pinned
-// upstream SHA by `.github/ci/check_serve_wasm_fork.py`: port a change to both, then bump the pin.
-// docs/build-scripts/SETTINGS.md#serve-wasm-fork
+// A FORK of compose-preview-server's `wasm-ui`, gated byte-identical against a pinned upstream SHA
+// by `.github/ci/check_serve_wasm_fork.py`: port a change to both, then bump the pin.
 include(":cli:serve-wasm")
 
-// The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
-// `.previewbundle` needs (well-known entry names, the manifest DTO, sidecar injectors,
-// deterministic zip helpers, the detached signature scheme, classpath hydration, Android
-// resource/launch support), with none of the argument parsing. `:cli` keeps the `bundle`
-// subcommands and depends on this. Types keep the `ee.schimke.composeai.cli` package for
-// source-compat, the same way `:gradle-preview-driver` did.
+// The preview-bundle format: everything a `.previewbundle` reader needs, without `:cli`'s argument
+// parsing. Types keep the `ee.schimke.composeai.cli` package for source compatibility.
 include(":bundle-format")
 
 project(":bundle-format").projectDir = file("bundle/format")
 
-// Resolving a bundle's recorded Maven coordinates into local jars — cache probes then an HTTP
-// fetch. Split out of `:cli` for #3824 preparation item 7: `serve` needs it, and while it lived in
-// `:cli` an extracted preview server could only have reached it through the CLI. Deliberately not
-// part of `:bundle-format`, which stays offline and network-free.
+// Resolves a bundle's recorded Maven coordinates into local jars (cache probes, then HTTP). Kept
+// out of `:bundle-format`, which stays offline.
 include(":bundle-coordinates")
 
 project(":bundle-coordinates").projectDir = file("bundle/coordinates")
 
-// The wire contract between a preview server and a Gradle build host process — the seven build
-// operations `ServeBuildHost` names, as messages rather than as a Kotlin interface. Published from
-// here rather than from contracts because two of the operations carry `PreviewModule` —
+// The wire contract between a preview server and a Gradle build host process, as messages.
+// Published from here because two operations carry `PreviewModule` —
 // docs/design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md.
 include(":build-host-protocol")
 
 project(":build-host-protocol").projectDir = file("api/build-host-protocol")
 
-// Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
-// Lives outside `:cli` so external consumers can pull just the data shapes without dragging in
-// `:cli`'s Gradle Tooling API + scripting closure.
 // Content-crop geometry shared by the preview server (catalog thumbnails) and the CLI
-// (`bundle split`). Extracted from `:cli:serve`'s `ServeThumbCrop.kt` so a CLI command does not
-// depend on the server for arithmetic — #3824 preparation.
+// (`bundle split`).
 include(":common-image-crop")
 
 project(":common-image-crop").projectDir = file("common/image-crop")
 
-// HTML/JS/URL escaping and PNG header dimensions, shared by the server's pages and the bundle's
-// web-embed gallery. Extracted from `:cli:serve` so `WebEmbed` could move to `:bundle-format`
-// without dragging generic escaping into a format module — #3824 preparation.
+// HTML/JS/URL escaping and PNG header dimensions, shared by server pages and the bundle's web-embed
+// gallery.
 include(":common-web-escaping")
 
 project(":common-web-escaping").projectDir = file("common/web-escaping")
 
-// The Remote Compose JSON codec — authoring JSON to `.rc` bytes and back out as document JSON.
-// Layer 1 by `docs/design/REPOSITORY_LAYERS.md`'s test (behaviour, opens no socket), and its own
-// module rather than a package in `:render-host` so that an offline render does not link 1.6 MB of
-// Remote Compose runtime it never calls. See `remotecompose/json/build.gradle.kts` for why the
-// classpath is `-core` only, and `docs/design/REMOTE_COMPOSE_JSON.md` for the two dialects.
+// The Remote Compose JSON codec (authoring JSON ↔ `.rc` bytes). Its own module so an offline render
+// doesn't link the Remote Compose runtime. See `remotecompose/json/build.gradle.kts` and
+// `docs/design/REMOTE_COMPOSE_JSON.md`.
 include(":remotecompose-json")
 
 project(":remotecompose-json").projectDir = file("remotecompose/json")
 
-// Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
-// lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
-// external consumers (contrib scripting, third-party tooling) can render previews and read the
-// result without taking a dependency on `:cli`. The CLI's own commands are refactored to drive
-// this library, keeping a single source of truth.
+// The Gradle Tooling-API render pipeline as a library (`GradlePreviewDriver`), so external tooling
+// can render previews without depending on `:cli`. The CLI drives it too.
 include(":gradle-preview-driver")
 
 project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
@@ -262,22 +233,18 @@ include(":usage-source-psi")
 include(":tools:usage-compile-check")
 include(":samples:android")
 
-// Compose Material 3 **design catalog** — one `@Preview` per component in its
-// primary modes, authored so the renderer can export the module as an importable
-// sticker sheet (see `docs/design/DESIGN_CATALOGS.md`). Now a Compose Multiplatform
-// (desktop) module rendered by the desktop daemon (no Android SDK), so the public
-// desktop preview server can also build + live re-render it (`--allow-render-trusted`).
+// Compose Material 3 design catalog — one `@Preview` per component in its primary modes, exported
+// as an importable sticker sheet (`docs/design/DESIGN_CATALOGS.md`). A CMP desktop module, so it
+// renders without an Android SDK and the public preview server can live re-render it.
 include(":samples:design-catalog-m3")
 
-// Single source of truth for the M3 catalog component set — shared `commonMain`
-// composables consumed by both `:samples:design-catalog-m3` (desktop `@Preview`
-// sticker sheet + live render) and `:samples:cmp-wasm-catalog` (in-browser wasm).
+// Single source of truth for the M3 catalog components, shared by `:samples:design-catalog-m3` and
+// `:samples:cmp-wasm-catalog`.
 include(":samples:design-catalog-m3-shared")
 
-// Android-only supplement to the (CMP) M3 catalog — the few previews that need
-// androidx material3 APIs with no CMP equivalent (the material3 1.5.0-alpha inset
-// focus ring). Rendered via Robolectric and folded into the compose-m3 catalog by
-// the design-artifacts generator so those variants stay selectable.
+// Android-only supplement to the M3 catalog for androidx material3 APIs with no CMP equivalent.
+// Rendered via Robolectric and folded into the compose-m3 catalog by the design-artifacts
+// generator.
 include(":samples:design-catalog-m3-android")
 
 include(":samples:android-alpha")
@@ -288,26 +255,21 @@ include(":samples:android-screenshot-test")
 
 include(":samples:android-daemon-bench")
 
-// Fixture for the Android (Robolectric) serve-lane e2e: a tiny preview-only app whose merged
-// manifest names an `Application` the render classpath doesn't carry — the #2669 shape. Packed into
-// a bundle and live-rendered by `serve`. The lane that consumed it moved to
-// yschimke/compose-preview-server with the server itself; the fixture stays here because it is
-// a sample of THIS repository's render classpath, which is what makes it a useful fixture.
+// Fixture for the Android (Robolectric) serve-lane e2e: its merged manifest names an `Application`
+// the render classpath doesn't carry. The lane lives in compose-preview-server; the fixture stays
+// here because it samples this repository's render classpath.
 include(":samples:android-live-lane")
 
 include(":samples:sdk-matrix")
 
 include(":samples:wear")
 
-// Wear widget/tile preview fixture for issue #2670 — a Wear module with
-// `retargetWearPreviews = false` so its device-less widget previews crop to their intrinsic
-// bounds (at wear density) for export as fixed-size drawable assets, rather than the 227dp
-// watch-face canvas.
+// Wear widget/tile preview fixture: `retargetWearPreviews = false` so device-less widget previews
+// crop to their intrinsic bounds (at wear density) rather than the 227dp watch-face canvas.
 include(":samples:wear-widget")
 
-// Wear Compose Material 3 **design catalog** — one `@Preview` per component in its
-// primary (round size) modes, exported as a sticker sheet (see
-// `docs/design/DESIGN_CATALOGS.md` and the M3 sibling `:samples:design-catalog-m3`).
+// Wear Compose Material 3 design catalog, exported as a sticker sheet (see
+// `docs/design/DESIGN_CATALOGS.md`).
 include(":samples:design-catalog-wear-m3")
 
 include(":samples:xr-glimmer")
@@ -319,14 +281,11 @@ include(":samples:cmp-shared")
 // the `composePreviewSource` configuration. Applies no preview plugin itself.
 include(":samples:preview-source-shared")
 
-// In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
-// browser sandbox (a `wasmJs` Compose app). wasmJs-only, no
-// renderable `@Preview`, so it sits outside the desktop/Android render path.
+// In-browser CMP tier: a `wasmJs` Compose app rendering the M3 catalog. No renderable `@Preview`.
 include(":samples:cmp-wasm-catalog")
 
-// Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
-// #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
-// discovery of the other sample modules.
+// Non-renderable KMP-Android library (no `jvm("desktop")` target): regression fixture that must
+// coexist without breaking CLI discovery of the other samples. See its build.gradle.kts.
 include(":samples:cmp-android-only")
 include(":samples:cmp-android-robolectric")
 
@@ -334,48 +293,37 @@ include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
 
-// The one `data/…` module that stayed when the extractors moved to compose-preview-daemon: the
-// shared-element transition model is consumed by the render matrix here, not by a daemon. Flat
-// path for the same reason the moved ones were. docs/build-scripts/SETTINGS.md#flat-data-paths
+// The one `data/…` module still here: the shared-element transition model is consumed by the render
+// matrix, not a daemon. docs/build-scripts/SETTINGS.md#flat-data-paths
 include(":data-shared-element-core")
 
 project(":data-shared-element-core").projectDir = file("data/shared-element/core")
 
-// Standalone Kotlin Build Tools API parity/soak harness (#1332). Nothing in production depends on
-// it — the in-process compile ships in compose-preview-daemon's `daemon-core` `bta/` package — and
-// it is retained only for its BTA-impl parity, IC and classloader-leak soak tests
-// (`./gradlew :daemon:bta-host:test`).
+// Standalone Kotlin Build Tools API parity/soak harness. Nothing in production depends on it; kept
+// for its BTA parity, IC and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
 include(":daemon:bta-host")
 
-// Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
-// standard `compileKotlin`, so the BTA parity test has a reference artefact to diff against.
-// Same lifecycle as `:daemon:bta-host`; remove together with it.
+// Fixture for `:daemon:bta-host`: the same source compiled by Gradle's `compileKotlin`, as the
+// parity reference. Remove together with `:daemon:bta-host`.
 include(":daemon:bta-host-fixture")
 
-// Render-matrix axes (`MatrixAxes`/`MatrixCell`) and the contact-sheet stitcher, shared by the
-// CLI's offline `render-matrix` command and the MCP server's `render_matrix` tool. It was lifted
-// out of `:mcp` for exactly that reason, and it is why `:mcp` could then move to
-// compose-preview-server (#5176) without taking an offline CLI command with it: what layer 1 still
-// calls stays in layer 1. The MCP server consumes it as a published coordinate now.
+// Render-matrix axes and the contact-sheet stitcher, shared by the CLI's offline `render-matrix`
+// command and the MCP server's `render_matrix` tool (as a published coordinate).
 include(":render-matrix")
 
-// The design-guidelines engine: a catalog's `ui-builder.guidelines.json` asked about batches of
-// rendered @Previews through OpenRouter, with an evidence loop and a render-hash cache. Behaviour
-// over contract types with an outbound HTTP client and no socket of its own, so layer 1; the CLI's
-// `guidelines` command drives it, and the MCP server and the VS Code extension consume it as a
-// published coordinate.
+// The design-guidelines engine: a catalog's `ui-builder.guidelines.json` asked about rendered
+// previews through OpenRouter, with an evidence loop and a render-hash cache. Driven by the CLI's
+// `guidelines` command; consumed by the MCP server and VS Code extension as a published coordinate.
 include(":design-guidelines")
 project(":design-guidelines").projectDir = file("guidelines/engine")
 
-// The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,
-// packed-bundle materialisation and manifest reads, with no web server underneath. Moved here from
-// yschimke/compose-preview-server. docs/build-scripts/SETTINGS.md#render-host
+// The render host, the bundle daemon and the git-backed preview history, with no web server.
+// docs/build-scripts/SETTINGS.md#render-host
 include(":render-host")
 
-// The `compose-preview serve` cmp-jvm render worker: draws a captured `.rc` document to PNG or layered
-// SVG through the CMP player (`rc-player-compose`). Staged into the CLI install as `lib-rcjvm/` and
-// spawned as a subprocess by `:render-host`; not published. Replaces the desktop-JVM cut of the
-// AndroidX embedded player that yschimke/rc-players stopped publishing in 2.0.0.
+// The `compose-preview serve` cmp-jvm render worker: draws a captured `.rc` document to PNG or
+// layered SVG through `rc-player-compose`. Staged into the CLI install as `lib-rcjvm/` and spawned
+// by `:render-host`; not published.
 include(":rc-render-jvm")
 
 // Public render-session library. `:render-session-api` is the pure-interface surface every
@@ -389,11 +337,9 @@ include(":render-session-subprocess")
 
 project(":render-session-subprocess").projectDir = file("render-session/subprocess")
 
-// In-process Compose Multiplatform Desktop backend for the render-session library. Hosts the
-// daemon's `JsonRpcServer` + `DesktopHost` in the calling JVM via piped streams instead of forking
-// a subprocess. Trades classpath footprint (the calling JVM picks up Skiko + Compose Desktop) for
-// dramatically faster session startup. Embedders that don't want the runtime footprint stick with
-// `:render-session-subprocess`.
+// In-process Compose Desktop backend for the render-session library: hosts the daemon in the
+// calling JVM via piped streams. Much faster startup at the cost of Skiko + Compose Desktop on the
+// caller's classpath; otherwise use `:render-session-subprocess`.
 include(":render-session-embedded-desktop")
 
 project(":render-session-embedded-desktop").projectDir = file("render-session/embedded-desktop")
@@ -411,13 +357,11 @@ if (JavaVersion.current() >= JavaVersion.VERSION_21) {
   include(":samples:sdk21:android-metro-viewmodel")
 }
 
-// Local iteration against a compose-preview-daemon checkout. The renderers, the daemon hosts, the
-// preview annotations and data API and the data extractors are consumed at the published
-// `composeai-preview-daemon` pin (#5336); `-Pcomposeai.previewDaemonDir=../compose-preview-daemon`
-// substitutes every coordinate this build resolves from that line for the sibling checkout's
-// project, so a daemon change can be tried here before it is released. The three daemon hosts need
-// an explicit mapping because their project names (`:daemon:core`) are not their artifactIds; the
-// flat modules substitute by `group:name` on their own, and are listed anyway so the set is stated.
+// Local iteration against a compose-preview-daemon checkout:
+// `-Pcomposeai.previewDaemonDir=../compose-preview-daemon` substitutes every coordinate resolved
+// from the `composeai-preview-daemon` pin with the sibling checkout's project. The daemon hosts
+// need an explicit mapping because their project names (`:daemon:core`) aren't their artifactIds;
+// the flat modules are listed anyway so the set is stated.
 providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
   includeBuild(dir) {
     dependencySubstitution {
@@ -453,17 +397,10 @@ providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
 
 include(":bom")
 
-// Project paths whose build script applies `composeai.maven-publishing`, handed to `:bom` through a
-// system property so its constraints are derived from the build rather than kept as a second list
-// that goes stale. Same closure-free channel, and the same Isolated Projects reason, as the ktfmt
-// paths below.
-//
-// Matched with its closing quote (`composeai.maven-publishing")`) rather than as a bare substring:
-// `composeai.maven-publishing-platform` starts with the same 26 characters, so a prefix match pulls
-// `:bom` into the list of things the BOM constrains and it ends up constraining itself.
-//
-// The root build script is deliberately not visited — it *mentions* the plugin id, in
-// `printPublishTasks`'s `hasPlugin(...)` filter, without applying it.
+// Project paths applying `composeai.maven-publishing`, handed to `:bom` through a system property
+// so its constraints are derived from the build (closure-free, for Isolated Projects). Matched with
+// the closing quote so `composeai.maven-publishing-platform` doesn't pull `:bom` in to constrain
+// itself. The root build script is skipped: it mentions the plugin id without applying it.
 val publishedProjectPaths = buildList {
   fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
     if (

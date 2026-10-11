@@ -7,29 +7,20 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Assertion half of the preview-mode matrix (issue #3082). [PreviewModeMatrix.kt] declares one
- * `@Preview` per mode; this test reads the PNGs `:samples:android:composePreviewRenderAll` produced
- * for them (the module sets `renderBeforeUnitTests`, so `check` renders first) and pins each to the
- * geometry **Android Studio** resolves for the same annotation.
+ * Assertion half of the preview-mode matrix: reads the PNGs rendered from [PreviewModeMatrix.kt]
+ * (the module sets `renderBeforeUnitTests`) and pins each to the geometry Android Studio resolves.
  *
- * The numbers below are not read back from our own resolver — they are written out as `dp ×
- * density` from Studio's own device catalog, so the test says "we match Studio", not "we match
- * ourselves". The two rounding rules are the ones the pipeline actually implements:
- * - an explicit **fixed** axis (`widthDp`/`heightDp`) rounds half-up to Studio's whole-pixel frame;
- * - a **wrapped** axis is the composable's measured size, rounded up to the enclosing pixel.
- *
- * Together with the fixture this is the answer to "do we match Studio by default?": a regression in
- * `DeviceDimensions.resolveForRender`, in the Robolectric qualifier plumbing, or in the
- * multipreview walk fails here instead of silently shipping differently-shaped pixels.
+ * Expected sizes are written out as `dp × density` from Studio's device catalog, not read back from
+ * our resolver. A fixed axis rounds half-up to whole pixels; a wrapped axis is the measured size
+ * rounded up.
  */
 class PreviewModeMatrixTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
   /**
-   * `functionName_sanitisedPreviewName` → expected PNG size in pixels.
-   *
-   * Density is Studio's 420dpi (2.625×) default unless the device pins one.
+   * `functionName_sanitisedPreviewName` → expected PNG size in pixels. Density is Studio's 420dpi
+   * (2.625×) unless the device pins one.
    */
   private val expectedSizes =
     mapOf(
@@ -106,10 +97,8 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `multipreview annotations fan out to one render each`() {
-    // AndroidX's multipreview annotations and an app-declared meta-annotation are all walked the
-    // same way, so each contributes one PNG per nested @Preview. Counts are pinned to the compose
-    // BOM the sample builds against; a BOM bump that changes a ladder should surface here rather
-    // than silently changing what reviewers see.
+    // One PNG per nested @Preview. Counts are pinned to the compose BOM in use, so a ladder change
+    // in a BOM bump surfaces here.
     val fanOut =
       mapOf(
         // @PreviewLightDark
@@ -147,11 +136,8 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `PreviewScreenSizes renders its tablet screen portrait and its sibling landscape`() {
-    // AndroidX spells its "Tablet" entry `spec:width=1280dp,height=800dp,dpi=240,orientation=
-    // portrait` and its "Tablet - Landscape" sibling as the same string without the rotation. With
-    // `orientation=portrait` dropped at resolve-time the two were the same landscape pixels, so the
-    // fan-out counted six screens while showing five (issue #3547). The pair is the assertion: same
-    // frame, transposed.
+    // AndroidX's "Tablet" (`…,orientation=portrait`) and "Tablet - Landscape" share a frame
+    // transposed; dropping `orientation` made them identical pixels.
     val tablet = readRender("MatrixScreenSizesMultiPreview_Tablet")
     val landscape = readRender("MatrixScreenSizesMultiPreview_Tablet_Landscape")
     assertThat(tablet.height).isGreaterThan(tablet.width)
@@ -172,10 +158,8 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `PreviewLightDark fans out into two visibly different captures`() {
-    // A fan-out that renders the same pixels twice would still satisfy a filename count, so pin the
-    // outcome: the probe colours itself from `isSystemInDarkTheme()`, and the dark entry must land
-    // darker. This is what proves each nested @Preview's params reach the render, not just its
-    // name.
+    // A count alone would pass if both renders were identical; the probe's colour follows
+    // `isSystemInDarkTheme()`, so the dark entry must be darker.
     val light = readRender("MatrixLightDarkMultiPreview_Light")
     val dark = readRender("MatrixLightDarkMultiPreview_Dark")
     assertThat(meanLuminance(dark)).isLessThan(meanLuminance(light))

@@ -21,18 +21,10 @@ import ee.schimke.composeai.preview.notification.NotificationContent
 import ee.schimke.composeai.preview.notification.NotificationSurface
 
 /**
- * Gallery of additional `NotificationCompat` styles routed through the `NotificationContent`
- * helper. Each function is one `@Preview` (no full `@NotificationVariants` fan-out) — the variants
- * matrix is already demonstrated by `BigTextVariantsPreview`; this file is about *which kinds of
- * notification surface render correctly*, not how many variants of one notification we produce.
- *
- * Covers the surfaces real apps mostly ship: Messaging (Signal / WhatsApp / Discord), Inbox-summary
- * (Gmail), `BigPictureStyle` (camera / share notifications), actions (reply / dismiss button row),
- * `MediaStyle` (now-playing card), and `DecoratedCustomViewStyle` (custom progress body under
- * default chrome). Below the style gallery are two additional sections: a surface-axis fan-out
- * (collapsed / expanded / heads-up of the same notification through `NotificationSurface`) and a
- * content-edge-case set (long-title truncation, no-text, no-large-icon, action overflow, grouped
- * summary).
+ * Gallery of `NotificationCompat` styles routed through the `NotificationContent` helper, one
+ * `@Preview` each (the variants matrix lives in `BigTextVariantsPreview`): Messaging, Inbox,
+ * `BigPictureStyle`, actions, `MediaStyle` and `DecoratedCustomViewStyle`. Followed by a
+ * surface-axis fan-out (collapsed / expanded / heads-up) and content edge cases.
  */
 private const val GALLERY_CHANNEL_ID = "gallery"
 
@@ -48,10 +40,8 @@ private fun ensureGalleryChannel(context: Context) {
 }
 
 /**
- * Three-message conversation rendered with `MessagingStyle`. The expanded layout shows each
- * `Message` with its `Person`'s display name; `setConversationTitle` becomes the header. This is
- * the surface Signal / WhatsApp / Discord use — most notification UX work in real apps lives in
- * this style.
+ * Three-message `MessagingStyle` conversation: each `Message` shows its `Person`'s name and
+ * `setConversationTitle` becomes the header.
  */
 @Preview(name = "Messaging style")
 @Composable
@@ -74,11 +64,7 @@ fun MessagingStylePreview() {
   }
 }
 
-/**
- * Inbox-summary style — five short rows under a single header. The surface Gmail / Outlook use for
- * "you have N unread" digests. Each `addLine` is a separate `TextView` in the inflated
- * `RemoteViews`; the rendered PNG shows up to ~7 lines depending on shade width.
- */
+/** Inbox-summary style: five short rows under one header, as used for "N unread" digests. */
 @Preview(name = "Inbox style")
 @Composable
 fun InboxStylePreview() {
@@ -102,9 +88,8 @@ fun InboxStylePreview() {
 }
 
 /**
- * Notification with two action buttons (Reply / Archive). Actions render as a button row beneath
- * the body in the expanded layout, regardless of `setStyle`. `PendingIntent`s are required for the
- * action to exist; we use a benign no-op `Intent` since we never actually post.
+ * Two action buttons (Reply / Archive), rendered as a row beneath the body. Actions require a
+ * `PendingIntent`; a no-op `Intent` suffices since nothing is posted.
  */
 @Preview(name = "Actions")
 @Composable
@@ -129,13 +114,8 @@ fun ActionsPreview() {
 }
 
 /**
- * `BigPictureStyle` — the surface camera / photo-share / weather apps use when the body of the
- * notification is itself an image. The expanded shade layout reserves a wide row for the bitmap and
- * renders the title + text above it.
- *
- * The bitmap is generated programmatically (a gradient sky with a sun) so the sample doesn't have
- * to carry a photo asset in the repo. Real apps would use a `BitmapFactory.decodeResource` /
- * `decodeFile` of an actual image; the rendering path is the same.
+ * `BigPictureStyle`, where the body is an image. The bitmap is generated in code so the sample
+ * carries no photo asset.
  */
 @Preview(name = "Big picture")
 @Composable
@@ -152,19 +132,11 @@ fun BigPictureStylePreview() {
 }
 
 /**
- * Now-playing media card rendered with `androidx.media.app.NotificationCompat.MediaStyle`. Three
- * actions (previous / play / next) collapse into the inline transport row that the media-style
- * layout reserves; `setLargeIcon` becomes the album-art slot on the right edge. This is the surface
- * music apps (Spotify / YouTube Music / Apple Music) use for the now-playing card in the shade.
- *
- * `MediaStyle` ordinarily ties the notification to a `MediaSessionCompat.Token`
- * (`setMediaSession(...)`) so SystemUI can route hardware media keys; for a static render we skip
- * the session — the layout draws identically with or without it because the inflater pulls title /
- * text / icon from the notification's own fields.
+ * Now-playing card with `androidx.media.app.NotificationCompat.MediaStyle`: three transport actions
+ * and `setLargeIcon` as album art. No `MediaSessionCompat.Token` is set; the layout draws the same
+ * without one.
  */
-// androidx.media's MediaStyle is deprecated in favour of the media3 MediaSession helper; this
-// sample deliberately demonstrates the legacy androidx.media surface without a MediaSession, so we
-// suppress rather than pull in media3.
+// MediaStyle is deprecated in favour of media3; this sample deliberately shows the legacy surface.
 @Suppress("DEPRECATION")
 @Preview(name = "Media style")
 @Composable
@@ -194,14 +166,9 @@ fun MediaStylePreview() {
 }
 
 /**
- * Custom progress body wrapped in `DecoratedCustomViewStyle` — the system keeps its standard header
- * (small icon, app name, timestamp) and replaces only the body region with the inflated
- * `RemoteViews` from [R.layout.notification_custom_view]. The surface long-running download /
- * upload / build-progress notifications use when the default progress row isn't expressive enough.
- *
- * `setCustomContentView` *and* `setCustomBigContentView` are both set to the same RemoteViews so
- * the renderer's `createBigContentView()` path resolves to the custom layout rather than falling
- * back to the standard expanded chrome.
+ * A custom progress body in `DecoratedCustomViewStyle`: system header, body from
+ * [R.layout.notification_custom_view]. Both `setCustomContentView` and `setCustomBigContentView`
+ * are set so `createBigContentView()` resolves to the custom layout.
  */
 @Preview(name = "Decorated custom view")
 @Composable
@@ -226,12 +193,8 @@ fun DecoratedCustomViewPreview() {
   }
 }
 
-// --- Surface axis (collapsed / expanded / heads-up) -------------------------------------------
-//
-// The three previews below render the *same* notification through the three `NotificationSurface`
-// values, so the rendered PNGs document how each `createXxxContentView()` path differs. Authors
-// who only care about one surface keep using the default (`EXPANDED`) on `NotificationContent`;
-// the surface parameter is opt-in.
+// Surface axis: the same notification through each `NotificationSurface` value. The default on
+// `NotificationContent` is `EXPANDED`.
 
 private fun surfaceAxisNotification(ctx: Context) =
   NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
@@ -275,16 +238,10 @@ fun HeadsUpSurfacePreview() {
   }
 }
 
-// --- Content edge cases -----------------------------------------------------------------------
-//
-// One preview per edge case from issue #1249's "Content edge cases" row of the variants matrix.
-// These exist so the rendered PNGs document how the AOSP layout degrades — long-string truncation,
-// missing optional fields, action overflow, group-summary chrome.
+// Content edge cases: how the AOSP layout degrades.
 
 /**
- * Very long title — exercises the AOSP layout's collapsed truncation behaviour. SystemUI clips the
- * title to one line on collapsed surfaces; the expanded layout (rendered here) lets the title wrap
- * to two lines and then ellipsises.
+ * Very long title: the expanded layout wraps to two lines, then ellipsises.
  */
 @Preview(name = "Edge — long title")
 @Composable
@@ -302,11 +259,7 @@ fun LongTitlePreview() {
   }
 }
 
-/**
- * Title only — no `setContentText`, no `setStyle`. Demonstrates the minimum-viable layout the AOSP
- * renderer falls back to when the builder doesn't carry a body. The text row collapses to nothing;
- * the small-icon header still draws.
- */
+/** Title only, no text or style: the minimum layout, with the small-icon header still drawn. */
 @Preview(name = "Edge — no text")
 @Composable
 fun NoTextPreview() {
@@ -320,10 +273,7 @@ fun NoTextPreview() {
 }
 
 /**
- * `MessagingStyle` *without* `Person` icons — `setIcon(...)` omitted on both senders. The inflated
- * layout drops the avatar column and the name rows reflow to the left edge. Mirrors how the
- * gallery's main [MessagingStylePreview] would degrade for apps that haven't wired up per-contact
- * avatars yet.
+ * `MessagingStyle` without `Person` icons: the avatar column drops and names reflow left.
  */
 @Preview(name = "Edge — no large icon")
 @Composable
@@ -345,10 +295,7 @@ fun NoLargeIconPreview() {
   }
 }
 
-/**
- * Six actions — SystemUI silently caps the visible action row at three on most layouts, so the
- * later three never paint. The rendered PNG documents the truncation point.
- */
+/** Six actions: SystemUI caps the visible row at three on most layouts. */
 @Preview(name = "Edge — many actions")
 @Composable
 fun ManyActionsPreview() {
@@ -374,10 +321,8 @@ fun ManyActionsPreview() {
 }
 
 /**
- * Group summary notification — `setGroupSummary(true)` + the same `setGroup(...)` key the children
- * carry. SystemUI shows the summary as a single collapsed row with a counter; the rendered PNG here
- * uses the standard `setContentTitle` / `setContentText` fields the summary inflater falls back to
- * when no `InboxStyle` is attached.
+ * Group summary (`setGroupSummary(true)` + the children's group key), using the plain title/text
+ * fields the summary falls back to without an `InboxStyle`.
  */
 @Preview(name = "Edge — grouped summary")
 @Composable
@@ -401,12 +346,7 @@ fun GroupedSummaryPreview() {
   }
 }
 
-/**
- * Synthetic 256×256 "album art" for [MediaStylePreview] — a diagonal teal-to-pink gradient with a
- * radial highlight in the upper-left. Generated in-process so the sample doesn't ship a raster
- * asset; real apps would call `BitmapFactory.decodeResource` on a packaged album cover or pull the
- * artwork off `MediaMetadata`.
- */
+/** Synthetic 256×256 album art for [MediaStylePreview], so the sample ships no raster asset. */
 private fun sampleAlbumArt(): Bitmap {
   val size = 256
   val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -436,11 +376,7 @@ private fun sampleAlbumArt(): Bitmap {
   return bmp
 }
 
-/**
- * Synthetic 720×384 "photo" used by [BigPictureStylePreview]. A linear sky gradient with a sun disc
- * in the upper-right — enough visual structure to read as an actual image at notification size
- * without shipping a raster asset.
- */
+/** Synthetic 720×384 "photo" (sky gradient and sun) for [BigPictureStylePreview]. */
 private fun sampleBigPicture(): Bitmap {
   val w = 720
   val h = 384

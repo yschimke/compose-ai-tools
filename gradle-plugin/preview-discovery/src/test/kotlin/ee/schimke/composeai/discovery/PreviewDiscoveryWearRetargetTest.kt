@@ -5,15 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Pins [PreviewDiscovery.retargetWearStickers] (issue #1985): on a Wear module, a frame-less,
- * device-less component `@Preview` inherits Studio's phone default device (400×800dp @ 2.625x),
- * which renders a Wear sticker on a phone canvas. Discovery retargets such previews to the Wear
- * default (227dp @ 2.0x) so they render at wear scale, while leaving device-pinned and fixed-size
- * previews (and every preview off Wear) untouched.
- *
- * The retarget moves the *wrap sandbox*, not the frame: `widthDp`/`heightDp` MUST stay null so both
- * axes keep wrapping and the renderer still crops each sticker to its measured bounds. Pinning them
- * (the original #2373 shape) made every device-less Wear preview export as a 454×454 watch canvas.
+ * Pins [PreviewDiscovery.retargetWearStickers] (see #1985): on Wear, a frame-less, device-less
+ * `@Preview` inherits Studio's phone default, so it's retargeted to the Wear default (227dp @
+ * 2.0x); device-pinned, fixed-size and non-Wear previews are untouched. Only the *wrap sandbox*
+ * moves: `widthDp`/`heightDp` must stay null so stickers still crop to measured bounds rather than
+ * exporting a 454×454 canvas.
  */
 class PreviewDiscoveryWearRetargetTest {
 

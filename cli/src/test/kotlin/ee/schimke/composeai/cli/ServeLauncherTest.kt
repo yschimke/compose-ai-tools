@@ -10,19 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `serve` and `browse` as launchers.
- *
- * Replaces `ServeCommandTest` and `ServeOptionsDelegationTest`, whose subjects left with the
- * server: both pinned wiring between `ServeCommand` and `ServeRunner`/`ServeCommandOptions`, and
- * there is no such wiring now. What is worth pinning instead is the argv — the launcher's whole job
- * — because a flag dropped or forwarded wrongly here is a server that starts with the wrong options
- * and no compiler to say so.
- *
- * The init-script case those tests also covered is not reproduced. Its subject was `ServeCommand`
- * overriding `autoInjectInitScriptArgs` with the same name as the package-level function it
- * delegated to — the test existed because that pair can silently self-resolve into infinite
- * recursion. `BuildHostCommand`, which answers that question now, declares no such override and
- * calls the function directly, so there is no longer a pair that can collapse.
+ * `serve` and `browse` as launchers: the argv is the launcher's whole job, so it is what's pinned
+ * (a flag dropped or mis-forwarded starts the server wrong with no compiler to catch it).
  */
 class ServeLauncherTest {
 
@@ -89,11 +78,7 @@ class ServeLauncherTest {
     assertFalse(argv().contains("--component-browser"))
   }
 
-  /**
-   * `ui-builder` launches the server's `ui` command and nothing else: unlike `browse` it adds no
-   * defaults here, because every choice `ui` implies is the server's — and the server is the half
-   * that knows where the packaged builder and the module's component record are.
-   */
+  /** `ui-builder` launches the server's `ui` command with no defaults of its own. */
   @Test
   fun `ui-builder launches the server's ui command with the caller's argv`() {
     assertEquals(
@@ -107,9 +92,8 @@ class ServeLauncherTest {
   }
 
   /**
-   * `design` is the one launcher whose target does not serve: the verb and the design id are the
-   * server's argv, forwarded untouched, and the exit code that comes back is what says whether an
-   * export was refused (yschimke/compose-preview-server#529).
+   * `design` forwards the verb and design id untouched; the returned exit code says whether an
+   * export was refused.
    */
   @Test
   fun `design launches the server's design command with the caller's argv`() {
@@ -239,12 +223,7 @@ class ServerBinaryDiscoveryTest {
     )
   }
 
-  /**
-   * Someone who has not got the binary needs to be told how to get it, not just that it is absent.
-   * The hint is now reached only after an automatic fetch has failed, so it must also say that one
-   * was attempted — otherwise it reads as "you were always supposed to install this yourself",
-   * which is the state #5183 fixed.
-   */
+  /** The missing-binary hint must say how to get it and that an automatic fetch was attempted. */
   @Test
   fun `the installation hint names the binary, the variable and the flag`() {
     val hint = ServerBinaryDiscovery.installationHint()

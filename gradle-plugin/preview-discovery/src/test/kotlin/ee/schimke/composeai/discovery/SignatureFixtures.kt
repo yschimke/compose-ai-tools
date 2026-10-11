@@ -3,10 +3,9 @@ package ee.schimke.composeai.discovery
 import androidx.compose.runtime.Composable
 import ee.schimke.composeai.preview.KnobValue
 
-// Fixtures for ComposableSignatureTest. Deliberately NOT @Composable — that would drag the Compose
-// runtime onto the discovery test classpath, and ComposableSignature reads only Kotlin @Metadata,
-// which every Kotlin declaration carries regardless. A top-level function compiles into the file
-// facade class `SignatureFixturesKt`, exercising the FileFacade metadata path.
+// Fixtures for ComposableSignatureTest. Not @Composable, which would need the Compose runtime;
+// ComposableSignature only reads Kotlin metadata. Top-level functions exercise the
+// `SignatureFixturesKt` file-facade path.
 @Suppress("unused", "UNUSED_PARAMETER")
 fun sampleComponent(
   state: String,
@@ -22,8 +21,8 @@ fun scopedSlotComponent(content: @Composable TestRowScope.(Int) -> Unit) {}
 class TestRowScope
 
 /**
- * The shape `LazyColumn` has: a receiver lambda that is **not** `@Composable`, whose children are
- * declared through members of the receiver rather than composed into it.
+ * The `LazyColumn` shape: a non-`@Composable` receiver lambda whose children are declared through
+ * the receiver.
  */
 @Suppress("unused", "UNUSED_PARAMETER") fun scopeDslComponent(content: TestListScope.() -> Unit) {}
 
@@ -42,18 +41,15 @@ class TestListScope
 @Suppress("unused") fun noParams() {}
 
 /**
- * Every parameter defaulted — the shape a production composable annotated `@Preview` in place
- * almost always has (`modifier: Modifier = Modifier`). Discovery admits these.
+ * Every parameter defaulted, like production composables annotated in place; discovery admits
+ * these.
  */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun allDefaultedComponent(modifier: String = "", count: Int = 1) {}
 
 // --- Knob fixtures (the secondary override format) -----------------------------------------
 
-/**
- * The shape the parameter override format is *for*: every parameter defaulted, and every type one
- * the harness can build from a seed string. All six become knobs, in declaration order.
- */
+/** Every parameter defaulted and seedable: all six become knobs, in declaration order. */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun knobComponent(
   label: String = "Filled",
@@ -65,9 +61,7 @@ fun knobComponent(
 ) {}
 
 /**
- * The common production shape: defaulted and renderable, but `modifier` is not constructible from a
- * seed, so only `count` is a knob — and its index is its position in the FULL parameter list, which
- * is what the renderer needs to place the argument.
+ * `modifier` isn't seedable, so only `count` is a knob, indexed by its position in the full list.
  */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun mixedKnobComponent(modifier: List<String> = emptyList(), count: Int = 1) {}
@@ -80,9 +74,8 @@ enum class Emphasis {
 }
 
 /**
- * Constants whose seed text is not their name — including one, `extra-large`, that is not a legal
- * Kotlin identifier at all, which is why the alias has to exist rather than the constant being
- * renamed to the value.
+ * Constants whose seed text differs from their name, including `extra-large`, which no identifier
+ * can spell.
  */
 enum class KitIconSize {
   @KnobValue("default") Default,
@@ -112,9 +105,7 @@ fun enumKnobComponent(emphasis: Emphasis = Emphasis.Tonal, label: String = "hi")
 @Suppress("unused", "UNUSED_PARAMETER")
 fun nullableKnobComponent(label: String? = null, enabled: Boolean = true) {}
 
-// A nullable function-typed parameter — the shape material3's
-// `Checkbox(onCheckedChange: ((Boolean) -> Unit)?)` has, and the one whose rendering used to be
-// ambiguous with a non-null callback returning `Unit?`.
+// The material3 `Checkbox(onCheckedChange: ((Boolean) -> Unit)?)` shape.
 @Suppress("unused")
 fun nullableCallbackComponent(onCheckedChange: ((Boolean) -> Unit)?, onClick: (() -> Unit)?) {}
 
@@ -133,10 +124,9 @@ annotation class ExperimentalFixtureApi
 annotation class InternalFixtureApi
 
 /**
- * A marker that is **not itself** an opt-in requirement but whose class is guarded by one — exactly
- * `@ComposableInferredTarget`, which the Compose compiler stamps onto every composable and which is
- * declared `@InternalComposeApi`. Reading the meta-annotation closure of a method carrying this
- * reports [InternalFixtureApi], which no caller has to opt into.
+ * A marker that isn't itself an opt-in requirement but is guarded by one, like
+ * `@ComposableInferredTarget`; reading the meta-annotation closure would wrongly report
+ * [InternalFixtureApi].
  */
 @InternalFixtureApi
 @Retention(AnnotationRetention.BINARY)
@@ -173,35 +163,24 @@ annotation class `Api$Experimental`
 
 @Suppress("unused") @`Api$Experimental` fun dollarMarkerComponent() {}
 
-// No context-receiver fixture: this module's language version cannot express either spelling
-// (`context(Foo)` needs -Xcontext-receivers, `context(f: Foo)` needs language version 2.4). The
-// refusal a recorded context produces is covered in ComponentSnippetsTest instead; the metadata
-// read itself has no fixture here, which ComposableSignature.hasContextRequirement says plainly.
+// No context-receiver fixture: this module's language version can't express either spelling. The
+// refusal is covered in ComponentSnippetsTest; ComposableSignature.hasContextRequirement notes the
+// gap.
 
 /**
- * A parameter written through a type alias, for the question of what `typeFqn` records for one.
- *
- * Kotlin's metadata **expands** an alias — the docs for `KmType.abbreviatedType` say so outright —
- * so the recorded classifier should be the aliased class rather than the alias, and a value
- * claiming that class should match. Asserted rather than assumed, because a review finding claimed
- * the opposite and the difference is a whole category of false refusals.
+ * A type-aliased parameter. Metadata expands aliases (see `KmType.abbreviatedType`), so the
+ * recorded classifier is the aliased class; asserted because a review claimed otherwise.
  */
 typealias AliasedLabel = String
 
 @Suppress("unused", "UNUSED_PARAMETER") fun aliasedComponent(label: AliasedLabel = "") {}
 
-// --- Constructibility fixtures (issue #5067) -------------------------------------------------
-//
-// Each names one clause of `ComposableSignature.isNoArgConstructible`. The point of a fixture per
-// clause is that the rule is checked against a real compiler's output rather than against a belief
-// about what Kotlin emits: an all-defaulted constructor exists as a zero-arg call only in SOURCE
-// (the JVM sees a `(…, int, DefaultConstructorMarker)` bridge), which is exactly the distinction a
-// hand-written record could not have proved.
+// --- Constructibility fixtures (#5067) ---
+// One per clause of `ComposableSignature.isNoArgConstructible`, checked against real compiler
+// output: an all-defaulted constructor is zero-arg only in source (the JVM sees a
+// `DefaultConstructorMarker` bridge).
 
-/**
- * The `TextFieldState` shape: every constructor parameter defaulted, so `DefaultedState()`
- * compiles.
- */
+/** The `TextFieldState` shape: all constructor parameters defaulted. */
 class DefaultedState(val text: String = "", val cursor: Int = 0)
 
 /** No constructor parameters at all — the other way to be callable with none. */
@@ -253,11 +232,9 @@ annotation class ExperimentalStateApi
 @Suppress("unused", "UNUSED_PARAMETER")
 fun defaultedParameterComponent(state: DefaultedState = DefaultedState()) {}
 
-// --- the `remember…` factory convention ---------------------------------------------------------
-// Each names one clause of `ComposableSignature.noArgFactoryFor`. The convention is Compose's, but
-// what is under test is that it is LOOKED UP rather than spelled from a type name: every fixture
-// below is a real `remember…` the scan can either accept or reject on its declared shape, and a
-// resolver that matched on the name alone would accept all of them.
+// --- `remember…` factory fixtures ---
+// One per clause of `ComposableSignature.noArgFactoryFor`; each is a real function accepted or
+// rejected on its declared shape, so a name-only resolver would fail.
 
 /** The `rememberTextFieldState` shape: `@Composable`, fully defaulted, returning its type. */
 @Suppress("unused")
@@ -300,12 +277,8 @@ fun rememberGatedFactoryState(): GatedFactoryState = GatedFactoryState()
 @Suppress("unused", "UNUSED_PARAMETER") fun factoryStateComponent(state: DefaultedState) {}
 
 /**
- * A factory whose JVM name is **mangled**, because it takes an inline value class parameter.
- *
- * The case the real classpath had and the fixtures above did not: `rememberTextFieldState` takes a
- * defaulted `TextRange`, so Kotlin emits it as `rememberTextFieldState-Le-punE`. A resolver that
- * looks the method up under its source name finds nothing and refuses a factory that exists — which
- * is what the functional test caught, and what this pins.
+ * A factory whose JVM name is mangled by an inline value class parameter, like
+ * `rememberTextFieldState-Le-punE`; lookup by source name finds nothing.
  */
 @Suppress("unused") class MangledFactoryState(val text: String = "")
 

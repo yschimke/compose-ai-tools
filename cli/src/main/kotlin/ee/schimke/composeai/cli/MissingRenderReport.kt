@@ -10,31 +10,18 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /*
- * The renderer's error sidecar, as the CLI reads it: the file format, and the stack-trace reading
- * that turns one into something worth printing (issue #3741).
- *
- * When a preview renders nothing, `show` / `render` used to print one fixed paragraph blaming the
- * *build wiring* ("`composePreviewRender` reported NO-SOURCE, the renderer test class wasn't on
- * testClassesDirs"). That guess is wrong whenever the render task actually ran and the preview
- * threw — and in that case the renderer has already written the precise cause next to where the
- * PNG would have gone:
- *
- *   <module>/build/compose-previews/renders/<Stem>.png.error.json
- *
- * Which of those two a given preview is, and what may therefore be said about it, is decided in
- * [PreviewDiagnosis] and said in `MissingRenderMessage.kt` (issue #3796). This file only knows how
- * to read the evidence, never how to describe it.
+ * Reading the renderer's error sidecar
+ * (`<module>/build/compose-previews/renders/<Stem>.png.error.json`) and its stack trace. When a
+ * preview threw, the sidecar holds the real cause, which beats guessing at build wiring. What may
+ * be said about it is decided in [PreviewDiagnosis] and worded in `MissingRenderMessage.kt`; this
+ * file only reads evidence.
  */
 
 /**
- * The renderer's per-preview `compose-preview-error/v1` sidecar, as the CLI reads it.
- *
- * Mirrors the writer (`renderer-android/.../RenderErrorSidecar.kt`, the desktop equivalent in
- * `DesktopRendererMain.kt`) and the schema owned by the gradle plugin
- * (`gradle-plugin/.../PreviewRenderError.kt`) — `:gradle-plugin` is a separate included build, so
- * the CLI cannot depend on that type. Only the fields this report consumes are modelled;
- * `ignoreUnknownKeys` keeps a newer renderer's extra fields harmless. The frame type is the
- * serve-side [RenderFailureFrame] rather than a second `file`/`line`/`function` triple.
+ * The renderer's per-preview `compose-preview-error/v1` sidecar. Mirrors the writers
+ * (`RenderErrorSidecar.kt`, `DesktopRendererMain.kt`) and the plugin's `PreviewRenderError.kt`
+ * schema, which the CLI can't depend on. Only consumed fields are modelled; frames reuse
+ * [RenderFailureFrame].
  */
 @Serializable
 data class RenderErrorSidecar(
@@ -42,10 +29,7 @@ data class RenderErrorSidecar(
   val exception: String = "",
   val message: String = "",
   val topAppFrame: RenderFailureFrame? = null,
-  /**
-   * The renderer's one-sentence explanation when the failure was a native-library load rather than
-   * the preview's own code. Empty for an ordinary preview throw and for older sidecars.
-   */
+  /** The renderer's explanation when the failure was a native-library load; empty otherwise. */
   val diagnosis: String = "",
   /** Full `Throwable.printStackTrace()` text, including any `Caused by:` chain. */
   val stackTrace: String = "",
@@ -62,10 +46,9 @@ private const val RENDER_ERROR_SCHEMA_PREFIX = "compose-preview-error/"
 private val sidecarJson = Json { ignoreUnknownKeys = true }
 
 /**
- * Read the `<output>.error.json` sidecar beside [expectedOutput] (the absolute path the PNG / data
- * product *would* have been written to). Returns `null` when there is no sidecar, when it is
- * unreadable, or when its schema isn't a `compose-preview-error` version — all of which mean "we
- * learned nothing here", never "the render succeeded".
+ * Read the `<output>.error.json` beside [expectedOutput] (where the output would have been
+ * written). Null when absent, unreadable, or not a `compose-preview-error` schema — "learned
+ * nothing", never "succeeded".
  */
 fun readRenderErrorSidecar(
   expectedOutput: File,
@@ -88,15 +71,9 @@ internal fun missingCaptureCoords(result: PreviewResult): String =
     .ifEmpty { "default" }
 
 /**
- * Every `Caused by:` entry of [stackTrace]'s **primary** chain, outermost cause first. Empty when
- * the trace carries no cause chain — the outermost throwable is then the whole story and the
- * sidecar's own `exception` / `message` already describe it.
- *
- * `Suppressed:` branches are excluded: a suppressed throwable with a cause of its own (the ordinary
- * shape for a `use {}` / try-with-resources body that threw and then failed to close) is printed by
- * `printStackTrace()` as an *indented* `Caused by:`, so trimming every line first made it
- * indistinguishable from the real chain — and, being printed last, it won the `lastOrNull()` that
- * picks the root cause. The close failure would then be reported as the render's root cause.
+ * Every `Caused by:` of [stackTrace]'s primary chain, outermost first; empty when there is none.
+ * `Suppressed:` branches are excluded: their own (indented) `Caused by:` lines would otherwise be
+ * mistaken for the root cause.
  */
 fun causeChainOf(stackTrace: String): List<RenderErrorCause> =
   primaryTraceLines(stackTrace)
@@ -110,25 +87,14 @@ fun causeChainOf(stackTrace: String): List<RenderErrorCause> =
     }
     .toList()
 
-/**
- * The deepest `Caused by:` entry of [stackTrace] — the failure worth leading with, since the outer
- * throwable is routinely a reflective wrapper. `null` when the trace has no cause chain.
- */
+/** The deepest `Caused by:` — the failure to lead with — or null when there is no chain. */
 fun rootCauseOf(stackTrace: String): RenderErrorCause? = causeChainOf(stackTrace).lastOrNull()
 
 /**
- * The first stack frame belonging to the *user's own* package, searching the deepest `Caused by:`
- * section first.
- *
- * The renderer's `topAppFrame` is computed from the outermost throwable's frames with a
- * skip-the-framework-prefixes heuristic, which lands on whichever tooling frame invoked the
- * composable — in issue #3741 that was `KeyboardDataProduct.kt:148`, a data-product frame in *this*
- * project, while the frame worth showing was the consumer's `AmbientAwareActivity.kt:76`. Anchoring
- * on the preview class's own package instead makes the one-line summary point at a file the user
- * can open. Package prefixes are tried longest-first (exact package, then parents down to two
- * segments) so a sibling package of the preview still counts, but `com.` never does.
- *
- * Returns `null` when nothing matches, leaving the sidecar's `topAppFrame` as the fallback.
+ * The first frame in the user's own package, searching the deepest `Caused by:` section first. The
+ * renderer's `topAppFrame` often lands on a tooling frame; anchoring on the preview class's package
+ * points at a file the user can open. Prefixes go from the exact package down to two segments. Null
+ * when nothing matches (the caller falls back to `topAppFrame`).
  */
 fun preferredAppFrame(stackTrace: String, previewClassName: String): RenderFailureFrame? {
   val prefixes = packagePrefixesOf(previewClassName)
@@ -189,10 +155,8 @@ private fun primaryTraceLines(stackTrace: String): List<String> {
 }
 
 /**
- * Split a printed stack trace into its throwable sections: the outermost throwable first, then one
- * per `Caused by:`. `Suppressed:` branches are dropped entirely (see [primaryTraceLines]) so
- * neither the cause chain nor the frame search can wander into one — the frame the report prints
- * has to belong to the failure it names.
+ * Split a stack trace into throwable sections (outermost, then each `Caused by:`), dropping
+ * `Suppressed:` branches ([primaryTraceLines]) so frames always belong to the failure named.
  */
 private fun traceSections(stackTrace: String): List<List<String>> {
   val sections = mutableListOf<MutableList<String>>(mutableListOf())
@@ -226,17 +190,14 @@ private fun parseFrame(line: String): ParsedFrame? {
 }
 
 /**
- * `at [<module>/]<class>.<method>(<file>:<line>)`. The optional leading group swallows the
- * classloader / module qualifier a JPMS-aware JVM prints (`app//com.example.Foo.bar(...)`,
- * `java.base@17/java.lang.reflect.Method.invoke(...)`) — `/` never appears in a class name, so it
- * is unambiguous.
+ * `at [<module>/]<class>.<method>(<file>:<line>)`; the optional group swallows JPMS qualifiers
+ * (`app//…`, `java.base@17/…`), unambiguous since `/` never appears in class names.
  */
 private val FRAME_REGEX = Regex("""^\s*at\s+(?:[\w.@$]*/{1,2})?([\w$.<>-]+)\(([^()]*)\)""")
 
 /**
- * Package prefixes to accept as "the user's own code", longest first: the preview class's package,
- * then each parent down to two segments. Two is the floor because a one-segment prefix (`com`,
- * `org`) would match every library on the classpath.
+ * Package prefixes counted as user code, longest first, down to two segments (one would match every
+ * `com.`/`org.` library).
  */
 private fun packagePrefixesOf(className: String): List<String> {
   val pkg = className.substringBeforeLast('.', "")

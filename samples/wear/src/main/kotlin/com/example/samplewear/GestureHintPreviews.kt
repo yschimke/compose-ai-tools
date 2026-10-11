@@ -28,14 +28,12 @@ import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 import kotlinx.coroutines.launch
 
 /**
- * A normal Wear media screen with **two** one-handed gestures: a primary double-pinch that toggles
- * play/pause, and a dismiss wrist-turn mapped to back. Each button wraps its **content** (the
- * label) in [OneHandedGestureClickIndicator], so the public Wear API swaps the label for that
- * gesture's animation on-device while the button pill stays put.
+ * A Wear media screen with two one-handed gestures: double-pinch toggles play/pause, wrist-turn
+ * goes back. Each button wraps its label in [OneHandedGestureClickIndicator], which swaps it for
+ * the gesture animation on-device.
  *
- * [showIndicators] is state injection rather than a second rendering implementation: previews can
- * capture a stable animation frame while production leaves it false and lets `onGestureAvailable`
- * drive the exact same public indicator state.
+ * [showIndicators] injects state so previews capture a stable frame; production leaves it false
+ * and lets `onGestureAvailable` drive it.
  */
 @Composable
 fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = {}) {

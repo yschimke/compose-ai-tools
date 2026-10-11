@@ -24,9 +24,8 @@ import androidx.wear.compose.remote.material3.RemoteText
 import ee.schimke.composeai.daemon.RemoteOverridablePreviewWrapper
 
 /**
- * The Remote Compose widget "content" — the payload a real Glance Wear widget draws, and whose
- * **encoded RemoteCompose document is the critical artifact** the render pipeline captures as the
- * `<stem>.rc` sidecar (packed into the bundle by `BundlePreviewTask.resolvePreviewIr`).
+ * The Remote Compose widget content, whose encoded document is captured as the `<stem>.rc` sidecar
+ * and packed by `BundlePreviewTask.resolvePreviewIr`.
  */
 @Composable
 @RemoteComposable
@@ -45,20 +44,10 @@ fun RemoteImageWidget() {
 }
 
 /**
- * A Wear widget **shape** wrapper that preserves the encoded RemoteCompose document.
- *
- * This is the crux of framing a Remote Compose widget in its ideal shape without losing the doc.
- * The `.rc` capture is done *by the RemoteCompose wrapper itself* —
- * [RemoteOverridablePreviewWrapper] `.Wrap` runs `captureSingleRemoteDocument` and offers the bytes
- * to `IrSidecarChannel` — and a `@Preview` may carry only **one** `@PreviewWrapper`. A shape
- * wrapper that *replaced* the Remote Compose wrapper would silently drop the `.rc` (verified: the
- * in-body `RemoteContentPreview` previews here produce no sidecar, only the
- * `@PreviewWrapper(RemotePreviewWrapper::class)` ones do).
- *
- * So this wrapper **extends** [RemoteOverridablePreviewWrapper] and clips its rendered output to
- * the widget's ideal shape: `super.Wrap(content)` still captures the document (unclipped — the
- * shape is a host/preview concern, not part of the widget payload), and the outer [clip] just
- * frames the player. One `@PreviewWrapper`, both the encoded doc and the ideal shape.
+ * A Wear widget shape wrapper that preserves the encoded RemoteCompose document. A `@Preview` takes
+ * only one `@PreviewWrapper`, and [RemoteOverridablePreviewWrapper] is what captures the `.rc`, so
+ * replacing it would drop the sidecar. Instead this extends it: `super.Wrap(content)` captures the
+ * (unclipped) document and the outer [clip] frames the player.
  */
 class SquircleRemoteWidgetWrapper : RemoteOverridablePreviewWrapper() {
   // The applier check reads this override as RemoteCompose-targeted and `Box` as a UI composable.
@@ -74,12 +63,9 @@ class SquircleRemoteWidgetWrapper : RemoteOverridablePreviewWrapper() {
 }
 
 /**
- * Wear widget preview framed in its ideal (squircle) shape **and** capturing the encoded
- * RemoteCompose document. Mirrors the wear-os-samples `WearWidgetPreview(ImageWidget(), params)`
- * intent, but routes the framing through [SquircleRemoteWidgetWrapper] so the `<stem>.rc` sidecar
- * is still produced — `RemoteWidgetDocCaptureTest` asserts exactly that. Contrast the plain-Compose
- * shape wrappers in `:samples:wear-widget`, which are correct for non-RemoteCompose widgets but
- * would drop the doc here.
+ * A Wear widget preview in its squircle shape that still produces the `<stem>.rc` sidecar
+ * (`RemoteWidgetDocCaptureTest` asserts it). The plain-Compose shape wrappers in
+ * `:samples:wear-widget` would drop the document here.
  */
 @Preview(
   name = "Remote Widget Squircle",

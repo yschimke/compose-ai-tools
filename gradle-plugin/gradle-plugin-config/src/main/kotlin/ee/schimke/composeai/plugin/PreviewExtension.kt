@@ -16,258 +16,143 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val variant: Property<String> = objects.property(String::class.java).convention("debug")
 
   /**
-   * Override for the Robolectric SDK level baked into the generated `robolectric.properties`. When
-   * unset (default), the plugin auto-detects the consumer's `android.compileSdk` and uses that, so
-   * `apk-for-local-test.ap_`'s `compileSdkVersion` matches Robolectric's synthesized framework and
-   * `PackageParser` can parse the resource APK. Set this only when you deliberately want to render
-   * against a different framework level than your `compileSdk` (rare). Must fall within
-   * Robolectric's supported range — see [GenerateRobolectricPropertiesTask.MIN_SUPPORTED_SDK] /
-   * [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK].
+   * Override for the Robolectric SDK level in the generated `robolectric.properties`. Unset
+   * (default) uses the consumer's `android.compileSdk`, which keeps the resource APK parseable by
+   * Robolectric's framework. Must be within
+   * [GenerateRobolectricPropertiesTask.MIN_SUPPORTED_SDK]..[GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK].
    */
   val sdkVersion: Property<Int> = objects.property(Int::class.java)
 
   /**
-   * The Android theme the preview host activity runs under, e.g. `"@style/Theme.Foo"` (also accepts
-   * `"com.example:style/Theme.Foo"` or a bare `"Theme.Foo"`).
+   * The Android theme the preview host activity runs under, e.g. `"@style/Theme.Foo"` (also
+   * `"com.example:style/Theme.Foo"` or bare `"Theme.Foo"`).
    *
-   * Leave it unset in an **application** module: the host activity already inherits `<application
-   * android:theme>` from the merged manifest, which is what makes an `AndroidView` preview resolve
-   * app-owned `?attr/…` references.
+   * Leave unset in an application module, which inherits `<application android:theme>`. Set it in a
+   * library module whose previews host platform views: without an application theme, `?attr/…`
+   * lookups fail at inflation and the preview gets no PNG.
    *
-   * Set it in a **library** module whose previews host platform views. A library's merged manifest
-   * has no `<application android:theme>` to inherit, so the host activity falls back to the
-   * platform default — and a `TextView` styled through, say, `?attr/primaryText` then dies at
-   * inflation with `UnsupportedOperationException: Failed to resolve attribute at index N`, which
-   * aborts the render and leaves the preview with no PNG at all (issue #2957). The renderer can't
-   * guess which of a design system's themes to use, so name one here; Android Studio's preview pane
-   * has a theme picker for the same reason.
-   *
-   * Override for a single run with `-PcomposePreview.hostTheme=@style/Theme.Foo` (or
-   * `-Dcomposeai.render.hostTheme=…`), which takes precedence over this value.
+   * Per-run override: `-PcomposePreview.hostTheme=…` (or `-Dcomposeai.render.hostTheme=…`).
    */
   val hostTheme: Property<String> = objects.property(String::class.java)
 
   /**
-   * The wall-clock instant preview renders are pinned to, so a screen that paints the time produces
-   * the same PNG on every run instead of diffing every minute (issue #3239). Matters most for
-   * `kind=ACTIVITY` heroes and app tours, where the app's own screen is the subject and there is no
-   * `@Preview` argument to inject a fixed clock through — on Wear that is close to every activity
-   * preview, since `TimeText` is standard furniture inside `AppScaffold`.
+   * The wall-clock instant renders are pinned to, so screens that paint the time are stable across
+   * runs. Matters most for `kind=ACTIVITY` heroes and app tours, which have no `@Preview` argument
+   * to inject a clock through.
    *
-   * Unset (default) pins `10:10`, the literal the Wear/Remote design catalogs and `:samples:wear`'s
-   * `FixedPreviewTimeSource` already paint, so an activity hero and a hand-authored preview of the
-   * same screen agree. Accepts `"HH:mm"` / `"HH:mm:ss"`, an ISO-8601 local date-time
-   * (`"2024-01-01T10:10"`) when the date matters too, bare epoch millis, or `"off"` to render
-   * against the host's wall clock as before.
+   * Unset pins `10:10`, matching the design catalogs' fixed time source. Accepts `"HH:mm"`,
+   * `"HH:mm:ss"`, an ISO-8601 local date-time, epoch millis, or `"off"` for the host clock.
+   * Interpreted in the render JVM's default zone, so the rendered string is what stays stable.
    *
-   * Times are interpreted in the render JVM's default zone, so the *rendered string* — not the
-   * underlying instant — is what stays identical between a laptop and CI.
+   * **Android only:** implemented by shadowing Wear's `ResourcesKt.currentTimeMillis` under
+   * Robolectric, so it doesn't reach `java.time.*.now()` / `Calendar` callers and isn't forwarded
+   * to Desktop.
    *
-   * **Android only, and only where the render can intercept the clock.** The guarantee is
-   * implemented by shadowing, under Robolectric, the one function Wear's `TimeText` reads
-   * (`androidx.wear.compose.materialcore.ResourcesKt.currentTimeMillis`). The Desktop / CMP lane
-   * has no Robolectric and so no interception point at all — this value is not forwarded there
-   * rather than forwarded and silently ignored. On Android it likewise cannot reach a preview that
-   * reads the clock through `java.time.*.now()` or `Calendar.getInstance()`, because `java.` is on
-   * Robolectric's do-not-acquire list; hoist the clock out of such a composable instead.
-   *
-   * Override for a single run with `-PcomposePreview.fixedTime=09:41` (or
-   * `-Dcomposeai.render.fixedTime=…`), which takes precedence over this value.
+   * Per-run override: `-PcomposePreview.fixedTime=09:41` (or `-Dcomposeai.render.fixedTime=…`).
    */
   val fixedTime: Property<String> = objects.property(String::class.java)
 
   /**
-   * Renders this module's previews with the Compose runtime's rewritten `SlotTable` — the "link
-   * buffer" composer the Compose Runtime team shipped in 1.12.0 behind
-   * `ComposeRuntimeFlags.isLinkBufferComposerEnabled` (the flag exists on the 1.11.x line too). It
-   * is a performance rewrite of composition's random-write path, slated to become the default and
-   * then to lose its flag, and the team asked for correctness and performance feedback ahead of
-   * that.
+   * Renders with the Compose runtime's rewritten "link buffer" `SlotTable` composer
+   * (`ComposeRuntimeFlags.isLinkBufferComposerEnabled`). `false` (default) leaves the runtime's own
+   * default. Rendering a catalog with and without it makes the PNG corpus a regression suite for
+   * the rewrite. Honoured by both Android and Desktop lanes.
    *
-   * `false` (default) leaves the runtime on whatever it ships as its own default, so nothing
-   * changes until a build asks for it.
+   * **Whole-run, not per-preview:** the runtime latches the flag at the first composition in a JVM.
    *
-   * What makes this worth a knob rather than a one-off patch: a module's rendered PNGs are a
-   * committed corpus of Compose output, so rendering the same previews twice — once with the flag,
-   * once without — turns any catalog here into a pixel-level regression suite for the rewrite. Both
-   * lanes honour it (Android/Robolectric and Desktop/CMP), because it is a runtime-level flag with
-   * no platform-specific interception, unlike [fixedTime].
+   * `true` means **required**: a runtime without the flag fails the render rather than silently
+   * testing nothing. For a build spanning several Compose versions use
+   * `-PcomposePreview.linkBufferComposer=auto`, which enables it only where available; there is
+   * deliberately no `auto` in the DSL.
    *
-   * **Whole-run, not per-preview.** The runtime latches the flag at the first composition in a JVM
-   * (on Android, in a Robolectric sandbox), and the lanes here render many previews per JVM — so
-   * this selects a composer for the whole render, which is also how the runtime team frames it
-   * ("set the flag before you compose any content").
-   *
-   * `true` here means **required**: against a Compose runtime with no such flag — an older one, or
-   * a future one that has completed the migration and removed it — the render fails with a message
-   * naming the flag, rather than quietly rendering the old composer and reporting a clean run that
-   * tested nothing. That is the right strictness for a per-module value, where the author knows
-   * which Compose the module resolves.
-   *
-   * A *build-wide* setting spanning modules on different Compose versions wants the other
-   * strictness, and only the property form can express it:
-   * `-PcomposePreview.linkBufferComposer=auto` enables the new composer wherever the runtime has
-   * the flag and renders on the old one — saying so in the render log — where it doesn't. There is
-   * deliberately no `auto` in this DSL: a module-scoped opt-in has one Compose version to be true
-   * of, so it should say which behaviour it wants outright.
-   *
-   * Override for a single run with `-PcomposePreview.linkBufferComposer=true|auto|false` (or
-   * `-Dcomposeai.render.linkBufferComposer=…`), which takes precedence over this value.
+   * Per-run override: `-PcomposePreview.linkBufferComposer=true|auto|false` (or
+   * `-Dcomposeai.render.linkBufferComposer=…`).
    */
   val linkBufferComposer: Property<Boolean> = objects.property(Boolean::class.java)
 
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
-   * JDK major version the preview *render subprocess* forks into (e.g. `21`). Escape hatch for the
-   * automatic selection: leave it unset (default) and the plugin picks a render JVM new enough to
-   * load the module's compiled classes on its own — the maximum of the consumer's toolchain, the
-   * JVM Gradle is running on, and the highest detected Kotlin `jvmTarget` / Java
-   * `targetCompatibility` — provisioning a matching JDK through Gradle's toolchain service when an
-   * upgrade is needed.
+   * JDK major version the render subprocess forks into (e.g. `21`). Unset (default) picks the max
+   * of the consumer toolchain, Gradle's JVM and the detected `jvmTarget` / `targetCompatibility`,
+   * provisioning a JDK through Gradle toolchains when needed.
    *
-   * Set this only to override that decision: pin a specific JDK for reproducibility, or force one
-   * when the module's bytecode target can't be auto-detected (e.g. a non-standard Kotlin compile
-   * setup). The value is honoured verbatim, including a deliberately *lower* JDK than the module
-   * compiles to — in which case classes may fail to load with `UnsupportedClassVersionError`, so
-   * lower it only when you know the render classpath stays within that JDK's bytecode level.
+   * Set it to pin a JDK or when the bytecode target can't be detected. Honoured verbatim, even if
+   * lower than the module's target (classes may then fail with `UnsupportedClassVersionError`). The
+   * JDK must be resolvable by Gradle toolchains; `composePreviewDoctor` explains mismatches.
    *
-   * A matching JDK must be resolvable — installed and discoverable by Gradle toolchain detection,
-   * or downloadable. When it isn't, Gradle fails with a toolchain-resolution error rather than
-   * silently falling back; `composePreviewDoctor` explains the mismatch and this knob is the fix.
-   *
-   * Override at the command line with `-PcomposePreview.renderJavaVersion=21` for a single run
-   * without editing `build.gradle.kts`.
+   * Per-run override: `-PcomposePreview.renderJavaVersion=21`.
    */
   val renderJavaVersion: Property<Int> = objects.property(Int::class.java)
 
   /**
-   * Number of parallel JVM forks used to render previews. Default `0` (auto).
-   *
-   * Special values:
-   * - `0` (default): auto — the plugin picks a shard count based on the discovered preview cost
-   *   (see [ShardTuning]'s model) and the runner's CPU cores + memory. It only shards when the
-   *   predicted saving clears both an absolute and a relative threshold, so light modules stay on a
-   *   single fork; heavy ones (many previews, GIF/animated captures) fan out. Falls back to 1 if
-   *   `previews.json` hasn't been generated yet — the CLI runs `composePreviewDiscover` as a
-   *   separate Gradle invocation before rendering, so on CI the render's configuration already sees
-   *   a fresh manifest and auto sizing engages on the first run.
-   * - `1`: force no sharding; a single JVM renders every preview.
+   * Number of parallel JVM forks used to render previews.
+   * - `0` (default): auto — [ShardTuning] picks a count from discovered preview cost and the
+   *   runner's CPU/memory, sharding only when the predicted saving clears absolute and relative
+   *   thresholds. Falls back to 1 if `previews.json` doesn't exist yet.
+   * - `1`: no sharding.
    * - `≥2`: explicit shard count.
    *
-   * Each shard runs a generated `RobolectricRenderTest_ShardN` subclass with its own slice of the
-   * manifest (round-robin partition). Within a shard, the Robolectric sandbox is reused across that
-   * shard's previews; across shards each JVM pays its own ~3–4s cold-start cost, so sharding is a
-   * net win only when the module has enough previews to amortise that overhead — which is exactly
-   * what the auto model checks before turning it on.
+   * Each shard is a generated `RobolectricRenderTest_ShardN` with a round-robin slice of the
+   * manifest and pays its own ~3–4s sandbox cold start.
    */
   val shards: Property<Int> = objects.property(Int::class.java).convention(0)
 
   /**
-   * When `true`, Robolectric instantiates the consumer's manifest-declared `Application` class
-   * (e.g. `MyApp : Application()`) before rendering each preview. Default: `false` — the renderer
-   * installs a plain `android.app.Application` via a generated package-level
-   * `robolectric.properties`, so consumer-side init (DI containers, `BridgingManager.setConfig`,
-   * Firebase bootstrap, WorkManager scheduling, …) does NOT run during preview rendering.
-   *
-   * Stub by default because Application-level init routinely fails in Robolectric — it depends on
-   * platform features the sandbox doesn't emulate (Play Services, Firebase, Wear `FEATURE_WATCH`).
-   * Previews should be self-contained composables anyway, not coupled to app-lifecycle state.
-   *
-   * Flip to `true` only if your previews genuinely depend on your custom Application being
-   * constructed (rare) — and expect to supply a Robolectric-safe subclass guarded against
-   * unsupported APIs.
+   * When `true`, Robolectric instantiates the consumer's manifest `Application` before rendering.
+   * Default `false`: a plain `android.app.Application` is used, so app init (DI, Firebase,
+   * WorkManager, …) doesn't run — such init routinely fails in the sandbox and previews shouldn't
+   * depend on it.
    */
   val useConsumerApplication: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * The same choice, for `kind=ACTIVITY` / `kind=APP_TOUR` previews only. Default: `true` — the
-   * opposite of [useConsumerApplication], and deliberately so.
+   * The same choice for `kind=ACTIVITY` / `kind=APP_TOUR` previews only. Default `true`, the
+   * opposite of [useConsumerApplication]: an Activity often requires its real Application (e.g.
+   * Hilt's `@HiltAndroidApp`, Koin, DI-backed `AppComponentFactory`).
    *
-   * An isolated composable has no business running the consumer's `Application.onCreate()`. An
-   * *Activity* is a different proposition: it **is** the app, and denying it the manifest-declared
-   * Application denies it the thing it was written against. A Hilt Activity launched against the
-   * stub fails on contact with "Hilt Activity must be attached to an @HiltAndroidApp Application";
-   * so does a Koin one, and one whose `AppComponentFactory` constructs it through DI. Before the
-   * two lanes were split that accounted for 39 of 45 activity-tour renders across the catalog fleet
-   * — no app using app-level DI could tour at all.
-   *
-   * The lanes are separate test classes in separate packages
-   * (`ee.schimke.composeai.renderer.RobolectricRenderTest` and
-   * `ee.schimke.composeai.apptour.AppTourRobolectricRenderTest`), each with its own generated
-   * `robolectric.properties`, because Robolectric settles the Application per test class rather
-   * than per test method. So this flag costs a module's composable previews nothing.
-   *
-   * Set it to `false` when the consumer's `Application.onCreate()` cannot survive the sandbox and
-   * its activities render better without one — the tours then go back to the stub, and any that
-   * needed real DI go back to failing. [useConsumerApplication] `= true` makes both lanes use the
-   * manifest Application regardless of this value.
+   * The two lanes are separate test classes with their own `robolectric.properties` because
+   * Robolectric settles the Application per test class, so this costs composable previews nothing.
+   * Set `false` when `Application.onCreate()` can't survive the sandbox. [useConsumerApplication]
+   * `= true` forces both lanes.
    */
   val appTourUseConsumerApplication: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 
   /**
-   * When `true`, `composePreviewDiscover` fails the build if it finds zero `@Preview`-annotated
-   * functions and emits a diagnostics block to the lifecycle log (classDirs entries with class-file
-   * counts, a sample of post-filter dependency JARs, the ClassGraph scan summary, and — if classes
-   * WERE scanned but no previews matched — the annotation FQNs observed so users can see whether a
-   * different-FQN `@Preview` is in use). Default: `false`, so existing empty modules stay silent.
+   * When `true`, `composePreviewDiscover` fails the build on zero `@Preview` functions and logs
+   * diagnostics (class dirs, dependency jars, scan summary, observed annotation FQNs). Default
+   * `false`. Intended for CI and for triaging "0 previews discovered".
    *
-   * Intended mainly for CI (catch a silent regression where a wiring change drops every preview)
-   * and for triaging "0 previews discovered" reports — hence the double duty: the flag that fails
-   * the build also turns on the logging you need to know why it failed.
-   *
-   * Override at the command line with `-PcomposePreview.failOnEmpty=true` to flip for a single run
-   * without editing `build.gradle.kts`.
+   * Per-run override: `-PcomposePreview.failOnEmpty=true`.
    */
   val failOnEmpty: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
   /**
-   * When `true` (default), a Wear OS module's device-less, wrap-content component previews are
-   * retargeted from Studio's phone default onto the Wear canvas (227dp @ 2.0x) so a frame-less Wear
-   * sticker renders at wear density/width instead of a phone-sized canvas. This is right for
-   * design-catalog components (fill-width Cards that should size to the watch screen), but wrong
-   * for Wear **widget/tile** previews (e.g. Glance `wear-tooling-preview` widgets) whose PNGs are
-   * exported as fixed-size drawable assets: those must crop to their intrinsic layout bounds, not
-   * carry the watch-face canvas whitespace.
+   * When `true` (default), a Wear module's device-less, wrap-content previews are retargeted onto
+   * the Wear canvas (227dp @ 2.0x) instead of Studio's phone default — right for fill-width catalog
+   * components, wrong for widget/tile previews exported as fixed-size assets.
    *
-   * **Most Wear widget projects need no config:** a glance-wear widget preview — one whose
-   * `@PreviewParameter` provider comes from `androidx.glance.wear.*` (the
-   * `Squircle`/`RectangularAllWidgetPreviewParams` that feed `WearWidgetParams`) — is auto-detected
-   * and always cropped to its intrinsic bounds regardless of this flag, since a widget sticker must
-   * never occupy the watch-face canvas. This flag is the override for the broader case: set it to
-   * `false` to crop **every** device-less preview in the module (e.g. non-glance widget param
-   * types, or a module that renders only widgets). Detection is per-preview, so one module can
-   * freely mix fill-width catalog components (pinned) with widgets (auto-cropped).
+   * Glance-wear widget previews (parameter providers from `androidx.glance.wear.*`) are
+   * auto-detected and always cropped to intrinsic bounds. Set `false` to crop every device-less
+   * preview in the module instead. Previews that pin `device` / `widthDp` / `heightDp` are
+   * unaffected.
    *
-   * Set to `false` on such a module to opt out of the retarget — device-less previews then stay
-   * wrap-content and the renderer crops each PNG to the composable's measured bounds (#2670).
-   * Previews that already pin their own `device` / `widthDp` / `heightDp` are unaffected either
-   * way.
-   *
-   * Override at the command line with `-PcomposePreview.retargetWearPreviews=false` to flip for a
-   * single run without editing `build.gradle.kts`.
+   * Per-run override: `-PcomposePreview.retargetWearPreviews=false`.
    */
   val retargetWearPreviews: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 
   /**
-   * Extra owners whose composables count as **library components** when a preview calls them, on
-   * top of the built-in Material 3, Material, Wear Material, Remote Material 3 and Glimmer
-   * packages.
+   * Extra owners whose composables count as **library components** when a preview calls them,
+   * beyond the built-in Material 3, Material, Wear Material, Remote Material 3 and Glimmer
+   * packages. A library call gets a `components.json` record (and so can be joined by
+   * `ui-builder.policy.json`) only if its owner is listed.
    *
-   * A catalog sticker usually wraps the component it demonstrates — `Sticker { Frame { Component()
-   * } }` — and discovery records the nested library call as one of the preview's
-   * `componentTargets`, which is what gives it a record in `components.json` and lets a
-   * `ui-builder.policy.json` entry join it. A catalog built on a library outside the built-in list
-   * gets no record for that call, so its policy entry is reported orphaned and silently does
-   * nothing.
-   *
-   * Each entry is either a package ending in `.`, which admits every composable under it, or one
-   * exact JVM owner class, which admits only the composables declared in it. Prefer the owner
-   * class: a whole layout package also admits `Box`/`Row`/`Column`-shaped scaffolding, and a
-   * sticker's frame then competes with its subject for the preview's builder policy.
+   * Each entry is a package ending in `.` or one exact JVM owner class. Prefer the owner class: a
+   * whole layout package also admits `Box`/`Row`-like scaffolding that then competes with the real
+   * subject.
    *
    * ```kotlin
    * composePreview {
@@ -279,114 +164,65 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.listProperty(String::class.java).convention(emptyList())
 
   /**
-   * When `true` (default), the plugin auto-adds the test/runtime dependencies it needs
-   * (`androidx.compose.ui:ui-test-manifest`, `:ui-test-junit4`, and conditionally
-   * `androidx.wear.tiles:tiles-renderer`) to the consumer's classpath. When `false`, the plugin
-   * injects nothing and instead requires the consumer to declare every required coordinate
-   * themselves — `composePreviewDoctor` lists anything missing, and `composePreviewDiscover` / the
-   * render task fail fast with the exact coordinates to add.
-   *
-   * Flip to `false` in projects that enforce strict, explicit dependency management
-   * (version-catalog-only, custom BOMs, or consumers that require review before any plugin mutates
-   * their graph). Backwards- compatible default keeps existing builds working unchanged.
+   * When `true` (default), the plugin auto-adds the dependencies it needs (`ui-test-manifest`,
+   * `ui-test-junit4`, and conditionally `tiles-renderer`). When `false`, nothing is injected and
+   * the consumer must declare them; `composePreviewDoctor` lists what's missing and
+   * discovery/render fail fast with the coordinates. For builds with strict, explicit dependency
+   * management.
    */
   val manageDependencies: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
-   * When `true` (default), the plugin skips task registration on modules that don't declare a known
-   * `@Preview`-tooling dependency (`androidx.compose.ui:ui-tooling-preview`, `compose.components
-   * .uiToolingPreview`, `androidx.wear.tiles:tiles-tooling-preview`, …) in any `*Implementation` /
-   * `*Api` / `*RuntimeOnly` bucket. The skip keeps convention-plugin-everywhere setups quiet on
-   * utility modules without `@Preview` surface.
+   * When `true` (default), task registration is skipped on modules that don't declare a known
+   * `@Preview`-tooling dependency, keeping convention-plugin-everywhere setups quiet.
    *
-   * Flip to `false` on the CMP-Android `:composeApp` (issue #241) shape — the consumer applies
-   * `com.android.application`, declares no preview-tooling dep itself, but depends on `:shared` via
-   * `project(":shared")` where the preview tooling lives. Plugin auto-detection used to follow
-   * `project(":foo")` deps across module boundaries to catch this; the walk was dropped under
-   * Isolated Projects (`rootProject.findProject(...)` is IP-banned — see issue #1549 for the
-   * planned IP-safe redesign). Until that lands this flag is the explicit escape hatch.
+   * Set `false` for a module that gets preview tooling only through a `project(":shared")`
+   * dependency (e.g. CMP's `:composeApp`): following project deps is banned under Isolated Projects
+   * (see #1549).
    *
-   * Override at the command line with `-PcomposePreview.enforcePreviewToolingDependency=false` for
-   * a single CLI invocation without editing `build.gradle.kts`.
+   * Per-run override: `-PcomposePreview.enforcePreviewToolingDependency=false`.
    */
   val enforcePreviewToolingDependency: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 
   /**
-   * When `true`, `composePreviewRender` depends on [ValidatePreviewToolingPresentTask], which walks
-   * the resolved `${variant}RuntimeClasspath` and fails the build (with a remediation message) if
-   * no known `@Preview` tooling coord is reachable. Only meaningful on modules that passed the
-   * config-time gate via the tier-2 over-approximation (Compose plugin + `project(":...")` deps but
-   * no directly-declared tooling coord) — when the consumer declared a tooling coord directly, the
-   * validator isn't registered regardless.
+   * When `true`, `composePreviewRender` depends on [ValidatePreviewToolingPresentTask], which fails
+   * fast if no known `@Preview` tooling is on the resolved runtime classpath. Only relevant to
+   * modules that passed the config-time gate via `project(...)` deps rather than a direct tooling
+   * dependency. Default `false`.
    *
-   * Default: `false` — render proceeds and surfaces whatever the actual failure mode is (often
-   * "discovery found zero previews", since the discovery task walks the classpath for
-   * annotation-bearing classes). Flip to `true` for fast-fail in CI when a missing-tooling
-   * regression on a multi-module app should stop the build at the gate with a coordinate to add,
-   * rather than at render time with a less-direct error.
-   *
-   * Override at the command line with `-PcomposePreview.failOnMissingPreviewTooling=true` for a
-   * single CLI invocation without editing `build.gradle.kts`.
+   * Per-run override: `-PcomposePreview.failOnMissingPreviewTooling=true`.
    */
   val failOnMissingPreviewTooling: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * When `true`, the plugin wires the AGP `testDebugUnitTest` / `testReleaseUnitTest` tasks to
-   * depend on `composePreviewRenderAll`, so a consumer's pixel-test class (e.g. one that reads the
-   * PNGs under `build/compose-previews/renders/`) sees a fully-rendered output directory by the
-   * time its assertions run. Mirror of the boilerplate `:samples:android` / `:samples:wear` /
-   * `:samples:android-alpha` previously each carried in their own `build.gradle.kts`. Default
-   * `false` so consumers without pixel tests don't pay the `composePreviewRenderAll` cost on every
-   * `:check`.
-   *
-   * Targets the AGP unit-test tasks by name rather than `tasks.withType<Test>()` because the
-   * plugin's own `composePreviewRender` Test task is what `composePreviewRenderAll` already depends
-   * on — matching it here would create a cycle. No-op on Compose Multiplatform / Desktop modules
-   * where those task names don't exist.
+   * When `true`, AGP's `testDebugUnitTest` / `testReleaseUnitTest` depend on
+   * `composePreviewRenderAll`, so pixel tests reading `build/compose-previews/renders/` see
+   * complete output. Default `false`. Targets those tasks by name because `composePreviewRender` is
+   * itself a `Test` task and matching it would create a cycle. No-op on CMP / Desktop modules.
    */
   val renderBeforeUnitTests: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * Forces the XR subspace render path on. When the effective value is true, the plugin registers
-   * `composePreviewRenderXr` (and folds it into `composePreviewRenderAll`), pulling
-   * `:renderer-xr` + the fake XR runtime onto a dedicated render configuration to render
-   * `@XrSubspacePreview` functions to `scene.json`.
+   * Forces the XR subspace render path on (`composePreviewRenderXr`, rendering `@XrSubspacePreview`
+   * to `scene.json`).
    *
-   * Usually you don't set this: the plugin **auto-enables** the XR path for any module that
-   * declares an `androidx.xr.compose` dependency (see
-   * `AndroidPreviewSupport.moduleDeclaresXrCompose`), the same declared-dependency signal it uses
-   * to auto-inject the Wear Tiles renderer — so `@XrSubspacePreview`s render with zero
-   * `composePreview { }` configuration. Set this to true only to force the path on for a module
-   * that pulls `androidx.xr.compose` in transitively rather than declaring it directly.
-   *
-   * The auto-detect is gated on the declared dependency (not always-on) because
-   * `androidx.xr.compose` declares `minCompileSdk = 36` and the XR `*-testing` fakes are
-   * heavyweight, so a non-XR consumer (especially below compileSdk 36) must never pay for them on
-   * its render classpath.
+   * Usually unnecessary: the path auto-enables for modules that declare an `androidx.xr.compose`
+   * dependency. Set it only when XR Compose arrives transitively. Not always-on because
+   * `androidx.xr.compose` requires compileSdk 36 and the XR fakes are heavy.
    */
   val enableXrPreviews: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
   /**
-   * Render a `com.android.kotlin.multiplatform.library` module through the **Robolectric** renderer
-   * instead of the Compose Multiplatform Desktop one.
+   * Renders a `com.android.kotlin.multiplatform.library` module through **Robolectric** instead of
+   * Compose Desktop.
    *
-   * Off by default, and deliberately explicit rather than inferred. Since issue #248 a KMP-Android
-   * module has rendered on Desktop: `commonMain` previews are pure-Compose composables that
-   * `ImageComposeScene` captures on the host JVM, which needs no Android infrastructure at all.
-   * That is the right lane for a `:shared` module whose UI is multiplatform, and it stays the
-   * default so no existing consumer changes behaviour.
-   *
-   * It is the wrong lane for a module whose UI is Android-only — a Wear Compose catalog, say, where
-   * `androidx.wear.compose:compose-material3` publishes for Android and nothing else. Those
-   * previews cannot be rendered off-device by Desktop at all; they need `android.jar`, a merged
-   * manifest and the AAR resource table, which is what Robolectric brings.
-   *
-   * Turning this on requires the consumer to have opted into AGP's host-test pipeline, since the
-   * plugin cannot do it for them — `withHostTest { }` both creates and configures the compilation,
-   * and AGP rejects a second call:
+   * Off by default: Desktop is right for multiplatform `commonMain` UI. Turn it on for Android-only
+   * UI (e.g. Wear Compose), which needs `android.jar`, a merged manifest and AAR resources.
+   * Requires the consumer to opt into AGP's host tests, since `withHostTest { }` can only be called
+   * once:
    * ```
    * kotlin {
    *   android {
@@ -395,45 +231,30 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * }
    * ```
    *
-   * Without `withHostTest` there is no Android test classpath to render on and the plugin falls
-   * back to Desktop with a warning. Without `isIncludeAndroidResources` the render still runs, but
-   * AGP generates no `test_config.properties`, so library resources resolve to 0 — the same
-   * degradation a classic module gets when it turns that flag off.
+   * Without `withHostTest` the plugin falls back to Desktop with a warning; without
+   * `isIncludeAndroidResources` library resources resolve to 0.
    *
-   * Imports can opt in without editing the upstream build with
-   * `-PcomposePreview.kmpAndroidRobolectric=true`. An explicit DSL value takes precedence.
-   *
-   * No effect on any other module type: `com.android.application` and `com.android.library` already
-   * render through Robolectric, and a non-Android module has no lane to switch.
+   * Per-run override: `-PcomposePreview.kmpAndroidRobolectric=true` (an explicit DSL value wins).
+   * No effect on other module types.
    */
   val kmpAndroidRobolectric: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * Source roots of the modules named by the `composePreviewSource` dependency configuration, so
-   * their `@Preview`s are attributed to the file that declares them.
+   * Source roots of the modules named by `composePreviewSource`, so their previews are attributed
+   * to their declaring file.
    *
-   * `composePreviewSource` alone gets the *classes* scanned — enough to find the previews. It is
-   * not enough to place them: a Kotlin file's `@file:` annotations reach the bytecode on the `…Kt`
-   * facade class, but resolving that class back to `sections/Buttons.kt` is done by matching its
-   * package-qualified source name against real files. Without the shared module's sources on that
-   * list every `@file:CatalogGroup` default silently stops applying — a catalog whose previews all
-   * land ungrouped, with a green build.
-   *
-   * Point it at the directory, not the files:
+   * `composePreviewSource` only gets the classes scanned. Mapping a `…Kt` facade back to its source
+   * (and so applying its `@file:` annotations such as `@file:CatalogGroup`) needs the sources;
+   * without them those defaults silently stop applying.
    * ```
    * dependencies { composePreviewSource(project(":catalog-shared")) }
    * composePreview { previewSourceRoots.from(file("../catalog-shared/src")) }
    * ```
    *
-   * Paths are reported relative to the *consuming* module, so a sibling module's previews carry a
-   * `../catalog-shared/…` source path. That is the honest answer — the file genuinely is not in
-   * this module — and every consumer that resolves a preview back to its source (the CLI, the VS
-   * Code extension) follows it.
-   *
-   * Two declarations rather than one on purpose. Reading another project's source tree through the
-   * dependency graph would mean a cross-project model lookup, which isolated projects forbids; a
-   * path is just a path, and stays legal in every configuration mode.
+   * Paths are reported relative to the consuming module (e.g. `../catalog-shared/…`). A separate
+   * declaration because reading another project's sources through the dependency graph is forbidden
+   * under isolated projects.
    */
   val previewSourceRoots: ConfigurableFileCollection = objects.fileCollection()
 
@@ -446,11 +267,9 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   }
 
   /**
-   * Android XML resource previews — `vector`, `animated-vector`, `adaptive-icon` drawables and
-   * mipmaps, plus an `AndroidManifest.xml` icon-attribute reference index. On by default; the tasks
-   * self-no-op when the consumer's `res/` tree has no matching XML, so the cost of being
-   * always-registered is a single empty `resources.json` write. See [ResourcePreviewsExtension] for
-   * the per-axis tuning knobs.
+   * Android XML resource previews (vector, animated-vector, adaptive-icon drawables, mipmaps,
+   * manifest icon references). On by default; tasks no-op when `res/` has no matching XML. See
+   * [ResourcePreviewsExtension].
    */
   val resourcePreviews: ResourcePreviewsExtension =
     objects.newInstance(ResourcePreviewsExtension::class.java)
@@ -459,11 +278,7 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     action.execute(resourcePreviews)
   }
 
-  /**
-   * Supported control over the dependency graph the renderer resolves in. Today it carries module
-   * exclusions — see [RenderGraphExtension] for what the render graph is and why a consumer would
-   * need to keep something off it.
-   */
+  /** Control over the dependency graph the renderer resolves in; see [RenderGraphExtension]. */
   val renderGraph: RenderGraphExtension = objects.newInstance(RenderGraphExtension::class.java)
 
   fun renderGraph(action: Action<RenderGraphExtension>) {
@@ -479,41 +294,27 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
 }
 
 /**
- * `composePreview { renderGraph { … } }` — the supported way to shape the configurations the plugin
- * resolves the renderer in.
+ * `composePreview { renderGraph { … } }` — shapes the configurations the plugin resolves the
+ * renderer in.
  *
- * The render configurations (`composePreviewAndroidRenderer<Variant>`, its
- * `composePreviewAndroidDaemon<Variant>` superset, and the desktop `composePreviewRenderer` /
- * `composePreviewDesktopDaemon` pair) deliberately `extendsFrom` the consumer's own test/runtime
- * classpath, so the renderer and the consumer's code resolve as ONE graph and a single coherent
- * version of every shared module reaches the render classloader. That inheritance is load-bearing
- * and this block does not undo it.
- *
- * What it does undo, module by module, is a dependency that cannot survive that merge. The case
- * this exists for (issue #4995): a `java-platform` of `strictly(v)` + `reject("(v," )` constraints
- * on `implementation`. Inherited onto the render configuration, every renderer dependency newer
- * than one of those pins becomes a hard conflict and the render configuration fails to resolve
- * before a single preview is rendered. Excluding the platform module keeps the consumer's own
- * builds strict and lets the render graph resolve:
+ * The render configurations deliberately `extendsFrom` the consumer's test/runtime classpath so
+ * renderer and consumer resolve as one graph; this block doesn't undo that. It excludes individual
+ * modules that can't survive the merge, e.g. a `java-platform` of `strictly`/`reject` constraints
+ * that would make every newer renderer dependency a conflict:
  * ```kotlin
  * composePreview {
  *   renderGraph { exclude(group = "com.example", module = "version-constraints") }
  * }
  * ```
  *
- * The equivalent Gradle property, for a build the consumer cannot edit — notably a CLI-driven
- * render where the plugin is auto-injected — is a comma-separated list of the same coordinates:
+ * For builds the consumer can't edit (e.g. CLI-injected), the additive Gradle property equivalent
+ * is:
  * ```
  * -PcomposePreview.renderGraphExcludes=com.example:version-constraints
  * ```
  *
- * The two are additive: property entries and DSL entries all apply.
- *
- * Scope: the exclusions land on the configurations the plugin creates and owns, never on the
- * consumer's own configurations, so a normal build resolves exactly as it did before. The
- * Kotlin-build-tools configurations (`composePreviewBtaImpl`, `composePreviewBtaPlugin`) are
- * deliberately NOT covered — they are standalone compiler classpaths that never inherit the
- * consumer's graph, so nothing a consumer would want to exclude is on them.
+ * Exclusions apply only to plugin-owned configurations, never the consumer's own. The Kotlin
+ * build-tools configurations aren't covered since they never inherit the consumer graph.
  */
 abstract class RenderGraphExtension @Inject constructor(objects: ObjectFactory) {
   /**
@@ -548,12 +349,8 @@ abstract class RenderGraphExtension @Inject constructor(objects: ObjectFactory) 
 }
 
 /**
- * One `group`/`module` exclusion from [RenderGraphExtension]. At least one of the two is non-null —
- * [of] rejects the empty exclusion, which Gradle would otherwise accept and quietly turn into "drop
- * everything".
- *
- * `Serializable` because the value travels inside a `ListProperty` that the configuration cache
- * stores.
+ * One `group`/`module` exclusion. At least one is non-null — [of] rejects the empty exclusion,
+ * which Gradle would treat as "drop everything". `Serializable` for the configuration cache.
  */
 data class RenderGraphExclusion(val group: String?, val module: String?) : java.io.Serializable {
   /** The `group:module` spelling used by the Gradle property and in error messages. */
@@ -573,12 +370,9 @@ data class RenderGraphExclusion(val group: String?, val module: String?) : java.
     }
 
     /**
-     * Parses the `composePreview.renderGraphExcludes` Gradle property: a comma-separated list of
-     * `group:module` coordinates, either half of which may be empty (`com.example:`,
-     * `:version-constraints`). Blank entries are ignored so a trailing comma is not an error; a
-     * malformed entry fails loudly rather than silently excluding nothing, because the symptom of a
-     * missed exclusion is an unresolvable render configuration whose message never names this
-     * property.
+     * Parses `composePreview.renderGraphExcludes`: comma-separated `group:module`, either half may
+     * be empty. Blank entries are ignored; a malformed entry fails loudly, since a missed exclusion
+     * surfaces as an unresolvable configuration that never names this property.
      */
     fun parse(spec: String): List<RenderGraphExclusion> =
       spec
@@ -611,30 +405,13 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
     action.execute(composeAiTrace)
   }
 
-  // NOTE: the `a11y` typed DSL / `previewExtensions.a11y { enableAllChecks() }` block and the
-  // matching `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property are gone.
-  // A11y data products (ATF + hierarchy) are produced exclusively by `:daemon:android`'s
-  // `RenderEngine` now — the standalone Gradle render task does not participate. Consumers
-  // opt into a11y by:
-  //   - the chip toggle in VS Code (drives the daemon's per-preview subscription path), or
-  //   - `compose-preview a11y` (which spins up a temporary daemon).
-  // There is no gradle-plugin or VS Code DSL knob anymore — opting in is a per-invocation
-  // decision through one of those daemon entry points.
+  // The a11y DSL is gone: a11y data is produced only by the daemon, opted into per invocation (VS
+  // Code chip toggle or `compose-preview a11y`).
 
   init {
-    // Eagerly register the built-in `composeAiTrace` extension id in the generic container so
-    // `extensions.findByName("composeAiTrace")` is non-null at every phase — plugin task wiring
-    // runs during plugin apply, *before* the build script's `composePreview { previewExtensions
-    // { … } }` block evaluates, and we don't want to snapshot `null` for a generic entry the
-    // user configures later via `extension("composeAiTrace") { … }`.
-    //
-    // The user's `extension(name, action)` method below routes through `maybeCreate`, which
-    // returns this pre-registered instance instead of creating a new one — so user-written
-    // generic config flows into the same Property objects the resolvers read from.
-    //
-    // Configuration-cache safe: `maybeCreate` runs at extension construction time, which
-    // happens during plugin apply — pure configuration phase, never serialized. The Property
-    // values themselves are evaluated lazily by the resolvers' `zip`/`map` chains.
+    // Pre-register `composeAiTrace` so plugin task wiring, which runs before the build script's
+    // `previewExtensions { }` block, never snapshots `null`; `extension()` then `maybeCreate`s this
+    // same instance.
     extensions.maybeCreate("composeAiTrace")
   }
 
@@ -658,9 +435,8 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * Read-only view of [enableAllChecks] state. Exposed for the runtime plugin (`:gradle-plugin`, a
-   * separate module from this shared DSL artifact) to fold into its resolver chain without widening
-   * the consumer-facing DSL to a settable `Property`.
+   * Read-only view of [enableAllChecks] for the runtime plugin, without exposing a settable
+   * `Property` in the DSL.
    */
   val allChecksEnabledProvider: Provider<Boolean>
     get() = allChecksEnabled
@@ -678,22 +454,10 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   val checks: ListProperty<String> =
     objects.listProperty(String::class.java).convention(emptyList())
 
-  // `failOnErrors` / `failOnWarnings` / `annotateScreenshots` below are **no-ops**, kept only to
-  // honour the binary-stability contract in docs/CONFIG_ONLY_PLUGIN.md § "The binary-stability
-  // contract": this artifact can land on the buildscript classpath at two versions at once (the
-  // one the consumer pinned, and the one the CLI-injected runtime plugin drags in), Gradle
-  // conflict-resolves to a single copy, so deleting a documented DSL property breaks the *other*
-  // version's build script with an unresolved reference — for a consumer who did nothing wrong,
-  // and in a way that stops them rendering at all.
-  //
-  // They existed while a11y ran as a gate inside the render task. That model is gone: a11y is
-  // daemon-only, a data producer rather than a build gate (docs/DATA_PRODUCTS.md), and nothing has
-  // read these since. Deprecating rather than deleting also fixes the actual harm — the old KDoc
-  // promised behaviour that never ran, so `failOnErrors = true` bought a silently green build.
-  // A deprecation warning is visible; a silent no-op is not.
-  //
-  // Remove on the next deliberate binary break of `compose-preview-config`. If build-failing
-  // checks return, wire them to the daemon's producer surface and name them for what they gate.
+  // No-ops kept for binary stability (docs/CONFIG_ONLY_PLUGIN.md): this artifact can be on the
+  // buildscript classpath at two versions, so deleting a DSL property breaks the other version's
+  // build script. a11y is daemon-only and nothing reads these; deprecation makes the no-op visible.
+  // Remove on the next deliberate binary break of `compose-preview-config`.
 
   @Deprecated(
     "No-op since a11y became a daemon-side data product rather than a build gate; it never " +
@@ -725,34 +489,22 @@ constructor(extensionName: String, objects: ObjectFactory) :
 
 abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFactory) {
   /**
-   * Default: `true`. The discovery + render tasks self-no-op on modules with no `<vector>` /
-   * `<animated-vector>` / `<adaptive-icon>` files (a single empty `resources.json` write), so the
-   * cost of being always-registered is negligible. Set `false` to skip task registration outright —
-   * useful for modules that explicitly don't want `resources.json` produced or
-   * `composePreviewRenderAndroidResources` showing up in `gradle tasks` listings.
+   * Default `true`; tasks no-op on modules without matching resources. Set `false` to skip
+   * registration outright.
    */
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
-   * Density buckets to fan out implicit captures over. Applied to every resource that doesn't
-   * already have a density qualifier on its source-file directory; when a consumer has explicit
-   * `drawable-xhdpi/foo.xml` etc., that variant uses the consumer's source file directly and isn't
-   * multiplied through [densities] again.
-   *
-   * Default: `["xhdpi"]` — single bucket so the JSON manifest stays small in the common case.
-   * Override to `["mdpi", "xhdpi", "xxxhdpi"]` for thorough density sweeps.
+   * Density buckets for implicit captures of resources without a density qualifier (explicitly
+   * qualified variants use their own file). Default `["xhdpi"]`.
    */
   val densities: ListProperty<String> =
     objects.listProperty(String::class.java).convention(listOf("xhdpi"))
 
   /**
-   * Adaptive-icon shape masks to render. Each shape is applied as a canvas clip on top of the
-   * style-specific contents (full-colour composite, or tinted monochrome).
-   *
-   * Default: every mask — `CIRCLE`, `SQUIRCLE`, `ROUNDED_SQUARE`, `SQUARE`. Restrict to trim
-   * rendering cost on modules with many adaptive icons. The [styles] axis multiplies onto this
-   * list; one capture is emitted per `(shape × style)` combination, plus one bare `LEGACY` capture
-   * per qualifier when [styles] contains [AdaptiveStyle.LEGACY].
+   * Adaptive-icon masks to render, applied as a canvas clip. Default: all. One capture per `(shape
+   * × style)`, plus one `LEGACY` capture per qualifier when [styles] contains
+   * [AdaptiveStyle.LEGACY].
    */
   val shapes: ListProperty<AdaptiveShape> =
     objects
@@ -767,53 +519,30 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
       )
 
   /**
-   * Adaptive-icon style variants to render. [AdaptiveStyle.FULL_COLOR] is the App Search appearance
-   * (colour composite); [AdaptiveStyle.THEMED_LIGHT] / [AdaptiveStyle.THEMED_DARK] are the
-   * home-screen "Themed icons" appearance (monochrome layer tinted with a 2-tone Material 3
-   * baseline palette); [AdaptiveStyle.LEGACY] is the pre-O fallback.
-   *
-   * Default: every style. Drop [AdaptiveStyle.THEMED_LIGHT] / [AdaptiveStyle.THEMED_DARK] from the
-   * list when your icons don't ship a `<monochrome>` layer — captures for those styles are skipped
-   * at render time with a warning, but listing them still costs a manifest row each.
+   * Adaptive-icon styles: [AdaptiveStyle.FULL_COLOR] (App Search), [AdaptiveStyle.THEMED_LIGHT] /
+   * [AdaptiveStyle.THEMED_DARK] (themed monochrome icons), [AdaptiveStyle.LEGACY] (pre-O). Default:
+   * all. Drop the themed styles when icons have no `<monochrome>` layer.
    */
   val styles: ListProperty<AdaptiveStyle> =
     objects.listProperty(AdaptiveStyle::class.java).convention(AdaptiveStyle.entries.toList())
 
   /**
-   * 9-patch stretch variants to render. Each value drives a different `(width, height)` target on
-   * the same `NinePatchDrawable`, so a reviewer can see how the patches stretch as the container
-   * grows — [NinePatchStretch.INTRINSIC] at natural size, [NinePatchStretch.HORIZONTAL] /
-   * [NinePatchStretch.VERTICAL] at 2× one axis, [NinePatchStretch.BOTH] at 2× both axes.
-   *
-   * Default: every variant (4 captures per 9-patch per qualifier). Trim this list on modules with
-   * many 9-patches and only one stretch axis of interest.
+   * 9-patch stretch variants: [NinePatchStretch.INTRINSIC] at natural size,
+   * [NinePatchStretch.HORIZONTAL] / [NinePatchStretch.VERTICAL] at 2× one axis,
+   * [NinePatchStretch.BOTH] at 2× both. Default: all.
    */
   val stretches: ListProperty<NinePatchStretch> =
     objects.listProperty(NinePatchStretch::class.java).convention(NinePatchStretch.entries.toList())
 
   /**
-   * When `true` (default), every [ResourceType.ANIMATED_VECTOR] resource gets a second capture per
-   * qualifier — a horizontal PNG composited from keyframe Bitmaps sampled at [filmstripFractions] ×
-   * the animation's reported `totalDuration`. Lets reviewers diff stills in code review without
-   * scrubbing the sibling GIF.
-   *
-   * Filename ends `_filmstrip.png` (e.g.
-   * `renders/resources/drawable/avd_pulse_xhdpi_filmstrip.png`). Cost is ~`RESOURCE_ANIMATED_COST /
-   * 5` — fewer frames than the GIF and no encode loop.
-   *
-   * Set `false` on modules where the GIF is enough and the extra PNG would be noise.
+   * When `true` (default), each [ResourceType.ANIMATED_VECTOR] also gets a `_filmstrip.png` of
+   * keyframes sampled at [filmstripFractions], so stills can be diffed in review.
    */
   val filmstrip: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
-   * Keyframe fractions for the filmstrip capture. Each value is a fraction of the resolved
-   * animation duration in `[0, 1]`; the renderer samples one bitmap per fraction via
-   * `AnimatorSet.setCurrentPlayTime` and composites the frames side-by-side. Cell count = list
-   * size; the rendered PNG width is `intrinsicWidth × fractionsCount`.
-   *
-   * Default: `[0.0, 0.25, 0.5, 0.75, 1.0]` (5 cells, equally spaced). Override to e.g. `[0.0, 0.5,
-   * 1.0]` for a 3-cell strip on long animations, or `[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]` for a
-   * finer-grained 6-cell sweep.
+   * Keyframe fractions (in `[0, 1]` of the animation duration) for the filmstrip, one cell each.
+   * Default `[0.0, 0.25, 0.5, 0.75, 1.0]`.
    */
   val filmstripFractions: ListProperty<Float> =
     objects.listProperty(Float::class.java).convention(DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS)

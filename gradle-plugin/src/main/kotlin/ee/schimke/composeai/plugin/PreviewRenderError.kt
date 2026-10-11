@@ -3,18 +3,10 @@ package ee.schimke.composeai.plugin
 import kotlinx.serialization.Serializable
 
 /**
- * Per-preview render-error sidecar. Written by the renderer (desktop today; Android Robolectric
- * path is a planned follow-up) when a preview function throws at render time so the VS Code
- * extension can surface a structured message on the failing card instead of the generic "Render
- * failed — see Output ▸ Compose Preview" message that lacked the actual exception text.
- *
- * The file lives next to where the PNG would have gone — same path with `.error.json` appended,
- * e.g. `renders/HomeScreen.png.error.json`. Sibling placement keeps the renderer's filesystem
- * layout self-contained: no separate aggregation step in the gradle plugin, and the extension can
- * find the sidecar by trivial string concatenation on the manifest's existing `renderOutput` path.
- *
- * Schema is versioned via [schema]; bumps are mechanical (extension reads the prefix and ignores
- * files whose schema version it doesn't recognise).
+ * Per-preview render-error sidecar, written by the renderer when a preview throws so VS Code can
+ * show the actual exception on the card. Lives beside where the PNG would be
+ * (`renders/HomeScreen.png.error.json`), so consumers find it from `renderOutput` with no
+ * aggregation step. Versioned via [schema]; readers ignore unknown versions.
  */
 @Serializable
 data class PreviewRenderError(
@@ -22,37 +14,23 @@ data class PreviewRenderError(
   val schema: String = SCHEMA_V1,
   /** FQN of the thrown exception, e.g. `java.lang.NullPointerException`. */
   val exception: String,
-  /**
-   * The exception's message, or empty string when the throwable carried no message. Empty rather
-   * than null so the JSON shape is uniform — extension code can string-concatenate without null
-   * checks.
-   */
+  /** Exception message, empty (not null) when absent, for a uniform shape. */
   val message: String,
   /**
-   * The first stack frame the renderer attributes to user code (i.e. not `androidx.compose.*`,
-   * `kotlinx.coroutines.*`, `java.*`, or the renderer scaffold itself). Surfaced on the card as `at
-   * <file>:<line>` plus the function name when available — same heuristic LeakCanary uses to point
-   * past framework frames to the offending call site. `null` when the heuristic finds no match
-   * (very deep framework throw, native crash).
+   * First frame attributed to user code (skipping Compose, coroutines, `java.*` and renderer
+   * frames), shown as `at <file>:<line>`; `null` when none matches.
    */
   val topAppFrame: TopFrame? = null,
   /**
-   * One actionable sentence when the render died loading a *native* library rather than running the
-   * preview — a missing `libGL.so.1`, or a package-store library dragged into a system-glibc JVM
-   * (issue #3690). Null for an ordinary preview throw, which is the overwhelming majority.
-   *
-   * Worth its own field because this failure class is not per-preview: it takes out every preview
-   * in the module with the same cause, and the exception on all but the first says only `Could not
-   * initialize class org.jetbrains.skia.Surface`. See `renderer-desktop/.../NativeLoadDiagnosis.kt`
-   * for the classifier.
+   * One actionable sentence when a *native* library failed to load (missing `libGL.so.1`, store
+   * glibc mismatch, #3690); null for ordinary throws. Separate because it takes out the whole
+   * module, and later previews only say `Could not initialize class …Surface`. See
+   * `NativeLoadDiagnosis.kt`.
    */
   val diagnosis: String? = null,
   /**
-   * Which JVM drew this preview and what it would have searched for native libraries. Recorded on
-   * every sidecar: with several JDKs on a box, "which one did Gradle's toolchain resolution
-   * actually fork, and did my `LD_LIBRARY_PATH` reach it?" is otherwise unanswerable after the fact
-   * — and it was the first question issue #3690 could not answer. Null on sidecars written by a
-   * renderer older than this field.
+   * Which JVM drew this and its native search path, so "which JDK forked, and did `LD_LIBRARY_PATH`
+   * reach it?" is answerable (#3690). Null from older renderers.
    */
   val runtime: RenderRuntime? = null,
   /** Full stack trace as it would appear in `Throwable.printStackTrace()`. */

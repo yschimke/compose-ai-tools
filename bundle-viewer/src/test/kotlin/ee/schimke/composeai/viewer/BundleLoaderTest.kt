@@ -12,11 +12,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Unit coverage for [loadBundle] — exercises the bundle-on-disk happy path, the schema mirror's
- * `kind`-discriminated polymorphic deserialisation, and per-preview error reporting when a declared
- * preview class isn't in `classes/app.jar`. UI behaviour (`Window`, drop target, live composition)
- * is harder to cover without a display server and is exercised at the integration level via the
- * headless xvfb smoke shown in the PR description.
+ * Unit coverage for [loadBundle]: the happy path, polymorphic `kind` deserialisation, and
+ * per-preview errors for a class missing from `classes/app.jar`. UI behaviour needs a display
+ * server and isn't covered here.
  */
 class BundleLoaderTest {
 
@@ -101,16 +99,9 @@ class BundleLoaderTest {
 
   @Test
   fun `loadBundle puts embedded libs jars on the bundle classloader`() {
-    // A v3 embedded bundle: an extra jar under libs/ carrying a class that is NOT on the viewer's
-    // own classpath. The loader must extract it and add it to the child URLClassLoader so the
-    // preview's third-party deps resolve (the whole point of --embed-deps / resolution=embedded).
-    //
-    // The preview's owner class `test.PreviewsKt` is itself placed in classes/app.jar so that
-    // `loadBundle` resolves it via the bundle's URLClassLoader (rather than the placeholder it
-    // falls
-    // back to when the class is missing) — giving us a handle on the *actual* bundle loader to
-    // prove
-    // the embedded jar landed on the same classpath.
+    // A v3 embedded bundle: a jar under libs/ carrying a class not on the viewer's classpath must
+    // land on the bundle's URLClassLoader. The owner class goes in classes/app.jar so we get a
+    // handle on that actual loader.
     val embeddedClassFqn = "com.example.embedded.Widget"
     val bundle =
       writeMinimalBundle(
@@ -149,10 +140,8 @@ class BundleLoaderTest {
   }
 
   /**
-   * Emit a minimal but verifiable `public class <fqn> extends Object` with no fields/methods/
-   * interfaces. Loadable via `Class.forName(fqn, initialize = false, loader)` — that path needs no
-   * constructor and doesn't run `<clinit>`, so an empty class body is enough to prove the embedded
-   * jar made it onto the classloader. Avoids pulling ASM onto the viewer's test classpath.
+   * A minimal `public class <fqn>` with no members, loadable via `Class.forName(fqn, false,
+   * loader)` (no constructor or `<clinit>` needed). Avoids ASM on the test classpath.
    */
   private fun minimalClassBytes(fqn: String): ByteArray {
     val internalName = fqn.replace('.', '/')
@@ -183,9 +172,7 @@ class BundleLoaderTest {
   }
 
   /**
-   * Build a tiny but well-formed PNG+ZIP polyglot. The PNG is just a sanity 1×1 cover; the zip
-   * carries the manifests + an empty `classes/app.jar` so resolution exercises the
-   * "class-not-found" branch deterministically.
+   * A tiny well-formed PNG+ZIP polyglot: a 1×1 cover, the manifests and an empty `classes/app.jar`.
    */
   private fun writeMinimalBundle(
     includeAppClass: Boolean = false,
@@ -245,11 +232,9 @@ class BundleLoaderTest {
       zip.write(previewsJson.toByteArray(Charsets.UTF_8))
       zip.closeEntry()
 
-      // classes/app.jar: empty by default (exercises the class-not-found branch). When
-      // [includeAppClass] is set, carry the preview's owner class so resolution succeeds and the
-      // owner class is loaded by the bundle's own URLClassLoader.
-      // Omit the entry entirely when [includeAppJarEntry] is false — mirrors an IR-backed bundle
-      // that ships no consumer bytecode (and no dummy jar) at all.
+      // classes/app.jar: empty by default (class-not-found branch), or carrying the owner class
+      // when [includeAppClass]; omitted entirely when [includeAppJarEntry] is false, like an
+      // IR-backed bundle.
       if (includeAppJarEntry) {
         val appJarBytes = ByteArrayOutputStream()
         ZipOutputStream(appJarBytes).use { appJar ->
@@ -283,9 +268,7 @@ class BundleLoaderTest {
   }
 
   /**
-   * Minimal valid 1×1 PNG. Hand-rolled (CRCs included) so the test doesn't need `BufferedImage` /
-   * `ImageIO` plumbing — the file just needs the PNG signature + a valid IHDR chain so the polyglot
-   * extractor can locate the IEND boundary.
+   * Minimal valid 1×1 PNG, hand-rolled with CRCs so the extractor can find the IEND boundary.
    */
   private fun stubPng1x1(): ByteArray {
     // Pre-computed by running `BufferedImage(1,1).also { it.setRGB(0,0,0x808080) }` through

@@ -18,35 +18,25 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.floatOrNull
 
 /**
- * Pure-JVM library that scans compiled Kotlin classes for `@Preview`-annotated functions and
- * produces a [PreviewManifest] conforming to the `compose-previews/v1` schema. The Gradle plugin's
- * `DiscoverPreviewsTask` is one adapter; non-Gradle build systems (Bazel rules, Amper task
- * definitions in `yschimke/compose-ai-contrib`) call this directly to produce conforming manifests
- * without depending on Gradle or AGP.
+ * Pure-JVM library that scans compiled Kotlin classes for `@Preview` functions and produces a
+ * [PreviewManifest] (`compose-previews/v1`). The Gradle plugin's `DiscoverPreviewsTask` is one
+ * adapter; non-Gradle build systems (Bazel, Amper) call it directly.
  *
- * Logger-agnostic — diagnostics are returned as structured strings, not emitted to a Gradle
- * `Logger`. Each adapter routes them to its build system's logging surface.
- *
- * Wire-stable contract: the [Outcome.Success.manifest] is `kotlinx-serialization`-encoded by the
- * caller (typically with `Json { prettyPrint = true; encodeDefaults = true }`) and lands on disk as
- * `previews.json`.
+ * Logger-agnostic: diagnostics are returned as strings for each adapter to route. The caller
+ * serializes [Outcome.Success.manifest] to `previews.json`.
  */
 object PreviewDiscovery {
 
   /**
-   * Longest readable prefix a render stem may carry, before its `-<digest>` and before the
-   * structural suffixes renderers append (`_PARAM_<label>`, `_SCROLL_<mode>`, `_animated`, …).
-   * Chosen so a stem plus the longest suffix chain stays well inside the 255-byte `NAME_MAX` that
-   * ext4, APFS and NTFS all enforce. Preview names this long are already unreadable as filenames;
-   * the digest keeps them unique after the cut.
+   * Longest readable prefix of a render stem, before its `-<digest>` and structural suffixes, so
+   * the full filename stays well inside the 255-byte `NAME_MAX`. The digest keeps truncated names
+   * unique.
    */
   internal const val MAX_READABLE_STEM: Int = 80
 
   /**
-   * Hex chars of `sha256(preview.id)` appended to every render stem. 8 chars (32 bits) makes a tie
-   * vanishingly unlikely even in a catalog module with thousands of previews — and a tie needs the
-   * readable parts to match too, since the digest only disambiguates within one readable name.
-   * [MAX_READABLE_STEM] leaves room for it regardless.
+   * Hex chars of `sha256(preview.id)` appended to every render stem; 32 bits makes collisions among
+   * same-named previews vanishingly unlikely.
    */
   internal const val RENDER_STEM_DIGEST_CHARS: Int = 8
 
@@ -58,158 +48,107 @@ object PreviewDiscovery {
     /** Directories of compiled `.class` files belonging to the consumer module. */
     val classDirs: List<File>,
     /**
-     * Dependency JARs to merge onto the scan classpath. Filtered down to a preview-relevant subset
-     * by the scanner.
+     * Dependency JARs to merge onto the scan classpath; the scanner filters them to a
+     * preview-relevant subset.
      */
     val dependencyJars: List<File>,
     /**
-     * Maven coordinate of each [dependencyJars] entry, keyed by absolute path — `group:module` or
-     * anything containing them, as produced by Gradle's `ComponentIdentifier.displayName`.
+     * Maven coordinate of each [dependencyJars] entry, keyed by absolute path (Gradle's
+     * `ComponentIdentifier.displayName`).
      *
-     * Supplied because **a jar's path does not carry its group**. A JVM dependency sits under
-     * `<cache>/modules-2/files-2.1/<group>/<module>/…`, so matching the path was the same as
-     * matching the coordinate; an AAR does not, because AGP's transform extracts it to
-     * `<cache>/transforms/<hash>/transformed/<module>/jars/classes.jar`, keeping only the module
-     * name. `androidx.compose.material3:material3` and
-     * `androidx.wear.compose.remote:remote-material3` are the shapes that exposed it: both are
-     * Compose component libraries, neither module name says so, and both were silently dropped from
-     * the scan classpath on every Android consumer — so every component call into them failed to
-     * resolve and the catalog collapsed onto its own wrapper composable.
-     *
-     * Optional: an entry with no coordinate here falls back to matching on its path, which is still
-     * right for a file dependency or a jar the caller could not attribute.
+     * Needed because an AAR's transformed jar path
+     * (`transforms/<hash>/transformed/<module>/jars/classes.jar`) loses the group, so path matching
+     * dropped component libraries like `material3` from the scan. Entries without a coordinate fall
+     * back to path matching.
      */
     val dependencyJarCoordinates: Map<String, String> = emptyMap(),
     /** Source files used to attach module-relative `sourceFile` paths to each [PreviewInfo]. */
     val sourceFiles: List<File>,
     /**
-     * Source files belonging to the compilation represented by [activeClassDirs]. [sourceFiles] can
-     * contain every source set so discovery can map class metadata back to source paths, but
-     * inactive source sets must not trigger the empty-compile integrity guard. `null` falls back to
-     * [sourceFiles] for callers that do not model compilations; an empty list is authoritative.
+     * Source files of the compilation in [activeClassDirs]. [sourceFiles] may span every source set
+     * for source mapping, but inactive ones must not trigger the empty-compile integrity guard.
+     * `null` falls back to [sourceFiles]; an empty list is authoritative.
      */
     val activeSourceFiles: List<File>? = null,
     /**
-     * Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label;
-     * Gradle uses the project path.
+     * Logical module name for [PreviewManifest.module]: the Gradle project path or Bazel target
+     * label.
      */
     val moduleName: String,
     /** Build variant ("debug" / "release" / "desktop"). Surfaced via [PreviewManifest.variant]. */
     val variantName: String,
     /** Module root — `PreviewInfo.sourceFile` is rendered relative to this. */
     val projectDirectory: File,
-    /**
-     * When `true` and zero previews are discovered, the scan returns [Outcome.Failure] with a
-     * diagnostics block.
-     */
+    /** When `true` and zero previews are found, returns [Outcome.Failure] with diagnostics. */
     val failOnEmpty: Boolean,
     /**
-     * Processed-resource roots (e.g. `build/resources/main`) scanned for Lottie animation assets.
-     * Each `.json` file whose structure looks like a Lottie document, and each `.lottie` archive,
-     * becomes a [PreviewKind.LOTTIE] preview with no consumer composable — "just having the file is
-     * enough". Empty (the default) skips the scan entirely. Paths are absolute.
+     * Absolute processed-resource roots (e.g. `build/resources/main`) scanned for Lottie assets:
+     * each Lottie-shaped `.json` or `.lottie` becomes a [PreviewKind.LOTTIE] preview. Empty skips
+     * the scan.
      */
     val resourceDirs: List<File> = emptyList(),
     /**
-     * Subdirectory (under the `compose-previews` root) that Lottie capture `renderOutput` paths are
-     * placed in. Defaults to `"renders"` — the shared primary carousel dir, used on the desktop
-     * backend where the desktop renderer is the only writer. The Android backend overrides it to a
-     * disjoint dir (e.g. `"lottie-renders"`) so the JVM Lottie render task doesn't share the
-     * `renders/` output with the Robolectric render — keeping both tasks cacheable (overlapping
-     * task outputs disable Gradle's build cache). The missing-render gate resolves `renderOutput`
-     * relative to the `compose-previews` root, so any subdir validates uniformly.
+     * Subdirectory (under `compose-previews`) for Lottie `renderOutput`s. Defaults to `"renders"`
+     * on desktop; Android uses a disjoint dir so the JVM Lottie task and Robolectric task don't
+     * share outputs, which would disable build caching.
      */
     val lottieRenderSubdir: String = "renders",
     /**
-     * Subdirectory (under the `compose-previews` root) that [PreviewKind.SVG] capture
-     * `renderOutput` paths are placed in. Same rationale as [lottieRenderSubdir]: defaults to
-     * `"renders"` on the desktop backend (the desktop renderer is the only writer) and is
-     * overridden to a disjoint dir (e.g. `"svg-renders"`) on the Android backend so the JVM SVG
-     * render task doesn't share `renders/` with the Robolectric render.
+     * Subdirectory for [PreviewKind.SVG] `renderOutput`s; same rationale as [lottieRenderSubdir].
      */
     val svgRenderSubdir: String = "renders",
     /**
-     * JARs of compiled `.class` files belonging to the consumer module itself — the module's *own*
-     * classes packaged as a jar rather than laid out in a [classDirs] directory. Unlike
-     * [dependencyJars] these are method-walked as project classes (their `@Preview` functions are
-     * discovered) and are NOT subject to the preview-relevant name/path filter. Sourced from AGP's
-     * scoped `PROJECT` `CLASSES` artifact, which is populated regardless of whether Kotlin was
-     * compiled by the standalone Kotlin Gradle Plugin or AGP 9.x built-in Kotlin
-     * (`built_in_kotlinc`) — the legacy `build/tmp/kotlin-classes/<variant>` directory it used to
-     * read is never written under built-in Kotlin. Empty (the default) for build systems / module
-     * types that expose the module's classes only as directories. See issue #1924.
+     * The module's own classes packaged as JARs (AGP's scoped `PROJECT` `CLASSES` artifact).
+     * Method-walked like [classDirs] and not subject to the dependency filter. Needed because AGP 9
+     * built-in Kotlin never writes the legacy `kotlin-classes/<variant>` directory (#1924).
      */
     val projectClassJars: List<File> = emptyList(),
     /**
-     * The class directories produced by the active compilation. Discovery may scan several
-     * compatibility fallbacks in [classDirs], but those can contain stale classes from an inactive
-     * target and must not satisfy the empty-compile integrity check. Empty falls back to
-     * [classDirs] for non-Gradle callers that do not distinguish the two sets.
+     * Class directories from the active compilation. [classDirs] may include compatibility
+     * fallbacks with stale classes, which must not satisfy the empty-compile check. Empty falls
+     * back to [classDirs].
      */
     val activeClassDirs: List<File> = emptyList(),
     /**
-     * Whether this module's render backend can draw `@ColorCatalog` sheets. `true` (the default)
-     * for the Android backend, which renders them; `false` for the desktop backend, which can't yet
-     * (#2135). When `false`, the synthetic `CATALOG` captures are emitted `optional` so a missing
-     * PNG is treated as expected — by the render gate AND every downstream consumer that reads
-     * `Capture.optional` (VS Code's consistency check, its render UI). Keeping the flag on the
-     * capture, rather than only in the Gradle gate, is what makes the desktop skip consistent
-     * everywhere.
+     * Whether the backend can draw `@ColorCatalog` sheets (`false` on desktop, #2135). When
+     * `false`, `CATALOG` captures are emitted `optional`, so every consumer reading
+     * `Capture.optional` treats the missing PNG as expected.
      */
     val catalogRenderSupported: Boolean = true,
     /**
-     * Whether this is a Wear OS module (its merged manifest declares `<uses-feature
-     * android:name="android.hardware.type.watch" …>`). When `true`, device-less wrap-content
-     * `@Preview`s — which otherwise inherit Studio's phone default device
-     * ([DeviceDimensions.DEFAULT], 400×800dp @ 2.625x) — are retargeted to the Wear default
-     * ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x) so a frame-less Wear sticker renders at wear
-     * density and width instead of a phone canvas. A preview that pins its own `device` /
-     * `widthDp`/`heightDp` is left untouched. Defaults to `false` (phone/desktop modules).
+     * Whether this is a Wear OS module (manifest declares `android.hardware.type.watch`). When
+     * `true`, device-less wrap-content previews are retargeted from the phone default
+     * ([DeviceDimensions.DEFAULT]) to [DeviceDimensions.DEFAULT_WEAR]. Previews pinning their own
+     * size are untouched.
      */
     val isWear: Boolean = false,
     /**
-     * Whether the Wear sticker retarget (see [isWear]) is applied at all. `true` (the default)
-     * keeps the historical behaviour: on a Wear module, device-less wrap-content previews are
-     * pinned to the Wear canvas (227dp @ 2.0x). Set `false` to opt out so those previews stay
-     * wrap-content and the renderer crops them to their intrinsic layout bounds — needed for Wear
-     * widget/tile previews (e.g. Glance `wear-tooling-preview` widgets) that are exported as
-     * fixed-size drawable assets and must not carry the watch-face canvas whitespace (#2670). A
-     * no-op when [isWear] is `false`. Wired from the `retargetWearPreviews` extension property /
-     * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
+     * Whether the Wear retarget (see [isWear]) applies at all. `false` keeps device-less previews
+     * wrap-content and cropped, for widget/tile previews exported as fixed-size assets (#2670).
+     * From `retargetWearPreviews`.
      */
     val retargetWearPreviews: Boolean = true,
     /**
-     * Owners whose nested calls count as library components, on top of the built-in Material, Wear
-     * and Glimmer packages. Each entry is a package ending in `.` or one exact JVM owner class
-     * (`androidx.compose.remote.creation.compose.layout.RemoteTextKt`). Wired from the
-     * `composePreview { componentLibraryPrefixes }` extension property; see
+     * Extra component-library owners beyond the built-ins: packages ending in `.` or exact JVM
+     * owner classes. From `componentLibraryPrefixes`; see
      * [PreviewTargetInference.isComponentLibraryOwner].
      */
     val componentLibraryPrefixes: List<String> = emptyList(),
     /**
-     * The variant's merged `AndroidManifest.xml`, when the build system has one (AGP
-     * `SingleArtifact.MERGED_MANIFEST`). Non-null on the Android backend only. Drives app-level
-     * discovery: its `<activity>` declarations become [PreviewManifest.activities] metadata plus
-     * one synthetic [PreviewKind.ACTIVITY] preview each (the launcher activity's render is the
-     * app's hero image), and its launcher activity is the default start for tour specs. `null`
-     * (desktop / library backends) skips app-level discovery entirely.
+     * The variant's merged `AndroidManifest.xml` (Android only). Its activities become
+     * [PreviewManifest.activities] plus one [PreviewKind.ACTIVITY] preview each, and its launcher
+     * is the default tour start. `null` skips app-level discovery.
      */
     val mergedManifest: File? = null,
     /**
-     * Committed tour scripts (`compose-previews/tours/<name>.json`), each becoming a synthetic
-     * [PreviewKind.APP_TOUR] preview whose captures are the tour's steps. Only honoured when
-     * [mergedManifest] is present — tours launch real activities, which only the Android backend
-     * can do.
+     * Tour scripts (`compose-previews/tours/<name>.json`), each a [PreviewKind.APP_TOUR] preview.
+     * Only honoured with [mergedManifest], since tours need the Android backend.
      */
     val tourSpecFiles: List<File> = emptyList(),
     /**
-     * Whether this module's render backend honours `@AnimatedPreview(format = Apng)`. The Gradle
-     * plugin passes `true` for both backends: the desktop renderer always encoded the requested
-     * container, and the Android renderer does from compose-preview-daemon 3.13.0 (#208). `false`
-     * (the default, kept for non-Gradle callers that bring their own renderer) marks a backend that
-     * encodes `@AnimatedPreview` as GIF whatever it is asked — an Android renderer older than
-     * 3.13.0 — so discovery records GIF, and names the output `.gif`, rather than promise APNG
-     * bytes it would not get. See [resolveAnimationFormat].
+     * Whether the backend honours `@AnimatedPreview(format = Apng)`. The Gradle plugin passes
+     * `true` for both backends (Android since daemon 3.13.0). `false` (default for non-Gradle
+     * callers) records and names the output as GIF. See [resolveAnimationFormat].
      */
     val animatedPreviewApngSupported: Boolean = false,
   )
@@ -217,10 +156,8 @@ object PreviewDiscovery {
   /** Outcome of a [discover] call. */
   sealed class Outcome {
     /**
-     * Discovery completed; [manifest] is ready to serialize. [warnings] are per-method warnings
-     * (e.g. private `@Preview`, unsupported parameters) the adapter should route to its build
-     * system's WARN-level log. [infoMessages] are the human-readable summary lines the gradle
-     * plugin logs at LIFECYCLE level — `Discovered N previews ...` plus one bullet per preview.
+     * Discovery completed. [warnings] are per-method warnings for WARN-level logging;
+     * [infoMessages] are the lifecycle summary lines.
      */
     data class Success(
       val manifest: PreviewManifest,
@@ -229,18 +166,10 @@ object PreviewDiscovery {
     ) : Outcome()
 
     /**
-     * The scan terminated with a hard failure — only triggered by zero previews +
-     * `failOnEmpty=true`. The "@Preview annotation class not reachable on the ClassGraph classpath"
-     * state is a soft warning on the [Success] branch (see [Success.warnings]) because some modules
-     * legitimately have zero previews; consumers that want it to break the build set
-     * `composePreview.failOnEmpty=true`. [reason] is the one-line error the adapter should surface
-     * as an exception message; [diagnostics] is the multi-line dump (class dirs, dependency-jar
-     * sample, observed annotation FQNs) the adapter logs before the failure so users can see what
-     * the scan saw. [warnings] are any per-method skip reasons collected during the scan (e.g.
-     * private `@Preview`, unsupported parameters) — they're the most actionable signal when
-     * discovery returned zero previews because methods were skipped, so the adapter should route
-     * them to its build system's WARN-level log alongside [diagnostics] before surfacing [reason].
-     * Symmetric with [Success.warnings] so adapters can emit the same WARN stream on both branches.
+     * Hard failure: zero previews with `failOnEmpty=true` (an unreachable `@Preview` annotation is
+     * only a soft warning on [Success]). [reason] is the exception message; [diagnostics] the
+     * multi-line scan dump; [warnings] the per-method skip reasons, often the real cause of zero
+     * previews.
      */
     data class Failure(
       val reason: String,
@@ -263,95 +192,66 @@ object PreviewDiscovery {
     setOf(
       "androidx.compose.ui.tooling.preview.Preview\$Container",
       "androidx.compose.ui.tooling.preview.Preview.Container",
-      // Tiles @Preview is @Repeatable, so the compiler synthesises a
-      // `Preview.Container` too. Picking it up here lets us see every
-      // stacked tile preview (e.g. SMALL_ROUND + LARGE_ROUND on one fn).
+      // Tiles @Preview is @Repeatable, so stacked tile previews arrive via the synthesised
+      // `Preview.Container`.
       "androidx.wear.tiles.tooling.preview.Preview\$Container",
       "androidx.wear.tiles.tooling.preview.Preview.Container",
-      // CMP's @Preview is @Repeatable too, and its Container lives in its own package rather than
-      // collapsing onto the androidx one.
+      // CMP's @Preview is @Repeatable too, with its Container in its own package.
       "org.jetbrains.compose.ui.tooling.preview.Preview\$Container",
       "org.jetbrains.compose.ui.tooling.preview.Preview.Container",
     )
-  // androidx.compose.ui:ui-tooling-preview 1.11.0+ — wraps each preview in a custom
-  // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
-  // simply never surface the annotation and discovery is a no-op.
+  // ui-tooling-preview 1.11.0+. FQN-matched, so apps without the class simply never see it.
   private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
   // Project-side companion to @PreviewWrapper that also targets ANNOTATION_CLASS, so a
-  // multi-preview meta-annotation can declare the wrapper once (androidx's @PreviewWrapper is
-  // @Target(FUNCTION)-only and can't be hoisted). Carries the provider FQN as a String — see
-  // `PreviewWrapperClass.kt`. FQN-matched like the other project annotations.
+  // multi-preview meta-annotation can declare the wrapper once (androidx's is FUNCTION-only).
+  // Carries the provider FQN as a String.
   private const val PREVIEW_WRAPPER_CLASS_FQN = "ee.schimke.composeai.preview.PreviewWrapperClass"
-  // Our own opt-in for scrolling-screenshot capture. Matched by FQN so projects
-  // that don't depend on `ee.schimke.composeai:preview-annotations` are unaffected.
+  // Our own annotations are FQN-matched and never loaded, so projects without `preview-annotations`
+  // are unaffected.
   private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
-  // Animation-window capture — sibling annotation to @ScrollingPreview, same
-  // FQN-match policy. See `AnimatedPreview.kt`.
   private const val ANIMATED_PREVIEW_FQN = "ee.schimke.composeai.preview.AnimatedPreview"
-  // Pointer-driven motion capture — sibling annotation to @AnimatedPreview (the self-driven half),
-  // same FQN-match policy. See `InteractionPreview.kt`.
   private const val INTERACTION_PREVIEW_FQN = "ee.schimke.composeai.preview.InteractionPreview"
-  // `InteractionGesture` entry names, matched off the ClassGraph `AnnotationEnumValue` rather than
-  // by loading the enum class (the plugin has no Compose / annotation artifact on its classpath).
+  // `InteractionGesture` entry names, matched off `AnnotationEnumValue` without loading the enum.
   private const val INTERACTION_GESTURE_TAP = "Tap"
   private const val INTERACTION_GESTURE_PRESS_AND_HOLD = "PressAndHold"
-  // Focus-state capture — sibling annotation to @ScrollingPreview /
-  // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
   private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview.Container"
-  // Capture-bounds gutter — a per-edge dp margin the RENDERER adds outside the composable so a
-  // shadow / focus ring drawn past the component's own bounds isn't cropped at the image edge.
-  // Same FQN-match policy as the sibling annotations. See `CaptureGutter.kt` and m3-catalog#179.
+  // Per-edge dp margin the renderer adds outside the composable so shadows / focus rings aren't
+  // cropped. See `CaptureGutter.kt`.
   private const val CAPTURE_GUTTER_FQN = "ee.schimke.composeai.preview.CaptureGutter"
-  // Ceiling on one edge of a capture gutter, mirroring `MAX_CAPTURE_GUTTER_DP` in the annotation
-  // artifact. Restated rather than referenced for the same reason every other annotation constant
-  // here is: discovery FQN-matches and never loads the annotation classes.
+  // Mirrors `MAX_CAPTURE_GUTTER_DP` in the annotation artifact (never loaded here).
   private const val MAX_CAPTURE_GUTTER_DP = 64
   // `@CaptureGutter`'s per-edge "take `all`" sentinel (`INHERIT_GUTTER`).
   private const val INHERIT_GUTTER = -1
-  // Pre-capture settle window — sibling annotation to @AmbientPreview, same FQN-match policy.
-  // See `SettledPreview.kt`.
   private const val SETTLED_PREVIEW_FQN = "ee.schimke.composeai.preview.SettledPreview"
-  // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
-  // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
-  // Android runtime-permission grant state for the STATIC render lane — sibling annotation to
-  // @AmbientPreview / @GestureHintPreview, same FQN-match policy. Unlike those two it does not
-  // wrap the composition: the renderer seeds Robolectric's grant set before `setContent`, because
-  // `ContextCompat.checkSelfPermission(...)` is read on the first composition. See
-  // `PermissionPreview.kt` and issue #3676.
+  // Seeds Robolectric's grant set before `setContent` rather than wrapping the composition, because
+  // permissions are read on the first composition. See `PermissionPreview.kt`.
   internal const val PERMISSION_PREVIEW_FQN = "ee.schimke.composeai.preview.PermissionPreview"
-  // "this preview's subject IS a theme — never re-render it under a themeProvider override". A
-  // marker with no parameters, matched by FQN like its siblings. See `FixedTheme.kt`.
+  // Marks a preview whose subject is a theme — never re-render it under a themeProvider override.
   private const val FIXED_THEME_FQN = "ee.schimke.composeai.preview.FixedTheme"
-  // Tooling/helper preview metadata. Visual-only specimens can opt out of A11y auditing while
-  // remaining ordinary renderable previews everywhere else. See `PreviewHelper.kt`.
+  // Lets visual-only specimens opt out of a11y auditing.
   private const val PREVIEW_HELPER_FQN = "ee.schimke.composeai.preview.PreviewHelper"
   private const val LAUNCHER_WIDGET_PREVIEW_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetPreview"
-  // `@OverrideVariant` — repeatable; emits one extra synthetic preview per variant with
-  // `previewOverride*` values seeded, so a state/content variant rides on the same function instead
-  // of a duplicated wrapper. Same FQN-match policy as the other annotations we own; the
-  // `.Container`
-  // FQN is the synthetic holder Kotlin generates for the repeated case. See `OverrideVariant.kt`.
+  // Repeatable: one extra synthetic preview per variant with `previewOverride*` values seeded.
+  // `.Container` is Kotlin's repeated-annotation holder.
   private const val OVERRIDE_VARIANT_FQN = "ee.schimke.composeai.preview.OverrideVariant"
   private const val OVERRIDE_VARIANT_CONTAINER_FQN =
     "ee.schimke.composeai.preview.OverrideVariant.Container"
-  // `@PreviewAxis` — repeatable; declares ONE dimension, and discovery expands the cross product of
-  // every axis on a function into one seeded variant per cell. Unlike stacked `@OverrideVariant`s
-  // (which union), axes multiply. See `PreviewAxis.kt`.
+  // Repeatable: each declares one dimension and discovery expands the cross product into seeded
+  // variants. Unlike stacked `@OverrideVariant`s (which union), axes multiply.
   private const val PREVIEW_AXIS_FQN = "ee.schimke.composeai.preview.PreviewAxis"
   private const val PREVIEW_AXIS_CONTAINER_FQN =
     "ee.schimke.composeai.preview.PreviewAxis.Container"
 
   /**
-   * Annotations the meta-annotation walk treats as leaves — the hoistable ones themselves. Their
-   * own meta-annotations are `@Retention` / `@Target`, never more of the same, so descending into
-   * them only costs a scan.
+   * Leaves for the meta-annotation walk: their own meta-annotations are only `@Retention` /
+   * `@Target`, so descending into them only costs a scan.
    */
   /** Mirrors `PreviewAxis.MAX_CELLS_WARN` / `MAX_CELLS`; see that annotation's KDoc. */
   private const val PREVIEW_AXIS_MAX_CELLS_WARN = 64L
@@ -364,12 +264,9 @@ object PreviewDiscovery {
       PREVIEW_AXIS_FQN,
       PREVIEW_AXIS_CONTAINER_FQN,
     )
-  // Two FQNs, not one. The comment that used to stand here claimed CMP's
-  // `org.jetbrains.compose.components:components-ui-tooling-preview` collapses onto the same
-  // `androidx...` class name via expect/actual. It does not: unzip
-  // `components-ui-tooling-preview-desktop-1.9.0.jar` and every class in it is under
-  // `org.jetbrains.compose.ui.tooling.preview` — Preview, Preview$Container, PreviewParameter and
-  // PreviewParameterProvider. See [CMP_PREVIEW_FQN].
+  // Two FQNs: CMP's `components-ui-tooling-preview` ships its own
+  // `org.jetbrains.compose.ui.tooling.preview` classes rather than the androidx names. See
+  // [CMP_PREVIEW_FQN].
   private val PREVIEW_PARAMETER_FQNS =
     setOf(
       "androidx.compose.ui.tooling.preview.PreviewParameter",
@@ -379,95 +276,61 @@ object PreviewDiscovery {
 
   internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
 
-  // Compose Multiplatform's own @Preview, from `compose.components.uiToolingPreview` — the
-  // annotation a commonMain preview gets when the project takes the CMP-bundled artifact rather
-  // than the JetBrains-relocated `org.jetbrains.compose.ui:ui-tooling-preview` (which does ship
-  // the androidx FQN on every target). Same shape as androidx's: BINARY retention so ClassGraph
-  // reads it, @Repeatable so it has a Container, and the same name/group/widthDp/heightDp/
-  // locale/showBackground/backgroundColor attributes — every one of which this file already reads
-  // defensively, so nothing downstream needs to know which of the two it came from.
-  //
-  // Not recognising it made the two most obvious CMP projects unimportable: joreilly/BikeShare's
-  // :common and joreilly/ClimateTraceKMP's :composeApp both author every preview against it, and
-  // discovery reported zero while the source plainly declared eleven. The workaround was to make
-  // the project depend on the relocated coordinate instead — which is fine advice for a project
-  // you own (samples/cmp-shared still does it) and useless for one you are importing.
+  // Compose Multiplatform's own @Preview (from `compose.components.uiToolingPreview`), distinct
+  // from the relocated artifact that ships the androidx FQN. Same shape as androidx's (BINARY,
+  // @Repeatable, same attributes), so nothing downstream needs to know which it came from. Without
+  // it CMP projects using this artifact discover zero previews.
   internal const val CMP_PREVIEW_FQN = "org.jetbrains.compose.ui.tooling.preview.Preview"
 
-  // Our own opt-in for Android notification previews. Function signature is
-  // `(android.content.Context) -> android.app.Notification`; same FQN-match
-  // policy as the other annotations we own. See `NotificationPreview.kt`.
+  // Notification previews: `(Context) -> Notification`. See `NotificationPreview.kt`.
   internal const val NOTIFICATION_PREVIEW_FQN = "ee.schimke.composeai.preview.NotificationPreview"
 
-  // Glance's own preview annotation. The annotation lives in `androidx.glance:glance-preview` and
-  // is `@ExperimentalGlancePreviewApi`-gated upstream — same FQN-match policy as notification /
-  // tile. The annotated function is a `@Composable @GlanceComposable () -> Unit` body invoked
-  // from a synthetic `GlanceAppWidget.providePreview(...)` at render time.
+  // Glance's preview annotation (`glance-preview`). The function is a `@GlanceComposable` body
+  // invoked from a synthetic `GlanceAppWidget.providePreview(...)`.
   internal const val GLANCE_APPWIDGET_PREVIEW_FQN = "androidx.glance.preview.Preview"
 
-  // Our own opt-in for XR spatial (subspace) previews. The annotated function is a `@Composable`
-  // whose body is an `androidx.xr.compose.spatial.Subspace { … }`; it's not captured to a single
-  // PNG but rendered by a separate `:renderer-xr` Robolectric task that recovers the panel layout
-  // and writes a `scene.json`. Same FQN-match policy as the other annotations we own. See
-  // `XrSubspacePreview.kt`.
+  // XR subspace previews: a `@Composable` wrapping `Subspace { … }`, rendered by a separate
+  // `:renderer-xr` task to `scene.json` rather than a PNG.
   internal const val XR_SUBSPACE_PREVIEW_FQN = "ee.schimke.composeai.preview.XrSubspacePreview"
 
-  // `@LauncherWidgetResize` — fan-out annotation that emits one capture per whole-cell stop on
-  // the walk between source and target sizes. The renderer renders each stop through the same
-  // `LauncherWidgetExtension` the single-shot `@LauncherWidgetPreview` annotation uses. The
-  // discovery side computes the stops inline via `launcherWidgetResizeStops(...)` below — the
-  // canonical algorithm lives in `:data-launcher-widget-connector`'s `launcherWidgetStops(...)`
-  // but the gradle plugin can't depend on the connector at discovery time.
+  // Emits one capture per whole-cell stop between source and target sizes. Stops are computed here
+  // by `launcherWidgetResizeStops(...)`, a copy of the connector's `launcherWidgetStops(...)` since
+  // the plugin can't depend on it.
   internal const val LAUNCHER_WIDGET_RESIZE_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetResize"
 
-  // `@ColorCatalog` — our own opt-in for auto-discovered colour-token sheets. Placed on a `Color`
-  // property's backing field (BINARY retention, `@Target(FIELD)`), so unlike Showkase's
-  // SOURCE-retained `@ShowkaseColor` it survives into bytecode for this FQN-match scan. See
-  // `ColorCatalog.kt`.
+  // On a `Color` property's backing field (BINARY, `@Target(FIELD)`), so unlike Showkase's
+  // SOURCE-retained `@ShowkaseColor` it survives into bytecode.
   internal const val COLOR_CATALOG_FQN = "ee.schimke.composeai.preview.ColorCatalog"
 
-  // `@TypographyCatalog` — the type-scale sibling of `@ColorCatalog`, on a `TextStyle` property's
-  // backing field. Same BINARY / `@Target(FIELD)` FQN-match policy. See `TypographyCatalog.kt`.
+  // Type-scale sibling of `@ColorCatalog`, on a `TextStyle` backing field.
   internal const val TYPOGRAPHY_CATALOG_FQN = "ee.schimke.composeai.preview.TypographyCatalog"
 
-  // `@ShapeCatalog` — the shape-scoped sibling of `@ColorCatalog` / `@TypographyCatalog`, on a
-  // `Shape` (single token) or `Shapes` (whole scale) property's backing field. Same BINARY /
-  // `@Target(FIELD)` FQN-match policy. See `ShapeCatalog.kt`.
+  // Shape sibling, on a `Shape` or `Shapes` backing field.
   internal const val SHAPE_CATALOG_FQN = "ee.schimke.composeai.preview.ShapeCatalog"
 
-  // `@ThemeCatalog` — the theme-scoped sibling. Placed on a `PreviewWrapperProvider` CLASS (BINARY
-  // retention, `@Target(CLASS)`), so it's an FQN match on the class annotation rather than a field.
-  // See `ThemeCatalog.kt`.
+  // On a `PreviewWrapperProvider` class (`@Target(CLASS)`) rather than a field.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
 
-  // `@WearThemeCatalog` — the Wear-platform sibling, same shape and same placement rules. Separate
-  // annotation (not a flag) because the rendered specimen has to read a different `MaterialTheme`;
-  // see `WearThemeCatalog.kt`.
+  // Wear sibling; a separate annotation because the specimen reads a different `MaterialTheme`.
   internal const val WEAR_THEME_CATALOG_FQN = "ee.schimke.composeai.preview.WearThemeCatalog"
 
-  // Design-catalog inventory annotations — the code-side home for `catalog.spec.json`'s per-
-  // component metadata. `@CatalogComponent` / `@CatalogVariant` land on the `@Preview` FUNCTION;
-  // `@CatalogGroup` lands on the FILE (emitted onto the file's `…Kt` facade class). All BINARY /
-  // FQN-match, never loaded. See `CatalogComponent.kt` and [extractCatalogEntry].
+  // Design-catalog annotations: `@CatalogComponent` / `@CatalogVariant` on the `@Preview` function,
+  // `@CatalogGroup` on the file (its `…Kt` facade). See [extractCatalogEntry].
   internal const val CATALOG_COMPONENT_FQN = "ee.schimke.composeai.preview.CatalogComponent"
   internal const val CATALOG_VARIANT_FQN = "ee.schimke.composeai.preview.CatalogVariant"
   internal const val CATALOG_GROUP_FQN = "ee.schimke.composeai.preview.CatalogGroup"
 
-  // `@BuilderComponent` — per-component UI builder policy, on the same `@Preview` FUNCTION as
-  // `@CatalogComponent` and read by the same scan. Not part of the catalog inventory: it says how a
-  // component behaves in a drawing tool, and a module with no catalog at all may still carry it.
-  // See `BuilderComponent.kt` and [extractBuilderEntry].
+  // Per-component UI builder policy on the `@Preview` function; independent of the catalog
+  // inventory. See [extractBuilderEntry].
   internal const val BUILDER_COMPONENT_FQN = "ee.schimke.composeai.preview.BuilderComponent"
 
   // Fallback group for a `@CatalogComponent` with no `group` argument and no file `@CatalogGroup`.
   private const val DEFAULT_CATALOG_COMPONENT_GROUP = "Components"
 
-  // Whole-object catalog field types: a `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog`
-  // annotation on a field of one of these types catalogs the *entire* theme object (the scheme /
-  // type scale / shape scale) rather than a single token — dispatched by the field's declared type
-  // descriptor at scan time (a single `Color` erases to `long`, so the whole-object types are the
-  // discriminator). See [catalogTokenKindFor].
+  // Whole-object catalog field types: annotating one catalogs the entire scheme / type scale /
+  // shape scale. Dispatched by declared type, since a single `Color` erases to `long`. See
+  // [catalogTokenKindFor].
   private const val COLOR_SCHEME_TYPE = "androidx.compose.material3.ColorScheme"
   private const val TYPOGRAPHY_TYPE = "androidx.compose.material3.Typography"
   private const val SHAPES_TYPE = "androidx.compose.material3.Shapes"
@@ -477,37 +340,21 @@ object PreviewDiscovery {
     "androidx.wear.compose.remote.material3.RemoteTypography"
   private const val REMOTE_SHAPES_TYPE = "androidx.wear.compose.remote.material3.RemoteShapes"
 
-  // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
-  // so the lifecycle log stays readable on projects with huge classpaths.
+  // Caps the failOnEmpty diagnostic samples so the log stays readable.
   private const val DIAG_JAR_SAMPLE = 15
   private const val DIAG_ANNOTATION_SAMPLE = 20
 
-  // Roborazzi's per-preview clock control. Opt-in: presence of the
-  // annotation on a @Preview method fans out one extra manifest entry
-  // per `ManualClockOptions.advanceTimeMillis` value, with filename
-  // suffix `_TIME_<ms>ms`. Absent → single entry with null timing
-  // (renderer falls back to its default CAPTURE_ADVANCE_MS).
-  //
-  // Shipped by `io.github.takahirom.roborazzi:roborazzi-annotations`.
-  // We never load the class — ClassGraph reads the annotation and its
-  // nested `ManualClockOptions` entries by descriptor, so the plugin
-  // itself doesn't need a compile-time dep.
+  // Roborazzi's per-preview clock control: fans out one entry per
+  // `ManualClockOptions.advanceTimeMillis` value (suffix `_TIME_<ms>ms`). Read by descriptor, never
+  // loaded.
   private const val ROBO_COMPOSE_PREVIEW_OPTIONS_FQN =
     "com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions"
 
   /**
-   * Both the un-resolved ([File.getAbsolutePath]) and symlink-resolved ([File.getCanonicalPath])
-   * forms of [file], used to match a class's owning classpath element against the project's own
-   * class dirs / jars.
-   *
-   * ClassGraph canonicalises the classpath element it reports for each class (resolving symlinks),
-   * while Gradle/AGP hand discovery the location verbatim. On an overlay / symlinked build tree —
-   * e.g. the AndroidX "androidchka" overlay — the two forms differ, so a raw `absolutePath`
-   * comparison matches nothing: every class is then treated as a dependency class, never
-   * method-walked, and discovery reports `Discovered 0 preview(s)` even though the annotated
-   * classes are present in `classDirs`. Comparing on the union of both forms makes the match
-   * symlink-agnostic — it succeeds whenever either side's absolute or canonical path coincides.
-   * `canonicalPath` does I/O and can throw, so it's added best-effort. See issue #1924.
+   * Absolute and canonical forms of [file], for matching a class's classpath element against the
+   * project's own outputs. ClassGraph reports canonical (symlink-resolved) paths while Gradle
+   * passes them verbatim, so on symlinked build trees a plain comparison matched nothing and
+   * discovery found 0 previews (#1924). `canonicalPath` can throw, so it's best-effort.
    */
   private fun pathMatchKeys(file: File): Set<String> = buildSet {
     add(file.absolutePath)
@@ -515,10 +362,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Tokens that mark a dependency as one whose classes a preview scan needs to see: the Compose
-   * libraries, the tooling/preview annotations, and the annotation artifacts that carry
-   * multi-preview definitions. Everything else stays off the ClassGraph classpath, which is what
-   * keeps the scan proportional to the previews rather than to the app.
+   * Tokens marking a dependency whose classes the scan needs (Compose, tooling/preview annotations,
+   * multi-preview annotation artifacts). Everything else stays off the classpath, keeping the scan
+   * proportional to the previews.
    */
   private val PREVIEW_RELEVANT_TOKENS =
     listOf("preview", "tooling", "compose", "remote-material", "glimmer", "annotation")
@@ -534,48 +380,29 @@ object PreviewDiscovery {
     val infoMessages = mutableListOf<String>()
 
     val existingClassDirs = input.classDirs.filter { it.exists() && it.isDirectory }
-    // The module's OWN classes, packaged as a jar (AGP scoped PROJECT CLASSES
-    // artifact). Walked as project classes like [existingClassDirs] — NOT
-    // subject to the dependency-jar preview-relevance filter below. This is the
-    // path that rescues discovery under AGP 9.x built-in Kotlin, where the
-    // module's classes never land in the legacy `build/tmp/kotlin-classes/
-    // <variant>` directory the directory scan reads. See issue #1924.
+    // The module's own classes as jars: walked as project classes and not filtered (AGP 9 built-in
+    // Kotlin, #1924).
     val existingProjectJars =
       input.projectClassJars.filter {
         it.exists() && it.isFile && it.name.lowercase().endsWith(".jar")
       }
-    // Prefer the Maven coordinate; fall back to the absolute path when the caller could not
-    // attribute the jar. The path is a poor stand-in for the coordinate on Android and a fine one
-    // on the JVM — see [Input.dependencyJarCoordinates] for why, and for what it cost.
-    //
-    // The path fallback still matches on the whole path rather than the file name: AGP 9.x +
-    // KGP 2.3 resolve AAR dependencies to `<cache>/transforms/<hash>/
-    // transformed/<library>/jars/classes.jar` where the library name
-    // lives in the parent directory, not the filename. Filtering on
-    // `file.name` alone dropped every AAR-extracted jar — see #162.
+    // Prefer the Maven coordinate, else match the whole path (not just the file name — transformed
+    // AARs are all `classes.jar`, #162). See [Input.dependencyJarCoordinates].
     val filteredDependencyJars =
       input.dependencyJars.filter { file ->
         file.exists() &&
           file.name.lowercase().endsWith(".jar") &&
           isPreviewRelevant(input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath)
       }
-    // Project jars BEFORE dependency jars so a class present in both (the
-    // module's own output shadowing a stale dependency copy) is attributed by
-    // ClassGraph to the project element and method-walked.
+    // Project jars before dependency jars, so a class present in both is attributed to the project
+    // and walked.
     val classpath = existingClassDirs + existingProjectJars + filteredDependencyJars
 
-    // A successfully restored compile-task cache entry can still be semantically empty: Gradle
-    // reports FROM-CACHE, but the output directory contains no classes. Asset discovery below can
-    // then make the manifest non-empty and hide the broken compilation completely (#3600). Avoid
-    // treating "no @Preview methods" as suspicious (many modules legitimately have none). Only
-    // source files that actually declare @Preview establish the stronger invariant. This avoids
-    // false positives for valid source-only constructs (typealiases, expect declarations and
-    // package docs) as well as intentional asset-only modules. Test source sets are excluded
-    // because the project outputs here belong to the production compilation.
-    //
-    // Check only the active compilation output. [Input.classDirs] deliberately contains fallback
-    // layouts for discovery compatibility; stale classes in an inactive target must not hide an
-    // empty cache restore in the compilation that just ran.
+    // A restored cache entry can be empty (FROM-CACHE, no classes), and asset discovery could then
+    // hide the broken compilation (#3600). Only sources that actually declare @Preview establish
+    // the invariant, avoiding false positives for source-only constructs and asset-only modules;
+    // test sources are excluded. Only the active compilation output is checked, since fallback dirs
+    // may hold stale classes.
     val integritySourceFiles = input.activeSourceFiles ?: input.sourceFiles
     val previewSourceFiles = integritySourceFiles.filter {
       it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
@@ -609,41 +436,30 @@ object PreviewDiscovery {
     }
 
     val previews = mutableListOf<PreviewInfo>()
-    // Counted on every scan; read by the diagnostics paths (failOnEmpty, empty compiled outputs,
-    // and the soft 0-previews warnings) so we can tell users whether ClassGraph saw any classes,
-    // and which annotation FQNs it did see — which disambiguates
-    // "classpath is wrong" from "@Preview FQN doesn't match" in a
-    // single run.
+    // Diagnostics: whether ClassGraph saw any classes, and which annotation FQNs — separates
+    // "classpath is wrong" from "FQN doesn't match".
     var scanClassCount = 0
     var scanMethodsWithAnnotations = 0
     val annotationFqnCounts = LinkedHashMap<String, Int>()
-    // Which known @Preview annotation FQNs are reachable as ClassInfo
-    // on the scan classpath. Empty → discovery cannot resolve multi-
-    // preview annotations (they fan out via `scanResult.getClassInfo`),
-    // which is almost always a misconfigured dep-jar classpath.
+    // Known @Preview FQNs reachable on the scan classpath. Empty means multi-preview annotations
+    // can't resolve, almost always a misconfigured dep-jar classpath.
     var reachablePreviewFqns: List<String> = emptyList()
 
-    // `@ColorCatalog`-annotated design-token fields collected during the scan, aggregated into
-    // synthetic [PreviewKind.CATALOG] sheets after the class walk. Each token carries its resolved
-    // [CatalogTokenKind] (single `Color` vs whole `ColorScheme`, etc.), dispatched by field type.
+    // Catalog tokens collected during the scan, aggregated into [PreviewKind.CATALOG] sheets
+    // afterwards.
     val rawColorCatalogTokens = mutableListOf<RawCatalogToken>()
     val rawTypographyCatalogTokens = mutableListOf<RawCatalogToken>()
     val rawShapeCatalogTokens = mutableListOf<RawCatalogToken>()
     // `@ThemeCatalog`-annotated `PreviewWrapperProvider` classes → one theme catalog sheet each.
     val rawThemeCatalogs = mutableListOf<RawThemeCatalog>()
-    // (declaring class, method) for every method that produced at least one preview. Fed to
-    // [PreviewThemeShadowing] after the class walk, which needs both the theme providers (collected
-    // in the same pass) and the previews before it can say anything.
+    // Methods that produced previews, for [PreviewThemeShadowing] after the walk.
     val previewMethods = mutableListOf<Pair<ClassInfo, MethodInfo>>()
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
         .enableMethodInfo()
-        // Field scanning powers `@ColorCatalog` design-token discovery — the annotation lands on a
-        // `Color` property's backing field, so we need field metadata + annotations to see it.
-        // `ignoreFieldVisibility()` is required because a top-level `val`'s backing field is
-        // private
-        // static (mirrors `ignoreMethodVisibility()` for private `@Preview` functions).
+        // Field info for catalog annotations on backing fields; `ignoreFieldVisibility()` because a
+        // top-level `val`'s backing field is private static.
         .enableFieldInfo()
         .ignoreFieldVisibility()
         .enableAnnotationInfo()
@@ -653,14 +469,9 @@ object PreviewDiscovery {
         .scan()
         .use { scanResult ->
           reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
-          // Project-local class FQNs — only classes loaded from the project's own
-          // class output (its [classDirs] directories or its scoped PROJECT
-          // [projectClassJars]), never from a dependency JAR. Powers the
-          // "is this @Composable call into project code?" filter inside
-          // PreviewTargetInference; computed once per scan and passed through.
-          // The dependency JARs stay OUT of this set, so their classes remain on
-          // the ClassGraph classpath (for multi-preview annotation resolution)
-          // but aren't method-walked. See issue #1039 / #1924.
+          // FQNs of classes from the project's own outputs, never dependency JARs. Dependency
+          // classes stay on the classpath for multi-preview resolution but aren't method-walked
+          // (#1039 / #1924).
           val projectElementPaths =
             (existingClassDirs + existingProjectJars).flatMap { pathMatchKeys(it) }.toSet()
           val projectClassFqns =
@@ -672,12 +483,9 @@ object PreviewDiscovery {
               }
               .map { it.name }
               .toSet()
-          // File-level `@CatalogGroup` defaults, resolved by source file so a catalog preview that
-          // is a *member* function (whose `classInfo` is its containing class, not the file facade
-          // that Kotlin writes `@file:CatalogGroup` onto) still picks up the file's group. Both the
-          // facade `…Kt` class and any member class in the same file resolve to the same
-          // module-relative source path, so keying by that path unifies the top-level and member
-          // cases. Built up-front because a member class may be method-walked before its facade.
+          // File-level `@CatalogGroup` defaults keyed by source path, so member-class previews
+          // (whose `classInfo` isn't the `…Kt` facade) still get their file's group. Built up-front
+          // because a member class may be walked before its facade.
           val catalogGroupsByFile = HashMap<String, CatalogGroupDefault>()
           for (classInfo in scanResult.allClasses) {
             if (classInfo.name !in projectClassFqns) continue
@@ -692,13 +500,8 @@ object PreviewDiscovery {
             )
           }
           for (classInfo in scanResult.allClasses) {
-            // Method-walk only project classes. Library JARs stay on the
-            // ClassGraph classpath so `scanResult.getClassInfo` can resolve
-            // multi-preview annotations (e.g. @WearPreviewDevices) declared
-            // there, but iterating their methods produced no real previews
-            // and spammed hundreds of "skipping @Preview" warnings for
-            // synthetic Kotlin inline-class methods like
-            // `TransformationState.equals-impl`. See issue #1039.
+            // Method-walk only project classes; library methods produced spurious "skipping
+            // @Preview" warnings (#1039).
             if (classInfo.name !in projectClassFqns) continue
             scanClassCount++
             for (method in classInfo.methodInfo) {
@@ -719,20 +522,15 @@ object PreviewDiscovery {
                 warnings,
                 catalogGroupsByFile,
               )
-              // Remember the methods that actually yielded previews, so the theme-shadowing check
-              // below walks exactly those rather than re-deriving "is this a preview?" (which
-              // multi-preview meta-annotations make non-trivial).
+              // Record methods that yielded previews so theme shadowing needn't re-derive "is this
+              // a preview?".
               if (previews.size > previewCountBefore) {
                 previewMethods += classInfo to method
               }
             }
-            // `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` design tokens: an annotated
-            // `Color` / `TextStyle` / `Shape` (single token) or `ColorScheme` / `Typography` /
-            // `Shapes` (whole-object) backing field. Collect the coordinates + display metadata
-            // here; the values are reflected at render time. The token kind is dispatched by the
-            // field's declared type (see [catalogTokenKindFor]) so a whole-object field catalogs
-            // the
-            // entire scheme / type scale / shape scale.
+            // Catalog design tokens on backing fields: collect coordinates and display metadata;
+            // values are reflected at render time. Kind is dispatched by declared type
+            // ([catalogTokenKindFor]).
             for (field in classInfo.fieldInfo) {
               field.getAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
                 rawColorCatalogTokens +=
@@ -762,10 +560,9 @@ object PreviewDiscovery {
                   )
               }
             }
-            // `@ThemeCatalog` / `@WearThemeCatalog` on a `PreviewWrapperProvider` class → a theme
-            // catalog sheet. The provider FQN is all discovery records; the renderer resolves +
-            // invokes its `Wrap`. The annotation picks the platform, hence the specimen: a provider
-            // carrying both is recorded once per platform (harmless, and better than dropping one).
+            // `@ThemeCatalog` / `@WearThemeCatalog` on a `PreviewWrapperProvider` → a theme sheet;
+            // the renderer invokes its `Wrap`. A provider carrying both is recorded once per
+            // platform.
             for ((fqn, wear) in
               listOf(THEME_CATALOG_FQN to false, WEAR_THEME_CATALOG_FQN to true)) {
               classInfo.getAnnotationInfo(fqn)?.let { ann ->
@@ -780,10 +577,8 @@ object PreviewDiscovery {
             }
           }
 
-          // A module that declares theme providers has an interactive theme axis, and a preview
-          // that installs its own theme silently opts out of it — the provider wraps the preview,
-          // the body's theme composes inside that wrapper and shadows it. Only worth saying when
-          // the module actually declares themes; otherwise every app preview would be "guilty".
+          // A preview installing its own theme shadows the module's theme providers. Only reported
+          // when the module declares themes; otherwise every app preview would be flagged.
           if (rawThemeCatalogs.isNotEmpty()) {
             PreviewThemeShadowing.warningOrNull(
                 findings =
@@ -795,20 +590,12 @@ object PreviewDiscovery {
         }
     }
 
-    // id already encodes the name + (device, fontScale, uiMode) variant suffix, so
-    // dedup by id alone. Two identical preview variants on the same function collapse.
+    // The id encodes the name + variant suffix, so dedup by id alone.
     val deduped = previews.distinctBy { it.id }
 
-    // Rewrite each capture's renderOutput to a normalized, shell-safe
-    // filename: drop the package prefix shared by every preview in the
-    // module so `renders/ee.schimke.ha.previews.CardPreviewsKt.Foo.png`
-    // lands at `renders/CardPreviewsKt.Foo.png`; sanitize spaces, parens,
-    // and other awkward shell characters inherited from `@Preview(name =
-    // "tile light (light)")`. Keeps `PreviewInfo.id` untouched — consumers
-    // that key by id (history folders, CLI state, test names) are
-    // unaffected.
-    // Lottie asset previews are appended after normalization with their render outputs already
-    // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
+    // Normalize each `renderOutput` to a shell-safe filename with the module-wide package prefix
+    // stripped. `PreviewInfo.id` is untouched. Asset previews are appended afterwards, already
+    // shell-safe.
     val normalized =
       retargetGlimmerStickers(
         isGlimmerModule(input),
@@ -840,10 +627,8 @@ object PreviewDiscovery {
         ) +
         buildThemeCatalogPreviews(rawThemeCatalogs, input.catalogRenderSupported)
 
-    // App-level discovery — real activities and scripted tours. Android-backend-only (gated on a
-    // merged manifest being supplied): activities become metadata + one synthetic ACTIVITY preview
-    // each, and tour specs become APP_TOUR previews starting (by default) at the launcher
-    // activity. See [AppTourDiscovery].
+    // App-level discovery (Android only, gated on a merged manifest): activities and tour specs.
+    // See [AppTourDiscovery].
     val manifestActivities =
       input.mergedManifest?.let { AppTourDiscovery.parseManifestActivities(it) } ?: emptyList()
     val appPreviews =
@@ -861,10 +646,8 @@ object PreviewDiscovery {
 
     val allPreviews = enforceOutputUniqueness(normalized + appPreviews)
 
-    // The generic per-extension reports map is empty on the standalone Gradle path — a11y
-    // (today's only canned-report producer) writes its artefacts exclusively through the
-    // daemon, which stamps the pointer at runtime when it has data on disk. Future
-    // gradle-produced rollups would populate keys here.
+    // Empty on the standalone Gradle path: a11y reports are written by the daemon, which stamps the
+    // pointer at runtime.
     val manifest =
       PreviewManifest(
         module = input.moduleName,
@@ -879,23 +662,13 @@ object PreviewDiscovery {
       infoMessages.add("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
     }
 
-    // Hard-fail only when the consumer explicitly opted in via
-    // `composePreview.failOnEmpty=true`. Zero previews in a single module
-    // is normal — utility modules, data layers, and library projects
-    // that pull the plugin in transitively legitimately have none, and
-    // the multi-module aggregate (or the user's own CI gate) is the
-    // right place to assert "no module produced anything". The
-    // dependency-jar filter dropping the `@Preview` annotation jar (see
-    // #162) is now reported as a WARN-level diagnostic via the soft
-    // path below so consumers still see the cause without the build
-    // breaking on it.
+    // Hard-fail only with `failOnEmpty=true`; zero previews in one module is normal. A missing
+    // `@Preview` annotation jar is reported as a soft warning below.
     val previewAnnotationsMissing = scanClassCount > 0 && reachablePreviewFqns.isEmpty()
     val codePreviewCount = allPreviews.count { it.params.kind !in ASSET_PREVIEW_KINDS }
-    // Preserve intentional asset-only modules as valid, but never accept a module whose source
-    // declares @Preview while its compiled outputs are empty. That state is a broken/cancelled
-    // compilation, not "zero previews", and writing an assets-only manifest over the previous
-    // healthy one hides the actual fault (#4364). failOnEmpty continues to control only the
-    // legitimate zero-preview case.
+    // Source declares @Preview but compiled outputs are empty: a broken/cancelled compilation, not
+    // "zero previews". Writing an assets-only manifest would hide it (#4364). Asset-only modules
+    // stay valid.
     if (emptyCompiledOutputs || (normalized.isEmpty() && input.failOnEmpty)) {
       val failureSummary =
         if (emptyCompiledOutputs) {
@@ -942,22 +715,10 @@ object PreviewDiscovery {
       )
     }
 
-    // Soft warning: zero previews + the @Preview annotation jar got
-    // filtered off the scan classpath. Multi-preview annotations
-    // (@LightDarkPreviews, @WearPreviewDevices, user wrappers) can't
-    // fan out without `scanResult.getClassInfo` reaching the
-    // annotation class, so any previews this module *does* have are
-    // invisible to discovery. Surface the diagnostics so the cause is
-    // obvious, but don't fail the build — the user can opt in to a
-    // hard failure with `composePreview.failOnEmpty=true`.
-    //
-    // The same dump, for the same reason, when the module's own SOURCES declare @Preview and
-    // discovery still found none. That state is not "a module with no previews" — something between
-    // the source and the scan lost them — and until #4890 it was reported by saying nothing at all:
-    // an empty previews.json was written, and the first sign of trouble was composePreviewBundle
-    // failing three tasks later with "previews.json is empty", which names no class dir, no jar and
-    // no annotation. [previewSourceFiles] is the same signal the empty-outputs check above trusts,
-    // so a data layer or a utility module — no @Preview in source — stays as quiet as it was.
+    // Soft warning when zero previews coincide with the @Preview annotation jar missing from the
+    // scan classpath (multi-preview annotations can't fan out), or with sources that declare
+    // @Preview — something between source and scan lost them, and otherwise the first symptom is an
+    // unrelated bundle failure later. Doesn't fail the build; `failOnEmpty=true` does.
     val sourcePreviewsVanished = normalized.isEmpty() && previewSourceFiles.isNotEmpty()
     if (normalized.isEmpty() && (previewAnnotationsMissing || sourcePreviewsVanished)) {
       warnings.add(
@@ -1012,15 +773,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Scan [Input.resourceDirs] for Lottie animation assets and turn each into a [PreviewKind.LOTTIE]
-   * preview — no `@Preview`, no consumer composable. A `.json` file qualifies when it parses as a
-   * JSON object carrying the Lottie marker keys (`v` version + `layers`); a `.lottie` file
-   * qualifies by extension (a dotLottie archive). The asset's resource-relative path is recorded on
-   * [PreviewParams.assetPath] so the renderer can load it off the classpath and the bundle can pack
-   * it as IR.
-   *
-   * Best-effort and side-effect-free: unreadable / non-Lottie files are skipped silently. Returns a
-   * list deduped by preview id and ordered by relative path for stable output.
+   * Turns each Lottie asset in [Input.resourceDirs] into a [PreviewKind.LOTTIE] preview: a `.json`
+   * with the `v` + `layers` marker keys, or any `.lottie` archive. Unreadable / non-Lottie files
+   * are skipped; output is deduped by id and sorted by path.
    */
   private fun discoverLottieAssets(input: Input): List<PreviewInfo> {
     if (input.resourceDirs.isEmpty()) return emptyList()
@@ -1040,9 +795,8 @@ object PreviewDiscovery {
               "lottie" -> LottieDims(null, null) // dotLottie archive — accept by extension
               else -> return@forEach
             }
-          // Filename-safe id: it lands verbatim in zip entry paths (`previews/<id>.png`,
-          // `ir/<id>.<ext>`) and render filenames, so `:` / `/` from the resource path can't
-          // survive. The `lottie__` prefix keeps it from colliding with a class-derived preview id.
+          // Filename-safe id: it lands in zip entries and render filenames. The `lottie__` prefix
+          // avoids colliding with class-derived ids.
           val safe = relPath.removeSuffix(".$ext").replace(SANITIZE_RENDER_STEM, "_")
           val stem = "lottie__$safe"
           val id = stem
@@ -1063,14 +817,8 @@ object PreviewDiscovery {
               captures =
                 listOf(
                   Capture(renderOutput = "${input.lottieRenderSubdir}/$stem.png"),
-                  // Animated companion: the asset's intrinsic timeline encoded as a looping APNG
-                  // (the renderer dispatches `_animated.png` Lottie outputs to `renderLottieApng`).
-                  // APNG rather than GIF because the asset renders on a transparent background and
-                  // GIF's 1-bit alpha thresholds the anti-aliased edge into a churn-prone hard
-                  // boundary; APNG carries full alpha and still autoplays inline everywhere as a
-                  // `.png`. Marked `optional` so a missing companion never trips
-                  // `composePreviewRenderAll`'s required-render gate; the still PNG stays the
-                  // baseline artefact. Cost mirrors the scroll-GIF frame-loop + encode.
+                  // Animated companion as APNG (full alpha; GIF's 1-bit alpha makes edges churn).
+                  // `optional` so a missing companion never trips the required-render gate.
                   Capture(
                     renderOutput = "${input.lottieRenderSubdir}/${stem}_animated.png",
                     optional = true,
@@ -1086,19 +834,10 @@ object PreviewDiscovery {
   private data class LottieDims(val width: Int?, val height: Int?)
 
   /**
-   * Scan [Input.resourceDirs] for `.svg` image assets and turn each into a [PreviewKind.SVG]
-   * preview — no `@Preview`, no consumer composable, "just having the file is enough" (mirrors
-   * [discoverLottieAssets]). A `.svg` qualifies by extension when its content carries an `<svg`
-   * root element (the cheapest reliable fingerprint — guards against a stray file that merely ends
-   * in `.svg`). The asset's resource-relative path is recorded on [PreviewParams.assetPath] so the
-   * desktop renderer can load it off the classpath; the declared `viewBox` / `width` / `height`
-   * seed the canvas dimensions so the still matches the artwork's intrinsic aspect ratio.
-   *
-   * Unlike Lottie there is no animated companion — SVG is static (SMIL/CSS animation isn't replayed
-   * by `loadSvgPainter`), so each preview ships a single required still PNG.
-   *
-   * Best-effort and side-effect-free: unreadable / non-SVG files are skipped silently. Returns a
-   * list deduped by preview id and ordered by relative path for stable output.
+   * Turns each `.svg` (with an `<svg` root) in [Input.resourceDirs] into a [PreviewKind.SVG]
+   * preview, seeding the canvas from its declared size. Static only (`loadSvgPainter` doesn't
+   * replay SMIL/CSS animation), so one required still. Unreadable / non-SVG files are skipped;
+   * output is deduped and sorted.
    */
   private fun discoverSvgAssets(input: Input): List<PreviewInfo> {
     if (input.resourceDirs.isEmpty()) return emptyList()
@@ -1113,9 +852,7 @@ object PreviewDiscovery {
           if (!file.extension.equals("svg", ignoreCase = true)) return@forEach
           val relPath = file.relativeTo(root).invariantSeparatorsPath
           val dims = svgDimensionsOrNull(file) ?: return@forEach
-          // Filename-safe id (see the Lottie note): lands verbatim in zip entry / render paths, so
-          // `:` / `/` from the resource path can't survive. The `svg__` prefix keeps it from
-          // colliding with a class-derived preview id or a `lottie__` asset id.
+          // Filename-safe id, as for Lottie; the `svg__` prefix avoids collisions.
           val safe = relPath.removeSuffix(".${file.extension}").replace(SANITIZE_RENDER_STEM, "_")
           val stem = "svg__$safe"
           val id = stem
@@ -1144,11 +881,9 @@ object PreviewDiscovery {
   private data class SvgDims(val width: Int?, val height: Int?)
 
   /**
-   * Read [file]'s intrinsic dimensions when it is an SVG, or `null` when it is not (no `<svg` root
-   * — a file that merely ends in `.svg`). Prefers an explicit `width`/`height` on the root element,
-   * falling back to the `viewBox`'s width/height (the common case for icon SVGs, which declare only
-   * a `viewBox`). Dimensions are rounded to whole pixels and used only to seed the render canvas'
-   * aspect ratio; a value of `null` on either axis lets the renderer fall back to its default size.
+   * [file]'s intrinsic dimensions, or `null` if it has no `<svg` root. Prefers explicit
+   * `width`/`height`, else the `viewBox`. Rounded to whole pixels; a null axis falls back to the
+   * renderer default.
    */
   private fun svgDimensionsOrNull(file: File): SvgDims? {
     val text = runCatching { file.readText() }.getOrNull() ?: return null
@@ -1156,10 +891,8 @@ object PreviewDiscovery {
     val svgTag = Regex("<svg\\b[^>]*>", RegexOption.IGNORE_CASE).find(text) ?: return null
     val attrs = svgTag.value
     fun lengthAttr(name: String): Int? {
-      // Anchor to a real attribute boundary: the name must NOT be preceded by a name char or `-`,
-      // so `stroke-width` / `stroke-height` don't masquerade as the root `width`/`height`. A plain
-      // `\b` word boundary matches the `-width` suffix and would size the canvas off the stroke
-      // (e.g. `<svg viewBox="0 0 24 24" stroke-width="2">` → a 2dp-wide canvas instead of 24dp).
+      // Require a real attribute boundary: `\b` would match `stroke-width` and size the canvas off
+      // the stroke.
       val raw =
         Regex("(?<![\\w-])$name\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
           .find(attrs)
@@ -1194,11 +927,8 @@ object PreviewDiscovery {
   )
 
   /**
-   * Resolves a catalog field to its [CatalogTokenKind]: a field whose declared type is a whole M3
-   * theme object ([COLOR_SCHEME_TYPE] / [TYPOGRAPHY_TYPE] / [SHAPES_TYPE]) catalogs the *entire*
-   * object; anything else is the [single] token kind for that annotation. A single `Color` erases
-   * to `long` in bytecode, so matching the whole-object type name is a reliable discriminator. Uses
-   * the type descriptor's string form (`toString()` yields the source-level FQN for class types).
+   * A field typed as a whole M3 theme object catalogs the entire object; anything else is the
+   * [single] token kind. Reliable because a single `Color` erases to `long`.
    */
   private fun catalogTokenKindFor(
     field: io.github.classgraph.FieldInfo,
@@ -1228,10 +958,7 @@ object PreviewDiscovery {
     val wear: Boolean = false,
   )
 
-  /**
-   * Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group
-   * defaults.
-   */
+  /** Builds a [RawCatalogToken] with Showkase-style name/group defaults. */
   private fun rawCatalogToken(
     classInfo: ClassInfo,
     field: io.github.classgraph.FieldInfo,
@@ -1247,43 +974,30 @@ object PreviewDiscovery {
     )
 
   /**
-   * Reads a `String` annotation parameter, falling back to [fallback] when absent or blank — this
-   * is how `@ColorCatalog.name` defaults to the property name and `.group` to the enclosing class,
-   * the same defaulting Showkase applies.
+   * A `String` annotation parameter, or [fallback] when absent or blank (Showkase-style
+   * defaulting).
    */
   private fun annStringOrDefault(ann: AnnotationInfo, param: String, fallback: String): String {
     val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
     return raw?.takeIf { it.isNotBlank() } ?: fallback
   }
 
-  /**
-   * Default group for a token: the enclosing class simple name, with a file class's `Kt` suffix
-   * dropped.
-   */
+  /** Enclosing class simple name, minus a file class's `Kt` suffix. */
   private fun defaultCatalogGroup(className: String): String {
     val simple = className.substringAfterLast('.')
     return simple.removeSuffix("Kt").ifBlank { simple }
   }
 
   /**
-   * A file-level `@CatalogGroup` default, resolved once per source file (see the
-   * `catalogGroupsByFile` pre-pass) so a member-function preview picks it up as well as a top-level
-   * one.
+   * A file-level `@CatalogGroup` default, resolved per source file so member-function previews get
+   * it too.
    */
   private data class CatalogGroupDefault(val name: String?, val section: String?)
 
   /**
-   * Design-catalog identity for a preview function from `@CatalogComponent` / `@CatalogVariant`,
-   * with [fileGroup] (the file-level `@CatalogGroup`, resolved by source file so member-function
-   * previews get it too — Kotlin writes `@file:CatalogGroup` onto the file facade, not the
-   * containing class) supplying the group/section default. Returns `null` when the function carries
-   * neither annotation — the common, non-catalog case, which leaves [PreviewInfo.catalog] absent.
-   *
-   * `@CatalogVariant` takes precedence if somehow both are present: a variant belongs *under*
-   * another component, so it never doubles as its own top-level component entry. Resolution honours
-   * the "good defaults, override with annotations" precedence — component id defaults to the
-   * function name, group to the per-component argument, else the file `@CatalogGroup`, else
-   * `Components`.
+   * Catalog identity from `@CatalogComponent` / `@CatalogVariant`, or `null`. [fileGroup] supplies
+   * the group/section default. `@CatalogVariant` wins if both are present. Component id defaults to
+   * the function name; group to the argument, else the file group, else `Components`.
    */
   private fun extractCatalogEntry(
     method: MethodInfo,
@@ -1302,9 +1016,7 @@ object PreviewDiscovery {
           props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
           kitAxis = annStringOrNull(variant, "kitAxis"),
           kitValue = annStringOrNull(variant, "kitValue"),
-          // Kit correspondence, read exactly as the component branch below reads it. A variant is
-          // compared in its own right rather than through its parent, so nesting a render under one
-          // must not cost it its parallel or its reference.
+          // A variant is compared in its own right, so it keeps its own parallel and reference.
           reference = annStringOrNull(variant, "reference"),
           referenceSet = annStringOrNull(variant, "referenceSet"),
           noReference = annStringOrNull(variant, "noReference"),
@@ -1329,29 +1041,18 @@ object PreviewDiscovery {
       motionPreview = annStringOrNull(component, "motionPreview"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
       breakpointKit = annStringArray(component, "breakpointKit"),
-      // Read verbatim, exactly like `breakpointKit` above and for the same reason: the
-      // design-artifacts export's catalog inventory is the one parser of these entries, because
-      // two parsers is how two spellings come to disagree. An older `preview-annotations` on the
-      // consumer's classpath simply has no such attribute, and `annStringArray` records an empty
-      // list for it — the same thing declaring nothing produces.
+      // Read verbatim like `breakpointKit`: the export is the only parser. Older annotations
+      // without the attribute yield an empty list.
       related = annStringArray(component, "related"),
     )
   }
 
   /**
-   * UI-builder policy for a preview function from `@BuilderComponent`, or `null` when it carries
-   * none — which is the case for nearly every preview, including every component of a catalog that
-   * has no disagreements with the builder's defaults.
+   * UI-builder policy from `@BuilderComponent`, or `null`.
    *
-   * Nothing is defaulted on the catalog's behalf. A blank annotation argument records `null`, not
-   * the value the generator would pick, so "the catalog did not say" survives into the record and
-   * the generator can report an unclaimed canvas adapter or an underived id as such.
-   *
-   * An annotation whose every field is left at its default resolves to a policy that says nothing.
-   * It is still recorded rather than folded to `null`: writing `@BuilderComponent` on a sticker is
-   * a statement that somebody considered this component's builder policy, and the generator's
-   * "which components has nobody looked at" report is only true if it can tell that apart from
-   * silence.
+   * Nothing is defaulted: a blank argument records `null` so the generator can report what the
+   * catalog didn't say. An all-default annotation is still recorded, since writing it means someone
+   * considered the policy.
    */
   private fun extractBuilderEntry(annotations: List<AnnotationInfo>): BuilderPolicy? {
     val builder = annotations.firstOrNull { it.name == BUILDER_COMPONENT_FQN } ?: return null
@@ -1377,14 +1078,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * A `@BuilderComponent` `key=value` array parameter as [BuilderPair]s, split on the FIRST `=` so
-   * a value may contain one (`"onCheckedChange=checked:boolean"` has none; a starter string can).
-   *
-   * An entry with no `=`, or with a blank key, is dropped rather than failing the build — the same
-   * bargain `@CatalogComponent.breakpointKit` strikes. But it is dropped **into [into]**, verbatim:
-   * the leniency is only cheaper than a build failure because the entry is reported, and discarding
-   * the raw string here would leave the generator with nothing to report and the component with a
-   * default nobody meant it to have.
+   * A `key=value` array parameter as [BuilderPair]s, split on the first `=`. Malformed entries are
+   * dropped into [into] verbatim so the generator can report them rather than fail the build.
    */
   private fun builderPairs(
     ann: AnnotationInfo,
@@ -1418,12 +1113,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * The strings in an annotation array parameter's already-read value.
-   *
-   * Split out of [annStringArray] because the `@OverrideVariant` walk holds the parameter list
-   * rather than the `AnnotationInfo` — it reads several arrays off one annotation — and two
-   * spellings of "what counts as a string array here" would drift on exactly the shape ClassGraph
-   * hands back for an empty one.
+   * Strings of an already-read array parameter value; shared with the `@OverrideVariant` walk so
+   * both treat ClassGraph's empty-array shape the same.
    */
   private fun stringArrayValue(raw: Any?): List<String> =
     when (raw) {
@@ -1442,14 +1133,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Aggregates the collected `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` tokens into
-   * synthetic [PreviewKind.CATALOG] sheets: one per `group`, plus a module-wide "All <noun>" sheet
-   * when there is more than one group (a single group would just duplicate itself). [idPrefix]
-   * namespaces the render-output filename (`colorcatalog` / `typographycatalog` / `shapecatalog`)
-   * and [noun] labels the sheet ("colours" / "type styles" / "shapes"). Each token carries its own
-   * [RawCatalogToken.kind] (single token vs whole-object) so the renderer picks the right layout
-   * and a whole-object token expands into its scheme / type-scale / shape roles. Appended after
-   * [normalizeRenderOutputs] with render outputs already shell-safe, like the Lottie assets.
+   * Aggregates catalog tokens into [PreviewKind.CATALOG] sheets: one per `group`, plus an "All
+   * <noun>" sheet when there are several groups. [idPrefix] namespaces the filename; [noun] labels
+   * the sheet. Appended after [normalizeRenderOutputs] with already shell-safe outputs.
    */
   private fun buildCatalogPreviews(
     tokens: List<RawCatalogToken>,
@@ -1511,45 +1197,22 @@ object PreviewDiscovery {
               )
             },
         ),
-      // The capture is `optional` exactly when the backend can't render catalog sheets. On Android
-      // ([renderSupported] = true) it's required, so a missing PNG is flagged as a regression by
-      // the
-      // gate. On desktop ([renderSupported] = false) it's optional, so every consumer that reads
-      // `Capture.optional` — the render gate, VS Code's consistency check, its render UI — treats
-      // the
-      // (deliberately skipped, #2135) sheet as expected-absent rather than drift. One flag, all
-      // consumers.
+      // `optional` exactly when the backend can't render catalog sheets (desktop, #2135), so every
+      // consumer of `Capture.optional` treats the absent PNG as expected.
       captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
     )
 
   /**
-   * Aggregates the collected `@ThemeCatalog` providers into synthetic [PreviewKind.THEME_CATALOG]
-   * sheets — one per provider, keyed `themecatalog__<name>`. Because each provider is its own sheet
-   * (not aggregated like the token catalogs), the id must be unique per provider: two providers
-   * that share a display `name` (e.g. `"Light"` in different groups/packages) would otherwise
-   * derive the same id and `renders/<id>.png` and clobber each other, so a collision falls back to
-   * appending the provider's (unique) FQN. The provider FQN travels on
-   * [PreviewParams.wrapperClassName]; the renderer resolves it and composes its `Wrap(content)`
-   * around a canned specimen. `optional` exactly when the backend can't render (desktop), like the
-   * token catalogs.
+   * One [PreviewKind.THEME_CATALOG] sheet per `@ThemeCatalog` provider, keyed
+   * `themecatalog__<name>`; a shared display name falls back to the provider FQN so outputs don't
+   * clobber. The renderer composes the provider's `Wrap` around a canned specimen. `optional` on
+   * desktop, like the token catalogs.
    */
   /**
-   * Canvas for a synthetic token or theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is
-   * 900x760px.
-   *
-   * These previews have no `@Preview` of their own to size them, so they used to fall back to the
-   * 400x800dp sandbox — and a theme sheet does not fit in it. A Wear scheme alone is 21 colour rows
-   * at 48dp = 1008dp against a 768dp content box, so its type scale was never drawn; the mobile
-   * sheet lost four of its five shape rows the same way. The renderer now packs the rows into
-   * columns ([CatalogSpecimenSheet]), and this is the canvas that gives it room to do so. Landscape
-   * because the sheet is laid out as blocks rather than one list: colour roles run in two columns,
-   * then the type scale takes the full width below them (a specimen line is judged on a real line
-   * of text, and a half-width column wraps the pangram mid-phrase), then the shape scale runs as a
-   * single row so the corner progression reads left to right.
-   *
-   * Density 1 rather than the 2.625 phone default because the sheet is a document, not a device
-   * capture — the dp figures above are the pixels, which is what keeps the geometry legible here
-   * and in the numbers this KDoc quotes.
+   * Canvas for synthetic token/theme sheets: 900x760dp at density 1, so the PNG is 900x760px. The
+   * 400x800dp sandbox couldn't fit a theme sheet; [CatalogSpecimenSheet] packs rows into landscape
+   * blocks (colour columns, full-width type scale, a single shape row). Density 1 because the sheet
+   * is a document, not a device capture.
    */
   internal const val CATALOG_SHEET_DEVICE: String = "spec:width=900dp,height=760dp,dpi=160"
 
@@ -1561,16 +1224,14 @@ object PreviewDiscovery {
     themes: List<RawThemeCatalog>,
     renderSupported: Boolean,
   ): List<PreviewInfo> {
-    // Platform-scoped prefix: a Wear and a mobile theme that share a display name still get
-    // distinct ids (and so distinct `renders/<id>.png`), without needing the FQN disambiguator.
+    // Platform-scoped prefix so Wear and mobile themes with the same name get distinct ids.
     fun baseId(t: RawThemeCatalog) =
       (if (t.wear) "wearthemecatalog__" else "themecatalog__") +
         t.name.replace(SANITIZE_RENDER_STEM, "_")
     val baseCounts = themes.groupingBy { baseId(it) }.eachCount()
     return themes.map { theme ->
       val base = baseId(theme)
-      // Clean `themecatalog__<name>` when the name is unique; disambiguate a shared name with the
-      // provider FQN (guaranteed unique) so the two sheets get distinct render outputs.
+      // Use the FQN only to disambiguate a shared name.
       val id =
         if (baseCounts.getValue(base) > 1) {
           "${base}__${theme.className.replace(SANITIZE_RENDER_STEM, "_")}"
@@ -1583,37 +1244,26 @@ object PreviewDiscovery {
         className = theme.className,
         params =
           PreviewParams(
-            // Clean theme name (no " theme" suffix): the renderer keys the per-theme token sidecar
-            // (#2179) by this. The display label lives on `functionName` above.
+            // Bare theme name: the renderer keys the per-theme token sidecar by it.
             name = theme.name,
             group = theme.group.ifEmpty { null },
             kind = if (theme.wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
-            // Resolved to concrete dp + density, not left to the renderer: `device` alone is only
-            // honoured on the `@Preview`-annotation path (which calls `DeviceDimensions.resolve`
-            // itself). A synthetic preview that sets the string and nothing else still renders at
-            // the 400x800 sandbox default — which is exactly the canvas these sheets outgrew.
+            // Resolved to concrete dp + density here: `device` alone is only honoured on the
+            // `@Preview` annotation path.
             device = CATALOG_SHEET_DEVICE,
             widthDp = CATALOG_SHEET.widthDp,
             heightDp = CATALOG_SHEET.heightDp,
             density = CATALOG_SHEET.density,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
-        // A `@ThemeCatalog` sheet renders ONE named theme as its subject — that is the whole point
-        // of the annotation. Re-rendering it under a different `themeProvider` would leave a sheet
-        // captioned with this theme's name drawing another theme's colours and type, so it is
-        // fixed by construction rather than needing `@FixedTheme` on every consumer's sheet.
+        // A theme sheet's subject is its own theme, so it's fixed by construction.
         fixedTheme = true,
       )
     }
   }
 
-  /**
-   * Parse [file] as a Lottie document, returning its declared canvas dimensions when it carries the
-   * Lottie marker keys, or `null` when the file is not a Lottie JSON (an ordinary config / data
-   * `.json`, or unparseable). The `v`+`layers` pair is the cheapest reliable Lottie fingerprint —
-   * every Bodymovin/Lottie export has a schema version string and a layers array.
-   */
+  /** [file]'s canvas dimensions if it's a Lottie document (has `v` + `layers`), else `null`. */
   private fun lottieDimensionsOrNull(file: File): LottieDims? {
     val obj =
       runCatching { LOTTIE_JSON.parseToJsonElement(file.readText()) as? JsonObject }.getOrNull()
@@ -1650,9 +1300,7 @@ object PreviewDiscovery {
       out.add("    - $dir")
       out.add("      exists=$exists isDir=$isDir classFiles=$classCount")
     }
-    // Project-own class jars (AGP scoped PROJECT CLASSES) — the built-in-Kotlin
-    // rescue path. Listed separately from dependencyJars because these ARE
-    // method-walked. See issue #1924.
+    // Project-own class jars, listed separately because they are method-walked (#1924).
     if (allProjectJars.isNotEmpty()) {
       out.add("  projectClassJars (${allProjectJars.size} declared, ${projectJars.size} existing):")
       for (jar in allProjectJars) {
@@ -1676,12 +1324,8 @@ object PreviewDiscovery {
     )
     if (scanClassCount > 0) {
       if (reachablePreviewFqns.isEmpty()) {
-        // Most common #162-shaped failure: the consumer's preview
-        // annotations live in AAR-extracted `<library>/jars/classes.jar`
-        // files, whose `file.name` is just `classes.jar`. The
-        // dep-jar filter used to match on file name only and
-        // dropped every such jar, so no multi-preview annotation
-        // could be resolved.
+        // Most common #162 failure: preview annotations in transformed AARs named just
+        // `classes.jar`.
         out.add(
           "  known @Preview annotation classes NOT reachable on " +
             "ClassGraph classpath — multi-preview resolution is disabled."
@@ -1695,9 +1339,8 @@ object PreviewDiscovery {
     }
     val previewAnnotationsSeen = PREVIEW_FQNS.filter { annotationFqnCounts.containsKey(it) }
     if (previewAnnotationsSeen.isNotEmpty()) {
-      // If this path triggers we have a real bug: @Preview is on the
-      // classpath, it's on some method, but discovery still emitted
-      // nothing. Make it impossible to miss in the log.
+      // @Preview is on the classpath and on some method, yet nothing was emitted: a real bug, so
+      //   make it loud.
       out.add(
         "  known @Preview FQNs WERE seen on scanned methods " +
           "(discovery dropped them — please report):"
@@ -1725,13 +1368,9 @@ object PreviewDiscovery {
 
   private val ASSET_PREVIEW_KINDS = setOf(PreviewKind.LOTTIE, PreviewKind.SVG)
 
-  // Source-level signal for the empty-compile guard. Anchoring at the start of a code line avoids
-  // examples in line comments and KDoc; accepting a qualified prefix covers annotation use without
-  // an import. Supported direct and multi-preview annotations conventionally end in Preview or
-  // Previews (`NotificationPreview`, `XrSubspacePreview`, imported aliases such as
-  // `GlancePreview`, and dependency-defined wrappers such as `WearPreviewDevices`). A user-defined
-  // multi-preview annotation also contains @Preview when its declaration lives in this module, so
-  // an empty compilation of that wrapper still trips the guard.
+  // Source-level signal for the empty-compile guard. Anchored at line start to skip comment
+  // examples; qualified prefixes allowed. Supported annotations conventionally end in
+  // Preview/Previews, and a module-local multi-preview annotation itself contains @Preview.
   private val PREVIEW_SOURCE_ANNOTATION =
     Regex(
       """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])"""
@@ -1743,9 +1382,8 @@ object PreviewDiscovery {
     .getOrDefault(false)
 
   /**
-   * Blank comments and literals while preserving line breaks, so the source-level integrity guard
-   * sees annotations in Kotlin code rather than examples embedded in KDoc, block comments, or
-   * strings. Kotlin block comments nest, so a regex replacement is not sufficient here.
+   * Blanks comments and string literals (keeping line breaks) so the integrity guard sees only
+   * code. Kotlin block comments nest, so a regex isn't enough.
    */
   private fun String.kotlinCodeOnly(): String {
     val out = StringBuilder(length)
@@ -1860,44 +1498,17 @@ object PreviewDiscovery {
     }
 
   /**
-   * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
-   * filename of the form `<readable>-<digest>`:
+   * Rewrites each `renderOutput` (and `dataProduct.output`) to a shell-safe `<readable>-<digest>`:
+   * 1. `<readable>` — the id's last dotted segment with non-alphanumeric runs collapsed to `_`,
+   *    capped at [MAX_READABLE_STEM].
+   * 2. `-<digest>` — [RENDER_STEM_DIGEST_CHARS] hex of `sha256(preview.id)`. `-` can't occur in
+   *    `<readable>`.
    *
-   * 1. **`<readable>`** — the last dotted segment of the preview id (function name plus any
-   *    `@Preview(name = …)` variant suffix), with every run of non-alphanumeric characters
-   *    collapsed to a single `_`. So `com.example.PreviewsKt.ActivityListPreview_Devices - Large
-   *    Round` contributes `ActivityListPreview_Devices_Large_Round`. Capped at [MAX_READABLE_STEM]
-   *    chars so a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` every
-   *    mainstream filesystem enforces.
-   * 2. **`-<digest>`** — [RENDER_STEM_DIGEST_CHARS] hex chars of `sha256(preview.id)`, taken over
-   *    the id verbatim. `-` is an unambiguous delimiter here: [sanitiseSegment] collapses it inside
-   *    a segment, so it can never occur in `<readable>`.
-   *
-   * `preview.id` itself stays untouched — it's the stable identity consumers key by (history
-   * folders, CLI state, JUnit test names). Only the on-disk filename takes this form.
-   *
-   * **Why the digest is unconditional.** It is what makes a stem a pure function of one preview's
-   * own id, and that single property carries every guarantee the filenames need:
-   * - *Stable.* Adding, removing or renaming any other preview in the module cannot change this
-   *   preview's filename — the sole exception being [disambiguateDigestTies] below. The previous
-   *   shortest-unique-suffix walk read every sibling, so an unrelated addition silently renamed
-   *   existing PNGs — which breaks commit-pinned render URLs and makes base-vs-head visual diffing
-   *   see a rename as delete + add.
-   * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get
-   *   distinct digests. The old positional `_<idx>` tiebreaker minted names without checking them
-   *   against real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.
-   * - *Case-safe.* `Foo_Dark` and `Foo_dark` are distinct ids, so they get distinct digests and
-   *   stay distinct files on the case-insensitive filesystems (APFS, NTFS) where the readable parts
-   *   alone would collide.
-   * - *Suffix-safe.* Structural suffixes are appended after the whole stem, so a preview named
-   *   `Logo_animated` lands on `Logo_animated-<digestA>.png` while `Logo`'s Lottie sidecar lands on
-   *   `Logo-<digestB>_animated.png`. The digest separates the two namespaces that used to share
-   *   `_`.
-   * - *Reserved-name-safe.* A preview named `CON` or `NUL` becomes `CON-<digest>`, which is not a
-   *   Windows reserved device name.
-   *
-   * [disambiguateDigestTies] is the backstop for a truncated-digest collision, which needs two ids
-   * that agree on both readable part and digest prefix.
+   * `preview.id` is untouched. The digest is unconditional so a stem depends only on its own id,
+   * which makes filenames stable under unrelated changes, collision-free across ids that sanitise
+   * identically, distinct on case-insensitive filesystems, separated from structural suffixes like
+   * `_animated`, and never a Windows reserved name. [disambiguateDigestTies] backstops
+   * truncated-digest ties.
    */
   private fun normalizeRenderOutputs(previews: List<PreviewInfo>): List<PreviewInfo> {
     if (previews.isEmpty()) return previews
@@ -1917,41 +1528,24 @@ object PreviewDiscovery {
   }
 
   /**
-   * Final guarantee that no two previews in the manifest write to the same path.
+   * Final guarantee that no two previews write the same path (case-folded, for APFS/NTFS).
    *
-   * [normalizeRenderOutputs] only resolves stems among the *annotation-derived* previews. Several
-   * other sources are appended afterwards with literal, already-shell-safe stems — Lottie and SVG
-   * assets, the colour/typography/shape/theme catalogs, activities and app tours — and by default
-   * several of them land in the same `renders/` directory. No per-source resolver can see the
-   * others, so nothing previously checked the combined result: an annotation preview whose stem
-   * happened to equal an asset's (e.g. a composable literally named `lottie__Foo` beside a Lottie
-   * asset resolving to the same leaf) produced two manifest entries claiming one file, and one
-   * render silently overwrote the other.
+   * Asset, catalog, activity and tour previews are appended after [normalizeRenderOutputs] with
+   * literal stems and can collide with annotation previews; validating the assembled list covers
+   * any future source too. Every entry in a colliding group is re-stemmed with its own id digest,
+   * so the result doesn't depend on manifest order; non-colliding entries are untouched.
    *
-   * Rather than teach each source about the others — which fails again the next time a source is
-   * added — this validates the invariant on the assembled list. Comparison is **case-folded**,
-   * because the question is "do these address the same file" and on APFS/NTFS they do.
-   *
-   * On a collision *every* entry in the colliding group is re-stemmed with a digest of its own
-   * preview id, so the outcome stays a pure function of the ids rather than of manifest order.
-   * Entries that collide with nothing are untouched, so this cannot churn filenames in the
-   * overwhelmingly normal case where the invariant already holds.
-   *
-   * Scope note: this makes the *declared* output paths unique. It does not reason about
-   * `@PreviewParameter` fan-out siblings, which the renderer names `<stem>_<label>` at render time
-   * — a stem that is a strict prefix of another could in principle still overlap there. That needs
-   * the provider's values, which discovery cannot enumerate.
+   * Doesn't cover `@PreviewParameter` fan-out names (`<stem>_<label>`), which need provider values
+   * discovery can't enumerate.
    */
   internal fun enforceOutputUniqueness(previews: List<PreviewInfo>): List<PreviewInfo> {
     if (previews.size < 2) return previews
     val contested = contestedIndices(previews)
     if (contested.isEmpty()) return previews
 
-    // Retagging can itself land on a path some *untouched* preview already owns — the same trap
-    // the old positional `_<idx>` tiebreaker fell into. So re-check the result, and if anything is
-    // still contested, redo it from the original list at full digest width, widening the tagged set
-    // to include whatever the first attempt disturbed. Re-tagging from the original (rather than
-    // from the first attempt) is what keeps a digest from being appended twice.
+    // Retagging can land on a path an untouched preview owns, so re-check; if still contested, redo
+    // from the original list at full digest width over the widened set (never appending a digest
+    // twice).
     val short = retagOutputs(previews, contested, RENDER_STEM_DIGEST_CHARS)
     val stillContested = contestedIndices(short)
     if (stillContested.isEmpty()) return short
@@ -1959,9 +1553,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Indices of previews holding at least one output path that another preview also claims.
-   * Case-folded, since that is how APFS and NTFS decide whether two names are one file. Previews
-   * declaring no outputs at all are ignored rather than all colliding on the empty path.
+   * Indices of previews with an output path another preview also claims (case-folded). Previews
+   * with no outputs are ignored.
    */
   private fun contestedIndices(previews: List<PreviewInfo>): Set<Int> {
     val pathsPerPreview = previews.map { outputPaths(it).map(String::lowercase).distinct() }
@@ -2001,9 +1594,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * `dir/stem.ext` → `dir/stem<suffix>.ext`, leaving the directory and the full extension alone.
-   * Splits on the *first* dot so multi-dot sidecars (`.raw.png`, `.warnings.json`) keep their whole
-   * suffix rather than having the tag wedged into the middle of it.
+   * `dir/stem.ext` → `dir/stem<suffix>.ext`, splitting on the first dot so multi-dot sidecars
+   * (`.raw.png`) keep their suffix.
    */
   private fun tagLeaf(path: String, suffix: String): String {
     if (path.isEmpty()) return path
@@ -2015,25 +1607,17 @@ object PreviewDiscovery {
     return if (dir.isEmpty()) tagged else "$dir/$tagged"
   }
 
-  /**
-   * Pick one shell-safe stem per preview — see [normalizeRenderOutputs] for the format and
-   * rationale. Exposed `internal` so the unit tests can assert the charset, the stability of a stem
-   * under unrelated additions, and the collision paths directly without a full discovery pipeline.
-   */
+  /** One shell-safe stem per preview; see [normalizeRenderOutputs]. `internal` for tests. */
   internal fun resolveRenderStems(
     previews: List<PreviewInfo>,
-    // Narrowed only by tests: a real 8-hex tie needs ~2^32 work to construct, so the backstop and
-    // its case-folding are exercised at a width where a collision is reachable.
+    // Narrowed only by tests, so a tie is reachable.
     digestChars: Int = RENDER_STEM_DIGEST_CHARS,
   ): List<String> {
     if (previews.isEmpty()) return emptyList()
     return disambiguateDigestTies(previews.map { renderStem(it, digestChars) }, previews)
   }
 
-  /**
-   * The stem for a single preview, computed from that preview alone. Deliberately takes no view of
-   * the rest of the module — see [normalizeRenderOutputs] for why that independence is the point.
-   */
+  /** The stem for one preview, from that preview alone; see [normalizeRenderOutputs]. */
   internal fun renderStem(
     preview: PreviewInfo,
     digestChars: Int = RENDER_STEM_DIGEST_CHARS,
@@ -2057,24 +1641,15 @@ object PreviewDiscovery {
       .take(chars)
 
   /**
-   * Backstop for the astronomically unlikely case where two distinct ids agree on both readable
-   * part and truncated digest. Every tied preview is re-stemmed with a full-length digest, which
-   * cannot tie unless the ids are equal (and ids are distinct by manifest construction).
-   *
-   * Only the tied previews are touched, so one freak pair cannot lengthen an unrelated preview's
-   * filename — and because the replacement is still a pure function of the id, the result stays
-   * stable under reordering. That is the property the old positional `_<idx>` tiebreaker lacked: it
-   * indexed into the manifest, so it both churned on reordering and could mint a name that collided
-   * with a real preview's.
+   * Backstop for two ids sharing readable part and truncated digest: only the tied previews get a
+   * full-length digest, keeping the result a pure function of the id.
    */
   private fun disambiguateDigestTies(
     stems: List<String>,
     previews: List<PreviewInfo>,
   ): List<String> {
-    // Case-folded, because the question is "do these address the same file", and on APFS/NTFS
-    // `Foo_Dark-<d>.png` and `Foo_dark-<d>.png` do. Grouping case-sensitively here would let a
-    // case-only pair that also tied on the digest slip through the backstop and overwrite. The
-    // stems themselves keep their original casing — only the tie test folds.
+    // Case-folded, since case-only differences are one file on APFS/NTFS; the stems keep their
+    // casing.
     val tied = stems.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
     if (tied.isEmpty()) return stems
     return stems.mapIndexed { i, stem ->
@@ -2084,25 +1659,15 @@ object PreviewDiscovery {
   }
 
   /**
-   * Splits a preview id into dot-separated segments and sanitises each one. Sanitisation collapses
-   * every run of non-alphanumeric characters within a segment to a single `_` and trims `_`/`-`
-   * from the segment edges; the inter-segment `.` is preserved as the segment join.
+   * Splits a preview id into sanitised dot segments.
    *
-   * Only the *structural* part of the id — the `className.functionName` FQN — is split on `.`. The
-   * trailing variant suffix (from `@Preview(name = ...)` / `group`) is folded into the
-   * function-name segment first, because a name like `"Font scale 1.5x"` carries dots that are NOT
-   * structural id separators: splitting the whole id would inject a spurious trailing segment ("1"
-   * | "5x"), and [renderStem] takes the *last* segment — so the whole readable stem would collapse
-   * to `5x`. Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`); any
-   * stem collision two distinct ids still produce is handled by [disambiguateDigestTies].
-   *
-   * Empty segments (e.g. from a leading or trailing `.`, or from a segment that was all-punctuation
-   * pre-sanitisation) are dropped so they don't introduce `..` in the resulting stem.
+   * Only the `className.functionName` FQN is split; the `@Preview(name = …)` suffix is folded into
+   * the last segment first, since names like `"Font scale 1.5x"` contain non-structural dots that
+   * would otherwise collapse the stem to `5x`. Empty segments are dropped.
    */
   private fun sanitiseSegments(preview: PreviewInfo): List<String> {
     val fqn = "${preview.className}.${preview.functionName}"
-    // Fall back to splitting the whole id when it isn't the expected `fqn + suffix` shape (e.g.
-    // synthetically-constructed ids) so behaviour is unchanged for those.
+    // Ids not shaped `fqn + suffix` (e.g. synthetic) are split whole.
     val suffix = if (preview.id.startsWith(fqn)) preview.id.substring(fqn.length) else null
     val segments = (if (suffix != null) fqn else preview.id).split('.').toMutableList()
     if (suffix != null && suffix.isNotEmpty() && segments.isNotEmpty()) {
@@ -2112,9 +1677,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Collapse every run of non-alphanumeric characters to a single `_`, then trim `_` and `-` from
-   * the edges. Designed for one dotted segment of a preview id; dots inside [segment] would be
-   * misinterpreted as segment boundaries, so callers split first.
+   * Collapses non-alphanumeric runs to `_` and trims `_`/`-` from the edges. One segment only;
+   * callers split on dots first.
    */
   private fun sanitiseSegment(segment: String): String =
     segment.replace(Regex("[^A-Za-z0-9]+"), "_").trim('_', '-')
@@ -2129,10 +1693,8 @@ object PreviewDiscovery {
     return if (dir.isEmpty()) rewritten else "$dir/$rewritten"
   }
 
-  // Renders the distinguishing bits of a preview variant for the discovery log
-  // so sibling expansions (e.g. @WearPreviewFontScales × 6) aren't visually
-  // identical. Format mirrors the VSCode tooltip: `name` / `device` /
-  // `WxHdp` / `font Nx` / `uiMode=N` / `locale` / `group`.
+  // Distinguishing bits of a variant for the discovery log, so fan-out siblings aren't identical
+  // lines. Mirrors the VS Code tooltip format.
   private fun describeVariant(preview: PreviewInfo): String {
     val p = preview.params
     val parts = mutableListOf<String>()
@@ -2145,8 +1707,7 @@ object PreviewDiscovery {
     if (p.uiMode != 0) parts.add("uiMode=${p.uiMode}")
     p.locale?.let(parts::add)
     p.group?.let { parts.add("group=$it") }
-    // Summarise capture-level dimensions (time, scroll) on one line so
-    // the log remains a single bullet per preview even for fan-outs.
+    // Capture-level dimensions on one line, keeping one bullet per preview.
     val timings = preview.captures.mapNotNull { it.advanceTimeMillis }
     if (timings.isNotEmpty()) {
       parts.add("${preview.captures.size} captures @ ${timings.joinToString(",") { "${it}ms" }}")
@@ -2174,13 +1735,8 @@ object PreviewDiscovery {
     warnings: MutableList<String>,
     catalogGroupsByFile: Map<String, CatalogGroupDefault>,
   ) {
-    // Resolve the method's preview annotations up-front so we can bail
-    // before any per-method work (and before the "skipping @Preview"
-    // warning) when the method isn't actually a preview. The caller
-    // routes every annotated method through here, so without this guard
-    // an unrelated annotation (e.g. `@JvmStatic` on a synthetic Kotlin
-    // inline-class method) would trigger the unsupported-parameters
-    // warning despite carrying no @Preview at all. See issue #1039.
+    // Resolve preview annotations first and bail on non-previews, so unrelated annotations on
+    // synthetic methods don't trigger the unsupported-parameters warning (#1039).
     val directPreviews = collectDirectPreviews(annotations)
     val resolvedMultiPreviews: List<AnnotationInfo> =
       if (directPreviews.isNotEmpty()) {
@@ -2188,16 +1744,9 @@ object PreviewDiscovery {
       } else {
         annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
       }
-    // Issue #2613: a preview annotated only with a multi-preview annotation whose class is off the
-    // discovery classpath (e.g. wear tooling wired into `screenshotTest`, so
-    // `@WearPreviewLargeRound`
-    // resolves there but not in `main`) resolves to nothing and vanishes silently. For the
-    // well-known AndroidX / Wear annotations we expand them from a built-in spec table so they
-    // still
-    // render; for any others we can't recognise, warn so the silent drop is at least visible.
-    // Scoped to the `directPreviews`-empty branch — that's where `resolveMultiPreview` ran and
-    // could
-    // have dropped an unreachable annotation (including the mixed case where a sibling resolved).
+    // A multi-preview annotation off the discovery classpath resolves to nothing (#2613). Known
+    // AndroidX / Wear annotations are expanded from a built-in table; unknown ones get a warning
+    // instead of a silent drop.
     val builtInSpecs: List<BuiltInPreviewSpec> =
       if (directPreviews.isEmpty()) annotations.flatMap { builtInExpansionFor(it, scanResult) }
       else emptyList()
@@ -2218,13 +1767,9 @@ object PreviewDiscovery {
     if (directPreviews.isEmpty() && resolvedMultiPreviews.isEmpty() && builtInSpecs.isEmpty())
       return
 
-    // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
-    // to every @Preview on the function (including expansions from
-    // multi-preview meta-annotations). `@ScrollingPreview.modes` maps TOP/END
-    // to normal captures and LONG/GIF to data products — see [buildOutputPlan].
-    // `@AnimatedPreview` is single-shot (one motion capture per function) so it doesn't
-    // fan out, but follows the same "one annotation per function, applies to
-    // every preview expansion" policy.
+    // These function-level annotations apply to every @Preview expansion. `@ScrollingPreview.modes`
+    // maps TOP/END to captures and LONG/GIF to data products (see [buildOutputPlan]);
+    // `@AnimatedPreview` is one capture per function.
     val wrapperFqn = extractWrapperFqn(method, scanResult)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec =
@@ -2236,29 +1781,17 @@ object PreviewDiscovery {
           warnings,
         )
       }
-    // `@InteractionPreview` is single-shot for the same reason as `@AnimatedPreview` — one
-    // recording per function — and applies to every `@Preview` expansion the same way.
     val interactionSpec = extractInteractionSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val glimmerEnvironmentSpecs = extractGlimmerEnvironmentSpecs(annotations)
-    // `@SettledPreview` and a motion capture on ONE function want opposite things from the shared
-    // paused clock — the GIF records the timeline from its start, the settled still needs a
-    // coordinate near the end, and virtual time does not rewind. That used to be resolved here, by
-    // dropping the settle and warning about the pairing. It no longer is: both renderers now give
-    // the settled still a composition of its own (the desktop lane always did — every output is a
-    // separate `ImageComposeScene`; the Android lane splits into a second `setContent` pass, see
-    // `RobolectricRenderTest.settledStillNeedsOwnPass`), so each product owns its own timeline and
-    // the plan can simply carry both. Issue #4244.
+    // `@SettledPreview` plus a motion capture is fine: both renderers give the settled still its
+    // own composition, so each product owns its timeline (#4244).
     val rawSettleSpec = extractSettleSpec(annotations)
-    // `@FocusedPreview` + an exact settle shorter than the focus path's setup: the desktop focus
-    // renderer spends two unconditional frames (`SETUP_FRAMES_MS`, 32ms) before any drive, because
-    // the focus walk needs a laid-out tree to find anything focusable in. A coordinate under that
-    // cannot be honoured there — the capture lands at 32ms regardless — while the Android lane
-    // would land on the requested value, so the same annotation would mean two different instants.
-    // Clamp here, the single place the manifest is written, and say so: an `afterMs` below one and
-    // a bit frames is asking for a frame that cannot show a focused component at all. Issue #4247.
+    // Clamp an exact settle below the focus setup ([SettleCapture.FOCUS_SETUP_FRAMES_MS]): desktop
+    // always spends those frames before any drive, so otherwise the two backends would capture
+    // different instants (#4247). Warn, since such a value can't show a focused component.
     val settleSpec =
       if (
         rawSettleSpec != null &&
@@ -2281,17 +1814,9 @@ object PreviewDiscovery {
       extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
-    // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
-    // expansion below, rendered with its `previewOverride*` seeds applied. Applies to every
-    // expansion, the same "one annotation, applies to every preview" policy as the capture specs.
-    //
-    // `@PreviewAxis` (also repeatable) produces the same kind of spec, but by expanding the CROSS
-    // PRODUCT of the declared axes rather than by being written out per cell — and each of its
-    // cells carries its full axis assignment as typed props, which a hand-written variant has no
-    // way to say. The two are unioned: a component that is a clean product except for one odd extra
-    // state stays expressible. Axes go first so their cells win a name collision, which is the
-    // useful precedence — a hand-written variant that shadows a generated cell is the mistake, and
-    // `mergeVariantSpecs` warns about it either way.
+    // `@OverrideVariant` and `@PreviewAxis` each yield one synthetic preview per spec per
+    // expansion. Axes expand a cross product with typed props; the two are unioned, axes first so
+    // generated cells win name collisions (`mergeVariantSpecs` warns either way).
     val owner = "${classInfo.name}.${method.name}"
     val axisSpecs =
       expandAxes(extractPreviewAxes(annotations, scanResult, owner, warnings), owner, warnings)
@@ -2302,25 +1827,16 @@ object PreviewDiscovery {
         owner,
         warnings,
       )
-    // @RoboComposePreviewOptions, similarly, applies to the function as a
-    // whole — each timing fans out into its own manifest entry, orthogonal
-    // to any multi-preview expansion.
+    // Each timing fans out into its own entry, orthogonal to multi-preview expansion.
     val timings = extractRoboTimings(annotations)
-    // @PreviewParameter lives on a method PARAMETER, not the method itself,
-    // so it's sourced from `parameterInfo` rather than the method
-    // annotation list. Extracted once per function and applied to every
-    // multi-preview expansion — the provider is the same no matter which
-    // @Preview drove the fan-out.
+    // @PreviewParameter is on a method parameter; one provider applies to every expansion.
     val previewParameter = extractPreviewParameter(method)
     val isTilePreview = isAnyTilePreviewAnnotation(annotations, scanResult)
     val isNotificationPreview = isAnyNotificationPreviewAnnotation(annotations, scanResult)
     val isGlanceAppWidgetPreview = isAnyGlanceAppWidgetPreviewAnnotation(annotations, scanResult)
     val isXrSubspacePreview = isAnyXrSubspacePreviewAnnotation(annotations, scanResult)
-    // XR subspace previews are reflected + composed parameterless by the `:renderer-xr` task — it
-    // has no @PreviewParameter argument-injection path (and a parameterized subspace layout is
-    // nonsensical). Reject any @XrSubspacePreview that declares a user parameter (whether
-    // @PreviewParameter or plain) up front, so a parameterized one is skipped here rather than
-    // emitted as an XR_SUBSPACE entry that fails at render time.
+    // `:renderer-xr` composes subspace previews parameterless, so reject parameterized ones here
+    // rather than fail at render time.
     if (isXrSubspacePreview && userPreviewParameters(method).isNotEmpty()) {
       warnings.add(
         "composePreview: skipping @XrSubspacePreview '${classInfo.name}.${method.name}' — " +
@@ -2345,16 +1861,11 @@ object PreviewDiscovery {
       return
     }
 
-    // Target inference is identical across every @Preview expansion on a single function — the
-    // bytecode and signals don't change between (e.g.) the Light and Dark variants of a
-    // `@LightAndDark` multi-preview. Wrap in `lazy` so a multi-preview function with N expansions
-    // walks the bytecode once instead of N times; tile previews skip the inference entirely
-    // (handled in `makePreview`) and the lazy never forces.
+    // Target inference is identical across expansions; `lazy` walks the bytecode once (tile
+    // previews never force it).
     val previewSourceFile = sourceFilePath(classInfo, input)
-    // The design-system components this preview demonstrates — a different question from
-    // `inferredTargets` (see `PreviewInfo.componentTargets`), so a separate lazy walk. Lazy for the
-    // same reason: a multi-preview fans one function into N `PreviewInfo`s and the bytecode does
-    // not change between them.
+    // Library components this preview demonstrates (see `PreviewInfo.componentTargets`); lazy for
+    // the same reason.
     val renderedCalls = lazy {
       PreviewTargetInference.renderedCalls(classInfo, method, scanResult, projectClassFqns)
     }
@@ -2380,36 +1891,16 @@ object PreviewDiscovery {
       )
     }
 
-    // Design-catalog identity (`@CatalogComponent` / `@CatalogVariant`) applies to the function as
-    // a
-    // whole — every `@Preview` expansion of one function shares the same component id / variant
-    // tag — so it's resolved once here and stamped onto each entry this method contributes below.
+    // Catalog identity, builder policy and capture gutter are function-level, shared by every
+    // expansion.
     val catalogEntry =
       extractCatalogEntry(method, annotations, catalogGroupsByFile[previewSourceFile])
-    // `@BuilderComponent` is function-level for the same reason: builder policy describes the
-    // COMPONENT, so it holds for every `@Preview` expansion of the function rather than for one of
-    // them. Resolved here and stamped alongside the catalog identity.
     val builderEntry = extractBuilderEntry(annotations)
-    // `@CaptureGutter` is function-level for the same reason: the gutter describes what the
-    // COMPONENT draws past its bounds, so it holds for every `@Preview` expansion of the function
-    // — light and dark, every size cell, every override variant — not for one of them.
     val captureGutter = extractCaptureGutter(annotations)
-    // `@CaptureGutter` and `@ScrollingPreview` on one function is a contradiction, not a
-    // combination. A gutter says "the component draws this far past its own bounds"; a scroll
-    // capture has no such bounds — a LONG stitch's are the scrolled extent, a GIF's the declared
-    // viewport, and an END/TOP still is one settled frame of a screen, not a component with an
-    // edge for the gutter to sit on. CMP Desktop already renders scroll products with no gutter at
-    // all, and the per-lane divergences of trying to honour both (issue #4467) — a baked-in round
-    // mask, a displaced focus overlay, sidecars keyed to the grown window — are exactly why the
-    // combination is unsupported rather than silently half-applied. Skip the whole function with an
-    // actionable message, the same way an unsupported `@XrSubspacePreview` parameter is handled
-    // above, so the author removes one annotation rather than shipping a gutter that some products
-    // keep and others drop.
-    //
-    // Keyed on the *presence* of `@ScrollingPreview`, not on `scrollSpecs` being non-empty: a
-    // degenerate `@ScrollingPreview(modes = [])` produces no specs yet still declares the
-    // combination the contract forbids, and the author who wrote both annotations should hear about
-    // it rather than have the empty-modes case quietly keep its gutter.
+    // `@CaptureGutter` plus `@ScrollingPreview` is unsupported: scroll captures have no component
+    // edge for a gutter to sit on, and honouring both diverges per lane (#4467). Skip the function
+    // with an actionable message. Keyed on the annotation's presence, so `modes = []` is caught
+    // too.
     val declaresScrollingPreview = annotations.any { it.name == SCROLLING_PREVIEW_FQN }
     if (captureGutter != null && declaresScrollingPreview) {
       warnings.add(
@@ -2502,10 +1993,8 @@ object PreviewDiscovery {
       for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
     }
 
-    // Built-in expansion of known off-classpath multi-preview annotations (issue #2613). Each
-    // synthesised spec runs through the same [buildPreviewInfo] tail as a real `@Preview`, so it
-    // fans out the function's `@ScrollingPreview` / `@AnimatedPreview` / … captures and infers
-    // targets identically.
+    // Built-in expansion of known off-classpath multi-preview annotations (#2613), through the same
+    // [buildPreviewInfo] tail as a real `@Preview`.
     for (spec in builtInSpecs) {
       val base =
         buildPreviewInfo(
@@ -2537,26 +2026,17 @@ object PreviewDiscovery {
   }
 
   /**
-   * Derives a synthetic override-variant preview from a rendered [base]: same function, a
-   * `_VARIANT_<name>`-suffixed id + render outputs, the [spec]'s seeds carried on
-   * [PreviewInfo.overrides] for the renderer to apply, any requested harness interaction stamped
-   * onto its capture, and no data products (a state variant doesn't re-emit the heavy
-   * scroll/animation products). The unchanged `functionName` is what lets the design-catalog fold
-   * merge the variant image back under its primary sticker.
+   * A synthetic override-variant preview from [base]: `_VARIANT_<name>` id and outputs, [spec]'s
+   * seeds on [PreviewInfo.overrides], any harness interaction on its capture, and no data products.
+   * The unchanged `functionName` lets the catalog fold it under its primary sticker.
    */
   private fun overrideVariantPreview(base: PreviewInfo, spec: OverrideVariantSpec): PreviewInfo {
     val tag = "_VARIANT_${spec.name}"
     val variantCaptures =
       base.captures
-        // An `@InteractionPreview` script does NOT fan out across `@OverrideVariant`s. A variant
-        // exists to document a different *resting* state, and the interaction is the same script
-        // either way — a switch's "off" variant tapped twice records the same two-way travel its
-        // parent already recorded, in a file the catalog has nowhere distinct to show. Since each
-        // recording is a full 60fps frame sequence, letting it multiply across every variant
-        // would be the single most expensive thing in a catalog render, bought for duplicates.
-        //
-        // Dropping the whole capture (rather than clearing the `interaction` field) is what keeps
-        // the variant from writing an undriven still into a filename that claims an interaction.
+        // `@InteractionPreview` doesn't fan out across variants: the recording would be an
+        // expensive duplicate. Drop the whole capture so the variant doesn't write an undriven
+        // still under an interaction filename.
         .filter { it.interaction == null }
         .let { captures ->
           if (spec.interaction != OverrideVariantInteraction.Dragged) captures
@@ -2572,14 +2052,12 @@ object PreviewDiscovery {
                     cost = STATIC_COST,
                   )
               }
-              // LONG/GIF-only scrolling previews expose data products and have no primary
-              // captures. Variants intentionally do not duplicate those heavy products, but a
-              // Dragged variant still needs one addressable still for the held gesture.
+              // LONG/GIF-only scrolling previews have no primary capture, but a Dragged variant
+              // still needs one still.
               .ifEmpty { listOf(Capture(renderOutput = "renders/${base.id}.png")) }
-              // A held drag mutates remembered state. Android batch rendering reuses one
-              // composition for every capture, so fanning the gesture across a TOP/END or timed
-              // grid would apply the displacement repeatedly and make later stickers cumulative.
-              // An override variant is one resting-state sticker: keep its first usable still.
+              // A held drag mutates remembered state and Android reuses one composition per
+              // preview, so applying it across several captures would be cumulative. Keep the first
+              // still.
               .take(1)
         }
     return base.copy(
@@ -2638,29 +2116,17 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@OverrideVariant` annotations (repeatable — direct instances or the synthetic
-   * `.Container` holder Kotlin generates for the repeated case) into one [OverrideVariantSpec]
-   * each. Each per-type array entry is `"key=value"` / `"key#index=value"`; the array it lives in
-   * fixes its [OverrideSeedKind]. A variant that names neither a parseable seed nor a harness
-   * interaction is dropped (it would render identically to the base).
+   * Reads `@OverrideVariant`s (direct or via the `.Container`) into one [OverrideVariantSpec] each.
+   * Array entries are `"key=value"` / `"key#index=value"`; the array fixes the [OverrideSeedKind].
+   * A variant with neither a parseable seed nor an interaction is dropped.
    *
-   * Variants may be **hoisted onto a multi-preview-style annotation class** so a matrix several
-   * components share is declared once (`@Target` includes `ANNOTATION_CLASS`; see `OverrideVariant`
-   * for the semantics). Two things make that work here. ClassGraph already flattens a method's
-   * meta-annotation closure into `method.annotationInfo`, unwrapping the repeatable container as it
-   * goes, so hoisted variants arrive in [annotations] alongside the direct ones; and
-   * [overrideVariantsFromMetaAnnotation] walks the closure explicitly as well, so resolution does
-   * not silently depend on that flattening staying true of a future ClassGraph. Both paths feed the
-   * same de-duplication below, so an annotation reachable twice contributes once.
+   * Variants may be hoisted onto an annotation class. ClassGraph flattens meta-annotations into
+   * [annotations], and [overrideVariantsFromMetaAnnotation] walks them explicitly too so we don't
+   * depend on that; both feed the same de-duplication.
    *
-   * **Names are de-duplicated, first wins.** A variant's name is what distinguishes its rendered
-   * `_VARIANT_<name>` output, so two variants sharing one would write to the same file — the second
-   * overwriting the first, silently, with whichever seeds it happened to carry. That was
-   * unreachable while variants could only sit directly on a function (Kotlin rejects two identical
-   * repeated annotations at the same site only when their arguments match, but a catalog author
-   * writing them by hand sees them adjacent). Hoisting makes it easy: stack two matrices that
-   * overlap on one cell and nothing in the compile objects. Keeping the first and warning names the
-   * collision at discovery time, where the fix is obvious.
+   * **Names are de-duplicated, first wins, with a warning**: a name is the output path, so two
+   * variants sharing one would silently overwrite each other — easy once overlapping matrices are
+   * hoisted.
    */
   private fun extractOverrideVariantSpecs(
     annotations: List<AnnotationInfo>,
@@ -2694,31 +2160,22 @@ object PreviewDiscovery {
       val interactionIndex = ((pv.getValue("interactionIndex") as? Int) ?: 0).coerceAtLeast(0)
       val kitAxis = (pv.getValue("kitAxis") as? String)?.takeIf { it.isNotBlank() }
       val kitValue = (pv.getValue("kitValue") as? String)?.takeIf { it.isNotBlank() }
-      // `"Axis=Value"`, same split as `@CatalogVariant(props = …)` — first `=` wins, so a kit value
-      // that contains one (`Style=Variant (Highlighted)`) needs no escaping.
-      // `runCatching`, unlike its sibling reads above: a catalog compiled against a
-      // preview-annotations older than this field has no `kitProps` parameter at all, and
-      // `getValue` throws for one that is absent rather than returning its default. Discovery must
-      // keep working against an older annotations jar — that is the ordinary state of a consumer
-      // repo between releases.
+      // `"Axis=Value"`, split on the first `=`. `runCatching` because `getValue` throws for a
+      // parameter absent from an older annotations jar, and discovery must keep working against
+      // one.
       val kitProps =
         stringArrayValue(runCatching { pv.getValue("kitProps") }.getOrNull())
           .mapNotNull(::parseCatalogProp)
-      // Two spellings of one fact with no rule for which wins is the ambiguity `kitProps` exists to
-      // remove, so it is not resolved silently: the plural form is kept (it is the only one that
-      // can describe a multi-knob cell at all) and the singular is reported as ignored.
+      // Both `kitProps` and `kitAxis`/`kitValue`: keep the plural (the only form for multi-knob
+      // cells) and report the singular as ignored.
       if (kitProps.isNotEmpty() && (kitAxis != null || kitValue != null)) {
         warnings.add(
           "composePreview: '$owner' variant '$name' declares both kitProps and kitAxis/kitValue — " +
             "keeping kitProps and ignoring the singular pair. Declare one or the other."
         )
       }
-      // `runCatching` for the same reason `kitProps` above needs it: a consumer compiled against an
-      // older preview-annotations has no `secondary` parameter, and `getValue` throws for one that
-      // is absent rather than answering its default.
+      // `runCatching` for older annotations jars, as for `kitProps`.
       val secondary = (runCatching { pv.getValue("secondary") }.getOrNull() as? Boolean) ?: false
-      // Same compatibility posture as `kitProps` / `secondary`: consumers compiled against an
-      // older annotations artifact have no parameter to read.
       val noReference =
         (runCatching { pv.getValue("noReference") }.getOrNull() as? String)?.takeIf {
           it.isNotBlank()
@@ -2736,9 +2193,8 @@ object PreviewDiscovery {
           secondary = secondary,
         )
       val existing = specs.putIfAbsent(name, spec)
-      // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once
-      // flattened by ClassGraph and once by the explicit meta-annotation walk — is the common case
-      // and produces an identical spec, which is exactly the de-duplication working.
+      // The same annotation reached twice (flattened and via the meta walk) yields an identical
+      // spec; only conflicts warn.
       if (existing != null && existing != spec) collisions.add(name)
     }
     for (name in collisions) {
@@ -2773,11 +2229,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Recursively collects `@OverrideVariant`s hoisted onto a multi-preview-style annotation class
-   * (and onto its own meta-annotations), mirroring [wrapperFromMetaAnnotation]'s traversal and
-   * cycle guard. Skips `@Preview` and its container — a hoisted variant only ever rides on a custom
-   * annotation. Contributes nothing when the annotation class is off the discovery classpath, which
-   * is the same limit every other meta-annotation walk here has.
+   * Collects `@OverrideVariant`s hoisted onto annotation classes, recursively with a cycle guard,
+   * skipping `@Preview` itself. Contributes nothing for annotation classes off the discovery
+   * classpath.
    */
   private fun overrideVariantsFromMetaAnnotation(
     ann: AnnotationInfo,
@@ -2787,13 +2241,8 @@ object PreviewDiscovery {
   ) = walkMetaAnnotations(ann, scanResult, visited) { collectOverrideVariants(it, into) }
 
   /**
-   * The shared meta-annotation traversal: visit [ann]'s annotation class, hand every annotation on
-   * it to [collect], and recurse into those in turn.
-   *
-   * One walk for both hoistable annotation families (`@OverrideVariant`, `@PreviewAxis`) so they
-   * cannot disagree about what "hoisted" reaches — which they would, being two copies of a
-   * traversal with a cycle guard. [visited] is shared per call site, so a diamond of annotation
-   * classes is visited once.
+   * Shared meta-annotation traversal for `@OverrideVariant` and `@PreviewAxis`, so they agree on
+   * what "hoisted" reaches. [visited] is shared per call site, so diamonds are visited once.
    */
   private fun walkMetaAnnotations(
     ann: AnnotationInfo,
@@ -2803,8 +2252,7 @@ object PreviewDiscovery {
   ) {
     if (ann.name in visited) return
     if (isDirectPreview(ann) || isPreviewContainer(ann)) return
-    // The hoistable annotations themselves are leaves: their own meta-annotations are
-    // `@Retention` / `@Target`, never more variants, and descending into them wastes a scan.
+    // Hoistable annotations are leaves; descending into them wastes a scan.
     if (ann.name in HOISTABLE_LEAF_FQNS) return
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
@@ -2825,12 +2273,8 @@ object PreviewDiscovery {
   )
 
   /**
-   * Reads every `@PreviewAxis` on a function — direct or hoisted onto an annotation class — into an
-   * [AxisSpec], in declaration order.
-   *
-   * Malformed axes are dropped with a warning rather than failing the build, matching how the rest
-   * of discovery treats an annotation it cannot use: a broken axis costs the cells it would have
-   * added, and saying so beats failing every other preview in the module.
+   * Reads every `@PreviewAxis` (direct or hoisted) into an [AxisSpec]. Malformed axes are dropped
+   * with a warning rather than failing the build.
    */
   private fun extractPreviewAxes(
     annotations: List<AnnotationInfo>,
@@ -2887,10 +2331,8 @@ object PreviewDiscovery {
           }
         }
       val kind = axisSeedKind(pv.getValue("kind"))
-      // Every value has to survive the seed parser, or the cell is a lie. `OverrideSeed
-      // .toValueOrNull` silently drops a seed it cannot parse, so a `kind = BOOLEAN` axis with a
-      // value of `"off"` would render an unmodified copy of the base while the catalog published
-      // props claiming it is the `off` cell — a wrong entry, which is worse than a missing one.
+      // `OverrideSeed.toValueOrNull` silently drops unparseable seeds, so such a cell would render
+      // the base while publishing props claiming otherwise. Reject it.
       val unparseable = values.filterNot { parseableAs(it, kind) }
       if (unparseable.isNotEmpty()) {
         warnings.add(
@@ -2910,12 +2352,8 @@ object PreviewDiscovery {
           namesEveryValue = pv.getValue("namesEveryValue") as? Boolean ?: false,
           order = (pv.getValue("order") as? Int) ?: 0,
         )
-      // Two axes on one key would square that key against itself — `size=xs` crossed with
-      // `size=m` is not a cell, it is a contradiction. Only a *conflicting* duplicate is worth
-      // warning about, though: a hoisted axis is reached twice by design — once flattened into the
-      // method's annotation list by ClassGraph, once by the explicit meta-annotation walk — and
-      // warning on that would fire on the documented hoisting flow itself, for a single source
-      // declaration. Same rule the `@OverrideVariant` path already applies.
+      // Two axes on one key are a contradiction. A hoisted axis is reached twice by design, so only
+      // conflicting duplicates warn.
       val existing = byKey.putIfAbsent(key, spec)
       if (existing != null && existing != spec) {
         warnings.add(
@@ -2925,24 +2363,15 @@ object PreviewDiscovery {
         )
       }
     }
-    // Stable sort on the declared order: the order repeated annotations are EMITTED in is a
-    // compiler detail, not a contract, and Kotlin's does not match the order they were written in
-    // — a two-axis function came back swapped, which silently renames every cell. Axes sharing an
-    // order keep their emitted order relative to each other, so a single-axis function needs
-    // nothing. See `PreviewAxis.order`.
+    // Stable sort on the declared order: the compiler's emit order for repeated annotations doesn't
+    // match source order and would rename every cell. See `PreviewAxis.order`.
     return byKey.values.sortedBy { it.order }
   }
 
   /**
-   * Whether [value] is a literal the seed parser will accept for [kind].
-   *
-   * Deliberately the same predicates `OverrideSeed.toValueOrNull` applies — `toBooleanStrictOrNull`
-   * / `toIntOrNull` / `toFloatOrNull` on the trimmed text — so an axis is rejected here exactly
-   * when the renderer would have silently dropped its seed. A looser check would let a bad cell
-   * through to bake wrong; a stricter one would reject an axis that renders fine.
-   *
-   * `COLOR` is not reachable from `@PreviewAxis` (the annotation's `kind` has no colour member), so
-   * it is treated as unvalidated rather than given a hex parser that nothing can call.
+   * Whether [value] parses for [kind] using the same predicates as `OverrideSeed.toValueOrNull`, so
+   * an axis is rejected exactly when its seed would be dropped. `COLOR` isn't reachable from
+   * `@PreviewAxis`, so it isn't validated.
    */
   private fun parseableAs(value: String, kind: OverrideSeedKind): Boolean {
     val text = value.trim()
@@ -2975,8 +2404,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * `PreviewAxisKind` → [OverrideSeedKind]. ClassGraph surfaces an enum-valued annotation parameter
-   * as an `AnnotationEnumValue`, so the name is read off it rather than the class being loaded.
+   * `PreviewAxisKind` → [OverrideSeedKind], read off the `AnnotationEnumValue` name without loading
+   * the class.
    */
   private fun axisSeedKind(raw: Any?): OverrideSeedKind {
     val name =
@@ -2994,21 +2423,15 @@ object PreviewDiscovery {
   }
 
   /**
-   * Expands [axes] into one [OverrideVariantSpec] per cell of their cross product, skipping the
-   * all-defaults cell.
+   * Expands [axes] into one [OverrideVariantSpec] per cross-product cell, axis-major (first axis
+   * slowest). A cell:
+   * * **seeds** only its non-default values;
+   * * is **named** by its non-default slugs joined by `-`, plus any [AxisSpec.namesEveryValue]
+   *   axis;
+   * * publishes its **full** assignment as props, defaults included, for kit pairing.
    *
-   * Cells come out in axis-major order (the first axis varies slowest), so the emitted order tracks
-   * the declaration order a reader sees. A cell:
-   * * **seeds** only its non-default values — seeding a knob with the value it already resolves to
-   *   is a no-op, and leaving it out keeps the seed list saying exactly what moved;
-   * * is **named** by its non-default slugs joined by `-`, plus any axis marked
-   *   [AxisSpec.namesEveryValue];
-   * * publishes its **full** assignment as props, defaults included, because that is what the cell
-   *   *is* and what a design kit's component set carries on the other side of a parity pairing.
-   *
-   * The all-defaults cell is detected on having no seeds rather than an empty name, since
-   * `namesEveryValue` leaves it named (`s`) even though it moves nothing. Emitting it would bake a
-   * second capture identical to the base render.
+   * The all-defaults cell (no seeds, though possibly named) is skipped, since it would duplicate
+   * the base render.
    */
   private fun expandAxes(
     axes: List<AxisSpec>,
@@ -3060,17 +2483,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Drops cells whose generated name collides with an earlier one, warning about each.
-   *
-   * A name is a render output path, so two cells sharing one race for the same file — and unlike
-   * the hand-written case this needs no authoring mistake to happen. Two axes that share a value
-   * name are enough: `a = [p, q]` and `b = [p, q]`, both defaulting to `p`, generate `q` for `(q,
-   * p)` and `q` again for `(p, q)`. Repeated `slugs` on one axis do it too.
-   *
-   * Dropped rather than renamed: a generated name is what the published sticker is addressed by, so
-   * inventing a disambiguating suffix would silently mint a URL nobody declared. Naming the
-   * collision and losing the cell is the honest failure — the fix (distinct slugs, or an axis that
-   * names every value) is then obvious.
+   * Drops cells whose generated name collides with an earlier one, warning about each. Axes sharing
+   * value names can collide without any authoring mistake. Dropped rather than renamed, since
+   * inventing a suffix would mint an undeclared address.
    */
   private fun dedupeCellNames(
     cells: List<OverrideVariantSpec>,
@@ -3095,13 +2510,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Unions the `@PreviewAxis` cells with the hand-written `@OverrideVariant`s, first wins on a name
-   * collision.
-   *
-   * Both produce the same kind of spec and both are keyed by name — the `_VARIANT_<name>` render
-   * output's identity — so a name carried by both would have the second overwrite the first's file.
-   * [axisCells] goes first because a generated cell is the one whose name is derived rather than
-   * typed: if a hand-written variant shadows it, the hand-written one is the mistake.
+   * Unions axis cells with hand-written variants; first wins on a name collision (names are output
+   * paths). Axis cells go first, so a hand-written variant shadowing one is the reported mistake.
    */
   private fun mergeVariantSpecs(
     axisCells: List<OverrideVariantSpec>,
@@ -3151,10 +2561,8 @@ object PreviewDiscovery {
     }
 
   /**
-   * Tile previews ([TILE_PREVIEW_FQN]) take a single `(context: Context)` argument supplied by the
-   * renderer at run time; the @PreviewParameter contract that gates Compose previews doesn't apply
-   * to them. Walk direct annotations + multi-preview meta-annotations so a tile preview reached
-   * through a multi-preview alias (e.g. `@MultiRoundTilesPreviews`) is exempted too.
+   * Tile previews take a renderer-supplied `(Context)`, so the @PreviewParameter contract doesn't
+   * apply. Walks meta-annotations so aliases like `@MultiRoundTilesPreviews` are exempt too.
    */
   private fun isAnyTilePreviewAnnotation(
     annotations: List<AnnotationInfo>,
@@ -3169,11 +2577,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Notification previews (`NOTIFICATION_PREVIEW_FQN`) take a single `(Context)` argument supplied
-   * by the renderer at run time — same shape as a `(Context)` tile preview, so
-   * the @PreviewParameter contract that gates Compose previews doesn't apply. Walk direct
-   * annotations + multi-preview meta-annotations so a notification preview reached through a future
-   * multi-preview alias is exempted too.
+   * Notification previews take a renderer-supplied `(Context)`, like tiles; exempt from the
+   * @PreviewParameter check, including via meta-annotations.
    */
   private fun isAnyNotificationPreviewAnnotation(
     annotations: List<AnnotationInfo>,
@@ -3188,11 +2593,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Glance preview functions (`GLANCE_APPWIDGET_PREVIEW_FQN`) are `@Composable @GlanceComposable ()
-   * -> Unit` bodies — their JVM signature ends with the compiler-added `Composer, Int` pair the
-   * standard composable-parameter check would flag as "unsupported parameter(s)". Treat them the
-   * same way as tile / notification previews so the check is skipped: the renderer reflects the
-   * function and invokes it via a synthetic `GlanceAppWidget.providePreview(...)` instead.
+   * Glance previews' JVM signature carries the `Composer, Int` pair the parameter check would flag;
+   * the renderer invokes them via `GlanceAppWidget.providePreview(...)`, so skip the check.
    */
   private fun isAnyGlanceAppWidgetPreviewAnnotation(
     annotations: List<AnnotationInfo>,
@@ -3209,12 +2611,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * XR subspace previews (`XR_SUBSPACE_PREVIEW_FQN`) are `@Composable` functions whose JVM
-   * signature carries the compiler-added `Composer, Int` pair the standard composable-parameter
-   * check would flag. Treat them the same as tile / notification / glance so the check is skipped:
-   * they're rendered by the separate `:renderer-xr` task, not the Android image renderer. Walk
-   * direct annotations + multi-preview meta-annotations so an XR preview reached through an alias
-   * is exempted too.
+   * XR subspace previews are rendered by `:renderer-xr`, so skip the parameter check, including via
+   * meta-annotations.
    */
   private fun isAnyXrSubspacePreviewAnnotation(
     annotations: List<AnnotationInfo>,
@@ -3235,31 +2633,20 @@ object PreviewDiscovery {
   ): Boolean {
     val userParameters = userPreviewParameters(method)
     if (userParameters.isEmpty()) return false
-    // Renderer contract: preview methods are parameterless, take exactly one
-    // value sourced by @PreviewParameter, or have a default for *every*
+    // Renderer contract: no parameters, exactly one @PreviewParameter value, or a default for every
     // parameter.
     if (previewParameter != null) return userParameters.size != 1
-    // All-defaults is the Studio contract too, and it's common in real
-    // codebases: production composables are frequently annotated `@Preview`
-    // in place, and they nearly always carry `modifier: Modifier = Modifier`.
-    // Rejecting them dropped 5 of JetLagged's 8 previews silently — the
-    // omission only surfaced at the very end of the catalog pipeline as
-    // "missing renders". The renderer needs no change: it resolves the
-    // composable with `getDeclaredComposableMethod(functionName)` and invokes
-    // it with no args, and androidx's ComposableMethod fills every parameter
-    // from Kotlin's synthetic `$default` bridge.
+    // All-defaults is also Studio's contract and common for production composables annotated in
+    // place (`modifier: Modifier = Modifier`). The renderer invokes them with no args via the
+    // `$default` bridge.
     return !allParametersHaveDefaults(classInfo, method, userParameters.size)
   }
 
   /**
-   * True when [method]'s first [userParameterCount] Kotlin value parameters all declare a default,
-   * read from the class's `@kotlin.Metadata`.
-   *
-   * Bytecode alone can't answer this: Kotlin emits a single synthetic `<name>$default` bridge when
-   * *any* parameter has a default, so its presence doesn't imply *all* do. Invoking with an
-   * all-bits default mask when some parameter lacks a default would pass it `null`/`0` and NPE at
-   * render time, so require metadata to confirm before admitting the preview. Unreadable metadata
-   * degrades to `false` — the preview is skipped with the existing warning, i.e. today's behaviour.
+   * True when the first [userParameterCount] value parameters all declare defaults, per
+   * `@kotlin.Metadata`. Bytecode can't tell: one `$default` bridge exists if *any* parameter has a
+   * default, and an all-bits mask would pass `null`/`0` for the rest. Unreadable metadata yields
+   * `false`.
    */
   internal fun allParametersHaveDefaults(
     classInfo: ClassInfo,
@@ -3288,15 +2675,9 @@ object PreviewDiscovery {
     getTypeDescriptor().toString().removePrefix("class ")
 
   /**
-   * Scans [method]'s parameters for `@PreviewParameter`. Returns the provider FQN + `limit` of the
-   * FIRST parameter that carries the annotation; `null` when none do. Supporting a single parameter
-   * mirrors the current upstream (Studio/Layoutlib) semantic — multi-param preview functions
-   * require explicit wiring in tooling code, which our renderer doesn't expose.
-   *
-   * ClassGraph surfaces parameter annotations on `MethodParameterInfo.annotationInfo`. The `value`
-   * field on `@PreviewParameter` carries the provider KClass, which comes back as an
-   * [AnnotationClassRef] — we pull its FQN without triggering classloading (matches how
-   * [extractWrapperFqn] handles `@PreviewWrapper`).
+   * Provider FQN + `limit` of the first `@PreviewParameter` parameter, or `null`. Single-parameter
+   * only, like Studio. The provider `KClass` is read as an [AnnotationClassRef] without
+   * classloading.
    */
   private fun extractPreviewParameter(method: MethodInfo): Pair<String, Int>? {
     val params = method.parameterInfo ?: return null
@@ -3315,10 +2696,8 @@ object PreviewDiscovery {
     return null
   }
 
-  // Tile previews don't go through `mainClock` and can't scroll (the
-  // renderer inflates a View via `TileRenderer` and has no Compose
-  // animation clock / scrollable), so both dimensional annotations are
-  // no-ops for tiles.
+  // Tile previews have no `mainClock` or scrollables, so dimensional annotations are no-ops for
+  // them.
   internal data class PreviewOutputPlan(
     val captures: List<Capture>,
     val dataProducts: List<PreviewDataProduct>,
@@ -3403,33 +2782,17 @@ object PreviewDiscovery {
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = kind == PreviewKind.TILE
-    // Notification previews aren't composable either — no `mainClock`, no scrollables, no focus
-    // owner. Treat them the same as tiles for every dimensional fan-out so the single-capture
-    // path runs unmodified.
+    // Notifications aren't composable either; same treatment as tiles.
     val isNotification = kind == PreviewKind.NOTIFICATION
-    // Glance preview functions are technically `@Composable`, but they're a closed Glance
-    // composition driven by `composeForPreview(...)` rather than the standard Compose machinery.
-    // Treat them the same way as tile / notification for fan-out gating — no scroll / animation
-    // / focus drive, no `mainClock` tick, the renderer handles the whole materialise + inflate
-    // in one shot.
+    // Glance previews are a closed composition materialised in one shot; same treatment.
     val isGlanceAppWidget = kind == PreviewKind.GLANCE_APPWIDGET
-    // XR subspace previews aren't captured to a single image and have no `mainClock` / scrollable /
-    // focus owner here — the `:renderer-xr` task drives the whole recover-and-write in one shot.
-    // Gate them out of every dimensional fan-out the same way as tile / notification / glance.
+    // XR subspace previews are driven by `:renderer-xr` in one shot; same treatment.
     val isXrSubspace = kind == PreviewKind.XR_SUBSPACE
-    // XR subspace previews don't render a PNG through the Robolectric path — the opt-in
-    // `composePreviewRenderXr` task writes a `scene.json` (+ one `<panelId>.png` texture per panel)
-    // into `renders/<sanitizedId>/`, and the optional `composePreviewCompositeXr` task bakes a
-    // single `composite.png` still from that scene via the native `xr-composite` tool. Emit ONE
-    // optional capture pointing at that composite so it shows up in the preview listing when
-    // present, but is NOT required by `composePreviewRenderAll`'s missing-render gate — the
-    // composite is best-effort (it's absent when the binary / display / software GL isn't
-    // available, or when a consumer declares `@XrSubspacePreview` but leaves `enableXrPreviews`
-    // off). The subdir uses the SAME sanitisation as `XrSubspaceRenderTest.sanitize`
-    // (`[^A-Za-z0-9._-]` → `_`, keeping dots) so the path matches the render subdir on disk.
-    // `normalizeRenderOutputs`/`rewriteRenderStem` only rewrite the leaf when it starts with the
-    // preview's stem; the leaf here is the literal `composite.png`, so the per-preview subdir path
-    // stays stable. No data products.
+    // XR subspace previews emit one optional capture pointing at
+    // `renders/<sanitizedId>/composite.png`, baked best-effort by `composePreviewCompositeXr` from
+    // the `scene.json` the XR task writes. Sanitisation matches `XrSubspaceRenderTest.sanitize` so
+    // the path agrees on disk; the literal leaf isn't rewritten by `normalizeRenderOutputs`. No
+    // data products.
     if (isXrSubspace) {
       val sanitizedId = previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")
       return PreviewOutputPlan(
@@ -3441,72 +2804,40 @@ object PreviewDiscovery {
     val nonComposable = isTile || isNotification || isGlanceAppWidget || isXrSubspace
     val effectiveTimings = if (nonComposable) emptyList() else timings
     val effectiveScrolls = if (nonComposable) emptyList() else scrolls
-    // Tile / notification previews don't go through `mainClock` — there's no animation surface to
-    // drive.
+    // Non-composable previews have no clock to drive; nor pointer pipeline, focus owner or
+    // composition locals for the overrides below.
     val effectiveAnimation = if (nonComposable) null else animation
-    // `@InteractionPreview` needs a Compose pointer pipeline and a `mainClock` — a tile /
-    // notification / Glance / XR preview has neither, so the script has nothing to dispatch into.
     val effectiveInteraction = if (nonComposable) null else interaction
-    // `@FocusedPreview` only applies to Compose previews (the focus owner is a Compose construct).
-    // `gif = true` swaps the per-step PNG fan-out for a single GIF capture, so skip the per-step
-    // PNG path entirely when a GIF spec is set.
+    // `gif = true` replaces the per-step PNG fan-out.
     val effectiveFocusGif = if (nonComposable) null else focusGif
     val effectiveFocuses = if (nonComposable || effectiveFocusGif != null) emptyList() else focuses
-    // `@AmbientPreview` is Wear-Compose-only — it drives `LocalAmbientModeManager`. Non-composable
-    // previews render outside the Compose composition where the local lives, so the override is a
-    // no-op there.
     val effectiveAmbient = if (nonComposable) null else ambient
     val effectiveGlimmerEnvironment = if (nonComposable) null else glimmerEnvironment
-    // `@SettledPreview` advances the composition's paused clock, which a non-composable preview
-    // (Lottie / SVG / tile asset) has nothing to spend — same reasoning as ambient above.
-    //
-    // A motion capture on the same function is no longer a reason to drop it: the renderers give
-    // the settled still its own composition, so the two timelines no longer collide (issue #4244).
+    // A motion capture on the same function is fine: the settled still gets its own composition
+    // (#4244).
     val effectiveSettle = if (nonComposable) null else settle
-    // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
-    // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
-    // `@PermissionPreview` reaches the screen through `:data-permissions-connector`'s
-    // around-composable seam (the extension seeds Robolectric's grant set on construction, then
-    // wraps the composition to scope the query tracking). A tile / notification / Glance / XR
-    // preview never enters that composition, so the override has nothing to attach to there —
-    // same reasoning, and same treatment, as ambient and gesture hints.
     val effectivePermissions = if (nonComposable) null else permissions
-    // `@LauncherWidgetPreview` wraps the composition in a sized Box — same reasoning as ambient:
-    // non-composable previews have no Compose layout pass to wrap. The override is also dropped
-    // for tile / notification renders.
     val effectiveLauncherWidget = if (nonComposable) null else launcherWidget
     val effectiveLauncherWidgetResize = if (nonComposable) null else launcherWidgetResize
 
-    // @AnimatedPreview and @FocusedPreview(gif = true) each produce one motion output for the
-    // function. When one is paired with anything else on the same function — scroll/time
-    // fan-out, or each other, or a `@LauncherWidgetResize` PNG fan-out — they take
-    // disambiguating suffixes so neither silently overwrites the other. Plain filename only
-    // when a single motion mode owns the function with no scroll/time/resize siblings.
-    //
-    // The decision is made on which capture *kinds* share the function, never on their file
-    // extensions: `@AnimatedPreview(format = Apng)` writes `.apng` while `@FocusedPreview(gif)`
-    // writes `.gif`, and the pair keeps the same `_anim` / `_focus_gif` suffixes either way, so a
-    // format change only ever changes an extension. [separateMotionOutputs] is the backstop for a
-    // motion format whose extension a still also uses.
+    // @AnimatedPreview and @FocusedPreview(gif = true) each produce one motion output. When sharing
+    //   the function with anything else (scroll/time fan-out, each other, a resize fan-out) they
+    //   take suffixes; otherwise the plain filename. Decided by capture kinds, not extensions, so a
+    //   format change only changes the extension. [separateMotionOutputs] is the backstop.
     val motionSharesFn =
       effectiveScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveLauncherWidgetResize != null ||
         (effectiveAnimation != null && effectiveFocusGif != null)
 
-    // `@InteractionPreview` and `@AnimatedPreview` can each be written as either GIF or APNG, and
-    // `@FocusedPreview(gif = true)` is a GIF, so whenever another motion kind is on the same
-    // function the two could claim the same `<id>.<ext>`. Suffix the interaction whenever anything
-    // else on the function could claim that name — keyed on the kinds present, not on whether the
-    // extensions happen to differ — on the same "disambiguate rather than silently overwrite" rule
-    // as `motionSharesFn`.
+    // Suffix the interaction whenever another motion kind could claim the same `<id>.<ext>`, keyed
+    // on kinds present.
     val interactionSharesFn =
       motionSharesFn || effectiveAnimation != null || effectiveFocusGif != null
 
-    // One interaction capture per annotated function, dimension-flat — it doesn't cross with the
-    // scroll / time / focus fan-out, mirroring `@AnimatedPreview`'s single-output pattern. Built
-    // here so both the resize branch below and the ordinary path emit an identical capture.
+    // One interaction capture per function, not crossed with other fan-outs; shared by the resize
+    // branch and the ordinary path.
     val interactionCaptures: List<Capture> =
       if (effectiveInteraction == null) emptyList()
       else {
@@ -3514,9 +2845,8 @@ object PreviewDiscovery {
         listOf(
           Capture(
             interaction = effectiveInteraction,
-            // Same reason the animation branch carries this: the renderer resolves the permissions
-            // extension by scanning a preview's captures for the first non-null `permissions`, and
-            // an `@InteractionPreview` that owns the function outright leaves nothing else to find.
+            // The renderer finds the permissions extension on the first capture with non-null
+            // `permissions`, so a sole motion capture must carry it.
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput = motionRenderOutput(previewId, suffix, effectiveInteraction.format),
@@ -3525,14 +2855,8 @@ object PreviewDiscovery {
         )
       }
 
-    // `@LauncherWidgetResize` owns the static capture list when present — it walks N whole-cell
-    // stops between source and target sizes and emits one PNG per stop. Coexisting with the
-    // standard scroll / time / focus fan-out doesn't make sense (a resize walk is its own
-    // dimensional axis), so the resize captures fully replace the regular capture grid.
-    // focusGif / animation GIFs still fan out independently — the resize annotation isn't meant
-    // to combine with those either, but if a consumer stacks them the GIFs come out alongside
-    // the resize PNGs with their existing suffixes (computed below using the shared
-    // `motionSharesFn` flag).
+    // `@LauncherWidgetResize` replaces the static capture grid with one PNG per whole-cell stop.
+    // Motion GIFs still fan out alongside with their usual suffixes.
     if (effectiveLauncherWidgetResize != null) {
       val stops =
         launcherWidgetResizeStops(
@@ -3558,8 +2882,7 @@ object PreviewDiscovery {
           glimmerEnvironment = effectiveGlimmerEnvironment,
           settle = effectiveSettle,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
-          // Same reasoning as the still fan-out below: a settle walks its window frame by frame,
-          // so it is not the one-pass capture STATIC_COST describes.
+          // A settle walks its window frame by frame; see `settleCaptureCost`.
           cost = effectiveSettle?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST,
         )
       }
@@ -3587,10 +2910,7 @@ object PreviewDiscovery {
           listOf(
             Capture(
               animation = effectiveAnimation,
-              // The renderer resolves the permissions extension by scanning the preview's captures
-              // for the first non-null `permissions`. An `@AnimatedPreview` that is the *only*
-              // capture on the function would otherwise leave nothing to find, so a
-              // `@PermissionPreview` on the same function would silently render the denied branch.
+              // Sole capture must carry `permissions` (see the interaction branch).
               permissions = effectivePermissions,
               glimmerEnvironment = effectiveGlimmerEnvironment,
               renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
@@ -3607,9 +2927,7 @@ object PreviewDiscovery {
       )
     }
 
-    // @FocusedPreview(gif = true): one GIF capture per annotated function, dimension-flat —
-    // doesn't cross with scrolls / timings / focus fan-out. Mirrors @AnimatedPreview's
-    // "single-output annotation" pattern.
+    // One focus GIF per function, not crossed with other fan-outs.
     val focusGifCaptures: List<Capture> =
       if (effectiveFocusGif == null) emptyList()
       else {
@@ -3628,11 +2946,8 @@ object PreviewDiscovery {
         )
       }
 
-    // @AnimatedPreview produces its own dedicated capture, alongside any
-    // scroll / time fan-out. The capture (`.gif` or `.apng`, per `format`)
-    // gets a distinguishing `_anim` suffix when other captures share the
-    // function (the multi-mode scroll pattern, or a peer
-    // `@FocusedPreview(gif = true)` GIF), and the plain filename otherwise.
+    // Its own capture alongside any scroll/time fan-out; `_anim`-suffixed when sharing the
+    // function.
     val animationCaptures: List<Capture> =
       if (effectiveAnimation == null) emptyList()
       else {
@@ -3640,9 +2955,7 @@ object PreviewDiscovery {
         listOf(
           Capture(
             animation = effectiveAnimation,
-            // Same reason as the resize branch above: when `@AnimatedPreview` owns the function
-            // outright there is no static sibling carrying `permissions`, and the renderer's
-            // first-non-null scan would come up empty.
+            // Sole capture must carry `permissions`.
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
@@ -3651,10 +2964,7 @@ object PreviewDiscovery {
         )
       }
 
-    // Single-mode scroll keeps the plain filename so migrations from the
-    // old single-valued `mode = …` annotation land on identical paths.
-    // Multi-mode adds `_SCROLL_<mode>` to disambiguate siblings, same
-    // pattern as `_TIME_<ms>ms` for the time dimension.
+    // Single-mode scroll keeps the plain filename; multi-mode adds `_SCROLL_<mode>`.
     val captureScrolls = effectiveScrolls.filterNot {
       it.mode == ScrollMode.LONG || it.mode == ScrollMode.GIF
     }
@@ -3671,23 +2981,11 @@ object PreviewDiscovery {
     val timeRows: List<Pair<Long?, String>> =
       if (effectiveTimings.isEmpty()) listOf(null to "")
       else effectiveTimings.map { ms -> ms to "_TIME_${ms}ms" }
-    // `@FocusedPreview` fans out one capture per index (indexed mode) or
-    // per direction step (traversal mode). Single-capture annotations
-    // keep the plain filename (matches the @ScrollingPreview single-mode
-    // pattern). Empty → one (null, "") row, same shape as scroll/time
-    // when their annotations are absent.
+    // One focus capture per index or traversal step; a single capture keeps the plain filename.
     //
-    // A MULTI-capture fan-out also keeps the undriven row. Focus is a state a component passes
-    // through, not what the component IS, and a walk that replaced the resting capture left the
-    // preview with no picture of itself: m3-catalog annotated `TimePicker/Input` with a four-step
-    // traversal and its manifest came back listing four focus steps and nothing else, so the
-    // catalog would have published a focused hour field as that component's sticker and the parity
-    // lane would have diffed it against the kit's resting node (yschimke/m3-catalog#277).
-    //
-    // Only in multi-capture mode, because only there is the plain filename free: a single-capture
-    // annotation deliberately takes `renders/<id>.png` for its one focused still, and adding a
-    // resting row beside it would collide on that name — or, if the focus row were suffixed to make
-    // room, rename an output every existing consumer already links to.
+    // Multi-capture fan-outs also keep the undriven row, so the component still has a resting
+    // picture for catalogs and parity. Only there, because a single-capture annotation already owns
+    // `renders/<id>.png`.
     val focusRows: List<Pair<FocusCapture?, String>> =
       when {
         effectiveFocuses.isEmpty() -> listOf(null to "")
@@ -3697,23 +2995,11 @@ object PreviewDiscovery {
             effectiveFocuses.map { it to "_FOCUS_${focusSuffixOf(it)}" }
       }
 
-    // When ONLY @AnimatedPreview (or @FocusedPreview(gif = true)) is on the function, the
-    // scroll/time/focus cross-product would still emit one (null, null, null) row — i.e. a
-    // static PNG capture. Suppress that to keep single-output annotations clean. The same
-    // applies to @ScrollingPreview with only data-product modes (LONG/GIF): the data product
-    // IS the rendered output (the tall stitched PNG / scrolling GIF), so a sibling static
-    // `renders/<id>.png` would just be the unscrolled initial frame — misleading, and the
-    // exact regression issue #1524 reported.
+    // Suppress the static row when only a motion annotation, or only data-product scroll modes
+    // (LONG/GIF), own the function — a static PNG would just be an unscrolled frame (#1524).
     //
-    // `@SettledPreview` is the one thing that overrides the suppression: it is a request for a
-    // settled *still*, so a function carrying one wants the static row even when a motion product
-    // would otherwise own the function outright. Discovery used to drop the settle here and warn
-    // that it was ignored, which was the circular form of the same bug — the still it was meant to
-    // fix had already been suppressed. Both ship now, and the renderers give the still its own
-    // composition so neither product spends the other's timeline (issue #4244). Today's motion
-    // extensions differ from the still's (`.png` vs `.gif` / `.apng`), so no suffix is needed; the
-    // plan's [separateMotionOutputs] pass suffixes the motion capture by kind should a motion
-    // format ever share the still's extension.
+    // `@SettledPreview` overrides the suppression: it requests a settled still, and both ship with
+    // separate compositions (#4244).
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
@@ -3728,20 +3014,11 @@ object PreviewDiscovery {
           timeRows.flatMap { (ms, timeSuffix) ->
             focusRows.map { (focus, focusSuffix) ->
               val ext = "png"
-              // Cost is normalised to a static @Preview = 1.0. The mode
-              // ladder (TOP < END) reflects how much extra
-              // work each scroll variant adds on top of the baseline
-              // compose pass. `advanceTimeMillis` alone is still one
-              // pass at a specific virtual time, so it doesn't bump the
-              // per-capture cost — the wall-time of a multi-timing
-              // fan-out is in the *count*, which lives in the captures
-              // list itself. Focus drive is similar: one moveFocus call
-              // per stop, fixed-time work, no extra cost bucket.
+              // Cost is per capture; a timing fan-out's cost lives in the capture count, and focus
+              // drive adds no bucket.
               val settleForRow = if (scroll == null && ms == null) effectiveSettle else null
               val captureCost =
                 when (scroll?.mode) {
-                  // A settled still walks its window a frame at a time, so it is not the one-pass
-                  // capture STATIC_COST describes — see `settleCaptureCost`.
                   null -> settleForRow?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST
                   ScrollMode.TOP -> SCROLL_TOP_COST
                   ScrollMode.END -> SCROLL_END_COST
@@ -3756,11 +3033,8 @@ object PreviewDiscovery {
                 gestureHint = effectiveGestureHint,
                 permissions = effectivePermissions,
                 glimmerEnvironment = effectiveGlimmerEnvironment,
-                // A scroll drive runs its own post-scroll settle, and a
-                // `@RoboComposePreviewOptions`
-                // timing is an exact snapshot of a chosen coordinate — settling either would move a
-                // capture off the frame it was asked for. So the settle rides only on the plain
-                // still, which is the capture the reveal actually spoils.
+                // Settle only the plain still: scroll drives settle themselves and timings are
+                // exact snapshots.
                 settle = settleForRow,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
@@ -3846,12 +3120,8 @@ object PreviewDiscovery {
     )
   }
 
-  // Reads `@RoboComposePreviewOptions(manualClockOptions = [...])` on the
-  // preview function and returns the `advanceTimeMillis` of each entry.
-  // Empty list if the annotation is absent OR present with no entries — the
-  // latter is equivalent to "default" per Roborazzi's own scanner-support
-  // behaviour. ClassGraph surfaces `manualClockOptions` as an
-  // Object[] of `AnnotationInfo` because the field type is `Array<ManualClockOptions>`.
+  // `advanceTimeMillis` of each `@RoboComposePreviewOptions(manualClockOptions)` entry; empty when
+  // absent or empty (Roborazzi's "default").
   private fun extractRoboTimings(annotations: List<AnnotationInfo>): List<Long> {
     val ann =
       annotations.firstOrNull { it.name == ROBO_COMPOSE_PREVIEW_OPTIONS_FQN } ?: return emptyList()
@@ -3861,8 +3131,7 @@ object PreviewDiscovery {
         is Array<*> -> raw.filterIsInstance<AnnotationInfo>()
         is AnnotationInfo -> listOf(raw)
         else -> {
-          // Some ClassGraph versions hand back a typed primitive array or
-          // Kotlin wrapper — fall back to reflective iteration.
+          // Some ClassGraph versions return a primitive or wrapper array.
           val len = runCatching { java.lang.reflect.Array.getLength(raw) }.getOrNull() ?: 0
           (0 until len).mapNotNull { java.lang.reflect.Array.get(raw, it) as? AnnotationInfo }
         }
@@ -3871,26 +3140,18 @@ object PreviewDiscovery {
   }
 
   /**
-   * Resolves the `PreviewWrapperProvider` FQN for [method]'s previews.
-   *
-   * Must work off the method's **direct** annotations, not `method.annotationInfo` — ClassGraph
-   * flattens the whole meta-annotation closure into that list, so a function tagged with both a
-   * direct `@PreviewWrapperClass` and a multi-preview annotation that *also* hoists one would show
-   * two indistinguishable `@PreviewWrapperClass` entries and the direct-wins precedence would be
-   * decided by list order. `directOnly()` restores the distinction: a wrapper written directly on
-   * the function wins; otherwise it's inherited from a multi-preview annotation that hoists one.
+   * Resolves the `PreviewWrapperProvider` FQN for [method]. Uses `directOnly()` because
+   * `method.annotationInfo` flattens meta-annotations, which would make direct-vs-hoisted
+   * precedence depend on list order. A direct wrapper wins; otherwise one hoisted on a
+   * multi-preview annotation.
    */
   private fun extractWrapperFqn(method: MethodInfo, scanResult: ScanResult): String? {
     val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
-    // A wrapper declared directly on the function (androidx `@PreviewWrapper` or our
-    // `@PreviewWrapperClass`) wins over any inherited from a multi-preview meta-annotation.
     directWrapperFqn(directAnnotations)?.let {
       return it
     }
-    // Otherwise inherit from a multi-preview annotation that carries the wrapper. androidx's
-    // `@PreviewWrapper` is `@Target(FUNCTION)`-only so it can never legally sit on an annotation
-    // class, but our `@PreviewWrapperClass` can — hoisting the wrapper onto the multi-preview
-    // saves repeating it on every tagged function.
+    // Only our `@PreviewWrapperClass` can be hoisted; androidx's `@PreviewWrapper` is
+    // FUNCTION-only.
     val visited = mutableSetOf<String>()
     for (ann in directAnnotations) {
       wrapperFromMetaAnnotation(ann, scanResult, visited)?.let {
@@ -3901,17 +3162,14 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads a wrapper FQN from a direct annotation list — androidx `@PreviewWrapper(wrapper = …)`
-   * first (its `KClass` surfaces as an [AnnotationClassRef]), then our
-   * `@PreviewWrapperClass(wrapperClassName = …)` (a plain String). Returns `null` if neither is
-   * present.
+   * Wrapper FQN from direct annotations: androidx `@PreviewWrapper` (an [AnnotationClassRef])
+   * first, then `@PreviewWrapperClass` (a String).
    */
   private fun directWrapperFqn(annotations: List<AnnotationInfo>): String? {
     annotations
       .firstOrNull { it.name == PREVIEW_WRAPPER_FQN }
       ?.let { ann ->
-        // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
-        // AnnotationClassRef — pull the FQN without triggering classloading.
+        // Read the FQN without classloading.
         return when (val value = ann.parameterValues.getValue("wrapper")) {
           is AnnotationClassRef -> value.name
           is String -> value
@@ -3927,10 +3185,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Recursively searches a multi-preview meta-annotation (and its own meta-annotations) for a
-   * hoisted wrapper declaration, mirroring [resolveMultiPreview]'s traversal + cycle guard. Skips
-   * `@Preview` itself and its repeatable container — a wrapper only ever rides on a custom
-   * multi-preview annotation.
+   * Searches a multi-preview annotation (recursively, cycle-guarded) for a hoisted wrapper,
+   * skipping `@Preview` itself.
    */
   private fun wrapperFromMetaAnnotation(
     ann: AnnotationInfo,
@@ -3954,16 +3210,13 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@AnimatedPreview(durationMs, frameIntervalMs, showCurves)` off the function annotation
-   * list. Single-shot — at most one animation capture per function, so we return a nullable spec
-   * rather than a list. Negative / zero numeric fields fall back to the annotation defaults.
+   * Reads `@AnimatedPreview` (at most one per function). Non-positive numeric fields fall back to
+   * defaults.
    */
   private fun extractAnimationSpec(annotations: List<AnnotationInfo>): AnimationCapture? {
     val ann = annotations.firstOrNull { it.name == ANIMATED_PREVIEW_FQN } ?: return null
     val pv = ann.parameterValues
-    // `durationMs = 0` is the auto-detect sentinel; let the renderer ask
-    // PreviewAnimationClock for the real duration. A positive value
-    // overrides; negatives clamp to the sentinel.
+    // `0` is the auto-detect sentinel; negatives clamp to it.
     val durationMs = (pv.getValue("durationMs") as? Int)?.coerceAtLeast(0) ?: 0
     val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.takeIf { it > 0 } ?: 33
     val showCurves = (pv.getValue("showCurves") as? Boolean) ?: true
@@ -3972,24 +3225,17 @@ object PreviewDiscovery {
       durationMs = durationMs,
       frameIntervalMs = frameIntervalMs,
       showCurves = showCurves,
-      // GIF is the default here and APNG is the default on `@InteractionPreview`: this annotation
-      // has published `renders/<id>.gif` for long enough that consumers reference the path, and a
-      // silent extension change would break them.
+      // GIF default here (unlike `@InteractionPreview`'s APNG) because consumers already reference
+      // `renders/<id>.gif`.
       format = motionFormatOf(formatName, default = MotionFormat.GIF),
       caption = (pv.getValue("caption") as? String).orEmpty(),
     )
   }
 
   /**
-   * Reads `@InteractionPreview(gesture, targets, caption, holdMs, gapMs, leadInMs, frameIntervalMs,
-   * format)` off the function annotation list. Single-shot like [extractAnimationSpec] — one script
-   * per function, because the artifact is one recording and a second script on the same function
-   * would have nowhere distinct to write.
-   *
-   * Returns `null` when the annotation is absent, and also when it named **no targets**: an empty
-   * target list is a script that dispatches nothing, so the capture would be indistinguishable from
-   * an `@AnimatedPreview` while claiming in its filename to document an interaction. Declining here
-   * keeps the annotation's promise honest — a capture that exists showed a gesture.
+   * Reads `@InteractionPreview` (one script per function — one recording). Returns `null` when
+   * absent or when no targets remain: a script that dispatches nothing would be an animation
+   * masquerading as an interaction.
    */
   private fun extractInteractionSpec(annotations: List<AnnotationInfo>): InteractionCapture? {
     val ann = annotations.firstOrNull { it.name == INTERACTION_PREVIEW_FQN } ?: return null
@@ -4001,10 +3247,8 @@ object PreviewDiscovery {
         INTERACTION_GESTURE_PRESS_AND_HOLD -> InteractionGesture.PRESS_AND_HOLD
         else -> InteractionGesture.TAP
       }
-    // Negative indices can't address a node; drop them rather than failing discovery, and let an
-    // all-negative list collapse to "no targets" and decline above. Order and repeats are load-
-    // bearing (`[0, 0, 0]` is how a toggle is spelled), so unlike `@FocusedPreview`'s indices these
-    // are NOT sorted or de-duplicated.
+    // Drop negative indices (an all-negative list declines above). Order and repeats are meaningful
+    // (`[0, 0, 0]` is a triple tap), so no sorting or de-dup.
     val targets =
       when (val raw = pv.getValue("targets")) {
         is IntArray -> raw.toList()
@@ -4026,9 +3270,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Translates a `MotionFormat` annotation enum name into the discovery-side [MotionFormat],
-   * falling back to [default] for an absent or unrecognised value — a consumer compiled against a
-   * newer annotation artifact than the plugin must not sink discovery over a format name.
+   * Annotation enum name → [MotionFormat], falling back to [default] so a newer annotation artifact
+   * can't break discovery.
    */
   private fun motionFormatOf(name: String?, default: MotionFormat): MotionFormat =
     when (name?.uppercase()) {
@@ -4038,18 +3281,10 @@ object PreviewDiscovery {
     }
 
   /**
-   * The container an `@AnimatedPreview` capture is actually written in on this backend.
-   *
-   * The output's extension is derived from [AnimationCapture.format] (see [motionRenderOutput]), so
-   * the format recorded in `previews.json` has to be the one the renderer will encode — otherwise
-   * the manifest names a `.apng` the renderer fills with GIF bytes, which is the mirror image of
-   * the bug this guards against (APNG bytes in a `.gif`). Both renderers the Gradle plugin wires
-   * honour the requested format — desktop always has, Android from compose-preview-daemon 3.13.0
-   * (#208, where the renderer started reading `format` from the manifest) — so the plugin passes
-   * `apngSupported = true` on both and this is a no-op there. The downgrade only runs for a caller
-   * that declares its backend GIF-only (`PreviewDiscoveryCli --animated-preview-apng-supported
-   * false`, the CLI default): an Android renderer older than 3.13.0 always encodes GIF, so an APNG
-   * request is recorded as GIF, keeps its `.gif` name, and says so.
+   * The container an `@AnimatedPreview` is actually written in on this backend, so the manifest's
+   * extension matches the bytes. The Gradle plugin passes `apngSupported = true` for both backends,
+   * making this a no-op; only GIF-only callers (the CLI default, for Android renderers before
+   * daemon 3.13.0) downgrade APNG to GIF.
    */
   internal fun resolveAnimationFormat(
     animation: AnimationCapture,
@@ -4078,10 +3313,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * The motion kind [capture] produces, read off its capture fields rather than its file extension:
-   * an extension is a property of the container format, not of the capture, and a format whose
-   * extension is shared with stills (an APNG written as `.png`, as the Lottie animated companion
-   * is) must still classify as motion.
+   * The motion kind of [capture], read from its fields rather than its extension (an APNG may be
+   * written as `.png`).
    */
   internal fun motionKindOf(capture: Capture): MotionKind? =
     when {
@@ -4091,30 +3324,18 @@ object PreviewDiscovery {
       else -> null
     }
 
-  /**
-   * `renders/<previewId><suffix>.<ext>` for a motion capture, where the extension is the capture
-   * format's own (`.gif` / `.apng`). `@AnimatedPreview` used to hard-code `.gif` here, so a desktop
-   * `format = Apng` request wrote APNG bytes into a `.gif`.
-   */
+  /** `renders/<previewId><suffix>.<ext>`, using the format's own extension. */
   internal fun motionRenderOutput(previewId: String, suffix: String, format: MotionFormat): String =
     "renders/$previewId$suffix.${format.extension}"
 
   /**
-   * Guarantees no motion capture in one function's plan shares an output path with another capture
-   * of that plan, deciding by capture *kind* rather than by extension.
-   *
-   * The suffix rules in [buildOutputPlanForEnvironment] keep today's outputs apart, partly because
-   * a still is `.png` and every current motion format has a different extension. That is a property
-   * of the formats, not a rule: a motion format written with a still's extension would land on the
-   * still's `renders/<id>.png`. Rather than let the two silently overwrite each other, a motion
-   * capture whose path (case-folded, as APFS/NTFS compare it) is already claimed takes its kind's
-   * suffix. Outputs that collide with nothing are returned untouched, so this never renames an
-   * existing output.
+   * Ensures no motion capture shares an output path with another capture in the plan, deciding by
+   * kind. If a motion format ever used a still's extension, the motion capture takes its kind's
+   * suffix (case-folded comparison). Non-colliding outputs are untouched.
    */
   internal fun separateMotionOutputs(captures: List<Capture>): List<Capture> {
     val claimed = mutableSetOf<String>()
-    // Stills claim their paths first: they are the baseline artefact, and the motion capture is
-    // the one that moves aside.
+    // Stills claim paths first; the motion capture moves aside.
     captures.filter { motionKindOf(it) == null }.forEach { claimed += it.renderOutput.lowercase() }
     return captures.map { capture ->
       val kind = motionKindOf(capture) ?: return@map capture
@@ -4128,10 +3349,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Filename suffix for a single [FocusCapture]. Traversal mode emits `step<n>_<direction>` so
-   * repeated directions (e.g. `Next, Next, Previous`) get unique paths; indexed mode emits the tab
-   * index. Empty when neither field is set (defensive — the discovery extractor doesn't emit such
-   * captures).
+   * Filename suffix for a [FocusCapture]: `step<n>_<direction>` in traversal mode (unique across
+   * repeated directions), the tab index in indexed mode.
    */
   private fun focusSuffixOf(focus: FocusCapture): String {
     val direction = focus.direction
@@ -4144,20 +3363,11 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@FocusedPreview(indices, traverse, overlay)` off the function annotation list. Returns
-   * one [FocusCapture] per capture requested — traversal mode (one per direction step) when
-   * `traverse` is non-empty, otherwise indexed mode (one per non-negative tab index, sorted
-   * ascending and de-duplicated). The boolean `overlay` flag is stamped onto every returned
-   * capture. Empty inputs collapse to no captures (the annotation falls back to the cross-product's
-   * null row).
+   * Reads `@FocusedPreview(indices, traverse, overlay)`: one [FocusCapture] per traversal step when
+   * `traverse` is set, else per non-negative index (sorted, de-duplicated). Empty inputs yield no
+   * captures.
    */
-  /**
-   * Reads `@AmbientPreview(state, burnInProtectionRequired, deviceHasLowBitAmbient)` off the
-   * function annotation list. Returns a single [AmbientCapture] when present, `null` otherwise.
-   * Mirrors `extractFocusSpecs` but single-shot — the annotation maps to one preview variant per
-   * function (the consumer authors a separate `@AmbientPreview` `@Preview` function for each state
-   * they want to render).
-   */
+  /** Reads `@AmbientPreview` into a single [AmbientCapture], or `null`. One state per function. */
   private fun extractAmbientSpec(annotations: List<AnnotationInfo>): AmbientCapture? {
     val ann = annotations.firstOrNull { it.name == AMBIENT_PREVIEW_FQN } ?: return null
     val pv = ann.parameterValues
@@ -4205,19 +3415,15 @@ object PreviewDiscovery {
         runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
       }
       .distinct()
-      // JVM annotation-table order is not a source-order contract (ClassGraph can expose repeated
-      // entries in reverse). Keep capture names and manifests stable across compilers/scanners.
+      // Annotation-table order isn't source order (ClassGraph may reverse repeated entries); sort
+      // for stable names.
       .sortedBy { it.ordinal }
   }
 
   /**
-   * Reads `@SettledPreview(afterMs, maxMs)` into a [SettleCapture], or `null` when the annotation
-   * is absent.
-   *
-   * Both knobs are clamped here rather than in the renderers: discovery is the single place the
-   * manifest is written, so a nonsense value can't reach two backends and be clamped differently in
-   * each. A negative `afterMs` degrades to auto; `maxMs` is floored at one frame so an auto settle
-   * always gets at least one advance, and capped at [MAX_SETTLE_MS].
+   * Reads `@SettledPreview(afterMs, maxMs)`, or `null`. Clamped here — the single place the
+   * manifest is written — so backends can't clamp differently: negative `afterMs` means auto;
+   * `maxMs` is floored at one frame and capped at [MAX_SETTLE_MS].
    */
   private fun extractSettleSpec(annotations: List<AnnotationInfo>): SettleCapture? {
     val ann = annotations.firstOrNull { it.name == SETTLED_PREVIEW_FQN } ?: return null
@@ -4231,16 +3437,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@CaptureGutter(all, start, top, end, bottom)` into a [CaptureGutterDp], or `null` when
-   * the annotation is absent or every edge resolves to zero (an all-zero gutter is what "no
-   * annotation" already means, and recording it would put an inert field in every manifest that
-   * copies one).
-   *
-   * Clamped here rather than in the renderers, for the same reason [extractSettleSpec] clamps:
-   * discovery is the single place the manifest is written, so a nonsense value can't reach the two
-   * backends and be clamped differently in each — which would show up as a lane-parity diff rather
-   * than as an error. A negative edge is `0`; anything past [MAX_CAPTURE_GUTTER_DP] is capped
-   * there.
+   * Reads `@CaptureGutter` into [CaptureGutterDp], or `null` when absent or all-zero. Clamped here
+   * like [extractSettleSpec], to `0..`[MAX_CAPTURE_GUTTER_DP].
    */
   private fun extractCaptureGutter(annotations: List<AnnotationInfo>): CaptureGutterDp? {
     val ann = annotations.firstOrNull { it.name == CAPTURE_GUTTER_FQN } ?: return null
@@ -4261,12 +3459,7 @@ object PreviewDiscovery {
     return gutter.takeUnless { it.isEmpty() }
   }
 
-  /**
-   * Reads a `@GestureHintPreview` off [annotations] into a [GestureHintCapture], or `null` when the
-   * annotation is absent. Like [extractAmbientSpec] this is a single-shot per function — the
-   * consumer pairs a bare `@Preview` (hint off) with a `@GestureHintPreview` `@Preview` (hint on)
-   * over the same screen.
-   */
+  /** Reads `@GestureHintPreview`, or `null`. One per function. */
   private fun extractGestureHintSpec(annotations: List<AnnotationInfo>): GestureHintCapture? {
     val ann = annotations.firstOrNull { it.name == GESTURE_HINT_PREVIEW_FQN } ?: return null
     val showHints = (ann.parameterValues.getValue("showHints") as? Boolean) ?: true
@@ -4274,15 +3467,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads a `@PermissionPreview(grants = ["android.permission.CAMERA=granted"])` off [annotations]
-   * into a [PermissionsCapture], or `null` when the annotation is absent or contributed nothing
-   * usable. Single-shot per function like [extractAmbientSpec] / [extractGestureHintSpec] — the
-   * consumer pairs a bare `@Preview` (denied) with a `@PermissionPreview` `@Preview` (granted) over
-   * the same screen — and the resulting capture is stamped onto every `@Preview` expansion.
-   *
-   * Returning `null` for "annotation present but empty" is deliberate: the renderer only builds the
-   * permissions extension when the capture is non-null, and an empty grant map would otherwise mean
-   * "deny everything", which is a different (and surprising) statement from "no override".
+   * Reads `@PermissionPreview`, or `null` when absent or contributing nothing usable. `null` rather
+   * than an empty map, because an empty grant map would mean "deny everything", not "no override".
    */
   private fun extractPermissionSpec(
     annotations: List<AnnotationInfo>,
@@ -4296,25 +3482,12 @@ object PreviewDiscovery {
   }
 
   /**
-   * Parses `@PermissionPreview.grants` entries — each `"<permission>=<state>"`, e.g.
-   * `"android.permission.CAMERA=granted"` — into the capture's grant map.
+   * Parses `"<permission>=<state>"` grant entries, split on the first `=`; `granted` / `denied` are
+   * case-insensitive and trimmed.
    *
-   * Split on the **first** `=` only: an Android permission constant never contains one, but
-   * splitting on all of them would silently mangle a hypothetical vendor permission that does, and
-   * a wrong grant is worse than a rejected one. `granted` / `denied` are matched case-insensitively
-   * after trimming, so `GRANTED` and ` Granted ` both parse.
-   *
-   * Malformed entries are dropped with a warning rather than failing the build — the same policy
-   * [extractPreviewAxes] applies to an unusable axis. That matters here because the silent symptom
-   * is a preview *named* "granted" capturing the denied branch (issue #3676), so the warning names
-   * the offending entry and the accepted spellings.
-   *
-   * Duplicate permissions keep the first entry. A duplicate that agrees is not worth a warning (an
-   * annotation reached twice is a normal discovery outcome); one that disagrees is a contradiction
-   * the author has to resolve, so it warns.
-   *
-   * `internal` purely so [PreviewDiscoveryPermissionGrantsTest] can exercise the grammar without
-   * standing up a Gradle build.
+   * Malformed entries are dropped with a warning naming the accepted spellings, since the silent
+   * symptom is a "granted" preview capturing the denied branch. Duplicates keep the first; only
+   * disagreeing duplicates warn. `internal` for tests.
    */
   internal fun parsePermissionGrants(
     entries: List<String>,
@@ -4354,10 +3527,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Walking-state for a `@LauncherWidgetResize` annotation: the source / target cell counts plus
-   * the shared cell-grid knobs every stop on the walk inherits. The cell-bound clamp from
-   * `@LauncherWidgetPreview` is intentionally absent — `@LauncherWidgetResize` is point-to-point
-   * (from explicitly given), not slider-style.
+   * Source/target cell counts plus shared grid knobs for a `@LauncherWidgetResize` walk.
+   * Point-to-point, so no cell-bound clamp.
    */
   internal data class LauncherWidgetResizeSpec(
     val from: Pair<Int, Int>,
@@ -4370,10 +3541,8 @@ object PreviewDiscovery {
   )
 
   /**
-   * Whole-cell stops on the walk between `from` and `to` under [order]. Algorithm copy of
-   * `:data-launcher-widget-connector`'s `launcherWidgetStops(...)` — the gradle plugin can't depend
-   * on the connector at discovery time, so the algorithm is duplicated here. Keep in sync with the
-   * connector if the underlying behaviour ever changes.
+   * Whole-cell stops from `from` to `to` under [order]. Copy of the connector's
+   * `launcherWidgetStops(...)` (not a discovery-time dependency); keep in sync.
    */
   private fun launcherWidgetResizeStops(
     from: Pair<Int, Int>,
@@ -4417,10 +3586,7 @@ object PreviewDiscovery {
     }
   }
 
-  /**
-   * Reads `@LauncherWidgetResize(fromWidth, fromHeight, toWidth, toHeight, ...)` off the function
-   * annotation list. Returns a single [LauncherWidgetResizeSpec] when present, `null` otherwise.
-   */
+  /** Reads `@LauncherWidgetResize`, or `null`. */
   private fun extractLauncherWidgetResizeSpec(
     annotations: List<AnnotationInfo>
   ): LauncherWidgetResizeSpec? {
@@ -4452,12 +3618,9 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@LauncherWidgetPreview(width, height, cellSizeDp, cellSpacingDp, minWidth, …)` off the
-   * function annotation list. Returns a single [LauncherWidgetCapture] when present, `null`
-   * otherwise. Mirrors `extractAmbientSpec` — single-shot per function, applied to every preview
-   * variant. Optional `Int` parameters use `-1` as the "not set" sentinel (annotation parameters
-   * can't be nullable in Kotlin); we map that back to `null` so the renderer / connector apply
-   * their own defaults rather than treating `-1` as a literal.
+   * Reads `@LauncherWidgetPreview`, or `null`; applied to every expansion. Optional `Int`s use `-1`
+   * as "not set" (annotation params can't be nullable), mapped back to `null` so the connector
+   * applies its defaults.
    */
   private fun extractLauncherWidgetSpec(annotations: List<AnnotationInfo>): LauncherWidgetCapture? {
     val ann = annotations.firstOrNull { it.name == LAUNCHER_WIDGET_PREVIEW_FQN } ?: return null
@@ -4493,9 +3656,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Returns a single [FocusGifCapture] when the function carries `@FocusedPreview(gif = true)` and
-   * the captured step list has at least one entry. `null` otherwise — single-step annotations
-   * collapse to plain captures and never produce a GIF (a one-frame GIF wouldn't animate anything).
+   * A [FocusGifCapture] for `@FocusedPreview(gif = true)` with at least one step, else `null` (a
+   * one-frame GIF animates nothing).
    */
   private fun extractFocusGifSpec(annotations: List<AnnotationInfo>): FocusGifCapture? {
     val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return null
@@ -4513,10 +3675,7 @@ object PreviewDiscovery {
     val pressed = (pv.getValue("pressed") as? Boolean) ?: false
     val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
     if (directions.isNotEmpty()) {
-      // 1-based `step` lets the overlay label and the filename suffix
-      // disambiguate repeated directions (e.g. `Next, Next, Previous`). `pressed` is
-      // indexed-mode only — traversal-mode walks across focusables without a "settle and press"
-      // point, so it's intentionally not carried here.
+      // 1-based `step` disambiguates repeated directions. `pressed` is indexed-mode only.
       return directions.mapIndexed { i, dir ->
         FocusCapture(direction = dir, step = i + 1, overlay = overlay)
       }
@@ -4545,10 +3704,7 @@ object PreviewDiscovery {
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {
     val ann = annotations.firstOrNull { it.name == SCROLLING_PREVIEW_FQN } ?: return emptyList()
     val pv = ann.parameterValues
-    // ClassGraph surfaces the `modes: Array<ScrollMode>` field as an
-    // Object[] of AnnotationEnumValue; same shape as `manualClockOptions`
-    // above. Enum constants are compared by `.valueName` so we never
-    // force-load the annotation's classes.
+    // `modes` arrives as `AnnotationEnumValue`s; compare by `.valueName` to avoid loading classes.
     val rawModes = pv.getValue("modes")
     val modes = readEnumArray(rawModes) { ScrollMode.valueOf(it) }
     if (modes.isEmpty()) return emptyList()
@@ -4558,19 +3714,10 @@ object PreviewDiscovery {
       } ?: ScrollAxis.VERTICAL
     val maxScrollPx = (pv.getValue("maxScrollPx") as? Int)?.coerceAtLeast(0) ?: 0
     val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
-    // `frameIntervalMs` only meaningful for GIF mode; we still read it
-    // unconditionally and carry it into every ScrollCapture so the
-    // manifest shape stays uniform. `0` (or negative, coerced) signals
-    // "use the renderer's default" — matching the annotation-side
-    // DEFAULT_GIF_FRAME_INTERVAL_MS without duplicating the literal here.
+    // Carried into every [ScrollCapture] for a uniform shape; `0` means the renderer default.
     val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.coerceAtLeast(0) ?: 0
-    // Result fields (atEnd, reachedPx) default to "not reported" — the
-    // renderer would fill them in post-capture; discovery knows only the
-    // intent. De-dup to guard against `modes = [END, END]` producing
-    // colliding paths. Sort by enum ordinal (TOP→END→LONG→GIF) so the
-    // renderer captures the initial frame before driving the scroller —
-    // otherwise `modes = [END, TOP]` would produce a "TOP" PNG at the
-    // scrolled-end position.
+    // De-dup (`[END, END]` would collide) and sort by ordinal so TOP is captured before the
+    // scroller is driven.
     return modes
       .distinct()
       .sortedBy { it.ordinal }
@@ -4585,11 +3732,8 @@ object PreviewDiscovery {
       }
   }
 
-  // Reads an annotation's Array<EnumT> parameter and maps each entry by
-  // `.valueName` through [parse]. ClassGraph can hand this back as a plain
-  // array, a single AnnotationEnumValue (single-entry arrays), or a typed
-  // array we need to walk reflectively — same cases as
-  // [extractRoboTimings].
+  // Maps an `Array<EnumT>` parameter by `.valueName`. ClassGraph may return a plain array, a single
+  // value, or a typed array (as in [extractRoboTimings]).
   private fun <T> readEnumArray(raw: Any?, parse: (String) -> T): List<T> {
     if (raw == null) return emptyList()
     val items =
@@ -4632,15 +3776,9 @@ object PreviewDiscovery {
     return result
   }
 
-  // Preview-adjacent annotations we own that legitimately never expand into a `@Preview` — they
-  // modify, wrap, or parameterise a preview rather than declare one. Their simple names all contain
-  // `Preview`, so the unexpandable-annotation heuristic below (which matches on
-  // `contains("Preview")`
-  // — the wear multi-preview annotations put `Preview` mid-name, e.g. `WearPreviewLargeRound`) must
-  // exclude them explicitly or it would warn on every `@ScrollingPreview` / `@PreviewParameter`.
-  // The
-  // direct-preview FQNs — plain / desktop / tile / notification / glance / XR `@Preview` — are
-  // excluded separately by [isDirectPreview].
+  // Our preview-adjacent annotations that modify a preview rather than declare one. Their names
+  // contain `Preview`, so the unexpandable-annotation heuristic below must exclude them. Direct
+  // preview FQNs are excluded via [isDirectPreview].
   private val NON_EXPANDING_PREVIEW_FQNS =
     setOf(
       SCROLLING_PREVIEW_FQN,
@@ -4662,23 +3800,12 @@ object PreviewDiscovery {
     )
 
   /**
-   * FQNs among [annotations] that look like preview-family annotations — a multi-preview
-   * meta-annotation whose simple name contains `Preview` — whose annotation class is NOT on the
-   * discovery classpath, so [resolveMultiPreview] can't reach the `@Preview`(s) inside them and the
-   * preview is dropped with no diagnostic. Issue #2613: `@WearPreviewLargeRound` in an app's `main`
-   * source set, whose wear tooling artifact was wired only into `screenshotTest`, vanished this
-   * way.
+   * FQNs in [annotations] that look like multi-preview annotations (name contains `Preview`) but
+   * whose class is off the discovery classpath, so the preview would be dropped silently (#2613).
    *
-   * Keyed on the annotation class being **absent from the scan** (`getClassInfo == null`). The scan
-   * doesn't `enableExternalClasses()`, so ClassGraph returns null — never a placeholder — for a
-   * class it only saw referenced, which is precisely the off-classpath case. This is what
-   * distinguishes a genuinely-dropped preview from a *reachable* annotation that merely happens to
-   * contain `Preview` in its name and isn't a multi-preview (a project's own `@PreviewOnly`
-   * marker): the latter is scanned, so `getClassInfo` is non-null and it is not flagged — no
-   * misleading "classpath" WARN on healthy modules (Codex review, PR #2631). `isExternalClass` is
-   * folded in defensively in case external-class scanning is ever enabled. The
-   * capture/wrapper/parameter annotations we own are excluded via [NON_EXPANDING_PREVIEW_FQNS], and
-   * direct `@Preview` / `Preview.Container` are handled elsewhere.
+   * Keyed on `getClassInfo == null`: without `enableExternalClasses()` ClassGraph returns null only
+   * for unscanned classes, so a reachable non-preview annotation like `@PreviewOnly` isn't flagged.
+   * `isExternalClass` is folded in defensively.
    */
   private fun unexpandablePreviewAnnotationNames(
     annotations: List<AnnotationInfo>,
@@ -4697,9 +3824,8 @@ object PreviewDiscovery {
       .toList()
 
   /**
-   * A single `@Preview` expansion of a well-known AndroidX / Wear multi-preview annotation, used as
-   * a built-in fallback when the annotation class is off the discovery classpath (issue #2613).
-   * Only the fields these annotations actually vary are modelled.
+   * One `@Preview` expansion of a well-known AndroidX / Wear multi-preview annotation, the fallback
+   * when its class is off the classpath (#2613).
    */
   private data class BuiltInPreviewSpec(
     val name: String? = null,
@@ -4712,10 +3838,8 @@ object PreviewDiscovery {
     val backgroundColor: Long = 0L,
   )
 
-  // Every wear `@Preview` sets showBackground / showSystemUi / backgroundColor=0xff000000 and
-  // labels
-  // the variant with `group`, never `name` (verbatim from
-  // androidx.wear.compose:compose-ui-tooling).
+  // Every wear `@Preview` sets showBackground / showSystemUi / black background and labels the
+  // variant with `group` (verbatim from compose-ui-tooling).
   private fun wearSpec(device: String, group: String, fontScale: Float = 1.0f) =
     BuiltInPreviewSpec(
       group = group,
@@ -4727,15 +3851,10 @@ object PreviewDiscovery {
     )
 
   /**
-   * Stable, documented `@Preview` expansions of the well-known AndroidX / Wear multi-preview
-   * annotations, transcribed verbatim from the AndroidX sources (wear:
-   * `androidx.wear.compose:compose-ui-tooling`; compose: `androidx.compose.ui:ui-tooling-preview`
-   * `MultiPreviews.kt`). Consulted only when the annotation class is off the discovery classpath —
-   * see [builtInExpansionFor] — so a preview annotated only with e.g. `@WearPreviewLargeRound` in a
-   * `main` source set (its wear tooling wired into `screenshotTest`) still renders instead of
-   * vanishing. `@PreviewDynamicColors` is intentionally absent: its only axis is `wallpaper=`,
-   * which this pipeline doesn't model, so its four variants would render identically — the
-   * off-classpath WARN is more honest than four duplicate PNGs.
+   * Verbatim `@Preview` expansions of the well-known AndroidX / Wear multi-preview annotations,
+   * consulted only when the annotation class is off the classpath (see [builtInExpansionFor]).
+   * `@PreviewDynamicColors` is absent: its only axis is `wallpaper=`, which isn't modelled, so the
+   * warning beats four identical PNGs.
    */
   private val BUILT_IN_MULTIPREVIEW_EXPANSIONS: Map<String, List<BuiltInPreviewSpec>> =
     mapOf(
@@ -4811,11 +3930,8 @@ object PreviewDiscovery {
     )
 
   /**
-   * The built-in [BuiltInPreviewSpec] expansion for [ann], but ONLY when its annotation class is
-   * off the discovery classpath (`getClassInfo == null`; `isExternalClass` folded in defensively).
-   * An on-classpath copy is resolved from its real `@Preview` definitions by [resolveMultiPreview]
-   * instead, so a project that shadows the annotation keeps its own definition and we never
-   * double-expand.
+   * Built-in expansion for [ann] only when its class is off the classpath; on-classpath copies
+   * resolve from their real definitions, so shadowing works and nothing double-expands.
    */
   private fun builtInExpansionFor(
     ann: AnnotationInfo,
@@ -4828,9 +3944,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Builds [PreviewParams] from a built-in spec, resolving the device to concrete dims/density the
-   * same way [extractPreviewParams] does for a real `@Preview`, and threading the function-level
-   * `@PreviewWrapper` / `@PreviewParameter` bindings through.
+   * [PreviewParams] from a built-in spec, resolved the same way [extractPreviewParams] resolves a
+   * real `@Preview`.
    */
   private fun BuiltInPreviewSpec.toParams(
     wrapperClassName: String?,
@@ -4892,8 +4007,7 @@ object PreviewDiscovery {
     classInfo: ClassInfo,
     method: MethodInfo,
     ann: AnnotationInfo,
-    // Carried only to resolve an enum-typed knob parameter to its constants — the one thing a
-    // preview's own class file cannot answer. See `ComposableSignature.knobsOf`.
+    // Only to resolve enum-typed knob parameters; see `ComposableSignature.knobsOf`.
     scanResult: ScanResult,
     wrapperClassName: String?,
     scrolls: List<ScrollCapture>,
@@ -4940,12 +4054,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Assembles a [PreviewInfo] from already-resolved [params] — the shared tail of [makePreview]
-   * (which sources [params] from a real `@Preview` [AnnotationInfo]) and the built-in multi-preview
-   * expansion (which builds [params] from a [BuiltInPreviewSpec] table when the annotation class is
-   * off the discovery classpath — issue #2613). Keeping the id/suffix/output-plan/target assembly
-   * in one place means a synthesised preview fans out captures (scroll/animation/focus/…) and
-   * infers targets identically to a real one.
+   * Assembles a [PreviewInfo] from resolved [params]: the shared tail of [makePreview] and the
+   * built-in expansion path, so both fan out captures and infer targets identically.
    */
   private fun buildPreviewInfo(
     classInfo: ClassInfo,
@@ -4989,9 +4099,8 @@ object PreviewDiscovery {
         launcherWidgetResize,
         timings,
       )
-    // Tile / notification previews don't go through @Composable invocations — they return a
-    // `TilePreviewData` / `Notification` and the renderer reflects them directly. Skipping the
-    // lazy means the bytecode walk never runs for these methods.
+    // Tile / notification previews aren't invoked through Compose; skipping keeps the bytecode walk
+    // from running.
     val skipTargetInference =
       params.kind == PreviewKind.TILE ||
         params.kind == PreviewKind.NOTIFICATION ||
@@ -5008,43 +4117,27 @@ object PreviewDiscovery {
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
       targets = targets,
-      // Read off the METHOD rather than the `@Preview` annotation being expanded: a multi-preview
-      // fans one function out into several `PreviewInfo`s, and a theme specimen is fixed for every
-      // one of them. Reading it here also covers the built-in multi-preview expansion path, which
-      // never sees a real `@Preview` [AnnotationInfo].
+      // Read off the method, so every expansion (including built-in ones) shares it.
       fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
       includeInA11y =
         method.annotationInfo
           .firstOrNull { it.name == PREVIEW_HELPER_FQN }
           ?.let { annBoolean(it, "includeInA11y", default = true) } ?: true,
-      // The secondary override format: knobs the preview declares as its own defaulted value
-      // parameters. Read off the METHOD, like `fixedTheme` above, so every expansion of a
-      // multi-preview carries the same signature-derived set. Empty for every preview that declares
-      // none, which is every `previewOverride*` preview and every parameterless one.
+      // Knobs from defaulted value parameters, read off the method so every expansion shares them.
       knobs = ComposableSignature.knobsOf(classInfo, method, scanResult),
-      // Skipped for the same non-@Composable kinds as `targets` above — those never invoke a
-      // library component, so the bytecode walk would only cost time.
-      // Skipped for the same non-`@Composable` kinds as `targets` above (`skipTargetInference`),
-      // which never invoke a library component through a composition at all.
+      // Skipped for the same non-composable kinds as `targets`.
       componentTargets = if (skipTargetInference) emptyList() else inferredComponentTargets.value,
     )
   }
 
   /**
-   * The first line of the method body, from the classfile's `LineNumberTable`, or null when it
-   * carries none (ClassGraph reports `0`, which is what the guard rejects).
-   *
-   * `enableMethodInfo()` is already on for the whole scan, so this costs nothing beyond reading an
-   * int — no extra pass, no source parsing.
-   *
-   * Only the *first* line, never the last: `maxLineNum` is unreliable on Kotlin because an inline
-   * function's body carries SMAP line numbers past the end of the calling file. See
-   * [PreviewInfo.bodyLine].
+   * First body line from `LineNumberTable`, or null when absent (ClassGraph reports `0`). Never the
+   * last line: inlined code makes `maxLineNum` unreliable. See [PreviewInfo.bodyLine].
    */
   private fun bodyLineOf(method: MethodInfo): Int? = method.minLineNum.takeIf { it > 0 }
 
-  // Module-relative source path, e.g. "src/main/kotlin/com/example/samplewear/Previews.kt".
-  // Fall back to the old package-qualified path when source files were not wired into the task.
+  // Module-relative source path (e.g. `src/main/kotlin/…/Previews.kt`), falling back to the
+  // package-qualified path when source files weren't wired in.
   private fun sourceFilePath(classInfo: ClassInfo, input: Input): String? {
     val packageQualified = packageQualifiedSourcePath(classInfo) ?: return null
     val source =
@@ -5062,25 +4155,17 @@ object PreviewDiscovery {
     }
   }
 
-  // Package-qualified source path, e.g. "com/example/samplewear/Previews.kt".
-  // The bytecode SourceFile attribute is just the basename, which collides
-  // when two files with the same name live in different packages within one
-  // module. Prefixing with the package path makes the value unique and lets
-  // the VSCode extension / CLI resolve a preview back to the exact file.
+  // Package-qualified source path, e.g. `com/example/samplewear/Previews.kt`. The bytecode
+  // `SourceFile` is just the basename, which collides across packages.
   private fun packageQualifiedSourcePath(classInfo: ClassInfo): String? {
     val simpleName = classInfo.sourceFile ?: return null
     val pkg = classInfo.packageName.orEmpty()
     return if (pkg.isEmpty()) simpleName else "${pkg.replace('.', '/')}/$simpleName"
   }
 
-  // Disambiguates multi-preview expansions (e.g. @WearPreviewDevices → large_round
-  // + small_round) when the inner @Preview has no explicit `name`. Without this
-  // every variant collides on the same id / PNG path.
-  //
-  // Prefer `group` — Horologist's @WearPreview* annotations set a distinct, human
-  // readable group per variant (e.g. "Fonts - Large"), so it captures exactly what
-  // varies. Fall back to device + fontScale + uiMode only if neither name nor
-  // group is present.
+  // Disambiguates multi-preview expansions without an explicit `name`, which would otherwise
+  // collide. Prefers `group` (Horologist sets a readable one per variant), then device + fontScale
+  // + uiMode.
   private fun buildVariantSuffix(params: PreviewParams): String {
     val name = params.name
     if (!name.isNullOrBlank()) return "_${sanitizeForPath(name)}"
@@ -5093,52 +4178,27 @@ object PreviewDiscovery {
     return if (parts.isEmpty()) "" else "_" + parts.joinToString("_")
   }
 
-  // Strip characters that would break file paths or IDs. Spaces are left alone
-  // (they already appear in existing `_Red Box.png`-style outputs). Dots are
-  // deliberately left intact here so the `id` stays lossless — two variants whose
-  // names differ only by `.` vs `_` must keep distinct ids (the manifest dedups by
-  // id). The render-stem derivation handles name-dots separately; see
-  // `sanitiseSegments`.
+  // Strips path-breaking characters. Spaces and dots are kept so ids stay lossless (dedup is by
+  // id); render stems handle dots separately (`sanitiseSegments`).
   private fun sanitizeForPath(s: String): String = s.replace(Regex("""[/\\:*?"<>|]"""), "_")
 
   /**
-   * Retarget a Wear module's device-less, wrap-content component previews from Studio's phone
-   * default device to the Wear default. A frame-less `@Preview(showBackground = false)` declares no
-   * `device`, so [extractPreviewParams] leaves it wrap-content at
-   * [DeviceDimensions.DEFAULT_DENSITY] (2.625x — Studio's xxhdpi phone default), which renders a
-   * Wear sticker on a ~400dp phone canvas (the fill-width components size like a phone, and the
-   * export's dp→px scale is off by 2.625/2.0). On a Wear module ([Input.isWear]) such previews are
-   * measured against the Wear screen + density ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x).
-   * Previews that pin their own `device` / `widthDp` / `heightDp` (e.g. the `id:wearos_*_round`
-   * breakpoints, or fixed-size specimens) are left untouched, and the preview id — which never
-   * encodes a device for a device-less preview — is unchanged, so `catalog.spec.json` references
-   * and delivery filenames stay stable. A no-op off Wear.
+   * Retargets a Wear module's device-less wrap-content previews from Studio's phone default
+   * (2.625x, ~400dp) to the Wear screen ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x). Previews
+   * pinning `device` / `widthDp` / `heightDp` and preview ids are unchanged. No-op off Wear.
    *
-   * The retarget sets [PreviewParams.wrapSandboxWidthDp] / [PreviewParams.wrapSandboxHeightDp], NOT
-   * `widthDp` / `heightDp`. Both axes stay wrapped, so every sticker still crops to its measured
-   * bounds; all that changes is the bound `fillMaxWidth`/`fillMaxHeight` resolve against. That's
-   * the distinction #2373 originally missed: it pinned the axes to fix a fill-width `Card` that was
-   * measuring on a 400dp phone sandbox (rendering 1050×210), and in doing so suppressed the crop
-   * for every OTHER device-less preview in the module — a `FilledButton` sticker that used to
-   * export 217×179 became a 454×454 watch canvas with the button adrift in the corner. Sandboxing
-   * instead of pinning fixes the Card (it fills to 227dp) and keeps the Button tight.
+   * Sets [PreviewParams.wrapSandboxWidthDp] / [PreviewParams.wrapSandboxHeightDp], not `widthDp` /
+   * `heightDp`: both axes stay wrapped, so fill-width components size to the watch while everything
+   * still crops to its measured bounds. Pinning the axes (#2373) left small components adrift on a
+   * full watch canvas.
    *
-   * [pinWearCanvas] (from the `retargetWearPreviews` extension flag, [Input.retargetWearPreviews])
-   * selects between two Wear behaviours for those device-less previews; it's a no-op off Wear:
-   * - `true` (default): measure against the 227dp watch screen at Wear density, then crop.
-   * - `false`: leave the sandbox at the renderer's generic 400dp default and only swap in the Wear
-   *   density (2.0x), so a Wear widget/tile asset exported at fixed size scales to watch-density px
-   *   rather than the inherited 2.625x phone default (#2670). A widget must not inherit the watch
-   *   screen as its measuring bound — `fillMaxWidth` inside one means "fill the widget", not "fill
-   *   the watch".
+   * [pinWearCanvas] ([Input.retargetWearPreviews]):
+   * - `true` (default): sandbox to the 227dp watch screen at Wear density.
+   * - `false`: keep the generic 400dp sandbox and only swap in Wear density, for widget/tile assets
+   *   (#2670).
    *
-   * **Auto-detected Wear widgets always take the `false` branch, regardless of [pinWearCanvas].** A
-   * glance-wear widget preview — one whose `@PreviewParameter` provider comes from
-   * `androidx.glance.wear.*` (the `Squircle`/`RectangularAllWidgetPreviewParams` providers that
-   * feed `WearWidgetParams`) — is exported as a fixed-size drawable asset, so no per-module config
-   * is needed for the common widget case; the flag remains the override for non-glance widget param
-   * types (#2670). This is per-preview, so one module can mix fill-width catalog components
-   * (watch-sandboxed) with widgets (not).
+   * Auto-detected glance-wear widgets ([isWearWidgetPreview]) always take the `false` branch, per
+   * preview.
    */
   internal fun retargetWearStickers(
     isWear: Boolean,
@@ -5150,24 +4210,18 @@ object PreviewDiscovery {
     return previews.map { info ->
       val p = info.params
       val isWidget = isWearWidgetPreview(p)
-      // A widget carries its canvas in its `WearWidgetParams`, so a `device` on one describes a
-      // screen it never occupies — see [isWearWidgetPreview]. A device spec is already resolved
-      // into `widthDp`/`heightDp` by the time previews reach here, so dropping the device means
-      // dropping those with it: they are the spec's canvas, not a size asked of the widget.
+      // A widget's canvas is its `WearWidgetParams`, so a `device` (already resolved into
+      // `widthDp`/`heightDp`) is dropped along with those dims. See [isWearWidgetPreview].
       val widgetCanvas = isWidget && p.device != null
       if (
         p.kind == PreviewKind.COMPOSE &&
           (widgetCanvas || (p.device == null && p.widthDp == null && p.heightDp == null))
       ) {
-        // A glance-wear widget keeps the generic sandbox even when the flag would otherwise hand it
-        // the watch screen — `fillMaxWidth` inside a widget means "fill the widget".
+        // `fillMaxWidth` inside a widget means "fill the widget", not the watch.
         val sandboxToWatch = pinWearCanvas && !isWidget
         if (sandboxToWatch) {
-          // Measure against the wear screen (square 227dp) at wear density, so fill-width
-          // components
-          // (Card) size to the watch and dp→px matches the render. Both axes stay WRAPPED, so the
-          // renderer still crops each PNG to its measured bounds — a Card fills the 227dp and keeps
-          // it, a Button wraps tight.
+          // Wear screen + density as the wrap sandbox; both axes stay wrapped so the renderer still
+          // crops.
           info.copy(
             params =
               p.copy(
@@ -5177,17 +4231,8 @@ object PreviewDiscovery {
               )
           )
         } else {
-          // Opted out (`retargetWearPreviews = false`) or an auto-detected widget: leave the
-          // sandbox
-          // at the renderer's generic default so the composable measures against a widget-sized
-          // bound rather than the watch screen (#2670). Still apply the Wear density (2.0x) rather
-          // than the inherited phone default (2.625x), so the cropped dp bounds scale to the
-          // correct
-          // watch-density px, not an oversized phone-scale export.
-          //
-          // The device goes with it for a widget, and only for a widget: a device that survived
-          // the branch above is a widget's, and honouring it renders the widget across that whole
-          // screen instead of cropping to its footprint.
+          // Generic sandbox, Wear density (#2670). The device is dropped only for widgets;
+          // honouring it would render the widget across the whole screen.
           if (widgetCanvas) {
             info.copy(
               params =
@@ -5204,16 +4249,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Maven group of the Glimmer UI toolkit, matched against [Input.dependencyJarCoordinates].
-   *
-   * Detection is by DEPENDENCY rather than by manifest, which is the difference from [Input.isWear]
-   * and not an inconsistency: a Wear module announces itself with `<uses-feature
-   * android:name="android.hardware.type.watch">`, and glasses have no such feature to declare. What
-   * makes a module a Glimmer module is that it draws with Glimmer, and the classpath is where that
-   * is written down.
-   *
-   * Group prefix rather than an exact artifact so `glimmer`, `glimmer-google-fonts` and whatever
-   * the line adds next all count, and so an alpha repackaging does not silently stop matching.
+   * Glimmer modules are detected by dependency group (glasses have no manifest feature like Wear's
+   * `type.watch`). A prefix so all `androidx.xr.glimmer` artifacts match.
    */
   private const val GLIMMER_COORDINATE_PREFIX = "androidx.xr.glimmer:"
 
@@ -5224,29 +4261,14 @@ object PreviewDiscovery {
     input.dependencyJarCoordinates.values.any { it.startsWith(GLIMMER_COORDINATE_PREFIX) }
 
   /**
-   * Measure a Glimmer module's device-less previews against the AI-glasses display
-   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the renderer's 400dp phone
-   * sandbox at 2.625x. A no-op off Glimmer, and on any preview that pins its own canvas.
+   * Measures a Glimmer module's device-less previews against the AI-glasses display
+   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the phone sandbox. Density 1.0
+   * is a calibration, since Glimmer sizes UI in visual angle.
    *
-   * This is [retargetWearStickers]'s argument applied to a second form factor, and the reason is
-   * the same twice over: a module drawing for a screen that is not a phone should measure against
-   * that screen, and export at that screen's density. What is Glimmer-specific is how much the
-   * density matters — Glimmer sizes UI in visual angle, so density 1.0 is a calibration rather than
-   * a scale factor (see [DeviceDimensions.DEFAULT_GLASSES]).
-   *
-   * As with Wear, this sets [PreviewParams.wrapSandboxWidthDp] /
-   * [PreviewParams.wrapSandboxHeightDp] and NOT `widthDp` / `heightDp`. The distinction is the
-   * whole point, and both halves of it were observed in the field before this existed:
-   * - Pinning the axes is what #2373 did on Wear, and yschimke/m3-catalog#367 is the same fault
-   *   arrived at from the other direction: `glimmer-catalog` wrote `device =
-   *   "spec:width=960,height=720,dpi=160"` on all 19 stickers, and every one of them became a
-   *   component adrift in a 691,200-pixel frame — a 118x48 toggle button at 0.8% coverage, 4.1% on
-   *   average across the sheet.
-   * - Leaving the sandbox alone is what gives a fill-width `Card` a 400dp phone bound it has no
-   *   relationship to.
-   *
-   * Sandboxing gets both: `fillMaxWidth` resolves against 960dp so a Card sizes to the display, a
-   * Button still wraps tight, and the renderer crops every sticker to its measured bounds.
+   * Like [retargetWearStickers], this sets the wrap sandbox, not `widthDp` / `heightDp`: pinning
+   * the axes leaves small components adrift in a huge frame, while the phone sandbox gives
+   * fill-width components a meaningless bound. No-op off Glimmer and on previews that pin their own
+   * canvas.
    */
   internal fun retargetGlimmerStickers(
     isGlimmer: Boolean,
@@ -5268,44 +4290,30 @@ object PreviewDiscovery {
             )
         )
       } else {
-        // A preview that names its own device or size is asking for exactly that, and a specimen
-        // pinned to a measured width is the usual reason. Left untouched, same as on Wear.
+        // An explicit device or size is honoured as on Wear.
         info
       }
     }
   }
 
   /**
-   * Package prefixes of `@PreviewParameter` providers that mark a preview as a **Wear widget** —
-   * glance-wear's `SquircleAllWidgetPreviewParams` / `RectangularAllWidgetPreviewParams` and any
-   * other provider under `androidx.glance.wear.*`, all of which feed `WearWidgetParams`. Matched by
-   * FQN prefix so the alpha package layout (`androidx.glance.wear.tooling.preview.*`) is covered
-   * without pinning an exact class. A widget so detected always crops to its intrinsic bounds
-   * ([retargetWearStickers]) rather than occupying the watch-face canvas.
+   * `@PreviewParameter` provider package prefixes marking a **Wear widget** (anything under
+   * `androidx.glance.wear.*`, which feed `WearWidgetParams`). Prefix-matched to survive alpha
+   * package moves.
    */
   private val WEAR_WIDGET_PARAM_PROVIDER_PREFIXES = listOf("androidx.glance.wear.")
 
   /**
-   * True when [params] is a glance-wear widget preview — a `@PreviewParameter` preview whose
-   * provider comes from [WEAR_WIDGET_PARAM_PROVIDER_PREFIXES]. Such widgets are exported as
-   * fixed-size drawable assets and must crop to their bounds regardless of the
-   * `retargetWearPreviews` flag (#2670).
-   *
-   * A `device` on such a preview does not disqualify it, and [retargetWearStickers] drops that
-   * device rather than honouring it. A widget's canvas is its `WearWidgetParams` — the provider
-   * carries every footprint the container ships — so the screen beside it says nothing the params
-   * do not. Upstream's `wear-os-samples` widget previews (and the UI builder's generated widgets,
-   * which reproduce them) declare `device = "spec:width=1000dp,height=1000dp,dpi=320"` as a Studio
-   * scratch canvas; honouring it renders a 216×124dp widget's background across 1000×1000dp instead
-   * of cropping to the frame the widget was designed in.
+   * True when [params] is a glance-wear widget preview (provider from
+   * [WEAR_WIDGET_PARAM_PROVIDER_PREFIXES]), which always crops to its bounds regardless of
+   * `retargetWearPreviews` (#2670). A `device` doesn't disqualify it — samples declare a 1000dp
+   * Studio scratch canvas — and [retargetWearStickers] drops it.
    */
   /**
-   * The widget [preview] draws, or null when it is not one ([PreviewWidget]). A Glance Wear widget
-   * is one drawn through a widget-preview entry point ([PreviewTargetInference.drawsWearWidget], a
-   * bytecode walk [calls] defers until a composable preview needs it) or fed a glance-wear
-   * `@PreviewParameter` provider ([isWearWidgetPreview]); a launcher widget is a Glance app-widget
-   * preview or one captured in a simulated launcher (`@LauncherWidgetPreview` /
-   * `@LauncherWidgetResize`).
+   * The widget [preview] draws, or null ([PreviewWidget]). Glance Wear: drawn through a
+   * widget-preview entry point ([PreviewTargetInference.drawsWearWidget], via the deferred [calls]
+   * walk) or fed a glance-wear provider ([isWearWidgetPreview]). Launcher: a Glance app-widget
+   * preview or `@LauncherWidgetPreview` / `@LauncherWidgetResize`.
    */
   internal fun widgetOf(
     preview: PreviewInfo,
@@ -5333,25 +4341,17 @@ object PreviewDiscovery {
     wrapperClassName: String?,
     previewParameter: Pair<String, Int>?,
   ): PreviewParams {
-    // `@NotificationPreview` has no parameters, so the rest of this function — which
-    // dereferences `device` / `widthDp` / `fontScale` / etc. from `ann.parameterValues` — would
-    // throw `NoSuchElementException`. Return a minimal params object up-front.
-    //
-    // Pin `widthDp` to the sandbox width (400dp) rather than leaving it null: without it the
-    // router falls back to its 320dp square default and the AOSP notification shade inflates to
-    // its ~320dp intrinsic width, producing the cramped ~320×320 PNG from #1249. 400dp matches
-    // the canvas the `@Preview` + `NotificationContent` gallery path renders at (its
-    // `DEFAULT_NOTIFICATION_WIDTH_DP`), so FQN-discovered notifications share the wider shade
-    // footprint. Height stays on the renderer default.
+    // `@NotificationPreview` has no parameters, so return minimal params before the reads below
+    // throw. `widthDp` pins the 400dp sandbox; otherwise the shade inflates at its ~320dp intrinsic
+    // width (#1249).
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
       return PreviewParams(
         kind = PreviewKind.NOTIFICATION,
         widthDp = DeviceDimensions.SANDBOX_WIDTH_DP,
       )
     }
-    // Glance's own `androidx.glance.preview.Preview(widthDp, heightDp)`. The annotation's params
-    // started life as `()` in 1.0.x, gained `widthDp` / `heightDp` in 1.1.0-rc01. Read both
-    // optimistically; missing entries fall through to the renderer's default sandbox size.
+    // Glance's `Preview(widthDp, heightDp)`: the params arrived in 1.1.0-rc01, so read
+    // optimistically.
     if (ann.name == GLANCE_APPWIDGET_PREVIEW_FQN) {
       val pv = ann.parameterValues
       val widthDp = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
@@ -5362,8 +4362,7 @@ object PreviewDiscovery {
         heightDp = heightDp,
       )
     }
-    // XR subspace previews carry no device / dimension annotation params — the layout comes from
-    // the composed `Subspace`. Emit minimal params; the `:renderer-xr` task does the rest.
+    // The layout comes from the composed `Subspace`; `:renderer-xr` does the rest.
     if (ann.name == XR_SUBSPACE_PREVIEW_FQN) {
       return PreviewParams(kind = PreviewKind.XR_SUBSPACE)
     }
@@ -5373,13 +4372,8 @@ object PreviewDiscovery {
     val rawWidth = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
     val rawHeight = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 }
     val showSystemUi = (pv.getValue("showSystemUi") as? Boolean) ?: false
-    // AS-parity sizing: when the user picked a device or asked for the
-    // system UI frame, resolve up-front so downstream consumers (renderers,
-    // VS Code extension, CLI) see the effective widthDp/heightDp and the
-    // device's density. When no frame was requested, keep the raw user
-    // values — nulls on either axis signal "wrap to intrinsic" to the
-    // renderers, matching how Android Studio's preview pane sizes
-    // component previews.
+    // Studio parity: with a device or system UI frame, resolve dims and density up-front; otherwise
+    // keep raw values, where null means wrap to intrinsic.
     val effectiveWidth: Int?
     val effectiveHeight: Int?
     val effectiveDensity: Float?
@@ -5391,15 +4385,8 @@ object PreviewDiscovery {
     } else {
       effectiveWidth = rawWidth
       effectiveHeight = rawHeight
-      // Pin Android Studio's default preview density (xxhdpi-ish, 420dpi
-      // → 2.625x). Without this the Robolectric renderer defaults to
-      // mdpi (1.0x), which is fine at the PNG level but fuzzy in the VS
-      // Code tile grid: tiles have a `max-width: 180px`, so a 100-dp
-      // composable that produced a 100-px PNG under mdpi gets upscaled
-      // and looks blurry next to device-based previews rendered at
-      // their native densities. Pinning here keeps wrap-content
-      // previews at the same pixel density as both the Desktop
-      // renderer and Studio's own preview pane.
+      // Pin Studio's default density (2.625x) instead of Robolectric's mdpi, so wrap-content
+      // previews match device-based and desktop renders.
       effectiveDensity = DeviceDimensions.DEFAULT_DENSITY
     }
     return PreviewParams(
@@ -5415,19 +4402,12 @@ object PreviewDiscovery {
       uiMode = (pv.getValue("uiMode") as? Int)?.takeIf { it > 0 } ?: 0,
       locale = (pv.getValue("locale") as? String)?.ifBlank { null },
       group = (pv.getValue("group") as? String)?.ifBlank { null },
-      // @PreviewWrapper targets composables. Tile previews aren't composable,
-      // so even if the annotation happened to be present on the function,
-      // the wrapper's `Wrap(content)` would never wrap the tile View.
+      // Tiles aren't composable, so @PreviewWrapper and @PreviewParameter don't apply.
       wrapperClassName = if (kind == PreviewKind.TILE) null else wrapperClassName,
-      // @PreviewParameter targets composables too. Tile preview functions
-      // return `TilePreviewData`; the renderer reflects them directly and
-      // has no code path for injecting a provider value.
       previewParameterProviderClassName =
         if (kind == PreviewKind.TILE) null else previewParameter?.first,
       previewParameterLimit = previewParameter?.second ?: Int.MAX_VALUE,
       kind = kind,
-      // @ScrollingPreview is applied by `makePreview` via `.copy(scroll = …)` so
-      // the timings fan-out and scroll spec live side-by-side in one place.
     )
   }
 }

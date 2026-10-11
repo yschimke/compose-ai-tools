@@ -26,51 +26,33 @@ gradlePlugin {
   }
 }
 
-// Publish to Maven Central via the Central Portal. Snapshots (version
-// ending in `-SNAPSHOT`) route automatically to
-// `https://central.sonatype.com/repository/maven-snapshots/`.
+// Publish to Maven Central via the Central Portal; `-SNAPSHOT` versions go to the snapshot repo.
 
 dependencies {
-  // `previews.json` schema types (`PreviewInfo`, `PreviewManifest`, `Capture`, …) — extracted
-  // into a separate library inside this includeBuild so non-Gradle build systems can pull the
-  // published `ee.schimke.composeai:preview-discovery` artifact from Maven Central without
-  // dragging :gradle-plugin or AGP onto their classpath. See contrib/README.md, Phase A1.
+  // `previews.json` schema types, in a separate library so non-Gradle build systems can use it
+  // without the plugin or AGP.
   api(project(":preview-discovery"))
 
-  // `daemon-launch.json` schema + typed builder — sibling to :preview-discovery. The Android
-  // classpath layering stays in `AndroidPreviewClasspath` here; this module only assembles a
-  // descriptor from pre-resolved inputs. See contrib/README.md.
+  // `daemon-launch.json` schema + builder; assembles a descriptor from pre-resolved inputs.
   api(project(":daemon-launch-builder"))
 
-  // Configuration-only plugin + shared `composePreview { }` DSL surface (`PreviewExtension`,
-  // `DaemonExtension`, the `composePreviewApplied` marker task). This runtime plugin reuses those
-  // types and registers tasks against them via the create-or-find helpers in `ComposePreviewDsl`,
-  // so the config-only plugin and this runtime plugin coexist in one build (consumer commits config
-  // without pinning a runtime; the CLI injects this plugin at its own version). `api` because the
-  // extension types are part of this plugin's public DSL surface.
+  // The config-only plugin and shared `composePreview { }` DSL, which this runtime plugin registers
+  // tasks against, so the two coexist in one build. `api` because the extension types are public
+  // DSL.
   api(project(":gradle-plugin-config"))
 
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
-  // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
-  // surfaces annotations + signatures, not method-body invocations. Used by PreviewTargetInference.
+  // ASM reads method bodies for @Composable call targets (ClassGraph only sees signatures).
   implementation(libs.asm)
-  // OkHttp directly (NOT Ktor) to prefetch device-art bezels into the renderer's disk cache
-  // (DeviceArtPrefetch). Ktor 3.x needs kotlinx-coroutines >= 1.10, but the Gradle daemon classpath
-  // ships an older coroutines and Ktor fails at runtime with `Job.invokeOnCompletion$default
-  // NoSuchMethodError`; OkHttp carries no coroutines dependency, so it runs cleanly here.
+  // OkHttp, not Ktor, for device-art prefetch: Ktor 3 needs newer coroutines than the Gradle daemon
+  // ships (`NoSuchMethodError`).
   implementation(libs.okhttp)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
-  // Test-only, deliberately: `AndroidPreviewLaunchParityTest` compares this plugin's Robolectric
-  // launch inputs against the renderer's own `RobolectricLaunch`. A `testImplementation` keeps the
-  // daemon client, its core and their transitives off every consumer's buildscript classpath, which
-  // is the reason this module still holds its own copy of those values at all.
-  // `gradle-plugin` is an included build with its own settings, so it never applies
-  // `composeai.base-conventions` and does not get the daemon BOM that plugin puts on every project
-  // in the main build. It does share the version catalog, where `daemon-client` deliberately
-  // carries no version -- so without this platform the coordinate resolves to nothing and
-  // `:gradle-plugin:testRuntimeClasspath` fails with `Could not find …:daemon-client:`.
+  // Test-only, for `AndroidPreviewLaunchParityTest`, keeping the daemon client off consumers'
+  // buildscript classpaths. This included build doesn't get the main build's daemon BOM, and the
+  // catalog's `daemon-client` has no version, hence the platform.
   testImplementation(platform(libs.composeai.daemon.bom))
   testImplementation(libs.composeai.daemon.client)
   testImplementation(libs.junit)
@@ -101,21 +83,14 @@ val functionalTestTask =
     classpath = functionalTest.runtimeClasspath
     useJUnit()
 
-    // Surface the full failure message + stack trace for failed functional tests on the console.
-    // Without this Gradle prints only `<Exception> at <File>:<line>`, which hides the assertion
-    // message — and these E2Es (Robolectric daemon, CLI subprocess) carry their diagnostic context
-    // in the message (e.g. the missing PNG path, daemon stderr tail), invisible in CI logs
-    // otherwise.
+    // Print full failure messages: these E2Es carry their diagnostics in the message.
     testLogging {
       exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
       events("failed")
     }
 
-    // `CliA11yEndToEndFunctionalTest` (and any future Android-flavour functional test) requires
-    // a `publishToMavenLocal` pre-step so its synthetic `com.android.library` project can
-    // resolve the renderer AAR closure from `~/.m2`. The `mustRunAfter` ensures the publish
-    // runs first when both are scheduled in one Gradle invocation (the
-    // `functionalTestWithAndroid` task in the root build does exactly this).
+    // Android functional tests resolve the renderer AAR closure from `~/.m2`, so publish first when
+    // both run.
     mustRunAfter("publishToMavenLocal")
 
     // Surface the host's `~/.m2/repository`, the plugin's compile-time version, and the Android
@@ -125,44 +100,32 @@ val functionalTestTask =
       providers.systemProperty("user.home").map { "$it/.m2/repository" }.get(),
     )
     systemProperty("ee.schimke.composeai.functionalTest.pluginVersion", project.version.toString())
-    // Resolve sdk.dir from `ANDROID_HOME` (CI) or `local.properties` (dev). Empty string when
-    // neither is set — the test then `assumeFalse`s out so devs without an SDK don't see a hard
-    // failure.
+    // `ANDROID_HOME` or `local.properties`; empty makes the test skip.
     systemProperty("ee.schimke.composeai.functionalTest.androidSdkDir", resolveAndroidSdk(rootDir))
-    // Opt-in `cli.a11y.e2e=true` gate for the daemon-spawn round-trip
-    // (`CliA11yEndToEndFunctionalTest`). Default off — the test cold-starts a Robolectric JVM
-    // per render and a daemon JVM per module, so it's too slow for `./gradlew check`. CI runs
-    // it via the root build's `functionalTestWithAndroid` task with the flag flipped on.
+    // Opt-in gate for the slow daemon-spawn round-trip; CI enables it via
+    // `functionalTestWithAndroid`.
     val cliA11yE2E = providers.gradleProperty("cli.a11y.e2e").orNull == "true"
     systemProperty("composeai.functionalTest.cliA11yE2E", cliA11yE2E.toString())
-    // Opt-in `bundle.render.e2e=true` gate for [BundleRenderEndToEndFunctionalTest]. Spawns
-    // Compose Desktop JVM per preview (~1-2s cold start), too slow for the default check loop.
-    // Root build's `functionalTestWithBundleRender` task flips this on.
+    // Opt-in gate for [BundleRenderEndToEndFunctionalTest] (one Desktop JVM per preview); enabled
+    // by `functionalTestWithBundleRender`.
     val bundleRenderE2E = providers.gradleProperty("bundle.render.e2e").orNull == "true"
     systemProperty("composeai.functionalTest.cliBundleRender", bundleRenderE2E.toString())
-    // Opt-in `bundle.daemon.android.e2e=true` gate for [AndroidBundleDaemonRenderFunctionalTest].
-    // Drives `compose-preview bundle daemon` against pre-built Android sample bundles and renders
-    // protolayout / remotecompose / classic previews to PNG via the Robolectric daemon — needs a
-    // local Android SDK + cold-starts a daemon JVM per bundle, so it's off by default. The root
-    // build's `functionalTestWithAndroidBundleDaemon` task flips it on after building the bundles.
+    // Opt-in gate for [AndroidBundleDaemonRenderFunctionalTest] (needs an SDK, one daemon per
+    // bundle); enabled by `functionalTestWithAndroidBundleDaemon` after building bundles.
     val androidBundleDaemonE2E =
       providers.gradleProperty("bundle.daemon.android.e2e").orNull == "true"
     systemProperty(
       "composeai.functionalTest.androidBundleDaemon",
       androidBundleDaemonE2E.toString(),
     )
-    // The Android daemon runtime is not staged by this build any more: the CLI fetches it from the
-    // compose-preview-daemon release on first use (`DaemonSidecarProvision`), which is exactly the
-    // path the e2e exercises. `-Dcomposeai.cli.libDaemonAndroidDir` still points it at an unpacked
-    // copy when one is given.
+    // The CLI fetches the Android daemon runtime on first use (the path this e2e exercises);
+    // `-Dcomposeai.cli.libDaemonAndroidDir` overrides it.
     systemProperty(
       "composeai.functionalTest.libDaemonAndroidDir",
       providers.gradleProperty("bundle.daemon.android.libDir").orNull ?: "",
     )
-    // Paths to the Android sample bundles the test renders. Built by the root build's
-    // `:samples:wear:composePreviewBundle` / `:samples:remotecompose:composePreviewBundle`. Passed
-    // unconditionally (config-cache-safe, same rationale as `cliBinary` below); the test self-skips
-    // past the opt-in gate when a path is absent.
+    // Sample bundles built by the root build; passed unconditionally for config-cache safety, and
+    // the test skips when absent.
     val samplesDir = rootDir.parentFile?.resolve("samples")
     systemProperty(
       "composeai.functionalTest.wearBundle",
@@ -172,16 +135,8 @@ val functionalTestTask =
       "composeai.functionalTest.remoteComposeBundle",
       samplesDir?.resolve("remotecompose/build/compose-previews/bundle.png")?.absolutePath ?: "",
     )
-    // Path to the compose-preview CLI binary built by `:cli:installDist`. The test invokes it
-    // directly as a subprocess — that's the actual subject of the e2e. The test self-skips when
-    // the binary isn't there (an `assertWithMessage(...).isFile.isTrue()` past the opt-in gate).
-    //
-    // Pass the path unconditionally rather than running an `isFile` check at config time: with
-    // Gradle's configuration cache enabled, a config-time check captures whatever state existed
-    // when the cache was stored — typically "binary missing" on the very first run — and the
-    // cached empty string would stick across subsequent runs even after `:cli:installDist` had
-    // produced the binary. The test does its own existence check (line 50ish) with a useful
-    // message when the binary is missing.
+    // The `:cli:installDist` binary, passed unconditionally: a configuration-time existence check
+    // would be cached as "missing" after the first run. The test checks existence itself.
     val cliBinaryPath =
       rootDir.parentFile?.resolve("cli/build/install/compose-preview/bin/compose-preview")
     systemProperty("composeai.functionalTest.cliBinary", cliBinaryPath?.absolutePath ?: "")
@@ -190,10 +145,8 @@ val functionalTestTask =
 tasks.check { dependsOn(functionalTestTask) }
 
 /**
- * Reads the Android SDK location from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the host project's
- * `local.properties` (the same precedence AGP itself uses). Returns an empty string when none are
- * set so the functional test can `assumeFalse` it out cleanly on dev environments without an SDK
- * installed.
+ * Android SDK from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `local.properties` (AGP's precedence);
+ * empty when unset so the test can skip.
  */
 fun resolveAndroidSdk(rootDir: java.io.File): String {
   System.getenv("ANDROID_HOME")
@@ -219,36 +172,27 @@ fun resolveAndroidSdk(rootDir: java.io.File): String {
   return ""
 }
 
-// Bake the plugin's own version into a resource so it can resolve a matching
-// `renderer-android` AAR at runtime for external consumers (who apply the
-// plugin via Maven Central rather than includeBuild).
+// Bake the plugin version into a resource so external consumers resolve the matching renderer at
+// runtime.
 val generatePluginVersionResource =
   tasks.register("generatePluginVersionResource") {
     val outputDir = layout.buildDirectory.dir("generated/plugin-version-resource")
     val pluginVersion = project.version.toString()
-    // XR `*-testing` fake versions the plugin injects onto a consumer's
-    // `composePreviewRenderXr` classpath (see AndroidPreviewSupport). Baked from the
-    // catalog so the render-path injection can't drift from `:renderer-xr` / the XR
-    // samples — bump once in `gradle/libs.versions.toml` and all sites follow.
+    // XR fake versions baked from the catalog so injection can't drift from `:renderer-xr` /
+    // samples.
     val xrCompose = libs.versions.xr.compose.get()
     val xrRuntimeTesting = libs.versions.xr.runtime.testing.get()
     val xrScenecoreTesting = libs.versions.xr.scenecore.testing.get()
     val xrArcoreTesting = libs.versions.xr.arcore.testing.get()
-    // The separately released renderer-xr AAR. It no longer follows PluginVersion: the source and
-    // release train live in compose-preview-xr, while this plugin consumes the pinned artifact.
+    // The renderer-xr AAR is released separately (compose-preview-xr) and pinned here.
     val xrRenderer = libs.versions.xr.renderer.get()
-    // The pinned `xr-composite` release, so `xrCompositeCacheBinaryPath` reads the same shared
-    // cache directory the CLI writes (`XrCompositeProvision`). Both sides bake the one catalog
-    // value; addressing it by each side's own version is what used to force a rebuild per release.
+    // Pinned `xr-composite` release, shared with the CLI so both use the same cache directory.
     val xrComposite = libs.versions.xr.composite.get()
-    // The compose-preview-daemon release the renderers and daemon hosts resolve at for external
-    // consumers (`PreviewDaemonVersion`). Those modules left this build in #5336 and publish on
-    // their own line, so the plugin's version no longer names one they exist at.
+    // The compose-preview-daemon release the renderers resolve at for external consumers
+    // (`PreviewDaemonVersion`); they publish on their own line.
     val previewDaemon = libs.versions.composeai.preview.daemon.get()
-    // The Kotlin the theme-pin compiler plugin is compiled against (`:theme-pin-compiler-plugin`
-    // builds with this catalog's `kotlin`). `ThemePinning` attaches it only to a consumer on the
-    // same Kotlin line: a compiler plugin links against compiler internals, so a different line
-    // can fail to load it and take the whole compilation down.
+    // The Kotlin the theme-pin compiler plugin is built with; `ThemePinning` only attaches it to
+    // consumers on the same line, since compiler plugins link against compiler internals.
     val themePinKotlin = libs.versions.kotlin.get()
     inputs.property("version", pluginVersion)
     inputs.property("previewDaemon", previewDaemon)
@@ -294,21 +238,10 @@ composeAiMavenPublishing {
   inceptionYear.set("2025")
 }
 
-// Make `:gradle-plugin:publishToMavenLocal` (and its Central counterparts) recursive across
-// every subproject of this composite build. The outer build's root-level abbreviation
-// already fans out across outer-build subprojects; for `:gradle-plugin` (an includeBuild),
-// workflows address the includeBuild's root explicitly — so a publish task on the root must
-// pull every subproject along for the ride, otherwise `compose-preview-plugin` ships with a
-// dangling `api(":preview-discovery")` dep that downstream consumers can't resolve.
-//
-// Every `api(project(...))` dep above must have a matching edge here. `:gradle-plugin-config`
-// especially: it carries the shared `composePreview { }` DSL types, so a runtime plugin published
-// without it leaves CLI / VS Code auto-injection unable to resolve the plugin from Maven /
-// mavenLocal (the published POM's `api` dep on `compose-preview-config` would dangle).
-//
-// `tasks.matching {}` is lazy and tolerates the Central tasks being registered later in
-// configuration (vanniktech wires them in an `afterEvaluate`); the dependency edge is
-// attached the moment the matching task is added, before the task graph is computed.
+// Make publish tasks on this included build's root recurse into every subproject, so the published
+// plugin's `api(project(...))` deps (notably `:gradle-plugin-config`'s DSL types) resolve. Every
+// `api(project(...))` above needs an edge here. `tasks.matching` tolerates the Central tasks being
+// registered later.
 listOf("publishToMavenLocal", "publishToMavenCentral", "publishAndReleaseToMavenCentral").forEach {
   taskName ->
   tasks

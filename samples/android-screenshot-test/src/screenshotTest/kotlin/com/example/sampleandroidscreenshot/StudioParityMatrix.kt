@@ -25,32 +25,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.tools.screenshot.PreviewTest
 
-/**
- * **Studio-parity matrix** — the same `@Preview` modes as `:samples:android`'s `PreviewModeMatrix`,
- * declared once and rendered by *two* engines so they can be diffed against each other:
- * - **Layoutlib**, via Google's `com.android.compose.screenshot` plugin. This is the renderer
- *   Android Studio's preview pane itself uses, so its output is the closest thing to "a screenshot
- *   of Studio" that a headless machine can produce — and unlike a hand-captured screenshot it
- *   regenerates on demand and never goes stale.
- * - **Our Robolectric renderer**, which discovers `screenshotTest` previews in this module already
- *   (that is what the module exists for) and writes them to `build/compose-previews/renders/`.
- *
- * `StudioParityTest` pairs the two by preview name and asserts they agree. Where they don't, the
- * divergence is pinned there with an issue link rather than hidden — finding those is the point.
- *
- * Two constraints shape this file:
- * - Every preview needs `@PreviewTest`; from alpha15 on Google's plugin silently discovers nothing
- *   without it (the task fails with "did not discover any tests").
- * - Fixtures are kept cheap and flat. Layoutlib renders serially and this module's job is
- *   *comparison*, not coverage — the exhaustive matrix already lives in `:samples:android`.
- */
+// Studio-parity matrix: the same `@Preview` modes as `:samples:android`'s `PreviewModeMatrix`,
+// rendered by Layoutlib (via Google's screenshot plugin, the engine behind Studio's preview pane)
+// and by our Robolectric renderer, then diffed by `StudioParityTest`.
+//
+// Every preview needs `@PreviewTest` (Google's plugin discovers nothing without it). Fixtures are
+// cheap and flat: Layoutlib renders serially, and this module is for comparison, not coverage.
 
 /**
- * Fixed-size probe. Deliberately uses `Modifier.size` (not `requiredSize`): `size` is a *preferred*
- * size that yields to tight incoming constraints, which is exactly the axis on which the two
- * engines were found to disagree — Layoutlib measures a fixed-size `@Preview` frame with tight
- * constraints, so the probe stretches to fill it, while our renderer measures loose and letterboxes
- * the probe against the harness background.
+ * Fixed-size probe using `Modifier.size` (not `requiredSize`) on purpose: Layoutlib measures a
+ * fixed `@Preview` frame with tight constraints (the probe stretches) while ours measures loose
+ * (letterboxed) — the axis where the engines disagree.
  */
 @Composable
 private fun IntrinsicProbe(label: String) {
@@ -187,22 +172,10 @@ fun ParityDeviceSpecPreview() {
 // --- Signature shapes --------------------------------------------------------------------------
 
 /**
- * A preview whose value parameters **all declare defaults** — the shape the **parameter knob**
- * format is built on, and the one a production composable annotated `@Preview` in place almost
- * always already has (`modifier: Modifier = Modifier`).
- *
- * It renders differently from every other fixture here in one respect that is invisible in the
- * picture: it compiles to `(realParams…, Composer, int changed, int default)` rather than
- * `(Composer, int)`, so a renderer that looks the preview up by the parameterless signature cannot
- * see it at all. That cost this project four separate defects across the desktop focus, motion and
- * scroll lanes (compose-ai-tools#5115) — each found only by migrating a real catalog, because no
- * fixture in this repository had the shape.
- *
- * This is that fixture, and it is here rather than in `:samples:android` because the question it
- * settles is a **parity** one: Layoutlib is the engine Google's `com.android.compose.screenshot`
- * plugin and Studio's preview pane both draw with, so a reference generated for this preview is
- * evidence that the shape is renderable by the tool an Android consumer would reach for — not just
- * by ours.
+ * A preview whose value parameters all have defaults — the parameter-knob shape most production
+ * composables have. It compiles to `(params…, Composer, int, int)`, invisible to a lookup by the
+ * parameterless signature. Here, rather than `:samples:android`, so a Layoutlib reference proves
+ * the shape is renderable by Google's tooling too.
  */
 @PreviewTest
 @Preview(name = "defaulted-params", showBackground = true)

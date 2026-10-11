@@ -1,60 +1,32 @@
 package ee.schimke.composeai.cli.serve
 
 /**
- * Why a read against a delivery branch failed, when it did.
+ * Why a delivery-branch read failed. A bare `ByteArray?` conflated "never published" with "GitHub
+ * is throttling us", which need opposite handling:
+ * - Negative caching: [ServeBundleHost] remembers pinned misses forever, valid only for [NotFound].
+ * - Retrying: pointless after a 404, the whole fix after a 429 (honouring `Retry-After`).
  *
- * ### Why this exists
- *
- * Every branch read used to answer `ByteArray?`. A 404, a 429, a 503 and a socket timeout were all
- * the same `null`, and that single value travelled all the way to the reader: the Motion lane's
- * "The recorded interaction could not be loaded" was the server's whole vocabulary for "this was
- * never published" *and* "GitHub is throttling us right now". Those want opposite handling — one is
- * a permanent fact worth remembering, the other is a reason to wait and ask again — and no caller
- * could tell them apart because the information was destroyed at the bottom of the stack.
- *
- * The distinction is load-bearing in two specific places:
- * - **Negative caching.** [ServeBundleHost] remembers pinned misses forever, on the reasoning that
- *   `(commit, path)` is immutable so "no such file" can never stop being true. That reasoning holds
- *   for [NotFound] and for nothing else: memoising a throttle turns a blip into a permanent hole
- *   that only a restart clears.
- * - **Retrying.** Asking again after a 404 is waste. Asking again after a 429 is the entire fix,
- *   provided the wait honours what the server asked for.
- *
- * Deliberately transport-agnostic and dependency-free so the classification and the backoff policy
- * unit-test without a socket.
+ * Transport-agnostic and dependency-free so classification and backoff unit-test without a socket.
  */
 public sealed interface BranchFetch {
 
   /** The bytes, read and size-capped. */
   public class Ok(public val bytes: ByteArray) : BranchFetch
 
-  /**
-   * The branch answered, definitively, that there is no such file — `404`/`410`.
-   *
-   * The only outcome a caller may treat as permanent. Everything else below is a statement about
-   * *now*.
-   */
+  /** `404`/`410`: definitively no such file. The only outcome a caller may treat as permanent. */
   public data object NotFound : BranchFetch
 
   /**
-   * Rate limited — `429`, or a `403` that carries no body we asked for. [retryAfterSeconds] is the
-   * server's own `Retry-After` when it sent one, which is always a better number than any we'd
-   * invent.
-   *
-   * `403` lands here rather than under a "forbidden" case on purpose: GitHub answers `403` for some
-   * rate-limit conditions, and the cost of guessing wrong in this direction is one wasted retry,
-   * where guessing wrong in the other direction caches a throttle as a missing asset.
+   * Rate limited: `429`, or a `403` without the body we asked for (GitHub uses `403` for some rate
+   * limits; misreading one costs a retry, the other way caches a throttle as missing).
+   * [retryAfterSeconds] is the server's `Retry-After`, when sent.
    */
   public data class Throttled(val retryAfterSeconds: Long?) : BranchFetch
 
   /**
-   * The branch host is unwell — any `5xx`, or a `4xx` that is neither missing nor throttled.
-   *
-   * Carries [retryAfterSeconds] for the same reason [Throttled] does: `Retry-After` is defined on
-   * `503` as much as on `429` (RFC 9110 §10.2.3), and a host that tells you when it will be back is
-   * giving you a better number than any schedule you'd invent. Dropping it here meant a `503`
-   * asking for ten seconds got 250 ms and 500 ms instead, spending both retries inside the outage
-   * and then reporting the asset as missing — the exact confusion this type exists to end.
+   * The host is unwell: any `5xx`, or a `4xx` that is neither missing nor throttled. Carries
+   * `Retry-After` too (valid on `503`, RFC 9110 §10.2.3), so retries don't burn out inside an
+   * outage.
    */
   public data class Unavailable(val status: Int, val retryAfterSeconds: Long? = null) : BranchFetch
 
@@ -62,20 +34,10 @@ public sealed interface BranchFetch {
   public data class Transport(val detail: String) : BranchFetch
 
   /**
-   * The branch has the file and it is **past the envelope this read was given** — the body outgrew
-   * [limitBytes] before it was fully read, so no bytes are handed back.
-   *
-   * A distinct case rather than a `null`, because "there is no such file" and "the file is bigger
-   * than we will carry" are opposite facts about the branch, and one writer at least has a contract
-   * that must tell them apart: `compose-preview-known-differences/v1` answers `too-large`/413 for
-   * an over-sized document or artifact and `unreadable`/404 for an absent one. Collapsed into
-   * [NotFound] — which is what discarding the outcome does — an asset refused by size is reported
-   * as one the producer never published, which is both a different verdict and one that hides why.
-   *
-   * Not transient: the file will be exactly as oversized on the next attempt, so there is nothing
-   * to retry. Not permanent-cacheable either, in the sense [NotFound] is — the branch ref may
-   * publish a smaller file tomorrow — but every caller that memoises does so on a pinned `(commit,
-   * path)`, where the size is as immutable as the bytes.
+   * The file exists but outgrew [limitBytes] before it was fully read; no bytes are returned.
+   * Distinct from [NotFound] because some contracts must tell them apart (known-differences answers
+   * `too-large`/413 vs `unreadable`/404). Not transient; memoisable only on a pinned `(commit,
+   * path)`.
    */
   public data class TooLarge(val limitBytes: Long) : BranchFetch
 
@@ -84,8 +46,7 @@ public sealed interface BranchFetch {
     get() = (this as? Ok)?.bytes
 
   /**
-   * Whether asking again could plausibly answer differently. False for [Ok] (nothing to ask) and
-   * for [NotFound] (the answer will not change), true for the three "right now" outcomes.
+   * Whether asking again could answer differently: false for [Ok] and [NotFound], true otherwise.
    */
   public val isTransient: Boolean
     get() = this is Throttled || this is Unavailable || this is Transport
@@ -114,10 +75,8 @@ public sealed interface BranchFetch {
     public const val BASE_BACKOFF_MILLIS: Long = 250L
 
     /**
-     * Classify one HTTP status.
-     *
-     * [retryAfterSeconds] is the parsed `Retry-After` header, or null. Only consulted for the
-     * statuses that can carry one.
+     * Classify one HTTP status; [retryAfterSeconds] (parsed `Retry-After`) is used where
+     * applicable.
      */
     public fun ofStatus(status: Int, retryAfterSeconds: Long? = null): BranchFetch =
       when {
@@ -127,13 +86,9 @@ public sealed interface BranchFetch {
       }
 
     /**
-     * How long to wait before attempt [attempt] (1-based, so `1` is the first *retry*), or null
-     * when this outcome should not be retried at all or the attempts are spent.
-     *
-     * A server-supplied `Retry-After` wins over the exponential schedule when it is longer — it is
-     * the only party that knows when it will serve again — but is capped at
-     * [MAX_RETRY_AFTER_SECONDS] so a hostile or confused header cannot park a request thread for
-     * minutes.
+     * Delay before attempt [attempt] (1-based retries), or null when the outcome shouldn't be
+     * retried or attempts are spent. A longer server `Retry-After` wins over the exponential
+     * schedule, capped at [MAX_RETRY_AFTER_SECONDS].
      */
     public fun retryDelayMillis(outcome: BranchFetch, attempt: Int): Long? {
       if (!outcome.isTransient) return null
@@ -150,9 +105,8 @@ public sealed interface BranchFetch {
     }
 
     /**
-     * Parse a `Retry-After` header. Only the delta-seconds form — the HTTP-date form is legal but
-     * needs a clock and a parse to answer the same question, and no branch host we read sends it.
-     * An unparseable value is simply absent, which falls back to the exponential schedule.
+     * Parse a `Retry-After` header's delta-seconds form only (the HTTP-date form isn't sent by our
+     * hosts). Unparseable means absent, falling back to the exponential schedule.
      */
     public fun parseRetryAfter(header: String?): Long? =
       header?.trim()?.toLongOrNull()?.takeIf { it >= 0 }

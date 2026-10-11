@@ -6,29 +6,15 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Fails when a module from a strictly higher layer reaches this project's runtime classpath.
+ * Fails when a module from a strictly higher layer reaches this project's runtime classpath
+ * (`docs/design/REPOSITORY_LAYERS.md`: dependencies may only point down).
  *
- * The layer rule lives in `docs/design/REPOSITORY_LAYERS.md`: contracts is shape, this repository
- * is offline behaviour, compose-preview-server is HTTP and the surfaces over it, and a dependency
- * may only point down. compose-preview-server has enforced its own floor since the split
- * (`checkServeModuleBoundary`); this repository enforced nothing at all, so the edge that created
- * yschimke/compose-preview-server#180 could be re-added by one `api(...)` line with CI green.
+ * A positive allowlist: any `ee.schimke.composeai:compose-preview-*` coordinate not named below
+ * fails, including transitive ones, since resolved identity is checked rather than declared
+ * dependencies.
  *
- * **A positive allowlist, not a list of banned coordinates**, for the reason the server's task
- * learned the hard way: a denylist names the artifacts that exist today and says nothing about the
- * next one. Any `ee.schimke.composeai:compose-preview-*` coordinate that is not named below is a
- * failure, including one that arrives transitively.
- *
- * **Resolved identity, not declared dependencies.** A layer-2 artifact pulled in through another
- * dependency's POM is exactly the case a scan of build files misses, and exactly the case that
- * matters — `:cli` resolves `compose-preview-render-host` transitively through
- * `compose-preview-serve` as well as directly.
- *
- * Scope, stated because it is not total: this runs on projects with a `runtimeClasspath`, which is
- * every JVM module. Android modules resolve per-variant classpaths (`debugRuntimeClasspath` and
- * friends) and are not covered. That is a real gap rather than a claim that they are safe — it is
- * narrow because no Android module here consumes a server artifact, and widening it means paying
- * to resolve every variant on `check`.
+ * Covers projects with a `runtimeClasspath` (every JVM module). Android per-variant classpaths are
+ * not covered — a known gap, narrow because no Android module consumes a server artifact.
  */
 abstract class CheckLayerBoundary : DefaultTask() {
 
@@ -66,32 +52,19 @@ abstract class CheckLayerBoundary : DefaultTask() {
     private const val PREVIEW_PREFIX = "compose-preview-"
 
     /**
-     * `compose-preview-*` coordinates this repository publishes itself. Same-layer, so they are not
-     * the rule's target; they share the prefix only because the prefix names the product, not the
-     * repository.
+     * `compose-preview-*` coordinates this repository publishes itself; same layer, sharing the
+     * product prefix.
      */
     val ownPreviewModules: List<String> =
       listOf("$COMPOSE_AI_GROUP:compose-preview-config", "$COMPOSE_AI_GROUP:compose-preview-plugin")
 
     /**
-     * Layer-2 coordinates allowed on a runtime classpath here: **none**.
+     * Layer-2 coordinates allowed on a runtime classpath here: none, so any server coordinate
+     * reaching a runtime classpath fails.
      *
-     * This list held three until the forward edge closed. `compose-preview-render-host` and the
-     * `compose-preview-ui-builder-runtime` it dragged went when the render host moved into this
-     * repository; `compose-preview-serve` went when `serve` and `browse` became launchers over the
-     * published server binary rather than linking `ServeRunner`
-     * (yschimke/compose-preview-server#180).
-     *
-     * Empty is the point, and it is the proof: an empty allowlist means any
-     * `ee.schimke.composeai:compose-preview-*` coordinate reaching a runtime classpath in this build
-     * fails, with no exceptions to argue about.
-     *
-     * **One edge survives and this task cannot see it, deliberately.** `compose-preview-serve` is
-     * still a `testImplementation` of `:cli`, because two tests drive the CLI's HTTP clients against
-     * a real `ServeHttpServer` to catch the two repositories' wire types drifting apart — a stub
-     * would make them pass while testing nothing they exist for. This task reads `runtimeClasspath`,
-     * so it does not and should not fail on that; the claim it makes is about what ships, which is
-     * the claim worth enforcing.
+     * `compose-preview-serve` remains a `testImplementation` of `:cli` (two tests check wire types
+     * against a real `ServeHttpServer`); this task reads `runtimeClasspath` and deliberately
+     * ignores that, since the claim is about what ships.
      */
     val knownLayerTwoEdges: List<String> = emptyList()
   }

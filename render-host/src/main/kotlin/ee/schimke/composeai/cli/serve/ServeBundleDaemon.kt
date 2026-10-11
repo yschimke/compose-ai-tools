@@ -18,56 +18,30 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Materialises a daemon-backed [ServeSessionState] straight from a **packed preview bundle** — no
- * Gradle build, no worktree, no repo clone. This is the engine behind serving a `--catalogs`
- * system's `liveBundle` ([ServeCatalogStore]): extract the bundle's `classes/app.jar` +
- * `previews.json` (+ any embedded `libs/`), resolve its `maven` classpath entries via
- * [CoordinateResolver], locate the CLI install's `lib-daemon-desktop`/`lib-renderer` sidecar jars
- * (same lookup `bundle daemon` uses), and write a `daemon-launch.json` in the exact shape
- * `SubprocessRenderSessions.open` reads. Writing it as a **file** (rather than constructing the
- * descriptor purely in-memory, the way
- * [ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions.openBundleDaemon] does)
- * is what lets this session ride the existing `ServeSessionState → openHost → ServeRenderHost.open
- * → registry.register` path unmodified — [ServeSessionRegistry] resumes a suspended session by
- * re-opening the same descriptor path, so suspend/resume works for free.
+ * Materialises a daemon-backed [ServeSessionState] straight from a packed preview bundle — no
+ * Gradle build or repo clone. The engine behind a `--catalogs` system's `liveBundle`
+ * ([ServeCatalogStore]): extract the bundle, resolve its Maven classpath via [CoordinateResolver],
+ * locate the CLI's daemon sidecar jars, and write a `daemon-launch.json` file. Writing a real file
+ * lets the session use the normal open/suspend/resume path ([ServeSessionRegistry] re-opens the
+ * descriptor).
  *
- * Backend-aware, mirroring `bundle daemon`'s two launches over the **same** `DaemonMain`
- * entrypoint: a `desktop` bundle spawns the CMP/Skiko daemon (`lib-daemon-desktop` +
- * `lib-renderer`), an `android` bundle spawns the Robolectric daemon (`lib-daemon-android` +
- * `android.jar` + the required `--add-opens` + `robolectric.*` sysprops [AndroidBundleLaunch]
- * supplies). Wiring the Android backend here is what gives an Android/Wear catalog (e.g. `wear-m3`)
- * a live daemon session — and hence per-variant renders + the daemon-produced `compose/figma-svg`
- * lane (`renderSvg` on [ServeCatalogLiveHost]) that a baked, per-slug `figma/<slug>.svg` can't
- * match. Any other backend makes [materialize] return `null` (logging why) so the caller falls back
- * to the catalog's baked PNGs or its Gradle `source` build.
- *
- * The `android` backend needs the ~150-200 MB `lib-daemon-android` sidecar (shipped separately as
- * `compose-preview-android-daemon-<version>.zip`, not in the CLI tarball) unpacked and reachable
- * via `-Dcomposeai.cli.libDaemonAndroidDir=…`, plus `android.jar` from a local SDK
- * (`ANDROID_HOME`/`ANDROID_SDK_ROOT`); on its first render the Robolectric runtime fetches the
- * `android-all-instrumented` jar (network + cold-start latency). Missing either → `null` + a clear
- * log, same fail-soft as a missing desktop sidecar.
+ * `desktop` bundles spawn the CMP/Skiko daemon; `android` bundles spawn the Robolectric daemon
+ * (needs the separately shipped `lib-daemon-android` sidecar via
+ * `-Dcomposeai.cli.libDaemonAndroidDir=…` and an SDK `android.jar`). Anything missing or any other
+ * backend returns null with a log, so the caller falls back to baked PNGs or a source build.
  */
 public object ServeBundleDaemon {
 
   /**
-   * Live-seat cost ([LiveSeatLimiter] permits) of an **Android/Robolectric** catalog daemon. It
-   * boots a sandbox fleet (each `wear-m3` daemon spins ~5 Robolectric sandboxes) and holds ~1.5–2
-   * GB RSS, versus ~0.5–1 GB for a desktop CMP daemon — so it consumes two permits where desktop
-   * takes one. Tuned for the reference 4 GB box's default budget; a bigger box's budget scales up
-   * (see `deploy/image/entrypoint.sh`), letting more of these run at once.
+   * Live-seat cost ([LiveSeatLimiter] permits) of an Android/Robolectric catalog daemon: a sandbox
+   * fleet at ~1.5–2 GB RSS versus ~0.5–1 GB for desktop, so two permits instead of one.
    */
   public const val ANDROID_LIVE_SEAT_WEIGHT: Int = 2
 
   /**
-   * Live-seat weight ([LiveSeatLimiter] permits) of an already-built daemon [descriptor] file — for
-   * the Gradle **source-build** catalog path ([ServeCommand.buildTrustedCatalogSource]), which has
-   * no bundle `manifest.backend` to read. Detects the Android/Robolectric backend by the
-   * `robolectric.*` JVM sysprops every Android daemon launch carries (see
-   * [AndroidPreviewClasspath]) and a desktop CMP daemon never does, so a source-served Android
-   * catalog is charged [ANDROID_LIVE_SEAT_WEIGHT] exactly like the bundle path — keeping the OOM
-   * protection intact in from-source deployments. Defaults to `1` (desktop) when the descriptor is
-   * missing or unreadable.
+   * Live-seat weight of an already-built daemon [descriptor], for source-built catalogs with no
+   * bundle manifest. Android is detected by its `robolectric.*` sysprops; defaults to 1 when the
+   * descriptor is missing or unreadable.
    */
   public fun liveSeatWeightForDescriptor(descriptor: File): Int {
     val text = descriptor.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
@@ -83,12 +57,9 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Extract [bundleFile] into [destDir] and synthesise a working [ServeSessionState] for it, or
-   * `null` (logging a clear reason via [onLog]) on any failure — a bad/foreign bundle, an
-   * unsupported backend, missing sidecar jars (desktop or android), or an empty preview manifest.
-   * [offline] forces classpath resolution to skip the network (mirrors
-   * `-Dcomposeai.bundle.offline`); default `false` still honours that sysprop /
-   * `COMPOSE_PREVIEW_OFFLINE` via [CoordinateResolver]'s own default.
+   * Extract [bundleFile] into [destDir] and synthesise a [ServeSessionState], or null (logged via
+   * [onLog]) on any failure. [offline] forces resolution to skip the network; otherwise
+   * [CoordinateResolver]'s own offline defaults apply.
    */
   public fun materialize(
     bundleFile: File,
@@ -96,20 +67,15 @@ public object ServeBundleDaemon {
     system: String,
     offline: Boolean = false,
     /**
-     * Extra remote Maven repository base URLs the classpath resolver may fetch from, in addition to
-     * Maven Central + Google Maven ([CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES]). A catalog
-     * whose module pulls deps from a non-default repo (e.g. `https://jitpack.io`, an
-     * Apollo/JetBrains snapshot repo) would otherwise have those coordinates skipped — leaving the
-     * live daemon's classpath incomplete, so a class that references them fails at bootstrap and
-     * the catalog silently falls back to baked PNGs. Empty by default (Central + Google only); the
-     * serve host passes its `--extra-maven-repos` / `SERVE_EXTRA_MAVEN_REPOS` list here.
+     * Extra Maven repository URLs beyond Central + Google
+     * ([CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES]), from `--extra-maven-repos` /
+     * `SERVE_EXTRA_MAVEN_REPOS`; without them such deps are skipped and the live daemon can fail at
+     * bootstrap.
      */
     extraMavenRepos: List<String> = emptyList(),
     /**
-     * Extra classpath directories prepended after the bundle's own `classes/` — the rehydrated
-     * [BundleReader.Manifest.externalResources] pool (fonts lifted out of `classes/app.jar` by
-     * `bundle externalize`, materialized at their original resource paths so
-     * `getResourceAsStream("/fonts/…")` resolves). Empty for a self-contained bundle.
+     * Extra classpath dirs after the bundle's `classes/`: the rehydrated
+     * [BundleReader.Manifest.externalResources] (e.g. fonts lifted out by `bundle externalize`).
      */
     extraClasspathDirs: List<File> = emptyList(),
     fileSystem: FileSystem = SystemFileSystem,
@@ -144,9 +110,7 @@ public object ServeBundleDaemon {
     val classesDir = File(destDir, "classes").apply { mkdirs() }
     val libsDir = File(destDir, "libs").apply { mkdirs() }
     val previewsJson = File(destDir, "previews.json")
-    // A fully IR-backed bundle (schema v5+) legitimately carries no classes/app.jar — its daemon
-    // replays the carried documents extracted below. A mixed bundle with at least one class-backed
-    // preview must still carry its jar.
+    // A fully IR-backed bundle (schema v5+) may carry no `classes/app.jar`; a mixed one must.
     val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
     val requireAppJar = manifest.previewIds.any { it !in irPreviewIds }
     try {
@@ -163,11 +127,8 @@ public object ServeBundleDaemon {
       return null
     }
 
-    // v5+ IR replay: a Remote Compose preview has no consumer class to reflect. The Android
-    // daemon instead reads the captured document from `ir/` and resolves its descriptor through
-    // the carried bundle manifest. This is the same setup `compose-preview bundle daemon` uses;
-    // without it the public catalog path filtered IR previews out and falsely reported a daemon
-    // startup failure.
+    // IR replay: the Android daemon reads captured documents from `ir/` via the carried manifest,
+    // the same setup as `compose-preview bundle daemon`.
     val hasIr = manifest.intermediateRepresentations.isNotEmpty()
     val irDir = if (hasIr) File(destDir, "ir").apply { mkdirs() } else null
     val bundleManifestFile = if (hasIr) File(destDir, "bundle.json") else null
@@ -182,20 +143,15 @@ public object ServeBundleDaemon {
 
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir, fileSystem)
     val recordedCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
-    // A bundle records `skiko-awt` but not the `skiko-awt-runtime-<host>` its bindings link
-    // against — the platform native reaches a Gradle-resolved classpath as a transitive artifact,
-    // not as a coordinate. Promoted unpaired, those bindings link against the SERVER's older
-    // libskiko and every render dies with UnsatisfiedLinkError. See [SkikoNativePairing].
+    // Bundles record `skiko-awt` but not the host `skiko-awt-runtime-<host>` native it links
+    // against; unpaired, renders die with UnsatisfiedLinkError. See [SkikoNativePairing].
     val skikoNativeRepair = SkikoNativePairing.missingHostRuntime(recordedCoords)
     if (skikoNativeRepair != null) {
       onLog("catalog $system: ${SkikoNativePairing.repairLog(skikoNativeRepair)}")
     }
     val mavenCoords = recordedCoords + listOfNotNull(skikoNativeRepair)
-    // (v9) The bundle names the repositories its own coordinates resolve from — a JitPack fork, an
-    // internal mirror, the androidx.dev snapshot build a Remote Compose catalog is built against.
-    // Consulted after the operator's `--extra-maven-repos`, so a box that pins a mirror still wins,
-    // and a pre-v9 bundle contributes nothing. The recorded `sha256` still decides whether the
-    // bytes that come back are the ones the producer packed.
+    // (v9) Repositories the bundle's own coordinates resolve from, consulted after the operator's
+    // `--extra-maven-repos`. Recorded `sha256`s still verify the bytes.
     val bundleRepositories = manifest.repositories.filter { it.isNotBlank() }
     if (bundleRepositories.isNotEmpty()) {
       onLog(
@@ -216,19 +172,9 @@ public object ServeBundleDaemon {
     val resolvedDependencies = resolutions.mapNotNull { resolution ->
       resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
     }
-    // A coordinate the resolver couldn't find is dropped with a per-coordinate warning and the
-    // daemon starts anyway — correct, because most misses are harmless (a dep nothing on the render
-    // path touches). What was missing is the *aggregate*: 13 unresolved coordinates read as 13
-    // unrelated warnings, and the consequence only surfaced later as an unattributable
-    // `NoClassDefFoundError` that tripped the breaker terminally (issues #4259 / #4265). Record the
-    // gap beside the launch descriptor so a linkage trip can name it — see [BundleClasspathGaps].
-    //
-    // A coordinate that resolved to the WRONG bytes is recorded the same way and for the same
-    // reason. The resolver warns and hands the artifact over regardless, so a hash mismatch reads
-    // as one more startup warning while the daemon links two builds of one library — which is how
-    // meshcore-mobile's lane died on `NoSuchFieldError: … RemoteClock … SYSTEM` with a breaker
-    // reason that named no cause at all (#187). Nothing was unresolved there, so only the mismatch
-    // list could have said so.
+    // Unresolved or hash-mismatched coordinates are dropped/used with a warning and the daemon
+    // starts anyway; record the aggregate beside the descriptor so a later linkage trip can name
+    // the cause ([BundleClasspathGaps]).
     BundleClasspathGaps.record(
       destDir = destDir,
       unresolved = resolutions.filter { it.file == null }.map { it.coordinate },
@@ -238,9 +184,7 @@ public object ServeBundleDaemon {
       mismatched = resolutions.filter { it.mismatch }.map { it.coordinate },
       fileSystem = fileSystem,
     )
-    // The resolver warns and returns null rather than throwing, so an unresolvable repair would
-    // otherwise be indistinguishable from one that was never needed — and the daemon would launch
-    // straight back into the split-Skiko classpath this repair exists to close.
+    // The resolver returns null instead of throwing; an unresolvable repair must not go unnoticed.
     if (
       skikoNativeRepair != null && resolvedDependencies.none { it.coordinate == skikoNativeRepair }
     ) {
@@ -252,29 +196,18 @@ public object ServeBundleDaemon {
           "whose Skiko this server ships, or give the server network access to Maven Central."
       )
     }
-    // Resolved before the partition below: which Remote Compose artifacts the sidecar ships decides
-    // whether the bundle's own are safe to promote ahead of it.
+    // Resolved first: which Remote Compose artifacts the sidecar ships decides what may be
+    // promoted.
     val backendLaunch =
       when (backend) {
         "android" -> androidBundleDaemonLaunch(system, onLog)
         else -> desktopBundleDaemonLaunch(system, onLog)
       } ?: return null
-    // `androidx.compose.remote:*` is a family compiled against itself, and the daemon's own IR
-    // replay connector calls into it. Promoting the bundle's copies ahead of the sidecar is right
-    // when the bundle carries the WHOLE family — the sidecar's line is then shadowed entire — and
-    // fatal when it carries only part of it: the rest falls through to the sidecar's pin and the
-    // first replay dies on `NoSuchFieldError: … RemoteClock … SYSTEM`, latching the lane for good
-    // (#187). On an IR bundle the sidecar is authoritative in that state, because it is the
-    // sidecar's replay code that links against the family and a replayed document has no consumer
-    // class of its own; demoting the bundle's partial line keeps its jars reachable (in the child
-    // loader, and on the parent behind the sidecar) while one coherent set answers.
-    //
-    // Gated on `hasIr` deliberately. A bundle with no IR is the opposite case — its previews ARE
-    // consumer bytecode compiled against the versions it records — so the catalog keeps its own
-    // Remote Compose versions there and the split is reported without being rearranged. Scoped to
-    // the groups actually split, too: the base and Wear lines version independently, so a bundle
-    // whose base family is coherent keeps it even when its Wear artifacts are not. See
-    // [RemoteComposePairing].
+    // `androidx.compose.remote:*` must load as one coherent family. On an IR bundle carrying only
+    // part of a group, the sidecar (whose replay code links against it) stays authoritative and the
+    // bundle's partial group is demoted. Without IR the previews are consumer bytecode, so the
+    // bundle's versions are kept and the split only reported. Per group, since base and Wear
+    // version independently. See [RemoteComposePairing].
     val remoteComposeLine =
       RemoteComposePairing.Line(
         bundle = RemoteComposePairing.bundleMembers(resolvedDependencies.map { it.coordinate }),
@@ -286,12 +219,9 @@ public object ServeBundleDaemon {
       resolvedDependencies.partition {
         overlaysDaemonSidecar(it.coordinate, demotedRemoteComposeGroups)
       }
-    // Android app-resource carriage: a classic `@Preview` that calls `stringResource(R.string.…)`
-    // needs the app's own `0x7f` resource table at render time. Extract the bundle's carried
-    // `android/` payload and synthesize the Robolectric `test_config.properties` onto the daemon
-    // `-cp` — the same wiring `bundle daemon` uses — or Robolectric throws
-    // `Resources$NotFoundException`. Empty for a desktop bundle, or an Android bundle packed before
-    // this carriage existed (renders framework-resources-only, exactly as before).
+    // Android app resources: extract the bundle's `android/` payload and synthesize Robolectric's
+    // `test_config.properties` so `stringResource(R.string.…)` resolves. Empty for desktop or older
+    // bundles.
     val androidResourceClasspath =
       if (backend == "android")
         AndroidBundleResources.daemonClasspath(
@@ -324,18 +254,13 @@ public object ServeBundleDaemon {
           "entry(s) remain isolated"
       )
     }
-    // Backstop for every split-Skiko cause the repair above does not close (an offline box, a host
-    // with no published native, a bundle recording another platform's). Read off the assembled
-    // classpath rather than the coordinates, because order is what decides which pair loads.
+    // Backstop for split-Skiko cases the repair can't close, read off the assembled classpath
+    // order.
     SkikoNativePairing.classpathSkew(classpaths.daemonClasspath)?.let {
       onLog("catalog $system: $it")
     }
-    // The same "two artifacts must move together" property for Remote Compose, read off the two
-    // sides rather than the assembled `-cp`: a resolved `.aar` reaches the classpath as
-    // `extracted/<sha256>/classes.jar` and carries neither artifact nor version in its path. A
-    // bundle that records only part of the family leaves the rest at the sidecar's pin, and the
-    // first IR replay dies on `NoSuchFieldError: … RemoteClock … SYSTEM` (#187). Recorded beside
-    // the launch descriptor so the trip can name the seam — see [RemoteComposePairing].
+    // Same coherence check for Remote Compose, read from both sides (resolved `.aar`s carry no
+    // version in their path). Recorded beside the descriptor ([RemoteComposePairing]).
     RemoteComposePairing.record(
       destDir = destDir,
       bundle = remoteComposeLine.bundle,
@@ -352,12 +277,12 @@ public object ServeBundleDaemon {
           modulePath = ":catalog",
           variant = backendLaunch.variant,
           enabled = true,
-          // Both backends speak the same JSON-RPC over stdio via the same `DaemonMain`; only the
-          // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
+          // Both backends use the same `DaemonMain` over stdio; only classpath / JVM args /
+          // sysprops differ.
           mainClass = DAEMON_MAIN_CLASS,
           classpath = classpaths.daemonClasspath,
-          // Catalog daemons only: the playground descriptor below runs a stranger's snippet and
-          // keeps bytecode verification, and its per-session classpath would never hit an archive.
+          // Catalog daemons only: the playground keeps bytecode verification for a stranger's
+          // snippet.
           jvmArgs =
             backendLaunch.jvmArgs +
               (if (backendLaunch.variant == "android")
@@ -369,34 +294,16 @@ public object ServeBundleDaemon {
               put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
               irDir?.let { put(IR_DIR_PROPERTY, it.absolutePath) }
               bundleManifestFile?.let { put(BUNDLE_MANIFEST_PATH_PROPERTY, it.absolutePath) }
-              // Point the daemon's render output at `<destDir>/renders`. This is what makes
-              // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that
-              // *registers*
-              // the file-based data products — including `compose/figma-svg` (+ `-long`). Without
-              // it
-              // `dataRoot` is null, the figma-svg producer still writes its SVG (it has an
-              // independent
-              // fallback dir) but the product is never advertised, so an override-bearing `.svg`
-              // render fails `-32020 kind not advertised` and the SVG lane 404s (ServeRenderHost's
-              // `enableExtensions` gets it back in `unknown`). `RenderEngine.dataDir` resolves to
-              // the
-              // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly
-              // where
-              // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
+              // Setting the output dir makes `DaemonMain.dataRoot` non-null, which is what
+              // registers the file-based data products (incl. `compose/figma-svg`); otherwise
+              // `.svg` renders fail `-32020 kind not advertised`. Literal key to avoid a
+              // `:daemon:desktop` dependency.
               put("composeai.render.outputDir", File(destDir, "renders").absolutePath)
-              // Opt in to the missing-resource placeholder fallback: this is the live/serve viewer,
-              // so
-              // an app-resource lookup absent from a stale or incompletely-packed bundle degrades
-              // to
-              // an
-              // obvious placeholder rather than throwing and showing a broken image. The pack-time
-              // semantics daemon leaves this off so a miss fails loudly instead of baking a
-              // placeholder
-              // into a published catalog sticker. Key kept literal to avoid a `:daemon:android`
-              // dep.
+              // Live viewer only: a missing app resource renders a placeholder instead of failing.
+              // The pack-time daemon leaves this off so misses fail loudly. Literal key to avoid a
+              // `:daemon:android` dependency.
               put("composeai.render.placeholderMissingResources", "true")
-              // Backend extras: the Robolectric `robolectric.*` flags for `android`; none for
-              // desktop.
+              // Backend extras (Robolectric flags for Android; none for desktop).
               putAll(backendLaunch.extraSystemProperties)
             },
           workingDirectory = destDir.absolutePath,
@@ -413,12 +320,8 @@ public object ServeBundleDaemon {
       return null
     }
 
-    // The author-declared knob sidecars ride alongside the PNGs in the bundle — the plain-Compose
-    // `previews/<id>.overrides.json` (`compose/overrides`) and the Remote Compose
-    // `previews/<id>.remotecompose.json` (`compose/remotecompose`) channels. Extract both so
-    // [readPreviews] can advertise each preview's editable knobs, which the viewer renders as live
-    // knob controls (and that ServeCatalogLiveHost grafts onto the baked browse surface).
-    // Best-effort: a bundle that carried none simply yields previews with no knobs.
+    // Extract the knob sidecars (`.overrides.json`, `.remotecompose.json`) so [readPreviews] can
+    // advertise editable knobs. Best-effort.
     val previewsDir = File(destDir, "previews").apply { mkdirs() }
     extractKnobSidecars(zipBytes, previewsDir, fileSystem)
 
@@ -434,32 +337,21 @@ public object ServeBundleDaemon {
       workspaceName = destDir.name.ifBlank { system },
       previews = previews,
       label = system,
-      // The catalog's app-declared @ThemeCatalog themes, read from the same carried previews.json —
-      // so a published catalog's live lane offers the App theme selector (its daemon applies the
-      // themeProvider override on demand). Empty when the app declares none.
+      // App-declared `@ThemeCatalog` themes for the live theme selector; empty when none.
       declaredThemes = readDeclaredThemes(previewsJson, fileSystem),
-      // An Android/Robolectric daemon boots a sandbox fleet and is far heavier than a desktop CMP
-      // one, so it costs more of the live-seat budget (see [LiveSeatLimiter]); a desktop bundle
-      // keeps the default weight of 1.
+      // Android daemons cost more of the live-seat budget ([LiveSeatLimiter]).
       liveSeatWeight = if (backend == "android") ANDROID_LIVE_SEAT_WEIGHT else 1,
     )
   }
 
   /**
-   * Materialize a compiled **playground snippet** into a resumable live-session state — the Stage-2
-   * ([PlaygroundRedeemService]) counterpart of [materialize], but over a just-compiled snippet's
-   * own classes instead of a fetched bundle. Writes a `previews.json` (every `@Preview` the snippet
-   * declared, so the session can navigate between them) and a `daemon-launch.json` for the
-   * snippet's mode (desktop CMP / Android Robolectric) into the snippet's work dir, so the registry
-   * opens, resumes, seat-counts, and streams it through the exact same path a catalog uses — no new
-   * live-session machinery. Returns null (logged) when the mode's daemon backend (sidecar /
-   * `android.jar`) is unavailable, so redemption reports "unavailable" rather than standing up a
-   * dead session.
+   * Materialize a compiled playground snippet into a resumable live-session state — the
+   * [PlaygroundRedeemService] counterpart of [materialize]. Writes `previews.json` and a
+   * `daemon-launch.json` for the snippet's mode so the registry treats it like any catalog. Returns
+   * null (logged) when the mode's daemon backend is unavailable.
    *
-   * [sandbox] is the per-session containment (PLAYGROUND.md §6, issue #3016): its jail argv and
-   * hard TTL ride the written descriptor, so the registry's ordinary descriptor→spawn path launches
-   * the snippet's daemon inside the jail and shoots it at the deadline. [PlaygroundSandbox.NONE]
-   * leaves the descriptor identical to the pre-sandbox one.
+   * [sandbox] is the per-session containment: its jail argv and hard TTL ride the descriptor.
+   * [PlaygroundSandbox.NONE] leaves the descriptor unchanged.
    */
   public fun materializePlaygroundSnippet(
     snippet: PlaygroundTokenStore.PlaygroundSnippet,
@@ -485,19 +377,11 @@ public object ServeBundleDaemon {
       return null
     }
 
-    // Partition the resolved catalog jars exactly as the bundle path does: the namespaces
-    // UserClassLoaderHolder delegates to the daemon parent (androidx.*, kotlinx-coroutines,
-    // kotlinx-io) must *precede* the sidecar on the parent -cp, or the daemon loads its own
-    // (possibly older) sidecar
-    // versions and a snippet/catalog composable built against the catalog's newer AndroidX fails
-    // with NoSuchMethodError/NoSuchFieldError. Everything else — including the snippet's own
-    // classes
-    // (classesDir) — stays isolated on the user (child) classloader. We only have file paths here
-    // (not coordinates), so match the same groups by their Maven/Gradle cache path segment.
-    // classesDir
-    // lands in `child` (its temp path matches neither), and bundleDaemonClasspaths dedupes it
-    // against
-    // the explicit classesDir arg.
+    // Partition the catalog jars as the bundle path does: namespaces `UserClassLoaderHolder`
+    // delegates to the parent (androidx.*, kotlinx-coroutines, kotlinx-io) must precede the sidecar
+    // or older sidecar versions win (NoSuchMethodError). Everything else, including the snippet's
+    // classes, stays in the child loader. Only paths are available here, so match by cache path
+    // segment.
     val (parentOverlayJars, childJars) =
       snippet.classpath.map { File(it.toString()) }.partition { jarPrecedesDaemonSidecar(it) }
     val classpaths =
@@ -519,9 +403,7 @@ public object ServeBundleDaemon {
           enabled = true,
           mainClass = DAEMON_MAIN_CLASS,
           classpath = classpaths.daemonClasspath,
-          // The sandbox's JVM caps come last so they win over any backend default: a snippet's
-          // daemon
-          // is bounded in heap and CPU even on a jail with no cgroup behind it.
+          // Sandbox JVM caps last so they win over backend defaults.
           jvmArgs = backendLaunch.jvmArgs + sandbox.jvmArgs(workDir),
           systemProperties =
             buildMap {
@@ -543,8 +425,7 @@ public object ServeBundleDaemon {
             sandbox.command(
               PlaygroundSandbox.Paths(
                 workDir = workDir,
-                // Everything the daemon reads: its own sidecar jars, the catalog classpath, and the
-                // snippet's compiled classes. Bound read-only; only workDir is writable.
+                // Everything the daemon reads, read-only; only workDir is writable.
                 readOnly =
                   (classpaths.daemonClasspath.map { File(it) } +
                       snippet.classpath.map { File(it.toString()) } +
@@ -583,9 +464,8 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Read the catalog's declared `@ThemeCatalog` themes from the carried `previews.json` (the
-   * synthetic `THEME_CATALOG` entries discovery emits). Module-global, so the whole catalog shares
-   * one theme set. Absent / unreadable previews.json → no themes.
+   * The catalog's declared `@ThemeCatalog` themes from the carried `previews.json`; empty when
+   * absent.
    */
   private fun readDeclaredThemes(previewsJson: File, fileSystem: FileSystem): List<ServeTheme> {
     val text =
@@ -601,10 +481,8 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Read the bundle's extracted `previews.json` into the [ServePreview] shape serve expects,
-   * folding in each preview's author-declared knobs from its extracted
-   * `previews/<id>.overrides.json` sidecar (in [previewsDir]) so the daemon-backed session
-   * advertises what's editable.
+   * Read the extracted `previews.json` into [ServePreview]s, with each preview's knobs from its
+   * sidecars in [previewsDir].
    */
   public fun readPreviews(
     previewsJson: File,
@@ -640,12 +518,7 @@ public object ServeBundleDaemon {
     }
   }
 
-  /**
-   * Extract the per-preview knob sidecars (`previews/<id>.overrides.json` and
-   * `previews/<id>.remotecompose.json`) from [zipBytes] into [previewsDir] (zip-slip safe). Mirrors
-   * the PNG-side extraction in [ServeBundleStore]; other bundle entries are handled elsewhere
-   * ([extractBundleClassesAndManifest]).
-   */
+  /** Extract the per-preview knob sidecars from [zipBytes] into [previewsDir] (zip-slip safe). */
   public fun extractKnobSidecars(zipBytes: ByteArray, previewsDir: File, fileSystem: FileSystem) {
     val root = previewsDir.canonicalFile.toPath()
     java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zipBytes)).use { zin ->
@@ -658,8 +531,7 @@ public object ServeBundleDaemon {
             (name.endsWith(OVERRIDES_SUFFIX) || name.endsWith(REMOTECOMPOSE_SUFFIX)) &&
             ".." !in name.split("/")
         ) {
-          // Strip the leading `previews/` so the file lands directly under previewsDir (keyed by
-          // id).
+          // Strip `previews/` so files land directly under previewsDir, keyed by id.
           val target = File(previewsDir, name.removePrefix("previews/"))
           if (target.canonicalFile.toPath().startsWith(root)) {
             target.parentFile?.mkdirs()
@@ -693,11 +565,7 @@ public object ServeBundleDaemon {
     }
   }
 
-  /**
-   * Read [id]'s extracted `<id>.remotecompose.json` sidecar (the `compose/remotecompose`
-   * declarations payload) into its declared knobs. Absent / unreadable ⇒ no knobs, so a bundle that
-   * carried none (or a non-RC catalog) just advertises an empty list.
-   */
+  /** [id]'s `<id>.remotecompose.json` knobs; absent or unreadable means none. */
   private fun readRemoteComposeSidecar(
     previewsDir: File,
     id: String,
@@ -718,14 +586,10 @@ public object ServeBundleDaemon {
     }
   }
 
-  /**
-   * Suffix of the per-preview plain-Compose knob sidecar; lockstep with `PreviewBundleFormat`'s.
-   */
+  /** Per-preview plain-Compose knob sidecar suffix; lockstep with `PreviewBundleFormat`. */
   private const val OVERRIDES_SUFFIX = ".overrides.json"
 
-  /**
-   * Suffix of the per-preview Remote Compose knob sidecar; lockstep with `PreviewBundleFormat`'s.
-   */
+  /** Per-preview Remote Compose knob sidecar suffix; lockstep with `PreviewBundleFormat`. */
   private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
 
   /** IR replay properties consumed by BundleIrReplayStore in the daemon. */
@@ -735,14 +599,8 @@ public object ServeBundleDaemon {
   private val json = Json { encodeDefaults = true }
 
   /**
-   * Read back a `daemon-launch.json` written by [materialize].
-   *
-   * Exists so the theme cache can fingerprint a generation from the launch the daemon will actually
-   * perform — the classpath it loads and the variant it renders as — rather than from a parallel
-   * description of it that someone would have to keep in step by hand.
-   *
-   * Null on anything unreadable, which the caller treats as "this generation has no durable
-   * identity" and therefore as "do not persist".
+   * Read back a `daemon-launch.json` written by [materialize], so the theme cache fingerprints the
+   * actual launch. Null when unreadable, which means "do not persist".
    */
   public fun readLaunchDescriptor(descriptorFile: File): DaemonLaunchDescriptor? = runCatching {
     launchDescriptorJson.decodeFromString(
@@ -760,21 +618,13 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Split a packed bundle's runtime into the daemon parent and disposable user child classpaths.
+   * Split a bundle's runtime into the daemon parent and the disposable user child classpaths.
    *
-   * Compose, AndroidX, Kotlin, and kotlinx packages deliberately delegate to the daemon parent
-   * loader so renderer and preview code share one class identity. Consequently, leaving the
-   * bundle's resolved Maven jars in `composeai.daemon.userClassDirs` cannot make those catalog
-   * versions win: [ee.schimke.composeai.daemon.UserClassLoaderHolder] delegates them straight to
-   * the server sidecar, producing `NoSuchMethodError` when the catalog was compiled against newer
-   * Material, Lifecycle, or coroutines APIs.
-   *
-   * Put the bundle's shared AndroidX/Compose and coroutines dependencies first on the parent `-cp`,
-   * ahead of the daemon sidecar. The JVM's left-to-right classpath order then selects the catalog's
-   * framework versions while retaining one parent-loaded copy for both renderer and app code. Keep
-   * ordinary app dependencies in the child loader. In particular, do not overlay
-   * kotlinx-serialization: the daemon's generated JSON-RPC serializers and its runtime must stay
-   * version-aligned.
+   * [ee.schimke.composeai.daemon.UserClassLoaderHolder] delegates Compose, AndroidX, Kotlin and
+   * kotlinx packages to the parent, so the bundle's versions of those must go first on the parent
+   * `-cp`, ahead of the sidecar, or catalogs built against newer APIs hit `NoSuchMethodError`.
+   * Ordinary app dependencies stay in the child. Never overlay kotlinx-serialization: the daemon's
+   * JSON-RPC serializers must match their runtime.
    */
   public fun bundleDaemonClasspaths(
     classesDir: File,
@@ -786,22 +636,20 @@ public object ServeBundleDaemon {
     androidResourceClasspath: List<String>,
     hasIr: Boolean,
   ): BundleDaemonClasspaths {
-    // The carried r-classes.jar belongs to the catalog's AndroidX graph too. It must precede the
-    // sidecar's generated R.jar or newer Compose UI bytecode can resolve an older R$id class and
-    // fail with NoSuchFieldError.
+    // The carried r-classes.jar must precede the sidecar's R.jar, or newer Compose UI resolves an
+    // older `R$id` (NoSuchFieldError).
     val parentEntries =
       (parentOverlayJars.map { it.absolutePath } +
           androidResourceClasspath +
           daemonSidecarClasspath +
-          // Parent-loaded IR replay connectors link the carried player/runtime libraries
-          // directly. Mirror BundleDaemonCommand.composeDaemonClasspath by making every carried
-          // dependency visible to the parent after the authoritative daemon sidecars. Shared ABI
-          // overlays above still precede the sidecar and retain their version priority.
+          // Parent-loaded IR replay connectors link the carried libraries directly, so expose them
+          // on the parent after the sidecars (as `BundleDaemonCommand.composeDaemonClasspath`
+          // does).
           (if (hasIr) (embeddedLibJars + childDependencyJars).map { it.absolutePath }
           else emptyList()))
         .distinct()
-    // The rehydrated external-resource dirs go right after the bundle's own classes so a lifted
-    // font resolves at the same `/fonts/…` path it did when carried inline.
+    // External-resource dirs right after the bundle's classes, so lifted fonts resolve at
+    // `/fonts/…`.
     val childEntries =
       (listOf(classesDir) +
           extraClasspathDirs.filter { it.isDirectory } +
@@ -821,14 +669,9 @@ public object ServeBundleDaemon {
   )
 
   /**
-   * [shouldPrecedeDaemonSidecar] with the one exception the Remote Compose family earns: when an
-   * **IR-carrying** bundle covers only part of a Remote Compose group and the sidecar supplies the
-   * rest at another version ([demotedRemoteComposeGroups], from `hasIr` and
-   * [RemoteComposePairing.skewedGroups]), promoting the bundle's half of that group wins nothing
-   * and links the two halves together. Demoted, the group answers whole from the sidecar — the side
-   * whose IR replay code calls into it. A bundle with no IR never demotes: its previews are
-   * consumer bytecode compiled against the versions it records, which is exactly what
-   * [shouldPrecedeDaemonSidecar] protects. See [RemoteComposePairing].
+   * [shouldPrecedeDaemonSidecar], except a partially carried Remote Compose group on an IR bundle
+   * ([demotedRemoteComposeGroups]) is demoted so the sidecar supplies the whole group. Non-IR
+   * bundles never demote. See [RemoteComposePairing].
    */
   internal fun overlaysDaemonSidecar(
     coordinate: BundleReader.ClasspathEntry.Maven,
@@ -843,22 +686,11 @@ public object ServeBundleDaemon {
    */
   public fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
     coordinate.group.startsWith("androidx.") ||
-      // Compose Multiplatform artifacts are `org.jetbrains.compose.*` by GROUP but ship
-      // `androidx.compose.*` PACKAGES — the same overlap [ValidateComposePreviewClasspathTask]
-      // warns about. [UserClassLoaderHolder.mustDelegateToParent] keys on the package, so those
-      // classes are force-delegated to the parent; leaving the jars in the isolated child means
-      // the child copy is never consulted and the sidecar's own Compose answers instead. A
-      // consumer pinning a different version than the renderer ships then gets a hard
-      // `NoSuchMethodError` mid-render — meshcore-mobile on material3 1.10.0-alpha05 against a
-      // 1.11.x sidecar died on `AppBarKt.TopAppBar-gNPyAyM`. Group and package rule must agree.
-      //
-      // Skiko travels WITH Compose, and for the same reason: `org.jetbrains.skiko:skiko-awt`
-      // carries `org.jetbrains.skia.*` (bindings) as well as `org.jetbrains.skiko.*`, and
-      // `mustDelegateToParent` force-delegates `org.jetbrains.skia.`. Promoting Compose without it
-      // would pair the consumer's newer bindings with the sidecar's older native library — the
-      // `UnsatisfiedLinkError` on `skia.paragraph.TextStyleKt._nSetFontEdging` that
-      // [DesktopRendererGraphAlignmentFunctionalTest] documents (issue #1844). The two must move
-      // together or the graph is incoherent either way.
+      // CMP artifacts are `org.jetbrains.compose.*` by group but ship `androidx.compose.*`
+      // packages, which [UserClassLoaderHolder.mustDelegateToParent] force-delegates; left in the
+      // child, the sidecar's Compose answers and mismatched versions fail with `NoSuchMethodError`.
+      // Skiko moves with Compose because `org.jetbrains.skia.*` is delegated too, and its bindings
+      // must match the native.
       coordinate.group.startsWith("org.jetbrains.compose") ||
       coordinate.group.startsWith("org.jetbrains.skiko") ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
@@ -866,15 +698,9 @@ public object ServeBundleDaemon {
           coordinate.artifact.startsWith("kotlinx-io")))
 
   /**
-   * The [shouldPrecedeDaemonSidecar] rule applied to a resolved **jar path** rather than a
-   * coordinate — used by the playground live path ([materializePlaygroundSnippet]), which carries
-   * only the resolved files (the coordinates were dropped during catalog resolution). Both the
-   * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
-   * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
-   * identifies the AndroidX graph, `org.jetbrains.compose` the Compose Multiplatform graph (whose
-   * artifacts ship `androidx.compose.*` packages — see [shouldPrecedeDaemonSidecar]), and
-   * `kotlinx-coroutines` / `kotlinx-io` the kotlinx artifacts whose namespaces
-   * `UserClassLoaderHolder` delegates to the daemon parent.
+   * [shouldPrecedeDaemonSidecar] for a resolved jar path, for the playground path which only has
+   * files. Matches `/androidx`, `org.jetbrains.compose`/skiko, and `kotlinx-coroutines` /
+   * `kotlinx-io` segments in either Maven-local or Gradle-cache layouts.
    */
   public fun jarPrecedesDaemonSidecar(jar: File): Boolean {
     val path = jar.path.replace('\\', '/')
@@ -884,11 +710,8 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * The `org.jetbrains.compose.*` and `org.jetbrains.skiko` graphs in either cache layout. Broader
-   * than the old `components-resources` check it replaces — every Compose Multiplatform artifact
-   * ships `androidx.compose.*` packages the child delegates to the parent, not just the resources
-   * one, and Skiko ships the `org.jetbrains.skia.*` bindings that are delegated too. Both must be
-   * promoted together so the bindings and the native library stay one coherent version.
+   * `org.jetbrains.compose.*` and `org.jetbrains.skiko` in either cache layout; promoted together
+   * so Skia bindings and native stay one version.
    */
   private val JETBRAINS_COMPOSE_ARTIFACT_PATH =
     Regex("/(?:org\\.jetbrains\\.(?:compose|skiko)|org/jetbrains/(?:compose|skiko))[./]")
@@ -906,12 +729,8 @@ public object ServeBundleDaemon {
   )
 
   /**
-   * The backend-specific half of a bundle daemon launch: the daemon (parent `-cp`) classpath, the
-   * JVM args, and any extra `-D` system properties. Mirrors `BundleDaemonCommand.DaemonLaunch` but
-   * flattened for the descriptor path (which applies `jvmArgs` + `systemProperties` + `classpath`
-   * directly — see `SubprocessDaemonClientFactory.spawn`). The daemon's own classpath carries the
-   * renderer; the bundle's app classes ride the `composeai.daemon.userClassDirs` sysprop, so they
-   * are NOT in [daemonClasspath].
+   * The backend-specific half of a bundle daemon launch: parent classpath, JVM args and extra
+   * `-D`s. The bundle's app classes ride `composeai.daemon.userClassDirs`, not [daemonClasspath].
    */
   private data class BackendDaemonLaunch(
     val variant: String,
@@ -945,36 +764,28 @@ public object ServeBundleDaemon {
     return BackendDaemonLaunch(
       variant = "desktop",
       daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath },
-      // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
-      // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
+      // `apple.awt.UIElement`: no Dock icon or focus steal on macOS; must be set before AWT inits.
       jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
       extraSystemProperties = desktopFontSystemProperties(),
     )
   }
 
   /**
-   * Font-related props the desktop daemon needs, mirroring the Android launch's
-   * [AndroidBundleLaunch.robolectricSystemProperties]. The `compose/figma-svg` export embeds fonts
-   * by default, so the daemon fetches generic faces (e.g. Roboto) from Google Fonts; point it at
-   * the SAME shared cache the Android path and Gradle plugin use so those downloads are cached, and
-   * forward this process's `composeai.svg.embedFonts` / `composeai.fonts.offline` choices when set
-   * so a `-Dcomposeai.svg.embedFonts=false` opt-out reaches the child daemon.
+   * Font props for the desktop daemon: share the Google Fonts cache with the Android path and
+   * Gradle plugin, and forward `composeai.svg.embedFonts` / `composeai.fonts.offline` when set.
    */
   private fun desktopFontSystemProperties(): Map<String, String> = buildMap {
     put("composeai.fonts.cacheDir", composeAiCacheDir("fonts").absolutePath)
     System.getProperty("composeai.fonts.offline")?.let { put("composeai.fonts.offline", it) }
     System.getProperty("composeai.svg.embedFonts")?.let { put("composeai.svg.embedFonts", it) }
-    // The figma-svg background opt-in is read in the daemon, not here, so a
-    // `-Dcomposeai.svg.background=true` on this process only takes effect if it is forwarded.
+    // Read by the daemon, so it only applies if forwarded.
     System.getProperty("composeai.svg.background")?.let { put("composeai.svg.background", it) }
   }
 
   /**
-   * Android (Robolectric) launch: `lib-daemon-android` + `android.jar`, plus the required
-   * `--add-opens` args and `robolectric.*` mode sysprops [AndroidBundleLaunch] supplies (the same
-   * ones `bundle daemon`'s `androidDaemonLaunch` passes). `resolveAndroidJar(null)` falls back to
-   * `ANDROID_HOME`/`ANDROID_SDK_ROOT` since a module-less serve has no `local.properties`. Missing
-   * the sidecar or android.jar → `null` + an actionable log (caller falls back to baked PNGs).
+   * Android (Robolectric) launch: `lib-daemon-android` + `android.jar` plus [AndroidBundleLaunch]'s
+   * `--add-opens` and `robolectric.*` sysprops. `android.jar` comes from
+   * `ANDROID_HOME`/`ANDROID_SDK_ROOT`. Missing either → null with an actionable log.
    */
   private fun androidBundleDaemonLaunch(
     system: String,
@@ -1011,16 +822,10 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Cold-start knobs for a serve-spawned Android/Robolectric daemon. Serve fronts the daemon with
-   * baked PNGs while it warms ([ServeCatalogLiveHost]'s warm-in-background lane), so nothing here
-   * needs the strict all-sandboxes-ready `initialize` contract the Gradle-plugin/VS Code launch
-   * keeps — opt into `RobolectricHost`'s background pool boot by default: `initialize` returns once
-   * ONE sandbox can render (~12 s warm-cache instead of N×), the rest of the pool boots off the
-   * request path, and each background slot gets a boot-time warm render. An explicit
-   * `-Dcomposeai.daemon.backgroundSandboxBoot=…` on the serve JVM (e.g. via `JAVA_TOOL_OPTIONS`)
-   * wins, so operators can opt a deployment out; `composeai.daemon.warmRenderOnBoot` is forwarded
-   * when set for the same reason. Command-line `-D`s land after `JAVA_TOOL_OPTIONS` on the child
-   * JVM, so the value emitted here is authoritative for the daemon.
+   * Cold-start knobs for a serve-spawned Robolectric daemon. Serve shows baked PNGs while warming,
+   * so default to background sandbox boot (`initialize` returns once one sandbox can render). An
+   * explicit `-Dcomposeai.daemon.backgroundSandboxBoot` (or `warmRenderOnBoot`) on this JVM is
+   * forwarded and wins.
    */
   private fun androidColdStartSystemProperties(): Map<String, String> = buildMap {
     put(
@@ -1033,63 +838,25 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * JVM flags that make a serve-spawned Android daemon — and every sandbox worker it spawns, since
-   * `SandboxProcessPool` hands its `-XX` flags on — boot faster. Profiled on the deployed preview
-   * server's shape (compose-preview-server#626; STARTUP.md § "Where the time goes"): a Robolectric
-   * sandbox boot is ~4 s of mostly class definition and verification, and every catalog daemon on
-   * the box pays it three times over (slot 0 plus two workers), on every launch.
+   * JVM flags that speed up a serve-spawned Android daemon and the sandbox workers it spawns (which
+   * inherit its `-XX` flags). Each has its own opt-out:
    *
-   * Two flags, each with its own opt-out so an operator can bisect a regression on the box:
+   * - Per-classpath CDS archive (`composeai.serve.androidDaemonCds`, default on, JDK 19+):
+   *   `-XX:+AutoCreateSharedArchive`, keyed by daemon classpath since overlays make it per catalog.
+   *   First boot of a classpath is slower, later ones much faster.
+   * - No bytecode verification (`composeai.serve.androidDaemonBytecodeVerification`, default off):
+   *   catalog daemons already run their producers' code. The playground never gets this.
+   * - Serial GC (`composeai.serve.androidDaemonSerialGc`, default on): saves ~20-25% RSS per JVM.
    *
-   * - **A per-classpath class-data-sharing archive** (`composeai.serve.androidDaemonCds`, default
-   *   on, JDK 19+). `-XX:+AutoCreateSharedArchive` makes the JVM write a dynamic archive of every
-   *   builtin-loader class it loaded when it exits, and map it on the next launch of the same
-   *   classpath; a missing, stale or corrupt archive is regenerated, never fatal. The archive is
-   *   keyed by the daemon classpath because that classpath is *per catalog* —
-   *   [bundleDaemonClasspaths] puts the bundle's own Compose/AndroidX overlay jars ahead of the
-   *   sidecar — so one baked image-wide archive could never validate. It lives under the shared
-   *   `composeai` cache dir, which the deploy image keeps on a volume, so it survives a container
-   *   restart. The first boot of a classpath is *slower* — recording dump info and writing the
-   *   archive at exit cost it 40-75 % in the profile — and every later one is ~35 % faster to a
-   *   full pool: it skips parsing and verifying the ~3,500 sidecar and JDK classes the sandbox boot
-   *   touches, and the workers' archives carry the warm render's classes too. Robolectric's own
-   *   sandbox classes are defined by a custom loader and stay out of any archive — that is the part
-   *   only a pre-booted sandbox can remove.
-   * - **No remote bytecode verification** (`composeai.serve.androidDaemonBytecodeVerification`,
-   *   default off). Verification is a linear pass over every class the sandbox defines, worth ~0.25
-   *   s per JVM on an idle box, and a catalog daemon already runs the catalog's producers' code
-   *   with no further trust boundary. The playground lane, which compiles a stranger's Kotlin, does
-   *   not get this flag — see the descriptor site.
+   * Archive requirements:
+   * - JVM logging goes to stderr with `cds` silenced, because stdout is the JSON-RPC channel.
+   * - A torn archive (daemon force-killed mid-write) blocks re-creation, so [validateArchive]
+   *   deletes
+   *   it first.
+   * - The directory is bounded by `composeai.serve.androidDaemonCdsMaxBytes` (default 2 GiB) via
+   *   [pruneArchives], never evicting this launch's own archives.
    *
-   * - **The serial collector** (`composeai.serve.androidDaemonSerialGc`, default on). A sandbox
-   *   renders one frame at a time on a ~100 MB live heap; G1's regions, remembered sets and its
-   *   eight parallel GC threads per JVM buy it nothing, and cost it ~20-25 % of resident memory —
-   *   measured 375/582/592 MB → 313/461/475 MB for a daemon and its two workers, with the same boot
-   *   time. On a box running dozens of three-JVM daemons that is gigabytes.
-   *
-   * Two things the archive flag drags in, both load-bearing:
-   *
-   * - **The JVM's own log must not land on stdout.** Unified logging defaults to
-   *   `all=warning:stdout`, and the daemon's stdout *is* the JSON-RPC channel. A CDS mismatch
-   *   warning at startup, or the several hundred `Skipping …: Signed JAR` lines the dump writes at
-   *   exit, would be fed to the client as protocol bytes. So the JVM log is re-pointed at stderr,
-   *   where the daemon's free-form log already goes, and the `cds` tags are silenced outright — an
-   *   archive that fails to load is regenerated, which is the only diagnosis that matters.
-   * - **A torn archive is deleted before launch.** The archive is written when the daemon exits,
-   *   and serve force-kills a daemon that ignores `shutdown` — a file cut off mid-write does not
-   *   carry the dynamic-archive magic, and the JVM refuses to auto-create over a file it cannot
-   *   read as an archive, which would leave that catalog without CDS until someone deleted the file
-   *   by hand. [validateArchive] checks the four magic bytes and unlinks anything else.
-   * - **The directory is bounded.** Each sandbox worker gets its own archive beside the daemon's
-   *   (`SandboxProcessPool.workerJvmArgs` — one writer per file), so a classpath costs about 50 MB
-   *   for the daemon plus ~100 MB per worker, and the deployed box serves dozens of catalogs whose
-   *   overlay jars are content-addressed, so catalogs on one Compose BOM share a classpath and an
-   *   archive. [pruneArchives] evicts the least recently written archives past
-   *   `composeai.serve.androidDaemonCdsMaxBytes` (default 2 GiB), never the ones this launch is
-   *   about to use.
-   *
-   * Pure apart from the directory, that unlink and that eviction; [javaFeatureVersion] and [cdsDir]
-   * are seams for the unit test.
+   * [javaFeatureVersion] and [cdsDir] are test seams.
    */
   internal fun androidDaemonStartupJvmArgs(
     daemonClasspath: List<String>,
@@ -1123,9 +890,8 @@ public object ServeBundleDaemon {
   }
 
   /**
-   * Unlinks [archive] unless it starts with HotSpot's dynamic-archive magic
-   * (`CDS_DYNAMIC_ARCHIVE_MAGIC`, written in host byte order). Missing is fine — the JVM creates it
-   * at exit. Returns whether a file was removed, for the test.
+   * Unlink [archive] unless it starts with HotSpot's dynamic-archive magic (host byte order).
+   * Missing is fine. Returns whether a file was removed.
    */
   internal fun validateArchive(archive: File): Boolean {
     if (!archive.isFile) return false
@@ -1145,10 +911,8 @@ public object ServeBundleDaemon {
   private const val CDS_DYNAMIC_ARCHIVE_MAGIC: Int = 0xf00baba8.toInt()
 
   /**
-   * Keeps the `.jsa` files under [cdsDir] within [maxBytes] by deleting the least recently modified
-   * ones first. Files whose name starts with [keepStem] — the archive this launch will use and its
-   * per-worker siblings — are never candidates. Returns the deleted files, for the test.
-   * Best-effort: an unreadable directory prunes nothing.
+   * Delete the least recently modified `.jsa` files under [cdsDir] until within [maxBytes], never
+   * those starting with [keepStem]. Returns the deleted files. Best-effort.
    */
   internal fun pruneArchives(cdsDir: File, keepStem: String, maxBytes: Long): List<File> {
     val archives =
@@ -1177,9 +941,8 @@ public object ServeBundleDaemon {
   private const val DEFAULT_ANDROID_DAEMON_CDS_MAX_BYTES: Long = 2L * 1024 * 1024 * 1024
 
   /**
-   * Stable name for the archive of one daemon classpath: the SHA-256 of the entries in order. The
-   * JVM validates the archive against the classpath (and its own build) anyway; the key only keeps
-   * catalogs from thrashing one file.
+   * Archive name for a daemon classpath: SHA-256 of its ordered entries (the JVM validates the
+   * rest).
    */
   private fun classpathArchiveKey(daemonClasspath: List<String>): String {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
@@ -1194,16 +957,13 @@ public object ServeBundleDaemon {
   internal const val ANDROID_DAEMON_CDS_PROP = "composeai.serve.androidDaemonCds"
 
   /**
-   * `-Dcomposeai.serve.androidDaemonBytecodeVerification=true` restores bytecode verification in
-   * catalog daemons.
+   * `-Dcomposeai.serve.androidDaemonBytecodeVerification=true` restores verification in catalog
+   * daemons.
    */
   internal const val ANDROID_DAEMON_VERIFY_PROP =
     "composeai.serve.androidDaemonBytecodeVerification"
 
-  /**
-   * `ee.schimke.composeai.daemon.DaemonMain` — the daemon entrypoint a bundle spawns (both
-   * backends).
-   */
+  /** The daemon entrypoint a bundle spawns (both backends). */
   private const val DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
 
   /** Descriptor schema version — mirrors `SubprocessRenderSessions.openBundleDaemon`. */

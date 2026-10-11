@@ -1,22 +1,9 @@
-// `:splash-preview-runtime` — composable-helper authoring path for the Android 12+
-// SplashScreen window appearance. Sister to `:notification-preview-runtime` and
-// `:glance-preview-runtime`: a tiny JVM-friendly helper consumed inside a regular `@Preview`,
-// no new annotation, no new renderer strategy.
+// `:splash-preview-runtime` — `SplashScreenSurface(icon, background, iconBackground,
+// brandingImage)`, a composable helper used inside a regular `@Preview` that recreates the Android
+// 12+ SplashScreen proportions (qualitatively, not pixel-perfect against SystemUI).
 //
-// `SplashScreenSurface(icon = …, background = …, iconBackground = …, brandingImage = …)`
-// recreates the proportions Android paints when the SplashScreen API runs at app launch —
-// full-bleed background, centred icon masked to the splash-icon shape (a circle whose
-// diameter ≈ 75% of the canvas's short edge per the SplashScreen spec), optional
-// `windowSplashScreenIconBackgroundColor` ring, optional `windowSplashScreenBrandingImage`
-// at the bottom. The reproduction is qualitative (the rendered footprint reads like the
-// real splash on a phone-shaped canvas), not pixel-perfect against the SystemUI compositor.
-//
-// Standalone on purpose — no compile dep on `:renderer-android` so the runtime can be used
-// in Bazel modules or JVM unit tests that don't carry the full Robolectric renderer. Pure
-// Compose Foundation under the hood: no platform splash APIs are invoked (the
-// `androidx.core:core-splashscreen` library is an *app-side* shim around the platform
-// SplashScreen window; it doesn't expose a reusable Compose surface that mirrors the visual
-// appearance for tooling).
+// No dependency on `:renderer-android`, so it works in Bazel modules and plain JVM tests. Pure
+// Compose Foundation; `core-splashscreen` offers no reusable visual surface.
 
 plugins {
   id("composeai.base-conventions")

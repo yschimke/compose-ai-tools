@@ -5,11 +5,9 @@ import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 
 /**
- * CLI entry point over [PreviewDiscovery.discover] for non-Gradle build systems — a Bazel `genrule`
- * or an Amper task can shell out here without buying into a Gradle Tooling-API client.
- *
- * The published `ee.schimke.composeai:preview-discovery` JAR is a **slim library JAR** (no shaded
- * uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
+ * CLI over [PreviewDiscovery.discover] for non-Gradle build systems (Bazel, Amper). The published
+ * JAR is slim (no uber-JAR, no `Class-Path:`), so run it with the caller-resolved runtime closure;
+ * `java -jar` fails with `NoClassDefFoundError` (see `docs/NON_GRADLE_INTEGRATION.md`):
  * ```
  * java -cp <resolved-classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli \
  *   --classes <dir>[:<dir>...] \
@@ -21,20 +19,10 @@ import kotlinx.serialization.json.Json
  *   [--fail-on-empty] \
  *   --out <path>
  * ```
+ * List flags take `File.pathSeparator`-separated values, may repeat, and skip empty entries.
  *
- * where `<resolved-classpath>` is the runtime closure of `ee.schimke.composeai:preview-discovery`
- * as resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, `mvn
- * dependency:build-classpath`, etc.) and joined with the platform-appropriate `File.pathSeparator`.
- * `java -jar <artifact>.jar` against the bare published JAR will fail with `NoClassDefFoundError` —
- * see the "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md`.
- *
- * `--classes`, `--dependency-jars`, `--source-files` accept a `File.pathSeparator`-separated list
- * (matching how `java -cp` already encodes classpaths on the consumer's platform) and can be
- * repeated to concatenate. Empty entries are skipped, so passing an empty value through is harmless
- * when a build rule's input list happens to be empty.
- *
- * Exit codes: `0` on success (manifest written), `1` on discovery failure (e.g. zero previews
- * + `--fail-on-empty`), `2` on argument parsing failure.
+ * Exit codes: `0` success, `1` discovery failure (e.g. no previews with `--fail-on-empty`), `2` bad
+ * arguments.
  */
 public object PreviewDiscoveryCli {
 

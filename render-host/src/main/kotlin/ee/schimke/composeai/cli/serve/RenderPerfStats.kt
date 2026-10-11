@@ -3,18 +3,12 @@ package ee.schimke.composeai.cli.serve
 import kotlinx.serialization.Serializable
 
 /**
- * Aggregate render-performance counters for one daemon-backed [ServeHost] — the serve-side
- * companion to the daemon's own `compose-ai-daemon: [+Nms]` stderr markers, kept queryable so
- * `/status.json` can report cold vs warm render behaviour without anyone tailing container logs.
+ * Render-performance counters for one daemon-backed [ServeHost], so `/status.json` reports cold vs
+ * warm render behaviour without tailing logs. Measures the full serve-side round trip (renderNow →
+ * renderFinished → PNG read), not daemon engine time (see `composeai.daemon.perfettoTrace`).
  *
- * Recorded by [ServeRenderHost.render] around the full serve-side render round-trip (renderNow →
- * renderFinished → PNG read), which is the latency a `/render` caller actually experiences —
- * deliberately not the daemon-internal engine time, which the per-phase trace recorder
- * (`composeai.daemon.perfettoTrace`) already covers.
- *
- * Thread-safe; all methods take one short critical section. Percentiles come from a bounded ring of
- * the most recent [WINDOW_SIZE] successful render durations, so a long-lived daemon reports recent
- * behaviour rather than an all-time blur (the all-time min/max/avg/first are kept separately).
+ * Thread-safe. Percentiles come from a ring of the last [WINDOW_SIZE] successful renders; all-time
+ * min/max/avg/first are kept separately.
  */
 public class RenderPerfStats {
   private val lock = Any()
@@ -48,19 +42,15 @@ public class RenderPerfStats {
   public fun recordBusy(): Unit = synchronized(lock) { busy++ }
 
   /**
-   * A render refused without asking the daemon because this host's [RenderCircuitBreaker] is open.
-   * Its own counter rather than a [recordFailed]: the daemon was never asked, so folding these into
-   * `failed` would inflate the very failure rate that tripped the breaker and hide how much work
-   * the breaker is saving.
+   * A render refused because the [RenderCircuitBreaker] is open. Separate from [recordFailed] since
+   * the daemon was never asked; counting it as failed would inflate the rate that tripped the
+   * breaker.
    */
   public fun recordShortCircuit(): Unit = synchronized(lock) { shortCircuited++ }
 
   /**
-   * A render that ended in [RenderOutcome.Failed]; [timeout] when it blew its render budget.
-   * [reason] is the outcome's failure text — kept (truncated) so `/status.json` can say WHY a
-   * catalog's live lane is failing without anyone tailing container logs: a daemon whose every
-   * render fails otherwise shows only a climbing `failed` counter while the composite silently
-   * serves baked fallback.
+   * A render ending in [RenderOutcome.Failed]; [timeout] when it blew its budget. [reason] is kept
+   * (truncated) so `/status.json` can say why a lane is failing.
    */
   public fun recordFailed(durationMs: Long, timeout: Boolean, reason: String? = null): Unit =
     synchronized(lock) {
@@ -85,9 +75,8 @@ public class RenderPerfStats {
     }
 
   /**
-   * A successful render taking [durationMs] end-to-end. [cold] marks renders issued while the host
-   * had not yet completed any successful render — the cold-start population the background-boot /
-   * warm-render work targets — so `/status` can separate first-render latency from steady state.
+   * A successful render of [durationMs]. [cold] marks renders before the host's first success, so
+   * first-render latency is separated from steady state.
    */
   public fun recordOk(durationMs: Long, cold: Boolean): Unit =
     synchronized(lock) {
@@ -160,10 +149,9 @@ public data class RenderFailureSample(
 )
 
 /**
- * Point-in-time projection of [RenderPerfStats], serialized verbatim onto `/status.json`
- * (`runningServers[].renderStats` and the server-wide `renderStats` aggregate). All duration fields
- * are wall-clock milliseconds of the serve-side render round-trip; null means "no sample yet".
- * Additive on `compose-preview-serve/status/v1`.
+ * Point-in-time [RenderPerfStats] on `/status.json` (`runningServers[].renderStats` and the server
+ * aggregate). Durations are serve-side round-trip milliseconds; null means no sample yet. Additive
+ * on `compose-preview-serve/status/v1`.
  */
 @Serializable
 public data class RenderPerfSnapshot(
@@ -175,11 +163,7 @@ public data class RenderPerfSnapshot(
   val timedOut: Long,
   /** Bounded lock acquires that backed off to baked ([RenderOutcome.Busy]). */
   val busy: Long,
-  /**
-   * Renders refused without asking the daemon because the host's [RenderCircuitBreaker] is open —
-   * the retry storm that is no longer happening. Excluded from [renders] and [failed]: the daemon
-   * was never asked.
-   */
+  /** Renders refused by an open [RenderCircuitBreaker]; excluded from [renders] and [failed]. */
   val shortCircuited: Long = 0,
   /** `/render`s served from the PNG cache without waking the daemon. */
   val cacheHits: Long,
@@ -199,26 +183,18 @@ public data class RenderPerfSnapshot(
   val windowSize: Int = 0,
   /** Current lane signal: true only when the most recently completed daemon render failed. */
   val lastRenderFailed: Boolean = false,
-  /**
-   * The most recent failure's reason text (truncated) + when it happened — the "why" behind a
-   * non-zero [failed] counter, so a catalog whose live lane silently falls back to baked is
-   * diagnosable from `/status.json` alone.
-   */
+  /** The most recent failure reason (truncated) and when, explaining a non-zero [failed]. */
   val lastFailureReason: String? = null,
   val lastFailureAtEpochMillis: Long? = null,
   /** Bounded, newest-first failure detail for status diagnostics. */
   val recentFailures: List<RenderFailureSample> = emptyList(),
-  /**
-   * Set while this lane's [RenderCircuitBreaker] is open — the host has stopped attempting renders
-   * and is answering with [RenderBreakerSnapshot.reason] instead. Null is the healthy case.
-   */
+  /** Set while this lane's [RenderCircuitBreaker] is open; null when healthy. */
   val breaker: RenderBreakerSnapshot? = null,
 ) {
   public companion object {
     /**
-     * Server-wide roll-up across daemons for the `/status` summary. Counts sum; min/max span;
-     * `avgMs` is ok-weighted; `firstRenderMs` reports the WORST first render (the number the
-     * cold-start work drives down). Percentiles don't merge across windows, so they stay null.
+     * Server-wide roll-up: counts sum, min/max span, `avgMs` is ok-weighted, `firstRenderMs` is the
+     * worst first render. Percentiles don't merge, so they stay null.
      */
     public fun aggregate(snapshots: List<RenderPerfSnapshot>): RenderPerfSnapshot? {
       if (snapshots.isEmpty()) return null
@@ -254,8 +230,8 @@ public data class RenderPerfSnapshot(
             .flatMap { it.recentFailures }
             .sortedByDescending { it.atEpochMillis }
             .take(RenderPerfStats.FAILURE_WINDOW_SIZE),
-        // A fatal (linkage) trip wins over a rate trip, then the most recent — the roll-up should
-        // name the breaker that most needs a human, not whichever daemon happens to sort first.
+        // Fatal trips win over rate trips, then the most recent, so the roll-up names the most
+        // urgent one.
         breaker =
           snapshots
             .mapNotNull { it.breaker }

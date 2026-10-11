@@ -35,21 +35,17 @@ import kotlinx.serialization.json.Json
  * `compose-preview guidelines` — checks rendered previews against their catalog's design guidelines
  * (`ui-builder.guidelines.json`) with a model through OpenRouter.
  *
- * It renders like every report command, then hands the renders, their sha256 and their source to
- * the `:design-guidelines` engine, which batches them, asks the model, fetches what a follow-up
- * round asks for ([CliEvidenceHost]: a preview's accessibility data through the same daemon fetch
- * [A11yCommand] drives, renders at other settings through the module's render daemon), and caches
- * each result by render hash under `build/compose-previews/guidelines/`. Accessibility data is
- * fetched for the previews whose rules ask for it, not for every preview up front. The results land
- * in `build/compose-previews/guidelines.json`. Each preview's source goes to the model with its
- * render, so rules about code are judged on the code.
+ * Renders like every report command, then hands renders, sha256s and sources to the
+ * `:design-guidelines` engine, which batches them, asks the model, serves follow-up evidence
+ * ([CliEvidenceHost]: accessibility data via the [A11yCommand] daemon fetch, renders at other
+ * settings), and caches results by render hash under `build/compose-previews/guidelines/`. Results
+ * land in `build/compose-previews/guidelines.json`.
  *
- * `--previews-json` / `--renders-dir` run the same engine over handoff renders with no Gradle,
- * which is what a CI publish job holds.
+ * `--previews-json` / `--renders-dir` run the engine over handoff renders with no Gradle (CI
+ * publish).
  *
- * The OpenRouter key is read from `COMPOSE_PREVIEW_OPENROUTER_KEY`, never from the command line. It
- * never reaches the project's build: `GradleConnection` withholds it from the environment the
- * Tooling API hands the Gradle daemon, and render daemons start from an allowlisted environment.
+ * The OpenRouter key comes only from `COMPOSE_PREVIEW_OPENROUTER_KEY`, and is withheld from the
+ * Gradle daemon's environment and from render daemons.
  */
 class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val model: String = args.flagValue("--model") ?: OpenRouterClient.DEFAULT_MODEL
@@ -60,15 +56,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     get() = roundsFlag ?: if (checker == GuidelineChecker.JEV) JEV_ROUNDS else 1
 
   /**
-   * How long one model request may take, start to end, in seconds: a vision request over a dozen
-   * screens can take minutes to answer. A request that runs past it is abandoned, and the engine
-   * asks about fewer previews at once instead.
+   * Total time one model request may take, in seconds; an overrun is abandoned and the engine asks
+   * about fewer previews at once.
    */
   private val requestTimeoutSeconds: Long? =
     args.flagValue("--request-timeout")?.toLongOrNull()?.takeIf { it > 0 }
   /**
-   * How long a streamed request may go without a token, in seconds, before it is cancelled (keep
-   * alive comments do not count). Cancelling a stream stops the provider's bill where it can.
+   * How long a streamed request may go without a token (keep-alives don't count) before it is
+   * cancelled, which stops the provider's bill where possible.
    */
   private val idleTimeoutSeconds: Long? =
     args.flagValue("--idle-timeout")?.toLongOrNull()?.takeIf { it > 0 }
@@ -84,9 +79,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     args.flagValue("--preferred-max-latency")?.toDoubleOrNull()?.takeIf { it > 0 }
   private val preferredMinThroughput: Double? =
     args.flagValue("--preferred-min-throughput")?.toDoubleOrNull()?.takeIf { it > 0 }
-  /**
-   * Handoff mode's follow-up evidence: the captures the render job staged (see [HandoffInputs]).
-   */
+  /** Handoff mode's follow-up evidence: the captures the render job staged ([HandoffInputs]). */
   private var handoffHost: GuidelineEvidenceHost? = null
   private val triage: Boolean = "--no-triage" !in args
   private val annotate: Boolean = "--annotate" in args
@@ -98,9 +91,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   private val a11yJson: String? = args.flagValue("--a11y-json")
   private val sourceRoot: String? = args.flagValue("--source-root")
   /**
-   * `--checker vision|jev`: which model answers the rules. `jev` is EXPERIMENTAL — Jev decides the
-   * structural rules from text only (source, accessibility nodes, measured checks) and leaves every
-   * rule that needs the picture unchecked. Null when the value is not one of those.
+   * `--checker vision|jev`. `jev` is EXPERIMENTAL: text-only, leaving rules that need the picture
+   * unchecked. Null for any other value.
    */
   private val checkerFlag: String? = args.flagValue("--checker")
   private val checker: GuidelineChecker? =
@@ -309,10 +301,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   }
 
   /**
-   * [ids]' accessibility data (nodes and ATF checks), fetched through the render daemon as the
-   * `a11y` command does, narrowed to those previews; the module's `accessibility.json` is merged,
-   * not replaced. Only what this fetch produced is returned: an entry from an earlier run may be of
-   * an older render.
+   * [ids]' accessibility data, fetched through the render daemon as `a11y` does and merged into the
+   * module's `accessibility.json`. Returns only what this fetch produced (earlier entries may be
+   * stale).
    */
   private fun fetchA11y(
     module: ee.schimke.composeai.previewdata.PreviewModule,
@@ -341,9 +332,7 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
     if (previews.isEmpty()) return A11yEvidence()
     val report = buildDir.resolve("accessibility.json")
     val fetched = previews.map { it.entryId }.toSet()
-    // A narrowed fetch merges into the report and keeps a preview's previous entry when its fetch
-    // fails; that entry may be of an older render. Dropping the asked-for entries first means what
-    // is read back is what this fetch produced, or nothing.
+    // Drop the asked-for entries first so what's read back is from this fetch or nothing.
     dropA11yEntries(report, fetched)
     produceAdditionalDataProducts(
       listOf(
@@ -379,14 +368,10 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
       .also { if (guidelines.rules.isEmpty()) System.err.println("guidelines: no rules to ask") }
 
   /**
-   * Handoff mode: no Gradle, no daemon — what a CI publish job holds. Renders come from
-   * `--renders-dir` (every PNG in it) or from `--previews-json`: either a flat list of ids, or the
-   * module's real `previews.json`, whose captures name each render and whose `sourceFile` and
-   * `bodyLine` give each preview's source under `--source-root` (the module directory).
-   * `--a11y-json` (the a11y pipeline's `accessibility.json`) gives each preview's nodes, so
-   * findings cite node ids and `--annotate` can outline them. A follow-up round (`--rounds`) can
-   * ask only for the captures the render job staged beside a render ([HandoffEvidenceHost]):
-   * nothing is rendered here.
+   * Handoff mode: no Gradle or daemon. Renders come from `--renders-dir` or `--previews-json` (an
+   * id list, or a real `previews.json` whose `sourceFile` / `bodyLine` locate sources under
+   * `--source-root`). `--a11y-json` supplies nodes for citations and `--annotate`. Follow-up rounds
+   * can only use captures staged beside a render ([HandoffEvidenceHost]).
    */
   private fun runHandoff(client: OpenRouterClient): Int {
     val location = guidelinesLocation
@@ -455,8 +440,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
   }
 
   /**
-   * Whether [run] failed to judge previews it was asked to: requests that errored, were refused or
-   * came back unreadable. Said on stderr, so a caller sees why the command did not exit 0.
+   * Whether [run] failed to judge previews it was asked to (errors, refusals, unreadable replies);
+   * said on stderr.
    */
   private fun incomplete(module: String, run: GuidelineRunResult): Boolean {
     if (run.failedRequests == 0) return false
@@ -493,8 +478,8 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
           ?: if (result.params.device != null) GuidelineSurfaces.SCREEN
           else GuidelineSurfaces.COMPONENT,
       profile = profileOverride ?: kind?.profile,
-      // The identity a handoff run gives the same render ([HandoffInputs.renderHash]), so a PR's
-      // check can be answered from this run's cache when nothing about the preview changed.
+      // Same identity a handoff run uses ([HandoffInputs.renderHash]), so a PR check can reuse this
+      // cache.
       renderHash = HandoffInputs.renderHash(result.sha256 ?: sha256(bytes), longCapture, a11y),
       pictures =
         listOf(
@@ -593,12 +578,9 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
 }
 
 /**
- * One module's results, as `build/compose-previews/guidelines.json` holds them, with what the run
- * that wrote them could not do: [failedRequests] requests that came back as no verdicts, and the
- * engine's [problems] in its own words. A reader must not take a file whose previews were never
- * judged — every request failed, or no rule applied ([PreviewGuidelineResult.noRules]) — for a
- * clean pass; these say which it was. [requests] is null in a file written before they were
- * recorded.
+ * One module's results as `build/compose-previews/guidelines.json` holds them, plus what the run
+ * could not do ([failedRequests], the engine's [problems]), so an unjudged file isn't read as a
+ * clean pass. [requests] is null in older files.
  */
 @Serializable
 data class ModuleGuidelines(
@@ -609,10 +591,7 @@ data class ModuleGuidelines(
   val requests: Int? = null,
   val failedRequests: Int = 0,
   val problems: List<String> = emptyList(),
-  /**
-   * What the run spent, every request included: a reply that could not be used is paid for but
-   * belongs to no result's record, so summing the records under-counts. Null in older files.
-   */
+  /** Total spend, including unusable replies that belong to no result. Null in older files. */
   val costUsd: Double? = null,
   /**
    * The checker that answered when it was not the default vision model: `jev` for the EXPERIMENTAL
@@ -704,9 +683,8 @@ internal object GuidelinesReportRenderer {
 }
 
 /**
- * The guidelines command's exit status. A check that could not run is not a pass: previews it never
- * judged must not let CI through as clean, so an [incomplete] run is 2 even when what did come back
- * had findings. Findings at `--fail-on` are 1; a failed build with nothing else wrong is 2.
+ * Exit status: an [incomplete] run is 2 (unjudged previews must not pass CI), findings at
+ * `--fail-on` are 1, and a failed build with nothing else wrong is 2.
  */
 internal fun guidelinesExitCode(incomplete: Boolean, failed: Boolean, buildOk: Boolean): Int =
   when {
@@ -717,9 +695,8 @@ internal fun guidelinesExitCode(incomplete: Boolean, failed: Boolean, buildOk: B
   }
 
 /**
- * Writes [report] to `guidelines.json` under [buildDir]: every result the run returned, cached ones
- * included, so a publish carries the whole catalog and not only what this run asked about. A
- * [narrowed] run keeps the previous file's results for the previews it did not cover.
+ * Write [report] to `guidelines.json` under [buildDir], including cached results so a publish
+ * carries the whole catalog. A [narrowed] run keeps the previous file's other previews.
  */
 internal fun writeGuidelinesReport(buildDir: File, report: ModuleGuidelines, narrowed: Boolean) {
   val file = buildDir.resolve("guidelines.json")

@@ -7,17 +7,9 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Assertion half of the desktop preview-mode matrix (issue #3082) — the `ImageComposeScene`
- * counterpart of `:samples:android`'s `PreviewModeMatrixTest`.
- *
- * The expected sizes below are **the same numbers the Android test asserts**, and that is the
- * point: a `@Preview` shaped a given way resolves to one dp frame, so both backends must land on
- * the same pixel canvas even though one applies it through Robolectric resource qualifiers and the
- * other through `Density` on a Skia scene. Any drift between the two renderers — or away from
- * Android Studio, whose catalog these numbers come from — fails here.
- *
- * The module's `test` task depends on `composePreviewRenderAll` (see this sample's
- * `build.gradle.kts`), so `:samples:cmp:check` renders before asserting.
+ * Assertion half of the desktop preview-mode matrix, with the same expected sizes as
+ * `:samples:android`'s `PreviewModeMatrixTest`: one annotation must resolve to one pixel canvas on
+ * both backends. `test` depends on `composePreviewRenderAll`.
  */
 class PreviewModeMatrixTest {
 
@@ -128,10 +120,8 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `PreviewLightDark fans out into two visibly different captures`() {
-    // A fan-out that renders the same pixels twice would still satisfy a filename count, so pin the
-    // outcome: the probe colours itself from `isSystemInDarkTheme()`, and the dark entry must land
-    // darker. This is what proves each nested @Preview's params reach the render, not just its
-    // name.
+    // A count alone would pass if both renders were identical; the probe's colour follows
+    // `isSystemInDarkTheme()`, so the dark entry must be darker.
     val light = readRender("MatrixLightDarkMultiPreview_Light")
     val dark = readRender("MatrixLightDarkMultiPreview_Dark")
     assertThat(meanLuminance(dark)).isLessThan(meanLuminance(light))

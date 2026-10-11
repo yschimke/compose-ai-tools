@@ -15,46 +15,29 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.testing.Test
 
 /**
- * Pure-data builders for the renderer test JVM's classpath, JVM args, and system properties.
+ * Pure-data builders for the renderer test JVM's classpath, JVM args and system properties, shared
+ * by the render Test task and the preview daemon (see `docs/daemon/DESIGN.md`). The Test task still
+ * appends AGP's late-resolved unit-test classes and registers the dynamic argument providers.
  *
- * Extracted out of [AndroidPreviewSupport.registerAndroidTasks] so the upcoming "preview daemon"
- * (see `docs/daemon/DESIGN.md`) can reuse the exact same construction logic to launch its own JVM —
- * instead of duplicating the inline Test-task DSL block. Each helper returns a value
- * (FileCollection / List / Map). None of them touches the Test task DSL directly. The Test task
- * lambda still composes the final classpath (it appends the AGP unit-test classes / classpath,
- * which can only be resolved late via `project.tasks.findByName("test${Cap}UnitTest")`) and still
- * registers the dynamic argument providers (a11y / tier) which need lazy `Provider<>` evaluation at
- * execution time.
+ * Ordering invariants:
+ * - Robolectric properties dir before consumer test resources, so our `robolectric.properties`
+ *   wins.
+ * - Renderer artifacts before the consumer's remaining entries, so the renderer's pinned versions
+ *   win.
+ * - SDK boot classpath last; it only satisfies JUnit's introspection (the sandbox has its own
+ *   `android-all`).
  *
- * Ordering invariants (load-bearing — see callers' comments and `AndroidPreviewSupport.kt`):
- * - Robolectric properties dir BEFORE consumer test resources, so the renderer's
- *   `robolectric.properties` wins classloader lookup.
- * - Renderer artifacts BEFORE the consumer's remaining test entries, so the renderer's pinned
- *   kotlinx-serialization / Roborazzi versions win on classload conflicts.
- * - SDK boot classpath LAST in the outer FileCollection, since it's only there to satisfy JUnit's
- *   introspection of the test class signatures (the sandbox supplies its own `android-all`
- *   framework jars).
- *
- * Single-resolution invariant: every *module* artifact on the render classpath comes from
- * `rendererConfig`, which `extendsFrom(testConfig)` and therefore resolves the renderer's and the
- * consumer's test dependencies as ONE graph with one version per module. The consumer's
- * separately-resolved graph is no longer concatenated on top — see [buildAgpClasspathExtras] and
- * [RenderClasspathDuplicates] for what went wrong when it was. Ordering only decides class-lookup
- * winners when duplicates exist, so keeping the classpath duplicate-free is what makes the ordering
- * rules above a safety net rather than the primary mechanism.
+ * Every module artifact comes from `rendererConfig`, which extends `testConfig` and resolves one
+ * version per module. Keeping the classpath duplicate-free (see [buildAgpClasspathExtras],
+ * [RenderClasspathDuplicates]) is the primary mechanism; ordering is the safety net.
  */
 internal object AndroidPreviewClasspath {
 
   private val artifactType: Attribute<String> = Attribute.of("artifactType", String::class.java)
 
   /**
-   * Builds the renderer test classpath as the existing inline block does today, EXCLUDING the
-   * trailing AGP test classes / AGP test classpath additions which are still resolved inside the
-   * Test task lambda (they need `project.tasks.findByName("test${Cap}UnitTest")` which only
-   * resolves late).
-   *
-   * Inputs are everything the existing inline block reads. Output is a single FileCollection
-   * equivalent to the existing `resolvedClasspath` local.
+   * The renderer test classpath, excluding AGP's test classes / classpath, which the Test task
+   * appends once AGP's task exists.
    */
   fun buildTestClasspath(
     project: Project,
@@ -66,56 +49,33 @@ internal object AndroidPreviewClasspath {
     testConfig: Configuration?,
     screenshotTestRuntimeConfig: Configuration?,
     /**
-     * AGP's `test_config.properties` directory, or null on a module with no host-test component —
-     * the `com.android.kotlin.multiplatform.library` default, where `withHostTest { }` is opt-in.
-     * `from(null)` would throw, so it is simply not contributed.
+     * AGP's `test_config.properties` directory, or null without a host-test component (KMP-Android
+     * default); `from(null)` would throw.
      */
     unitTestConfigDir: Provider<Directory>?,
     robolectricPropertiesDir: Provider<Directory>,
     legacyClasspathUnion: Boolean = false,
   ): FileCollection =
     project.files().apply {
-      // Robolectric properties dir BEFORE consumer test resources so our
-      // Application override wins when classloader.getResource walks the
-      // classpath. Consumers with their own `robolectric.properties` at
-      // the same package path are unusual — they'd need it specifically
-      // for this renderer's test class.
+      // Before consumer test resources so our Application override wins `getResource`.
       from(robolectricPropertiesDir)
       from(rendererConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-      // `android-classes` alongside `jar` so AAR-packaged modules (sibling project deps published
-      // as AARs, AndroidX libraries) contribute their `classes.jar`. Previously this view was
-      // taken from `testConfig` instead; sourcing it from `rendererConfig` keeps every module
-      // artifact coming from ONE resolution — see the block below.
+      // `android-classes` alongside `jar` so AAR modules contribute their `classes.jar`; sourced
+      // from `rendererConfig` so all module artifacts come from one resolution.
       from(
         rendererConfig.incoming
           .artifactView { attributes.attribute(artifactType, "android-classes") }
           .files
       )
-      // Directories or jars only, never a `zipTree`: a tree contributes its leaf `.class` files as
-      // separate (invalid) classpath elements — issue #5562.
+      // Directories or jars only: a `zipTree` would add each `.class` as an invalid classpath
+      // element (#5562).
       from(rendererClasspathEntries)
-      // `rendererConfig` already `extendsFrom(testConfig)` (see AndroidPreviewSupport), so it
-      // resolves the renderer's dependencies and the consumer's test-runtime dependencies in ONE
-      // graph — Gradle picks a single coherent version per module. Re-adding `testConfig`'s own
-      // artifact view on top of that undoes exactly what `extendsFrom` bought: the second view is
-      // a SEPARATE resolution, so any module the combined graph upgraded lands here twice, at two
-      // versions, in front of one classloader.
-      //
-      // Measured on homeassistant-remotecompose (plugin 0.17.16, AGP 9.3): every module in the
-      // unit-test graph is also in the renderer graph — the re-add contributed zero unique modules
-      // and nine duplicated ones (androidx.test:core 1.5.0+1.6.1, monitor 1.6.1+1.8.0, espresso,
-      // asm 9.7.1+9.10.1, commons-logging, okhttp …). Also `org.bouncycastle:bcprov-jdk18on` at
-      // 1.85 (Robolectric, via renderer-android) and 1.84 (the consumer's own mockserver test
-      // dep), whose mixed asn1/provider classes threw `NoSuchFieldError` out of
-      // `compositekem.KeyFactorySpi.<clinit>` and failed every a11y preview —
-      // homeassistant-remotecompose#495, worked around downstream with a version force.
-      //
-      // Non-module entries that live ONLY on AGP's test classpath (the unit-test merged `R.jar`,
-      // generated dirs) are preserved — they're appended separately via
-      // [buildAgpClasspathExtras], which subtracts just the module artifacts.
-      //
-      // `-PcomposePreview.legacyClasspathUnion=true` restores the old concatenation for a
-      // consumer who turns out to depend on a testConfig-only artifact we haven't anticipated.
+      // `rendererConfig` already extends `testConfig`, resolving one graph. Re-adding
+      // `testConfig`'s view is a separate resolution that puts upgraded modules on the classpath
+      // twice at two versions — e.g. two `bcprov` versions failing every a11y preview with
+      // `NoSuchFieldError` (homeassistant-remotecompose#495). AGP-only non-module entries are kept
+      // via [buildAgpClasspathExtras]. `-PcomposePreview.legacyClasspathUnion=true` restores the
+      // old concatenation.
       if (testConfig != null && legacyClasspathUnion) {
         from(testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
         from(
@@ -124,13 +84,8 @@ internal object AndroidPreviewClasspath {
             .files
         )
       }
-      // screenshotTest source set has its own runtime config — any
-      // `screenshotTestImplementation(...)` dep the consumer declared is
-      // only visible here, not via `testConfig`. `rendererConfig` now
-      // `extendsFrom`s it (see AndroidPreviewSupport), so those deps are already
-      // in the single graph above at coherent versions; re-adding this
-      // separately-resolved view is the legacy concatenation behaviour.
-      // No-op when the screenshot plugin isn't applied.
+      // screenshotTest runtime deps are already in the single graph (`rendererConfig` extends that
+      // config); re-adding it is the legacy concatenation.
       screenshotTestRuntimeConfig
         ?.takeIf { legacyClasspathUnion }
         ?.let { stConfig ->
@@ -143,33 +98,17 @@ internal object AndroidPreviewClasspath {
         }
       from(sourceClassDirs)
       unitTestConfigDir?.let { from(it) }
-      // SDK stub android.jar on the OUTER classpath so JUnit can introspect
-      // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
-      // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails
-      // with `NoClassDefFoundError: android/graphics/Bitmap` during test discovery,
-      // before Robolectric's sandbox classloader is even created.
-      //
-      // Inside the sandbox, `ParameterizedRobolectricTestRunner` loads the test class
-      // through Robolectric's InstrumentingClassLoader, which delegates `android.*`
-      // resolution to its own `android-all` artifact (real framework classes, with
-      // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
-      //
-      // Sourced from AGP's SdkComponents so we don't have to parse local.properties
-      // or read rootProject.file(...). When AGP's bootClasspath resolves empty (rare
-      // — e.g. compileSdk left at its DSL default on a freshly-applied AGP variant,
-      // or a module type that doesn't bind sdkComponents), the fallback derived from
-      // `local.properties` / `ANDROID_HOME` rescues the load. See issue #1243 — when
-      // neither path supplies android.jar, Robolectric's own `Config.<clinit>` fails
-      // with `NoClassDefFoundError: android/app/Application` before the test runs.
+      // SDK stub android.jar on the outer classpath so JUnit can introspect the test class's
+      // `android.*` signatures before the sandbox exists; inside the sandbox Robolectric uses its
+      // own `android-all`. From AGP's SdkComponents, with a `local.properties` / `ANDROID_HOME`
+      // fallback when that's empty (#1243).
       from(project.files(bootClasspath))
       from(project.files(bootClasspathFallback))
     }
 
   /**
-   * Keep AGP's generated files even when an upstream eagerly realizes every Test task. AGP
-   * registers its unit-test task after onVariants; looking it up inside an eagerly realized render
-   * task therefore returns null. Populate a shared collection after evaluation instead, while still
-   * in configuration time so no Project lookup leaks into the configuration cache.
+   * AGP registers its unit-test task after onVariants, so an eagerly realized render task can't
+   * find it. Populate a shared collection after evaluation instead, still at configuration time.
    */
   fun lateAgpClasspathExtras(
     project: Project,
@@ -190,29 +129,17 @@ internal object AndroidPreviewClasspath {
   }
 
   /**
-   * AGP's `test<Variant>UnitTest` classpath with the module artifacts removed — i.e. only the
-   * entries that exist *nowhere else*, which is the reason that classpath is appended at all.
+   * AGP's `test<Variant>UnitTest` classpath minus module artifacts: only entries found nowhere else
+   * (the unit-test merged `R.jar`, generated class dirs). AGP's module artifacts come from an
+   * independent resolution and would add older duplicates of anything the renderer graph upgraded
+   * ([RenderClasspathDuplicates]).
    *
-   * The render tasks append `agpTestTask.classpath` to pick up files AGP contributes outside the
-   * renderer configuration: chiefly the unit-test merged `R.jar`, contributed as a raw file
-   * dependency rather than a module artifact, plus generated class dirs. Those must stay even when
-   * the test configuration's artifact views also return them.
+   * Subtracted by file identity against `testConfig`'s views, so on a version disagreement the
+   * consumer copy is dropped. The views filter by component identity too, since a `jar` view also
+   * returns raw file deps like the generated R.jar, which must be kept. Lazy via
+   * `FileCollection.minus`.
    *
-   * What must NOT stay is the rest of it: AGP's classpath also carries every module artifact from
-   * the consumer's unit-test graph, resolved independently of the renderer graph. Appending those
-   * puts a second, older copy of any module the renderer graph upgraded in front of the same
-   * classloader — the duplicate-jar failure mode described on [RenderClasspathDuplicates].
-   *
-   * Subtraction is by *file identity* against `testConfig`'s own artifact views, which is exactly
-   * right for this: when the two graphs disagree on a version they resolve to different files, so
-   * the consumer-graph copy is the one that gets dropped and the renderer-graph copy survives. The
-   * views must filter by component identity as well as artifact type: Gradle also returns raw file
-   * dependencies from a `jar` view. Subtracting those drops AGP's generated R.jar, even though it
-   * is precisely the extra this method must preserve when AGP exposes it there.
-   * `FileCollection.minus` keeps the whole thing lazy and configuration-cache friendly.
-   *
-   * Returns [agpTestClasspath] untouched when there's no `testConfig` to subtract (nothing was
-   * double-added in the first place) or when `legacyClasspathUnion` restores the old behaviour.
+   * Returns [agpTestClasspath] unchanged without `testConfig` or in legacy-union mode.
    */
   fun buildAgpClasspathExtras(
     project: Project,
@@ -240,21 +167,11 @@ internal object AndroidPreviewClasspath {
   }
 
   /**
-   * Maps every resolved artifact file on the render classpath to the exact `group:name:version`
-   * Gradle picked for it, so [RenderClasspathDuplicates] can compare modules by identity instead of
-   * guessing from filenames.
-   *
-   * Built from the same two artifact views the classpath itself uses (`jar` and `android-classes`)
-   * across [configurations] — the *default* view would return `.aar` files that never appear on the
-   * classpath, so the map would match nothing. Pass every configuration that can contribute module
-   * artifacts (renderer or daemon, plus screenshotTest and — in legacy-union mode — testConfig);
-   * overlapping entries agree by construction, since the key is the file path.
-   *
-   * Project artifacts are keyed `project:<path>` with an empty version, so a project's own jar
-   * forms a single-version bucket rather than being mistaken for a module.
-   *
-   * Returns a `Provider` so nothing resolves at configuration time: task actions call `get()`, and
-   * the configuration cache serialises the provider rather than the live `Configuration`.
+   * Maps each resolved artifact file on the render classpath to its `group:name:version`, so
+   * [RenderClasspathDuplicates] compares modules by identity. Uses the classpath's own `jar` /
+   * `android-classes` views across [configurations] (the default view returns `.aar`s that never
+   * appear). Project artifacts are keyed `project:<path>` with no version. A Provider, so nothing
+   * resolves at configuration time.
    */
   fun buildArtifactCoordinates(
     project: Project,
@@ -265,8 +182,7 @@ internal object AndroidPreviewClasspath {
         configuration.incoming
           .artifactView {
             attributes.attribute(artifactType, type)
-            // A view that can't resolve some artifact must not sink the whole render — this is
-            // diagnostic input, so degrade to a smaller map instead of failing the task.
+            // Diagnostic input: degrade to a smaller map rather than fail the render.
             isLenient = true
           }
           .artifacts
@@ -290,22 +206,14 @@ internal object AndroidPreviewClasspath {
   }
 
   /**
-   * Lazy fallback for `android.jar`, used when AGP's `sdkComponents.bootClasspath` provider returns
-   * an empty list (issue #1243). Reads `sdk.dir` from `local.properties` first, falls back to the
-   * `ANDROID_HOME` / `ANDROID_SDK_ROOT` env vars, then picks the highest-versioned `platforms/
-   * android-N/android.jar` under that SDK root. Any version is acceptable for outer-classpath
-   * resolution of `android.app.Application` — Robolectric still drives the in-sandbox framework
-   * from its own `android-all` artifact, gated by `sdk=…` in the generated
-   * `robolectric.properties`.
-   *
-   * Returns an empty list when no SDK can be located on disk; in that case
-   * [validateApplicationOnClasspath] surfaces a clear error before the test JVM forks.
+   * Fallback `android.jar` when AGP's `bootClasspath` is empty (#1243): `sdk.dir` from
+   * `local.properties`, else `ANDROID_HOME` / `ANDROID_SDK_ROOT`, picking the highest
+   * `platforms/android-N/android.jar`. Any version works for the outer classpath. Empty when no SDK
+   * is found; [validateApplicationOnClasspath] then explains.
    */
   fun buildBootClasspathFallback(project: Project): Provider<List<File>> {
-    // `project.rootDir` is a plain `File` snapshot of the build root and IP-safe to read from
-    // a sub-project (no `Project.method` round-trip into the root project). `rootProject.layout
-    // .projectDirectory.file(...)` is rejected under isolated projects as "Project.layout
-    // functionality on another project". See issue #1546.
+    // `project.rootDir` is an IP-safe snapshot; `rootProject.layout` is rejected under isolated
+    // projects (#1546).
     val localProperties = File(project.rootDir, "local.properties")
     val androidHomeEnv = project.providers.environmentVariable("ANDROID_HOME")
     val androidSdkRootEnv = project.providers.environmentVariable("ANDROID_SDK_ROOT")
@@ -321,10 +229,9 @@ internal object AndroidPreviewClasspath {
   }
 
   /**
-   * Throws a Gradle-friendly `IllegalStateException` describing how to fix the situation when the
-   * resolved test classpath has no entry that defines `android/app/Application.class`. Intended for
-   * a `doFirst {}` on the `composePreviewRender` `Test` task so the user sees a precise error
-   * rather than the `NoClassDefFoundError` in Robolectric's `Config.<clinit>` (issue #1243).
+   * Fails with a fixable message when no classpath entry defines `android/app/Application.class`,
+   * instead of Robolectric's opaque `NoClassDefFoundError` (#1243). For a `doFirst` on the render
+   * task.
    */
   fun validateApplicationOnClasspath(classpath: Iterable<File>) {
     val scanned = classpath.filter { it.isFile && it.name.endsWith(".jar") }
@@ -381,50 +288,24 @@ internal object AndroidPreviewClasspath {
   }
     .getOrDefault(false)
 
-  /**
-   * Static JVM open flags that the composePreviewRender test JVM needs. Pure data — no Gradle DSL
-   * coupling.
-   */
+  /** Static JVM open flags for the render JVM. */
   fun buildJvmArgs(): List<String> =
     listOf(
       "--add-opens=java.base/java.io=ALL-UNNAMED",
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      // Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer`
-      // reflectively invokes `DirectByteBuffer.address()`; under JDK 17+
-      // module rules this fails with IllegalAccessException without this
-      // opens. Reached via `PathIterator` — triggered here by Wear Compose's
-      // curved text renderer.
+      // Robolectric's `ShadowVMRuntime` reflects into `DirectByteBuffer.address()` (reached via
+      // Wear curved text).
       "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      // Robolectric's `FileDescriptorInterceptor.setInt` reflects into
-      // `jdk.internal.access.SharedSecrets#getJavaIOFileDescriptorAccess()`
-      // to mutate `FileDescriptor.fd` (the older `Field.setInt` path was
-      // replaced in 4.13+). On SDK 36 sandboxes the framework's
-      // `com.android.internal.os.ApplicationSharedMemory.create()` runs
-      // during `AndroidTestEnvironment.setUpApplicationState`, hits the
-      // interceptor, and without this opens the JDK raises
-      // `IllegalAccessException: class … cannot access class
-      // jdk.internal.access.SharedSecrets (in module java.base) because
-      // module java.base does not export jdk.internal.access` — wrapped by
-      // Robolectric as `Failed to interact with raw FileDescriptor
-      // internals; perhaps JRE has changed?`. Issue #1328.
+      // Robolectric's `FileDescriptorInterceptor` uses `SharedSecrets`; SDK 36 sandboxes hit it
+      // during setup (#1328).
       "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
     )
 
   /**
-   * Static system properties (graphicsMode, looperMode, conscryptMode, pixelCopyRenderMode,
-   * roborazzi.test.record, composeai.render.manifest, composeai.render.outputDir,
-   * composeai.fonts.cacheDir, composeai.fonts.offline, composeai.svg.embedFonts,
-   * composeai.fonts.failOnFallback). Caller passes the resolved values for the path-bearing /
-   * opt-in ones; the helper returns the full map.
-   *
-   * Note: the dynamic per-task ArgumentProviders (a11y, tier) stay inline because they need lazy
-   * `Provider<>` evaluation at task execution time.
-   *
-   * The returned map preserves insertion order — callers iterate it to call `systemProperty(...)`
-   * on the Test task and the order is irrelevant to the JVM (system properties are an unordered map
-   * on the receiving side), but keeping it stable simplifies golden-output comparisons in future
-   * tests.
+   * Static system properties; the caller supplies the path-bearing / opt-in values. Dynamic
+   * providers (tier etc.) stay on the task because they need lazy evaluation. Insertion order is
+   * kept for stable output.
    */
   fun buildSystemProperties(
     manifestPath: String,
@@ -441,125 +322,58 @@ internal object AndroidPreviewClasspath {
     rcDensity: String = "fixed",
   ): Map<String, String> =
     linkedMapOf(
-      // Belt-and-braces for the graphics/looper modes. Config now
-      // lives in `ee/schimke/composeai/renderer/robolectric.properties`
-      // (see `RobolectricRenderTestBase` KDoc for why we can't use
-      // `@GraphicsMode` directly). These system properties are a third
-      // independent Robolectric config channel and cost nothing to
-      // keep — survive both annotation and properties paths regressing.
+      // Redundant with `robolectric.properties` (see `RobolectricRenderTestBase`), kept as an
+      // independent channel.
       "robolectric.graphicsMode" to "NATIVE",
       "robolectric.looperMode" to "PAUSED",
-      // Conscrypt isn't needed for preview rendering (no TLS/HTTP paths
-      // execute) and its native library is flaky on some Linux sandboxes
-      // — e.g. missing/ABI-mismatched `libstdc++.so.6`. Telling Robolectric
-      // to skip the install avoids those failures without shipping our
-      // own Conscrypt stubs. See `ConscryptMode` /
-      // `ConscryptModeConfigurer` in Robolectric.
+      // Conscrypt isn't needed and its native library is flaky on some Linux sandboxes.
       "robolectric.conscryptMode" to "OFF",
-      // Routes ShadowPixelCopy through HardwareRenderingScreenshot →
-      // ImageReader + HardwareRenderer.syncAndDraw, the only path that
-      // replays Compose's RenderNodes correctly.
+      // The only PixelCopy path that replays Compose's RenderNodes correctly.
       "robolectric.pixelCopyRenderMode" to "hardware",
-      // Roborazzi defaults to "compare" mode (which doesn't write pixels
-      // unless the expected baseline exists). Force "record" so every run
-      // writes fresh PNGs.
+      // Roborazzi defaults to compare mode; record writes fresh PNGs every run.
       "roborazzi.test.record" to "true",
       "composeai.render.manifest" to manifestPath,
       "composeai.render.outputDir" to rendersDir,
-      // GoogleFont interceptor cache — a shared, machine-local cache under
-      // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`),
-      // computed by [composeAiFontsCacheDir]. The renderer class no-ops when
-      // this property is absent, so the feature is fully additive for existing
-      // consumers.
+      // Shared GoogleFont cache ([composeAiFontsCacheDir]); the renderer no-ops without it.
       "composeai.fonts.cacheDir" to fontsCacheDir,
-      // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
-      // on a CI profile) skips network on cache miss so the render
-      // shows the fallback font rather than silently fetching from
-      // `fonts.googleapis.com`.
+      // Skip network on cache miss and render the fallback font.
       "composeai.fonts.offline" to fontsOffline,
-      // Controls whether the `compose/figma-svg` export embeds each text node's face as an
-      // `@font-face` (so the layered SVG renders the real typeface instead of a browser-substituted
-      // `sans-serif`). ON by default; opt out with `-Dcomposeai.svg.embedFonts=false` (or
-      // `-PcomposePreview.svgEmbedFonts=false`). Read in the daemon JVM by
-      // `ComposeFigmaSvgExtension`,
-      // so it must be forwarded here — else the value set on the Gradle invocation never reaches
-      // the
-      // daemon.
+      // The following are read in the render / daemon JVM, so they must be forwarded from the
+      // Gradle invocation. Embed fonts in the figma-svg export (default on;
+      // `-Dcomposeai.svg.embedFonts=false` to opt out).
       "composeai.svg.embedFonts" to svgEmbedFonts,
-      // Daemon-wide default background mode for the `compose/figma-svg` export — `none` (the
-      // default: an import should land as editable layers, not on an opaque rect a designer has to
-      // delete), `device` (the Wear mask shape), `content-shape` (the component's own silhouette),
-      // or `full-bleed` (a plain tile). Set it with `-Dcomposeai.svg.background=device` (or
-      // `-PcomposePreview.svgBackground=device`); `true`/`false` still work as the pre-modes
-      // aliases for `device`/`none`. A per-render `PreviewOverrides.svgBackground` wins over it.
-      // Read in the daemon JVM by
-      // `ComposeFigmaSvgDataProducer`, so it must be forwarded here — else the value set on the
-      // Gradle invocation never reaches the daemon and the opt-in does nothing.
+      // Default figma-svg background mode: `none` (default), `device`, `content-shape`, or
+      // `full-bleed`; `true`/`false` alias `device`/`none`. A per-render override wins.
       "composeai.svg.background" to svgBackground,
-      // Whether an unresolved downloadable `Font(GoogleFont(...))` fails its preview (default) or
-      // degrades to a `<png>.warnings.json` warning. Read in the forked render / daemon JVM by
-      // `FontResolutionDiagnostics`, so it must be forwarded here — else
-      // `-Dcomposeai.fonts.failOnFallback=false` (or `-PcomposePreview.fontsFailOnFallback=false`)
-      // set on the Gradle invocation never reaches the JVM that reads it and the opt-out is
-      // unreachable.
+      // Whether an unresolved downloadable font fails its preview (default) or only warns.
       "composeai.fonts.failOnFallback" to fontsFailOnFallback,
-      // The Android theme the preview host activity runs under, e.g. `@style/Theme.Foo`. Read in
-      // the forked render / daemon JVM by `PreviewHostTheme`, which is what lets an `AndroidView`
-      // preview resolve app-owned `?attr/…` references. Empty by default: an application module
-      // inherits `<application android:theme>` without any configuration, and only a **library**
-      // module — which has no application theme to inherit — needs to name one. Forwarded even
-      // when blank so the property's presence isn't a second thing to keep in sync.
+      // Host activity theme (e.g. `@style/Theme.Foo`), needed only by library modules. Forwarded
+      // even when blank.
       "composeai.render.hostTheme" to hostTheme,
-      // The instant the render JVM pins its wall clock to, e.g. `10:10` (the default when blank) or
-      // `off`. Read in the forked render / daemon JVM by `PreviewClock`, which is what stops an
-      // activity hero showing `TimeText` from producing a different PNG every minute (issue #3239).
-      // Forwarded here because the property has to reach the JVM that renders, not the Gradle one.
+      // Pinned wall clock (`10:10` when blank, or `off`) (#3239).
       "composeai.render.fixedTime" to fixedTime,
-      // Whether this render opts into the Compose runtime's rewritten `SlotTable` (the "link
-      // buffer" composer, `ComposeRuntimeFlags.isLinkBufferComposerEnabled`). Read in the forked
-      // render / daemon JVM by `LinkBufferComposer`, which has to set the flag before the first
-      // composition — so it has to arrive as a launch property, not as something the Gradle JVM
-      // reads. `"false"` by default: an opt-in stays opt-in.
+      // Link-buffer composer opt-in; must be a launch property set before the first composition.
       "composeai.render.linkBufferComposer" to linkBufferComposer,
-      // Which player replays a Remote Compose preview's captured document — `androidx-embedded`
-      // (default, the vendored AndroidX embedded player) or `androidx-view` (the
-      // `AndroidView`-hosted `RemoteComposePlayer`). Read inside the render JVM by
-      // `RemoteComposePlayerSelection`, so like its neighbours it has to be forwarded here or
-      // `-PcomposePreview.rcPlayer=androidx-view` set on the Gradle invocation never reaches the
-      // JVM
-      // that composes.
+      // Remote Compose replay player: `androidx-embedded` (default) or `androidx-view`.
       "composeai.render.rcPlayer" to rcPlayer,
-      // Whether a Remote Compose capture folds density and font scale into the document as
-      // constants (`fixed`, the default) or records them as references to the player's
-      // `FLOAT_DENSITY` / `FONT_SIZE` variables (`host`). Read inside the render JVM by
-      // `RemoteDensitySelection`, so like its neighbours it has to be forwarded here or
-      // `-PcomposePreview.rcDensity=host` set on the Gradle invocation never reaches the JVM that
-      // captures. This one decides what gets *written*, so unlike `rcPlayer` no later request can
-      // revisit it — a constant-folded document cannot be asked to scale.
+      // Remote Compose capture density: `fixed` (default, constants) or `host` (player variables).
+      // Decides what is written, so no later request can change it.
       "composeai.render.rcDensity" to rcDensity,
     )
 }
 
 /**
- * Absolute path of the shared GoogleFont download cache: `$XDG_CACHE_HOME/composeai/fonts` when
- * `XDG_CACHE_HOME` is set and non-blank, else `~/.cache/composeai/fonts`. Mirrors `common/io`'s
- * `composeAiCacheDir("fonts")` — the plugin can't depend on that module, so the XDG resolution is
- * inlined here.
- *
- * Downloaded fonts are regenerable and identical across projects (keyed by family/weight/italic),
- * so they belong in one user-level cache rather than inside each project's
- * `.compose-preview-history/`. Resolved through [org.gradle.api.provider.ProviderFactory] so the
- * configuration cache records `XDG_CACHE_HOME` / `user.home` as inputs instead of flagging a raw
- * `System.getenv` read.
+ * `$XDG_CACHE_HOME/composeai/fonts` (if set), else `~/.cache/composeai/fonts`. Mirrors
+ * `common/io`'s `composeAiCacheDir("fonts")`. User-level because fonts are identical across
+ * projects. Read through [org.gradle.api.provider.ProviderFactory] so the configuration cache
+ * tracks the inputs.
  */
 internal fun composeAiFontsCacheDir(project: Project): String =
   File(composeAiCacheRoot(project), "fonts").absolutePath
 
 /**
- * Root of the user-level cache — `$XDG_CACHE_HOME/composeai` when `XDG_CACHE_HOME` is set and
- * non-blank, else `~/.cache/composeai`. Resolved through [org.gradle.api.provider.ProviderFactory]
- * so the configuration cache records `XDG_CACHE_HOME` / `user.home` as inputs instead of flagging a
- * raw `System.getenv` read.
+ * `$XDG_CACHE_HOME/composeai` (if set), else `~/.cache/composeai`, via
+ * [org.gradle.api.provider.ProviderFactory].
  */
 private fun composeAiCacheRoot(project: Project): File {
   val xdg =
@@ -572,25 +386,16 @@ private fun composeAiCacheRoot(project: Project): File {
 internal const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
 
 /**
- * Absolute path of this module's render-history archive:
+ * This module's render-history archive:
  * `$XDG_CACHE_HOME/composeai/history/<workspaceSlug>/<moduleRel>`.
  *
- * **Mirror of `common/io`'s `composeAiHistoryDir` — the plugin can't depend on that module, so the
- * layout is inlined here.** A third implementation lives in the VS Code extension
- * ([`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts)),
- * which reads the archive the daemon writes. All three must agree byte-for-byte; they're pinned by
- * `HistoryPathsTest` (`:common-io`), `AndroidPreviewClasspathTest` (here) and
- * `historyPaths.test.ts` sharing the same golden vectors. A drift between them doesn't crash — it
- * silently gives the reader an empty history drawer.
+ * **Mirrors `common/io`'s `composeAiHistoryDir` and the VS Code extension's
+ * [`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts).**
+ * All three must agree byte-for-byte (pinned by shared golden vectors in `HistoryPathsTest`,
+ * `AndroidPreviewClasspathTest` and `historyPaths.test.ts`); a drift silently empties the history
+ * drawer.
  *
- * History used to live at `<projectDir>/.compose-preview-history`, which grew an untracked
- * directory next to every previewed module's sources. It's a semi-persistent timeline of local
- * edits — cache-shaped data, never user-authored — so it belongs beside the font cache rather than
- * in the working tree. The reporting-branch flow is unaffected: that publishes to a git ref, and
- * the in-tree directory was only its local staging area.
- *
- * An existing `<projectDir>/.compose-preview-history` wins, so upgrading doesn't strand a timeline
- * someone already has. Nothing recreates it once removed.
+ * An existing `<projectDir>/.compose-preview-history` still wins, so upgrades keep their timeline.
  */
 internal fun composeAiHistoryDir(project: Project): String {
   val projectDir = project.layout.projectDirectory.asFile
@@ -633,9 +438,8 @@ internal fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File
 }
 
 /**
- * See `common/io`'s `sanitiseHistorySegmentInjectively`. Kept byte-identical to it: a segment that
- * sanitising had to rewrite carries an 8-hex digest of its original text, so `ui components` and
- * `ui-components` stay distinct modules.
+ * Byte-identical to `common/io`'s `sanitiseHistorySegmentInjectively`: rewritten segments carry an
+ * 8-hex digest of the original, keeping `ui components` and `ui-components` distinct.
  */
 private fun sanitiseHistorySegmentInjectively(segment: String): String {
   val sanitised = sanitiseHistorySegment(segment)
@@ -655,13 +459,8 @@ private fun sanitiseHistorySegment(segment: String): String =
     .joinToString("")
 
 /**
- * The resolved value to forward as the daemon JVM's `composeai.svg.embedFonts`, so a
- * `-Dcomposeai.svg.embedFonts=…` on the Gradle invocation reaches the daemon that reads it. Sourced
- * from that system property first (the documented flag, matching the desktop render), then a
- * `-PcomposePreview.svgEmbedFonts` Gradle property, else `"true"` — font embedding is on by default
- * (it degrades to `sans-serif` offline, so it only ever improves the export), and opting out means
- * passing `false` explicitly. Provider-based so the configuration cache records the property reads
- * as inputs.
+ * Value for `composeai.svg.embedFonts`: the system property, then `-PcomposePreview.svgEmbedFonts`,
+ * else `"true"` (embedding only improves the export). Provider-based for the configuration cache.
  */
 internal fun composeAiSvgEmbedFonts(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
@@ -670,14 +469,8 @@ internal fun composeAiSvgEmbedFonts(project: Project): org.gradle.api.provider.P
     .orElse("true")
 
 /**
- * The resolved value to forward as the daemon JVM's `composeai.svg.background`, so a
- * `-Dcomposeai.svg.background=device` on the Gradle invocation reaches the daemon that reads it —
- * without this the setting is unreachable through Gradle, since the property is consulted in the
- * spawned daemon rather than the parent. Sourced from that system property first (the documented
- * flag), then a `-PcomposePreview.svgBackground` Gradle property, else `"false"` (= `none`) — the
- * layered SVG exports background-free so an import lands as editable layers rather than sitting on
- * an opaque rect, and asking for a fill back means naming the mode you want. Mirrors
- * [composeAiSvgEmbedFonts].
+ * Value for `composeai.svg.background`: the system property, then `-PcomposePreview.svgBackground`,
+ * else `"false"` (= `none`, so imports land as editable layers). Mirrors [composeAiSvgEmbedFonts].
  */
 internal fun composeAiSvgBackground(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
@@ -686,12 +479,8 @@ internal fun composeAiSvgBackground(project: Project): org.gradle.api.provider.P
     .orElse("false")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.fonts.failOnFallback`, so a
- * `-Dcomposeai.fonts.failOnFallback=…` (or `-PcomposePreview.fontsFailOnFallback=…`) on the Gradle
- * invocation reaches the forked JVM that actually reads it. Sourced from the system property first
- * (the documented flag, matching the renderer), then the Gradle property, else `"true"` — a
- * downloadable font that falls back to Roboto fails its preview by default; opting out (warn + keep
- * the PNG) means passing `false` explicitly. Mirrors [composeAiSvgEmbedFonts].
+ * Value for `composeai.fonts.failOnFallback`: the system property, then
+ * `-PcomposePreview.fontsFailOnFallback`, else `"true"`. Mirrors [composeAiSvgEmbedFonts].
  */
 internal fun composeAiFontsFailOnFallback(
   project: Project
@@ -702,19 +491,10 @@ internal fun composeAiFontsFailOnFallback(
     .orElse("true")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.render.hostTheme` — the
- * Android theme the preview host activity runs under (see
- * `ee.schimke.composeai.renderer.PreviewHostTheme`). Accepts `@style/Theme.Foo`,
- * `com.example:style/Theme.Foo`, or a bare `Theme.Foo`.
- *
- * Sourced from `-Dcomposeai.render.hostTheme` first (the documented flag, matching the renderer),
- * then `-PcomposePreview.hostTheme`, then the module's `composePreview.hostTheme` DSL value (the
- * durable declaration — the two command-line forms are per-run overrides), else empty — an
- * **application** module already inherits `<application android:theme>` with no configuration at
- * all, so the default has to be "don't override". A **library** module has no application theme to
- * inherit, which is where naming one turns an `AndroidView` preview that resolves app-owned
- * `?attr/…` from a hard render failure into a rendered PNG. Mirrors [composeAiSvgEmbedFonts] /
- * [composeAiFontsFailOnFallback].
+ * Value for `composeai.render.hostTheme` (see `PreviewHostTheme`): `@style/Theme.Foo`,
+ * `com.example:style/Theme.Foo`, or `Theme.Foo`. From the system property, then
+ * `-PcomposePreview.hostTheme`, then the DSL value, else empty (application modules inherit their
+ * theme; library modules need one for `AndroidView` previews).
  */
 internal fun composeAiHostTheme(
   project: Project,
@@ -727,16 +507,9 @@ internal fun composeAiHostTheme(
     .orElse("")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.render.fixedTime` — the
- * instant preview renders pin their wall clock to (see
- * `ee.schimke.composeai.renderer.PreviewClock`). Accepts `HH:mm`, an ISO-8601 local date-time,
- * epoch millis, or `off`.
- *
- * Sourced from `-Dcomposeai.render.fixedTime` first (the documented flag, matching the renderer),
- * then `-PcomposePreview.fixedTime`, then the module's `composePreview.fixedTime` DSL value (the
- * durable declaration — the two command-line forms are per-run overrides), else empty, which the
- * renderer reads as "pin the default `10:10`". Forwarded even when blank so the property's presence
- * isn't a second thing to keep in sync. Mirrors [composeAiHostTheme].
+ * Value for `composeai.render.fixedTime` (see `PreviewClock`): `HH:mm`, ISO-8601 local date-time,
+ * epoch millis, or `off`. From the system property, then `-PcomposePreview.fixedTime`, then the DSL
+ * value, else empty (the renderer pins `10:10`).
  */
 internal fun composeAiFixedTime(
   project: Project,
@@ -749,36 +522,14 @@ internal fun composeAiFixedTime(
     .orElse("")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.render.rcPlayer` — which
- * player replays a **Remote Compose** preview's captured document. `"androidx-embedded"` (the
- * default, the vendored AndroidX embedded player) or `"androidx-view"` (the `AndroidView`-hosted
- * `RemoteComposePlayer`); the daemon also accepts the legacy `embedded`, `java` and `view`.
- * `cmp-android` is not a capture player — it names the CMP player on Android, which only replays.
+ * Value for `composeai.render.rcPlayer`: which player replays a Remote Compose capture —
+ * `"androidx-embedded"` (default) or `"androidx-view"` (legacy `embedded`, `java`, `view` also
+ * accepted; `cmp-android` only replays). Build-wide, read by `RemoteComposePlayerSelection` in the
+ * composing JVM.
  *
- * Build-wide, not per surface: one value moves every Remote Compose preview the render draws — a
- * `RemotePreview` sticker through `RemoteOverridablePreviewWrapper`, a bundle replayed from its
- * captured `ir/<id>.rc`, and a Glance Wear widget through `CapturingWearWidgetPreview`. Read in the
- * JVM that composes (`RemoteComposePlayerSelection` in `:data-remotecompose-connector`, and its
- * pinned twin in `:wear-preview-runtime`), so like its neighbours here it has to be forwarded onto
- * that JVM rather than resolved on the Gradle one.
- *
- * It is the **weakest** of the three ways a player is chosen, so it cannot override what a preview
- * or a request already said: a per-preview pin (`@PreviewWrapper(RemoteViewPreviewWrapper::class)`)
- * and a per-render `renderNow.overrides.remoteCompose.player` (which `serve`'s `?rcPlayer=` chips
- * ride) both still win.
- *
- * Sourced from `-Dcomposeai.render.rcPlayer` first (the flag the runtime itself reads), then
- * `-PcomposePreview.rcPlayer`, else `"androidx-embedded"`.
- *
- * Android-only, and deliberately not forwarded to the Desktop lane: the connector and both players
- * are Android artifacts rendered under Robolectric, so there is no Desktop preview for the setting
- * to be true of (`serve`'s `cmp-jvm` lane is a separate subprocess renderer, not this property).
- *
- * The default is `"androidx-embedded"` rather than the historical `"view"` because the View lane
- * makes every Remote Compose preview report the same unlabelled-`RemoteComposePlayer` accessibility
- * error (issue #5259) — see `RemoteComposePlayerSelection` for what each lane costs. Unlike the
- * opt-ins around it this one therefore defaults to *on*: `androidx-view` is the escape hatch, for a
- * preview whose fidelity depends on the framework `Canvas`.
+ * The weakest tier: a per-preview pin or a per-render `renderNow.overrides.remoteCompose.player`
+ * wins. From the system property, then `-PcomposePreview.rcPlayer`. Android-only. Defaults to
+ * embedded because the View lane reports an unlabelled-player a11y error on every preview (#5259).
  */
 internal fun composeAiRcPlayer(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
@@ -787,29 +538,11 @@ internal fun composeAiRcPlayer(project: Project): org.gradle.api.provider.Provid
     .orElse("androidx-embedded")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.render.rcDensity` — whether
- * a **Remote Compose** capture writes density and font scale as constants or as references to the
- * player's own system variables. `"fixed"` (the default, `RemoteDensity.from(displayInfo)`) or
- * `"host"` (`RemoteDensity.Host`).
- *
- * Build-wide, like its `rcPlayer` neighbour, and read in the JVM that composes
- * (`RemoteDensitySelection` in `:data-remotecompose-connector`) rather than resolved on the Gradle
- * one. Unlike `rcPlayer` it is not the weakest of several tiers — it is the only tier. The setting
- * decides what the capture writes into the document, and no per-preview annotation or per-render
- * `renderNow` override can revisit that afterwards: a document whose sp→px was folded to a constant
- * cannot be re-scaled by asking the player nicely.
- *
- * Sourced from `-Dcomposeai.render.rcDensity` first (the flag the runtime itself reads), then
- * `-PcomposePreview.rcDensity`, else `"fixed"`.
- *
- * The default is `"fixed"` — the *less* capable value — because flipping it rewrites the bytes of
- * every captured document in the consuming build and makes the replay density a correctness input
- * where it used to be ignored. A catalog opts in when it is ready to re-bake and look at the
- * pixels; `wear-m3-catalog` does so in its own `gradle.properties`.
- *
- * Android-only, and deliberately not forwarded to the Desktop lane, for the same reason as
- * `composeAiRcPlayer`: the creation library and both players are Android artifacts rendered under
- * Robolectric, so there is no Desktop capture for the setting to be true of.
+ * Value for `composeai.render.rcDensity`: whether Remote Compose captures write density and font
+ * scale as constants (`"fixed"`, default) or player-variable references (`"host"`). Build-wide and
+ * the only tier, since it decides the document bytes. From the system property, then
+ * `-PcomposePreview.rcDensity`. Defaults to `fixed` because flipping it rewrites every captured
+ * document. Android-only.
  */
 internal fun composeAiRcDensity(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
@@ -818,17 +551,10 @@ internal fun composeAiRcDensity(project: Project): org.gradle.api.provider.Provi
     .orElse("fixed")
 
 /**
- * The resolved value to forward as the render / daemon JVM's `composeai.render.linkBufferComposer`
- * — whether the render opts into the Compose runtime's rewritten `SlotTable` (see
- * `ee.schimke.composeai.data.render.LinkBufferComposer`). `"true"` or `"false"`.
- *
- * Sourced from `-Dcomposeai.render.linkBufferComposer` first (the documented flag, matching the
- * renderer), then `-PcomposePreview.linkBufferComposer`, then the module's
- * `composePreview.linkBufferComposer` DSL value (the durable declaration — the two command-line
- * forms are per-run overrides), else `"false"`: an opt-in stays opt-in. Mirrors
- * [composeAiFixedTime] / [composeAiHostTheme], except that this one **is** forwarded to the Desktop
- * lane as well — the flag lives in the Compose runtime both backends share, so unlike the
- * Robolectric-shadowed clock there is nothing platform-specific for it to depend on.
+ * Value for `composeai.render.linkBufferComposer` (`"true"`/`"false"`): the system property, then
+ * `-PcomposePreview.linkBufferComposer`, then the DSL value, else `"false"`. Unlike
+ * [composeAiFixedTime], also forwarded to Desktop, since the flag lives in the shared Compose
+ * runtime.
  */
 internal fun composeAiLinkBufferComposer(
   project: Project,

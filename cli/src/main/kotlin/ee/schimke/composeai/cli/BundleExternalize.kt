@@ -23,39 +23,19 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * `compose-preview bundle externalize` — lift large binary resources (fonts by default) **out** of
- * a packed bundle's `classes/app.jar` and publish them content-addressed beside the bundle,
- * shrinking the carried `.png` from ~600 KB to ~30 KB.
+ * `compose-preview bundle externalize`: lift large binary resources (fonts by default) out of a
+ * bundle's `classes/app.jar` into a content-addressed pool beside it, shrinking the `.png` from
+ * ~600 KB to ~30 KB. Fonts rarely change and are identical across variants, so a delivery branch
+ * carries them once; the server rehydrates them onto the daemon classpath at their recorded paths.
  *
- * # Why
+ * 1. Split `classes/app.jar` entries into kept vs externalized (path matches [extensions]).
+ * 2. Write each externalized resource to `<res-out>/<sha256>` (deduped) and record
+ *    `{path, sha256, size}`.
+ * 3. Rebuild the jar without them and merge the records into `bundle.json`'s `externalResources`.
+ * 4. Rewrite the bundle in place (or to `-o`) via [injectRawZipEntries], keeping the PNG cover and
+ *    other entries.
  *
- * A desktop-CMP catalog bundle (`compose-m3`) embeds its real font faces (Roboto / Noto Serif /
- * Droid Sans Mono, ~570 KB) inside `classes/app.jar` so the live daemon can rasterise text with the
- * same faces the baked stickers used. Carrying those bytes on **every** `design-artifacts/<system>`
- * branch — re-fetched by the public server on each catalog reload — is wasteful: the fonts rarely
- * change and are identical across variants. This step lifts them out, records each in the
- * manifest's [BundleReader.Manifest.externalResources] by name + sha256 + size, and writes the
- * bytes to a content-addressed pool (`<res-out>/<sha256>`) the publish pipeline carries once per
- * branch. The server rehydrates them into a shared hash-keyed cache and back onto the daemon
- * classpath at their recorded path, so `getResourceAsStream("/fonts/…")` resolves exactly as
- * before.
- *
- * # What it does
- *
- * 1. Reads the bundle's `classes/app.jar`, splitting each entry into *kept* (classes + small
- *    resources) vs *externalized* (a resource whose path matches one of [extensions]).
- * 2. Writes each externalized resource's bytes to `<res-out>/<sha256>` (deduped — identical bytes
- *    share a file), and records `{path, sha256, size}`.
- * 3. Rebuilds `classes/app.jar` without the externalized entries and merges the records into
- *    `bundle.json`'s `externalResources` (idempotent by path — re-running is a no-op).
- * 4. Rewrites the bundle in place (or to `-o`) via [injectRawZipEntries], preserving the polyglot
- *    PNG cover and every other entry.
- *
- * The manifest is edited as a **raw JSON tree** rather than a typed round-trip so fields the CLI's
- * [BundleReader.Manifest] mirror doesn't model (future schema additions) survive untouched.
- *
- * Idempotent: a second run finds the entries already gone from the jar and already recorded, and
- * changes nothing.
+ * The manifest is edited as a raw JSON tree so unmodelled fields survive. Idempotent.
  */
 internal object BundleExternalize {
 
@@ -67,11 +47,9 @@ internal object BundleExternalize {
   data class Result(val bundleFile: File, val resDir: File, val externalized: List<Externalized>)
 
   /**
-   * Externalize [extensions]-matching resources out of [bundleFile]'s `classes/app.jar` into
-   * [resDir], rewriting the bundle in place (the polyglot PNG cover + all other entries preserved)
-   * and merging the records into `bundle.json`. Returns the resources externalized on **this** run
-   * (already-externalized ones on a re-run count as zero new work but stay recorded). Throws
-   * [IllegalArgumentException] if the bundle carries no `classes/app.jar`.
+   * Externalize [extensions]-matching resources from [bundleFile] into [resDir], rewriting the
+   * bundle and merging records into `bundle.json`. Returns resources externalized on this run.
+   * Throws [IllegalArgumentException] if there is no `classes/app.jar`.
    */
   fun externalize(
     bundleFile: File,
@@ -102,9 +80,7 @@ internal object BundleExternalize {
         }
       }
 
-    // Merge the records into bundle.json's externalResources as a raw JSON tree so unmodelled
-    // fields
-    // survive. Idempotent by path — a re-run replaces the same-path entry with an identical one.
+    // Merge as a raw JSON tree so unmodelled fields survive; idempotent by path.
     val manifestBytes =
       readZipEntry(zip, "bundle.json")
         ?: throw IllegalArgumentException("bundle.json missing in ${bundleFile.path}")
@@ -137,9 +113,8 @@ internal object BundleExternalize {
   }
 
   /**
-   * Rebuild a jar keeping only entries for which [keep] returns true. Entry order + directory
-   * entries are preserved; times are pinned to [ZIP_DOS_EPOCH_MS] so the stripped jar stays
-   * byte-stable across runs.
+   * Rebuild a jar keeping entries where [keep] is true, preserving order and directories, with
+   * times pinned to [ZIP_DOS_EPOCH_MS] for byte stability.
    */
   private fun rewriteJar(
     jarBytes: ByteArray,
@@ -169,10 +144,8 @@ internal object BundleExternalize {
   }
 
   /**
-   * Return [manifestBytes] with [records] merged into its `externalResources` array — existing
-   * entries whose `path` collides are replaced (idempotent), the rest preserved, and every other
-   * top-level field left untouched. New entries are appended in [records] order after the
-   * survivors.
+   * [manifestBytes] with [records] merged into `externalResources`: same-path entries replaced,
+   * others kept, new ones appended in order, all other fields untouched.
    */
   private fun mergeExternalResources(
     manifestBytes: ByteArray,
@@ -216,10 +189,9 @@ private fun kotlinx.serialization.json.JsonElement.jsonPrimitiveContentOrNull():
   (this as? kotlinx.serialization.json.JsonPrimitive)?.content
 
 /**
- * `compose-preview bundle externalize <bundle.png> --res-out <dir> [-o <file.png>] [--ext ttf,otf]`
- * — the CLI wrapper around [BundleExternalize.externalize]. Rewrites the bundle in place by
- * default; `-o` writes a copy first and externalizes that. Prints a one-line-per-resource summary;
- * with `--json` prints a machine-readable summary the publish pipeline consumes.
+ * `compose-preview bundle externalize <bundle.png> --res-out <dir> [-o <file.png>] [--ext
+ * ttf,otf]`. Rewrites in place by default (`-o` copies first); prints a per-resource summary, or
+ * JSON with `--json` for the publish pipeline.
  */
 internal class ExternalizeSubcommand(
   private val args: List<String>,
@@ -246,8 +218,7 @@ internal class ExternalizeSubcommand(
         exitProcess(1)
       }
 
-    // A URL input resolved to a delete-on-exit temp file — rewriting it "in place" would vanish on
-    // exit, so require -o for a downloaded bundle (same guard as `bundle embed --in-bundle`).
+    // A URL input resolves to a delete-on-exit temp file, so require `-o` for downloaded bundles.
     val target =
       if (outArg != null) {
         val t = File(outArg).absoluteFile

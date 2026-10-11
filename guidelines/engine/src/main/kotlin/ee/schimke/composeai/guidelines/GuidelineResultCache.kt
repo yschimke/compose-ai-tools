@@ -22,21 +22,18 @@ public data class PreviewGuidelineResult(
   val pending: Boolean = false,
 ) {
   /**
-   * Why it was asked nothing: no rule of the catalog's applies to its surface and profile
-   * ([noRulesFor]). Such a result is neither a pass nor a finding — nothing was judged.
+   * Why it was asked nothing: no catalog rule applies to its surface and profile ([noRulesFor]).
+   * Neither a pass nor a finding.
    *
-   * A body property rather than a constructor parameter, so the constructor and `copy` keep the ABI
-   * callers compiled against an earlier release use (their default-argument bridges included).
-   * Serialized like the others; `equals` and `copy` do not see it.
+   * A body property so the constructor and `copy` keep their ABI; serialized, but not seen by
+   * `equals` or `copy`.
    */
   public var noRules: String? = null
     internal set
 
   /**
-   * The rules of [record] that passed because the reply stated that every rule it did not list
-   * passes, rather than by a verdict of their own: a report can say "passed (implicitly)". Their
-   * verdicts are in the record like any other, with [IMPLICIT_PASS_REASON] as their reason. A body
-   * property like [noRules]; empty in a result written before replies listed only findings.
+   * Rules of [record] passed by the reply's "every unlisted rule passes" statement rather than
+   * their own verdict (whose reason is [IMPLICIT_PASS_REASON]). A body property like [noRules].
    */
   public var implicitPasses: List<String> = emptyList()
     internal set
@@ -59,10 +56,8 @@ public data class PreviewGuidelineResult(
 
 /**
  * Results kept under [directory] (`build/compose-previews/guidelines/`), keyed by everything a
- * verdict depends on ([inputsKey]): the guidelines' content, the subject's surface and profile, the
- * bytes of every picture, its accessibility nodes, its source, and the model. A preview whose
- * render, source and nodes did not change, judged against the same rules, is not asked again; a
- * source-only or label-only edit is. A preview with no render hash is never cached.
+ * verdict depends on ([inputsKey]). An unchanged preview judged against the same rules is not asked
+ * again. A preview with no render hash is never cached.
  */
 public class GuidelineResultCache(private val directory: File) {
   /** The result for [subject] judged against [guidelines] by [model], when nothing has changed. */
@@ -83,10 +78,9 @@ public class GuidelineResultCache(private val directory: File) {
   public fun checked(previewId: String): Boolean = marker(previewId).isFile
 
   /**
-   * Deletes every result neither read nor written through this instance, and the markers of
-   * previews not in [previewIds]: what is left is the current catalog's verdicts, so a cache
-   * carried between CI runs does not grow with every render that ever changed. Call it only after a
-   * run over the whole catalog.
+   * Deletes every result neither read nor written through this instance, and markers of previews
+   * not in [previewIds], so a cache carried between CI runs doesn't grow. Call only after a
+   * whole-catalog run.
    */
   public fun prune(previewIds: Set<String>) {
     directory
@@ -128,10 +122,8 @@ public class GuidelineResultCache(private val directory: File) {
   }
 
   /**
-   * Forgets the result kept for [subject] against [guidelines] by [model], when one is. For a host
-   * whose evidence failed after the result was kept under inputs that promised it (the CLI's
-   * accessibility fetch), so the next run asks again rather than reuse a verdict reached without
-   * it.
+   * Forgets the result for [subject] against [guidelines] by [model], for a host whose evidence
+   * failed after the result was kept under inputs that promised it.
    */
   public fun remove(subject: PreviewSubject, guidelines: CatalogGuidelinesV1, model: String) {
     subject.renderHash ?: return
@@ -205,17 +197,15 @@ public class GuidelineResultCache(private val directory: File) {
     private const val CHECKED_DIR = "checked"
 
     /**
-     * Bumped when the request the engine builds changes in a way that changes verdicts (the prompt,
-     * how evidence is attached, the reply contract), so results from an older engine are not
-     * reused. 8: replies list only what does not pass, plus an `others` statement per subject.
+     * Bumped when the engine's request changes in a way that changes verdicts, so older results
+     * aren't reused. 8: replies list only non-passes plus an `others` statement per subject.
      */
     public const val REQUEST_FORMAT: Int = 8
 
     /**
-     * The identity of one judgement: [subject]'s id, surface, profile, every picture's bytes and
-     * settings, its accessibility nodes and measured checks and its source, the full content of
-     * [guidelines] (rules and frames, not only the version a catalog may forget to bump), [model]
-     * and [REQUEST_FORMAT].
+     * The identity of one judgement: [subject]'s id, surface, profile, pictures, accessibility data
+     * and source, the full content of [guidelines] (not just its version), [model] and
+     * [REQUEST_FORMAT].
      */
     public fun inputsKey(
       subject: PreviewSubject,

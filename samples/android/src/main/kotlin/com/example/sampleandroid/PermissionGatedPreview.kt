@@ -20,22 +20,14 @@ import androidx.core.content.ContextCompat
 import ee.schimke.composeai.preview.PermissionPreview
 
 /**
- * Demo of the `data/permissions` data extension. The screen uses the standard Android
- * `ContextCompat.checkSelfPermission(...)` API — there is no connector-specific Compose API to
- * learn, and deliberately no `granted: Boolean` parameter: the previewed code is the code the app
- * ships, and the grant state is supplied by the environment behind the platform call.
+ * Demo of the `data/permissions` extension. The screen calls plain
+ * `ContextCompat.checkSelfPermission(...)` (no `granted` parameter), so the previewed code is what
+ * ships and the environment supplies the grant.
  *
- * Both branches are captured statically. The denied preview is the resting off-device state (no
- * permission is granted to a Robolectric application that never asked for one); the granted preview
- * carries `@PermissionPreview`, which the Gradle render lane turns into a
- * `PermissionsOverrideExtension` that seeds Robolectric's `ShadowApplication` grant set before the
- * first composition, so the same `checkSelfPermission` call returns `PERMISSION_GRANTED`.
- *
- * The daemon reaches that identical seam from the other direction:
- * `renderNow.overrides.permissions` plans the same extension, so flipping the chip in Controls
- * re-renders a held preview under a different grant state without the annotation. The connector's
- * `ShadowContextWrapperPermissionTracker` also records each query into the `compose/permissions`
- * payload, so the panel can list what the screen asked about.
+ * Denied is the resting Robolectric state. The granted preview carries `@PermissionPreview`, which
+ * seeds `ShadowApplication`'s grants before first composition; the daemon does the same from
+ * `renderNow.overrides.permissions`. The connector also records each query into
+ * `compose/permissions`.
  */
 @Preview(name = "Camera permission — denied", showBackground = true)
 @Composable
@@ -44,14 +36,9 @@ fun CameraPermissionDeniedPreview() {
 }
 
 /**
- * The granted branch, captured by the static build (issue #3676). `@PermissionPreview` names the
- * full Android constant string — `Manifest.permission.CAMERA` resolves to
- * `"android.permission.CAMERA"`, which is the key `checkSelfPermission` is queried with — and the
- * grant map is exhaustive, so nothing else is granted for this capture.
- *
- * Its render is the fixture that keeps the two branches honest: `PermissionPreviewPixelTest`
- * asserts this PNG differs from the denied one, so a regression that drops the grant seeding shows
- * up as a failing test rather than as two identical images, one of them mislabelled.
+ * The granted branch. `@PermissionPreview` takes the full constant string
+ * (`android.permission.CAMERA`) and its grant map is exhaustive. `PermissionPreviewPixelTest`
+ * asserts this differs from the denied render.
  */
 @Preview(name = "Camera permission — granted", showBackground = true)
 @PermissionPreview(grants = ["android.permission.CAMERA=granted"])

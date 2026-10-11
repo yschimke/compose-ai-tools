@@ -4,12 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * Behavioural tests for the cost-aware sharding heuristic.
- *
- * Each test pins a *decision*, not a model coefficient — the constants in [ShardTuning]
- * (PER_FORK_SETUP_SECONDS, SECONDS_PER_COST_UNIT, FORK_OVERHEAD_SECONDS) get re-tuned over time as
- * hardware and the Robolectric stack evolve. What we want to lock in is "two GIFs at 40 cost each
- * justify two shards" rather than "K=2 takes exactly 7.85s".
+ * Cost-aware sharding heuristic. Tests pin *decisions* ("two GIFs at 40 cost justify two shards"),
+ * not the [ShardTuning] coefficients, which get re-tuned.
  */
 class ShardTuningTest {
 
@@ -27,11 +23,8 @@ class ShardTuningTest {
 
   @Test
   fun `dozens of static previews still don't justify sharding`() {
-    // 40 static previews × 1.0 cost = 40 total. Single shard:
-    // 3.85 + 40×0.15 ≈ 9.85s. K=2 saves only ~3s, and the relative
-    // gain (~30%) is right at the threshold; with FORK_OVERHEAD it
-    // dips just under, so we stay single-shard. The point is the
-    // decision is governed by total work, not preview count.
+    // 40 static previews, total cost 40: K=2's gain sits just under the threshold, so single shard.
+    // Total work decides, not preview count.
     val k =
       ShardTuning.autoShards(
         totalCost = 40.0,
@@ -44,11 +37,8 @@ class ShardTuningTest {
 
   @Test
   fun `a few heavy GIF captures DO justify sharding`() {
-    // 8 captures, three of them GIFs (cost 40). totalCost = 5*1 + 3*40 = 125.
-    // Under the OLD uniform-cost model this looked like 8 previews at
-    // 0.15s each — well below the saving threshold, so sharding was
-    // (incorrectly) skipped. Under the new model, 125×0.15 ≈ 18.75s of
-    // compose work, and a 2-way split nearly halves the make-span.
+    // 3 GIFs (cost 40) + 5 static = 125 cost units: a 2-way split nearly halves the make-span,
+    // though a uniform-cost model would skip sharding.
     val k =
       ShardTuning.autoShards(
         totalCost = 125.0,
@@ -61,11 +51,7 @@ class ShardTuningTest {
 
   @Test
   fun `make-span floor caps useful sharding when one capture dominates`() {
-    // One animated preview at cost 50 + 4 cheap ones at cost 1.
-    // totalCost=54, maxIndividualCost=50. The animated capture sets a
-    // floor of 50×0.15=7.5s — adding more shards past 2 doesn't help
-    // because the largest preview lives entirely on one fork. The
-    // model is supposed to recognise this and not over-shard.
+    // One cost-50 preview floors the make-span on one fork, so sharding past 2 doesn't help.
     val k =
       ShardTuning.autoShards(
         totalCost = 54.0,
@@ -152,11 +138,8 @@ class ShardTuningTest {
 
   @Test
   fun `one preview with many heavy captures stays single-fork`() {
-    // The regression this guards: a single paused-clock / GIF preview with
-    // eight cost-40 captures. The renderer keeps all eight captures on one
-    // shard (one indivisible row), so shardableRows = 1 even though there are
-    // eight captures and 320 units of work. Sizing by capture count would have
-    // picked multiple forks that then sit idle — slower than a single fork.
+    // One paused-clock / GIF preview with eight cost-40 captures is one indivisible row, so
+    // shardableRows = 1; sizing by capture count would add idle forks.
     val k =
       ShardTuning.autoShards(
         totalCost = 320.0,
@@ -181,10 +164,7 @@ class ShardTuningTest {
 
   @Test
   fun `perPreviewRowCosts sums captures and data products per preview`() {
-    // Two previews: the first is a heavy paused-clock (3 captures + 1 data
-    // product), the second a plain static. Each preview must collapse to ONE
-    // row whose cost is the sum of its captures + products — never one row per
-    // capture.
+    // Each preview collapses to ONE row costing its captures + products, never one row per capture.
     val manifest =
       """
       {
@@ -220,13 +200,9 @@ class ShardTuningTest {
 
   @Test
   fun `perPreviewRowCosts excludes app-level previews`() {
-    // ACTIVITY / APP_TOUR previews render from `AppTourRobolectricRenderTest`, a lane of its own
-    // that is never sharded. Counting them here would size the shards for rows they are never
-    // given — an activity-heavy module (Home Assistant declares 18) would spin up idle forks.
-    //
-    // The APP_TOUR entry also carries a data product whose OWN "kind" is a product id, which is why
-    // the exclusion anchors on the two app-level names rather than on "the first kind in the
-    // entry".
+    // ACTIVITY / APP_TOUR previews render in their own unsharded lane, so counting them would add
+    // idle forks. The exclusion anchors on the two app-level names because the APP_TOUR entry's
+    // data product carries its own "kind".
     val manifest =
       """
       {

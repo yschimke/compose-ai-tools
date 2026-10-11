@@ -3,28 +3,18 @@ package com.example.samplexrglimmer
 import java.awt.image.BufferedImage
 
 /**
- * Calibration helpers that encode the two quantitative rules Android Studio's Glimmer preview pane
- * exists to check, so our previews can be measured against them instead of merely *looking*
- * additive. Both numbers come straight from Google's public Glimmer guidance:
+ * Calibration helpers for the two quantitative rules Studio's Glimmer preview pane checks, from
+ * Google's Glimmer guidance:
  *
- * - **Contrast.** The official skill (`android/skills` →
- *   `xr/display-glasses-with-jetpack-compose-glimmer`) mandates *"at least a 70% tone difference
- *   between foreground and background using the HCT color space."* HCT's **T** (tone) channel is
- *   *defined* as CIELAB **L\*** (identical 0–100 scale), so "70% tone difference" is `ΔL* ≥ 70`.
- *   [tone] computes L\* from an sRGB pixel; [STUDIO_MIN_TONE_DIFFERENCE] is the 70 bar.
- * - **Angular sizing.** The type guidance
- *   (developer.android.com/design/ui/ai-glasses/guides/styles/type) pins the display at **30
- *   pixels-per-degree** and a minimum readable text size of **0.6° = 18px** (restated as 18sp in
- *   the skill). [PIXELS_PER_DEGREE], [MIN_TEXT_ANGLE_DEGREES] and [minReadableTextPx] capture that;
- *   they also justify the density-1.0 calibration of `AI_GLASSES_DEVICE_SPEC` (the 18sp == 18px ==
- *   0.6° identity only holds at density 1.0).
+ * - Contrast: "at least a 70% tone difference between foreground and background using the HCT
+ *   color space"; HCT tone is CIELAB L\*, so `ΔL* ≥ 70` ([tone], [STUDIO_MIN_TONE_DIFFERENCE]).
+ * - Angular sizing: 30 pixels-per-degree and a 0.6° = 18px minimum text size
+ *   (developer.android.com/design/ui/ai-glasses/guides/styles/type) — [PIXELS_PER_DEGREE],
+ *   [MIN_TEXT_ANGLE_DEGREES], [minReadableTextPx]; why `AI_GLASSES_DEVICE_SPEC` uses density 1.0.
  *
- * Additive-display physics: a real glasses display can only *add* light. The preview reproduces
- * that with `BlendMode.Plus` over the env backdrop ([additivePlus]); white UI light added onto any
- * background clamps to white (L\* 100), so the legibility question is the tone gap between the
- * white text and the **panel** — the env pixel with Glimmer's translucent `surface` tint added on
- * top ([GLIMMER_SURFACE]). On true black (additive-zero) the panel stays dark and the gap is wide;
- * on a bright/busy backdrop the panel rides up toward white and the gap collapses.
+ * An additive display only adds light ([additivePlus]), so white text clamps to L\* 100 and
+ * legibility is the gap to the panel: the backdrop plus Glimmer's translucent [GLIMMER_SURFACE]. On
+ * black the gap is wide; on a bright backdrop it collapses.
  */
 internal object GlimmerContrast {
 
@@ -69,10 +59,8 @@ internal object GlimmerContrast {
   fun toneDifference(fg: Int, bg: Int): Double = Math.abs(tone(fg) - tone(bg))
 
   /**
-   * Mean legibility tone-gap of white Glimmer text over [backdrop]: average, across every pixel, of
-   * the tone difference between the white text (additive-clamped to L\* 100) and the local panel
-   * (backdrop pixel + [GLIMMER_SURFACE] added). Higher = more readable;
-   * [STUDIO_MIN_TONE_DIFFERENCE] is the pass bar.
+   * Mean tone gap between white text (L\* 100) and the local panel (backdrop + [GLIMMER_SURFACE])
+   * across [backdrop]; higher is more readable, [STUDIO_MIN_TONE_DIFFERENCE] is the bar.
    */
   fun meanTextToneGap(backdrop: BufferedImage): Double {
     var sum = 0.0

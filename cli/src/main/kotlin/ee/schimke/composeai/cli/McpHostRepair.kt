@@ -12,13 +12,9 @@ import kotlinx.serialization.json.contentOrNull
 internal data class LauncherChoice(val path: String, val warning: String? = null)
 
 /**
- * Picks the `compose-preview` path written into agent host configs.
- *
- * The install layout is `…/cli/compose-preview-<version>/bin/compose-preview` behind stable
- * symlinks (`~/.local/bin/compose-preview`,
- * `~/.claude/skills/compose-preview/bin/compose-preview`). The installer deletes old version
- * directories, so a host entry naming a versioned path fails with ENOENT after the next upgrade.
- * Symlinks are therefore never resolved here: the stable path is the point.
+ * Picks the `compose-preview` path written into agent host configs. Installs live in versioned
+ * directories behind stable symlinks, and old versions are deleted on upgrade, so symlinks are
+ * never resolved: the stable path is the point.
  */
 internal object StableLauncher {
 

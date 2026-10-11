@@ -3,151 +3,95 @@ package ee.schimke.composeai.daemonlaunch
 import kotlinx.serialization.Serializable
 
 /**
- * Wire format of `build/compose-previews/daemon-launch.json`. Authored by the Gradle plugin's
- * `DaemonBootstrapTask` or by a non-Gradle equivalent (Bazel rule, Amper task — see
- * [DaemonLaunchBuilder] / [DaemonLaunchBuilderCli]). Consumed by the VS Code extension's
- * `daemonProcess.ts` and by `render-session-subprocess`'s `SubprocessRenderSessions.open(...)`.
- * Once a consumer reads this descriptor, it has everything it needs to spawn the daemon JVM
- * directly — no further build-system invocation is required for the lifetime of the descriptor.
+ * Wire format of `build/compose-previews/daemon-launch.json`, written by the Gradle plugin's
+ * `DaemonBootstrapTask` or a non-Gradle equivalent ([DaemonLaunchBuilder] /
+ * [DaemonLaunchBuilderCli]), and read by VS Code's `daemonProcess.ts` and
+ * `SubprocessRenderSessions.open(...)`. It contains everything needed to spawn the daemon JVM
+ * without another build invocation.
  *
- * **Schema versioning.** Bump [schemaVersion] whenever the field shape changes in a way that could
- * break older readers; consumers gate on it and force a fresh build of the descriptor on mismatch.
- *
- * **Stable field ordering.** All collection fields are `List<>` (never `Set<>`) to preserve
- * insertion order: classpath ordering is load-bearing for the Robolectric sandbox (renderer pinned
- * versions must precede consumer transitive versions), and JVM arg ordering matters for some
- * `--add-opens` / `-D` precedence cases. Producers should hand the builder a `LinkedHashMap` for
- * [systemProperties] when stable iteration matters; kotlinx-serialization's default Map encoder
- * iterates in encounter order.
+ * Bump [schemaVersion] on any change that could break older readers; consumers gate on it.
+ * Collections are `List`s because classpath and JVM-arg order are load-bearing; pass a
+ * `LinkedHashMap` for [systemProperties] when order matters.
  */
 @Serializable
 public data class DaemonClasspathDescriptor(
   /** Bumped on breaking schema changes. See class KDoc. */
   public val schemaVersion: Int,
-  /**
-   * Module path of the consumer module the daemon will serve, e.g. `:samples:android` for a Gradle
-   * project, `//app` for Bazel, `app` for Amper. Per-daemon-per-module — each module gets its own
-   * JVM.
-   */
+  /** Module the daemon serves (`:samples:android`, `//app`, `app`); one daemon JVM per module. */
   public val modulePath: String,
   /** Build variant the daemon was bootstrapped against, e.g. `debug` / `release` / `desktop`. */
   public val variant: String,
   /**
-   * When `false`, consumers read the descriptor (so they know the producer ran) but do NOT spawn
-   * the daemon JVM. The remaining fields are still populated honestly so a later flip to `true`
-   * doesn't require another build round-trip.
+   * When `false`, consumers read the descriptor but don't spawn the daemon; other fields are still
+   * populated so enabling needs no rebuild.
    */
   public val enabled: Boolean,
   /** Fully-qualified daemon entry point class, e.g. `ee.schimke.composeai.daemon.DaemonMain`. */
   public val mainClass: String,
-  /**
-   * Absolute path to the `java` binary the producer resolved (e.g. AGP's unit-test toolchain).
-   * Consumers exec this directly; no `JAVA_HOME` inference. `null` falls back to the JDK the
-   * consumer's own process is using.
-   */
+  /** Absolute `java` binary to exec; `null` uses the consumer process's own JDK. */
   public val javaLauncher: String?,
   /**
-   * Resolved daemon classpath, in load order. The renderer / daemon module's jar should lead so
-   * [mainClass] is loaded ahead of any consumer-graph collisions; everything else (data extensions,
-   * Compose runtime, user classes) follows.
+   * Daemon classpath in load order; the daemon module's jar leads so [mainClass] wins collisions.
    */
   public val classpath: List<String>,
   /**
-   * Static JVM flags — `-Xmx`, `--add-opens`, `--add-exports`, etc. Renderer-android needs the
-   * Robolectric-on-JDK-17 set (see the Gradle plugin's `AndroidPreviewClasspath.buildJvmArgs` for
-   * the canonical list); renderer-desktop typically needs only `-Xmx`.
+   * Static JVM flags; Android needs the Robolectric-on-JDK-17 opens (see
+   * `AndroidPreviewClasspath.buildJvmArgs`), desktop typically only `-Xmx`.
    */
   public val jvmArgs: List<String>,
   /**
-   * `-D` system properties read by the daemon at startup. Includes the `composeai.daemon.*` keys
-   * documented in `docs/daemon/CONFIG.md` (e.g. `protocolVersion`, `modulePath`,
-   * `previewsJsonPath`, `outputDir`, `idleTimeoutMs`).
+   * `-D` properties read at startup, including the `composeai.daemon.*` keys in
+   * `docs/daemon/CONFIG.md`.
    */
   public val systemProperties: Map<String, String>,
   /** Working directory for the JVM. Conventionally the consumer module's project directory. */
   public val workingDirectory: String,
-  /**
-   * Absolute path to `previews.json`. The daemon reads this on startup to seed its in-memory
-   * preview index; subsequent updates arrive via `discoveryUpdated` notifications.
-   */
+  /** `previews.json`, read at startup; later updates arrive via `discoveryUpdated`. */
   public val manifestPath: String,
   /**
-   * Stage-2 in-process compile config. When non-null the daemon constructs a
-   * `DefaultBtaCompileService` from these fields at startup and `JsonRpcServer.compileSources`
-   * dispatches through it. `null` (the default) means the consumer hasn't opted in via
-   * `composePreview { daemon { compileInProcess = true } }` and the daemon's `compileSources`
-   * handler returns `result=fallback` for every call — the editor falls back to stage 1 (`gradle
-   * --continuous`) or stage 0 (one-shot Gradle).
-   *
-   * Schema-version bumped to 2 when this field landed (the v1 reader in the VS Code extension fails
-   * the descriptor on any unknown field, even null-defaulted ones, so adding the field IS a
-   * breaking schema change for existing readers).
+   * Stage-2 in-process compile config; when null `compileSources` returns `result=fallback` and the
+   * editor uses Gradle. Adding it bumped the schema to 2, since the v1 VS Code reader rejects
+   * unknown fields.
    */
   public val btaCompile: BtaCompileConfig? = null,
 )
 
 /**
- * Stage-2 in-process compile config. Populated by the gradle plugin's `DaemonBootstrapTask`
- * whenever the variant wiring resolved the required inputs (BTA-impl classpath, module name, output
- * dir, IC dir). The daemon reads these into a `DefaultBtaCompileService` once at startup but only
- * loads BTA's classloader lazily — the editor has to call `compileSources` to trigger that, and the
- * call is itself gated by the VS Code workspace setting `composePreview.daemon.compileInProcess`.
- * So a `non-null btaCompile` block in the descriptor costs nothing at the daemon level unless the
- * editor actually opts in.
+ * Stage-2 in-process compile inputs, populated when the variant wiring resolved them. BTA's
+ * classloader loads lazily on the first `compileSources`, itself gated by the
+ * `composePreview.daemon.compileInProcess` VS Code setting, so a non-null block costs nothing
+ * otherwise.
  */
 @Serializable
 public data class BtaCompileConfig(
   /**
-   * BTA-impl classpath: `kotlin-build-tools-impl` + the matching `kotlin-compiler-embeddable`
-   * + `kotlin-daemon-embeddable` + `kotlin-compose-compiler-plugin-embeddable` + transitive
-   *   `kotlinx-coroutines-core` / `kotlin-stdlib` / `kotlin-reflect` runtime JARs. These get loaded
-   *   into BTA's isolated classloader; the daemon's main classloader never sees them. Version must
-   *   match the consumer's `kotlin` version (read from `libs.versions.toml`).
+   * BTA impl classpath (`kotlin-build-tools-impl`, compiler / daemon / Compose plugin embeddables
+   * and runtime deps), loaded into BTA's isolated classloader. Must match the consumer's Kotlin
+   * version.
    */
   public val implClasspath: List<String>,
-  /**
-   * The consumer's compile classpath for this module — same JAR list `compileKotlin` would see,
-   * resolved by KGP/AGP at config time. Includes Compose runtime, kotlin-stdlib, AGP- generated R /
-   * BuildConfig jars (when present), all transitive dependencies.
-   */
+  /** The module's compile classpath, as `compileKotlin` sees it. */
   public val compileClasspath: List<String>,
-  /**
-   * Compiler plugin JARs (e.g. `kotlin-compose-compiler-plugin-embeddable`). Empty list when the
-   * consumer doesn't apply Compose. Each entry is loaded into BTA's classloader and its
-   * `META-INF/services/...CompilerPluginRegistrar` activated.
-   */
+  /** Compiler plugin JARs (e.g. the Compose plugin); empty without Compose. */
   public val compilerPlugins: List<String>,
-  /**
-   * Where BTA writes `.class` files. Same directory the daemon's child classloader watches —
-   * `build/intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/classes/` (Android) or
-   * `build/classes/kotlin/<variant>/main/` (JVM/CMP).
-   */
+  /** Where BTA writes classes: the directory the daemon's child classloader watches. */
   public val outputDir: String,
   /**
-   * Kotlin `MODULE_NAME` arg. Matches the consumer's Gradle module name so BTA-emitted
-   * `kotlin.Metadata.d2[]` agrees with Gradle's output — load-bearing for the daemon's child
-   * classloader hot-swap, which diffs BTA-emitted classes against Gradle-emitted ones.
+   * Kotlin `MODULE_NAME`, matching Gradle's so `kotlin.Metadata.d2[]` agrees for hot-swap diffs.
    */
   public val moduleName: String,
-  /**
-   * Per-module persistent IC cache directory. Conventionally
-   * `<module>/build/compose-previews/daemon-state/bta-ic/`. Survives across daemon spawns; recycled
-   * with the daemon on classpath-dirty (Tier 1) which invalidates the IC inputs anyway.
-   */
+  /** Persistent IC cache dir (conventionally `build/compose-previews/daemon-state/bta-ic/`). */
   public val icWorkingDir: String,
   /**
-   * Daemon-warm-time decision: non-null means this module is NOT a stage-2 candidate (typically
-   * because KSP / KAPT / annotationProcessor is on the classpath). `JsonRpcServer.compileSources`
-   * returns `result=fallback` with this reason verbatim. `null` means eligible — BTA actually runs.
+   * Non-null when the module isn't stage-2 eligible (e.g. KSP / KAPT); returned verbatim as the
+   * fallback reason.
    */
   public val ineligibilityReason: String? = null,
 )
 
 /**
- * Current value of [DaemonClasspathDescriptor.schemaVersion]. Bump on breaking changes.
- *
- * Version history:
- * - **1** — initial schema (B1.2).
- * - **2** — added optional [DaemonClasspathDescriptor.btaCompile] for stage-2 in-process compile.
+ * Current [DaemonClasspathDescriptor.schemaVersion]:
+ * - **1** — initial schema.
+ * - **2** — added optional [DaemonClasspathDescriptor.btaCompile].
  */
 public const val DAEMON_DESCRIPTOR_SCHEMA_VERSION: Int = 2

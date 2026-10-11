@@ -6,41 +6,24 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Generates a **self-contained web embed** from a packed preview bundle — the "js bundle" sibling
- * of the PNG+ZIP polyglot. Where the polyglot is for image viewers / re-rendering tooling, the web
- * embed is for *putting the rendered previews on a web page*: an app drops one `.js` file into its
- * site, adds a `<compose-preview-gallery>` element, and the baked previews render with no build
- * step, no framework, and no network.
+ * Generates a self-contained web embed from a packed preview bundle: drop one `.js` file into a
+ * site, add a `<compose-preview-gallery>` element, and the baked previews render with no build
+ * step, framework or network.
  *
- * # Output
- *
- * [generate] returns a map of relative path → bytes, written verbatim by the caller:
- * - **`compose-preview-embed.js`** — a framework-free ES/UMD script that defines and registers a
- *   `<compose-preview-gallery>`
- *   [custom element](https://developer.mozilla.org/docs/Web/API/Web_components/Using_custom_elements).
- *   The previews' metadata and (by default) their PNG bytes as `data:` URIs are baked into a single
- *   `COMPOSE_PREVIEW_DATA` constant inside the script, so the one file is fully self-contained.
- * - **`index.html`** — a ready-to-open demo page that loads the script and mounts the gallery, so a
- *   double-click on the extracted directory shows the previews immediately.
- * - **`previews/<id>.png`** — only in [InlineMode.EXTERNAL]: the PNGs are written beside the script
- *   and referenced by relative URL instead of inlined, for callers that prefer cacheable image
- *   assets over one fat script.
- *
- * # Embedding in an app's page
+ * [generate] returns relative path → bytes:
+ * - `compose-preview-embed.js` — a framework-free script registering the
+ *   `<compose-preview-gallery>` custom element, with preview metadata (and by default PNGs as
+ *   `data:` URIs) baked into a `COMPOSE_PREVIEW_DATA` constant.
+ * - `index.html` — a demo page that loads the script and mounts the gallery.
+ * - `previews/<id>.png` — only in [InlineMode.EXTERNAL], referenced by relative URL instead.
  *
  * ```html
  * <script src="compose-preview-embed.js"></script>
  * <compose-preview-gallery></compose-preview-gallery>
  * ```
  *
- * The element renders into a
- * [shadow root](https://developer.mozilla.org/docs/Web/API/Web_components/Using_shadow_DOM) so the
- * host page's CSS can't leak in and the embed's styles can't leak out. An optional
- * `only="<id>,<id>"` attribute filters to a subset of previews (e.g. show just the cover).
- *
- * Multiple embeds (from different bundles) can coexist on one page: each script registers its data
- * under a stable key, and a gallery selects its bundle with `embed="<key>"` — the generated
- * `index.html` sets this. A single embed needs no attribute.
+ * Renders into a shadow root so page and embed CSS don't leak. `only="<id>,<id>"` filters previews;
+ * `embed="<key>"` selects a bundle when several embeds share a page.
  */
 public object WebEmbed {
 
@@ -70,10 +53,9 @@ public object WebEmbed {
   public const val INDEX_NAME: String = "index.html"
 
   /**
-   * Build the web-embed file set. [title] heads the demo page and the gallery; [modulePath] is
-   * shown as provenance. [previews] are rendered in order — put the cover first. With [mode] =
-   * [InlineMode.EXTERNAL] the PNGs are emitted as separate `previews/<id>.png` files and referenced
-   * by URL; the default [InlineMode.INLINE] bakes them into the script as `data:` URIs.
+   * Build the web-embed file set. [title] heads the demo page and gallery; [modulePath] is shown as
+   * provenance; [previews] render in order (cover first). [mode] chooses inline `data:` URIs or
+   * external `previews/<id>.png` files.
    */
   public fun generate(
     title: String,
@@ -88,10 +70,8 @@ public object WebEmbed {
         when (mode) {
           InlineMode.INLINE ->
             "data:image/png;base64," + Base64.getEncoder().encodeToString(p.pngBytes)
-          // The file is written under the raw id (a single path segment — discovery strips `/`),
-          // but the URL must percent-encode it: an id can carry `#`, `?`, or spaces, and a raw `#`
-          // in `src` would be parsed as a URL fragment, leaving the image broken. The browser
-          // decodes the request back to the raw filename, so the static file still resolves.
+          // Written under the raw id, but the URL must percent-encode it: a raw `#` would start a
+          // fragment.
           InlineMode.EXTERNAL -> "previews/${urlEncodeSegment(p.id)}.png"
         }
       if (mode == InlineMode.EXTERNAL) files["previews/${p.id}.png"] = p.pngBytes
@@ -111,9 +91,8 @@ public object WebEmbed {
   }
 
   /**
-   * Width/height from a PNG's IHDR chunk (the first chunk after the 8-byte signature: 4-byte width,
-   * 4-byte height, big-endian). Returns `0 to 0` when the bytes aren't a PNG we can read, in which
-   * case the component falls back to the image's intrinsic size at render time.
+   * Width/height from a PNG's IHDR chunk, or `0 to 0` if unreadable (the component then uses the
+   * image's intrinsic size).
    */
   internal fun pngDimensions(bytes: ByteArray): Pair<Int, Int> = WebEscaping.pngDimensions(bytes)
 
@@ -140,24 +119,15 @@ public object WebEmbed {
   private val JSON = Json { encodeDefaults = true }
 
   /**
-   * The web-component script. The `COMPOSE_PREVIEW_DATA` literal is the only generated part; the
-   * rest is static.
+   * The web-component script; only the `COMPOSE_PREVIEW_DATA` literal is generated.
    *
-   * Each script registers its data into a shared `window.__composePreviewEmbeds__` array keyed by
-   * the embed's `key`, rather than closing the element over a single module-level constant. The
-   * element class is defined once (guarded with `customElements.get`); a second script from a
-   * *different* bundle adds its own data to the registry and re-renders existing galleries, so a
-   * page can host multiple embeds without the first one's previews leaking into the others. A
-   * gallery picks its data via an optional `embed="<key>"` attribute (the generated `index.html`
-   * sets it); with a single embed on the page the attribute is unnecessary.
-   *
-   * `</script>` can't safely sit in an inline `<script>` block, so we defensively split any `</`
-   * sequence — keeping the script paste-safe inline as well as referenced as an external file.
+   * Each script registers its data in a shared `window.__composePreviewEmbeds__` keyed by embed
+   * key, and the element class is defined once, so several embeds can share a page without mixing
+   * previews. A gallery picks its data with `embed="<key>"`.
    */
   private fun script(dataJson: String): String {
-    // Defensive: if this script is ever pasted *inline* into an HTML <script> block, a literal
-    // `</script>` in the data would close the block early. Split the sequence so the parser can't
-    // see it; JS string concatenation reassembles it. Harmless for the external-file case.
+    // If pasted inline into a `<script>` block, a literal `</script>` in the data would close it
+    // early.
     val safeJson = dataJson.replace("</", "<\\/")
     return """
       (function () {
@@ -281,18 +251,14 @@ public object WebEmbed {
   }
 
   /**
-   * Percent-encode [s] for safe use as a single URL path segment (RFC 3986). Used for
-   * `--external-images` `src` URLs so a preview id containing `#`, `?`, `&`, or a space resolves to
-   * its `previews/<id>.png` file instead of being mangled by URL parsing. Delegates to the shared
-   * [WebEscaping.urlEncodeSegment].
+   * Percent-encode [s] as a single URL path segment (RFC 3986), so ids containing `#`, `?`, `&` or
+   * spaces resolve to their `previews/<id>.png` file.
    */
   internal fun urlEncodeSegment(s: String): String = WebEscaping.urlEncodeSegment(s)
 
   /**
-   * A short, stable key distinguishing one embed from another on the same page. Derived from the
-   * title, module, and preview ids so two embeds built from different bundles get different keys
-   * (and re-generating the same bundle yields the same key). Hex, so it's safe in an HTML
-   * attribute.
+   * A short, stable hex key for this embed, derived from title, module and preview ids, so
+   * different bundles differ and regenerating the same one doesn't.
    */
   internal fun embedKey(title: String, modulePath: String, previewIds: List<String>): String {
     val material = (listOf(title, modulePath) + previewIds).joinToString("\u0000")

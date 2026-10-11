@@ -12,27 +12,19 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end functional coverage for `compose-preview a11y` driven through the actual CLI binary
- * against a synthetic Android-library project. Closes the gap [CliA11yInputsFunctionalTest] doesn't
- * (that test only pins the Gradle-side inputs the CLI consumes); this one spawns the daemon JVM via
- * the CLI's `RenderSession` flow and asserts the produced `accessibility.json` actually carries the
- * canary `BadButtonPreview` finding.
+ * End-to-end `compose-preview a11y` through the real CLI against a synthetic Android library,
+ * asserting `accessibility.json` carries the `BadButtonPreview` canary finding
+ * ([CliA11yInputsFunctionalTest] only pins the Gradle inputs).
  *
- * Gating — three layers, evaluated in order so the failure mode is informative:
+ * Gates, in order:
+ * 1. `cli.a11y.e2e=true` — too slow for `check`; CI enables it via `functionalTestWithAndroid`.
+ * 2. Android SDK reachable — `assumeTrue` skip otherwise.
+ * 3. Renderer AAR, plugin marker and CLI binary present — hard failures, so a publish race can't go
+ *    green.
  *
- * 1. **`cli.a11y.e2e=true` Gradle property must be set.** This test cold-starts a Robolectric JVM
- *    per render and a daemon JVM per module — too slow for `./gradlew check`. CI runs it via the
- *    root build's `functionalTestWithAndroid` task with the flag flipped on.
- * 2. **Android SDK must be reachable.** `assumeTrue` skip when missing, so dev environments without
- *    an SDK don't see a hard failure.
- * 3. **renderer-android AAR + plugin marker + CLI binary must be in their expected locations.**
- *    Hard failures here — past the SDK gate, the caller is committed to running the test, and a
- *    sibling-task race (publishes vs. this test) would silently green if `assumeTrue` swallowed it.
- *
- * No `withPluginClasspath()` — the synthetic project resolves AGP and our plugin through its own
- * `plugins { ... }` block via `pluginManagement.repositories.mavenLocal()`, so they share one
- * classloader hierarchy. `withPluginClasspath()` would load them twice on different loaders and
- * break `AndroidComponentsExtension` identity checks.
+ * No `withPluginClasspath()`: AGP and our plugin resolve through the project's own `plugins { }`
+ * via mavenLocal, sharing one classloader; loading them twice breaks `AndroidComponentsExtension`
+ * identity.
  */
 class CliA11yEndToEndFunctionalTest {
 
@@ -62,9 +54,7 @@ class CliA11yEndToEndFunctionalTest {
       androidSdkDir.isNotBlank() && File(androidSdkDir).isDirectory,
     )
 
-    // Past the opt-in + SDK gates the caller is committed to Android coverage — anything else
-    // missing is a setup error in the parent build's `functionalTestWithAndroid` chain, not
-    // something the dev environment should silently skip past.
+    // Past the opt-in and SDK gates, missing pieces are setup errors, not skips.
     assertWithMessage("CLI binary path not surfaced via system property")
       .that(cliBinary)
       .isNotEmpty()
@@ -88,23 +78,15 @@ class CliA11yEndToEndFunctionalTest {
 
     val projectDir = createAndroidTestProject()
 
-    // Run the CLI binary against a bare Android-library project — the synthetic build script
-    // applies `com.android.library` only; the preview plugin is supplied entirely via the CLI's
-    // auto-inject `--init-script`. `--module :app` because the project is laid out as
-    // root + `:app` subproject (the CLI's module discovery skips the root). The CLI's a11y command
-    // drives `composePreviewRenderAll` and `composePreviewDaemonStart` under the hood, then spawns
-    // the
-    // daemon, fetches `a11y/atf` per preview, and writes `accessibility.json` next to
-    // `previews.json`. Exercising the no-prior-setup path is the whole point of this test —
-    // auto-inject is a load-bearing entry point.
+    // The project applies only `com.android.library`; the plugin comes from the CLI's auto-inject
+    // init script, the entry point under test. `--module :app` because module discovery skips the
+    // root.
     val builder =
       ProcessBuilder(cli.absolutePath, "a11y", "--module", ":app", "--verbose")
         .directory(projectDir)
         .redirectErrorStream(true)
     builder.environment()["ANDROID_HOME"] = androidSdkDir
-    // Let auto-inject's buildscript repos see the locally-published plugin (resolved by the
-    // `functionalTestWithAndroid` wiring's `:gradle-plugin:publishToMavenLocal` pre-step). Plain
-    // CLI users never set this — Maven Central is enough for the published plugin.
+    // Lets auto-inject find the locally published plugin; real users get it from Maven Central.
     builder.environment()["COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL"] = "1"
     val process = builder.start()
     val output = process.inputStream.bufferedReader().use { it.readText() }
@@ -125,10 +107,7 @@ class CliA11yEndToEndFunctionalTest {
         .flatMap { it["findings"]?.jsonArray?.toList() ?: emptyList() }
         .map { it.jsonObject }
 
-    // The deliberate `BadButtonPreview` (20dp Button, no contentDescription) reliably trips at
-    // least `SpeakableTextPresentCheck`. ATF may surface additional findings (TouchTarget,
-    // ContrastRatio) — assert on the canary alone so future ATF library updates that add
-    // findings don't break the test.
+    // Assert only the canary check, so ATF updates adding findings don't break the test.
     val types = findings.map { it["type"]?.jsonPrimitive?.content }.toSet()
     assertWithMessage("a11y findings types: $types\nfull output:\n$output")
       .that(types)
@@ -136,14 +115,8 @@ class CliA11yEndToEndFunctionalTest {
   }
 
   /**
-   * Synthetic Android-library project laid out with a `:app` subproject — the root is a thin shell,
-   * the module that applies `com.android.library` is `:app`. CLI module discovery skips the root
-   * project (its gradle path is `:`, which is filtered out), so a true root-only fixture could not
-   * be addressed via `--module`. Real consumer projects almost always have at least one subproject;
-   * pin the test to that same shape so it covers the realistic case.
-   *
-   * The plugin is resolved through auto-inject from mavenLocal; `local.properties` carries the
-   * Android SDK path so AGP's resource pipeline initialises cleanly.
+   * Root plus `:app`, since CLI module discovery skips the root project (path `:`); also the
+   * realistic shape. `local.properties` carries the SDK path.
    */
   private fun createAndroidTestProject(): File {
     val projectDir = tempDir.root

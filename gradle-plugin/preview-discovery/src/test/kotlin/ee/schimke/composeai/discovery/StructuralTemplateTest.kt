@@ -4,11 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * The hole-filler catalog-published structural templates are rendered by.
- *
- * The interesting cases are the two that make it worth existing rather than being `String.replace`:
- * indentation of a multi-line value, and a `${'$'}{call(...)}` override whose value is a Kotlin
- * expression full of the characters a naive parser splits on.
+ * The hole-filler that renders catalog-published structural templates. The cases that justify it
+ * over `String.replace`: indenting a multi-line value, and a `${'$'}{call(...)}` override whose
+ * value is a Kotlin expression full of characters a naive parser splits on.
  */
 class StructuralTemplateTest {
 
@@ -114,10 +112,8 @@ class StructuralTemplateTest {
 
   @Test
   fun `a character literal keeps its comma and its equals sign`() {
-    // An override's value is arbitrary Kotlin kept verbatim, and `separator = ','` is an ordinary
-    // thing to write. With only double quotes tracked, the comma inside the char literal read as a
-    // top-level argument separator and split one argument into two, so a valid template was refused
-    // as malformed — and `'='` would have been split in the wrong place by the name/value finder.
+    // `separator = ','` is ordinary Kotlin: the comma in the char literal must not split the
+    // argument, nor `'='` confuse the name/value finder.
     assertThat(emitted(render("\${call(separator = ',', n = 1)}")))
       .isEqualTo("Call(separator=',', n=1)")
     assertThat(emitted(render("\${call(pad = '=')}"))).isEqualTo("Call(pad='=')")
@@ -136,10 +132,8 @@ class StructuralTemplateTest {
 
   @Test
   fun `a raw string keeps its braces, quotes and commas`() {
-    // The scanners are told what a quote is in one place now, because they had twice been taught
-    // separately and twice disagreed. A triple-quoted Kotlin string carrying JSON is the case that
-    // breaks all three at once: the inner `"` would flip string state, and the `}` inside it would
-    // end the hole before the argument splitter ever ran.
+    // A triple-quoted string carrying JSON: the inner `"` must not flip string state, nor the `}`
+    // end the hole.
     val payload = "\${call(payload = \"\"\"{\"end\":\"}\"}\"\"\", n = 1)}"
     assertThat(emitted(render(payload))).isEqualTo("Call(payload=\"\"\"{\"end\":\"}\"}\"\"\", n=1)")
     // A comma and an `=` inside a raw string are not separators either.
@@ -220,10 +214,8 @@ class StructuralTemplateTest {
 
   @Test
   fun `a type-use annotation is an ordinary generic argument`() {
-    // The third shape of the same scan: `@Composable () -> Unit` is the function type Compose
-    // actually writes, and `@` was not in the allowed set, so the scan broke at it, recorded no
-    // span, and let the comma after `String` split one override into two — the same failure the
-    // paren case above was fixed for, reached by a character rather than a bracket.
+    // `@Composable () -> Unit`: the `@` must not break the span scan and let the comma after
+    // `String` split the override.
     val annotated =
       StructuralTemplate.holes("\${call(factory = emptyMap<String, @Composable () -> Unit>())}")
         as StructuralTemplate.Result2.Ok
@@ -237,10 +229,7 @@ class StructuralTemplateTest {
 
   @Test
   fun `a comment inside a generic argument list is skipped`() {
-    // The fourth shape of this scan, and the one that shows the fix pattern was wrong: `commentEnd`
-    // exists precisely so a scanner does not read a comment as source, and three scanners consult
-    // it. `genericSpans` was written afterwards and never did, so a comment broke the scan at `/`
-    // exactly as `(` and `@` did before it.
+    // A comment inside the type must be skipped via `commentEnd`, not break the scan at `/`.
     val commented =
       StructuralTemplate.holes("\${call(factory = emptyMap<String, /* result type */ Int>())}")
         as StructuralTemplate.Result2.Ok

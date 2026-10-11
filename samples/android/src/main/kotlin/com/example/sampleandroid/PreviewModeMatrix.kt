@@ -28,34 +28,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The **preview-mode matrix** (issue #3082) — one fixture covering every way a consumer can shape a
- * `@Preview`, so the pipeline's Android-Studio parity is demonstrated end-to-end rather than
- * assumed:
- * - a bare component preview (both axes wrap to the composable's intrinsic size),
- * - explicit `widthDp` / `heightDp` (per-axis fixed frames, including the one-axis case),
- * - device previews across form factors — phone, wear, foldable, TV — by `device = "id:…"`,
- * - the `device = "spec:…"` grammar including its `dpi=` term,
- * - the typical annotation params: `fontScale`, `locale`, `uiMode`, `showBackground` +
- *   `backgroundColor`, `showSystemUi`,
- * - multipreview annotations, both the AndroidX-supplied ones (`@PreviewLightDark`,
- *   `@PreviewFontScale`, `@PreviewScreenSizes`) and an app-declared meta-annotation.
+ * The preview-mode matrix: one fixture per way a consumer can shape a `@Preview`, demonstrating
+ * Android Studio parity end-to-end:
+ * - a bare component preview (both axes wrap),
+ * - explicit `widthDp` / `heightDp`, including one axis only,
+ * - device previews across form factors (`device = "id:…"`) and the `spec:` grammar incl. `dpi=`,
+ * - `fontScale`, `locale`, `uiMode`, `showBackground` + `backgroundColor`, `showSystemUi`,
+ * - AndroidX multipreviews and an app-declared meta-annotation.
  *
- * [PreviewModeMatrixTest] is the assertion half: it reads the discovery manifest and the rendered
- * PNGs this file produces and pins each one to the geometry Android Studio resolves for the same
- * annotation — `widthDp × density` for a fixed axis, the composable's measured size for a wrapped
- * one. The two together are the answer to "do we match Studio by default": every knob has a fixture
- * here and an expectation there, so a regression in `DeviceDimensions.resolveForRender`, the
- * qualifier plumbing, or the multipreview walk fails the sample's own `check`.
- *
- * Sizes are deliberately small and colours deliberately flat: these previews exist to be
- * *measured*, so a cheap render and an unambiguous corner pixel matter more than looking good.
+ * [PreviewModeMatrixTest] pins each rendered PNG to the geometry Studio resolves. Sizes are small
+ * and colours flat because these exist to be measured.
  */
 
 /**
- * Fixed-size probe — 160×80dp of flat colour. Wrapped axes crop to exactly this.
- *
- * The default colour follows `isSystemInDarkTheme()` so a light/dark multipreview produces visibly
- * different captures; a flat colour would fan out into two identical PNGs and prove nothing.
+ * Fixed-size probe — 160×80dp of flat colour. The colour follows `isSystemInDarkTheme()` so a
+ * light/dark multipreview produces different captures.
  */
 @Composable
 private fun IntrinsicProbe(
@@ -71,9 +58,8 @@ private fun IntrinsicProbe(
 }
 
 /**
- * Fills whatever canvas it is given and reports the configuration it sees. Used for the device
- * previews, where the point is that the sandbox is the *device's* full frame — a wrapping probe
- * would crop back to its own size and prove nothing.
+ * Fills its canvas and reports the configuration it sees, for device previews where the sandbox
+ * should be the device's full frame.
  */
 @Composable
 private fun CanvasProbe(label: String) {
@@ -210,10 +196,8 @@ fun MatrixDeviceSpecPreview() {
 }
 
 /**
- * `orientation=portrait` on a landscape `spec:` — the exact device string AndroidX's own
- * `@PreviewScreenSizes` uses for its "Tablet" entry. 1280×800dp @1.5x rotated is 800×1280dp
- * (1200×1920px). Only `landscape` used to be honoured here, so this rendered landscape — pixel for
- * pixel identical to the un-rotated sibling above (issue #3547).
+ * `orientation=portrait` on a landscape `spec:` (AndroidX `@PreviewScreenSizes`' "Tablet" string):
+ * 1280×800dp @1.5x rotated renders 800×1280dp (1200×1920px).
  */
 @Preview(
   name = "Rotated device spec",
@@ -225,11 +209,8 @@ fun MatrixRotatedDeviceSpecPreview() {
 }
 
 /**
- * `spec:parent=…,orientation=…` — what Studio's device picker writes once you pick a catalog device
- * and rotate it. The parent supplies the frame (Small Phone, 360×640dp @2.0x) and `orientation`
- * trades the axes, so this renders 640×360dp landscape (1280×720px) and its Configuration reports
- * `land`. `parent=` used to be unread entirely, collapsing the picked device to the 400×800dp
- * default.
+ * `spec:parent=…,orientation=…`, as Studio's device picker writes after rotating: the parent (Small
+ * Phone, 360×640dp @2.0x) supplies the frame, so this renders 640×360dp (1280×720px), `land`.
  */
 @Preview(name = "Parent device spec", device = "spec:parent=small_phone,orientation=landscape")
 @Composable
@@ -271,9 +252,8 @@ fun MatrixScreenSizesMultiPreview() {
 }
 
 /**
- * App-declared multipreview meta-annotation. Discovery walks these transitively (with cycle
- * detection), so a consumer's own `@PhoneAndWatchPreviews` fans out exactly like the AndroidX ones
- * — this is the case a hand-written annotation in a real codebase hits.
+ * App-declared multipreview meta-annotation; discovery walks these transitively (with cycle
+ * detection).
  */
 @Preview(name = "Meta phone", device = "id:pixel_5")
 @Preview(name = "Meta watch", device = "id:wearos_small_round")

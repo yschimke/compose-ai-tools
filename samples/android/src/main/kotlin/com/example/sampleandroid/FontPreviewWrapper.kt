@@ -14,25 +14,13 @@ import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 
 /**
- * `@PreviewWrapper`-driven wrapper that makes a downloadable Google font the **default** typeface
- * for the preview it wraps — the type-design equivalent of [SystemBarsPreviewWrapper]'s chrome.
+ * `@PreviewWrapper` that makes a downloadable Google font (Lobster Two, deliberately unlike Roboto)
+ * the preview's default typeface, via both a retargeted [Typography] and `LocalTextStyle`, so
+ * styled and bare `Text` pick it up. Fonts resolve through `Font(GoogleFont(name), provider)`,
+ * served under Robolectric by `ShadowFontsContractCompat` from `~/.cache/composeai/fonts/`.
  *
- * The wrapper re-themes with a [Typography] whose every role is retargeted to **Lobster Two** (a
- * Google Fonts display script, deliberately unlike Roboto so a glance confirms the wrap fired) and
- * also seeds `LocalTextStyle`, so both idioms pick it up: `Text("…", style =
- * MaterialTheme.typography.headlineMedium)` and a bare `Text("…")`. A preview body therefore needs
- * no font wiring of its own — annotate it and the type changes.
- *
- * The font resolves through the same `Font(GoogleFont(name), provider)` path the rest of the sample
- * uses: on-device it goes through GMS Fonts; under the renderer's Robolectric harness
- * `ShadowFontsContractCompat` intercepts the request and hands back a TTF from the shared
- * `~/.cache/composeai/fonts/` cache (downloaded once from `fonts.googleapis.com/css2`). No bundled
- * TTF, no `src/debug` fork.
- *
- * Applied via [FontPreview] — a multi-preview annotation that hoists
- * `@PreviewWrapperClass(FontPreviewWrapper)` so a single tag both fans the preview out and installs
- * this wrapper. Requires `androidx.compose.ui.tooling.preview` 1.11+ (the version that introduced
- * `PreviewWrapperProvider`) on the compile classpath.
+ * Applied via [FontPreview], which hoists `@PreviewWrapperClass(FontPreviewWrapper)`. Needs
+ * `androidx.compose.ui.tooling.preview` 1.11+ (`PreviewWrapperProvider`).
  */
 class FontPreviewWrapper : PreviewWrapperProvider {
   @Composable

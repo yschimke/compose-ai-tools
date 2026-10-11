@@ -10,17 +10,10 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Opt-in liveness probe for the per-module preview daemon. The main `doctor` command runs this when
- * the user passes `--daemon`: it parses the on-disk launch descriptor, forks the daemon JVM,
- * completes the `initialize` round-trip, then asks it to shut down.
- *
- * The probe is gated behind a flag because spawning a real daemon is expensive — cold-start is
- * ~600ms on Compose Desktop and 3-10s on the Android (Robolectric) backend, multiplied by the
- * number of modules that apply the plugin. Plain `doctor` stays cheap; agents and humans who want
- * an end-to-end "the daemon actually works" check ask for it explicitly.
- *
- * Implemented at the `DaemonClientFactory` seam rather than going through `DaemonSupervisor` so
- * tests can substitute an in-memory factory without spinning up a subprocess.
+ * Opt-in liveness probe for a module's preview daemon (`doctor --daemon`): parse the launch
+ * descriptor, fork the daemon, complete `initialize`, then shut it down. Opt-in because cold starts
+ * are costly (~600ms desktop, 3-10s Robolectric, per module). Built on the `DaemonClientFactory`
+ * seam so tests can use an in-memory factory.
  */
 internal sealed interface DaemonSmokeOutcome {
   /** Descriptor at `build/compose-previews/daemon-launch.json` was missing. */
@@ -39,9 +32,8 @@ internal sealed interface DaemonSmokeOutcome {
   data class InitializeFailed(val elapsedMs: Long, val reason: String) : DaemonSmokeOutcome
 
   /**
-   * Daemon initialised cleanly. [elapsedMs] is the wall-clock for the initialize round-trip alone
-   * (excludes JVM fork overhead); [daemonVersion] / [pid] / [protocolVersion] are echoed from the
-   * `InitializeResult` and shown in the doctor detail line.
+   * Daemon initialised cleanly. [elapsedMs] covers the initialize round-trip only (not the fork);
+   * [daemonVersion] / [pid] / [protocolVersion] come from `InitializeResult`.
    */
   data class Ok(
     val elapsedMs: Long,
@@ -65,11 +57,8 @@ internal fun daemonDescriptorFile(projectDir: File, modulePath: String): File {
 }
 
 /**
- * Run the smoke test for one module. Returns a [DaemonSmokeOutcome] describing the result.
- *
- * [factory] defaults to the production subprocess factory; tests inject an in-memory factory.
- * [workspaceName] is the project's root name, used to derive the [WorkspaceId] the factory names
- * the daemon by.
+ * Run the smoke test for one module. [factory] defaults to the subprocess factory; [workspaceName]
+ * derives the daemon's [WorkspaceId].
  */
 internal fun runDaemonSmokeTest(
   projectDir: File,

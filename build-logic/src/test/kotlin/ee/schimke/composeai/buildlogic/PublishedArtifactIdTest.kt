@@ -5,18 +5,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The two assumptions `:bom` derives its constraints from, pinned against the real build files.
- *
- * The BOM has to name every coordinate this repository publishes. It gets the main build's from
- * `settings.gradle.kts`, which hands over the project paths and lets the BOM flatten each into an
- * artifact id — and it carries the four in the `gradle-plugin` included build as a hand-written
- * list, because an `includeBuild`'s projects are not `subprojects` and the settings walk cannot see
- * them.
- *
- * Both are the kind of assumption that stops being true silently. A module whose artifact id stops
- * matching its project path, or a new published module in the included build, would simply go
- * missing from the BOM — and a BOM that omits a coordinate is worse than no BOM, because a consumer
- * that trusts it gets no version for that module and a resolution failure with an empty version.
+ * Pins the two assumptions `:bom` builds its constraints from against the real build files: main
+ * build artifact ids are flattened project paths, and the `gradle-plugin` included build's
+ * published modules match the BOM's hand-written list. Either drifting would silently drop a
+ * coordinate from the BOM.
  */
 class PublishedArtifactIdTest {
 
@@ -82,16 +74,9 @@ class PublishedArtifactIdTest {
 
   @Test
   fun `the path convention cannot name the included build's coordinates`() {
-    // Why `publishedVersion()` returns the tag outright for an included build instead of looking
-    // the module up. This is not a style preference: v2.18.0's release job died during Gradle
-    // configuration on `:` -> "" — the included build's ROOT project flattens to the empty string,
-    // which is in neither the publish set nor the manifest, so the plugin's own `error(...)` fired
-    // while it was being applied. `:gradle-plugin-config` -> "gradle-plugin-config" is the same
-    // trap one project along, and would have fired the moment the first was fixed by hand.
-    //
-    // Pinned as a fact rather than as a rule, so that anyone tempted to "unify" the two paths sees
-    // what the unification costs. The included build is safe to stamp with the tag because its
-    // root task only runs when the publish plan selected all four of its coordinates.
+    // `publishedVersion()` returns the tag for an included build instead of looking it up:
+    // included-build paths flatten to ids in neither the publish set nor the manifest (the root
+    // becomes ""). Safe because the publish plan selects all four of its coordinates or none.
     val derivedFromRootPath = ":".removePrefix(":").replace(':', '-')
     assertEquals("", derivedFromRootPath, "an included build's root project has no derivable id")
 

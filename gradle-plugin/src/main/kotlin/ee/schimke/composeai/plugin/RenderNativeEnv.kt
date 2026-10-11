@@ -3,60 +3,41 @@ package ee.schimke.composeai.plugin
 import java.io.File
 
 /**
- * What `LD_LIBRARY_PATH` the desktop render JVM should be started with — the fix for "every preview
- * fails with `UnsatisfiedLinkError … version GLIBC_ABI_DT_X86_64_PLT not found`" in hybrid
- * Nix-over-Ubuntu sandboxes (issue #3690).
+ * Decides the desktop render JVM's `LD_LIBRARY_PATH`, fixing `UnsatisfiedLinkError …
+ * GLIBC_ABI_DT_X86_64_PLT not found` on hybrid Nix-over-Ubuntu sandboxes (#3690).
  *
  * ## The failure
  *
- * A Nix/Guix store ships its own glibc, and a store JDK is patchelf'd to the store's `ld-linux`, so
- * the documented way to give skiko its `DT_NEEDED` libs there is to put a store-built lib directory
- * on `LD_LIBRARY_PATH` (see [DesktopNativesCheck][ee.schimke.composeai.cli] and
- * `docs/DESKTOP_NATIVE_DEPS.md`). That is correct **for a store JVM**. But the variable is
- * inherited by every process the Gradle daemon forks, including a render JVM that is *not* from the
- * store — a `jvmToolchain(21)` that resolves to `/usr/lib/jvm/java-21-openjdk-amd64`, say. That
- * process starts with the system `libc.so.6` (Ubuntu 24.04: 2.39) and then, when Skia loads,
- * `LD_LIBRARY_PATH` pulls store `libGL.so.1` whose `RUNPATH` drags the store's glibc 2.42
- * `libpthread.so.0` into the same image. The loader refuses:
+ * On Nix/Guix, store libs are put on `LD_LIBRARY_PATH` for a store JDK (see
+ * `docs/DESKTOP_NATIVE_DEPS.md`). That's inherited by every process Gradle forks, including a
+ * non-store render JVM, which starts with the system glibc; loading Skia then pulls store `libGL`
+ * whose `RUNPATH` brings the store glibc into the same image:
  * ```
  * java.lang.UnsatisfiedLinkError: …/libskiko-linux-x64.so:
  *   /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
  *   (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
  * ```
- *
- * and *every* preview in the module dies — the first with `ExceptionInInitializerError`, the rest
- * with the cascading `NoClassDefFoundError: Could not initialize class org.jetbrains.skia.Surface`.
+ * and every preview in the module fails.
  *
  * ## The rule
  *
- * Store libraries belong to store JVMs. So: when the render JVM does **not** live in a store, drop
- * the store directories from its `LD_LIBRARY_PATH` and leave everything else exactly as inherited.
- * A non-store JVM's loader reads `/etc/ld.so.cache` and `/usr/lib/<triple>`, so it finds the
- * system's own `libGL`/`libX11`/`fontconfig`/`libstdc++` without help — and if the host genuinely
- * lacks them, it now fails with the honest `libGL.so.1: cannot open shared object file` that
- * `compose-preview doctor` already diagnoses, instead of a glibc-version cascade that reads like a
- * skiko bug.
+ * Store libraries belong to store JVMs: for a non-store render JVM, drop store directories from
+ * `LD_LIBRARY_PATH` and keep everything else. Its loader finds system libs itself, and if they're
+ * missing it fails with the honest `cannot open shared object file` that `compose-preview doctor`
+ * diagnoses.
  *
- * Deliberately one-directional. A store JVM keeps whatever it inherited: `LD_LIBRARY_PATH` is the
- * *only* channel that reaches its loader, and the doctor's own remediation tells people to point it
- * at `/usr/lib/x86_64-linux-gnu` — so pruning system dirs there would break the documented fix for
- * the case this variable exists to serve.
+ * One-directional: a store JVM keeps everything, since `LD_LIBRARY_PATH` is its only channel and
+ * doctor's remediation points it at system dirs.
  *
- * Pure and injectable so it is unit-testable without a Nix store; [RenderPreviewsTask] supplies the
- * live values and applies the result to both render lanes (the pooled worker and the per-capture
- * fork), which is what keeps the two lanes from disagreeing about the environment.
+ * Pure and injectable for testing; [RenderPreviewsTask] applies the result to both pooled and
+ * forked lanes so they agree.
  */
 internal object RenderNativeEnv {
 
-  /**
-   * The variable this reasons about. Linux-only; macOS/Windows have no equivalent worth pruning.
-   */
+  /** Linux-only; other platforms have nothing worth pruning. */
   const val VAR = "LD_LIBRARY_PATH"
 
-  /**
-   * Escape hatch: `-Dcomposeai.render.nativeEnv=inherit` passes the environment through untouched,
-   * for a host where the store libraries are deliberately the right answer for a non-store JVM.
-   */
+  /** `-Dcomposeai.render.nativeEnv=inherit` passes the environment through untouched. */
   const val SYS_PROP_MODE = "composeai.render.nativeEnv"
 
   const val MODE_INHERIT = "inherit"
@@ -69,9 +50,8 @@ internal object RenderNativeEnv {
     object Inherit : Decision
 
     /**
-     * Start it with [VAR] replaced by [value], or with the variable removed entirely when [value]
-     * is null (every entry was dropped — an empty `LD_LIBRARY_PATH` is not the same thing, since
-     * glibc reads an empty path element as the current directory).
+     * Start with [VAR] = [value], or removed entirely when null (an empty value isn't equivalent:
+     * glibc reads an empty element as the current directory).
      */
     data class Sanitized(
       val value: String?,
@@ -83,15 +63,14 @@ internal object RenderNativeEnv {
   }
 
   /**
-   * @param renderJavaExecutable absolute path of the `java` the render forks into, or null when the
-   *   render runs on the Gradle daemon's own JVM (then [daemonJavaHome] decides).
-   * @param daemonJavaHome `java.home` of the current (daemon) JVM — the fallback subject.
+   * @param renderJavaExecutable the `java` the render forks into, or null when it runs on the
+   *   daemon JVM ([daemonJavaHome] decides).
+   * @param daemonJavaHome `java.home` of the daemon JVM, the fallback subject.
    * @param ldLibraryPath the inherited value, verbatim.
-   * @param osName `os.name`; anything but Linux is left alone.
+   * @param osName `os.name`; non-Linux is left alone.
    * @param mode the [SYS_PROP_MODE] value, if set.
-   * @param canonicalize resolves a path through symlinks — injected so tests need no real store. A
-   *   `~/.nix-profile/bin/java` symlink and a `~/.cache/…/desktop-gl/lib` link both only reveal
-   *   their store origin once resolved.
+   * @param canonicalize resolves symlinks (injected for tests); profile symlinks only reveal their
+   *   store origin once resolved.
    */
   fun decide(
     renderJavaExecutable: String?,
@@ -107,20 +86,17 @@ internal object RenderNativeEnv {
     val entries = ldLibraryPath.orEmpty().split(':')
     if (entries.none { it.isNotBlank() }) return Decision.Inherit
 
-    // The subject is the JVM that will actually run the render: the pinned executable when the
-    // plugin raised the render JDK, otherwise the daemon's own home (the historical default).
+    // The JVM that actually runs the render: the pinned executable, else the daemon's home.
     val subject = renderJavaExecutable ?: daemonJavaHome ?: return Decision.Inherit
     if (isStorePath(canonicalize(subject))) return Decision.Inherit
 
-    // Blank entries are kept in place, not filtered out: glibc reads an empty element as the
-    // current directory, so dropping one silently removes a search location that has nothing to do
-    // with the store — and "everything else exactly as inherited" is the whole contract here.
+    // Blank entries are kept: glibc reads them as the current directory, an unrelated search
+    // location.
     val (dropped, kept) = entries.partition { it.isNotBlank() && isStorePath(canonicalize(it)) }
     if (dropped.isEmpty()) return Decision.Inherit
 
     return Decision.Sanitized(
-      // Removed only when nothing at all survives. An empty *string* would not mean the same
-      // thing as an absent variable, and a surviving `""` element is a real search location.
+      // Removed only when nothing survives; an empty string differs from an absent variable.
       value = if (kept.isEmpty()) null else kept.joinToString(":"),
       kept = kept,
       dropped = dropped,
@@ -143,8 +119,8 @@ internal object RenderNativeEnv {
   }
 
   /**
-   * [decision] applied to a copy of [env], or null when there is nothing to change — for
-   * `JavaExecSpec.environment`, which is a whole-map property rather than a mutable map.
+   * [decision] applied to a copy of [env], or null when unchanged; `JavaExecSpec.environment` is a
+   * whole-map property.
    */
   fun rewritten(decision: Decision, env: Map<String, Any>): Map<String, Any>? {
     if (decision !is Decision.Sanitized) return null

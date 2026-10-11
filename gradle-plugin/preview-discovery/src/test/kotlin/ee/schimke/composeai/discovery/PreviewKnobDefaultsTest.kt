@@ -11,15 +11,10 @@ import org.objectweb.asm.Type
 /**
  * Pins the bytecode matcher that recovers a parameter knob's **literal default**.
  *
- * The fixtures are assembled here rather than written in Kotlin because the shape being matched is
- * one the **Compose compiler** emits: defaults inlined into the function behind a `$default` mask,
- * with no `name$default` bridge. This module has no Compose plugin, so a Kotlin fixture would
- * compile to the ordinary bridge and prove nothing about the pattern. Assembling it also lets the
- * decoys be exact — in particular the "dirty bits" block, which reads the same mask with the same
- * guard and is the one thing a looser matcher would swallow.
- *
- * The end-to-end proof that this shape is the one `kotlinc` + the Compose plugin actually produce
- * lives in the gradle-plugin's functional tests, which compile a real `@Preview`.
+ * Fixtures are assembled rather than written in Kotlin because the matched shape is the Compose
+ * compiler's (defaults inlined behind a `$default` mask, no `name$default` bridge), and this module
+ * has no Compose plugin. Assembling also makes the decoys exact, notably the "dirty bits" block.
+ * Functional tests prove the shape against a real `@Preview`.
  */
 class PreviewKnobDefaultsTest {
 
@@ -62,11 +57,9 @@ class PreviewKnobDefaultsTest {
 
   @Test
   fun `the dirty-bits block that reads the same mask is not mistaken for a default`() {
-    // The decoy, and the reason the matcher requires a *constant* immediately after the branch:
-    // Compose emits `iload mask; push bit; iand; ifeq …; iload dirty; push …; ior; istore dirty`
-    // near the top of every defaulted composable. It reads the same mask under the same guard, and
-    // a matcher that only looked for "mask, bit, and, ifeq" would report the dirty-bit constant as
-    // the parameter's default.
+    // Decoy: Compose's dirty-bit block (`iload mask; push bit; iand; ifeq …; iload dirty; push …;
+    // ior; istore dirty`) reads the same mask under the same guard, which is why the matcher
+    // requires a *constant* right after the branch.
     val defaults =
       readDefaults(parameterTypes = listOf(Type.INT_TYPE)) { mv, layout ->
         val skip = Label()
@@ -86,11 +79,8 @@ class PreviewKnobDefaultsTest {
 
   @Test
   fun `a default that is an expression rather than a literal is reported as none`() {
-    // `label: String = stringResource(...)` is a call, `modifier: Modifier = Modifier` a field
-    // read.
-    // Both are the overwhelmingly common shape in this repository's own samples, and both must come
-    // back as "no default" — a viewer showing an invented value tells the reader the preview does
-    // something it does not.
+    // Calls (`stringResource(...)`) and field reads (`Modifier`) must report "no default"; an
+    // invented value would misrepresent the preview.
     val defaults =
       readDefaults(parameterTypes = listOf(STRING, STRING)) { mv, layout ->
         layout.guard(mv, parameter = 0) {
@@ -119,10 +109,8 @@ class PreviewKnobDefaultsTest {
 
   @Test
   fun `an enum constant default is recovered by its own name`() {
-    // An enum default is `GETSTATIC Emphasis.Tonal : LEmphasis;` — a field read, not a
-    // constant-pool load, so it never reaches `visitLdcInsn` and was invisible to a reader that
-    // understood only `LDC`. The constant's NAME is the seed text: it is what `Enum.valueOf`
-    // accepts and what a picker's options hold.
+    // An enum default is a `GETSTATIC` of the constant, not an `LDC`; its NAME is the seed text
+    // (what `Enum.valueOf` and pickers use).
     val emphasis = Type.getObjectType("com/example/Emphasis")
     val defaults =
       readDefaults(parameterTypes = listOf(emphasis)) { mv, layout ->
@@ -142,10 +130,8 @@ class PreviewKnobDefaultsTest {
 
   @Test
   fun `a static read of some other type is still an expression, not an enum default`() {
-    // The discrimination that keeps `modifier: Modifier = Modifier` and every other field-read
-    // default reported as "none": a constant is a static whose type is its OWN owner. A static of a
-    // different type is a value this cannot name, and naming it anyway would put a default on the
-    // control that the preview never said.
+    // A static counts as a constant only if its type is its own owner; any other field read (e.g.
+    // `Modifier`) reports "none".
     val defaults =
       readDefaults(parameterTypes = listOf(Type.getObjectType("com/example/Emphasis"))) { mv, layout
         ->
@@ -206,10 +192,8 @@ class PreviewKnobDefaultsTest {
 
   @Test
   fun `a method with no Compose tail is not read at all`() {
-    // An ordinary Kotlin function with defaults gets a `name$default` bridge instead, and its
-    // locals
-    // are laid out differently. Matching on the whole shape — not merely "ends in ints" — is what
-    // keeps this from reading an unrelated overload's constants as a preview's defaults.
+    // An ordinary function gets a `name$default` bridge and different locals; matching the whole
+    // shape keeps an unrelated overload's constants out.
     val writer = ClassWriter(0)
     writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, OWNER, null, "java/lang/Object", null)
     val mv =
@@ -273,9 +257,8 @@ class PreviewKnobDefaultsTest {
   }
 
   /**
-   * Emits `METHOD(realParams…, Composer, int changed, int default)` — the exact shape the Compose
-   * compiler gives a composable whose parameters all declare defaults — with [body] filling in the
-   * default assignments.
+   * Emits `METHOD(realParams…, Composer, int changed, int default)`, the Compose compiler's shape
+   * for a composable whose parameters all have defaults; [body] fills in the default assignments.
    */
   private fun emitComposableMethod(
     writer: ClassWriter,

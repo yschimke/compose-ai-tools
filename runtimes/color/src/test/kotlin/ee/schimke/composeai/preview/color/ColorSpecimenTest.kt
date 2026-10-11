@@ -13,18 +13,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Smoke test for the colour specimen helpers. Each test composes the helper into a Robolectric
- * activity, waits for first composition, then asserts:
- *
- * 1. The helper renders without throwing (a composition-time exception would propagate out of
- *    `composeRule.setContent { … }` here).
- * 2. The expected labels surface in the semantics tree, counted by querying for each row's label
- *    string — same `onAllNodesWithText(...).fetchSemanticsNodes().size` approach the typography
- *    runtime uses, for the same merged-vs-unmerged-tree reason.
- *
- * The tests stay deliberately shape-only — they do NOT sample rendered swatch pixels. The helpers
- * are display surfaces whose visual correctness is verified through the compose-preview render
- * pipeline (the sibling `:samples:android` `@Preview` fixtures), not unit tests.
+ * Shape-only smoke test: each helper composes without throwing and surfaces the expected labels
+ * (counted via `onAllNodesWithText`, as in the typography runtime). Swatch pixels are verified by
+ * the `:samples:android` preview renders instead.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])

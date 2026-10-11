@@ -1,13 +1,8 @@
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
-  // KGP, the KMP-Android plugin and `kotlin.plugin.compose` all ship inside
-  // the same buildscript-classpath bundle that AGP 9 brings in for any
-  // module already applying an AGP plugin elsewhere in the build. Applying
-  // them via `alias(libs.plugins…)` errors with "already on the classpath
-  // with an unknown version, so compatibility cannot be checked", so we
-  // apply by id without a version — Gradle resolves the unknown-version
-  // entry from the buildscript classpath.
+  // Applied by id without a version: these plugins are already on the buildscript classpath via AGP
+  // 9, and `alias(libs.plugins…)` fails with "already on the classpath with an unknown version".
   id("org.jetbrains.kotlin.multiplatform")
   id("com.android.kotlin.multiplatform.library")
   alias(libs.plugins.compose.multiplatform)
@@ -15,22 +10,12 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Regression coverage for issue #248: applying `composePreview` to a
-// `com.android.kotlin.multiplatform.library` `:shared`-style module didn't
-// register `composePreviewDiscover` (the plugin only recognised
-// `com.android.application` / `com.android.library`). The fix routes
-// KMP-Android modules through the Compose Multiplatform Desktop renderer
-// path — `commonMain` previews are pure-Compose composables that
-// `ImageComposeScene` can capture without Robolectric / AGP unit-test
-// infrastructure.
+// Regression coverage: `composePreview` on a `com.android.kotlin.multiplatform.library` module
+// routes through the desktop renderer.
 //
-// Layout convention (see `compose-preview/references/cmp-shared.md` in yschimke/skills):
-// previews live in `commonMain` so they compile against the multiplatform
-// compose runtime AND a JVM target ("desktop") is configured so the
-// Desktop renderer has a JVM compilation to reach for. `@Preview` functions
-// in `androidMain` only would compile against the Android-flavor
-// compose-runtime AAR (which references `android.os.Parcelable`) and
-// can't be rendered by `ImageComposeScene` on the host JVM.
+// Previews live in `commonMain` (see `compose-preview/references/cmp-shared.md` in yschimke/skills)
+// with a JVM "desktop" target; `androidMain`-only previews compile against the Android compose
+// runtime (`android.os.Parcelable`) and can't render on the host JVM.
 
 kotlin {
   // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.
@@ -46,43 +31,29 @@ kotlin {
     }
   }
 
-  // JVM target so `commonMain` previews compile against the Desktop flavor
-  // of compose-runtime — that's what the desktop renderer
-  // ([RenderPreviewsTask] → DesktopRendererMain) launches against. Without
-  // it the only target output would be `kotlin/android/main`, which calls
-  // into `compose-runtime-android` and fails at render time with
+  // The desktop JVM target the renderer launches against; without it rendering fails with
   // `ClassNotFoundException: android.os.Parcelable`.
   jvm("desktop")
 
   sourceSets {
     commonMain.dependencies {
-      // The string-typed `compose.runtime` accessors are deprecated in
-      // compose-multiplatform 1.10 in favour of explicit module
-      // coordinates, but they still resolve to valid coords on every
-      // mirror — and the explicit coords were renamed in the 1.10 line
-      // and aren't reliably published to all repos yet. Accept the
-      // deprecation warning until the JetBrains migration shakes out.
+      // The string `compose.runtime` accessor is deprecated in CMP 1.10, but the replacement
+      // coordinates aren't reliably published yet.
       @Suppress("DEPRECATION") implementation(compose.runtime)
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
-      // `ui-tooling-preview` (the JetBrains-relocated androidx artifact)
-      // ships `androidx.compose.ui.tooling.preview.Preview` on every
-      // target, so commonMain previews compile against the same FQN that
-      // [DiscoverPreviewsTask] scans for. The CMP-bundled
-      // `compose.components.uiToolingPreview` re-publishes the annotation
-      // under `org.jetbrains.compose.ui.tooling.preview.Preview` instead,
-      // which discovery doesn't recognise — declaring the explicit coord
-      // sidesteps that.
+      // The JetBrains-relocated `ui-tooling-preview` ships
+      // `androidx.compose.ui.tooling.preview.Preview`, the FQN discovery scans for; CMP's bundled
+      // accessor uses an `org.jetbrains` FQN instead.
       implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
       // The compose-preview annotations, consumed from `commonMain` — the KMP scenario the
       // multiplatform `preview-annotations` artifact exists for (mirrors meshcore's
       // `:meshcore-components`, whose tokens live in shared code). Exercised by `SharedTokens.kt`.
       implementation(libs.composeai.preview.annotations)
 
-      // The shared preview-source module, on the runtime classpath. Declaring it here is what
-      // makes its composables resolvable at render time; `composePreviewSource` below is what
-      // makes its `@Preview`s DISCOVERABLE. The two are separate on purpose — a module depends on
-      // plenty of libraries whose own sticker-sheet previews must not become this module's.
+      // On the runtime classpath so its composables resolve; `composePreviewSource` below is what
+      // makes its `@Preview`s discoverable. Kept separate so dependencies' own previews don't
+      // become this module's.
       implementation(project(":samples:preview-source-shared"))
     }
   }

@@ -22,22 +22,11 @@ public fun interface StreamOpener {
 }
 
 /**
- * Shares **one** upstream daemon stream across every watcher of the same preview + overrides +
- * codec + fps. Without it, N browsers watching the same preview would open N held daemon sessions
- * (N `stream/start`s); with it they ride a single held session whose frames fan out to all of them,
- * and any watcher's input drives the shared composition.
- *
- * Keyed by [keyOf]: distinct overrides (or codec / fps) are distinct streams, so a viewer changing
- * theme transparently moves to its own shared lane without disturbing the others. The upstream is
- * opened lazily on the first subscriber for a key and torn down when the last one leaves
- * (ref-counted), so an idle hub holds no daemon sessions.
- *
- * Late joiners are replayed the last *painted* frame immediately, so a watcher that connects
- * between recompositions sees the current picture instead of a blank canvas until the next frame.
- *
- * Each [subscribe] returns a per-watcher [StreamHandle]: its [StreamHandle.input] forwards into the
- * shared session and its [StreamHandle.close] drops just that watcher (closing the shared upstream
- * only when it was the last).
+ * Shares one upstream daemon stream across every watcher of the same preview + overrides + codec +
+ * fps, so N browsers ride one held session; any watcher's input drives it. Keyed by [keyOf]. The
+ * upstream opens lazily on the first subscriber and closes with the last (ref-counted). Late
+ * joiners get the last painted frame immediately. Each [subscribe] returns a per-watcher
+ * [StreamHandle].
  */
 public class ServeBroadcastHub(private val opener: StreamOpener) {
 
@@ -45,9 +34,8 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
   private val broadcasts = HashMap<String, Broadcast>()
 
   /**
-   * Join the shared stream for [previewId] at these overrides/codec/fps, opening the upstream if
-   * this is the first watcher. Returns `null` (and opens nothing) when the backend can't stream, so
-   * the caller falls back to the snapshot lane — same contract as [ServeRenderHost.startStream].
+   * Join the shared stream for [previewId], opening the upstream for the first watcher. Null
+   * (opening nothing) when the backend can't stream, as [ServeRenderHost.startStream].
    */
   public fun subscribe(
     previewId: String,
@@ -62,9 +50,7 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
       broadcasts[key]
         ?: run {
           val fresh = Broadcast(key)
-          // Hold the lock across the open so two racing first-subscribers can't open two upstreams
-          // for one key; opens are cheap relative to a dev server's client count. A failed open
-          // reports its reason through [onUnavailable] (forwarded to the opener) before the null.
+          // Hold the lock across the open so racing first subscribers can't open two upstreams.
           val handle =
             opener.open(previewId, overrides, codec, maxFps, onUnavailable, fresh::onUpstreamFrame)
               ?: return@withLock null
@@ -84,8 +70,7 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
         broadcasts.remove(broadcast.key, broadcast)
         broadcast.handle?.close()
       } else {
-        // The departing watcher may have been the last hidden one holding the shared stream down,
-        // or the last visible one keeping it up.
+        // The departing watcher may have changed the aggregate visibility.
         broadcast.syncVisibility()
       }
     }
@@ -96,11 +81,7 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
     private val watchers = CopyOnWriteArrayList<Watcher>()
     @Volatile private var lastPainted: StreamFrameParams? = null
 
-    /**
-     * The visibility last pushed upstream, so [syncVisibility] only sends on a real change — a grid
-     * of twenty cards scrolling past sends twenty flips a second, and all but the ones that move
-     * the shared answer are noise on the daemon's reader thread.
-     */
+    /** Last visibility sent upstream, so [syncVisibility] only sends on a real change. */
     private var upstreamVisible: Boolean = true
     private var upstreamFps: Int? = null
 
@@ -122,13 +103,10 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
     /** Add a watcher and replay the current picture to it. Caller holds [lock]. */
     fun addWatcher(onFrame: (StreamFrameParams) -> Unit): StreamHandle {
       val watcher = Watcher(onFrame)
-      // Register *before* replaying: onUpstreamFrame is lock-free, so a frame painted between the
-      // replay and the add would otherwise reach neither the live fan-out (not yet a watcher) nor
-      // the replay (already read) and leave a static preview blank. Registering first means the
-      // worst case is a harmless duplicate of the current frame (newest-wins paint), never a miss.
+      // Register before replaying: fan-out is lock-free, so a frame painted in between would
+      // otherwise be missed. The worst case is a harmless duplicate.
       watchers.add(watcher)
-      // A new watcher is visible by definition, so it un-throttles a stream every existing watcher
-      // had hidden.
+      // A new watcher is visible, which un-throttles a hidden stream.
       syncVisibility()
       lastPainted?.let(onFrame)
       return object : StreamHandle {
@@ -162,18 +140,14 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
     }
 
     /**
-     * Push the watchers' *aggregate* visibility upstream. One held session serves everyone on this
-     * key, so it may only be throttled when nobody is looking: visible if **any** watcher is, and
-     * when none are, at the fastest fps any of them asked for. Throttling on the first hidden
-     * watcher would starve the tab still watching the same preview beside it.
-     *
-     * Caller holds [lock] (the send happens under it so two flips can't land out of order).
+     * Push the watchers' aggregate visibility upstream: visible if any watcher is; otherwise
+     * throttled to the fastest fps any asked for. Caller holds [lock] so flips stay ordered.
      */
     fun syncVisibility() {
       val current = watchers.toList()
       val visible = current.isEmpty() || current.any { it.visible }
-      // `null` means "the daemon's default throttle" (1 fps) and is the slowest option, so an
-      // explicit fps only wins when every hidden watcher named one.
+      // `null` is the daemon default (1 fps, the slowest), so an explicit fps wins only when every
+      // hidden watcher named one.
       val fps =
         if (visible) null
         else

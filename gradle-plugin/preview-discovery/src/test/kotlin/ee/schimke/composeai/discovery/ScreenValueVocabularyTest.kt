@@ -4,12 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * The value kinds beyond the four literals: a qualified read, a qualified call, an extension chain
- * — and the identity aliasing that lets a builder's own component ids resolve.
- *
- * Kept apart from [ScreenGeneratorTest] because the questions are different. That file asks whether
- * a screen is *assembled* correctly (slots, scopes, imports, opt-ins); this one asks whether a
- * *value* is written correctly, which is where the widening put the new ways to be wrong.
+ * Value kinds beyond the four literals — qualified reads, qualified calls, extension chains — and
+ * identity aliasing for builder component ids. Separate from [ScreenGeneratorTest], which covers
+ * screen assembly rather than value spelling.
  */
 class ScreenValueVocabularyTest {
 
@@ -111,9 +108,8 @@ class ScreenValueVocabularyTest {
       .build()
 
   /**
-   * The vocabulary these fixtures name. Passed explicitly in every case, because the generator
-   * refuses a claimed value under a package the caller never declared — see the trusted-vocabulary
-   * test below for what that protects against.
+   * The vocabulary these fixtures may name, always passed explicitly: the generator refuses values
+   * under undeclared packages.
    */
   private val allowed = setOf("androidx.compose", "com.example")
 
@@ -236,9 +232,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `two references claiming one simple name are refused rather than resolved`() {
-    // The check that makes importing references safe enough to be worth the readability. Before
-    // they imported, two `Color`s from two packages could not collide because neither was written
-    // short; now the file-wide conflict check is what stands between them.
+    // Now that references import, the file-wide conflict check is what keeps two `Color`s apart.
     assertThat(
         refusal(
           textNode(
@@ -261,9 +255,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a reference root named after the screen is refused, as a link is`() {
-    // The generated function would shadow the import, so the expression would name the screen.
-    // The chain-link path already refused this; a reference reaches the same rule now that it
-    // imports.
+    // The generated function would shadow the import; references get the chain-link rule.
     assertThat(
         refusal(
           textNode("color" to ScreenValue.Reference("com.example.paint.Screen", typeFqn = color)),
@@ -302,9 +294,7 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    // The line the qualification cost most: `Modifier` is the chain's receiver — a reference — and
-    // was spelled out while the `fillMaxWidth` beside it was already imported, so one expression
-    // carried two conventions.
+    // The chain receiver `Modifier` imports like the `fillMaxWidth` beside it.
     assertThat(result.source).contains("modifier = Modifier.fillMaxWidth().padding(16.dp)")
     assertThat(result.source).contains("import androidx.compose.ui.Modifier")
     assertThat(result.source).contains("import androidx.compose.foundation.layout.fillMaxWidth")
@@ -314,10 +304,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a scoped link resolves inside the slot whose receiver declares it`() {
-    // `Modifier.weight` is declared on `ColumnScope`, so whether it compiles is a fact about where
-    // the node sits rather than about the value. Inside a `content` slot whose receiver is that
-    // scope, the receiver supplies it and the simple name resolves — with no import, because a
-    // member extension cannot be imported.
+    // `Modifier.weight` is declared on `ColumnScope`: inside a slot with that receiver the simple
+    // name resolves, with no import (member extensions can't be imported).
     val result =
       emitted(
         ScreenNode(
@@ -437,9 +425,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a float literal is the one nested fraction that is not a Double`() {
-    // Nested, there is no declared type to render against, so each literal kind has one spelling
-    // and a `Fractional` is always a `Double`. `Modifier.weight(1.0)` does not compile, which is
-    // why the float kind exists at all.
+    // Nested values have no declared type, so `Fractional` is always a `Double`;
+    // `Modifier.weight(1.0)` doesn't compile, hence the float kind.
     val result =
       emitted(
         textNode(
@@ -694,9 +681,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a single-segment name is refused wherever a qualified one is required`() {
-    // A default-package declaration is what a single segment names, and a file in a named package
-    // can neither import nor refer to one. Before this, `Construct("Color", …)` emitted a bare
-    // `Color(…)` into `package generated.screen` and reported success.
+    // A single segment names a default-package declaration, unreachable from a named package.
     assertThat(
         refusal(
           textNode("color" to ScreenValue.Construct("Color", typeFqn = color)),
@@ -777,9 +762,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a callable outside the declared vocabulary is refused, however well spelled`() {
-    // A document is wire data and a construct emits a qualified call with the arguments it carries,
-    // so spelling is not the question — a host that compiles and renders what it generated would
-    // have run this one.
+    // Documents are wire data, and a construct emits a qualified call with its arguments, so this
+    // is about safety, not spelling.
     val exploit =
       ScreenValue.Construct(
         callableFqn = "java.nio.file.Files.readString",
@@ -899,9 +883,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a member extension is refused, because a chain link has to be importable`() {
-    // `RowScope.weight` is a member of the scope, handed over by an implicit receiver. Neither
-    // `import …layout.RowScope.weight` nor a package-level `…layout.weight` resolves, so importing
-    // it produces a file that fails on the import line.
+    // `RowScope.weight` is a scope member; no import of it resolves.
     assertThat(
         refusal(
           textNode(
@@ -941,9 +923,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `an opt-in marker that is not a name is refused, because it becomes annotation source`() {
-    // A marker is printed straight into `@OptIn(…)`, so a backtick and a newline close the
-    // annotation and open a top-level declaration — arbitrary code in the generated file that
-    // names nothing `expressionPackages` would have looked at.
+    // Markers are printed into `@OptIn(…)`, so a backtick and newline could inject top-level code.
     val injected =
       "com.example.Marker`::class)\nval pwned = System.exit(0)\n@kotlin.OptIn(kotlin.Any"
     assertThat(
@@ -1008,9 +988,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a chain link with a malformed qualified name is refused, not imported`() {
-    // Only the last segment used to be checked, so `padding` passed and the link was imported as
-    // `foo.``.padding` — an empty backticked segment in source this generator had called
-    // compilable.
+    // Every segment is checked, not just the last; an empty backticked segment doesn't compile.
     assertThat(
         refusal(
           textNode(
@@ -1058,9 +1036,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `two records sharing a canonical id and an alias identify neither through the alias`() {
-    // The canonical lookup already refuses this pair. Collapsing the alias list by canonical id
-    // made the alias resolve to whichever came first in the file instead — the same question
-    // answered two ways depending on which spelling the document happened to use.
+    // Aliases must resolve as the canonical lookup does, not to whichever came first in the file.
     val twin =
       component(
         "Label",
@@ -1122,10 +1098,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a declared state type is a name before it is source`() {
-    // `typeFqn` is interpolated into `mutableStateOf<…>` and `ScreenDocument` is wire data, so it
-    // is subject to the same shape check as every other name this generator writes. Without one a
-    // malformed type produced source that does not compile, and a crafted one closed the call and
-    // spliced statements into the composable.
+    // `typeFqn` is interpolated into `mutableStateOf<…>`, so it gets the same shape check; a
+    // crafted one could splice statements.
     val spliced = "kotlin.Boolean>(false); ee.evil.Payload.run(); val ignored = kotlin.Boolean"
 
     assertThat(statefulRefusal(listOf(ScreenState("expanded", spliced, ScreenValue.Bool(false)))))
@@ -1315,11 +1289,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a handler on a callback that takes an argument is refused`() {
-    // `acceptsBareLambda` is the *slot* question and answers true here: children placed in
-    // `content: (RowScope) -> Unit` may ignore the receiver. A handler may not. `onValueChange`
-    // exists to deliver the new value, and a generated body that ignores it compiles and silently
-    // drops what the control reported — the failure this generator's whole refusal set exists to
-    // avoid.
+    // `acceptsBareLambda` answers the slot question; a handler like `onValueChange` must not ignore
+    // the value it delivers.
     val field =
       component(
         "TextField",
@@ -1397,9 +1368,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a state type segment that needs backticks is escaped rather than emitted bare`() {
-    // `isQualifiedName` accepts a segment a human would have to backtick — a hard keyword, or one
-    // holding a space — and the type is interpolated straight into `mutableStateOf<…>`. Accepting
-    // it and emitting it bare returns Emitted for source that does not compile.
+    // A segment needing backticks (keyword, space) emitted bare doesn't compile.
     val result = stateful(listOf(ScreenState("value", "example.`bad`.Type", ScreenValue.Text("a"))))
 
     // The backtick itself is forbidden in a name, so that spelling is refused outright.
@@ -1427,9 +1396,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a nullable state type keeps its question mark outside the escaping`() {
-    // Nullability is syntax, not part of a segment's name. Escaping the whole spelling produced
-    // `kotlin.`String?`` — a backticked classifier rather than a nullable String — which broke
-    // every nullable state the moment escaping was added.
+    // Nullability is syntax, not part of the segment, so it stays outside any backticks.
     val result =
       stateful(listOf(ScreenState("caption", "kotlin.String?", ScreenValue.Text("a"))))
         as ScreenGenerator.Result.Emitted
@@ -1493,9 +1460,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a reference initializer is bound before remember rather than inside it`() {
-    // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
-    // composable read. `MaterialTheme.colorScheme.primary` is legal one line above the lambda and
-    // rejected inside it, so the value is bound first and the lambda closes over the binding.
+    // `remember`'s calculation is `@DisallowComposableCalls`, so a composable read is bound first
+    // and captured.
     val result =
       stateful(
         listOf(
@@ -1529,10 +1495,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a hoisted binding does not shadow a component this screen calls`() {
-    // The binding is a plain `val` in the composable body, so it captures a component's call site
-    // exactly the way a state name would. A state named `Tint` derives `TintInitial`, which is a
-    // perfectly ordinary Composable name — putting `val TintInitial = …` directly above the
-    // `TintInitial(...)` this screen calls.
+    // The binding is a body-level `val`, so its derived name (`TintInitial`) can capture a
+    // component call site of the same name.
     val clash =
       component(
         "TintInitial",
@@ -1598,10 +1562,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a state named after a package root the file writes in full is refused`() {
-    // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
-    // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`
-    // compiles — and the *next* declaration then resolves `androidx` to a MutableState. The file
-    // stops compiling one line after the name that broke it.
+    // A local named `androidx` would shadow the preamble's `androidx.compose.runtime.remember` for
+    // later declarations.
     val reasons =
       statefulRefusal(
         listOf(
@@ -1626,10 +1588,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a handler setting state from a composable read is refused`() {
-    // `onClick` is not a composable scope, and this vocabulary can name a composable read. The
-    // preamble hoists such an expression because it has a composable scope to hoist into; a
-    // handler is emitted inside the tree with nowhere to put a binding, so it refuses rather than
-    // emitting a callback Kotlin rejects.
+    // Handlers aren't a composable scope and have nowhere to hoist a composable read, so refuse.
     val reasons =
       handledRefusal(
         listOf(
@@ -1663,11 +1622,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a handler bound to a composable slot is refused`() {
-    // `content: @Composable () -> Unit` records its annotation in `composableSlot`, not in `type`,
-    // so it reads as `() -> Unit` and satisfies every shape check the handler gate makes. Compose
-    // runs the body while composing rather than when anything happens, so a `Toggle` bound here
-    // writes state during composition and invalidates the scope that just wrote it: a screen that
-    // recomposes forever, generated from a document this checker called valid.
+    // `content: @Composable () -> Unit` reads as `() -> Unit` but runs during composition; binding
+    // a `Toggle` there would recompose forever.
     val card =
       component(
         "Card",
@@ -1838,10 +1794,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a member link makes the compiler hold the receiver to the declaring classifier`() {
-    // The generator cannot type `LocalContext.current.filesDir`, so an allowed qualifier on it
-    // proves nothing by itself: a bare `.delete()` would resolve to `java.io.File.delete`. Held in
-    // a local typed `Fake`, the file only compiles if the receiver really is the classifier the
-    // package guard was applied to.
+    // The receiver can't be typed, so it's held in a local typed `Fake`: the file compiles only if
+    // the receiver really is the guarded classifier.
     val result =
       emitted(
         paneNode(
@@ -1961,9 +1915,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a member link without an explicit receiver is refused`() {
-    // `Modifier` in a modifier chain is the companion, not an instance: a member of the type does
-    // not resolve on it, so the claim is refused rather than emitted as `Modifier.then(…)`
-    // guesswork.
+    // `Modifier` in a chain is the companion, so type members don't resolve on it.
     assertThat(
         refusal(
           textNode(
@@ -2088,9 +2040,8 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `the body is checked against what the lambda returns, not against Function0`() {
-    // The check that makes the kind worth having. Every zero-argument function type in the library
-    // is a `kotlin.Function0`, so a value held only to the parameter's own `typeFqn` is held to
-    // almost nothing — and `progress = { "" }` compiles in this generator's head and nowhere else.
+    // Every zero-argument function type is `kotlin.Function0`, so the lambda's return must be
+    // checked too.
     assertThat(
         refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator))
       )
@@ -2099,9 +2050,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a lambda body gets the same narrowing rules an argument does`() {
-    // Reused rather than restated: a `Double` past `Float`'s range becomes `Infinity`, which is a
-    // number the design never contained. Restating the rule inside the lambda path is how two
-    // spellings of it start disagreeing.
+    // Reuse the Float range rule: an out-of-range `Double` becomes `Infinity`.
     assertThat(
         refusal(
           indicatorNode(ScreenValue.Lambda(ScreenValue.Fractional(1.0e40))),
@@ -2157,9 +2106,7 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a nested lambda is what makes a remembered factory writable`() {
-    // `rememberCarouselState { 5 }` — the other half of what this kind was added for. Nested there
-    // is no declared type, so the body takes the one fixed spelling its kind has, which is why the
-    // count comes out an `Int`.
+    // `rememberCarouselState { 5 }`: nested, the body takes its kind's fixed spelling (`Int`).
     val result =
       emitted(
         textNode(

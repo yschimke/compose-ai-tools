@@ -15,17 +15,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * A catalog's own design guidance, `ui-builder.guidelines.json`, authored beside its
- * `ui-builder.policy.json` and published beside the `ui-builder.json` that policy produces.
- *
- * The format is compose-ui-builder's (`compose-ui-builder/catalog-guidelines/v1`: the catalog's
- * rules and the pictures its guidelines check is shown); this repository only finds the file,
- * checks the fields a reader cannot do without, and carries it verbatim. compose-preview-server
- * fetches it from the catalog's delivery branch next to `ui-builder.json`.
- *
- * It is found in the SAME directory as the policy that was chosen, never resolved on its own: a
- * module that owns its policy and a repository root with guidelines for another catalog must not
- * produce a hybrid, for the reason [DiscoverPreviewsTask]'s authored pair is resolved together.
+ * A catalog's `ui-builder.guidelines.json` (compose-ui-builder's `catalog-guidelines/v1` format),
+ * authored beside its policy and published beside `ui-builder.json`. This repo only finds it,
+ * checks the essential fields, and carries it. Found in the same directory as the chosen policy,
+ * never independently, for the same reason as [DiscoverPreviewsTask]'s authored pair.
  */
 internal object UiBuilderGuidelinesFile {
   const val FILE_NAME: String = "ui-builder.guidelines.json"
@@ -99,20 +92,14 @@ internal object UiBuilderGuidelinesFile {
   data class Flattened(val text: String, val problem: String? = null)
 
   /**
-   * [text] with the rule packs its `includes` name merged in and the `includes` removed, so the
-   * published file is flat and every reader — compose-preview-server, the browser editor — sees the
-   * whole rule set without fetching anything. The merge is the `:design-guidelines` engine's
-   * (`GuidelinesIncludes`): packs are layers in include order with the catalog's own rules last, a
-   * later layer's rule replacing an earlier one of the same id where it stood; a pack rule naming
-   * `platforms` is carried only into a catalog whose `platform` it lists, an `exclude`d id is left
-   * out of that include, an include's `profiles` narrows the carried rules naming none, and a
-   * pack's frames are added where the catalog does not already ask for the same one. At most
-   * [MAX_INCLUDES] includes, and a pack's rules must pass the same checks as the catalog's own
-   * ([problems]). A file with no includes comes back byte-for-byte.
+   * [text] with its `includes` packs merged in (via the `:design-guidelines` engine's
+   * `GuidelinesIncludes`), so readers see every rule without fetching. Packs layer in include
+   * order, the catalog's own rules last, later rules replacing same-id earlier ones in place;
+   * `platforms`, `exclude` and `profiles` filter what's carried; frames are added where not already
+   * requested. At most [MAX_INCLUDES]; pack rules pass [problems]. No includes → unchanged bytes.
    *
-   * When a pack cannot be read or does not match its pin, [text] comes back as written, includes
-   * and all, with the reason: a reader that resolves includes (the CLI) still can, and the publish
-   * workflow fails loudly on the same pin before it renders.
+   * If a pack can't be read or doesn't match its pin, [text] is returned as written with the
+   * reason; the publish workflow fails on the same pin.
    */
   fun flatten(text: String, fetch: (String) -> ByteArray = ::fetchPack): Flattened {
     val root = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
@@ -151,8 +138,7 @@ internal object UiBuilderGuidelinesFile {
       if ((pack["includes"] as? JsonArray)?.isNotEmpty() == true) {
         return Flattened(text, "$url includes others; packs may not nest")
       }
-      // The loader refuses a merged file with one malformed rule, so a pack's rules are held to the
-      // catalog's own checks before they are merged into it.
+      // The loader refuses a merged file with any malformed rule, so check pack rules first.
       problems(bytes.toString(Charsets.UTF_8), pack.string("catalog").orEmpty())
         .firstOrNull()
         ?.let {
@@ -193,10 +179,7 @@ internal object UiBuilderGuidelinesFile {
 
   private val PRETTY = Json { prettyPrint = true }
 
-  /**
-   * Packs already read and verified in this daemon, keyed by URL and pin together, so discovery and
-   * bundling fetch once and a changed pin is never answered from an earlier pack's bytes.
-   */
+  /** Verified packs cached by URL + pin, so a changed pin never reuses old bytes. */
   private val packs = ConcurrentHashMap<String, ByteArray>()
 
   private val http: OkHttpClient by lazy {

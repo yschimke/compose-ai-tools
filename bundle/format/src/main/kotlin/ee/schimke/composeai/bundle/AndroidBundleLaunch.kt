@@ -75,12 +75,9 @@ public class AndroidBundleLaunch(
   public fun robolectricPropertiesBody(): String = robolectricConfig().composableLaneBody()
 
   /**
-   * The app-tour lane's `robolectric.properties` body: [robolectricPropertiesBody] without the stub
-   * `application=` line, since an Activity is the app (Hilt / Koin activities fail on the stub).
-   *
-   * On this one-shot path no merged manifest is packed yet, so Robolectric falls back to its
-   * default Application. The line stays absent rather than pinned so packing the manifest later
-   * fixes this lane with no further change.
+   * The app-tour lane's body: [robolectricPropertiesBody] without the stub `application=`, since an
+   * Activity is the app (Hilt / Koin activities fail on the stub). Without a packed manifest
+   * Robolectric uses its default Application.
    */
   public fun appTourRobolectricPropertiesBody(): String = robolectricConfig().appTourLaneBody()
 

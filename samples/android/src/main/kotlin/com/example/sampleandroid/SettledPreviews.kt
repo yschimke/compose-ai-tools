@@ -30,13 +30,9 @@ import ee.schimke.composeai.preview.SettledPreview
 import kotlinx.coroutines.delay
 
 /**
- * Demo fixtures for `@SettledPreview` (issue #4202) — a component whose content is driven in by
- * *time* rather than by a gesture.
- *
- * [RevealCard] is Wear's `ConfirmationDialogContent` in miniature: its children start at `alpha =
- * 0` and are animated in from a `LaunchedEffect` after a short delay. Captured at the renderer's
- * default advance it publishes an empty container; the previews below render the same composable
- * with and without a settle so the pair reads as a before/after.
+ * Demo fixtures for `@SettledPreview`: content driven in by time. [RevealCard] (like Wear's
+ * `ConfirmationDialogContent`) fades its children in after a delay, so a default capture shows an
+ * empty container; the previews below form a before/after pair.
  */
 @Composable
 fun RevealCard(delayMs: Long = 200, durationMs: Int = 300) {
@@ -58,9 +54,8 @@ fun RevealCard(delayMs: Long = 200, durationMs: Int = 300) {
 }
 
 /**
- * The bug, kept renderable: no settle, so the capture lands inside [RevealCard]'s delay and shows
- * the bare container. Deliberately left un-annotated — it is the "before" half of the evidence and
- * the regression pin for the settle ever becoming unconditional.
+ * The "before": no settle, so the capture shows the bare container. Also pins that the settle never
+ * becomes unconditional.
  */
 @Preview(name = "Reveal unsettled", showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
@@ -77,9 +72,8 @@ fun RevealCardSettledPreview() {
 }
 
 /**
- * The second shape from the report: nothing fades, but the value arrives after the first
- * composition, so an unsettled capture shows the placeholder rather than the content. Same class of
- * bug as Material 3's `DateInputTextField` publishing its label on top of its own value.
+ * A value that arrives after the first composition, so an unsettled capture shows the placeholder
+ * (like M3's `DateInputTextField` label over its value).
  */
 @Composable
 fun DeferredValueField() {
@@ -113,18 +107,9 @@ fun DeferredValueSettledPreview() {
 }
 
 /**
- * `@SettledPreview` **and** `@AnimatedPreview` on one function (issue #4244).
- *
- * The two want opposite things from a paused clock — the GIF records the reveal from its start, the
- * settled still wants the coordinate where it has finished — and virtual time does not rewind. So
- * discovery used to drop the settle and emit a warning naming the collision, which was circular:
- * the still it was meant to fix had already been suppressed by the GIF owning the function.
- *
- * Both ship now. The renderers give the settled still a composition of its own — the desktop lane
- * always had one per output, the Android lane runs a second `setContent` pass — so this preview
- * publishes `renders/SettledPlusAnimatedPreview.png` at the end of the reveal *and*
- * `renders/SettledPlusAnimatedPreview.gif` covering it from the beginning. Committed as the
- * regression pin: if the two ever share a timeline again, one of the pair goes wrong visibly.
+ * `@SettledPreview` and `@AnimatedPreview` on one function. A paused clock can't rewind, so the
+ * renderers give the settled still its own composition: this publishes the settled `.png` and a
+ * `.gif` from the start of the reveal. If they ever share a timeline, one visibly breaks.
  */
 @SettledPreview
 @AnimatedPreview

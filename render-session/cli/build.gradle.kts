@@ -1,14 +1,8 @@
-// Thin CLI over `render-session-subprocess` for non-Gradle build systems. Lives in the outer
-// build (not in the gradle-plugin includeBuild) because it depends on `:render-session-subprocess`
-// and `:render-session-api`, both outer-build modules.
-//
-// Phase A of the contrib refactor (see `contrib/README.md`): contrib repo Bazel rules and
-// Amper tasks shell out to
+// Thin CLI over `render-session-subprocess` for non-Gradle build systems (Bazel rules, Amper tasks;
+// see `contrib/README.md`), invoked as
 //   `java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli \
 //      --descriptor X --previews Foo,Bar`
-// to drive a render, rather than re-implementing the JSON-RPC subprocess dance from
-// scratch. The library API surface lives in `:render-session-api`; this module is purely a
-// CLI adapter.
+// The library API is `:render-session-api`; this is purely a CLI adapter.
 
 plugins {
   id("composeai.base-conventions")
@@ -43,15 +37,9 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
-// Slim library JAR; the intended invocation is
-//   `java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli ...`
-// with the build system resolving the runtime closure (render-session-subprocess,
-// render-session-api, daemon-core, mcp, kotlinx-serialization) through its own dep system.
-// The `Main-Class:` stamp is a convenience for build systems that have already materialised
-// the full runtime closure next to the artifact (Bazel `runtime_jars`, hand-rolled `lib/`);
-// `java -jar` against the bare published JAR will NOT work — no `Class-Path:` manifest
-// entry, no shaded uber-JAR. Same pattern as `:preview-discovery` and
-// `:daemon-launch-builder`.
+// Slim library JAR: callers resolve the runtime closure themselves. `Main-Class:` is a convenience
+// for build systems that materialise the closure alongside; `java -jar` on the bare JAR won't work
+// (no `Class-Path:`, not shaded).
 tasks.named<Jar>("jar").configure {
   manifest { attributes("Main-Class" to "ee.schimke.composeai.render.cli.RenderCli") }
 }

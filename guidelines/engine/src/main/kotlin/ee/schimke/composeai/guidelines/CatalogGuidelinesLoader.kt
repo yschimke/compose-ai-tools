@@ -81,11 +81,8 @@ public object CatalogGuidelinesLoader {
   }
 
   /**
-   * Why [text] did not parse, without quoting it. A kotlinx decoding message carries the input
-   * itself (`JSON input: …`, the whole text when it is short) and a JSON path whose map keys are
-   * the input's, and a caller can point [load] at any local file, so the reason names only the
-   * failure and its offset: a problem string must never echo the contents of a file that turned out
-   * not to be guidelines.
+   * Why [text] did not parse, without quoting it: kotlinx decoding messages embed the input, and
+   * [load] can be pointed at any local file, so only the failure and its offset are named.
    */
   internal fun parseFailure(e: Exception): String {
     if (e is kotlinx.serialization.MissingFieldException) {
@@ -156,16 +153,12 @@ public object GuidelineSurfaces {
   public const val WEAR_WIDGETS_PROFILE: String = "wear-widgets"
 
   /**
-   * What a `previews.json` entry is to the guidelines: the surface its rules are chosen by, and the
-   * profile it targets when the manifest says. One answer for every host — the CLI's live and
-   * handoff runs, the MCP server — so a preview is judged against the same rules wherever it is
-   * checked.
+   * What a `previews.json` entry is to the guidelines: its surface and, when known, its profile.
+   * One answer for every host, so a preview is judged by the same rules everywhere.
    *
-   * A widget is what discovery records under `widget` (a Glance Wear widget preview, a launcher
-   * widget), and, for a manifest written before discovery recorded that, what the manifest itself
-   * shows: a Glance app-widget preview, a launcher-widget capture, or a `@PreviewParameter`
-   * provider from `androidx.glance.wear`. Otherwise a preview naming a device is a [SCREEN] and one
-   * without is a [COMPONENT].
+   * A widget is what discovery records under `widget`, or for older manifests a Glance app-widget
+   * preview, a launcher-widget capture, or an `androidx.glance.wear` `@PreviewParameter` provider.
+   * Otherwise a preview naming a device is a [SCREEN], and one without is a [COMPONENT].
    */
   public fun of(preview: JsonObject): GuidelineSubjectKind {
     val params = preview["params"] as? JsonObject
@@ -217,11 +210,9 @@ public fun CatalogGuidelinesV1.noRulesFor(subject: PreviewSubject): String? {
 }
 
 /**
- * The rules worth asking about a subject of [surface] targeting Remote Compose [profile]:
- * subject-scoped (set-scoped rules are asked once per batch, see [setRules]), applying to that
- * surface — a rule naming no surface applies to every one — and, when [profile] is known, to that
- * profile. Visual rules are left out when [hasPicture] is false: the model would have nothing to
- * judge them on.
+ * The subject-scoped rules to ask of a subject of [surface] targeting [profile] (set-scoped rules
+ * are asked per batch, see [setRules]). A rule naming no surface applies to all; visual rules are
+ * omitted when there is no picture ([hasPicture]).
  */
 public fun CatalogGuidelinesV1.subjectRules(
   surface: String,

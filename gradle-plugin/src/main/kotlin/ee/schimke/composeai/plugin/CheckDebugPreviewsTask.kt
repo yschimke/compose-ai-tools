@@ -13,28 +13,14 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
 
 /**
- * Warns when `@Preview` functions live in `src/debug/` on a module that applied Google's
- * `com.android.compose.screenshot` plugin. That source set is part of the main debug variant, so it
- * compiles against `debugImplementation` + `implementation` only — NOT
- * `screenshotTestImplementation`. Preview-only helpers (theme wrappers, fixture composables)
- * written against the `screenshotTest` dependency closure end up failing in two ways once dropped
- * into `src/debug/`:
+ * Warns about `@Preview` functions in `src/debug/` on modules using
+ * `com.android.compose.screenshot`. That source set compiles without
+ * `screenshotTestImplementation`, so helpers written against it either fail `compileDebugKotlin` or
+ * get discovered but throw at render (an `.error.json` with no PNG). Surfacing it points at the
+ * fix: move it to `src/screenshotTest/`.
  *
- * 1. Compile-time: `compileDebugKotlin` fails with `Unresolved reference` on the
- *    screenshotTest-only symbols.
- * 2. Render-time (when the file still compiles): `composePreviewDiscover` picks the previews up via
- *    the shared `build/tmp/kotlin-classes/debug/` output, but their dependency tail isn't on
- *    `composePreviewRender`'s classpath and the preview throws on `Class.forName` / first
- *    composition, producing an `.error.json` sidecar with no PNG.
- *
- * Both modes leave the user with a confusing failure pointing at our pipeline. This task surfaces
- * the source-set mismatch at discovery time so the fix ("move it to `src/screenshotTest/`") is
- * obvious.
- *
- * Match is by `@Preview` text occurrence — deliberately coarse. A false positive on a Kotlin
- * comment or string literal mentioning `@Preview` is cheap (one warn line); a false negative would
- * silently leak the confusing failure back through. Wired as a finalizer of
- * `composePreviewDiscover` so it never blocks discovery itself.
+ * Matches `@Preview` text, deliberately coarse: a false positive costs one warning. Finalizes
+ * `composePreviewDiscover`, so it never blocks discovery.
  */
 @DisableCachingByDefault(because = "warning-only text scan; rerunning is cheaper than caching")
 abstract class CheckDebugPreviewsTask : DefaultTask() {
@@ -46,9 +32,8 @@ abstract class CheckDebugPreviewsTask : DefaultTask() {
   abstract val debugSourceFiles: ConfigurableFileCollection
 
   /**
-   * Project root path used to render module-relative source paths in the warning. Captured at
-   * configuration time so the task action stays configuration-cache-safe (no `project` access at
-   * execution).
+   * Project root for module-relative paths in the warning, captured at configuration time for
+   * configuration-cache safety.
    */
   @get:Input abstract val projectDirectory: Property<String>
 

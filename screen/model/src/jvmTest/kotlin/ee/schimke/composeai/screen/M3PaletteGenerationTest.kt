@@ -8,12 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The builder's palette, driven through the **real** generator.
- *
- * This is the test that says the two halves are actually combined: the document is
- * `discovery.ScreenDocument`, the records are `ComponentRecordFile`, and the source comes from
- * `discovery.ScreenGenerator` — the 1159-line one with 888 lines of its own tests — rather than a
- * second code path written for the browser. What is authored here is data, not generation.
+ * The builder's palette through the real generator: `discovery.ScreenDocument` and
+ * `ComponentRecordFile` in, `discovery.ScreenGenerator` source out, with no browser-only code path.
  */
 class M3PaletteGenerationTest {
 
@@ -111,11 +107,8 @@ class M3PaletteGenerationTest {
   }
 
   /**
-   * The modifier chain a user builds by tapping two chips, as the generator's own vocabulary.
-   *
-   * Taken from [M3Palette.modifierLinks] rather than rebuilt here, so the links this asserts on are
-   * the ones the builder actually offers — `padding` shipped passing a bare `Int` to a `Dp`
-   * parameter, and a copy of the link in the test would have agreed with it.
+   * A two-chip modifier chain, taken from [M3Palette.modifierLinks] so the test exercises the links
+   * the builder actually offers.
    */
   private fun fillMaxWidthAndPadding(): ScreenValue =
     ScreenValue.Chain(

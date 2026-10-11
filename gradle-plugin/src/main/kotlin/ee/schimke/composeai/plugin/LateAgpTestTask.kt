@@ -7,17 +7,12 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLauncher
 
 /**
- * AGP's `test<Variant>UnitTest` task, bound whenever it becomes available.
+ * AGP's `test<Variant>UnitTest` task, bound whenever it becomes available. AGP registers it after
+ * `onVariants`, so a render task realized early (e.g. by an upstream `tasks.withType<Test>().all
+ * {}`) can't find it yet; this replays the lookup after evaluation, still at configuration time, so
+ * no Project reference reaches a task action.
  *
- * AGP registers that task after `onVariants`, so a render task configured early — an upstream
- * `tasks.withType<Test>().all {}` realizes every Test task as soon as it is registered — sees
- * `findByName` return null and used to drop AGP's test classes, JVM args and toolchain launcher for
- * good. This holder looks the task up when asked and, when it is not there yet, replays the request
- * after evaluation, still at configuration time, so no Project reference reaches a task action or
- * the configuration cache. It only ever realizes AGP's own unit-test task, exactly as the eager
- * lookup did.
- *
- * Must be constructed while the project is still configuring (it registers an `afterEvaluate`).
+ * Must be constructed while the project is configuring (it registers an `afterEvaluate`).
  */
 internal class LateAgpTestTask(private val project: Project, private val unitTestTaskName: String) {
   /** AGP's test classes dirs; empty until (and unless) the task exists. */

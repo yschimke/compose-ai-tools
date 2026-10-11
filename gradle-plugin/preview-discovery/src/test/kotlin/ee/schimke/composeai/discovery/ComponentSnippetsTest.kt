@@ -528,11 +528,8 @@ class ComponentSnippetsTest {
     val snippet = emitted(textFieldRecord(rememberedState(noArgConstructible = true)))
 
     assertThat(snippet.code).isEqualTo("TextField(state = rememberTextFieldState())")
-    // And the constructor's import goes with it: a bare `TextFieldState` is neither printed nor
-    // pulled in. Asserted on the imports rather than on the code, because
-    // `rememberTextFieldState()`
-    // contains `TextFieldState()` as a substring and a "does not contain" check would pass here for
-    // the wrong reason.
+    // Asserted on imports, not code: `rememberTextFieldState()` contains `TextFieldState()`, so a
+    // "does not contain" check would pass for the wrong reason.
     assertThat(snippet.imports)
       .doesNotContain("androidx.compose.foundation.text.input.TextFieldState")
   }

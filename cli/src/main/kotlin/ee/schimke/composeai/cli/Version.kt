@@ -3,51 +3,26 @@ package ee.schimke.composeai.cli
 import java.util.Properties
 
 /**
- * Release this CLI was built from. Surfaced via `compose-preview --version`, used as the default
- * `--plugin-version` in [DoctorCommand]'s remediation snippets, and compared against the latest
- * GitHub release tag in `doctor`'s update check.
- *
- * Resolved from `cli-version.properties`, baked into the jar by `cli/build.gradle.kts`'s
- * `generateCliVersionResource`. The previous hand-edited literal here drifted out of sync with
- * `.release-please-manifest.json` (`0.9.0` vs `0.8.12`) which made `compose-preview show` look for
- * a release tag that didn't exist. The build-time resource derives the version from
- * `project.version`, which already honours the `PLUGIN_VERSION` env override CI sets and the
- * `.release-please-manifest.json` patch-bump fallback for local builds.
+ * Release this CLI was built from: `compose-preview --version`, the default in [DoctorCommand]'s
+ * remediation snippets, and the update check. Read from `cli-version.properties`, generated from
+ * `project.version` by `cli/build.gradle.kts`'s `generateCliVersionResource`.
  */
 internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
 
 /**
- * Release the native `xr-composite` compositor is provisioned from — see [XrCompositeProvision].
- *
- * Deliberately NOT [BUNDLE_VERSION]. Addressing the binary by the CLI's own version forced an
- * `xr-composite-*.tar.gz` asset to exist on every release, so the compositor was rebuilt and
- * republished 226 times for 13 source changes, and every CLI upgrade orphaned the user's cached
- * copy of an unchanged binary. This is a pin in `gradle/libs.versions.toml` (`xr-composite`) that
- * moves only when a new compositor is released from [XR_COMPOSITE_REPO];
- * `check_xr_composite_pin.py` fails a PR whose pin names a release that does not exist there, or
- * one missing a platform tarball — either 404s on download, and a 404 downstream is a graceful skip
- * nobody sees.
+ * Release the native `xr-composite` compositor is provisioned from ([XrCompositeProvision]). Not
+ * [BUNDLE_VERSION]: it is the `xr-composite` pin in `gradle/libs.versions.toml`, which moves only
+ * with the compositor, so CLI upgrades don't orphan cached binaries. `check_xr_composite_pin.py`
+ * verifies the pinned release and its tarballs exist.
  */
 internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
 
 /**
- * Version of THIS repository's Maven artifacts the CLI resolves — the Gradle plugin it
- * auto-injects, and the coordinate `doctor` recommends putting in a build.
- *
- * Deliberately NOT [BUNDLE_VERSION], and the subtle one of the four. The others name other people's
- * release lines; this names *ours*, and it exists because what the CLI **is** and what the CLI
- * **resolves** stop being the same number the moment a release does not publish to Central.
- *
- * A skipped publish means the version a CLI was built at has no plugin artifacts at all, so
- * injecting the plugin at [BUNDLE_VERSION] would hand every consumer a coordinate Central cannot
- * repair afterwards: it refuses to accept a version twice.
- *
- * So the CLI carries the last version that IS on Central, baked in by `generateCliVersionResource`
- * from the `MAVEN_LINE_VERSION` override the release sets.
- *
- * The release planner sets this to the tag when it publishes the plugin, otherwise to the plugin's
- * last Central version. A project pin (`composePreview.version`) is intentionally literal; the
- * readiness marker records the Maven version a particular CLI release resolves.
+ * Version of this repository's Maven artifacts the CLI resolves: the auto-injected plugin and the
+ * coordinate `doctor` recommends. Not [BUNDLE_VERSION], because a release may skip publishing to
+ * Central, and injecting an unpublished version would break every consumer. Baked from the
+ * `MAVEN_LINE_VERSION` the release planner sets (the tag when it publishes, else the last published
+ * version).
  */
 internal val MAVEN_LINE_VERSION: String by lazy { cliVersionProperty("mavenLineVersion") }
 
@@ -68,47 +43,28 @@ private fun cliVersionProperty(key: String): String {
 internal const val REPO = "yschimke/compose-ai-tools"
 
 /**
- * GitHub repo slug hosting the bootstrap installer + skill bundles. Separate from [REPO] since
- * `scripts/install.sh` was moved out of `compose-ai-tools` (which still hosts the CLI release
- * tarballs) into a content-only sibling repo. The `update` subcommand and doctor's remediation
- * snippets curl their `scripts/install.sh` URL from here.
+ * Repo hosting the bootstrap installer and skill bundles; `update` and doctor's snippets fetch
+ * `scripts/install.sh` from here.
  */
 internal const val SKILLS_REPO = "yschimke/skills"
 
 /**
- * GitHub repo slug the native `xr-composite` compositor is released from.
- *
- * Separate from [REPO] since the compositor was split out of this repository: it changes roughly
- * twice a quarter where this one releases daily, and republishing it per release cost 1.23 GB
- * across 226 releases for 13 source changes. Its version is [XR_COMPOSITE_VERSION], a pin that
- * moves only when the compositor does — so the release this resolves is almost never the current
- * one here, and that is the point.
+ * Repo the `xr-composite` compositor is released from, on its own cadence; see
+ * [XR_COMPOSITE_VERSION].
  */
 internal const val XR_COMPOSITE_REPO = "yschimke/compose-preview-xr"
 
 /**
- * GitHub repo slug the preview server is released from, and whose release assets carry the
- * distribution [ServerDistributionProvision] fetches.
- *
- * Separate from [REPO] since the server was extracted (#4732): `compose-preview serve` is a
- * launcher for a binary built, versioned and released there. The Maven coordinate
- * `ee.schimke.composeai:compose-preview-serve` names the same software; the *distribution* — the
- * launcher script and its `lib/` — is a release asset, not a Maven artifact, which is why this is a
- * GitHub slug rather than a coordinate.
+ * Repo whose release assets carry the preview server distribution [ServerDistributionProvision]
+ * fetches. A release asset (launcher + `lib/`), not a Maven artifact, hence a GitHub slug.
  */
 internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
 
 /**
- * Release of compose-preview-daemon whose sidecar archives the CLI fetches — the desktop renderer
- * and daemon (`lib-renderer/`, `lib-daemon-desktop/`) and the Android daemon
- * (`lib-daemon-android/`). See [DaemonSidecarProvision].
- *
- * The `composeai-preview-daemon` pin from `gradle/libs.versions.toml`, baked in at build time for
- * the same reason [XR_COMPOSITE_VERSION] is. Deliberately NOT [BUNDLE_VERSION]: those modules left
- * this repository in #5336 and release on their own line from [PREVIEW_DAEMON_REPO], so the CLI's
- * own version names no daemon at all. The Gradle plugin bakes the same pin as
- * `PreviewDaemonVersion`, so the daemon a plugin-driven render resolves and the one the CLI fetches
- * are one release.
+ * compose-preview-daemon release whose sidecars the CLI fetches (`lib-renderer/`,
+ * `lib-daemon-desktop/`, `lib-daemon-android/`; see [DaemonSidecarProvision]). The
+ * `composeai-preview-daemon` catalog pin, also baked into the plugin as `PreviewDaemonVersion`, so
+ * plugin-driven and CLI-fetched daemons match.
  */
 internal val PREVIEW_DAEMON_VERSION: String by lazy { cliVersionProperty("previewDaemonVersion") }
 
@@ -116,14 +72,9 @@ internal val PREVIEW_DAEMON_VERSION: String by lazy { cliVersionProperty("previe
 internal const val PREVIEW_DAEMON_REPO = "yschimke/compose-preview-daemon"
 
 /**
- * Compare two version strings componentwise (`major.minor.patch[-suffix]`), returning -1/0/1.
- * `-SNAPSHOT` and other suffixes sort *before* the same numeric base (so `0.8.11-SNAPSHOT` is older
- * than `0.8.11`) — the convention the rest of the build follows. Anything we can't parse falls back
- * to a string compare so a pathological tag never throws.
- *
- * Lives in [Version.kt] so the doctor update check can compare [BUNDLE_VERSION] against the tag
- * resolved from the GitHub `releases/latest` redirect, and so unit tests can exercise the
- * comparator without round-tripping the rest of `doctor`.
+ * Compare `major.minor.patch[-suffix]` strings componentwise, returning -1/0/1. Suffixes sort
+ * before the same numeric base (`0.8.11-SNAPSHOT` < `0.8.11`); unparseable input falls back to a
+ * string compare so it never throws.
  */
 internal fun compareSemver(a: String, b: String): Int {
   fun parts(v: String): Pair<List<Int>, Boolean> {
@@ -156,11 +107,8 @@ internal fun majorVersionOf(v: String): Int? =
   v.trim().removePrefix("v").substringBefore('-').split('.').firstOrNull()?.toIntOrNull()
 
 /**
- * Whether two compose-preview component versions are mutually incompatible — i.e. they parse to
- * different **major** versions. A major release changes the render/daemon wire format and the
- * published `okio.Path` / suspend APIs, so a plugin and CLI (or daemon) on different majors can
- * fail to render or misbehave. Returns `false` when either version is unparseable (we don't warn on
- * strings like `main` / SNAPSHOT-only builds we can't reason about).
+ * Whether two compose-preview versions have different majors (a major changes the render/daemon
+ * wire format and public APIs). False when either is unparseable.
  */
 internal fun versionsIncompatible(a: String, b: String): Boolean {
   val am = majorVersionOf(a) ?: return false

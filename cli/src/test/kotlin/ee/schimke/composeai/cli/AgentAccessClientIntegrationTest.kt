@@ -13,19 +13,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The CLI's grant client against a **real** preview server, so the two halves of the wire protocol
- * are checked against each other rather than each against its own idea of the other.
- *
- * They are deliberately separate declarations — the CLI ships and versions independently of any
- * host it talks to, so its request/response types are its own with every field defaulted. That
- * independence is exactly what lets them drift silently, which is what this test exists to stop.
- *
- * The server is the **distribution**, launched as a process, rather than a `ServeHttpServer` built
- * in this JVM: compose-preview-server publishes no jar to link, and `serve` is a launcher over a
- * process boundary anyway, so this is the artifact a user actually runs. The operator half of the
- * flow — approving and denying — goes through the real HTML form rather than a store reference,
- * which means the CSRF seal, the token query and the page itself are all exercised here too.
- * [ServeDistributionHarness] has the arrangement, including why these skip without one.
+ * The CLI's grant client against a real preview server, so the two independently declared halves of
+ * the wire protocol are checked against each other. The server is the launched distribution (no jar
+ * to link), and the operator half goes through the real HTML form, exercising the CSRF seal and
+ * token query too. See [ServeDistributionHarness] for setup and skipping.
  */
 class AgentAccessClientIntegrationTest {
 
@@ -58,18 +49,14 @@ class AgentAccessClientIntegrationTest {
   private fun client() = AgentAccessClient(serve().origin)
 
   /**
-   * The wire header the server names its bearer in, as a literal.
-   *
-   * It used to be read off `ServeHttpServer.TOKEN_HEADER` from the published jar. With no jar to
-   * link it has to be written down — which is the drift this whole file exists to catch, so it is
-   * asserted against what the running server actually answers rather than merely declared.
+   * The server's bearer header, written as a literal and asserted against what the running server
+   * accepts.
    */
   private val tokenHeader = "X-Compose-Preview-Token"
 
   /**
-   * A store that reads and remembers normally but cannot save a *grant*. Stands in for a full disk
-   * or a read-only config dir at the moment the token comes back — the case where dropping the
-   * pending record would strand a live credential.
+   * A store that reads normally but can't save a grant (full disk, read-only config) when the token
+   * arrives.
    */
   private class UnsaveableStore(file: File) : AgentAccessStore(file = file, warn = {}) {
     override fun save(entry: Entry): Boolean = false
@@ -269,11 +256,8 @@ class AgentAccessClientIntegrationTest {
 
   @Test
   fun `a json request still prints its secret with nowhere to store credentials`() {
-    // `--json` prints the device secret precisely so the caller can poll for itself. Failing on a
-    // missing credential store would open a request on the server and then exit BEFORE printing the
-    // one thing that could redeem it — leaving a human with an approval link that mints a
-    // credential nobody can ever collect. The storeless fallback the refusal message recommends has
-    // to actually work.
+    // `--json` prints the device secret so the caller can poll; a missing store must not abort
+    // before printing it, or the approval can never be collected.
     val out = java.io.ByteArrayOutputStream()
     val original = System.out
     try {

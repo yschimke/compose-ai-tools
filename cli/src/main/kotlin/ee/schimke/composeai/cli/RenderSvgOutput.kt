@@ -7,21 +7,12 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Writes the daemon-produced `compose/figma-svg` export for one preview to a standalone `.svg` on
- * disk — the `compose-preview render --format svg` output. Mirrors how `bundle pack
- * --with-semantics` carries the same bytes inside a bundle, but lands them as loose files a user
- * can open directly.
+ * Writes the daemon's `compose/figma-svg` export for one preview to a standalone `.svg` (the
+ * `render --format svg` output).
  *
- * # Hybrid crops
- *
- * A pure-vector export (the common case for a component catalog) is a single self-contained `.svg`.
- * A **hybrid** export — one whose opaque `Image`/`Icon`/`Canvas` nodes are emitted as `<image>`
- * placeholders — references sibling `figma-raster/<node>.png` crops via **relative** hrefs. The
- * daemon writes those crops beside the sidecar in its own `data/<id>/figma-raster/` dir. When we
- * flatten the SVG to `renders/<id>.svg`, the crops move to a sibling `renders/<id>.figma-raster/`
- * dir, so the `figma-raster/` href prefix is rewritten to `<id>.figma-raster/` to keep the
- * `<image>` layers resolving. Naming the crop dir after the SVG stem also avoids collisions when
- * several previews' SVGs share one `renders/` dir.
+ * A hybrid export references sibling `figma-raster/<node>.png` crops by relative href. Flattened to
+ * `renders/<id>.svg`, the crops move to `renders/<id>.figma-raster/` and the href prefix is
+ * rewritten to match, which also avoids collisions between previews sharing `renders/`.
  */
 internal object RenderSvgOutput {
   /**
@@ -31,10 +22,9 @@ internal object RenderSvgOutput {
     id.map { c -> if (c.isLetterOrDigit() || c in "._-") c else '_' }.joinToString("")
 
   /**
-   * Write [svgBytes] to [target] (an `.svg` path), creating parent dirs as needed. When [crops] is
-   * non-empty (a hybrid export), also write each `<node>.png` into a sibling
-   * `<target-stem>.figma-raster/` dir and rewrite the SVG's `figma-raster/` href prefix to point at
-   * it. Returns the number of files written (the SVG plus any crops).
+   * Write [svgBytes] to [target], creating parents. For a hybrid export, also write [crops] into a
+   * sibling `<target-stem>.figma-raster/` and rewrite the hrefs. Returns the number of files
+   * written.
    */
   fun write(
     target: File,
