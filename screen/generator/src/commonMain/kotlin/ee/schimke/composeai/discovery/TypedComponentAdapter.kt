@@ -944,7 +944,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               written,
               fills,
               overload?.parameters ?: targetRecord.parameters,
-              targetRecord.code?.call,
               at,
             )
           }
@@ -963,7 +962,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
                 written + alsoWritten,
                 fills,
                 overload?.parameters ?: targetRecord.parameters,
-                targetRecord.code?.call,
                 inRole,
               )
             }
@@ -1041,7 +1039,6 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     written: Map<String, String?>,
     fills: List<SlotFill>,
     overloadParameters: List<TargetParameter>,
-    placeholders: String?,
     where: String,
   ): List<String> = buildList {
     val parameters = overloadParameters.associateBy { it.name }
@@ -1079,47 +1076,15 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         fills.filter { it.always }.map { it.parameter } +
         target.events.values +
         declaredChanges.map { it.name }
-    // The record's call site is printed with every export, as named arguments, so it fills a
-    // required parameter of any overload that has one by that name and breaks one that has not.
-    val placed = placeholders?.let(::namedArguments).orEmpty()
-    for (name in placed) {
-      if (name !in parameters)
-        add("$where: the call site writes $name, which it has no parameter for")
-    }
+    // The generator writes the chosen overload's own call: a required parameter nothing writes gets
+    // that parameter's placeholder (`onClick = {}`). The record's recorded call site belongs to its
+    // own overload and is not printed for another. A required composable slot left to its `{}`
+    // placeholder would draw nothing where the component expects content, so it is reported.
     for (parameter in overloadParameters) {
-      if (parameter.hasDefault || parameter.name in covered || parameter.name in placed) continue
+      if (parameter.hasDefault || parameter.name in covered) continue
+      if (!parameter.composableSlot && ComponentSnippets.placeholderFor(parameter) != null) continue
       add("$where: required parameter ${parameter.name} is not written")
     }
-  }
-
-  /** The named arguments of a call snippet's outermost call: `Button(onClick = {})` → `onClick`. */
-  private fun namedArguments(call: String): Set<String> {
-    val open = call.indexOf('(')
-    if (open < 0) return emptySet()
-    val names = mutableSetOf<String>()
-    var depth = 0
-    var start = open + 1
-    var quoted = false
-    var i = open
-    while (i < call.length) {
-      val c = call[i]
-      when {
-        quoted && c == '\\' -> i++
-        c == '"' -> quoted = !quoted
-        quoted -> Unit
-        c == '(' || c == '{' || c == '[' -> depth++
-        c == ')' || c == '}' || c == ']' -> depth--
-        c == ',' && depth == 1 -> start = i + 1
-        c == '=' &&
-          depth == 1 &&
-          call.getOrNull(i + 1) != '=' &&
-          call.getOrNull(i - 1) !in OPERATOR_CHARS ->
-          call.substring(start, i).trim().takeIf { it.isNotEmpty() }?.let(names::add)
-      }
-      if (depth == 0 && i > open) break
-      i++
-    }
-    return names
   }
 
   /** The Kotlin type [value] writes, after checking the properties it reads exist and export. */
@@ -1401,8 +1366,3 @@ object TypedAdapterCatalog {
 private const val COLOR_TYPE = "androidx.compose.ui.graphics.Color"
 
 private const val MODIFIER_TYPE = "androidx.compose.ui.Modifier"
-
-/**
- * The characters that make a following `=` part of an operator (`<=`, `!=`, `==`), not an argument.
- */
-private val OPERATOR_CHARS = setOf('=', '!', '<', '>')
