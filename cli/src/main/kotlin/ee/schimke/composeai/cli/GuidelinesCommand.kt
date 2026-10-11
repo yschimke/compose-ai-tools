@@ -527,11 +527,14 @@ class GuidelinesCommand(args: List<String>) : A11yCommand(args) {
             result.params.heightDp ?: 0,
             // As in handoff mode: a capture scrolled to its END has scrolled the time text away.
             description =
-              HandoffInputs.describeCapture(
-                result.params.widthDp ?: 0,
-                result.params.heightDp ?: 0,
-                result.captures.firstOrNull()?.scroll?.mode,
-              ),
+              result.captures.firstOrNull()?.scroll.let { scroll ->
+                HandoffInputs.describeCapture(
+                  result.params.widthDp ?: 0,
+                  result.params.heightDp ?: 0,
+                  scroll?.mode,
+                  scroll?.let { ScrollLimit(it.maxScrollPx, it.atEnd, it.reachedPx, it.axis) },
+                )
+              },
           )
         ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
