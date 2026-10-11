@@ -8,6 +8,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
@@ -288,10 +289,22 @@ public class CoordinateResolver(
           runBlocking {
             client.prepareGet(url).execute { response ->
               if (response.status.isSuccess()) {
-                fileSystem.sink(destPath).buffer().use { sink ->
-                  response.bodyAsChannel().copyTo(sink.outputStream())
+                val written =
+                  fileSystem.sink(destPath).buffer().use { sink ->
+                    response.bodyAsChannel().copyTo(sink.outputStream())
+                  }
+                // A connection dropped mid-body can surface as a clean end of stream, so the
+                // declared length is the only proof the whole artifact arrived.
+                val declared = response.contentLength()
+                if (declared != null && written != declared) {
+                  FetchFailure(
+                    url,
+                    "a body cut off at $written of $declared bytes",
+                    transient = true,
+                  )
+                } else {
+                  null
                 }
-                null
               } else {
                 val code = response.status.value
                 FetchFailure(
