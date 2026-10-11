@@ -118,15 +118,19 @@ public final class ee/schimke/composeai/guidelines/GuidelineCredentials {
 	public static final field ENV Ljava/lang/String;
 	public static final field FILE_ENV Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineCredentials;
+	public static final field MODEL_ENV Ljava/lang/String;
 	public static final field OPENROUTER Ljava/lang/String;
 	public static final field SCHEMA_V1 Ljava/lang/String;
 	public final fun defaultFileOrNull (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ljava/io/File;
 	public static synthetic fun defaultFileOrNull$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/io/File;
+	public final fun endpointProvider (Ljava/lang/String;)Ljava/lang/String;
 	public final fun forget (Ljava/io/File;Ljava/lang/String;)Z
 	public static synthetic fun forget$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;ILjava/lang/Object;)Z
 	public final fun isTrusted (Ljava/io/File;Ljava/io/File;)Z
 	public final fun openRouter (Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
 	public static synthetic fun openRouter$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public final fun resolve (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
+	public static synthetic fun resolve$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/guidelines/GuidelineCredentials$Resolved;
 	public final fun store (Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun store$default (Lee/schimke/composeai/guidelines/GuidelineCredentials;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun trust (Ljava/io/File;Ljava/io/File;)V
@@ -558,6 +562,20 @@ public final class ee/schimke/composeai/guidelines/ModelResponse$Companion {
 	public static synthetic fun noAnswer$default (Lee/schimke/composeai/guidelines/ModelResponse$Companion;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/guidelines/ModelResponse;
 }
 
+public final class ee/schimke/composeai/guidelines/OpenAiCompatibleClient : ee/schimke/composeai/guidelines/GuidelineModel {
+	public static final field Companion Lee/schimke/composeai/guidelines/OpenAiCompatibleClient$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lokhttp3/OkHttpClient;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lokhttp3/OkHttpClient;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun complete (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun completeWithoutReasoning (Lee/schimke/composeai/guidelines/protocol/GuidelineRequestV1;Ljava/lang/String;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public fun decide (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/ModelResponse;
+	public final fun getSchemaRefused ()Z
+}
+
+public final class ee/schimke/composeai/guidelines/OpenAiCompatibleClient$Companion {
+	public final fun isLoopback (Ljava/lang/String;)Z
+}
+
 public final class ee/schimke/composeai/guidelines/OpenRouterClient : ee/schimke/composeai/guidelines/GuidelineModel {
 	public static final field Companion Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;
 	public static final field DEFAULT_MODEL Ljava/lang/String;
@@ -592,6 +610,37 @@ public final class ee/schimke/composeai/guidelines/OpenRouterClient$Companion {
 	public final fun getREASONING_EFFORTS ()Ljava/util/List;
 	public final fun httpClient (Ljava/time/Duration;)Lokhttp3/OkHttpClient;
 	public static synthetic fun httpClient$default (Lee/schimke/composeai/guidelines/OpenRouterClient$Companion;Ljava/time/Duration;ILjava/lang/Object;)Lokhttp3/OkHttpClient;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterModels {
+	public static final field INSTANCE Lee/schimke/composeai/guidelines/OpenRouterModels;
+	public final fun fetch (Lokhttp3/OkHttpClient;Ljava/lang/String;)Ljava/util/List;
+	public static synthetic fun fetch$default (Lee/schimke/composeai/guidelines/OpenRouterModels;Lokhttp3/OkHttpClient;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/List;
+	public final fun parse (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/guidelines/OpenRouterModels$Model {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/Double;ZZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun component4 ()Ljava/lang/Double;
+	public final fun component5 ()Ljava/lang/Double;
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/Double;ZZ)Lee/schimke/composeai/guidelines/OpenRouterModels$Model;
+	public static synthetic fun copy$default (Lee/schimke/composeai/guidelines/OpenRouterModels$Model;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/Double;ZZILjava/lang/Object;)Lee/schimke/composeai/guidelines/OpenRouterModels$Model;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompletionPerMillion ()Ljava/lang/Double;
+	public final fun getContextLength ()Ljava/lang/Long;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getPromptPerMillion ()Ljava/lang/Double;
+	public final fun getStructuredOutputs ()Z
+	public final fun getSuitable ()Z
+	public final fun getVision ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/guidelines/PreviewCheck {

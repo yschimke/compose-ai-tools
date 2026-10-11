@@ -478,10 +478,42 @@ compose-preview guidelines --checker jev --compare-with vision/guidelines.json \
 
 ## Prompt mode: `compose-preview review`
 
-`review` is `guidelines` with the agent that runs it as the model (`--backend prompt`, its
-default; `--backend openrouter` makes it `guidelines`). It takes the same selection as `render`
-and `show` (`--module`, `--filter`, `--id`, `--changed-only`, `--id-file`, `--permutations`) and
-every `guidelines` option that does not name OpenRouter. No key, no provider, no cost.
+`review` runs the same engine as `guidelines` with a choice of who judges (`--backend`). In prompt
+mode the agent that runs it is the model: no key, no provider, no cost. It takes the same
+selection as `render` and `show` (`--module`, `--filter`, `--id`, `--changed-only`, `--id-file`,
+`--permutations`) and every `guidelines` option.
+
+### Backends
+
+| `--backend` | Who judges | Key | Cost |
+| --- | --- | --- | --- |
+| `auto` (`review`'s default) | one of the below, chosen per run and printed with the reason | | |
+| `prompt` | the agent running the command (below) | none | none |
+| `openrouter` (`guidelines`' default) | an OpenRouter model, `--model` | `COMPOSE_PREVIEW_OPENROUTER_KEY`, else stored (`guidelines key set`) | reported per request; `review` caps a run at $0.25 unless `--max-cost` says otherwise |
+| `openai` | an OpenAI-compatible endpoint, `--base-url` and `--model` | `COMPOSE_PREVIEW_MODEL_KEY`, else stored for that endpoint (`guidelines key set --for <url>`); none on a loopback URL | not reported, so `--max-cost` cannot stop a run |
+
+`auto` (`GuidelinesBackend.choose`) picks `prompt` inside an agent session (`CLAUDECODE`,
+`CODEX_SANDBOX`, `GEMINI_CLI`, `OPENCODE`, or `COMPOSE_PREVIEW_AGENT=1` for any other harness),
+since an agent can judge the requests itself and a second provider's spend is not one it should
+start on its own. Otherwise `openrouter` when the key is in the environment, or stored and either
+trusted for the project or askable at a terminal; and `prompt` when there is no key or a stored one
+is untrusted with no terminal to ask, saying how to trust it.
+
+`openai` covers OpenAI (`https://api.openai.com/v1`), Gemini's OpenAI-compatible endpoint, a local
+Ollama, LM Studio or vLLM server (`http://localhost:11434/v1`) and a LiteLLM proxy in front of
+anything else, through `OpenAiCompatibleClient`: the same prompt and reply schema as OpenRouter's
+request, without its provider routing, `reasoning` object or streaming, and `max_completion_tokens`
+for OpenAI itself. A server that refuses the strict JSON schema is asked again with `json_object`
+for the rest of the run; the engine's reply checks still hold the answer to the schema. No Jev
+triage and no `--checker jev`: both need OpenRouter's decisions API. A key is stored per endpoint
+origin, so it is only ever sent to the endpoint it was stored for, and the trusted-projects rule
+(*Keys*) applies to it as to OpenRouter's.
+
+`compose-preview guidelines models` lists OpenRouter's models that read pictures and honour a
+strict reply schema, cheapest input first, with prices per million tokens (`--all` for every model,
+`--json` for a script). It needs no key.
+
+### Prompt mode
 
 `DeferredReplyModel` stands in for the model. It does not call anything: each request the engine
 would send is written under the module, named by a hash of everything a model would be sent

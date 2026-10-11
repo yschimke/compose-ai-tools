@@ -36,6 +36,9 @@ internal object CliFlagValidation {
     reportFlags +
       setOf(
         "--backend",
+        "--base-url",
+        "--for",
+        "--all",
         "--model",
         "--max-cost",
         "--rounds",
