@@ -88,6 +88,43 @@ class ScreenFunctionTest {
     assertEquals(1, Regex("private fun Choice").findAll(source).count())
   }
 
+  private fun components(document: ScreenDocument) =
+    ScreenGenerator.generate(
+      document,
+      M3Palette.records,
+      expressionPackages = M3Palette.expressionPackages,
+      frame = null,
+      output = ScreenGenerator.Output.COMPONENTS,
+    )
+
+  @Test
+  fun `a components file writes only internal component functions`() {
+    // The root's handler writes state; the root is not part of a components file, so neither is it.
+    val document = document().copy(state = emptyList(), root = call().copy(handlers = emptyMap()))
+    val result = components(document)
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertTrue(
+      source,
+      "internal fun Choice(label: kotlin.String, choose: () -> kotlin.Unit)" in source,
+    )
+    assertTrue(source, "onClick = choose" in source)
+    assertFalse(source, "fun FunctionScreen(" in source)
+    assertFalse(source, "private fun" in source)
+  }
+
+  @Test
+  fun `a components file needs components and no screen state`() {
+    val noFunctions = components(document().copy(state = emptyList(), functions = emptyList()))
+    assertTrue(noFunctions.toString(), noFunctions is ScreenGenerator.Result.Refused)
+    val withState = components(document())
+    assertTrue(withState.toString(), withState is ScreenGenerator.Result.Refused)
+    assertTrue(
+      withState.toString(),
+      (withState as ScreenGenerator.Result.Refused).reasons.any { "hold state" in it },
+    )
+  }
+
   @Test
   fun `repeated calls forward each row value into a shared function`() {
     val doc = document()
