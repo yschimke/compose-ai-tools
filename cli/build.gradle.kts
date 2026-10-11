@@ -228,8 +228,11 @@ dependencies {
   testImplementation(gradleTestKit())
 }
 
-// Stage the render worker's runtime for `lib-rcjvm/`, renaming colliding `library-desktop-<v>.jar`
-// files to `module-version.jar`. Host Skiko natives are filtered out so the archive stays portable.
+// Stage the render worker's runtime for `lib-rcjvm/`, renaming colliding file names to
+// `group-module-version.jar`. The group is needed: the same module can arrive from two groups, e.g.
+// CMP 1.12's `org.jetbrains.compose.runtime:runtime-saveable-desktop` (a classless shim) next to
+// `androidx.compose.runtime:runtime-saveable-desktop` (the classes), both `...-1.12.1.jar`. Host
+// Skiko natives are filtered out so the archive stays portable.
 val stageRcJvmLibs =
   tasks.register<Sync>("stageRcJvmLibs") {
     description = "Stages the CMP render worker's runtime artifacts for lib-rcjvm/."
@@ -250,7 +253,8 @@ val stageRcJvmLibs =
         val mapped =
           if (counts.getValue(original) > 1) {
             val id = artifact.id.componentIdentifier
-            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+            if (id is ModuleComponentIdentifier) "${id.group}-${id.module}-${id.version}.jar"
+            else original
           } else original
         artifact.file.absolutePath to mapped
       }
@@ -276,7 +280,8 @@ val stageBtaLibs =
         val mapped =
           if (counts.getValue(original) > 1) {
             val id = artifact.id.componentIdentifier
-            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+            if (id is ModuleComponentIdentifier) "${id.group}-${id.module}-${id.version}.jar"
+            else original
           } else original
         artifact.file.absolutePath to mapped
       }
