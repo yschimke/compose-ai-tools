@@ -537,4 +537,52 @@ class ExportProjectionTest {
       )
       .contains("renamed and recognised")
   }
+
+  private val header =
+    ExportProjection(
+      listOf(
+        ExportProjection.Target(
+          "catalog/androidx.wear.compose.material3.ListHeaderKt.ListHeader",
+          emptyMap(),
+          synthesize =
+            mapOf("content" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
+        )
+      )
+    )
+
+  @Test
+  fun `a property written as a slot synthesizes a child of another component`() {
+    val lowered =
+      header.lower(mapOf("text" to wrapper("string", "Settings"))) as ExportProjection.Lowered.Node
+    assertThat(lowered.arguments).isEmpty()
+    assertThat(lowered.synthesized)
+      .containsExactly(
+        "content",
+        ExportProjection.Lowered.Synthesized(
+          "wear-m3/text",
+          mapOf("text" to wrapper("string", "Settings")),
+        ),
+      )
+    // Unset, the child is still synthesized, so a required slot is always written; its own
+    // component decides what an unset property means.
+    val unset = header.lower(emptyMap()) as ExportProjection.Lowered.Node
+    assertThat(unset.synthesized.getValue("content").properties).isEmpty()
+    assertThat(header.properties).containsExactly("text")
+  }
+
+  @Test
+  fun `synthesized children round trip, and are never also written`() {
+    val json = ExportProjectionJson.encode(header)
+    assertThat(json.toString()).contains("\"synthesize\":{\"content\":")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(header)
+    val both = runCatching {
+      ExportProjection.Target(
+        "r",
+        mapOf("content" to ExportProjection.Value.Fixed(ScreenValue.Text(""))),
+        synthesize = mapOf("content" to ExportProjection.Synthesis("t", mapOf("text" to "text"))),
+      )
+    }
+      .exceptionOrNull()
+    assertThat(both?.message).contains("both written and synthesized")
+  }
 }

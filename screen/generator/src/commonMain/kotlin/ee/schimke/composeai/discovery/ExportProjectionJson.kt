@@ -49,6 +49,12 @@ import kotlinx.serialization.json.put
  *     { "lines": { "text": "wear-m3/text", "min": 1, "max": 2 }, "to": ["label", "secondaryLabel"] } ] } ],
  *   "otherwise": { "to": "content" } } }
  * ```
+ *
+ * A target's `synthesize`, keyed by composable parameter, writes it as a child of another catalog
+ * component whose properties are copied from the parent's:
+ * ```json
+ * "synthesize": { "content": { "component": "wear-m3/text", "properties": { "text": "text" } } }
+ * ```
  */
 object ExportProjectionJson {
   private val screenJson = Json { encodeDefaults = false }
@@ -67,6 +73,19 @@ object ExportProjectionJson {
             put("parameters", JsonObject(target.parameters.mapValues { (_, v) -> value(v) }))
             if (target.contexts.isNotEmpty()) {
               put("contexts", JsonObject(target.contexts.mapValues { (_, c) -> context(c) }))
+            }
+            if (target.synthesize.isNotEmpty()) {
+              put(
+                "synthesize",
+                JsonObject(
+                  target.synthesize.mapValues { (_, synthesis) ->
+                    buildJsonObject {
+                      put("component", synthesis.component)
+                      put("properties", strings(synthesis.properties))
+                    }
+                  }
+                ),
+              )
             }
             if (target.slotPatterns.isNotEmpty()) {
               put(
@@ -100,6 +119,13 @@ object ExportProjectionJson {
             slotPatterns =
               target["slotPatterns"]?.jsonObject.orEmpty().mapValues { (_, p) ->
                 readSlotPatterns(p)
+              },
+            synthesize =
+              target["synthesize"]?.jsonObject.orEmpty().mapValues { (_, raw) ->
+                ExportProjection.Synthesis(
+                  raw.jsonObject.getValue("component").jsonPrimitive.content,
+                  stringMap(raw.jsonObject.getValue("properties")),
+                )
               },
           )
         },

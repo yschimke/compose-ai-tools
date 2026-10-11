@@ -388,6 +388,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     events: Map<String, String> = emptyMap(),
     contexts: Map<String, ExportProjection.Context> = emptyMap(),
     slotPatterns: Map<String, ExportProjection.SlotPatterns> = emptyMap(),
+    synthesize: Map<String, ExportProjection.Synthesis> = emptyMap(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
@@ -399,6 +400,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         events,
         contexts,
         slotPatterns,
+        synthesize,
       ),
     )
 
@@ -566,6 +568,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             writtenType(value, properties, "$where.$name", this)
           }
         val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
+        for ((parameter, synthesis) in target.synthesize) {
+          for (property in synthesis.properties.values) {
+            if (property !in properties)
+              add("$where.$parameter: synthesizes from property $property, which is not declared")
+          }
+        }
         for ((slot, _) in target.slotPatterns) {
           if (declaredSlots.none { it.name == slot })
             add("$where: slot pattern for undeclared slot $slot")
@@ -626,7 +634,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     val plain =
       declaredSlots
         .filter { it.name !in target.slotPatterns }
-        .map { SlotFill(it.name, target.slots[it.name] ?: it.name, always = true) }
+        .map { SlotFill(it.name, target.slots[it.name] ?: it.name, always = true) } +
+        target.synthesize.map { (parameter, synthesis) ->
+          SlotFill("synthesized ${synthesis.component}", parameter, always = true)
+        }
     val (slot, patterns) =
       target.slotPatterns.entries.singleOrNull() ?: return listOf(null to plain)
     return patterns.patterns.mapIndexed { index, pattern ->

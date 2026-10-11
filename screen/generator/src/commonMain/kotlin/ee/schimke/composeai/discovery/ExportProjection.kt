@@ -47,6 +47,9 @@ data class ExportProjection(
    * @property slotPatterns for the one wire slot whose children decide which parameters they fill
    *   (Wear's `Button` content: an icon, then one or two lines of text), how they are recognised.
    *   Replaces that slot's [slots] rename.
+   * @property synthesize composable parameters written from properties by synthesizing a child of
+   *   another catalog component, which then exports through its own projection: `ListHeader`'s
+   *   `content` is a `wear-m3/text` holding the header's `text`.
    */
   data class Target(
     val record: String,
@@ -56,8 +59,17 @@ data class ExportProjection(
     val events: Map<String, String> = emptyMap(),
     val contexts: Map<String, Context> = emptyMap(),
     val slotPatterns: Map<String, SlotPatterns> = emptyMap(),
+    val synthesize: Map<String, Synthesis> = emptyMap(),
   ) {
     init {
+      val synthesizedWritten = synthesize.keys intersect parameters.keys
+      require(synthesizedWritten.isEmpty()) {
+        "${synthesizedWritten.sorted()} are both written and synthesized"
+      }
+      val synthesizedSlots = synthesize.keys intersect (slots.values + slotPatterns.keys)
+      require(synthesizedSlots.isEmpty()) {
+        "${synthesizedSlots.sorted()} are both a wire slot and synthesized"
+      }
       // One patterned slot per target, so a pattern alone decides which overload the call is.
       require(slotPatterns.size <= 1) { "at most one slot is recognised by patterns" }
       for (slot in slotPatterns.keys) {
@@ -94,6 +106,19 @@ data class ExportProjection(
     val parameters: Map<String, Value> = emptyMap(),
     val modifier: List<ChainLink> = emptyList(),
   )
+
+  /**
+   * A child node of [component] synthesized for a composable parameter, its properties copied from
+   * the parent's: [properties] maps the child's property to the parent property it is read from.
+   * The child inherits nothing else. It is synthesized on every node, with whichever of those
+   * properties the parent has set, so a required parameter such as `ListHeader`'s `content` is
+   * always written; an unset property is left to the child component's own default.
+   */
+  data class Synthesis(val component: String, val properties: Map<String, String>) {
+    init {
+      require(properties.isNotEmpty()) { "a synthesized child reads at least one property" }
+    }
+  }
 
   /**
    * How one wire slot's children are recognised: the first of [patterns] that matches assigns them
@@ -340,6 +365,7 @@ data class ExportProjection(
       targets.forEach { target ->
         target.parameters.values.forEach(::visit)
         target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+        target.synthesize.values.forEach { addAll(it.properties.values) }
       }
     }
 
@@ -432,9 +458,18 @@ data class ExportProjection(
       val events: Map<String, String> = emptyMap(),
       /** The role context's links, for the caller to append after the node's own modifiers. */
       val modifier: List<ChainLink> = emptyList(),
+      /**
+       * Children to synthesize, by parameter: each a component and its properties as saved (the
+       * builder's `{type, value}` wrappers), for the caller to export through that component's own
+       * projection.
+       */
+      val synthesized: Map<String, Synthesized> = emptyMap(),
     ) : Lowered
 
     data class Refused(val reasons: List<String>) : Lowered
+
+    /** One synthesized child: its catalog [component] and the [properties] copied to it. */
+    data class Synthesized(val component: String, val properties: Map<String, JsonElement>)
   }
 
   /**
@@ -466,6 +501,17 @@ data class ExportProjection(
         write(value, properties, "${target.record}.$parameter", reasons)?.let { put(parameter, it) }
       }
     }
+    val synthesized = buildMap {
+      for ((parameter, synthesis) in target.synthesize) {
+        val copied =
+          synthesis.properties
+            .mapNotNull { (child, parent) ->
+              properties[parent]?.takeUnless { it is JsonNull }?.let { child to it }
+            }
+            .toMap()
+        put(parameter, Lowered.Synthesized(synthesis.component, copied))
+      }
+    }
     return if (reasons.isEmpty())
       Lowered.Node(
         target.record,
@@ -473,6 +519,7 @@ data class ExportProjection(
         target.slots,
         target.events,
         context?.modifier.orEmpty(),
+        synthesized,
       )
     else Lowered.Refused(reasons)
   }

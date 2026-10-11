@@ -773,6 +773,59 @@ class TypedRealRecordAdapterTest {
     assertThat(problems.joinToString("\n")).contains("slot pattern for undeclared slot body")
   }
 
+  data class HeaderModel(val text: String)
+
+  private val listHeader =
+    ComponentRecord.Builder(
+        canonicalId = "catalog/androidx.wear.compose.material3.ListHeaderKt.ListHeader",
+        symbol =
+          ComponentSymbol.Builder(
+              jvmOwner = "androidx.wear.compose.material3.ListHeaderKt",
+              callable = "androidx.wear.compose.material3.ListHeader",
+              name = "ListHeader",
+              origin = ComponentOrigin.LIBRARY,
+            )
+            .build(),
+      )
+      .also { b ->
+        b.signatureKnown = true
+        b.parameters =
+          listOf(
+            parameter("modifier", "Modifier", "androidx.compose.ui.Modifier", default = true),
+            parameter("content", "@Composable RowScope.() -> Unit", slot = true),
+          )
+      }
+      .build()
+
+  private fun headerAdapter(parameter: String = "content", from: String = "text") =
+    object : TypedComponentAdapter<HeaderModel>("wear-m3/list-header", listHeader) {
+      val text = wireProperty(HeaderModel::text, AdapterValueCodecs.String, "")
+
+      init {
+        exportAs(
+          target(
+            listHeader,
+            emptyMap(),
+            synthesize =
+              mapOf(parameter to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to from))),
+          )
+        )
+      }
+    }
+
+  @Test
+  fun `a header's text synthesized as a Text child fills its required content`() {
+    assertThat(headerAdapter().validateAgainst(listHeader)).isEmpty()
+  }
+
+  @Test
+  fun `a synthesis into no slot, or from no declared property, is reported`() {
+    assertThat(headerAdapter(parameter = "modifier").validateAgainst(listHeader).joinToString("\n"))
+      .contains("slot synthesized wear-m3/text -> modifier is not a composable slot")
+    assertThat(headerAdapter(from = "title").validateAgainst(listHeader).joinToString("\n"))
+      .contains("content: synthesizes from property title, which is not declared")
+  }
+
   private companion object {
     const val BUTTON_COLORS = "androidx.wear.compose.material3.ButtonColors"
 
