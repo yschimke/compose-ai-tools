@@ -26,6 +26,7 @@ internal object CliFlags {
       "--base-url",
       "--for",
       "--max-cost",
+      "--max-variants",
       "--rounds",
       "--request-timeout",
       "--idle-timeout",

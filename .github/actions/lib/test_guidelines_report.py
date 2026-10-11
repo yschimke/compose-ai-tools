@@ -459,6 +459,18 @@ class ReportTest(unittest.TestCase):
         # 0.0034 × 2 in the PR's module's records, and the rules tier's run total of 0.05.
         self.assertIn("$0.0568", body)
 
+    def test_variants_not_asked_are_neither_checked_nor_missed(self) -> None:
+        checked = _result("x.ListKt.WearList", [])
+        skipped = _result("x.ListKt.WearList_204dp", [])
+        skipped["variantOf"] = "x.ListKt.WearList"
+        self._write({"module": "handoff", "catalog": "wear-m3", "model": "m",
+                     "results": [checked, skipped]})
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn("1 more variant(s) of the composables checked above were not asked", body)
+        self.assertIn("`WearList_204dp`", body)
+        self.assertNotIn("NOT checked", body)
+
     def test_the_predicted_cost_sits_beside_the_spend(self) -> None:
         module = self._rules_tier([_result("x.CardKt.Card", [])], cost=0.05)
         report = json.loads((module / "guidelines.json").read_text())

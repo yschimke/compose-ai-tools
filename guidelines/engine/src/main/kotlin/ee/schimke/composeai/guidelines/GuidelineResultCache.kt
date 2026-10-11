@@ -39,9 +39,18 @@ public data class PreviewGuidelineResult(
   public var implicitPasses: List<String> = emptyList()
     internal set
 
+  /**
+   * The preview asked in this one's place when the run checked only so many variants of each
+   * composable ([GuidelineRunOptions.maxVariants]): this one was asked nothing. Neither a pass nor
+   * a finding, and never cached. A body property like [noRules].
+   */
+  public var variantOf: String? = null
+    internal set
+
   /** This result carrying [other]'s body properties, which `copy` resets. */
   internal fun withBodyOf(other: PreviewGuidelineResult): PreviewGuidelineResult = also {
     it.noRules = other.noRules
+    it.variantOf = other.variantOf
     it.implicitPasses = other.implicitPasses
     it.jev = other.jev
   }

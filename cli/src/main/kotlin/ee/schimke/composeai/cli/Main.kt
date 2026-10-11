@@ -221,6 +221,9 @@ private fun printFullUsage() {
                        --no-triage, --annotate, --guidelines <file|url>,
                        --estimate (print the requests and their predicted cost, and how
                        many previews --max-cost reaches; asks no model and needs no key),
+                       --max-variants <n> (ask only the first n variants of each composable
+                       — device sizes, scroll captures, named variants; the rest are
+                       reported as covered by the one asked; default all),
                        --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
                        decides structural rules from text only, starting minimal and
                        asking for a11y/source/facts over --rounds (default 3), and

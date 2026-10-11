@@ -209,9 +209,23 @@ public data class GuidelineRunOptions(
   public fun withPrice(price: GuidelinePrice?): GuidelineRunOptions =
     carry().also { it.price = price }
 
+  /**
+   * How many variants of each composable ([PreviewGuidelineRequests.family]) are asked, the first
+   * ones given; the rest come back asked nothing, naming the variant asked in their place
+   * ([PreviewGuidelineResult.variantOf]). Null (the default) asks every variant. The vision
+   * checker's only, like [price]. A body property like [retry]: set it with [withMaxVariants].
+   */
+  public var maxVariants: Int? = null
+    private set
+
+  /** These options, asking at most [maxVariants] variants of each composable; null asks all. */
+  public fun withMaxVariants(maxVariants: Int?): GuidelineRunOptions =
+    carry().also { it.maxVariants = maxVariants?.takeIf { n -> n > 0 } }
+
   /** A copy carrying every body property, which `copy` would reset. */
   private fun carry(): GuidelineRunOptions =
     copy().also {
+      it.maxVariants = maxVariants
       it.retry = retry
       it.concurrency = concurrency
       it.checker = checker
@@ -483,7 +497,9 @@ public class GuidelineEngine(
       }
     }
 
-    val prepared = prepare(guidelines, subjects)
+    val (asked, otherVariants) = limitVariants(guidelines, subjects)
+    results += otherVariants
+    val prepared = prepare(guidelines, asked)
     results += prepared.skipped
     prepared.skipped
       .groupBy { it.noRules!! }
@@ -1133,7 +1149,7 @@ public class GuidelineEngine(
    * is expected to reach. Reads the [cache]; never calls the model or the [host].
    */
   public fun plan(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelinePlan {
-    val prepared = prepare(guidelines, subjects)
+    val prepared = prepare(guidelines, limitVariants(guidelines, subjects).first)
     // Prediction prices the vision checker's batches; the Jev checker asks differently.
     val price = options.price.takeIf { options.checker == GuidelineChecker.VISION }
     val predictions = price?.let { p ->
@@ -1160,6 +1176,42 @@ public class GuidelineEngine(
       predictedCostUsd = predictions?.sum(),
       predictedChecked = reached,
     )
+  }
+
+  /**
+   * [subjects] cut to [GuidelineRunOptions.maxVariants] of each composable
+   * ([PreviewGuidelineRequests.family]), the first ones given kept, and the rest as results asked
+   * nothing that name the variant asked in their place. A subject no rule applies to counts for
+   * nothing here; [prepare] reports it.
+   */
+  private fun limitVariants(
+    guidelines: CatalogGuidelinesV1,
+    subjects: List<PreviewSubject>,
+  ): Pair<List<PreviewSubject>, List<PreviewGuidelineResult>> {
+    val limit = options.maxVariants ?: return subjects to emptyList()
+    val kept = mutableMapOf<String, MutableList<PreviewSubject>>()
+    val asked = mutableListOf<PreviewSubject>()
+    val skipped = mutableListOf<PreviewGuidelineResult>()
+    subjects.forEach { subject ->
+      if (guidelines.noRulesFor(subject) != null) {
+        asked += subject
+        return@forEach
+      }
+      val family = kept.getOrPut(PreviewGuidelineRequests.family(subject)) { mutableListOf() }
+      if (family.size < limit) {
+        family += subject
+        asked += subject
+      } else {
+        skipped +=
+          PreviewGuidelineResult(
+              previewId = subject.previewId,
+              renderHash = subject.renderHash,
+              record = record(guidelines, subject, emptyList(), emptyList(), null, 0.0),
+            )
+            .also { it.variantOf = family.first().previewId }
+      }
+    }
+    return asked to skipped
   }
 
   /**

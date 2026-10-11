@@ -402,8 +402,12 @@ class GuidelineEngineTest {
 
   @Test
   fun `source is given up before a picture when the batch's source allowance runs out`() {
-    val long = "x".repeat(600)
-    val subjects = listOf(subject("a").copy(source = long), subject("b").copy(source = long))
+    // Two composables' own sources: identical text would be sent once and charged once.
+    val subjects =
+      listOf(
+        subject("a").copy(source = "x".repeat(600)),
+        subject("b").copy(source = "y".repeat(600)),
+      )
     val batches =
       PreviewGuidelineRequests.batches(
         guidelines,
@@ -633,6 +637,60 @@ class GuidelineEngineTest {
         .plan(guidelines, listOf(subject("p1")))
     assertThat(plan.predictedCostUsd).isNull()
     assertThat(plan.predictedChecked).isNull()
+  }
+
+  @Test
+  fun `a composable's source is sent once per request, however many of its variants are in it`() {
+    val source = "@Composable fun WearList() { /* " + "x".repeat(400) + " */ }"
+    fun size(dp: Int) = subject("WearList_${dp}dp").copy(label = "WearList", source = source)
+    // Room for one copy of the source: without sharing, the second variant would be cut to 20.
+    val batch =
+      PreviewGuidelineRequests.batches(
+          guidelines,
+          listOf(size(192), size(204)),
+          GuidelineBudget(maxSourceChars = source.length + 20),
+        )
+        .single()
+    assertThat(batch.subjects.map { it.source }).containsExactly(source, source)
+    val request = PreviewGuidelineRequests.request(guidelines, batch, "src", emptyList())
+    assertThat(request.userText.split("fun WearList()")).hasSize(2)
+    assertThat(request.userText).contains("Source: the same as s1's.")
+
+    val price = GuidelinePrice(1.0, 4.0)
+    val shared = PreviewGuidelineRequests.predictedCostUsd(guidelines, batch, price, null)
+    val distinct =
+      PreviewGuidelineRequests.predictedCostUsd(
+        guidelines,
+        batch.copy(
+          subjects = listOf(batch.subjects[0], batch.subjects[1].copy(source = source + "// b"))
+        ),
+        price,
+        null,
+      )
+    assertThat(shared).isLessThan(distinct)
+  }
+
+  @Test
+  fun `max variants asks the first variant of each composable and names it for the rest`() {
+    val model = FakeModel().apply { repeat(2) { replies += PASS_ONE } }
+    fun size(dp: Int, composable: String) =
+      subject("${composable}_${dp}dp").copy(label = composable)
+    val options =
+      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+        .withMaxVariants(1)
+    val subjects = listOf(size(192, "WearList"), size(204, "WearList"), size(192, "WearScaffold"))
+    val run = GuidelineEngine(model, options = options).run(guidelines, subjects)
+
+    assertThat(model.requests).hasSize(2)
+    val skipped = run.results.single { it.previewId == "WearList_204dp" }
+    assertThat(skipped.variantOf).isEqualTo("WearList_192dp")
+    assertThat(skipped.pending).isFalse()
+    assertThat(run.results.filter { it.variantOf == null }.map { it.previewId })
+      .containsExactly("WearList_192dp", "WearScaffold_192dp")
+    assertThat(GuidelineEngine(FakeModel(), options = options).plan(guidelines, subjects).previews)
+      .isEqualTo(2)
+    // Unset, every variant is asked.
+    assertThat(GuidelineRunOptions().withMaxVariants(0).maxVariants).isNull()
   }
 
   @Test

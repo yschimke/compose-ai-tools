@@ -376,6 +376,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun getJudge ()Ljava/lang/String;
 	public final fun getMaxCostUsd ()Ljava/lang/Double;
 	public final fun getMaxRounds ()I
+	public final fun getMaxVariants ()Ljava/lang/Integer;
 	public final fun getModel ()Ljava/lang/String;
 	public final fun getPrice ()Lee/schimke/composeai/guidelines/GuidelinePrice;
 	public final fun getRanBy ()Ljava/lang/String;
@@ -389,6 +390,7 @@ public final class ee/schimke/composeai/guidelines/GuidelineRunOptions {
 	public final fun withChecker (Lee/schimke/composeai/guidelines/GuidelineChecker;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withConcurrency (I)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withJudge (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
+	public final fun withMaxVariants (Ljava/lang/Integer;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withPrice (Lee/schimke/composeai/guidelines/GuidelinePrice;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withReasoningEffort (Ljava/lang/String;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
 	public final fun withRetry (Lee/schimke/composeai/guidelines/GuidelineRetry;)Lee/schimke/composeai/guidelines/GuidelineRunOptions;
@@ -761,6 +763,7 @@ public final class ee/schimke/composeai/guidelines/PreviewGuidelineResult {
 	public final fun getRecord ()Lee/schimke/composeai/guidelines/protocol/GuidelineRecordV1;
 	public final fun getRenderHash ()Ljava/lang/String;
 	public final fun getUnchecked ()Ljava/util/List;
+	public final fun getVariantOf ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

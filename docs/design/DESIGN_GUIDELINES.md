@@ -588,6 +588,13 @@ variant (device size, scroll capture, named variant) before any composable's sec
 run checks each composable once before spending on a second size of any. A run over the whole
 module prunes the cache to the verdicts it read or wrote.
 
+Two more levers keep a PR's check to a few cents. `--max-variants <n>` (the `apply` action's
+`guidelines-max-variants`) asks only the first n variants of each composable; the rest come back
+naming the variant asked in their place (`variantOf`) and the PR comment lists them apart, neither
+checked nor missed. And variants of one composable share its source: a request sends that source
+once and names it for the rest ("Source: the same as s1's"), so it is charged once against the
+batch's source allowance and the prediction.
+
 At the default model (`deepseek/deepseek-v4.1-flash`, called directly) a screen costs roughly
 $0.003–0.007; batching shares the rules and system prompt across subjects, so a component batch
 costs less per subject. Every record carries the model that actually answered, its provider, the

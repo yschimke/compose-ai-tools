@@ -55,6 +55,7 @@ internal object CliFlagValidation {
         "--no-triage",
         "--annotate",
         "--estimate",
+        "--max-variants",
         "--guidelines",
         "--surface",
         "--profile",
