@@ -228,8 +228,14 @@ is asked once more, budget permitting, and is otherwise a failed request.
   `error.metadata.limit_source` is `openrouter_in_flight_budget` (the estimated cost of the key's
   requests in flight, relative to its balance) are **rate limits**: the server's `Retry-After` is
   waited out by every request of the run, not only the one that met it, and they are never split.
-  A wait longer than 60 s is not waited for. 400, 401, 403, 404 and any other 402 (credits, a key
-  or workspace limit) are not asked again.
+  A wait longer than 60 s is not waited for. 400, 401, 403 and 404 are not asked again.
+- **Key limit.** A 403 `Key limit exceeded` or any other 402 (no credit) is the key's, not the
+  request's: every later request would meet it too, so the run stops asking at the first one and
+  reports what it did not reach as capped (`pending`), not failed, and the CLI asks nothing more
+  for the modules after it. Before asking anything, the CLI reads what the key has left
+  (`GET /api/v1/key`, `OpenRouterKeyStatus`) and caps the run at it as well as `--max-cost`, so a
+  key at its weekly limit is asked nothing instead of answering each request 403. The limit is the
+  key's, shared by every model asked with it.
 - **Split.** A batch that still fails is split in half and each half asked, down to single
   subjects, so one slow batch cannot leave every preview in it unchecked. A timeout on a batch of
   several subjects is split at once rather than asked again, since the same request would take as
@@ -594,9 +600,19 @@ then the smallest, then inward, since the extremes are where a layout breaks; `s
 largest in each width class (under 225dp, 225–599, 600–839, 840+), so a Wear preview at five sizes
 is asked at two. Only sizes are collapsed — a named variant, theme or font scale is a preview of its
 own. The rest come back naming the size asked in their place (`variantOf`) and the PR comment lists
-them apart, neither checked nor missed. And variants of one composable share its source: a request sends that source
+them apart, neither checked nor missed — unless the size asked in their place went unanswered, when
+they are missed with it. And variants of one composable share its source: a request sends that source
 once and names it for the rest ("Source: the same as s1's"), so it is charged once against the
 batch's source allowance and the prediction.
+
+What a run learns about its model is kept beside the verdicts, in `model-ledger.json`, keyed by the
+cache's model identity (model, reasoning effort, checker), and carried with the cache between CI
+runs. It is per model, because both are the model's: how far its bills ran from the prediction (the
+`observedCostRatio` a run reports, smoothed half way per run), which scales the next run's
+predictions and its plan before any answer has come back; and whether OpenRouter answered that no
+provider honours the strict reply schema, or `reasoning`, so the next run is routed relaxed from
+its first request instead of paying a rejected one to learn it again. A refusal is acted on for a
+week, then strict routing is tried again, since providers come and go.
 
 At the default model (`deepseek/deepseek-v4.1-flash`, called directly) a screen costs roughly
 $0.003–0.007; batching shares the rules and system prompt across subjects, so a component batch

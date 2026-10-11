@@ -91,6 +91,12 @@ object ScreenGenerator {
    */
   data class Frame(val template: String, val imports: List<String> = emptyList())
 
+  /** What [generate] writes: a screen and its private components, or only the components. */
+  enum class Output {
+    SCREEN,
+    COMPONENTS,
+  }
+
   /** The holes a [Frame] may write: the root, and nothing a template could leave empty. */
   private val FRAME_HOLES = setOf("content")
 
@@ -154,7 +160,44 @@ object ScreenGenerator {
     preview: Preview? = null,
     locals: Map<String, String> = emptyMap(),
     frame: Frame?,
+  ): Result =
+    generate(
+      document,
+      components,
+      packageName,
+      expressionPackages,
+      preview,
+      locals,
+      frame,
+      Output.SCREEN,
+    )
+
+  /**
+   * [generate], writing [output]. [Output.COMPONENTS] writes only the document's own composable
+   * functions ([ScreenDocument.functions]), declared `internal` so code in the same module can call
+   * them with real values and callbacks, and no screen: the root is how a design draws its
+   * components, not part of their API.
+   */
+  fun generate(
+    document: ScreenDocument,
+    components: ComponentRecordFile,
+    packageName: String = "generated.screen",
+    expressionPackages: Set<String> = emptySet(),
+    preview: Preview? = null,
+    locals: Map<String, String> = emptyMap(),
+    frame: Frame?,
+    output: Output,
   ): Result {
+    if (output == Output.COMPONENTS) {
+      val issues = buildList {
+        if (document.functions.isEmpty()) add("the document declares no components to write")
+        if (preview != null) add("a components file has no screen to preview")
+        if (frame != null) add("a components file has no screen root to frame")
+        if (document.state.isNotEmpty())
+          add("a components file has no screen to hold state; pass it to the components instead")
+      }
+      if (issues.isNotEmpty()) return Result.Refused(issues)
+    }
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
       return Result.Refused(
@@ -423,7 +466,8 @@ object ScreenGenerator {
     // The body is not an initializer: every declaration is in scope there.
     context.initializerScope = null
     val body =
-      if (frame == null) context.node(document.root, depth = 1)
+      if (output == Output.COMPONENTS) ""
+      else if (frame == null) context.node(document.root, depth = 1)
       else
         when (
           val framed =
@@ -438,7 +482,8 @@ object ScreenGenerator {
               if (it.isBlank()) "" else INDENT + it
             }
         }
-    val functionBodies = context.functionBodies()
+    val functionBodies =
+      context.functionBodies(if (output == Output.COMPONENTS) "internal" else "private")
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
     val declarations = preamble.filterNotNull().flatten()
 
@@ -530,13 +575,15 @@ object ScreenGenerator {
           }
         )
       }
-      appendLine("@Composable")
-      appendLine("fun ${document.name}() {")
-      declarations.forEach { appendLine("    $it") }
-      appendLine(body)
-      appendLine("}")
-      functionBodies.forEach { function ->
-        appendLine()
+      if (output == Output.SCREEN) {
+        appendLine("@Composable")
+        appendLine("fun ${document.name}() {")
+        declarations.forEach { appendLine("    $it") }
+        appendLine(body)
+        appendLine("}")
+      }
+      functionBodies.forEachIndexed { index, function ->
+        if (output == Output.SCREEN || index > 0) appendLine()
         if (optIns.isNotEmpty())
           appendLine(optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" })
         if (androidxOptIns.isNotEmpty())
@@ -872,7 +919,7 @@ object ScreenGenerator {
             .build()
       }
 
-    fun functionBodies(): List<String> =
+    fun functionBodies(visibility: String): List<String> =
       functions.values.map { function ->
         parameterScope = function.parameters.associateBy { it.name }
         rowScope = null
@@ -887,7 +934,7 @@ object ScreenGenerator {
                 }
               "${it.name}: $type"
             }
-          "private fun ${function.name}($parameters) {\n${node(function.root, 1)}\n}"
+          "$visibility fun ${function.name}($parameters) {\n${node(function.root, 1)}\n}"
         } finally {
           parameterScope = null
           rowScope = null

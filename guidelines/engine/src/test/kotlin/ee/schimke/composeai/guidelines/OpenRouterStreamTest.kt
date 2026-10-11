@@ -263,6 +263,96 @@ class OpenRouterStreamTest {
     assertThat(stream.completion()).doesNotContain("others pass?")
   }
 
+  @Test
+  fun `a client that learned no provider honours the parameters asks relaxed from the start`() {
+    val (server, bodies) = serve { exchange, _ -> exchange.sse(events) }
+    try {
+      val client =
+        client(server).also {
+          it.learned(relaxedAt = System.currentTimeMillis(), noReasoningAt = null)
+        }
+      assertThat(client.complete(request, "m").status).isEqualTo(200)
+      assertThat(bodies.single()).doesNotContain("require_parameters")
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `a client shared by runs starts each from its own record, not another run's stale one`() {
+    val (server, bodies) = serve { exchange, _ -> exchange.sse(events) }
+    try {
+      val week = GuidelineModelRecord.RELEARN_AFTER_MILLIS
+      val client = client(server).also { it.learned(System.currentTimeMillis() - 2 * week, null) }
+      // A run whose model has no record: the client's stale refusal is dropped, strict is tried.
+      val dir = java.nio.file.Files.createTempDirectory("guidelines-shared").toFile()
+      GuidelineEngine(
+          client,
+          cache = GuidelineResultCache(dir),
+          options = GuidelineRunOptions(triage = false),
+        )
+        .run(guidelines, listOf(subject))
+      assertThat(bodies.first()).contains("require_parameters")
+      assertThat(client.relaxedParameters).isFalse()
+      assertThat(GuidelineResultCache(dir).ledger.get(OpenRouterClient.DEFAULT_MODEL)!!.relaxedAt)
+        .isNull()
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `the key's remaining limit is read from OpenRouter`() {
+    val body =
+      """{"data":{"label":"ci","limit":5,"usage":4.75,"limit_remaining":0.25,""" +
+        """"limit_reset":"weekly","is_free_tier":false}}"""
+    val (server, _) =
+      serve { exchange, _ ->
+        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.sendResponseHeaders(200, body.length.toLong())
+        exchange.responseBody.write(body.toByteArray())
+      }
+    try {
+      val status = client(server).keyStatus()!!
+      assertThat(status).isEqualTo(OpenRouterKeyStatus(5.0, 4.75, 0.25, "weekly"))
+      assertThat(status.describe())
+        .isEqualTo("the OpenRouter key has $0.25 left of its $5.00 weekly limit")
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun `a key status is read field by field`() {
+    // No limit: nothing to cap at.
+    assertThat(OpenRouterKeyStatus.parse("""{"data":{"limit":null,"usage":1.5}}"""))
+      .isEqualTo(OpenRouterKeyStatus(null, 1.5, null, null))
+    // A limit that never resets: what is left is the limit less the usage.
+    assertThat(OpenRouterKeyStatus.parse("""{"data":{"limit":2,"usage":2.5}}"""))
+      .isEqualTo(OpenRouterKeyStatus(2.0, 2.5, 0.0, null))
+    // A resetting limit without `limit_remaining`: usage spans every period, so nothing is assumed.
+    assertThat(
+        OpenRouterKeyStatus.parse("""{"data":{"limit":2,"usage":9,"limit_reset":"daily"}}""")
+      )
+      .isEqualTo(OpenRouterKeyStatus(2.0, 9.0, null, "daily"))
+    assertThat(OpenRouterKeyStatus.parse("""{"data":{"label":"x"}}""")).isNull()
+    assertThat(OpenRouterKeyStatus.parse("not json")).isNull()
+  }
+
+  @Test
+  fun `a key at its spending limit is told apart from a forbidden key and the in-flight budget`() {
+    val limit = """{"error":{"code":403,"message":"Key limit exceeded (weekly limit)"}}"""
+    assertThat(FailedRequest.of(ModelResponse(403, limit)).kind).isEqualTo(FailureKind.KEY_LIMIT)
+    val credits = """{"error":{"code":402,"message":"Insufficient credits"}}"""
+    assertThat(FailedRequest.of(ModelResponse(402, credits)).kind).isEqualTo(FailureKind.KEY_LIMIT)
+    val forbidden = """{"error":{"code":403,"message":"Forbidden"}}"""
+    assertThat(FailedRequest.of(ModelResponse(403, forbidden)).kind).isEqualTo(FailureKind.FATAL)
+    // A stream's 200 sent before the limit was found: the same reading from the body.
+    assertThat(GuidelineResponse.failure(limit)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
+    assertThat(GuidelineResponse.failure(credits)!!.kind).isEqualTo(FailureKind.KEY_LIMIT)
+    assertThat(GuidelineResponse.failure(forbidden)!!.kind).isEqualTo(FailureKind.FATAL)
+  }
+
   private fun HttpExchange.noEndpoints() {
     val body =
       """{"error":{"code":404,"message":"No endpoints found that can handle the """ +

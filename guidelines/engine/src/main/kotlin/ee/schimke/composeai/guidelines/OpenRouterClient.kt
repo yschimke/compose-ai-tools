@@ -210,10 +210,12 @@ public class OpenRouterClient(
       // up the strict reply schema, which matters more.
       if (effort != null && !reasoningUnsupported) {
         reasoningUnsupported = true
+        noReasoningSince = System.currentTimeMillis()
         val plain = send(requireParameters = true)
         if (!noEndpointHonours(plain)) return plain
       }
       relaxedParameters = true
+      relaxedSince = System.currentTimeMillis()
     }
     return send(requireParameters = false)
   }
@@ -275,6 +277,52 @@ public class OpenRouterClient(
 
   override fun decide(body: JsonObject): ModelResponse =
     post("$baseUrl/api/alpha/decisions", body.toString())
+
+  /**
+   * What this key may still spend (`GET /api/v1/key`); null when OpenRouter cannot be asked or does
+   * not say, and the run is capped by its own cost cap only.
+   */
+  public fun keyStatus(): OpenRouterKeyStatus? =
+    try {
+      val request =
+        Request.Builder()
+          .url("$baseUrl/api/v1/key")
+          .header("Authorization", "Bearer $apiKey")
+          .header("X-Title", title)
+          .get()
+          .build()
+      http.newCall(request).execute().use { response ->
+        if (response.isSuccessful) OpenRouterKeyStatus.parse(response.body.string()) else null
+      }
+    } catch (e: IOException) {
+      null
+    }
+
+  /**
+   * Starts this client where an earlier run's left off ([GuidelineModelLedger]): routed without
+   * `provider.require_parameters` when no provider honoured them, and without `reasoning` when that
+   * was what none honoured, so the run does not pay a rejected request to learn it again.
+   */
+  internal fun learned(relaxedAt: Long?, noReasoningAt: Long?) {
+    relaxedParameters = relaxedAt != null
+    relaxedSince = relaxedAt
+    reasoningUnsupported = noReasoningAt != null
+    noReasoningSince = noReasoningAt
+  }
+
+  /**
+   * When [relaxedParameters] was learned (epoch millis): when OpenRouter refused, or the refusal an
+   * earlier run recorded ([learned]). A client shared by several runs carries it between them, so a
+   * run that never met a refusal does not record one as new.
+   */
+  @Volatile
+  internal var relaxedSince: Long? = null
+    private set
+
+  /** As [relaxedSince], for [reasoningUnsupported]. */
+  @Volatile
+  internal var noReasoningSince: Long? = null
+    private set
 
   private fun post(url: String, body: String): ModelResponse =
     try {

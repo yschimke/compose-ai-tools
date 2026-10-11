@@ -300,7 +300,11 @@ internal object ComposableSignature {
    * Read from `@kotlin.Metadata`, so parameter names, defaults and the declared return type are the
    * source's, not the JVM's. Empty when the class has no readable metadata or no such function.
    */
-  fun factorySignatures(classInfo: ClassInfo, name: String): List<FactorySignature> {
+  fun factorySignatures(
+    classInfo: ClassInfo,
+    name: String,
+    supertypesOf: (jvmName: String) -> Set<String> = { emptySet() },
+  ): List<FactorySignature> {
     val metadata = readClassMetadata(classInfo) ?: return emptyList()
     val kmClass =
       (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
@@ -313,15 +317,18 @@ internal object ComposableSignature {
     return kmClass.functions
       .filter { it.name == name && it.visibility == Visibility.PUBLIC }
       .mapNotNull { fn ->
-        val returnType =
-          (fn.returnType.classifier as? KmClassifier.Class)
-            ?.name
-            ?.replace('/', '.')
-            ?.replace('$', '.') ?: return@mapNotNull null
+        // Metadata spells `pkg/Outer.Nested`; the class file is `pkg.Outer$Nested`.
+        val kmName =
+          (fn.returnType.classifier as? KmClassifier.Class)?.name ?: return@mapNotNull null
+        val jvmReturnType =
+          kmName.substringBeforeLast('/', "").let {
+            if (it.isEmpty()) "" else it.replace('/', '.') + "."
+          } + kmName.substringAfterLast('/').replace('.', '$')
         FactorySignature(
           callableFqn = "${classInfo.name.replace('$', '.')}.$name",
-          returnTypeFqn = returnType,
+          returnTypeFqn = jvmReturnType.replace('$', '.'),
           parameters = fn.valueParameters.map { it.toTargetParameter() },
+          returnSupertypes = supertypesOf(jvmReturnType),
         )
       }
   }

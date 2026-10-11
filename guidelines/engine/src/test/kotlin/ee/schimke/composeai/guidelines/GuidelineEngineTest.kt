@@ -8,6 +8,7 @@ import ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.JsonObject
@@ -860,6 +861,109 @@ class GuidelineEngineTest {
     assertThat(GuidelinePrice(1.0, 4.0).costUsd(1_000_000, 500_000)).isWithin(1e-12).of(3.0)
   }
 
+  @Test
+  fun `a key at its spending limit stops the run at the first refusal`() {
+    val model =
+      FakeModel().apply {
+        status = 403
+        errorBody = """{"error":{"code":403,"message":"Key limit exceeded (weekly limit)"}}"""
+      }
+    val options =
+      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+        .withConcurrency(1)
+    val run =
+      GuidelineEngine(model, options = options).run(guidelines, (1..4).map { subject("p$it") })
+    // One refusal, not one per batch, nor a retry or a split: every later request would meet it.
+    assertThat(model.requests).hasSize(1)
+    assertThat(run.keyLimitReached).isTrue()
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.results.all { it.pending }).isTrue()
+    assertThat(run.problems.single()).contains("spending limit is reached; 4 previews")
+  }
+
+  @Test
+  fun `a key with nothing left is asked nothing`() {
+    val model = FakeModel()
+    val status = OpenRouterKeyStatus(5.0, 5.0, 0.0, "weekly")
+    val run =
+      GuidelineEngine(
+          model,
+          options = GuidelineRunOptions(triage = false, maxCostUsd = 0.25).withKeyStatus(status),
+        )
+        .run(guidelines, listOf(subject("a")))
+    assertThat(model.requests).isEmpty()
+    assertThat(run.failedRequests).isEqualTo(0)
+    assertThat(run.problems.single())
+      .startsWith("the OpenRouter key has $0.00 left of its $5.00 weekly limit, below the cost cap")
+  }
+
+  @Test
+  fun `what a key has left caps a plan below the cost cap`() {
+    val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
+    val options = GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+    val predicted = predictedOne(price, options)
+    val plan =
+      GuidelineEngine(
+          FakeModel(),
+          options =
+            options
+              .copy(maxCostUsd = predicted * 10)
+              .withPrice(price)
+              .withKeyStatus(OpenRouterKeyStatus(5.0, null, predicted * 1.5, "weekly")),
+        )
+        .plan(guidelines, (1..4).map { subject("p$it") })
+    assertThat(plan.predictedChecked).isEqualTo(1)
+  }
+
+  @Test
+  fun `how far a model's bills ran from prediction is learned for its next run`() {
+    val dir = Files.createTempDirectory("guidelines-ledger").toFile()
+    val price = GuidelinePrice(promptPerMillion = 1.0, completionPerMillion = 4.0)
+    val options =
+      GuidelineRunOptions(triage = false, budget = GuidelineBudget(maxSubjects = 1))
+        .withPrice(price)
+    val predicted = predictedOne(price, options)
+    val model =
+      FakeModel().apply {
+        repeat(2) {
+          replies += PASS_ONE
+          costs += predicted * 3
+        }
+      }
+    val first =
+      GuidelineEngine(model, cache = GuidelineResultCache(dir), options = options)
+        .run(guidelines, listOf(subject("p1"), subject("p2")))
+    assertThat(first.observedCostRatio!!).isWithin(1e-9).of(3.0)
+    assertThat(File(dir, GuidelineModelLedger.FILE_NAME).isFile).isTrue()
+
+    // Unseen previews, a fresh cache object on the same directory: the plan starts at 3x.
+    val plan =
+      GuidelineEngine(FakeModel(), cache = GuidelineResultCache(dir), options = options)
+        .plan(guidelines, listOf(subject("p3"), subject("p4")))
+    assertThat(plan.predictedCostUsd!!).isWithin(1e-9).of(predicted * 2 * 3)
+
+    // A cheaper run moves it half way, not all the way.
+    val cheaper =
+      FakeModel().apply {
+        replies += PASS_ONE
+        costs += predicted
+      }
+    GuidelineEngine(cheaper, cache = GuidelineResultCache(dir), options = options)
+      .run(guidelines, listOf(subject("p3")))
+    assertThat(GuidelineResultCache(dir).ledger.get(options.cacheModel)!!.costRatio!!)
+      .isWithin(1e-9)
+      .of(2.0)
+  }
+
+  @Test
+  fun `a parameter refusal is acted on for a week, then asked about again`() {
+    val day = 24L * 60 * 60 * 1000
+    val record = GuidelineModelRecord(relaxedAt = 10 * day)
+    assertThat(record.fresh(record.relaxedAt, 16 * day)).isTrue()
+    assertThat(record.fresh(record.relaxedAt, 18 * day)).isFalse()
+    assertThat(record.fresh(null, 10 * day)).isFalse()
+  }
+
   /** What asking about one [subject] alone is predicted to cost under [options]. */
   private fun predictedOne(price: GuidelinePrice, options: GuidelineRunOptions): Double =
     PreviewGuidelineRequests.predictedCostUsd(
@@ -1281,10 +1385,11 @@ class GuidelineEngineTest {
     val decisions = mutableListOf<JsonObject>()
     var decision: String? = null
     var status: Int = 200
+    var errorBody: String = """{"error":{"message":"busy"}}"""
 
     override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
       requests += request
-      if (status !in 200..299) return ModelResponse(status, """{"error":{"message":"busy"}}""")
+      if (status !in 200..299) return ModelResponse(status, errorBody)
       return ModelResponse(
         200,
         completion(replies.removeFirst(), costs.removeFirstOrNull() ?: 0.001),

@@ -915,6 +915,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             writtenType(value, properties, "$where.$name", this)
           }
         val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
+        // The overload the record speaks for, which the generator calls whenever it applies.
+        val own = candidates.indexOfFirst {
+          it == null ||
+            it.descriptor == targetRecord.symbol.descriptor ||
+            it.parameters == targetRecord.parameters
+        }
         for ((parameter, synthesis) in target.synthesize) {
           for (property in synthesis.properties.values) {
             if (property !in properties)
@@ -947,7 +953,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               at,
             )
           }
-          addAll(resolution(at, candidates, mismatches, exactlyOne))
+          addAll(resolution(at, candidates, mismatches, own, exactlyOne))
           // In a role the context's arguments are written too, so the call must still resolve.
           for ((role, context) in target.contexts) {
             val inRole = "$at in $role"
@@ -967,7 +973,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             }
             // Only what the role adds: the target's own mismatches are reported once, above.
             if (mismatches.any { it.isEmpty() })
-              addAll(resolution(inRole, candidates, roleMismatches, exactlyOne))
+              addAll(resolution(inRole, candidates, roleMismatches, own, exactlyOne))
           }
         }
       }
@@ -1001,18 +1007,22 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
   }
 
   /**
-   * Nothing when some overload takes the call (with [exactlyOne], exactly one), else why not.
-   * Kotlin refuses a call two overloads take equally, so a pattern choosing between them chooses
-   * nothing.
+   * Nothing when the call resolves as the generator resolves it, else why not: the record's [own]
+   * overload when it takes the call, otherwise exactly one other. Kotlin refuses a call two
+   * overloads take equally, and so does the generator, so two alternates taking it choose nothing.
+   * With [exactlyOne] (a slot pattern, which is how the overload is chosen) even the record's own
+   * overload must be the only one.
    */
   private fun resolution(
     where: String,
     candidates: List<ComponentOverload?>,
     mismatches: List<List<String>>,
+    own: Int,
     exactlyOne: Boolean = false,
   ): List<String> =
     when {
-      exactlyOne && mismatches.count { it.isEmpty() } > 1 ->
+      !exactlyOne && own >= 0 && mismatches[own].isEmpty() -> emptyList()
+      mismatches.count { it.isEmpty() } > 1 ->
         listOf(
           "$where: overloads " +
             candidates
@@ -1048,7 +1058,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$where: no parameter $name")
         continue
       }
-      if (type != null && type != parameter.typeFqn)
+      if (type != null && !assignable(type, parameter.typeFqn))
         add("$where.$name: writes $type, parameter takes ${parameter.typeFqn}")
     }
     for (fill in fills) {
@@ -1117,7 +1127,11 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               "$where: ${value.callableFqn} returns ${overloads.first().returnTypeFqn}, not ${value.typeFqn}"
           // A property-backed argument (or a nested call of them) drops out when its property is
           // unset; only a fixed one is written on every node, so only it may fill a required slot.
-          val always = value.arguments.filterValues { it is ExportProjection.Value.Fixed }.keys
+          // Except the call's one argument when nothing is fixed: the call itself is written only
+          // when some argument is, so whenever `spacedBy(space = …)` is written, `space` is.
+          val fixed = value.arguments.filterValues { it is ExportProjection.Value.Fixed }.keys
+          val always =
+            if (fixed.isEmpty() && value.arguments.size == 1) value.arguments.keys else fixed
           val mismatches = overloads.map { overloadMismatch(it, written, always) }
           if (mismatches.none { it == null }) {
             problems +=
@@ -1160,6 +1174,16 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
    * name and whose other parameters are all defaulted. A required parameter must be among [always],
    * the arguments written on every node, since lowering omits an unset property's.
    */
+  /**
+   * Whether a value of [type] may be passed where [to] is taken: the same type, or a discovered
+   * factory's return type whose recorded supertypes include it (`Arrangement.spacedBy` returns a
+   * `HorizontalOrVertical`, which is a `Vertical`).
+   */
+  private fun assignable(type: String, to: String?): Boolean =
+    type == to ||
+      (to != null &&
+        projectionFactories.any { it.returnTypeFqn == type && to in it.returnSupertypes })
+
   private fun overloadMismatch(
     overload: FactorySignature,
     written: Map<String, String?>,
@@ -1171,7 +1195,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         val parameter = parameters[name]
         when {
           parameter == null -> add("no parameter $name")
-          type != null && parameter.typeFqn != null && type != parameter.typeFqn ->
+          type != null && parameter.typeFqn != null && !assignable(type, parameter.typeFqn) ->
             add("$name takes ${parameter.typeFqn}, written $type")
         }
       }
