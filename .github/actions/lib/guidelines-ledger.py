@@ -116,6 +116,27 @@ def short(sha: str) -> str:
     return sha[:7] if sha else "?"
 
 
+def heading_end(lines: list[str]) -> int:
+    """The index just after the comment's heading (the first `#` line after the marker)."""
+    at = 1
+    while at < len(lines) and not lines[at].startswith("#"):
+        at += 1
+    return at + 1 if at < len(lines) else 1
+
+
+def place(body: str, block: str) -> str:
+    """[block] right under [body]'s heading (and any skipped banner there). Near the top, not at
+    the end: `post-comment.sh` keeps only the head of an over-long body, and a ledger cut off
+    there would reset the total and let the next push run unasked."""
+    lines = body.rstrip("\n").split("\n")
+    at = heading_end(lines)
+    if at < len(lines) and BANNER_START in "\n".join(lines[at:at + 3]):
+        end = next((i for i in range(at, len(lines)) if lines[i] == BANNER_END), at)
+        at = end + 1
+    lines[at:at] = ["", block.rstrip("\n"), ""]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip("\n") + "\n"
+
+
 def section(totals: dict, this_run: str, max_cost: str) -> str:
     runs = totals["runs"]
     skipped = totals["skipped"]
@@ -129,8 +150,6 @@ def section(totals: dict, this_run: str, max_cost: str) -> str:
     return "\n".join(
         [
             SECTION_START,
-            "",
-            "---",
             f"💰 **This PR so far: ${totals['usd']:.4f}** over {runs} model check(s){skipped_text}. "
             f"{this_run}",
             "",
@@ -140,6 +159,8 @@ def section(totals: dict, this_run: str, max_cost: str) -> str:
             f"<sub>Each check spends {cap}on the model. Later pushes are not re-checked until "
             "someone with write access ticks the box; it clears once the check has run.</sub>",
             f"<!-- guidelines-ledger {data} -->",
+            "",
+            "---",
             SECTION_END,
             "",
         ]
@@ -156,7 +177,7 @@ def finalize(body: str, previous: str, sha: str, run_usd: float, checked: bool,
         this_run = f"This revision (`{short(sha)}`): ${run_usd:.4f}."
     else:
         this_run = f"This revision (`{short(sha)}`) asked the model nothing: $0."
-    return strip(body) + "\n" + section(totals, this_run, max_cost)
+    return place(strip(body), section(totals, this_run, max_cost))
 
 
 def skipped(previous: str, sha: str, max_cost: str) -> str:
@@ -169,7 +190,7 @@ def skipped(previous: str, sha: str, max_cost: str) -> str:
         [
             BANNER_START,
             f"⏸️ **Not re-checked at `{short(sha)}`.** The findings below are {from_text} and may "
-            "no longer match this revision. Tick the box at the end of this comment, then push "
+            "no longer match this revision. Tick the box below, then push "
             "again or re-run this workflow, to check it.",
             BANNER_END,
             "",
@@ -177,14 +198,11 @@ def skipped(previous: str, sha: str, max_cost: str) -> str:
     )
     lines = body.split("\n")
     # After the marker and the heading, so the comment still opens on what it is.
-    at = 1
-    while at < len(lines) and not lines[at].startswith("#"):
-        at += 1
-    at = at + 1 if at < len(lines) else 1
+    at = heading_end(lines)
     lines[at:at] = ["", banner]
     body = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
     this_run = f"This revision (`{short(sha)}`): not checked, $0."
-    return body.rstrip() + "\n\n" + section(totals, this_run, max_cost)
+    return place(body, section(totals, this_run, max_cost))
 
 
 def main(argv: list[str] | None = None) -> int:
