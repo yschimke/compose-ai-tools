@@ -2,6 +2,7 @@ package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -614,6 +615,39 @@ class ExportProjectionTest {
       )
     }
     assertThat(written.exceptionOrNull()?.message).contains("both a DSL slot and written")
+  }
+
+  @Test
+  fun `a property only another target writes is refused, unless unset`() {
+    val container = ExportProjection.Value.Property("containerColor", ExportProjection.Codec.Text)
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target("catalog/Button", mapOf("containerColor" to container)),
+          ExportProjection.Target(
+            "catalog/OutlinedButton",
+            emptyMap(),
+            variants = setOf("outlined"),
+          ),
+        ),
+        variantProperty = "variant",
+      )
+    val outlined = JsonPrimitive("outlined")
+    val refused =
+      projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive("primary")))
+        as ExportProjection.Lowered.Refused
+    assertThat(refused.reasons.single())
+      .isEqualTo("containerColor: not written by catalog/OutlinedButton")
+    // The seeded empty default and an explicit null are unset, so nothing is dropped.
+    assertThat(
+        projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive("")))
+      )
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+    assertThat(projection.lower(mapOf("variant" to outlined, "containerColor" to JsonNull)))
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
+    // A property no target writes is the host's to refuse, not the projection's.
+    assertThat(projection.lower(mapOf("variant" to outlined, "other" to JsonPrimitive("x"))))
+      .isInstanceOf(ExportProjection.Lowered.Node::class.java)
   }
 
   @Test

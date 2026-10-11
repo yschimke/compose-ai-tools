@@ -480,19 +480,22 @@ data class ExportProjection(
   val properties: Set<String>
     get() = buildSet {
       variantProperty?.let(::add)
-      fun visit(value: Value) {
-        when (value) {
-          is Value.Property -> add(value.name)
-          is Value.Call -> value.arguments.values.forEach(::visit)
-          is Value.Fixed -> Unit
-        }
-      }
-      targets.forEach { target ->
-        target.parameters.values.forEach(::visit)
-        target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
-        target.synthesize.values.forEach { addAll(it.properties.values) }
+      targets.forEach { addAll(read(it)) }
+    }
+
+  /** The wire properties [target] writes, in any role, or copies to a synthesized child. */
+  private fun read(target: Target): Set<String> = buildSet {
+    fun visit(value: Value) {
+      when (value) {
+        is Value.Property -> add(value.name)
+        is Value.Call -> value.arguments.values.forEach(::visit)
+        is Value.Fixed -> Unit
       }
     }
+    target.parameters.values.forEach(::visit)
+    target.contexts.values.forEach { it.parameters.values.forEach(::visit) }
+    target.synthesize.values.forEach { addAll(it.properties.values) }
+  }
 
   /**
    * The parameter of [record] that [property] is written to as itself, through no factory call —
@@ -632,6 +635,16 @@ data class ExportProjection(
       if (variant == null) targets.firstOrNull { it.variants == null }
       else targets.firstOrNull { it.variants?.contains(variant) == true }
     if (target == null) return Lowered.Refused(listOf("no target for $variantProperty=$variant"))
+    // A property another target writes but this one does not (an outlined button's
+    // `containerColor`) would be dropped, so stating one is refused, as a host refuses a property
+    // no target writes.
+    val read = read(target)
+    for (name in
+      (properties.keys intersect this.properties) - read - setOfNotNull(variantProperty)) {
+      val raw = wireValue(properties[name]) ?: continue
+      if (raw is JsonNull || (raw.isString && raw.content.isEmpty())) continue
+      reasons += "$name: not written by ${target.record}"
+    }
     val context = role?.let { target.contexts[it] }
     val arguments = buildMap {
       for ((parameter, value) in target.parameters + context?.parameters.orEmpty()) {
