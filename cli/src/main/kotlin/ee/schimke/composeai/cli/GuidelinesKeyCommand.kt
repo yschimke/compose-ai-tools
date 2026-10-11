@@ -25,9 +25,30 @@ internal class GuidelinesKeyCommand(
 ) {
   private val json = "--json" in args
 
+  /** `--for <base-url>`: the key for that OpenAI-compatible endpoint rather than OpenRouter's. */
+  private val endpoint: String? = args.flagValue("--for")
+
+  /** The arguments that are not flags or flag values: the subcommand, then its directory. */
+  private val positional: List<String> = args.filterIndexed { i, arg ->
+    !arg.startsWith("-") && args.getOrNull(i - 1) != "--for"
+  }
+
+  private val provider: String
+    get() = endpoint?.let(GuidelineCredentials::endpointProvider) ?: GuidelineCredentials.OPENROUTER
+
+  private val envVar: String
+    get() = if (endpoint != null) GuidelineCredentials.MODEL_ENV else GuidelineCredentials.ENV
+
+  private val label: String
+    get() = endpoint?.let { "key for $it" } ?: "OpenRouter key"
+
   fun run() {
+    if (endpoint != null && runCatching { provider }.isFailure) {
+      System.err.println("guidelines key: --for $endpoint is not an http(s) URL")
+      exitProcess(1)
+    }
     exitProcess(
-      when (args.firstOrNull { !it.startsWith("-") }) {
+      when (positional.firstOrNull()) {
         "set" -> set()
         "status" -> status()
         "forget" -> forget()
@@ -49,23 +70,23 @@ internal class GuidelinesKeyCommand(
       return 1
     }
     try {
-      GuidelineCredentials.store(target, key)
+      GuidelineCredentials.store(target, key, provider)
     } catch (e: Exception) {
       System.err.println("guidelines key: could not write ${target.path} (${e.message})")
       return 1
     }
-    println("Stored the OpenRouter key in ${target.path}.")
-    if (env(GuidelineCredentials.ENV)?.isNotBlank() == true) {
-      println(
-        "${GuidelineCredentials.ENV} is set in this environment and takes precedence over the file."
-      )
+    println("Stored the $label in ${target.path}.")
+    if (env(envVar)?.isNotBlank() == true) {
+      println("$envVar is set in this environment and takes precedence over the file.")
     }
     return 0
   }
 
   internal fun status(): Int {
     val resolved =
-      GuidelineCredentials.openRouter(env, file) { System.err.println("guidelines key: $it") }
+      GuidelineCredentials.resolve(provider, envVar, env, file) {
+        System.err.println("guidelines key: $it")
+      }
     if (json) {
       println(
         buildJsonObject {
@@ -85,10 +106,12 @@ internal class GuidelinesKeyCommand(
           .toString()
       )
     } else if (resolved == null) {
-      println("No OpenRouter key: ${GuidelineCredentials.ENV} is unset and ${describeFile()}.")
+      println("No $label: $envVar is unset and ${describeFile()}.")
       println("Run `compose-preview guidelines key set` to store one.")
     } else {
-      println("OpenRouter key ${resolved.masked} from ${resolved.source}.")
+      println(
+        "${label.replaceFirstChar { it.uppercase() }} ${resolved.masked} from ${resolved.source}."
+      )
       if (resolved.stored) {
         val trusted = file?.let(GuidelineCredentials::trustedProjects).orEmpty()
         println(
@@ -104,24 +127,24 @@ internal class GuidelinesKeyCommand(
     val target = file ?: return noHome()
     val removed =
       try {
-        GuidelineCredentials.forget(target)
+        GuidelineCredentials.forget(target, provider)
       } catch (e: Exception) {
         System.err.println("guidelines key: could not write ${target.path} (${e.message})")
         return 1
       }
     println(
-      if (removed) "Removed the OpenRouter key from ${target.path}."
-      else "No OpenRouter key stored in ${target.path}."
+      if (removed) "Removed the $label from ${target.path}."
+      else "No $label stored in ${target.path}."
     )
-    if (env(GuidelineCredentials.ENV)?.isNotBlank() == true) {
-      println("${GuidelineCredentials.ENV} is still set in this environment.")
+    if (env(envVar)?.isNotBlank() == true) {
+      println("$envVar is still set in this environment.")
     }
     return 0
   }
 
   /** The directory after `trust` / `untrust`, else the Gradle root above the working directory. */
   private fun project(): File =
-    args.filter { !it.startsWith("-") }.getOrNull(1)?.let { File(it).absoluteFile }
+    positional.getOrNull(1)?.let { File(it).absoluteFile }
       ?: findGradleProjectRoot()
       ?: File(".").absoluteFile
 
@@ -138,7 +161,7 @@ internal class GuidelinesKeyCommand(
       System.err.println("guidelines key: could not write ${target.path} (${e.message})")
       return 1
     }
-    println("Trusted ${project.canonicalPath} with the stored OpenRouter key.")
+    println("Trusted ${project.canonicalPath} with the stored keys.")
     return 0
   }
 
@@ -153,7 +176,7 @@ internal class GuidelinesKeyCommand(
         return 1
       }
     println(
-      if (removed) "${project.canonicalPath} no longer uses the stored OpenRouter key."
+      if (removed) "${project.canonicalPath} no longer uses the stored keys."
       else "${project.canonicalPath} was not trusted."
     )
     return 0
@@ -175,16 +198,18 @@ internal class GuidelinesKeyCommand(
   companion object {
     val USAGE: String =
       """
-      Usage: compose-preview guidelines key <set|status|forget|trust|untrust> [--json]
+      Usage: compose-preview guidelines key <set|status|forget|trust|untrust> [--for <base-url>] [--json]
 
-        set      Store an OpenRouter key in the user's credentials file (0600). Prompts without
+        set      Store an OpenRouter key in the user's credentials file (0600), or with
+                 --for <base-url> the key for that OpenAI-compatible endpoint. Prompts without
                  echo, or reads one line from stdin when piped. Never pass the key as an argument.
-        status   Say where the key comes from (${GuidelineCredentials.ENV} wins over the file),
-                 showing only its last four characters. Exits 1 when there is none.
+        status   Say where the key comes from (${GuidelineCredentials.ENV}, or with --for
+                 ${GuidelineCredentials.MODEL_ENV}, wins over the file), showing only its last
+                 four characters. Exits 1 when there is none.
         forget   Remove the stored key.
-        trust [dir]    Let the project at dir (default: the Gradle root here) use the stored key.
+        trust [dir]    Let the project at dir (default: the Gradle root here) use the stored keys.
                        `guidelines` asks the first time it runs in a project, and refuses without a
-                       terminal to ask in. ${GuidelineCredentials.ENV} needs no trust.
+                       terminal to ask in. A key from the environment needs no trust.
         untrust [dir]  Stop letting it.
 
       The file is ${'$'}${GuidelineCredentials.FILE_ENV}, else
@@ -200,6 +225,8 @@ internal class GuidelinesKeyCommand(
     fun confirmTrust(
       file: File,
       project: File,
+      /** The variable that would supply this key instead, named as the non-interactive way out. */
+      envVar: String = GuidelineCredentials.ENV,
       ask: ((String) -> String?)? =
         System.console()?.let { console -> { console.readLine("%s", it) } },
     ): Boolean {
@@ -208,15 +235,15 @@ internal class GuidelinesKeyCommand(
       val trustCommand = "compose-preview guidelines key trust $path"
       if (ask == null) {
         System.err.println(
-          "guidelines: $path is not trusted with the OpenRouter key stored in ${file.path}. " +
-            "Run `$trustCommand` in a terminal, or set ${GuidelineCredentials.ENV} for this run."
+          "guidelines: $path is not trusted with the key stored in ${file.path}. " +
+            "Run `$trustCommand` in a terminal, or set $envVar for this run."
         )
         return false
       }
       val answer =
         ask(
-          "Use your stored OpenRouter key for $path? Its previews and source are sent to " +
-            "OpenRouter and billed to that key. Only say yes for a project you trust. [y/N] "
+          "Use your stored model key for $path? Its previews and source are sent to " +
+            "the model's provider and billed to that key. Only say yes for a project you trust. [y/N] "
         )
       if (answer?.trim()?.lowercase() !in setOf("y", "yes")) {
         System.err.println("guidelines: not trusted; nothing was sent. Later: `$trustCommand`.")
@@ -235,7 +262,7 @@ internal class GuidelinesKeyCommand(
     private fun promptOrStdin(): String? {
       val console = System.console()
       if (console != null) {
-        return console.readPassword("OpenRouter key (input hidden): ")?.let { String(it) }
+        return console.readPassword("Key (input hidden): ")?.let { String(it) }
       }
       return System.`in`.bufferedReader().readLine()
     }

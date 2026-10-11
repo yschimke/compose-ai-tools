@@ -123,4 +123,40 @@ class GuidelinesKeyCommandTest {
     assertFalse(GuidelineCredentials.isTrusted(file, project))
     assertEquals(1, stdout { command("trust", File(dir, "missing").path).trust() }.first)
   }
+
+  @Test
+  fun `--for keeps an endpoint's key apart from OpenRouter's`() {
+    stdout { command("set").set() }
+    val url = "http://localhost:11434/v1"
+    val (code, out) = stdout { command("set", "--for", url, key = "sk-local-4321").set() }
+    assertEquals(0, code)
+    assertTrue(url in out)
+    val provider = GuidelineCredentials.endpointProvider(url)
+    assertEquals(
+      "sk-local-4321",
+      GuidelineCredentials.resolve(provider, GuidelineCredentials.MODEL_ENV, { null }, file)?.key,
+    )
+    assertEquals(secret, GuidelineCredentials.openRouter(env = { null }, file = file)?.key)
+    // --for may come before the subcommand.
+    val (_, status) = stdout { command("--for", url, "status").status() }
+    assertTrue("…4321" in status)
+    assertEquals(0, stdout { command("forget", "--for", url).forget() }.first)
+    assertEquals(secret, GuidelineCredentials.openRouter(env = { null }, file = file)?.key)
+  }
+
+  @Test
+  fun `an untrusted refusal names the variable that would supply the key`() {
+    stdout { command("set").set() }
+    val project = File(dir, "app").apply { mkdirs() }
+    val errors = java.io.ByteArrayOutputStream()
+    val original = System.err
+    System.setErr(PrintStream(errors, true))
+    try {
+      GuidelinesKeyCommand.confirmTrust(file, project, GuidelineCredentials.MODEL_ENV, ask = null)
+    } finally {
+      System.setErr(original)
+    }
+    assertTrue(GuidelineCredentials.MODEL_ENV in errors.toString())
+    assertFalse(GuidelineCredentials.ENV in errors.toString())
+  }
 }

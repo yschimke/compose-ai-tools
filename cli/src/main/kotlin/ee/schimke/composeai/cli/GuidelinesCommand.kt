@@ -15,6 +15,7 @@ import ee.schimke.composeai.guidelines.GuidelineRunOptions
 import ee.schimke.composeai.guidelines.GuidelineRunResult
 import ee.schimke.composeai.guidelines.GuidelineSubjectKind
 import ee.schimke.composeai.guidelines.GuidelineSurfaces
+import ee.schimke.composeai.guidelines.OpenAiCompatibleClient
 import ee.schimke.composeai.guidelines.OpenRouterClient
 import ee.schimke.composeai.guidelines.PreviewGuidelineResult
 import ee.schimke.composeai.guidelines.PreviewNode
@@ -54,19 +55,38 @@ import kotlinx.serialization.json.Json
 class GuidelinesCommand(args: List<String>, private val review: Boolean = false) :
   A11yCommand(args) {
   /**
-   * Who judges: `openrouter` (the default for `guidelines`) asks a model with the user's key;
-   * `prompt` (the default for `review`) writes each request out for the agent running the command,
-   * and reads its replies on the next run ([DeferredReplyModel]).
+   * Who judges ([GuidelinesBackend]): `openrouter` (the default for `guidelines`) asks a model with
+   * the user's key; `prompt` writes each request out for the agent running the command, and reads
+   * its replies on the next run ([DeferredReplyModel]); `openai` asks an OpenAI-compatible endpoint
+   * at `--base-url`; `auto` (the default for `review`) picks one in [run].
    */
-  private val backend: String =
-    args.flagValue("--backend") ?: if (review) BACKEND_PROMPT else BACKEND_OPENROUTER
+  private val requestedBackend: String? = args.flagValue("--backend")
+  private var backend: String =
+    requestedBackend ?: if (review) GuidelinesBackend.AUTO else GuidelinesBackend.OPENROUTER
   private val prompted: Boolean
-    get() = backend == BACKEND_PROMPT
+    get() = backend == GuidelinesBackend.PROMPT
 
-  private val model: String =
-    args.flagValue("--model")
-      ?: if (prompted) DeferredReplyModel.DEFAULT_MODEL else OpenRouterClient.DEFAULT_MODEL
-  private val maxCost: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
+  /** `--backend openai`'s endpoint, version path included (`http://localhost:11434/v1`). */
+  private val baseUrl: String? = args.flagValue("--base-url")
+
+  private val modelFlag: String? = args.flagValue("--model")
+  private val model: String
+    get() =
+      modelFlag
+        ?: when (backend) {
+          GuidelinesBackend.PROMPT -> DeferredReplyModel.DEFAULT_MODEL
+          else -> OpenRouterClient.DEFAULT_MODEL
+        }
+
+  private val maxCostFlag: Double? = args.flagValue("--max-cost")?.toDoubleOrNull()
+  /**
+   * `review` caps a provider run unless told otherwise; `guidelines` keeps its uncapped default.
+   */
+  private val maxCost: Double?
+    get() =
+      maxCostFlag
+        ?: REVIEW_DEFAULT_MAX_COST.takeIf { review && backend == GuidelinesBackend.OPENROUTER }
+
   private val roundsFlag: Int? = args.flagValue("--rounds")?.toIntOrNull()
   /** Follow-up rounds: 1 for the vision model, 3 for the jev checker, which starts minimal. */
   private val rounds: Int
@@ -144,8 +164,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
         model = model,
         budget = GuidelineBudget(),
         maxRounds = rounds,
-        // Triage asks OpenRouter's decisions API, which an agent answering requests does not have.
-        triage = triage && !prompted,
+        // Triage asks OpenRouter's decisions API, which no other backend has.
+        triage = triage && backend == GuidelinesBackend.OPENROUTER,
         maxCostUsd = maxCost,
         rulesSource = rulesSource,
         ranBy = System.getenv("USER")?.let { "cli:$it" },
@@ -157,6 +177,21 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       // An agent's unreadable reply is its to fix: asking again would read the same file, and
       // halves would be new requests for it to answer.
       .let { if (prompted) it.withRetry(GuidelineRetry(maxAttempts = 1, split = false)) else it }
+      // Who answered, beyond the model name: a verdict from one backend or endpoint never answers
+      // for another that happens to share a --model.
+      .withJudge(judge)
+
+  /** [GuidelineRunOptions.judge] for this run's backend; null for OpenRouter, as before. */
+  private val judge: String?
+    get() =
+      when (backend) {
+        GuidelinesBackend.PROMPT -> GuidelinesBackend.PROMPT
+        GuidelinesBackend.OPENAI ->
+          baseUrl
+            ?.let { runCatching { GuidelineCredentials.endpointProvider(it) }.getOrNull() }
+            ?.let { "openai:" + it.removePrefix("endpoint:") }
+        else -> null
+      }
 
   /** The model a report names: the one that answers under this checker. */
   private val reportModel: String
@@ -182,17 +217,39 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       exitProcess(2)
     }
     val command = if (review) "review" else "guidelines"
-    if (backend !in BACKENDS) {
+    if (backend !in GuidelinesBackend.ALL) {
       System.err.println(
-        "$command: unknown --backend $backend (expected ${BACKENDS.joinToString()})"
+        "$command: unknown --backend $backend (expected ${GuidelinesBackend.ALL.joinToString()})"
       )
       exitProcess(2)
     }
     val handoff = previewsJson != null || rendersDir != null
-    if (prompted && (handoff || checker == GuidelineChecker.JEV)) {
+    if (backend == GuidelinesBackend.AUTO) {
+      val key = GuidelineCredentials.openRouter()
+      val choice =
+        GuidelinesBackend.choose(
+          requestedBackend,
+          review,
+          System::getenv,
+          key,
+          trusted =
+            key?.stored == true && GuidelineCredentials.isTrusted(File(key.source), project()),
+          terminal = System.console() != null,
+        )
+      backend = choice.backend
+      System.err.println("$command: backend ${choice.backend} (${choice.reason})")
+    }
+    if (backend != GuidelinesBackend.OPENROUTER && checker == GuidelineChecker.JEV) {
       System.err.println(
-        "$command: --backend $BACKEND_PROMPT runs in a Gradle project with the vision checker; " +
-          "handoff mode and --checker jev need --backend $BACKEND_OPENROUTER"
+        "$command: --checker jev asks OpenRouter's decisions API; it needs " +
+          "--backend ${GuidelinesBackend.OPENROUTER}"
+      )
+      exitProcess(2)
+    }
+    if (prompted && handoff) {
+      System.err.println(
+        "$command: --backend ${GuidelinesBackend.PROMPT} runs in a Gradle project; handoff mode " +
+          "needs a model backend"
       )
       exitProcess(2)
     }
@@ -206,7 +263,12 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
             exitProcess(2)
           }
     }
-    val client = if (prompted) null else openRouterClient()
+    val client: GuidelineModel? =
+      when (backend) {
+        GuidelinesBackend.OPENROUTER -> openRouterClient()
+        GuidelinesBackend.OPENAI -> openAiClient()
+        else -> null
+      }
     if (handoff) exitProcess(runHandoff(client!!))
 
     val raw =
@@ -374,6 +436,85 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     }
 
   /**
+   * The project a stored key must be trusted for: the source root in handoff mode, else Gradle's.
+   */
+  private fun project(): File {
+    val handoff = previewsJson != null || rendersDir != null
+    return (if (handoff) sourceRoot?.let(::File) else findProjectRoot()) ?: File(".").absoluteFile
+  }
+
+  /**
+   * Exits unless the stored key in [resolved] may be spent on this project. [envVar] is the
+   * variable that would supply the key instead, which the refusal names.
+   */
+  private fun requireTrusted(
+    resolved: GuidelineCredentials.Resolved,
+    envVar: String = GuidelineCredentials.ENV,
+  ) {
+    if (!resolved.stored) return
+    if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project(), envVar)) {
+      exitProcess(2)
+    }
+  }
+
+  /**
+   * The client for an OpenAI-compatible endpoint at `--base-url`, with the key from
+   * `COMPOSE_PREVIEW_MODEL_KEY` or the one stored for that endpoint (`guidelines key set --for`); a
+   * loopback server may take none. Exits when the endpoint or the model is missing.
+   */
+  private fun openAiClient(): OpenAiCompatibleClient {
+    val url =
+      baseUrl
+        ?: run {
+          System.err.println(
+            "guidelines: --backend ${GuidelinesBackend.OPENAI} needs --base-url, the endpoint " +
+              "before /chat/completions (https://api.openai.com/v1, http://localhost:11434/v1)"
+          )
+          exitProcess(2)
+        }
+    if (modelFlag == null) {
+      System.err.println(
+        "guidelines: --backend ${GuidelinesBackend.OPENAI} needs --model, the endpoint's own " +
+          "name for a model that reads pictures"
+      )
+      exitProcess(2)
+    }
+    val provider = runCatching {
+      GuidelineCredentials.endpointProvider(url)
+    }
+      .getOrElse {
+        System.err.println("guidelines: --base-url $url is not an http(s) URL")
+        exitProcess(2)
+      }
+    val resolved =
+      GuidelineCredentials.resolve(provider, GuidelineCredentials.MODEL_ENV) {
+        System.err.println("guidelines: $it")
+      }
+    if (resolved == null && !OpenAiCompatibleClient.isLoopback(url)) {
+      System.err.println(
+        "guidelines: no key for $url. Store one with `compose-preview guidelines key set --for " +
+          "$url`, or set ${GuidelineCredentials.MODEL_ENV}. It is never read from the command line."
+      )
+      exitProcess(2)
+    }
+    resolved?.let { requireTrusted(it, GuidelineCredentials.MODEL_ENV) }
+    if (maxCostFlag != null) {
+      System.err.println(
+        "guidelines: an OpenAI-compatible endpoint reports no cost, so --max-cost cannot stop " +
+          "this run; narrow the selection instead"
+      )
+    }
+    return OpenAiCompatibleClient(
+      url,
+      resolved?.key,
+      OpenRouterClient.httpClient(
+        requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+          ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+      ),
+    )
+  }
+
+  /**
    * The OpenRouter client, with the key from the environment or the credentials file; exits when
    * there is none, or when a stored key is not trusted for this project.
    */
@@ -389,12 +530,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           exitProcess(2)
         }
     // A stored key is spent only on a project its owner trusted, asked before anything is built.
-    if (resolved.stored) {
-      val handoff = previewsJson != null || rendersDir != null
-      val project =
-        (if (handoff) sourceRoot?.let(::File) else findProjectRoot()) ?: File(".").absoluteFile
-      if (!GuidelinesKeyCommand.confirmTrust(File(resolved.source), project)) exitProcess(2)
-    }
+    requireTrusted(resolved)
     val client =
       OpenRouterClient(
           resolved.key,
@@ -490,7 +626,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
    * `--source-root`). `--a11y-json` supplies nodes for citations and `--annotate`. Follow-up rounds
    * can only use captures staged beside a render ([HandoffEvidenceHost]).
    */
-  private fun runHandoff(client: OpenRouterClient): Int {
+  private fun runHandoff(client: GuidelineModel): Int {
     val location = guidelinesLocation
     if (location == null) {
       System.err.println("guidelines: handoff mode needs --guidelines <file-or-url>")
@@ -691,9 +827,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
 
   companion object {
     const val KEY_ENV: String = GuidelineCredentials.ENV
-    const val BACKEND_OPENROUTER: String = "openrouter"
-    const val BACKEND_PROMPT: String = "prompt"
-    val BACKENDS: List<String> = listOf(BACKEND_PROMPT, BACKEND_OPENROUTER)
+    /** `review`'s cost cap on OpenRouter when `--max-cost` names none, in US dollars. */
+    const val REVIEW_DEFAULT_MAX_COST: Double = 0.25
     /** Where prompt mode writes requests and reads replies, under `build/compose-previews/`. */
     const val REVIEW_DIR: String = "review"
     /** Prompt mode left requests waiting for a reply: nothing failed, the review is not done. */
