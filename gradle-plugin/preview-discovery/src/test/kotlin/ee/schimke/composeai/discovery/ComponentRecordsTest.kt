@@ -828,7 +828,9 @@ class ComponentRecordsTest {
     val compact = ComponentRecords.compactOverloads(full)
 
     assertThat(
-        compact.previews.map { p -> p.componentTargets.map { it.overloads.map { o -> o.descriptor } } }
+        compact.previews.map { p ->
+          p.componentTargets.map { it.overloads.map { o -> o.descriptor } }
+        }
       )
       .containsExactly(
         listOf(listOf(stateOverload.descriptor, valueOverload.descriptor), emptyList<String>()),
@@ -838,7 +840,8 @@ class ComponentRecordsTest {
       .inOrder()
     assertThat(ComponentRecords.from(compact)).isEqualTo(ComponentRecords.from(full))
     val policy: (ComponentRecord) -> Set<String> = { setOf("value", "singleLine") }
-    assertThat(ComponentRecords.select(compact, policy)).isEqualTo(ComponentRecords.select(full, policy))
+    assertThat(ComponentRecords.select(compact, policy))
+      .isEqualTo(ComponentRecords.select(full, policy))
   }
 
   @Test

@@ -18,14 +18,13 @@ object ComponentRecords {
    */
   fun compactOverloads(manifest: PreviewManifest): PreviewManifest {
     val carried = mutableSetOf<String>()
-    fun compact(targets: List<PreviewTarget>) =
-      targets.map { target ->
-        when {
-          target.overloads.isEmpty() -> target
-          carried.add("${target.className}.${target.functionName}") -> target
-          else -> target.copy(overloads = emptyList())
-        }
+    fun compact(targets: List<PreviewTarget>) = targets.map { target ->
+      when {
+        target.overloads.isEmpty() -> target
+        carried.add("${target.className}.${target.functionName}") -> target
+        else -> target.copy(overloads = emptyList())
       }
+    }
     return manifest.copy(
       previews =
         manifest.previews.map { preview ->
