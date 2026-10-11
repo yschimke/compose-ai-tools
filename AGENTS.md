@@ -188,7 +188,8 @@ artifact paths — and it preserves Gradle's exit code exactly. This repository 
 matters: nothing here is CI-only, so agents run `check` and the full `composePreviewRenderAll`
 render pipeline in-session, and those bury their one real line in thousands.
 
-Install it once (`brew install static-var/tap/build-brief`, or the script installer); the setup, the
+Install it once (`brew install static-var/tap/build-brief`, or the script installer; a cloud sandbox
+provisioned by `env.coo.ee` already has it); the setup, the
 per-command detail and the cases where you still want the raw log are in
 [`docs/AGENT_GUIDE.md` → Common commands](docs/AGENT_GUIDE.md#common-commands).
 

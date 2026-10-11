@@ -306,4 +306,41 @@ test "${out}" = "${fixture}/search/temurin-17" ||
 grep -Fq "WARNING" "${fixture}/stderr" ||
   { echo "FAIL: expected a warning for the unavailable secondary major" >&2; exit 1; }
 
+# ---------------------------------------------------------------------------
+# --check reports the missing majors without downloading or linking anything,
+# and a JRE does not count.
+# ---------------------------------------------------------------------------
+check_script() { # check_script [env assignments...] — run_script, with --check
+  env -u JAVA_HOME "$@" \
+    CALL_LOG="${fixture}/calls" \
+    CLOUD_JDK_SEARCH_DIRS="${fixture}/search/*" \
+    CLOUD_JDK_JVM_LINK_DIR="${fixture}/jvm" \
+    PATH="${fixture}/bin:${fixture}/pathjdk/bin:/usr/bin:/bin" \
+    bash "${script}" --check
+}
+: >"${fixture}/calls"
+rm -rf "${fixture}/search" "${fixture}/jvm"; mkdir -p "${fixture}/search"
+make_jdk "${fixture}/search/temurin-17" "17.0.19"
+make_jre "${fixture}/search/jre-21" "21.0.5"
+rc=0
+out="$(check_script CLOUD_JDK_MAJORS="17 21" JDK17_DIR="${fixture}/opt/none17" \
+  JDK21_DIR="${fixture}/opt/none21" 2>/dev/null)" || rc=$?
+test "${rc}" = 1 && test "${out}" = "21" ||
+  { echo "FAIL: --check should report '21' missing (rc 1), got rc=${rc} '${out}'" >&2; exit 1; }
+test ! -s "${fixture}/calls" && test ! -e "${fixture}/jvm" ||
+  { echo "FAIL: --check must not download or link" >&2; exit 1; }
+make_jdk "${fixture}/search/temurin-21" "21.0.5"
+check_script CLOUD_JDK_MAJORS="17 21" JDK17_DIR="${fixture}/opt/none17" \
+  JDK21_DIR="${fixture}/opt/none21" >/dev/null 2>&1 ||
+  { echo "FAIL: --check should pass once every major is present" >&2; exit 1; }
+
+# The default majors start from the repo's pinned daemon toolchain, then 21 25.
+pinned="$(sed -n 's/^toolchainVersion=//p' "${repo_root}/gradle/gradle-daemon-jvm.properties")"
+rm -rf "${fixture}/search"; mkdir -p "${fixture}/search"
+rc=0
+out="$(check_script JDK17_DIR="${fixture}/opt/none17" 2>/dev/null)" || rc=$?
+want="${pinned}"; for m in 21 25; do [[ " ${want} " == *" ${m} "* ]] || want+=" ${m}"; done
+test "${rc}" = 1 && test "${out}" = "${want}" ||
+  { echo "FAIL: default majors should be '${want}', got rc=${rc} '${out}'" >&2; exit 1; }
+
 echo 'setup-cloud-jdk: tests passed'
