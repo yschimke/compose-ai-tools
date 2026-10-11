@@ -311,8 +311,8 @@ internal object AndroidPreviewSupport {
   /**
    * Version for the main-variant `ui` / `foundation` pins, which decide the R class in the merged
    * unit-test resource APK and so must match the Compose that runs: the CMP runtime for a
-   * Compose-less consumer, else the link floor. Pinning only the render graph would trade #3590 for
-   * #3484's `R$id` `NoSuchFieldError`.
+   * Compose-less consumer, else the link floor. Pinning only the render graph would trade #3590
+   * for #3484's `R$id` `NoSuchFieldError`.
    */
   internal fun mainVariantComposeVersion(
     project: Project,
@@ -406,9 +406,9 @@ internal object AndroidPreviewSupport {
    */
   /**
    * The error for a consumer below [RENDERER_COMPOSE_LINK_FLOOR_VERSION] on a graph we may not
-   * raise (`manageDependencies = false`): flooring alone causes #3484, leaving it causes #3590.
-   * [ValidateComposeFloorTask] checks the resolved graph at execution time, after platforms and
-   * constraints have applied.
+   * raise (`manageDependencies = false`): flooring alone causes #3484, leaving it
+   * causes #3590. [ValidateComposeFloorTask] checks the resolved graph at execution time, after
+   * platforms and constraints have applied.
    */
   internal fun composeFloorOptOutMessage(module: String, resolved: String): String =
     """
@@ -3182,10 +3182,10 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Cheap-signal files per [DESIGN § 8 Tier
-   * 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed): version
-   * catalog, this project's build script, settings, `gradle.properties`, `local.properties` —
-   * existing files only. Shared with desktop.
+   * Cheap-signal files per
+   * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
+   * version catalog, this project's build script, settings, `gradle.properties`, `local.properties`
+   * — existing files only. Shared with desktop.
    *
    * Sibling build scripts aren't walked: Tier-2 (runtime classpath fingerprint) already catches
    * meaningful sibling changes, and walking siblings under IP would need a settings plugin.

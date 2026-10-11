@@ -29,8 +29,8 @@ import okio.Path.Companion.toPath
  * carries them once; the server rehydrates them onto the daemon classpath at their recorded paths.
  *
  * 1. Split `classes/app.jar` entries into kept vs externalized (path matches [extensions]).
- * 2. Write each externalized resource to `<res-out>/<sha256>` (deduped) and record
- *    `{path, sha256, size}`.
+ * 2. Write each externalized resource to `<res-out>/<sha256>` (deduped) and record `{path, sha256,
+ *    size}`.
  * 3. Rebuild the jar without them and merge the records into `bundle.json`'s `externalResources`.
  * 4. Rewrite the bundle in place (or to `-o`) via [injectRawZipEntries], keeping the PNG cover and
  *    other entries.

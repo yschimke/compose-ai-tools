@@ -34,9 +34,7 @@ class SplashScreenSurfaceTest {
 
   @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-  /**
-   * Just an [icon]: surface and icon laid out, optional layers absent.
-   */
+  /** Just an [icon]: surface and icon laid out, optional layers absent. */
   @Test
   fun `renders surface and centered icon with no optional layers`() {
     composeRule.setContent {
@@ -50,9 +48,7 @@ class SplashScreenSurfaceTest {
     composeRule.onAllNodesWithTag(SPLASH_BRANDING_TEST_TAG).assertCountEquals(0)
   }
 
-  /**
-   * `iconBackground` set: the backdrop layer composes without displacing surface or icon.
-   */
+  /** `iconBackground` set: the backdrop layer composes without displacing surface or icon. */
   @Test
   fun `renders icon background ring when iconBackground is supplied`() {
     composeRule.setContent {
@@ -85,9 +81,7 @@ class SplashScreenSurfaceTest {
     composeRule.onNodeWithTag(SPLASH_BRANDING_TEST_TAG).assertIsDisplayed()
   }
 
-  /**
-   * The icon's centre matches the surface's (from `boundsInRoot`), within 2px for rounding.
-   */
+  /** The icon's centre matches the surface's (from `boundsInRoot`), within 2px for rounding. */
   @Test
   fun `icon is centered inside the splash surface`() {
     composeRule.setContent {
@@ -120,9 +114,7 @@ class SplashScreenSurfaceTest {
     )
   }
 
-  /**
-   * A fixed 400×800dp box, giving a predictable bounding rectangle for the centring check.
-   */
+  /** A fixed 400×800dp box, giving a predictable bounding rectangle for the centring check. */
   @Composable
   private fun FixedSizeSplash(content: @Composable () -> Unit) {
     Box(modifier = Modifier.size(400.dp, 800.dp)) { content() }

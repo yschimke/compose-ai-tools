@@ -11,8 +11,7 @@ import okio.FileSystem
  * pin, so the CLI, VS Code extension and `install` / `apply` actions drive one release.
  *
  * - `compose-preview pin` — report the resolved pin, its source, and whether the CLI matches. Exits
- *   0
- *   either way; no pin is legitimate.
+ *   0 either way; no pin is legitimate.
  * - `compose-preview pin <version>` — write `composePreview.version=<version>` to
  *   `gradle.properties`.
  * - `compose-preview pin --cli` — the same, using this CLI's version (the common flow).

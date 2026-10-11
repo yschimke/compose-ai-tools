@@ -94,8 +94,8 @@ fun catalogFont(name: String): FontFamily =
 /**
  * The sticker frame with caller-supplied [colorScheme] / [typography]; [CatalogSticker] resolves
  * them from the override surface. Generic and named font families are always provided. Stickers
- * render on a transparent surface (a silhouette on the viewer's backing) with
- * `contentColor = onSurface`.
+ * render on a transparent surface (a silhouette on the viewer's backing) with `contentColor =
+ * onSurface`.
  */
 @Composable
 fun CatalogStickerFrame(
@@ -121,7 +121,8 @@ fun CatalogStickerFrame(
  * sticker sheet pairs. `uiMode = 32` is `Configuration.UI_MODE_NIGHT_YES`, written raw because the
  * CMP desktop source set has no `android.content.res.Configuration`.
  */
-// No `showBackground`: component stickers stay transparent silhouettes on the viewer's checkerboard.
+// No `showBackground`: component stickers stay transparent silhouettes on the viewer's
+// checkerboard.
 @Preview(name = "Light", group = "modes")
 @Preview(name = "Dark", uiMode = 32, group = "modes")
 annotation class CatalogModes

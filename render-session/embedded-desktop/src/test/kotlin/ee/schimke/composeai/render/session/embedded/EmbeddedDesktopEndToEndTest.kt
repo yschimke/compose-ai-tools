@@ -7,9 +7,9 @@ import org.junit.Test
 
 /**
  * Embedded Compose Desktop backend against the `:samples:cmp` daemon descriptor: handshake,
- * `extensions/list`, close. Self-skips when the descriptor is absent (built by
- * `./gradlew :samples:cmp:composePreviewDaemonStart`). Rendering is left out: hosting the full
- * Compose Desktop + Skiko classpath in the test JVM costs far more class-loading.
+ * `extensions/list`, close. Self-skips when the descriptor is absent (built by `./gradlew
+ * :samples:cmp:composePreviewDaemonStart`). Rendering is left out: hosting the full Compose
+ * Desktop + Skiko classpath in the test JVM costs far more class-loading.
  */
 class EmbeddedDesktopEndToEndTest {
 

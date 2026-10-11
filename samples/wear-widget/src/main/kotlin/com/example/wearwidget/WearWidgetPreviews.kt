@@ -13,12 +13,12 @@ import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
 import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 
 /**
- * Glance Wear widget previews: device-less `@Preview`s driven by `androidx.glance.wear.tooling.preview`
- * `@PreviewParameter` providers, which discovery recognises as widgets and crops to their intrinsic
- * bounds at wear density with no config.
+ * Glance Wear widget previews: device-less `@Preview`s driven by
+ * `androidx.glance.wear.tooling.preview` `@PreviewParameter` providers, which discovery recognises
+ * as widgets and crops to their intrinsic bounds at wear density with no config.
  *
- * Each goes through [CapturingWearWidgetPreview], so the render also emits the encoded document as a
- * `<stem>.rc` sidecar. The fill is passed as the container `background`
+ * Each goes through [CapturingWearWidgetPreview], so the render also emits the encoded document as
+ * a `<stem>.rc` sidecar. The fill is passed as the container `background`
  * ([RemoteImageWidgetBackground]), not painted inside [RemoteImageWidget], so the render is one
  * corner-clipped squircle.
  */

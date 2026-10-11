@@ -717,8 +717,8 @@ class DoctorCommand(
    * - no pin — `ok`, with how to pin;
    * - pin matches this CLI — `ok`;
    * - pin differs — `warning`: the pinned plugin is injected, but this CLI's daemon and renderer
-   *   stay
-   *   at [BUNDLE_VERSION] and can disagree across a major. `-SNAPSHOT` on either side stays `ok`.
+   *   stay at [BUNDLE_VERSION] and can disagree across a major. `-SNAPSHOT` on either side stays
+   *   `ok`.
    */
   /**
    * Report the project's preview server ([resolveProjectServeUrl]), which makes `share-preview`

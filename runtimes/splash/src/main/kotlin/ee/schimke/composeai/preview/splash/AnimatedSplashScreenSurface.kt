@@ -25,11 +25,11 @@ import androidx.compose.ui.graphics.painter.Painter
  * (`2 × pulse.durationMs`) for a seamless loop; auto-detect would fall back to 1500ms.
  *
  * @param icon the base vector (e.g. `ic_splash_logo`), not the `<animated-vector>` wrapper. @param
- * background full-bleed colour drawn behind everything. Defaults to opaque white. @param
- * iconBackground optional static circular backdrop (see [SplashScreenSurface]). @param
- * brandingImage optional bottom-centre branding asset. `null` (default) omits it. @param pulse the
- * icon's scale animation; defaults to [SplashIconPulse]. @param modifier modifier applied to the
- * outer full-bleed `Box`.
+ *   background full-bleed colour drawn behind everything. Defaults to opaque white. @param
+ *   iconBackground optional static circular backdrop (see [SplashScreenSurface]). @param
+ *   brandingImage optional bottom-centre branding asset. `null` (default) omits it. @param pulse
+ *   the icon's scale animation; defaults to [SplashIconPulse]. @param modifier modifier applied to
+ *   the outer full-bleed `Box`.
  */
 @Composable
 fun AnimatedSplashScreenSurface(

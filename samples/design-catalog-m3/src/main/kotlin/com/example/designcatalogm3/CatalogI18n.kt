@@ -12,7 +12,8 @@ import ee.schimke.composeai.preview.CatalogVariant
 //   * pseudolocale: `@Preview(locale = "ar-XB")`, which the desktop renderer flips to RTL. Desktop
 //     CMP pseudolocalises direction, not text, so `en-XA` would show nothing.
 //   * direction: forces `LocalLayoutDirection = Rtl`, captured faithfully in PNG and SVG.
-//   * fontScale: set on the `@Preview` (not `LocalDensity`) because the SVG export reads it from the
+//   * fontScale: set on the `@Preview` (not `LocalDensity`) because the SVG export reads it from
+// the
 //     preview params, keeping PNG and SVG in step at 2.0.
 
 // The filled button carries only fontScale: a centred label has nothing to mirror. The switch keeps

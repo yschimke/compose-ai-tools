@@ -21,6 +21,7 @@ import kotlin.system.exitProcess
  *   --manifest-path <previews.json> \
  *   --out <daemon-launch.json>
  * ```
+ *
  * `--classpath` takes `File.pathSeparator`-separated values and may repeat (concatenated in order);
  * `--jvm-arg` / `--system-property` take one value per occurrence.
  *

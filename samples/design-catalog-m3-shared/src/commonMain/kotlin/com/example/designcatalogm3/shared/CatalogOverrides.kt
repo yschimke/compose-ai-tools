@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
  * default. Unseeded, every wrapper returns [default].
  *
  * @param key the knob's stable name (the seed key) and the label a viewer shows. @param index
- * optional per-item index, so repeated rows each get a knob (`key[index]`).
+ *   optional per-item index, so repeated rows each get a knob (`key[index]`).
  */
 @Composable
 expect fun catalogOverrideString(key: String, default: String, index: Int? = null): String

@@ -1777,6 +1777,7 @@ object ScreenGenerator {
      * val paneScaffoldDirective: PaneScaffoldDirective = calculatePaneScaffoldDirective(…)
      * SupportingPaneScaffold(…, value = …(paneScaffoldDirective.maxHorizontalPartitions))
      * ```
+     *
      * declared above the node (see [Block]), or inline as `written.let<Owner, _> { it.name }` where
      * no block exists. A generic `Owner` fails to compile, which is the safe direction.
      *
@@ -2009,6 +2010,7 @@ object ScreenGenerator {
    *     Surface(color = Color(value), …)
    * }
    * ```
+   *
    * Sound because substituting the parameter rebuilds each child's text exactly. Requirements: the
    * varying piece sits between delimiters (never inside a token); all pieces are literals of one
    * kind and, for numbers, the same textual length so `listOf` infers the same type; and they

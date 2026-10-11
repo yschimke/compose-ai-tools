@@ -406,8 +406,8 @@ class GradleConnection(
   /**
    * Every project that applies the plugin, with its Gradle path and configured `projectDir` (read
    * from the Tooling API, since it can be anywhere). Uses [DiscoverPreviewModulesAction] to avoid
-   * realizing every task. A Tooling API failure yields an empty list with [lastModelAccessFailure] set;
-   * per-project failures land in [lastDiscoveryFailures].
+   * realizing every task. A Tooling API failure yields an empty list with [lastModelAccessFailure]
+   * set; per-project failures land in [lastDiscoveryFailures].
    */
   // Published artifact: @JvmOverloads keeps the no-arg signature existing consumers link against.
   @JvmOverloads

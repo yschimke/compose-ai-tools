@@ -29,9 +29,7 @@ fun SplashIconOnlyPreview() {
   SplashScreenSurface(icon = painterResource(R.drawable.ic_compose_logo))
 }
 
-/**
- * Icon with `windowSplashScreenIconBackgroundColor`, a circle behind the icon for contrast.
- */
+/** Icon with `windowSplashScreenIconBackgroundColor`, a circle behind the icon for contrast. */
 @Preview(
   name = "Splash — icon with background ring",
   widthDp = SPLASH_PREVIEW_WIDTH_DP,

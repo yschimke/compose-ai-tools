@@ -11,14 +11,11 @@ import androidx.wear.compose.material3.TimeText
  * synthetic entries. Density is per-device, so the same panel isn't the same layout: 450 px is 225
  * dp on a Pixel Watch (320 dpi) but 211 dp on a Galaxy Watch 5 (340 dpi).
  *
- * | Device                                         | Panel  | densityDpi | density |
- * `screenWidthDp` |
- * |------------------------------------------------|--------|------------|---------|-----------------|
- * | Pixel Watch, Pixel Watch 2                     | 450 px | 320        | 2.0×    | 225
- * | | Pixel Watch 3 (45 mm)                          | 456 px | 320        | 2.0×    | 228
- * | | Galaxy Watch 4, Galaxy Watch 5 (44–45 mm)      | 450 px | 340        | 2.125×  | 211
- * | | Galaxy Watch 6 / 7 (44 mm), Galaxy Watch Ultra | 480 px | 340        | 2.125×  | 225
- * |
+ * |Device                                        |Panel |densityDpi|density                                  |`screenWidthDp`|
+ * |----------------------------------------------|------|----------|-----------------------------------------|---------------|
+ * |Pixel Watch, Pixel Watch 2                    |450 px|320       |2.0×                                     |225            |   |Pixel Watch 3 (45 mm)|456 px|320|
+ * |2.0×                                          |228   |          |Galaxy Watch 4, Galaxy Watch 5 (44–45 mm)|450 px         |340|2.125×               |211   |   |
+ * |Galaxy Watch 6 / 7 (44 mm), Galaxy Watch Ultra|480 px|340       |2.125×                                   |225            |
  *
  * Pixel 320 dpi and Galaxy Watch 4/5 340 dpi are measured (stock `wm density`); Galaxy Watch
  * 6/7/Ultra 340 dpi is inferred (DPI is locked from Watch 6, but it yields the documented 225 dp

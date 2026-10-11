@@ -240,9 +240,7 @@ fun HeadsUpSurfacePreview() {
 
 // Content edge cases: how the AOSP layout degrades.
 
-/**
- * Very long title: the expanded layout wraps to two lines, then ellipsises.
- */
+/** Very long title: the expanded layout wraps to two lines, then ellipsises. */
 @Preview(name = "Edge — long title")
 @Composable
 fun LongTitlePreview() {
@@ -272,9 +270,7 @@ fun NoTextPreview() {
   }
 }
 
-/**
- * `MessagingStyle` without `Person` icons: the avatar column drops and names reflow left.
- */
+/** `MessagingStyle` without `Person` icons: the avatar column drops and names reflow left. */
 @Preview(name = "Edge — no large icon")
 @Composable
 fun NoLargeIconPreview() {

@@ -29,6 +29,7 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
  *   ) { … }
  * }
  * ```
+ *
  * At rest the item is centred and unscaled. Let the harness drive the scroll to show scaling:
  * `@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], reduceMotion = false)` for stills
  * (bound END with `maxScrollPx`), or `modes = [ScrollMode.GIF]` for an animation.

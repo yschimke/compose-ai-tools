@@ -34,8 +34,8 @@ import kotlinx.coroutines.runBlocking
  * once.
  *
  * @param widget the widget whose `providePreview(...)` content renders. @param size dp footprint
- * for `LocalSize`, synthesised into an [AppWidgetProviderInfo]. Null gives
- *   `DpSize.Zero`, which blanks `SizeMode.Single` widgets; mirror the `@Preview` size when in doubt.
+ *   for `LocalSize`, synthesised into an [AppWidgetProviderInfo]. Null gives `DpSize.Zero`, which
+ *   blanks `SizeMode.Single` widgets; mirror the `@Preview` size when in doubt.
  * @param widgetCategory `AppWidgetProviderInfo.WIDGET_CATEGORY_*`; defaults to the home screen.
  */
 @Composable

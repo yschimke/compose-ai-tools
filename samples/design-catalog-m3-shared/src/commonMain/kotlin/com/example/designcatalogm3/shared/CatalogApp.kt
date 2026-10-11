@@ -59,9 +59,7 @@ fun CatalogApp(
    * page shows its checkerboard, which the app continues.
    */
   stageColor: Color? = null,
-  /**
-   * Typeface for the whole M3 type scale (URL-loaded Roboto). Null ⇒ the CMP bundled default.
-   */
+  /** Typeface for the whole M3 type scale (URL-loaded Roboto). Null ⇒ the CMP bundled default. */
   fontFamily: FontFamily? = null,
   /**
    * Generic-family substitutes (`fonts.json` `role: "generic"`): `serif`, `monospace`, … →

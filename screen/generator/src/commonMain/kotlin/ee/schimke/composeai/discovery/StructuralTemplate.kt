@@ -25,8 +25,9 @@ package ee.schimke.composeai.discovery
  *   }
  * }
  * ```
- * A hole that begins a line re-indents every continuation line of its value to the hole's column.
- * A mid-line hole does not, since there is no single column to align to.
+ *
+ * A hole that begins a line re-indents every continuation line of its value to the hole's column. A
+ * mid-line hole does not, since there is no single column to align to.
  */
 object StructuralTemplate {
 

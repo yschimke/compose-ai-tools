@@ -32,8 +32,8 @@ import kotlinx.coroutines.launch
  * goes back. Each button wraps its label in [OneHandedGestureClickIndicator], which swaps it for
  * the gesture animation on-device.
  *
- * [showIndicators] injects state so previews capture a stable frame; production leaves it false
- * and lets `onGestureAvailable` drive it.
+ * [showIndicators] injects state so previews capture a stable frame; production leaves it false and
+ * lets `onGestureAvailable` drive it.
  */
 @Composable
 fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = {}) {

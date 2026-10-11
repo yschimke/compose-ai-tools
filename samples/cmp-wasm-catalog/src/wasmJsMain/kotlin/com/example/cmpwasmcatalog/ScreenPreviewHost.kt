@@ -20,9 +20,7 @@ internal interface ScreenPreviewHost {
   /** Compose (or display) [document] in the builder's preview pane. */
   @Composable fun Preview(document: ScreenDocument, modifier: Modifier)
 
-  /**
-   * What this host can draw, so the builder can say so instead of rendering a confusing blank.
-   */
+  /** What this host can draw, so the builder can say so instead of rendering a confusing blank. */
   val label: String
 }
 

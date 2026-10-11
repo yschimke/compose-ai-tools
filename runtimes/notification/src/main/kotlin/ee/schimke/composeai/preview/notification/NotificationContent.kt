@@ -32,8 +32,7 @@ import okio.Path.Companion.toPath
  * reproducible under Robolectric.
  *
  * @param previewId opts into the structured-fields sidecar: when `composeai.render.outputDir` is
- * set
- *   (under the Gradle render task), `<sanitized-id>.notification.json` is written under
+ *   set (under the Gradle render task), `<sanitized-id>.notification.json` is written under
  *   `<outputDir>/../data/notifications/`, same schema as `@NotificationPreview`. First so [factory]
  *   stays the trailing lambda.
  * @param surface which [NotificationSurface] to render (default [NotificationSurface.EXPANDED]).

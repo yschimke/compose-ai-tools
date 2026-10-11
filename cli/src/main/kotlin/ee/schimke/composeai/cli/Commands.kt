@@ -1853,8 +1853,7 @@ class RenderCommand(args: List<String>) : Command(args) {
    * preview's SVG.
    *
    * - Without `--bundle`: loose `.svg` files, at `--output` for a single match or beside the PNGs
-   *   at
-   *   `<module>/build/compose-previews/renders/<id>.svg`.
+   *   at `<module>/build/compose-previews/renders/<id>.svg`.
    * - With `--bundle`: injected into each module's `bundle.png` as `previews/<id>.figma.svg` (plus
    *   any `figma-raster/<node>.png` crops).
    *

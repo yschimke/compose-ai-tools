@@ -14,8 +14,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Unit tests for [translate] (`AppWidgetProviderInfo` → [LauncherWidgetMetadata]): cell math,
- * axis locking and the supported-cells rectangle. Robolectric's default density 1.0 makes px == dp
+ * Unit tests for [translate] (`AppWidgetProviderInfo` → [LauncherWidgetMetadata]): cell math, axis
+ * locking and the supported-cells rectangle. Robolectric's default density 1.0 makes px == dp
  * (`90px` snaps to `1×1` on the 72dp grid).
  */
 // Robolectric SDK 36 needs JDK 21; this toolchain is JDK 17, so pin SDK 35.

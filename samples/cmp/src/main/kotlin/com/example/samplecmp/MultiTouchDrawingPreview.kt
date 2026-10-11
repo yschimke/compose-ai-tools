@@ -44,9 +44,7 @@ fun MultiTouchDrawingPreview() {
   MultiTouchDrawingCanvas()
 }
 
-/**
- * Static counterpart with pre-seeded circles and a stroke, so the PNG isn't a blank canvas.
- */
+/** Static counterpart with pre-seeded circles and a stroke, so the PNG isn't a blank canvas. */
 @Preview(name = "Multi-Touch Drawing — seeded", widthDp = 240, heightDp = 240)
 @Composable
 fun MultiTouchDrawingSeededPreview() {

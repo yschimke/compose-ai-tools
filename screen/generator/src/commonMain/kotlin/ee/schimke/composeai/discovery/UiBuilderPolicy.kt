@@ -30,9 +30,7 @@ val STATE_TYPE_CLASSIFIERS: Map<String, Set<String>> =
 val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
   setOf("screen-root", "list", "list-item", "container", "overlay", "controlled", "decoration")
 
-/**
- * How a catalog's designs are written as source. Closed: a word outside it selects no exporter.
- */
+/** How a catalog's designs are written as source. Closed: a word outside it selects no exporter. */
 val UI_BUILDER_CODE_STRATEGIES: Set<String> = setOf("record", "templates")
 
 /**

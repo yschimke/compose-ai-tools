@@ -6,8 +6,8 @@ import java.awt.image.BufferedImage
  * Calibration helpers for the two quantitative rules Studio's Glimmer preview pane checks, from
  * Google's Glimmer guidance:
  *
- * - Contrast: "at least a 70% tone difference between foreground and background using the HCT
- *   color space"; HCT tone is CIELAB L\*, so `ΔL* ≥ 70` ([tone], [STUDIO_MIN_TONE_DIFFERENCE]).
+ * - Contrast: "at least a 70% tone difference between foreground and background using the HCT color
+ *   space"; HCT tone is CIELAB L\*, so `ΔL* ≥ 70` ([tone], [STUDIO_MIN_TONE_DIFFERENCE]).
  * - Angular sizing: 30 pixels-per-degree and a 0.6° = 18px minimum text size
  *   (developer.android.com/design/ui/ai-glasses/guides/styles/type) — [PIXELS_PER_DEGREE],
  *   [MIN_TEXT_ANGLE_DEGREES], [minReadableTextPx]; why `AI_GLASSES_DEVICE_SPEC` uses density 1.0.

@@ -96,20 +96,19 @@ public object SubprocessRenderSessions : RenderSessionFactory {
    * uses.
    *
    * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath. @param
-   * classesDir the bundle's extracted `classes/app.jar`; the default [userClasspath]. @param
-   * previewsJson the bundle's extracted `previews.json`. @param workspaceRoot a scratch directory,
-   * the daemon's working directory and workspace id. @param modulePath informational module label
-   * for diagnostics. @param jvmArgs daemon JVM args; defaults to the desktop set. Android callers
-   * pass
-   *   `AndroidBundleLaunch().jvmArgs()` (Robolectric's `--add-opens`).
+   *   classesDir the bundle's extracted `classes/app.jar`; the default [userClasspath]. @param
+   *   previewsJson the bundle's extracted `previews.json`. @param workspaceRoot a scratch
+   *   directory, the daemon's working directory and workspace id. @param modulePath informational
+   *   module label for diagnostics. @param jvmArgs daemon JVM args; defaults to the desktop set.
+   *   Android callers pass `AndroidBundleLaunch().jvmArgs()` (Robolectric's `--add-opens`).
    * @param extraSystemProperties merged over the base sysprops (last wins); Android callers pass
    *   `AndroidBundleLaunch().robolectricSystemProperties()`.
    * @param userClasspath the child-loaded user classpath (`composeai.daemon.userClassDirs`: dirs
-   * and
-   *   jars, `File.pathSeparator`-joined). A playground snippet passes its full compile classpath.
+   *   and jars, `File.pathSeparator`-joined). A playground snippet passes its full compile
+   *   classpath.
    * @param jailCommand optional argv prefix the daemon JVM launches behind (the playground
-   * sandbox). @param hardTtlSeconds optional wall-clock deadline after which the JVM is
-   * force-killed.
+   *   sandbox). @param hardTtlSeconds optional wall-clock deadline after which the JVM is
+   *   force-killed.
    */
   public fun openBundleDaemon(
     daemonClasspath: List<String>,

@@ -17,6 +17,7 @@ import java.io.File
  *   /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
  *   (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
  * ```
+ *
  * and every preview in the module fails.
  *
  * ## The rule

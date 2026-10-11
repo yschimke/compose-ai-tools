@@ -17,14 +17,14 @@ import androidx.compose.ui.unit.dp
 
 /**
  * The UI-builder design in [`samples/android/design/home-screen.uibuilder.json`] as Compose: the
- * design half of the device-capture parity lane (`DeviceCaptureParityTest` compares it with the real
- * `MainActivity` capture). See
+ * design half of the device-capture parity lane (`DeviceCaptureParityTest` compares it with the
+ * real `MainActivity` capture). See
  * [`docs/design/DEVICE_CAPTURE.md`](../../../../../../../docs/design/DEVICE_CAPTURE.md).
  *
  * Hand-transcribed rather than generated: the builder's exporter lives in compose-preview-server
  * (layer 2), which this repository may not depend on
- * ([`REPOSITORY_LAYERS.md`](../../../../../../../docs/design/REPOSITORY_LAYERS.md)). Each composable
- * names its design node, following the exporter's rules:
+ * ([`REPOSITORY_LAYERS.md`](../../../../../../../docs/design/REPOSITORY_LAYERS.md)). Each
+ * composable names its design node, following the exporter's rules:
  *
  * - `layout/column.verticalSpacingDp` → `verticalArrangement = Arrangement.spacedBy(n.dp)`
  * - a `padding` modifier → `.padding(start =, top =, end =, bottom =)`, always four named edges

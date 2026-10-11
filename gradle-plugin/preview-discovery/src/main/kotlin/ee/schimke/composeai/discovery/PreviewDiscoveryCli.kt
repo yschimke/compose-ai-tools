@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
  *   [--fail-on-empty] \
  *   --out <path>
  * ```
+ *
  * List flags take `File.pathSeparator`-separated values, may repeat, and skip empty entries.
  *
  * Exit codes: `0` success, `1` discovery failure (e.g. no previews with `--fail-on-empty`), `2` bad

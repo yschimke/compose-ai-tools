@@ -9,8 +9,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  * (`rc-player-compose`):
  *
  * * [ANDROIDX_VIEW] — AndroidX `remote-player-view` (a `View` on a framework `Canvas`), drawn by
- *   the
- *   daemon via [RemoteComposePlayerKind.VIEW].
+ *   the daemon via [RemoteComposePlayerKind.VIEW].
  * * [ANDROIDX_EMBEDDED] — the vendored AndroidX embedded `RcPlayer`, drawn by the daemon via
  *   [RemoteComposePlayerKind.EMBEDDED]. The default, and what captures bake through.
  * * [CMP_ANDROID] — the CMP player on Android, via the daemon's `cmp-android` backend through

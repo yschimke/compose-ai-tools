@@ -12,6 +12,7 @@ import org.junit.Test
  * NoSuchMethodError: 'kotlin.jvm.functions.Function1
  *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
  * ```
+ *
  * (see #3590)
  */
 class ComposeLineFloorTest {

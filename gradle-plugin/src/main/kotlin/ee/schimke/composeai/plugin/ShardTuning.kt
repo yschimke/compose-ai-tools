@@ -48,6 +48,7 @@ internal object ShardTuning {
    * makespanCost = max(totalCost / K, maxIndividualCost)
    * T(K) = PER_FORK_SETUP + makespanCost × SECONDS_PER_COST_UNIT + (K − 1) × FORK_OVERHEAD
    * ```
+   *
    * `makespanCost` is the LPT lower bound, floored by the largest item; setup is concurrent, so
    * only extra fork overhead is summed. Seconds.
    */

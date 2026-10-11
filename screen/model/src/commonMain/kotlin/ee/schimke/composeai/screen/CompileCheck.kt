@@ -5,8 +5,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The client half of the preview server's playground contract — `POST
- * /api/{version}/compiler/run` and `GET /api/{version}/compiler/catalogs` (PLAYGROUND.md §4).
+ * The client half of the preview server's playground contract — `POST /api/{version}/compiler/run`
+ * and `GET /api/{version}/compiler/catalogs` (PLAYGROUND.md §4).
  *
  * Pure functions of text, so the decisions are tested on the JVM; the browser app only does the
  * `fetch`. A run response also carries the first frame ([CompileRunResponse.image]) and a live

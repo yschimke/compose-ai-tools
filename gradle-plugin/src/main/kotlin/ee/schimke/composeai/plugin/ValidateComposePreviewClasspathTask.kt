@@ -84,10 +84,10 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
   /**
    * Logs each classpath scope's skiko version, failing only when one scope has a mismatched pair.
    *
-   * skiko is where Compose bumps reach the renderer's call sites (e.g. `Image.encodeToData`,
-   * #4190), so its version belongs in the log. The failure case is an API jar and native runtime
-   * jar at different versions within one scope, which loads a `libskiko` missing exports →
-   * `UnsatisfiedLinkError`.
+   * skiko is where Compose bumps reach the renderer's call sites (e.g.
+   * `Image.encodeToData`, #4190), so its version belongs in the log. The failure case is an API jar
+   * and native runtime jar at different versions within one scope, which loads a `libskiko` missing
+   * exports → `UnsatisfiedLinkError`.
    *
    * Per scope, because the validated classpath concatenates the tool's and the consumer's
    * independently-resolved classpaths, each with its own coherent pair; the leading pair shadows

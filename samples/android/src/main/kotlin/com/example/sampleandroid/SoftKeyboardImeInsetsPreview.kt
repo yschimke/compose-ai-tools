@@ -48,9 +48,7 @@ fun ImeAwareListShownPreview() {
   ImeAwareList(showLabel = "keyboard up — list capped above the band")
 }
 
-/**
- * Companion with the IME hidden: the list runs to the bottom of the canvas.
- */
+/** Companion with the IME hidden: the list runs to the bottom of the canvas. */
 @Preview(name = "IME-aware list — keyboard hidden", widthDp = 360, heightDp = 640)
 @Composable
 fun ImeAwareListHiddenPreview() {

@@ -133,7 +133,7 @@ object XrCompositeProvision {
    * or null (with a one-line note) on any skip or failure; never throws.
    *
    * @param version the pinned `xr-composite` release ([XR_COMPOSITE_VERSION]), not the CLI's
-   * version.
+   *   version.
    * @param log sink for the status note (stderr by default).
    */
   fun ensureCached(

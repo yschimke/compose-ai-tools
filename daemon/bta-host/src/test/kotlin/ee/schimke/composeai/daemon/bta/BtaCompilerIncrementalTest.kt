@@ -115,9 +115,7 @@ class BtaCompilerIncrementalTest {
     val sources: List<Path>,
   )
 
-  /**
-   * Three sources in one package; two unchanged siblings give IC something to skip on pass 2.
-   */
+  /** Three sources in one package; two unchanged siblings give IC something to skip on pass 2. */
   private fun newMultiFileFixture(): Fixture {
     val (implClasspath, composePluginJar, compileClasspath) = splitRuntimeClasspath()
     val src = tmp.newFolder("src").toPath()

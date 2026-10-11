@@ -19,9 +19,9 @@ import kotlinx.serialization.json.Json
 /**
  * A `@PreviewParameter` row id must select its row on `show` / `list` / `render`, not just `serve`.
  * The id is derived once by `PreviewParameterFanout`, carried as [CaptureResult.parameterRowId],
- * and matched by [selectRequestedResults] — the same derivation `serve` uses (pinned by [serve and
- * the rendered results agree on every row id]). Driven against a real fan-out on disk so the ids
- * are shown to survive the builder.
+ * and matched by [selectRequestedResults] — the same derivation `serve` uses (pinned by
+ * [serve and the rendered results agree on every row id]). Driven against a real fan-out on disk so
+ * the ids are shown to survive the builder.
  */
 class PreviewRowResultSelectionTest {
 

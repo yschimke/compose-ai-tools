@@ -267,9 +267,7 @@ class BundleLoaderTest {
     return out
   }
 
-  /**
-   * Minimal valid 1×1 PNG, hand-rolled with CRCs so the extractor can find the IEND boundary.
-   */
+  /** Minimal valid 1×1 PNG, hand-rolled with CRCs so the extractor can find the IEND boundary. */
   private fun stubPng1x1(): ByteArray {
     // Pre-computed by running `BufferedImage(1,1).also { it.setRGB(0,0,0x808080) }` through
     // `ImageIO.write(_, "png", baos)` and copying the bytes. Stable across Java releases.

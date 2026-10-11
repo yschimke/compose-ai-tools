@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
 import io.ktor.client.HttpClient

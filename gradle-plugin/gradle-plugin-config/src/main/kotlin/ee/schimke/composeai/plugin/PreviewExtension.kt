@@ -247,6 +247,7 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * `composePreviewSource` only gets the classes scanned. Mapping a `…Kt` facade back to its source
    * (and so applying its `@file:` annotations such as `@file:CatalogGroup`) needs the sources;
    * without them those defaults silently stop applying.
+   *
    * ```
    * dependencies { composePreviewSource(project(":catalog-shared")) }
    * composePreview { previewSourceRoots.from(file("../catalog-shared/src")) }

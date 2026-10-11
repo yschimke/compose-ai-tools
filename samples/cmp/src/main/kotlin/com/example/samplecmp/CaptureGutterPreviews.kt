@@ -46,9 +46,7 @@ fun ShadowStickerCroppedPreview() {
   ElevatedSticker()
 }
 
-/**
- * With the gutter: an 8 dp wider, 9 dp taller canvas around the same component.
- */
+/** With the gutter: an 8 dp wider, 9 dp taller canvas around the same component. */
 @CaptureGutter(all = 4, bottom = 5)
 @Preview(name = "Shadow guttered", showBackground = true)
 @Composable

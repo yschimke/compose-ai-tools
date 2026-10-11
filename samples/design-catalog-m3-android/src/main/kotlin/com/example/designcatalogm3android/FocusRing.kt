@@ -53,11 +53,12 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
  * must stay `FilledButtonFocused`: the generator folds it onto `Button/Filled`'s `keyboard-focus`
  * variant by name.
  *
- * Focus is real, via `@FocusedPreview` (a `FocusManager.moveFocus` traversal in Keyboard input mode,
- * which Robolectric's permanent Touch mode otherwise refuses). A single capture keeps the plain
- * `renders/<id>.png` name.
+ * Focus is real, via `@FocusedPreview` (a `FocusManager.moveFocus` traversal in Keyboard input
+ * mode, which Robolectric's permanent Touch mode otherwise refuses). A single capture keeps the
+ * plain `renders/<id>.png` name.
  */
-// Light + dark, like the CMP catalog's `@CatalogModes`; inlined so discovery resolves them reliably.
+// Light + dark, like the CMP catalog's `@CatalogModes`; inlined so discovery resolves them
+// reliably.
 @Preview(name = "Light", showBackground = true, group = "modes")
 @Preview(
   name = "Dark",

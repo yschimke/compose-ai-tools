@@ -8,7 +8,6 @@ import ee.schimke.composeai.previewdata.AccessibilityEntry
 import ee.schimke.composeai.previewdata.AccessibilityFinding
 import ee.schimke.composeai.previewdata.AccessibilityNode
 import ee.schimke.composeai.previewdata.AccessibilityReport
-import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig

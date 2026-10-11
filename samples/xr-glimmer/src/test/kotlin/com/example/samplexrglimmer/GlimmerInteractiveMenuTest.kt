@@ -5,11 +5,11 @@ import java.io.File
 import org.junit.Test
 
 /**
- * Checks the interactive XR menu GIFs: each `GlimmerXrMenu*` function's
- * `@FocusedPreview(indices = [0, 1, 2, 3], gif = true)` walks focus across four `ListItem`s and
- * stitches one `.gif`. Guards against broken stitching, per-step `_FOCUS_<n>.png` files also being
- * written, a renamed GIF path, and environment-backdrop drift (the four composited GIFs must differ
- * while their `.raw.gif` siblings stay identical).
+ * Checks the interactive XR menu GIFs: each `GlimmerXrMenu*` function's `@FocusedPreview(indices =
+ * [0, 1, 2, 3], gif = true)` walks focus across four `ListItem`s and stitches one `.gif`. Guards
+ * against broken stitching, per-step `_FOCUS_<n>.png` files also being written, a renamed GIF path,
+ * and environment-backdrop drift (the four composited GIFs must differ while their `.raw.gif`
+ * siblings stay identical).
  */
 class GlimmerInteractiveMenuTest {
 

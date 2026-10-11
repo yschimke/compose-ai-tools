@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.sp
  *
  * @param fontFamily the family to specimen: a stock constant (`FontFamily.SansSerif`, …) or a
  *   `FontFamily(Font(...))` from `res/font/` or a Google Fonts provider.
- * @param sampleText the text in every row; override with a localised pangram to exercise
- *   diacritics or non-Latin scripts.
+ * @param sampleText the text in every row; override with a localised pangram to exercise diacritics
+ *   or non-Latin scripts.
  * @param weights the weights to render; defaults to Light / Normal / Medium / SemiBold / Bold. Pass
  *   a wider list for a variable font.
  */

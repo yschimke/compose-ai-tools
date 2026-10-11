@@ -6,9 +6,9 @@ import org.gradle.api.GradleException
 import org.junit.Test
 
 /**
- * The preview-**id** filter, the per-fan-out-member counterpart of [selectNamedPreviews] (see
- * #2966). Fixture: one `@Preview` fanned out over themes; all ids share `functionName`, so only an
- * id filter can keep one.
+ * The preview-**id** filter, the per-fan-out-member counterpart of [selectNamedPreviews]
+ * (see #2966). Fixture: one `@Preview` fanned out over themes; all ids share `functionName`, so
+ * only an id filter can keep one.
  */
 class SelectPreviewIdsTest {
 
@@ -94,8 +94,8 @@ class SelectPreviewIdsTest {
 
   /**
    * `compose-preview --filter` resolves ASCII requests to full ids itself, so a `?` in a requested
-   * id is a non-ASCII character mangled by argument encoding, and the message should say so (see
-   * #5172).
+   * id is a non-ASCII character mangled by argument encoding, and the message should say so
+   * (see #5172).
    */
   @Test
   fun `a mangled non-ASCII id names the argument encoding`() {

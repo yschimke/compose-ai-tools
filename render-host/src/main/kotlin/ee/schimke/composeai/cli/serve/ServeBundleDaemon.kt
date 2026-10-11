@@ -851,8 +851,7 @@ public object ServeBundleDaemon {
    * Archive requirements:
    * - JVM logging goes to stderr with `cds` silenced, because stdout is the JSON-RPC channel.
    * - A torn archive (daemon force-killed mid-write) blocks re-creation, so [validateArchive]
-   *   deletes
-   *   it first.
+   *   deletes it first.
    * - The directory is bounded by `composeai.serve.androidDaemonCdsMaxBytes` (default 2 GiB) via
    *   [pruneArchives], never evicting this launch's own archives.
    *

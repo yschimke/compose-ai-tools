@@ -13,8 +13,7 @@ package ee.schimke.composeai.cli
  * 1. A Nix/Guix store JDK uses the store's `ld-linux`, which ignores `/etc/ld.so.cache` and the
  *    system lib dirs, so `ldd` can succeed while the render fails ([loaderReadsSystemCache]).
  * 2. `LD_LIBRARY_PATH` must be exported all the way to the render subprocess (forked from the
- *    Gradle
- *    daemon), so the environment is read, and the remediation includes `./gradlew --stop`.
+ *    Gradle daemon), so the environment is read, and the remediation includes `./gradlew --stop`.
  *
  * The evaluation is pure over injected inputs for testing; [DoctorCommand] supplies live values.
  */
@@ -82,6 +81,7 @@ internal object DesktopNativesCheck {
      * /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
      *   (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
      * ```
+     *
      * The reverse (system dirs on a store JVM's path) is the documented remediation, not flagged.
      */
     val glibcSkew: Boolean

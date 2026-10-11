@@ -132,9 +132,7 @@ private fun BoxScope.SplashIcon(
   )
 }
 
-/**
- * Bottom-centre branding image, capped at ~200dp × ~80dp with the spec's 60dp bottom inset.
- */
+/** Bottom-centre branding image, capped at ~200dp × ~80dp with the spec's 60dp bottom inset. */
 @Composable
 private fun BoxScope.SplashBranding(brandingImage: Painter) {
   Image(

@@ -8,8 +8,8 @@ import kotlinx.serialization.json.put
 
 /**
  * One cell of a render matrix: the display-axis values distinguishing it from its siblings; a null
- * axis keeps the preview's default. Shared by the `render_matrix` MCP tool and the
- * `compose-preview render-matrix` CLI command so expansion, caps and labels stay identical.
+ * axis keeps the preview's default. Shared by the `render_matrix` MCP tool and the `compose-preview
+ * render-matrix` CLI command so expansion, caps and labels stay identical.
  */
 public data class MatrixCell(
   public val device: String? = null,

@@ -29,9 +29,9 @@ import ee.schimke.composeai.preview.AmbientPreview
 import ee.schimke.composeai.preview.AmbientPreviewState
 
 /**
- * Ambient-aware demo body reading [LocalAmbientModeManager], the seam
- * `AmbientModeBasicSample` uses via `rememberAmbientModeManager()`. `:data-ambient-connector`
- * installs it from `renderNow.overrides.ambient` in daemon renders; otherwise previews fall back to
+ * Ambient-aware demo body reading [LocalAmbientModeManager], the seam `AmbientModeBasicSample` uses
+ * via `rememberAmbientModeManager()`. `:data-ambient-connector` installs it from
+ * `renderNow.overrides.ambient` in daemon renders; otherwise previews fall back to
  * [AmbientMode.Interactive]. The greyscale + 0.9× ambient styling is adapted from horologist's
  * `ambientGray` as a local [Modifier.ambientGray].
  */

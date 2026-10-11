@@ -7,8 +7,8 @@ import kotlinx.serialization.json.JsonPrimitive
 // this file is the generator that writes one.
 
 /**
- * The annotation's policy with the authored one laid over it, field by field: a null authored
- * field means "not stated" and keeps the annotation's answer, while an authored empty list (e.g.
+ * The annotation's policy with the authored one laid over it, field by field: a null authored field
+ * means "not stated" and keeps the annotation's answer, while an authored empty list (e.g.
  * `modifierCapabilities: []`) means "none".
  */
 internal fun UiBuilderComponentPolicy.mergedWith(

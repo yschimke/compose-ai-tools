@@ -23,16 +23,12 @@ import ee.schimke.composeai.preview.KnobValue
  * declared as the preview function's own defaulted value parameters instead of `previewOverride*`
  * lookups. Compare the two files side by side.
  *
- * |                            |`previewOverride*`                |parameters
- * |
- * |----------------------------|----------------------------------|---------------------------------|
- * |declared by                 |executing a lookup while composing|the function signature
- * | |enumerable without rendering|no                                |**yes**
- * | |exhaustive                  |only where hand-wired             |**every parameter**
- * | |types                       |eight hand-rolled kinds           |the Kotlin type system
- * | |default                     |an argument to the lookup         |the default expression, in
- * source| |body                        |carries a harness call per knob   |**plain Compose**
- * |
+ * |                     |`previewOverride*`                |parameters            |
+ * |---------------------|----------------------------------|----------------------|
+ * |declared by          |executing a lookup while composing|the function signature|                               |enumerable without       |
+ * |rendering            |no                                |**yes**               |                               |exhaustive               |only where hand-wired|**every parameter**|   |types|eight|
+ * |hand-rolled kinds    |the Kotlin type system            |                      |default                        |an argument to the lookup|the default          |
+ * |expression, in source|                                  |body                  |carries a harness call per knob|**plain Compose**        |
  *
  * The body is plain Compose, publishable as a runnable snippet. It renders unchanged with no daemon
  * (the `$default` bridge fills every parameter); a daemon seeds a subset by passing `null` in the

@@ -24,6 +24,7 @@ import org.objectweb.asm.Opcodes
  * Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.NoClassDefFoundError:
  *   androidx/customview/poolingcontainer/R$id
  * ```
+ *
  * [AndroidPreviewSupport]'s main-variant pin normally supplies it, but not everywhere
  * (element-x-android, #5026).
  *

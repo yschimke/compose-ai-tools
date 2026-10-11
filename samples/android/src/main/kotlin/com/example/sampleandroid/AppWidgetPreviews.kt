@@ -35,9 +35,9 @@ import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
  * `AppWidgetManager.installedProviders` (the manifest registers `WeatherAppWidgetReceiver`) and
  * offers its `supportedCells` / `resizeAxes` to the launcher-widget data product.
  *
- * `312×152` dp is a `4×2` cell on the default launcher grid (`cellSize = 72.dp`,
- * `cellSpacing = 8.dp`); the `@LauncherWidgetPreview` samples below derive the same footprint from
- * the annotation instead.
+ * `312×152` dp is a `4×2` cell on the default launcher grid (`cellSize = 72.dp`, `cellSpacing =
+ * 8.dp`); the `@LauncherWidgetPreview` samples below derive the same footprint from the annotation
+ * instead.
  *
  * The `RemoteViews` comes from [weatherRemoteViews], the same factory the receiver's `onUpdate`
  * calls, so this previews the production widget rather than a look-alike.

@@ -20,9 +20,7 @@ class SharedElementFilmstripPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
-  /**
-   * The capture is time-pinned, so its filename carries the `_TIME_<ms>ms` suffix.
-   */
+  /** The capture is time-pinned, so its filename carries the `_TIME_<ms>ms` suffix. */
   private val timeSuffix = "_TIME_${FILMSTRIP_CAPTURE_MS}ms"
 
   @Test
