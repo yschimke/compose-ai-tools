@@ -261,6 +261,21 @@ class TypedAdapterDiscoveryTest {
         .toSet(),
       spaced.returnSupertypes,
     )
+    val nested =
+      TypedAdapterDiscovery.discoverFactories(
+          listOf(
+            TypedAdapterDiscovery.Callable(
+              "ee.schimke.composeai.discovery.AdapterFactoryFixture",
+              "nested",
+            )
+          )
+        )
+        .single()
+    assertEquals("ee.schimke.composeai.discovery.AdapterFactoryNesting.Both", nested.returnTypeFqn)
+    assertEquals(
+      setOf("ee.schimke.composeai.discovery.AdapterFactoryNesting.Vertical"),
+      nested.returnSupertypes,
+    )
     // A final class with nothing above it but `Any` has none.
     val colors =
       TypedAdapterDiscovery.discoverFactories(
@@ -341,9 +356,18 @@ abstract class AdapterFactoryBase
 
 class AdapterFactorySpacing : AdapterFactoryBase(), AdapterFactoryVertical, AdapterFactoryHorizontal
 
+/** Nested, as `Arrangement.HorizontalOrVertical` is: metadata and class files spell it apart. */
+object AdapterFactoryNesting {
+  interface Vertical
+
+  interface Both : Vertical
+}
+
 @Suppress("UNUSED_PARAMETER")
 object AdapterFactoryFixture {
   fun spaced(space: Int): AdapterFactorySpacing = error("not executed")
+
+  fun nested(space: Int): AdapterFactoryNesting.Both = error("not executed")
 
   fun colors(): AdapterFactoryColors = error("not executed")
 

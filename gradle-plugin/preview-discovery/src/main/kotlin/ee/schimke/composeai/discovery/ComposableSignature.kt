@@ -317,9 +317,13 @@ internal object ComposableSignature {
     return kmClass.functions
       .filter { it.name == name && it.visibility == Visibility.PUBLIC }
       .mapNotNull { fn ->
+        // Metadata spells `pkg/Outer.Nested`; the class file is `pkg.Outer$Nested`.
+        val kmName =
+          (fn.returnType.classifier as? KmClassifier.Class)?.name ?: return@mapNotNull null
         val jvmReturnType =
-          (fn.returnType.classifier as? KmClassifier.Class)?.name?.replace('/', '.')
-            ?: return@mapNotNull null
+          kmName.substringBeforeLast('/', "").let {
+            if (it.isEmpty()) "" else it.replace('/', '.') + "."
+          } + kmName.substringAfterLast('/').replace('.', '$')
         FactorySignature(
           callableFqn = "${classInfo.name.replace('$', '.')}.$name",
           returnTypeFqn = jvmReturnType.replace('$', '.'),
