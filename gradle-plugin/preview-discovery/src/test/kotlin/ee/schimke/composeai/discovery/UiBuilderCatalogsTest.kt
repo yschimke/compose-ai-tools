@@ -1089,17 +1089,27 @@ class UiBuilderCatalogsTest {
             UiBuilderCode.Builder()
               .also { b ->
                 b.strategy = "templates"
-                b.templates = mapOf("screen-root" to "…", "previews" to "…", "carousel" to "…")
+                b.templates =
+                  mapOf(
+                    "screen-root" to "…",
+                    // A frame per set of filled slots is the screen-root role, not a new one.
+                    "screen-root+edgeButton" to "…",
+                    "screen-root+edgeButton+overlays" to "…",
+                    "previews" to "…",
+                    "carousel" to "…",
+                    "list+items" to "…",
+                    "screen-root+header" to "…",
+                  )
               }
               .build()
         ),
       )!!
     assertThat(
-        unknownRole.diagnostics.filter {
-          it.code == UiBuilderCatalogs.Diagnostics.TEMPLATE_ROLE_UNKNOWN
-        }
+        unknownRole.diagnostics
+          .filter { it.code == UiBuilderCatalogs.Diagnostics.TEMPLATE_ROLE_UNKNOWN }
+          .map { it.subject }
       )
-      .hasSize(1)
+      .containsExactly("carousel", "list+items", "screen-root+header")
   }
 
   @Test
