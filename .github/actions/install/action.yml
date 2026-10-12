@@ -106,7 +106,9 @@ runs:
         # deadline is fixed here, so the two waits together never exceed it. A malformed
         # budget is reported by plugin-readiness.py; here it just means "no waiting".
         budget=0
-        case "$BUDGET" in ''|*[!0-9]*) ;; *) budget=$BUDGET ;; esac
+        # 10# forces base 10: a leading-zero value such as `090` would otherwise be read as octal
+        # and abort the step under `set -e`.
+        case "$BUDGET" in ''|*[!0-9]*) ;; *) budget=$((10#$BUDGET)) ;; esac
         printf 'deadline=%s\n' "$(( $(date +%s) + budget ))" >> "$GITHUB_OUTPUT"
         printf '::notice::Resolved compose-preview version: %s\n' "$ver"
 
