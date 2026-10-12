@@ -8,8 +8,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
     open-pull-requests-limit: 5
     # Let a new version sit on the registry for a week before we pull it
     # in, so typosquat/supply-chain compromises published and then pulled
