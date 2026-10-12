@@ -136,6 +136,43 @@ internal object PackPreviewIdExclusions {
         )
       }
 
+  /** One printed line of [reportLines]; [warn] marks a probable mistake. */
+  data class ReportLine(val text: String, val warn: Boolean)
+
+  /**
+   * What to print for [matches]: one line per pattern up to [detailLimit] patterns (a hand-written
+   * list), else a summary plus only the patterns that matched nothing, themselves capped. A
+   * sharder's generated "everything not mine" list runs to thousands of patterns, and echoing each
+   * pushed the useful output out of CI's log tail. Mirrors the plugin's `previewIdExclusionReport`.
+   */
+  fun reportLines(matches: List<Match>, detailLimit: Int = REPORT_DETAIL_LIMIT): List<ReportLine> {
+    if (matches.size <= detailLimit) return matches.map { ReportLine(it.line, it.matched == 0) }
+    val unmatched = matches.filter { it.matched == 0 }
+    return buildList {
+      add(
+        ReportLine(
+          "--exclude-preview-id: ${matches.size} pattern(s) over ${matches.first().total} " +
+            "preview(s); ${matches.size - unmatched.size} matched, ${unmatched.size} matched " +
+            "nothing (per-pattern lines are listed only for up to $detailLimit patterns)",
+          warn = false,
+        )
+      )
+      unmatched.take(detailLimit).forEach { add(ReportLine(it.line, warn = true)) }
+      if (unmatched.size > detailLimit) {
+        add(
+          ReportLine(
+            "--exclude-preview-id: … and ${unmatched.size - detailLimit} more pattern(s) " +
+              "matched nothing",
+            warn = true,
+          )
+        )
+      }
+    }
+  }
+
+  /** Above this many patterns, [reportLines] summarises instead of listing each. */
+  const val REPORT_DETAIL_LIMIT = 20
+
   /** [ids] with every entry matching [patterns] removed. An empty pattern list keeps everything. */
   fun retain(ids: List<String>, patterns: List<String>): List<String> {
     val cleaned = patterns.map { it.trim() }.filter { it.isNotEmpty() }

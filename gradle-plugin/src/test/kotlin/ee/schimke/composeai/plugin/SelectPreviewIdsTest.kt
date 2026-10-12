@@ -259,6 +259,35 @@ class SelectPreviewIdsTest {
   }
 
   @Test
+  fun `a short exclusion list is logged one line per pattern`() {
+    val report =
+      previewIdExclusionReport(previewIdExclusionMatches(all, listOf("*_Dark", "*_Sepia")))
+
+    assertThat(report.map { it.second }).containsExactly(false, true).inOrder()
+    assertThat(report.first().first)
+      .isEqualTo("--exclude-preview-id '*_Dark' matched 2 of 5 preview(s)")
+  }
+
+  @Test
+  fun `a generated exclusion list is summarised, keeping only the patterns that matched nothing`() {
+    // A render sharder passes every id it does not own: thousands of patterns, one log line each.
+    val patterns = all.map { "=${it.id}" } + (1..30).map { "=Missing$it" }
+
+    val report =
+      previewIdExclusionReport(previewIdExclusionMatches(all, patterns), detailLimit = 20)
+
+    assertThat(report.first().first)
+      .isEqualTo(
+        "--exclude-preview-id: 35 pattern(s) over 5 preview(s); 5 matched, 30 matched nothing " +
+          "(per-pattern lines are listed only for up to 20 patterns)"
+      )
+    // The summary, 20 unmatched patterns, and a tail count: bounded however long the list is.
+    assertThat(report).hasSize(22)
+    assertThat(report.drop(1).all { it.second }).isTrue()
+    assertThat(report.last().first).contains("and 10 more pattern(s) matched nothing")
+  }
+
+  @Test
   fun `overlapping patterns are each counted in full, so the counts need not sum`() {
     // Deliberate: the reader is diagnosing which pattern did the work, not reconciling a total.
     val matches = previewIdExclusionMatches(all, listOf("*_Dark", "FilledButton*"))

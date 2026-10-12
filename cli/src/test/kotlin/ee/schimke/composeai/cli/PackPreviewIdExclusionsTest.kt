@@ -386,6 +386,41 @@ class PackPreviewIdExclusionsTest {
   }
 
   @Test
+  fun `a short exclusion list is reported one line per pattern`() {
+    val ids = listOf("Foo_Light", "Foo_Dark")
+
+    val lines =
+      PackPreviewIdExclusions.reportLines(
+        PackPreviewIdExclusions.matches(ids, listOf("*_Dark", "Nope"))
+      )
+
+    assertEquals(listOf(false, true), lines.map { it.warn })
+    assertEquals("--exclude-preview-id '*_Dark' matched 1 of 2 preview(s)", lines.first().text)
+  }
+
+  @Test
+  fun `a generated exclusion list is summarised instead of echoed per pattern`() {
+    // m3-catalog's shards each passed ~3100 exact ids; one stderr line per id buried the log tail.
+    val ids = (1..100).map { "Preview$it" }
+    val patterns = ids.map { "=$it" } + (1..25).map { "=Gone$it" }
+
+    val lines =
+      PackPreviewIdExclusions.reportLines(
+        PackPreviewIdExclusions.matches(ids, patterns),
+        detailLimit = 20,
+      )
+
+    assertEquals(
+      "--exclude-preview-id: 125 pattern(s) over 100 preview(s); 100 matched, 25 matched " +
+        "nothing (per-pattern lines are listed only for up to 20 patterns)",
+      lines.first().text,
+    )
+    assertEquals(22, lines.size)
+    assertEquals(true, lines.drop(1).all { it.warn })
+    assertEquals(true, lines.last().text.contains("and 5 more pattern(s) matched nothing"))
+  }
+
+  @Test
   fun `blank patterns are neither applied nor reported`() {
     assertEquals(emptyList(), PackPreviewIdExclusions.matches(listOf("Foo"), listOf(" ", "")))
   }
