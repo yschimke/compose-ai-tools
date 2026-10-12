@@ -152,6 +152,26 @@ writes it — and can adopt the same scope by pointing `scope-step.sh`'s
 [`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml)
 carries the recipe.
 
+Two inputs let such a caller hand both jobs to the reusable workflow, and each takes a
+runner hop or a wait off the critical path — on m3-catalog's green run 38136351633,
+queue waits were ~72 of 134.5 minutes, across five sequential job hops:
+
+- **`scope-mapper`** runs `scope-step.sh` inside the reusable workflow's `driver` job,
+  which every run pays for anyway, so the caller needs no `Scope` job of its own. A
+  lane that scopes out stops at `driver`; nothing downstream starts or takes a
+  concurrency group.
+- **`supersede-stale-runs`** moves concurrency into the reusable workflow, per job. A
+  newer run's render shards and merge **cancel** the older run's, so a push no longer
+  waits behind a render that is about to be overwritten; the publish job **queues**
+  and is never cut off, because it is three pushes (catalog, source marker, history)
+  and stopping between them leaves the marker or the timeline a publish behind. The
+  caller must drop its own job-level `concurrency:` for the lane at the same time —
+  a caller's group wraps the whole called workflow, so while it is there the two
+  runs never meet in these groups.
+
+A cancelled render is safe for the reason above: the marker still names what the
+lane was last published from, so the next run re-scopes it.
+
 Renderer / plugin / CLI changes are deliberately **not** in that push trigger:
 they do change the rendered output, but they're touched by most merges, so the
 weekly cron and the release chain absorb that drift instead. Dispatch manually if

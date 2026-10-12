@@ -70,6 +70,16 @@ name: Design Artifacts (reusable)
 #     push touched, and the failure above cannot persist.
 #
 # `design-artifacts.yml` here is the reference caller for both.
+#
+# Two inputs take both jobs off the caller, and each removes a runner hop or a wait from the
+# critical path (measured on m3-catalog, where a queue wait was ~11 minutes a hop):
+#
+#  * `scope-mapper` runs scope-step.sh inside this workflow's `driver` job, which every run pays for
+#    anyway, so the caller needs no `Scope` job in front of it. A lane that scopes out stops at
+#    `driver`.
+#  * `supersede-stale-runs` moves concurrency into this workflow, per job: a newer run's render
+#    CANCELS the older one's, while the publish QUEUES. The caller then drops its own job-level
+#    `concurrency:` for the lane — see the input for why the two must go together.
 
 on:
   workflow_call:
@@ -262,6 +272,31 @@ on:
           Path, relative to the rendered Gradle build, of the ZIP produced by
           ui-builder-runtime-task. The archive must carry a verified compose-ui-builder-runtime/v1
           manifest. It is copied to the delivery branch and declared on catalog.json.
+        required: false
+        type: string
+        default: ''
+      ui-builder-renderer-standalone:
+        description: >-
+          Build ui-builder-runtime-task in its OWN job, from a clean checkout, while the render
+          shards run, instead of in the rendered Gradle build after preview rendering. Takes the
+          build (~4 minutes on m3-catalog) off the critical path. Only on the sharded path
+          (render-shards > 1): a single-shard run has no render to overlap, so a separate job would
+          only add a runner hop. Off by default, which keeps the documented contract above.
+
+          Opt in ONLY if the task is self-contained: it must not read anything the render or
+          `generate` produces (preview renders, the bundle, generated theme providers, any
+          build/compose-previews output). It runs before any of those exist. Its archive is
+          verified by manifest in `generate` either way.
+        required: false
+        type: boolean
+        default: false
+      semantics-workers:
+        description: >-
+          Render daemons each `bundle pack --with-semantics` runs in parallel: a positive integer
+          or `auto` (half the cores, bounded by free memory and the container's memory limit, at
+          most one per 50 previews, at most 8). Exported as COMPOSE_PREVIEW_SEMANTICS_WORKERS, so
+          it reaches every pack line, including each render shard's. Empty keeps one daemon. A CLI
+          that predates the setting ignores it.
         required: false
         type: string
         default: ''
@@ -530,6 +565,65 @@ on:
         required: false
         type: number
         default: 60
+      supersede-stale-runs:
+        description: >
+          Let a newer run of this lane cancel an older one's RENDER instead of queueing behind it,
+          while the PUBLISH still queues. Off by default, which leaves concurrency entirely to the
+          caller, exactly as before this input existed.
+
+          Turning it on is half of a pair: the caller must also drop its own job-level
+          `concurrency:` for this lane. A caller's group wraps the whole called workflow, so while
+          it is there a newer run waits for the older one to finish before any job below starts,
+          and these groups never see the two runs side by side.
+
+          What it does, in this workflow's own groups (keyed on repository, ref and system): every
+          render shard and the merge (`generate`) cancel the older run's same job when they start,
+          so a superseded render stops spending runners on a commit nothing will serve. The publish
+          job takes a separate group WITHOUT cancel-in-progress, so a publish that has started
+          always finishes: it is three separate pushes (the catalog commit, the source marker ref,
+          the history commit), and while each is atomic, cutting between them leaves the marker or
+          the timeline one publish behind. That is recoverable — the next run re-scopes from the
+          marker — but there is no reason to cause it for a job that runs well under a minute. A
+          pending publish is still replaced by a newer pending one, which is the newest-wins order
+          a delivery branch wants.
+
+          A cancelled render is safe to lose for the same reason a pending-evicted run is (see the
+          `## Scoping a multi-lane caller` note at the top): the source marker still names what the
+          lane was LAST published from, so a scope that diffs from it re-renders the lane next
+          time whatever that push touched. The one ordering this cannot rule out is an OLDER run's
+          shard starting after a newer run's (a driver job that sat in the runner queue longer):
+          it then cancels the newer shard, the older commit publishes, and the marker heals it on
+          the next push or the weekly cron — the same exposure queueing already had.
+        required: false
+        type: boolean
+        default: false
+      scope-mapper:
+        description: >
+          Decide in THIS workflow's `driver` job whether the lane has anything to regenerate,
+          instead of in a `Scope` job of the caller's own. The value is the caller's path→lane
+          mapper (the `SCOPE_MAPPER` of `scripts/design-artifacts/scope-step.sh`), relative to the
+          caller's checkout — e.g. `scripts/scope-systems.sh`. It must name `system` as one of its
+          lanes.
+
+          Why it exists: a caller-side Scope job is one more runner hop in front of the whole
+          pipeline, and on a busy account a hop is a full queue wait — 11 of m3-catalog's 134
+          minutes on a green run, for a job that runs for twelve seconds. Folding it into `driver`,
+          which every run pays for anyway, removes that hop. A lane that scopes out stops right
+          there: every other job is skipped, and none of them takes a concurrency group, so an
+          out-of-scope run cannot cancel or queue behind an in-scope one.
+
+          Empty (the default) keeps the old behaviour: the caller decides with its own `if:`, and
+          every called run regenerates.
+        required: false
+        type: string
+        default: ''
+      scope-only:
+        description: >-
+          With `scope-mapper`: a manual dispatch's comma-separated lane selector, passed to
+          scope-step.sh as `ONLY`. Empty means the automatic per-lane predicate.
+        required: false
+        type: string
+        default: ''
       render-shards:
         description: >
           Split the PRIMARY render across this many parallel jobs. 1 (the default) keeps the
@@ -858,6 +952,58 @@ env:
 
     if __name__ == "__main__":
         sys.exit(main(sys.argv))
+  # The catalog-owned UI-builder renderer's checks and build, defined ONCE here because two jobs run
+  # it: `ui-builder-renderer`, which builds it alongside the render shards, and `generate`, which
+  # places that job's archive (UI_BUILDER_RENDERER_PREBUILT set) or, when that job did not run —
+  # the default, a single-shard run, import mode, or only one of the two inputs set (which the
+  # checks below then reject) — builds it inline as it always did. Extra arguments are passed to Gradle. Workflow logic rather than a
+  # script under scripts/design-artifacts/, for the reason TRUST_PREVIEW_PLUGIN_PY gives above.
+  UI_BUILDER_RENDERER_SH: |
+    set -euo pipefail
+    if [ -z "$INPUT_UI_BUILDER_RUNTIME_TASK" ] || [ -z "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
+      echo "::error title=UI-builder renderer::ui-builder-runtime-task and ui-builder-runtime-archive must be set together."
+      exit 1
+    fi
+    if [[ ! "$INPUT_UI_BUILDER_RUNTIME_TASK" =~ ^:[A-Za-z0-9:_-]+$ ]]; then
+      echo "::error title=UI-builder renderer::ui-builder-runtime-task must be one absolute Gradle task path."
+      exit 1
+    fi
+    if [[ "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" = /* ]] || [[ "/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE/" = *"/../"* ]]; then
+      echo "::error title=UI-builder renderer::ui-builder-runtime-archive must stay beneath the rendered Gradle build."
+      exit 1
+    fi
+    sdk_args=()
+    if [ -n "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" ] &&
+       [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+       [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "::error title=UI-builder renderer::ui-builder-runtime-source-ref must be a release tag or full commit SHA."
+      exit 1
+    fi
+    if [ -n "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" ] && [ -z "${UI_BUILDER_RENDERER_PREBUILT:-}" ]; then
+      sdk_dir="$RUNNER_TEMP/compose-ui-builder-renderer-sdk"
+      git init --quiet "$sdk_dir"
+      git -C "$sdk_dir" remote add origin https://github.com/yschimke/compose-ui-builder.git
+      git -C "$sdk_dir" fetch --quiet --depth=1 origin "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF"
+      git -C "$sdk_dir" checkout --quiet --detach FETCH_HEAD
+      sdk_args+=("-PcomposeUiBuilderDir=$sdk_dir")
+    fi
+    # Built by the `ui-builder-renderer` job alongside the shards: place what it uploaded instead of
+    # building it again here, AFTER the checks above so a prebuilt archive is held to the same path
+    # rules as a fresh one.
+    if [ -n "${UI_BUILDER_RENDERER_PREBUILT:-}" ]; then
+      mkdir -p "$(dirname "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")"
+      cp "$UI_BUILDER_RENDERER_PREBUILT/$(basename "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")" \
+        "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE"
+    else
+      (
+        cd "$RENDER_DIR"
+        ./gradlew "$INPUT_UI_BUILDER_RUNTIME_TASK" "${sdk_args[@]}" "$@" --no-daemon
+      )
+    fi
+    if [ ! -f "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
+      echo "::error title=UI-builder renderer::task completed without writing $INPUT_UI_BUILDER_RUNTIME_ARCHIVE"
+      exit 1
+    fi
   # An imported project may LOCK its buildscript classpath (bitwarden/android does, with
   # lockAllConfigurations() and LockMode.STRICT), in which case it rejects every module its lock
   # state does not name — including the preview plugin auto-inject adds, so the render dies during
@@ -905,6 +1051,8 @@ env:
   INPUT_UI_BUILDER_RUNTIME_ARCHIVE: ${{ inputs.ui-builder-runtime-archive }}
   INPUT_UI_BUILDER_RUNTIME_SOURCE_REF: ${{ inputs.ui-builder-runtime-source-ref }}
   INPUT_DEFER_FIGMA_SVG: ${{ inputs.defer-figma-svg }}
+  # Read by `bundle pack --with-semantics` directly; empty means one daemon.
+  COMPOSE_PREVIEW_SEMANTICS_WORKERS: ${{ inputs.semantics-workers }}
   INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
   INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
   INPUT_SPLIT_MODE: ${{ inputs.split-mode }}
@@ -1006,12 +1154,18 @@ jobs:
     # and because every checkout job now needs this one, it would take the whole
     # pipeline down with it rather than just itself.
     runs-on: ${{ inputs.runs-on }}
-    timeout-minutes: 5
+    # Ten, not five: it also carries the shard plan's CLI probe (JDK + CLI install) now.
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
       ref: ${{ steps.driver.outputs.ref }}
       upstream-sha: ${{ steps.upstream.outputs.sha }}
+      # `[1, 2, …, N]` for the shard fan-out. Always set, so `strategy` never sees an empty string.
+      matrix: ${{ steps.plan.outputs.matrix }}
+      # `false` only when `scope-mapper` is set and says this lane has nothing to regenerate; every
+      # other job is gated on it. Empty (no mapper) means in scope, which is the old behaviour.
+      in-scope: ${{ steps.scope.outputs.in-scope }}
     steps:
       # IMPORT MODE is a refusal, not a warning. Rendering a caller-named third-party repository and
       # force-pushing a branch cannot happen in one job: `generate` runs the imported project's
@@ -1218,27 +1372,11 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
           echo "Export driver: \`${ref}\`" >> "$GITHUB_STEP_SUMMARY"
 
-
-  # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
-  # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
-  # turns the count into a matrix (Actions has no range expression); `render-shard` is the render,
-  # fanned out. Both are skipped when render-shards is 1, and `generate` renders inline exactly as
-  # it always has.
-  shard-matrix:
-    name: ${{ inputs.system }} · plan
-    if: ${{ inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
-    runs-on: ${{ inputs.runs-on }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      # No checkout, no Gradle: this is `[1, 2, …, N]` and nothing else. The real partition is
-      # computed inside each shard from its own discovery, which is what keeps the fan-out free of a
-      # serial "discover once, then start the shards" prefix — that prefix would cost a full Gradle
-      # configure + compile + discover (~87 s measured) before any shard began, which is the same
-      # fixed cost each shard pays anyway.
+      # The shard matrix: `[1, 2, …, N]` and nothing else (Actions has no range expression). The
+      # real partition is computed inside each shard from its own discovery, which is what keeps
+      # the fan-out free of a serial "discover once, then start the shards" prefix — that prefix
+      # would cost a full Gradle configure + compile + discover (~87 s measured) before any shard
+      # began, which is the same fixed cost each shard pays anyway.
       - name: Build the shard matrix
         id: plan
         env:
@@ -1246,6 +1384,65 @@ jobs:
         run: |
           set -euo pipefail
           echo "matrix=[$(seq -s, 1 "$SHARDS")]" >> "$GITHUB_OUTPUT"
+
+      # The calling repo, for the two things below that read it: the caller's lane mapper, and
+      # `cli-version: catalog`, which reads the CLI pin out of the caller's version catalog. Both
+      # read files only; nothing from this checkout is built here.
+      - name: Check out the calling repo
+        if: ${{ inputs.scope-mapper != '' || (inputs.cli-source == 'released' && inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # Scope, in the job every run pays for anyway (see the `scope-mapper` input). The logic is
+      # scope-step.sh from the export-driver revision resolved above — the same revision whose
+      # publish job writes the source marker it reads — pointed at the caller's own lane table.
+      - name: Check out the scope step
+        if: ${{ inputs.scope-mapper != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          ref: ${{ steps.driver.outputs.ref }}
+          path: .design-artifacts-driver
+          sparse-checkout: scripts/design-artifacts
+          persist-credentials: false
+
+      - name: Decide whether ${{ inputs.system }} has anything to regenerate
+        id: scope
+        if: ${{ inputs.scope-mapper != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ONLY: ${{ inputs.scope-only }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          INPUT_SCOPE_MAPPER: ${{ inputs.scope-mapper }}
+          DRIVER_REF: ${{ steps.driver.outputs.ref }}
+        run: |
+          set -euo pipefail
+          case "$INPUT_SCOPE_MAPPER" in
+            /*|*..*) echo "::error title=scope-mapper::'$INPUT_SCOPE_MAPPER' must be a path inside the calling repository."; exit 1 ;;
+          esac
+          step=.design-artifacts-driver/scripts/design-artifacts/scope-step.sh
+          if [ ! -f "$step" ]; then
+            echo "::error title=scope-mapper::the export-driver revision $DRIVER_REF has no scope-step.sh; drop scope-mapper and scope in the caller."
+            exit 1
+          fi
+          verdicts="$(SCOPE_MAPPER="$GITHUB_WORKSPACE/$INPUT_SCOPE_MAPPER" bash "$step")"
+          printf '%s\n' "$verdicts"
+          verdict="$(printf '%s\n' "$verdicts" | sed -n "s/^${INPUT_SYSTEM}=\(true\|false\)$/\1/p" | head -n1)"
+          # A lane the mapper does not name is a configuration error, not "out of scope": reading it
+          # as false would stop this catalog ever republishing, silently.
+          if [ -z "$verdict" ]; then
+            echo "::error title=scope-mapper::$INPUT_SCOPE_MAPPER printed no verdict for '$INPUT_SYSTEM'. Its lane names must be the delivery-branch slugs passed as 'system'."
+            exit 1
+          fi
+          echo "in-scope=$verdict" >> "$GITHUB_OUTPUT"
+          if [ "$verdict" = "false" ]; then
+            echo "::notice title=${INPUT_SYSTEM}::nothing in this lane's inputs changed since it was last published; skipping the render and publish."
+          fi
 
       # The merge runs LAST, after every shard has spent its several minutes — so a CLI that predates
       # `bundle merge` would fail with "Unknown bundle subcommand" having burned the whole fan-out.
@@ -1259,23 +1456,14 @@ jobs:
       # building it twice; a `driver-ref` old enough to lack the subcommand is a compose-ai-tools
       # internal misconfiguration, not a consumer-facing pin.
       - name: Set up JDK 21
-        if: ${{ inputs.cli-source == 'released' }}
+        if: ${{ steps.scope.outputs.in-scope != 'false' && inputs.cli-source == 'released' && inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
 
-      # `cli-version: catalog` reads the pin out of the caller's version catalog, so the checkout is
-      # needed for the install action to resolve it.
-      - name: Check out the calling repo
-        if: ${{ inputs.cli-source == 'released' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.ref }}
-          persist-credentials: false
-
       - name: Install compose-preview CLI
-        if: ${{ inputs.cli-source == 'released' }}
+        if: ${{ steps.scope.outputs.in-scope != 'false' && inputs.cli-source == 'released' && inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
         # Security boundary: this privileged reusable workflow must not execute
         # a movable action ref. Dependabot/manual upgrades should update this SHA.
         # This is an ORDINARY action pin, in the same category as the
@@ -1305,7 +1493,7 @@ jobs:
       #  - `--exclude-preview-id-file` keeps a generated exclusion set out of argv. Without it a
       #    large catalog fails with E2BIG before compose-preview or Gradle can start (#4911).
       - name: Check the CLI can shard and merge
-        if: ${{ inputs.cli-source == 'released' }}
+        if: ${{ steps.scope.outputs.in-scope != 'false' && inputs.cli-source == 'released' && inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
         run: |
           set -euo pipefail
           version="$(compose-preview --version | head -1)"
@@ -1324,24 +1512,42 @@ jobs:
           fi
           echo "✓ $version supports 'bundle merge', anchored '=<id>' exclusions, and file-based exclusion transport."
 
+
+  # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
+  # One job that does not exist at all in the default single-shard pipeline: `render-shard`, the
+  # render, fanned out. Skipped when render-shards is 1, and `generate` renders inline exactly as it
+  # always has. Its matrix and its CLI probe used to be a second tiny job (`shard-matrix`, "plan")
+  # beside `driver`; they are steps of `driver` now, so that gating every job on the scope verdict
+  # below costs no extra runner hop.
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
-    if: ${{ inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
-    needs: [driver, shard-matrix]
+    if: >-
+      ${{ needs.driver.outputs.in-scope != 'false' && inputs.render-shards > 1 &&
+      inputs.module != '' && inputs.modules != 'all' }}
+    needs: [driver]
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
+    # `supersede-stale-runs`: a newer run's shard N cancels an older run's shard N. Off, the group is
+    # unique to this run and shard, so it orders nothing — concurrency stays the caller's business.
+    # The shard number is in the group because matrix legs share a job id: without it each shard
+    # would cancel its own siblings.
+    concurrency:
+      group: >-
+        ${{ inputs.supersede-stale-runs
+        && format('design-artifacts-render-{0}-{1}-{2}-shard-{3}', github.repository, github.ref, inputs.system, matrix.shard)
+        || format('design-artifacts-run-{0}-{1}-{2}-shard-{3}', github.run_id, github.run_attempt, inputs.system, matrix.shard) }}
+      cancel-in-progress: ${{ inputs.supersede-stale-runs }}
     strategy:
       # A shard that dies takes the run with it: the merge needs every partition, so letting the
       # siblings burn another 20 minutes to produce an unpublishable bundle helps nobody.
       fail-fast: true
       matrix:
-        # The `|| '[1]'` is inert insurance: a skipped `shard-matrix` (render-shards at its default)
-        # leaves the output empty, and `strategy` is expanded early enough that a bare `fromJSON('')`
-        # can fail the workflow rather than skip the job. The fallback is never rendered — the `if`
-        # above is false in exactly the case that produces it.
-        shard: ${{ fromJSON(needs.shard-matrix.outputs.matrix || '[1]') }}
+        # The `|| '[1]'` is inert insurance: `driver` always writes the matrix, but `strategy` is
+        # expanded early enough that a bare `fromJSON('')` can fail the workflow rather than skip the
+        # job. The fallback is never rendered — the `if` above is false whenever it could apply.
+        shard: ${{ fromJSON(needs.driver.outputs.matrix || '[1]') }}
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
@@ -2521,17 +2727,95 @@ jobs:
           compression-level: 0
           retention-days: 1
 
+  # The catalog-owned UI-builder renderer, built WHILE the shards render rather than after them,
+  # for a caller that opts in with `ui-builder-renderer-standalone`. For a task that reads no render
+  # output, the ~4 minutes it took inside `generate` (a cold Gradle distribution download, a fresh
+  # configuration, every task executed) sat on the critical path for nothing. `generate` downloads
+  # the archive this uploads.
+  #
+  # Opt-in, and sharded runs only. The documented contract is that the task runs in the rendered
+  # build AFTER preview rendering, and a caller's task may consume what that produced; by default
+  # it still does, inline in `generate`. And with one shard there is no render to overlap, so a
+  # separate job would only add a runner hop in front of `generate`.
+  #
+  # Gradle's user home is cached here (setup-gradle: distribution, dependencies, the local build
+  # cache, which `--build-cache` turns on for this one build), written only from the default branch
+  # as setup-gradle does by default. Nothing else in this workflow takes that cache: the render jobs
+  # are what a cache would change the bytes of, and this archive is verified by manifest at
+  # `generate` whatever produced it.
+  #
+  # It builds from a clean checkout of the caller, before `generate`'s own preparation (declared
+  # theme providers, the render) has touched the tree — which is exactly what the opt-in asserts the
+  # task does not need.
+  #
+  # Not in import mode: the inline build in `generate` keeps that path exactly as it was, and an
+  # import names no catalog-owned renderer anyway.
+  ui-builder-renderer:
+    name: ${{ inputs.system }} · UI-builder renderer
+    needs: [driver]
+    if: >-
+      ${{ needs.driver.outputs.in-scope != 'false' && inputs.ui-builder-renderer-standalone &&
+      inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' &&
+      inputs.upstream-repository == '' && inputs.ui-builder-runtime-task != '' &&
+      inputs.ui-builder-runtime-archive != '' }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+    steps:
+      - name: Check out the calling repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          add-job-summary: on-failure
+
+      - name: Build catalog-owned UI-builder renderer
+        run: bash -c "$UI_BUILDER_RENDERER_SH" ui-builder-renderer --build-cache
+
+      - name: Upload the UI-builder renderer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-ui-builder-renderer
+          path: ${{ github.workspace }}/${{ env.RENDER_DIR }}/${{ inputs.ui-builder-runtime-archive }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   generate:
     name: ${{ inputs.system }}
     # Skipped needs are the single-shard path, not a failure: with render-shards at its default the
-    # two jobs above never run, and this job must still start. `!cancelled()` plus an explicit
-    # failure check is the pattern that distinguishes "skipped" from "broke".
-    needs: [driver, shard-matrix, render-shard]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    # shards never run, nor does the renderer job for a catalog with no renderer, and this job must
+    # still start. `!cancelled()` plus an explicit failure check is the pattern that distinguishes
+    # "skipped" from "broke". A lane `driver` scoped out stops here.
+    needs: [driver, render-shard, ui-builder-renderer]
+    if: >-
+      ${{ !cancelled() && !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') && needs.driver.outputs.in-scope != 'false' }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
+    # `supersede-stale-runs`: a newer run's merge cancels an older run's — on the single-shard path
+    # this job IS the render. Off, the group is unique to this run and orders nothing.
+    concurrency:
+      group: >-
+        ${{ inputs.supersede-stale-runs
+        && format('design-artifacts-render-{0}-{1}-{2}-generate', github.repository, github.ref, inputs.system)
+        || format('design-artifacts-run-{0}-{1}-{2}-generate', github.run_id, github.run_attempt, inputs.system) }}
+      cancel-in-progress: ${{ inputs.supersede-stale-runs }}
     env:
       # The preview ids can contain an em-dash; force UTF-8 so `bundle pack --id`
       # round-trips and the generator's join stays exact.
@@ -4531,44 +4815,20 @@ jobs:
           fi
           node "$checker" --assertions "$GITHUB_WORKSPACE/$ASSERTIONS" "${bundles[@]}"
 
+      # Built by the `ui-builder-renderer` job while the shards rendered; it does not depend on any
+      # render output. Downloaded only when that job ran — otherwise the step below builds inline.
+      - name: Download the UI-builder renderer
+        if: ${{ needs.ui-builder-renderer.result == 'success' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.system }}-ui-builder-renderer
+          path: ${{ runner.temp }}/ui-builder-renderer
+
       - name: Build catalog-owned UI-builder renderer
         if: ${{ inputs.ui-builder-runtime-task != '' || inputs.ui-builder-runtime-archive != '' }}
-        run: |
-          set -euo pipefail
-          if [ -z "$INPUT_UI_BUILDER_RUNTIME_TASK" ] || [ -z "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
-            echo "::error title=UI-builder renderer::ui-builder-runtime-task and ui-builder-runtime-archive must be set together."
-            exit 1
-          fi
-          if [[ ! "$INPUT_UI_BUILDER_RUNTIME_TASK" =~ ^:[A-Za-z0-9:_-]+$ ]]; then
-            echo "::error title=UI-builder renderer::ui-builder-runtime-task must be one absolute Gradle task path."
-            exit 1
-          fi
-          if [[ "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" = /* ]] || [[ "/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE/" = *"/../"* ]]; then
-            echo "::error title=UI-builder renderer::ui-builder-runtime-archive must stay beneath the rendered Gradle build."
-            exit 1
-          fi
-          sdk_args=()
-          if [ -n "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" ]; then
-            if [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
-               [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error title=UI-builder renderer::ui-builder-runtime-source-ref must be a release tag or full commit SHA."
-              exit 1
-            fi
-            sdk_dir="$RUNNER_TEMP/compose-ui-builder-renderer-sdk"
-            git init --quiet "$sdk_dir"
-            git -C "$sdk_dir" remote add origin https://github.com/yschimke/compose-ui-builder.git
-            git -C "$sdk_dir" fetch --quiet --depth=1 origin "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF"
-            git -C "$sdk_dir" checkout --quiet --detach FETCH_HEAD
-            sdk_args+=("-PcomposeUiBuilderDir=$sdk_dir")
-          fi
-          (
-            cd "$RENDER_DIR"
-            ./gradlew "$INPUT_UI_BUILDER_RUNTIME_TASK" "${sdk_args[@]}" --no-daemon
-          )
-          if [ ! -f "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
-            echo "::error title=UI-builder renderer::task completed without writing $INPUT_UI_BUILDER_RUNTIME_ARCHIVE"
-            exit 1
-          fi
+        env:
+          UI_BUILDER_RENDERER_PREBUILT: ${{ needs.ui-builder-renderer.result == 'success' && format('{0}/ui-builder-renderer', runner.temp) || '' }}
+        run: bash -c "$UI_BUILDER_RENDERER_SH" ui-builder-renderer
 
       - name: Generate importable catalog
         env:
@@ -5688,8 +5948,8 @@ jobs:
     name: ${{ inputs.system }} · publish
     needs: [driver, generate]
     # THE SAME GUARD `generate` CARRIES, and for the same reason: this job is downstream of the same
-    # skipped ones. `shard-matrix` and `render-shard` are gated on `render-shards > 1`, so on the
-    # single-shard path — the default, and what a caller gets unless it opts in — both skip.
+    # skipped ones. `render-shard` is gated on `render-shards > 1`, so on the single-shard path —
+    # the default, and what a caller gets unless it opts in — it skips.
     # `generate` overrides that with `!cancelled()` and runs, but the skip propagates down the whole
     # chain: a dependent whose own `if` does not override it is skipped too, even though `generate`
     # succeeded.
@@ -5697,13 +5957,26 @@ jobs:
     # Without this, the job never ran for any single-shard caller. The render succeeded, the bundle
     # uploaded, and nothing was pushed to `design-artifacts/<system>` — silently, because a skipped
     # job is not a failed one and the run still reports green.
+    #
+    # `generate` must have SUCCEEDED, not merely not failed: since `driver` can scope a lane out,
+    # `generate` can be skipped on a healthy run, and there is then no catalog to download.
     if: >-
       ${{ inputs.publish && !cancelled() && !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') }}
+      !contains(needs.*.result, 'cancelled') && needs.generate.result == 'success' }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 20
     permissions:
       contents: write
+    # `supersede-stale-runs`: QUEUE, never cancel. A started publish always finishes — it is three
+    # pushes (catalog commit, source marker, history commit), and cutting between them leaves the
+    # marker or the timeline a publish behind. A pending publish is still replaced by a newer pending
+    # one, which is the newest-wins order a delivery branch wants. The full argument is on the input.
+    concurrency:
+      group: >-
+        ${{ inputs.supersede-stale-runs
+        && format('design-artifacts-publish-{0}-{1}-{2}', github.repository, github.ref, inputs.system)
+        || format('design-artifacts-run-{0}-{1}-{2}-publish', github.run_id, github.run_attempt, inputs.system) }}
+      cancel-in-progress: false
     steps:
       - name: Check out compose-ai-tools (export driver)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
