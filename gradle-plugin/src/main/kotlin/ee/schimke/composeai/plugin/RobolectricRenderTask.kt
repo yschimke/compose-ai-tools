@@ -96,7 +96,8 @@ abstract class RobolectricRenderTask : Test() {
     option = "permutations",
     description =
       "Render extra preview permutations. Currently supports 'accessibility' (dark, RTL, " +
-        "fontscale-2x). Repeatable or comma-separated. Overrides -PcomposePreview.permutations.",
+        "fontscale-2x, or fontscale-1.24x for a Glance Wear widget). Repeatable or " +
+        "comma-separated. Overrides -PcomposePreview.permutations.",
   )
   fun setPermutationsOption(values: List<String>) {
     permutations.set(values)
