@@ -63,6 +63,13 @@ val UI_BUILDER_TEMPLATE_HOLES: Map<String, Set<String>> =
   )
 
 /**
+ * The role a template key names: `screen-root+edgeButton` is the `screen-root` frame for a screen
+ * whose root fills its `edgeButton` slot. A template has no conditionals, so a frame that writes an
+ * optional slot is published once per set of filled slots, each key naming them after a `+`.
+ */
+fun uiBuilderTemplateRole(key: String): String = key.substringBefore('+')
+
+/**
  * The values [UiBuilderBuiltin.shelfRole] may take (the UI builder's vocabulary); anything else
  * files the component nowhere.
  */

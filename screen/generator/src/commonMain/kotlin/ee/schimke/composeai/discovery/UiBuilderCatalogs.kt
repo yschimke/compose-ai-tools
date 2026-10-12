@@ -952,6 +952,22 @@ object UiBuilderCatalogs {
     }
   }
 
+  /**
+   * What is wrong with a template key's filled slots (`screen-root+edgeButton`): only a
+   * `screen-root` frame has variants, and each names a slot hole that role supplies, once.
+   */
+  private fun frameSlotsUnknown(key: String): List<String> {
+    val parts = key.split('+')
+    if (parts.size == 1) return emptyList()
+    val slots = parts.drop(1)
+    val holes = UI_BUILDER_TEMPLATE_HOLES.getValue("screen-root") - "content"
+    return buildList {
+      if (parts.first() != "screen-root") add("only a screen-root frame names filled slots")
+      slots.filterNot { it in holes }.forEach { add("`$it` is not a screen-root slot hole") }
+      if (slots.distinct().size != slots.size) add("a slot is named twice")
+    }
+  }
+
   private fun validateCode(policy: UiBuilderPolicyFile, into: MutableList<UiBuilderDiagnostic>) {
     val code = policy.code ?: return
     for (role in code.scopes.keys) {
@@ -987,7 +1003,10 @@ object UiBuilderCatalogs {
     }
     for (role in code.templates.keys) {
       // `previews` and `file` are whole-file templates, not node roles.
-      if (role in UI_BUILDER_STRUCTURAL_ROLES || role == "previews" || role == "file") continue
+      if (frameSlotsUnknown(role).isEmpty()) {
+        val base = uiBuilderTemplateRole(role)
+        if (base in UI_BUILDER_STRUCTURAL_ROLES || base == "previews" || base == "file") continue
+      }
       into +=
         UiBuilderDiagnostic.Builder(
             code = Diagnostics.TEMPLATE_ROLE_UNKNOWN,
@@ -1015,7 +1034,7 @@ object UiBuilderCatalogs {
         is StructuralTemplate.Result2.Ok -> {
           // A misspelled hole is a valid name, so check it against the names this role will have
           // values for (which is why UI_BUILDER_TEMPLATE_HOLES is a contract).
-          val known = UI_BUILDER_TEMPLATE_HOLES[role].orEmpty()
+          val known = UI_BUILDER_TEMPLATE_HOLES[uiBuilderTemplateRole(role)].orEmpty()
           val unknown =
             holes.value
               .filterIsInstance<StructuralTemplate.Hole.Named>()
