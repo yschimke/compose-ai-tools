@@ -61,6 +61,13 @@ internal const val XR_COMPOSITE_REPO = "yschimke/compose-preview-xr"
 internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
 
 /**
+ * Repo whose release assets carry the MCP server distribution `mcp serve` launches. It moved out of
+ * [PREVIEW_SERVER_REPO] onto its own version line (compose-preview-mcp's
+ * `docs/design/MCP_REPOSITORY.md`).
+ */
+internal const val PREVIEW_MCP_REPO = "yschimke/compose-preview-mcp"
+
+/**
  * compose-preview-daemon release whose sidecars the CLI fetches (`lib-renderer/`,
  * `lib-daemon-desktop/`, `lib-daemon-android/`; see [DaemonSidecarProvision]). The
  * `composeai-preview-daemon` catalog pin, also baked into the plugin as `PreviewDaemonVersion`, so

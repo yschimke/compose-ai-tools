@@ -16,16 +16,18 @@ import kotlinx.coroutines.runBlocking
 /**
  * Fetches a distribution this CLI launches but does not contain, on first use, so a documented
  * install works without a second step: the preview server behind `serve` / `browse` / `ui-builder`
- * and the MCP server behind `mcp serve`, both from one release ([ReleasedDistribution]).
- * [ServerBinaryDiscovery] decides which binary to run; this supplies one when there is none.
- * Fetched lazily (like [SkikoNativeProvision] and [XrCompositeProvision]) so commands that never
- * open a socket don't pay for a 120 MB download.
+ * and the MCP server behind `mcp serve`, each from its own repository's releases
+ * ([ReleasedDistribution]). [ServerBinaryDiscovery] decides which binary to run; this supplies one
+ * when there is none. Fetched lazily (like [SkikoNativeProvision] and [XrCompositeProvision]) so
+ * commands that never open a socket don't pay for a 120 MB download.
  *
- * **Which server:** the newest published release, resolved from [LATEST_RELEASE_API] and cached
- * under its version. There is deliberately no pin: `serve` talks to it over a process boundary, and
- * `:cli`'s wire-drift suite tests against what would be fetched. `COMPOSE_PREVIEW_SERVER_VERSION`
- * pins a specific release. Only [ensure] touches the network; [cached], [ServerBinaryDiscovery] and
- * `doctor` read the cache, and a failed resolution falls back to the newest complete cached copy.
+ * **Which release:** the newest published release of the distribution's repository, resolved from
+ * [latestReleaseApi] and cached under its version. There is deliberately no pin: `serve` talks to
+ * it over a process boundary, and `:cli`'s wire-drift suite tests against what would be fetched.
+ * [ReleasedDistribution.versionEnv] (`COMPOSE_PREVIEW_SERVER_VERSION`,
+ * `COMPOSE_PREVIEW_MCP_VERSION`) pins a specific release. Only [ensure] touches the network;
+ * [cached], [ServerBinaryDiscovery] and `doctor` read the cache, and a failed resolution falls back
+ * to the newest complete cached copy.
  *
  * **Where:** `<cache>/preview-server/<version>/` with the distribution's `bin/` + `lib/` layout,
  * keyed by server version so a CLI upgrade doesn't orphan it. Unpacked into a staging directory and
@@ -33,12 +35,16 @@ import kotlinx.coroutines.runBlocking
  */
 internal object ServerDistributionProvision {
 
-  /** Names the release fetched, instead of the newest. See the class note. */
+  /** Names the preview server release fetched, instead of the newest. See the class note. */
   const val VERSION_ENV: String = "COMPOSE_PREVIEW_SERVER_VERSION"
 
-  /** The document [latestVersion] reads the newest release's tag out of. */
+  /** The document [latestVersion] reads the newest preview server release's tag out of. */
   const val LATEST_RELEASE_API: String =
     "https://api.github.com/repos/$PREVIEW_SERVER_REPO/releases/latest"
+
+  /** The document [latestVersion] reads [distribution]'s newest release tag out of. */
+  fun latestReleaseApi(distribution: ReleasedDistribution = ReleasedDistribution.SERVER): String =
+    "https://api.github.com/repos/${distribution.repository}/releases/latest"
 
   /**
    * The tag in that document, matched by regex: no JSON reader is on this classpath and it is one
@@ -91,32 +97,34 @@ internal object ServerDistributionProvision {
   internal fun fetch(url: String, dest: File) = defaultFetcher.fetchTo(url, dest)
 
   /**
-   * The release [VERSION_ENV] asks for, or null (newest wins). Null rather than a default because
-   * [cached] and [ensure] treat "no answer" differently.
+   * The release [ReleasedDistribution.versionEnv] asks for, or null (newest wins). Null rather than
+   * a default because [cached] and [ensure] treat "no answer" differently.
    */
-  fun requestedVersion(env: (String) -> String? = System::getenv): String? =
-    env(VERSION_ENV)?.trim()?.takeIf { it.isNotBlank() }
+  fun requestedVersion(
+    distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
+    env: (String) -> String? = System::getenv,
+  ): String? = env(distribution.versionEnv)?.trim()?.takeIf { it.isNotBlank() }
 
   /**
    * The newest published release's version (tag minus its leading `v`), or null when it can't be
    * resolved. Never throws; [ensure] falls back to the cache.
    */
   fun latestVersion(
+    distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
     fetcher: Fetcher = defaultFetcher,
     log: (String) -> Unit = {},
   ): String? {
-    val body = File.createTempFile("preview-server-latest", ".json")
+    val api = latestReleaseApi(distribution)
+    val body = File.createTempFile("${distribution.cacheDirName}-latest", ".json")
     return try {
-      fetcher.fetchTo(LATEST_RELEASE_API, body)
+      fetcher.fetchTo(api, body)
       val tag = LATEST_TAG.find(body.readText())?.groupValues?.get(1)
       if (tag == null) {
-        log("compose-preview: $LATEST_RELEASE_API named no release tag")
+        log("compose-preview: $api named no release tag")
         null
       } else tag.removePrefix("v").takeIf { it.isNotBlank() }
     } catch (e: Exception) {
-      log(
-        "compose-preview: could not ask $LATEST_RELEASE_API for the newest release (${e.message ?: e})"
-      )
+      log("compose-preview: could not ask $api for the newest release (${e.message ?: e})")
       null
     } finally {
       body.delete()
@@ -145,20 +153,18 @@ internal object ServerDistributionProvision {
     if (osName.lowercase().contains("windows")) "${distribution.binary}.bat"
     else distribution.binary
 
-  /** Release asset name, exactly as compose-preview-server's `release.yml` uploads it. */
+  /** Release asset name, exactly as the distribution's repository's `release.yml` uploads it. */
   fun assetName(
     version: String,
     distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
   ): String = "${distribution.binary}-$version.tar.gz"
 
-  /**
-   * Download URL for [version]'s distribution on the [PREVIEW_SERVER_REPO] `v<version>` release.
-   */
+  /** Download URL for [version]'s distribution on its repository's `v<version>` release. */
   fun assetUrl(
     version: String,
     distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
   ): String =
-    "https://github.com/$PREVIEW_SERVER_REPO/releases/download/v$version/" +
+    "https://github.com/${distribution.repository}/releases/download/v$version/" +
       assetName(version, distribution)
 
   /** Per-version cache directory holding the unpacked distribution. */
@@ -187,7 +193,7 @@ internal object ServerDistributionProvision {
     cacheRoot: File = defaultCacheRoot(distribution),
     osName: String = System.getProperty("os.name") ?: "",
   ): File? {
-    val requested = requestedVersion(env)
+    val requested = requestedVersion(distribution, env)
     val version = requested ?: cachedVersions(distribution, cacheRoot, osName).firstOrNull()
     return version
       ?.let { cacheBinary(it, distribution, cacheRoot, osName) }
@@ -236,7 +242,7 @@ internal object ServerDistributionProvision {
    */
   fun ensure(
     distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
-    requested: String? = requestedVersion(),
+    requested: String? = requestedVersion(distribution),
     cacheRoot: File = defaultCacheRoot(distribution),
     osName: String = System.getProperty("os.name") ?: "",
     offline: Boolean = defaultOffline(),
@@ -261,7 +267,7 @@ internal object ServerDistributionProvision {
     // A requested release is taken as given, not compared against the newest.
     val version =
       requested
-        ?: latestVersion(fetcher, log)
+        ?: latestVersion(distribution, fetcher, log)
         ?: cached.firstOrNull()?.also {
           log(
             "compose-preview: could not resolve the newest ${distribution.label}; using the cached $it"
@@ -270,7 +276,8 @@ internal object ServerDistributionProvision {
     if (version == null) {
       log(
         "compose-preview: could not resolve the newest ${distribution.label}, and this machine has " +
-          "none cached. Set ${VERSION_ENV} to a release, or point at one you already have."
+          "none cached. Set ${distribution.versionEnv} to a release, or point at one you already " +
+          "have."
       )
       return null
     }

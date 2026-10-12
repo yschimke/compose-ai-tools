@@ -2,9 +2,9 @@ package ee.schimke.composeai.cli
 
 /**
  * One of the distributions this CLI launches but doesn't contain: the preview server (`serve`,
- * `browse`, `ui-builder`) or the MCP server (`mcp serve`), both from the same [PREVIEW_SERVER_REPO]
- * release. One type because only the names differ. One resolved version covers both, keeping the
- * pair in step.
+ * `browse`, `ui-builder`) from [PREVIEW_SERVER_REPO], or the MCP server (`mcp serve`) from
+ * [PREVIEW_MCP_REPO]. One type because only the names differ. Each is on its own release train, so
+ * each resolves its own newest release and has its own pin.
  */
 internal data class ReleasedDistribution(
   /** Launcher script name inside `bin/`, and the name looked up on `PATH`. */
@@ -19,6 +19,10 @@ internal data class ReleasedDistribution(
   val env: String,
   /** Which commands need it, for the hint text a miss produces. */
   val usedBy: String,
+  /** The GitHub repository (`owner/name`) whose releases carry it. */
+  val repository: String,
+  /** Environment variable naming the release to fetch instead of the newest. */
+  val versionEnv: String,
 ) {
   internal companion object {
     val SERVER =
@@ -29,6 +33,8 @@ internal data class ReleasedDistribution(
         flag = "--server-binary",
         env = "COMPOSE_PREVIEW_SERVER",
         usedBy = "compose-preview serve, browse and ui-builder",
+        repository = PREVIEW_SERVER_REPO,
+        versionEnv = "COMPOSE_PREVIEW_SERVER_VERSION",
       )
 
     val MCP =
@@ -39,6 +45,8 @@ internal data class ReleasedDistribution(
         flag = "--mcp-binary",
         env = "COMPOSE_PREVIEW_MCP",
         usedBy = "compose-preview mcp serve",
+        repository = PREVIEW_MCP_REPO,
+        versionEnv = "COMPOSE_PREVIEW_MCP_VERSION",
       )
   }
 }

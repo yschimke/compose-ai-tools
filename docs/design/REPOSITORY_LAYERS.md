@@ -96,6 +96,10 @@ like: no module in this repository may resolve an HTTP server engine, with no ex
 from. What stayed behind is `mcp install` and `mcp doctor` — descriptors, discovery and agent-host
 config, which open no socket, and which still register *this* CLI as the agent's command.
 
+A fourth step followed: `:mcp` left compose-preview-server for its own repository,
+`compose-preview-mcp`, at layer 3 (see *3 — leaves* below). Nothing in this section changes: the
+CLI still launches it over a process boundary, now from that repository's releases.
+
 ### 2 — `compose-preview-server`
 
 **HTTP and what is reachable over it.** The Ktor layer and the runner, the catalog store, the web
@@ -107,7 +111,16 @@ stays that way: an allowlist is the only form that catches a coordinate arriving
 
 ### 3 — leaves
 
-`compose-preview-vscode`, `compose-preview-xr`. Hosts and editors. Nothing depends on them.
+`compose-preview-vscode`, `compose-preview-xr`, `compose-preview-mcp`. Hosts and editors. Nothing
+depends on them.
+
+`compose-preview-mcp` is the local MCP server, which left compose-preview-server for a repository
+of its own (compose-preview-mcp's `docs/design/MCP_REPOSITORY.md`). It is placed by the rule, not
+by an exception: it is a host for agents, as the extension is for an editor; nothing depends on
+it as a coordinate (`compose-preview mcp serve` execs the published binary, and compose-agent-plugins
+copies release assets); and it depends only downward. Its one tie to layer 2 is the MCP Apps viewer
+both servers serve: that page stays the server's, and compose-preview-mcp copies it from a server
+release with its provenance — a leaf taking a lower layer's released file, the allowed direction.
 
 ## Consequences worth naming
 
@@ -121,6 +134,11 @@ options that were considered and rejected.
 **A fourth repository is not the answer to a misplaced module.** `compose-preview-runtime` was
 proposed for exactly that and rejected: it bought another release train for the same graph while
 leaving the placement question unanswered. Move the module to the layer the rule names.
+
+`compose-preview-mcp` is not that case either. `:mcp` was correctly placed by the layer test (it
+opens a socket), but it is a closed leaf: no project in compose-preview-server depended on it, and
+its agent-facing cadence differs from the server's deployments. Moving it answered "which layer"
+the same way — layer 3 — rather than leaving the question open.
 
 `compose-preview-daemon` is not that case. It holds a *closed* sub-graph of layer 1 — the two
 daemon hosts, the three renderers, the daemon client and the 58 extractor modules, computed from

@@ -29,6 +29,9 @@ compose-ai-tools              (1)   discovery, the Gradle plugin, the CLI
         │
         ▼
 compose-preview-server        (2)   HTTP, the web surfaces, the UI builder
+        │
+        ▼
+compose-preview-mcp           (3)   the local MCP server (a leaf)
 ```
 
 **It is a DAG, and the release order is that list, top to bottom.** Every edge points down:
@@ -39,6 +42,7 @@ compose-preview-server        (2)   HTTP, the web surfaces, the UI builder
 | `rc-players` | contracts, daemon | `composeai-contracts`, `composeai-preview-daemon` |
 | `compose-ai-tools` | contracts, daemon, rc-players | `composeai-contracts`, `composeai-preview-daemon`, `rcplayers` |
 | `compose-preview-server` | all four | `composeai-contracts`, `composeai-preview-daemon`, `rc-players`, `composeai-tools` |
+| `compose-preview-mcp` | contracts, daemon, compose-ai-tools, rc-players' JS player, and the server's MCP App pages | `composeai-contracts`, `composeai-preview-daemon`, `composeai-tools`, `remote-compose-player-js`, `mcp-app/server-assets.provenance.json` (a server **release tag**, not a coordinate) |
 
 > **There is no cycle, and there has not been one since compose-ai-tools#5336.** Read that
 > sentence carefully before acting on the older one in

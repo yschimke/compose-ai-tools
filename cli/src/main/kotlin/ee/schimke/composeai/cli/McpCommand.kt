@@ -25,10 +25,10 @@ import okio.Path.Companion.toPath
  *   `composePreviewDiscover`, and print or install the agent-host MCP configuration.
  * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) read-only.
  *
- * `serve` is a launcher: it execs the `compose-preview-mcp` binary from compose-preview-server
- * (which needs an HTTP server), as [ServeCommand] does. `install` and `doctor` are offline and stay
- * here, and the config they write still names this CLI's `mcp serve`. JSON-RPC runs over inherited
- * stdio and the exit code is passed back.
+ * `serve` is a launcher: it execs the `compose-preview-mcp` binary from compose-preview-mcp's
+ * releases (it needs an HTTP server), as [ServeCommand] does. `install` and `doctor` are offline
+ * and stay here, and the config they write still names this CLI's `mcp serve`. JSON-RPC runs over
+ * inherited stdio and the exit code is passed back.
  */
 internal class McpCommand(
   args: List<String>,
@@ -68,8 +68,9 @@ internal class McpCommand(
         serve    Launch the MCP server on stdio. Forwards remaining flags to it
                  (--project <path>[:<rootName>] is optional; projects can also be registered
                  later with the register_project MCP tool). The server ships from
-                 compose-preview-server and is fetched on first use; --mcp-binary <path>
-                 or COMPOSE_PREVIEW_MCP names one you already have.
+                 compose-preview-mcp and is fetched on first use; --mcp-binary <path>
+                 or COMPOSE_PREVIEW_MCP names one you already have, and
+                 COMPOSE_PREVIEW_MCP_VERSION pins a release.
         install  Per-project bootstrap: daemon descriptors for every module with the
                  plugin applied (enabled) and composePreviewDiscover. Then registers
                  compose-preview-mcp with detected hosts only where the entry is missing
@@ -203,19 +204,19 @@ internal class McpCommand(
 
   /**
    * Fetch the MCP server when the machine has none (first use, like `serve`), and name the result.
-   * It ships in the same release as the preview server.
+   * It ships from compose-preview-mcp's releases ([PREVIEW_MCP_REPO]), on its own version line.
    */
   private fun refreshedMcp(found: ServerBinaryDiscovery.Choice): ServerBinaryDiscovery.Choice =
     ServerBinaryDiscovery.refreshed(
       found,
-      requested = ServerDistributionProvision.requestedVersion(),
+      requested = ServerDistributionProvision.requestedVersion(ReleasedDistribution.MCP),
       offline = ServerDistributionProvision.defaultOffline(),
       stamp =
         File(
           ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.MCP),
           ServerBinaryDiscovery.REFRESH_STAMP,
         ),
-      latest = { ServerDistributionProvision.latestVersion() },
+      latest = { ServerDistributionProvision.latestVersion(ReleasedDistribution.MCP) },
       provision = { version ->
         ServerDistributionProvision.ensure(ReleasedDistribution.MCP, requested = version)?.let {
           ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)
