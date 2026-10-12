@@ -13,11 +13,13 @@ on:
     paths:
       - '.github/actions/install/action.yml'
       - '.github/actions/install/resolve-version.py'
+      - '.github/actions/install/wait-for-release.py'
       - '.github/workflows/install-action-test.yml'
   pull_request:
     paths:
       - '.github/actions/install/action.yml'
       - '.github/actions/install/resolve-version.py'
+      - '.github/actions/install/wait-for-release.py'
       - '.github/workflows/install-action-test.yml'
   # Manual dispatch for ad-hoc verification (e.g. after a release that
   # changes the asset naming).

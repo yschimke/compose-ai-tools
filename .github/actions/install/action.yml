@@ -52,17 +52,22 @@ inputs:
     default: ''
   plugin-readiness-timeout:
     description: >
-      Seconds to wait for the resolved version's Gradle plugin to be
-      resolvable from the Plugin Portal / Maven Central before failing
-      with an explicit message. A release's CLI tarball is downloadable
-      minutes — sometimes tens of minutes — before its plugin is, and a
+      Seconds to wait for the resolved version to be installable — its
+      Gradle plugin resolvable from the Plugin Portal / Maven Central,
+      and its CLI tarball publicly downloadable — before failing with an
+      explicit message. One budget covers both waits. A release's CLI
+      tarball is often downloadable minutes — sometimes tens of minutes —
+      before its plugin is, and a
       render dispatched in that window dies during configuration with an
       error that names the *consumer's* project (issue #5051). Waiting
       turns that hard failure into a delay; the failure at the end of the
-      budget at least says what actually happened. Set to 0 to skip the
-      probe entirely (for a job that installs the CLI without driving a
-      Gradle build).
-    default: '300'
+      budget at least says what actually happened. The CLI tarball can
+      lag the other way: release assets 404 while the release is still a
+      draft, which can outlast the plugin's publish. Set to 0 to skip the
+      plugin probe entirely (for a job that installs the CLI without
+      driving a Gradle build); the download then fails as soon as curl's
+      own retries do.
+    default: '600'
 
   require-digest:
     description: >
@@ -92,16 +97,19 @@ runs:
         # default path is "authenticated" without consumer ceremony.
         GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
+        BUDGET: ${{ inputs.plugin-readiness-timeout }}
       run: |
         set -euo pipefail
         ver=$(python3 "$ACTION_PATH/resolve-version.py")
         printf 'version=%s\n' "$ver" >> "$GITHUB_OUTPUT"
+        # One readiness budget, shared by the plugin wait and the CLI-release wait: the
+        # deadline is fixed here, so the two waits together never exceed it. A malformed
+        # budget is reported by plugin-readiness.py; here it just means "no waiting".
+        budget=0
+        case "$BUDGET" in ''|*[!0-9]*) ;; *) budget=$BUDGET ;; esac
+        printf 'deadline=%s\n' "$(( $(date +%s) + budget ))" >> "$GITHUB_OUTPUT"
         printf '::notice::Resolved compose-preview version: %s\n' "$ver"
 
-    # `version: latest` already prefers a release carrying its Maven-readiness marker
-    # (resolve-version.py), so this normally passes on the first probe. It is here for every
-    # other mode — a literal version, `pin`, `catalog` — where the version is whatever the
-    # consumer named, and for the case where no release in the window has a marker at all.
     # `version: latest` already prefers a release carrying its Maven-readiness marker
     # (resolve-version.py), so this normally passes on the first sweep. It is here for every other
     # mode — a literal version, `pin`, `catalog` — where the version is whatever the consumer
@@ -126,6 +134,8 @@ runs:
         VER: ${{ steps.resolve.outputs.version }}
         GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
         REQUIRE_DIGEST: ${{ inputs.require-digest }}
+        DEADLINE: ${{ steps.resolve.outputs.deadline }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         # resolve-version.py already refuses anything else; checked again here
@@ -169,9 +179,22 @@ runs:
         # `--retry-all-errors` covers 35 and the rest of the non-transient
         # family, and subsumes `--retry-connrefused`. `--max-time` still bounds
         # each attempt, so the incomplete-release race above is unaffected.
-        curl -fL --retry 3 --retry-all-errors \
-          --connect-timeout 30 --max-time 300 \
-          -o "$tmp/$asset" "$url"
+        download() {
+          curl -fL --retry 3 --retry-all-errors \
+            --connect-timeout 30 --max-time 300 \
+            -o "$tmp/$asset" "$url"
+        }
+        # A failed first download is most often the release-publication window: the tarball
+        # sits on a *draft* release, and draft assets 404 at the public URL, until release.yml
+        # publishes it, which can be after the plugin is already on Maven Central, so the
+        # readiness step above passed (m3-catalog#584, 2026-10-12: requested 36 s before
+        # v2.53.0 went public). curl's retries span ~7 s; wait-for-release.py polls the same
+        # URL with backoff for whatever is left of the shared readiness budget, then fails
+        # naming the window. A release that is already public never reaches it.
+        if ! download; then
+          python3 "$ACTION_PATH/wait-for-release.py"
+          download
+        fi
 
         # sha256 verification via the releases API. The asset's `digest`
         # field is "sha256:<hex>". On failure (network, rate limit, missing
