@@ -1,6 +1,10 @@
 package ee.schimke.composeai.discovery
 
+import kotlin.jvm.JvmName
+import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -8,8 +12,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 /** A bidirectional wire conversion. Invariant in T so a changed property cannot widen to Any. */
@@ -49,6 +55,21 @@ interface AdapterValueCodec<T> {
     get() = null
 
   /**
+   * How a `string` value is spelled when it has a syntax of its own (`date-time` for an
+   * [AdapterValueCodecs.instant], `hex` for a key); published in [shape] so an editor can check it
+   * and offer a fitting control. Null for free text and every non-text codec.
+   */
+  val format: String?
+    get() = null
+
+  /**
+   * Whether the stored value may be null, written `{"type": "null"}`; only
+   * [AdapterValueCodecs.nullable] is. It matches a parameter or field of the nullable type.
+   */
+  val nullable: Boolean
+    get() = false
+
+  /**
    * The recursive editor hint for a composite codec ([AdapterValueCodecs.list],
    * [AdapterValueCodecs.obj]); null for a scalar, which an editor renders from its `jsonType`.
    *
@@ -70,6 +91,8 @@ interface AdapterValueCodec<T> {
    * { "jsonType": "string|boolean|integer|number|array|object",
    *   "literalType": "<the wrapper type, as [literalType]>",
    *   "allowedValues"?: [ "…" ],
+   *   "format"?: "date-time|hex|…",
+   *   "nullable"?: true,
    *   "editor"?: { …[editor] } }
    * ```
    */
@@ -77,6 +100,8 @@ interface AdapterValueCodec<T> {
     put("jsonType", jsonType)
     put("literalType", literalType)
     allowedValues?.let { put("allowedValues", JsonArray(it.sorted().map(::JsonPrimitive))) }
+    format?.let { put("format", it) }
+    if (nullable) put("nullable", true)
     editor?.let { put("editor", it) }
   }
 
@@ -168,6 +193,103 @@ object AdapterValueCodecs {
         }
       }
     }
+
+  /**
+   * A whole number for a `Long` parameter (a byte count, a timestamp in milliseconds), stored as an
+   * `int` wrapper like [Int] and, like it, literal-only: the state schema's `number` is a float.
+   */
+  val Long: AdapterValueCodec<Long> =
+    object : AdapterValueCodec<Long> {
+      override val jsonType = "integer"
+      override val kotlinType = "kotlin.Long"
+      override val exportCodec = ExportProjection.Codec.WholeLong
+
+      override fun encode(value: Long): JsonElement = JsonPrimitive(value)
+
+      override fun decode(value: JsonElement): Long {
+        require(value is JsonPrimitive && !value.isString) { "expected a JSON integer" }
+        return requireNotNull(value.longOrNull) { "expected a JSON integer" }
+      }
+    }
+
+  /** A finite double, stored as a `number` wrapper like [Float]; binds to a `number` variable. */
+  val Double: AdapterValueCodec<Double> =
+    object : AdapterValueCodec<Double> {
+      override val jsonType = "number"
+      override val kotlinType = "kotlin.Double"
+      override val stateType = "number"
+      override val exportCodec = ExportProjection.Codec.Fractional64
+
+      override fun encode(value: Double): JsonElement {
+        require(value.isFinite()) { "expected a finite number" }
+        return JsonPrimitive(value)
+      }
+
+      override fun decode(value: JsonElement): Double {
+        require(value is JsonPrimitive && !value.isString) { "expected a JSON number" }
+        return requireNotNull(value.doubleOrNull?.takeIf { it.isFinite() }) {
+          "expected a finite number"
+        }
+      }
+    }
+
+  /**
+   * A value of [typeFqn] with a text spelling of its own, stored as a `string` wrapper: [parse]
+   * reads it (and must reject malformed text by throwing), [print] writes it, and an export calls
+   * [parseFqn], a one-`String` factory, on the same text (`PublicKey.fromHex("…")`). [format] names
+   * the syntax for an editor (see [AdapterValueCodec.format]).
+   */
+  fun <T> parsed(
+    typeFqn: String,
+    parseFqn: String,
+    format: String,
+    parse: (String) -> T,
+    print: (T) -> String,
+  ): AdapterValueCodec<T> =
+    object : AdapterValueCodec<T> {
+      override val jsonType = "string"
+      override val kotlinType = typeFqn
+      override val stateType: String? = null
+      override val exportCodec = ExportProjection.Codec.Parsed(typeFqn, parseFqn)
+      override val format = format
+
+      override fun encode(value: T): JsonElement = JsonPrimitive(print(value))
+
+      override fun decode(value: JsonElement): T {
+        require(value is JsonPrimitive && value.isString) { "expected a $format string" }
+        return try {
+          parse(value.content)
+        } catch (e: IllegalArgumentException) {
+          throw e
+        } catch (e: RuntimeException) {
+          throw IllegalArgumentException(
+            "`${value.content}` is not a valid $format: ${e.message}",
+            e,
+          )
+        }
+      }
+    }
+
+  /**
+   * A [kotlin.time.Instant] as ISO-8601 text (`2026-10-12T08:00:00Z`), exported as
+   * `Instant.parse("…")`.
+   */
+  @OptIn(ExperimentalTime::class)
+  val Instant: AdapterValueCodec<Instant> =
+    parsed(
+      "kotlin.time.Instant",
+      "kotlin.time.Instant.parse",
+      "date-time",
+      { kotlin.time.Instant.parse(it) },
+      { it.toString() },
+    )
+
+  /**
+   * [value]'s values or null, stored as `{"type": "null"}`, for a parameter or field of the
+   * nullable type. An export writes a null by leaving it out, so that parameter or field must
+   * default to null; a list element cannot be null.
+   */
+  fun <T : Any> nullable(value: AdapterValueCodec<T>): AdapterValueCodec<T?> = NullableCodec(value)
 
   /**
    * A colour as the builder stores it, `#RRGGBB`/`#AARRGGBB`, `transparent` or a theme role,
@@ -335,7 +457,204 @@ object AdapterValueCodecs {
     callableFqn: String = typeFqn,
     declare: AdapterObjectCodecBuilder<T>.() -> Unit,
   ): AdapterObjectCodec<T> = AdapterObjectCodecBuilder<T>(typeFqn).apply(declare).build(callableFqn)
+
+  /**
+   * One case of the sealed type [typeFqn], stored as `{"type": "union", "case": "<name>",
+   * "fields"?: {…}}`. [declare] lists the cases: an [AdapterUnionCodecBuilder.case] is a class case
+   * with its own [obj] codec, stored with `fields`; an [AdapterUnionCodecBuilder.singleton] is a
+   * `data object`, stored with none. A value is encoded as the first case it is an instance of.
+   *
+   * ```kotlin
+   * val StateCodec: AdapterValueCodec<LoadState> =
+   *   AdapterValueCodecs.union("com.example.LoadState") {
+   *     singleton("loading", LoadState.Loading, "com.example.LoadState.Loading")
+   *     case("failed", FailedCodec) // an obj codec of LoadState.Failed
+   *   }
+   * ```
+   */
+  fun <T : Any> union(
+    typeFqn: String,
+    declare: AdapterUnionCodecBuilder<T>.() -> Unit,
+  ): AdapterValueCodec<T> = AdapterUnionCodecBuilder<T>(typeFqn).apply(declare).build()
 }
+
+/** [AdapterValueCodecs.nullable]: everything [value] says, and `{"type": "null"}` besides. */
+private class NullableCodec<T : Any>(private val value: AdapterValueCodec<T>) :
+  AdapterValueCodec<T?> {
+  init {
+    require(!value.nullable) { "${value.kotlinType} is already nullable" }
+  }
+
+  override val jsonType = value.jsonType
+  override val kotlinType = value.kotlinType
+  override val literalType = value.literalType
+  // A state variable has no null; a bound value would lose it.
+  override val stateType: String? = null
+  override val exportCodec = value.exportCodec?.let(ExportProjection.Codec::Nullable)
+  override val allowedValues = value.allowedValues
+  override val format = value.format
+  override val nullable = true
+  override val editor = value.editor
+
+  override fun encode(value: T?): JsonElement =
+    if (value == null) JsonNull else this.value.encode(value)
+
+  override fun decode(value: JsonElement): T? =
+    if (value is JsonNull) null else this.value.decode(value)
+
+  override fun wrap(value: T?): JsonObject =
+    if (value == null) buildJsonObject { put("type", NULL_TYPE) } else this.value.wrap(value)
+
+  override fun unwrap(wrapper: JsonObject): T? {
+    val type = (wrapper["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (type != NULL_TYPE) return value.unwrap(wrapper)
+    require(wrapper.keys == setOf("type")) {
+      "a `null` wrapper is {\"type\"}, found ${wrapper.keys.sorted()}"
+    }
+    return null
+  }
+}
+
+private const val NULL_TYPE = "null"
+
+/** Declares the cases of a [AdapterValueCodecs.union]. */
+class AdapterUnionCodecBuilder<T : Any> internal constructor(private val typeFqn: String) {
+  internal class Case<T>(
+    val name: String,
+    val matches: (T) -> Boolean,
+    val codec: AdapterObjectCodec<*>?,
+    val singleton: T?,
+    val singletonFqn: String?,
+  )
+
+  private val cases = mutableListOf<Case<T>>()
+
+  /** A class case: values of [type], stored through [codec]'s fields. */
+  fun <C : T> case(name: String, type: KClass<C>, codec: AdapterObjectCodec<C>) {
+    add(Case(name, { type.isInstance(it) }, codec, null, null))
+  }
+
+  /** [case], the class read from [codec]'s type parameter. */
+  inline fun <reified C : T> case(name: String, codec: AdapterObjectCodec<C>) =
+    case(name, C::class, codec)
+
+  /** A `data object` case: exactly [value], qualified as [typeFqn] so an export can refer to it. */
+  fun singleton(name: String, value: T, typeFqn: String) {
+    add(Case(name, { it == value }, null, value, typeFqn))
+  }
+
+  private fun add(case: Case<T>) {
+    require(Regex("[a-z][a-zA-Z0-9-]*").matches(case.name)) {
+      "$typeFqn: invalid case name ${case.name}"
+    }
+    require(cases.none { it.name == case.name }) { "$typeFqn: duplicate case ${case.name}" }
+    cases += case
+  }
+
+  internal fun build(): AdapterValueCodec<T> {
+    require(typeFqn.contains('.')) { "a union codec names a qualified type: $typeFqn" }
+    require(cases.isNotEmpty()) { "$typeFqn: a union codec declares at least one case" }
+    return AdapterUnionCodec(typeFqn, cases.toList())
+  }
+}
+
+/** A sealed-type codec built by [AdapterValueCodecs.union]. */
+private class AdapterUnionCodec<T : Any>(
+  private val typeFqn: String,
+  private val cases: List<AdapterUnionCodecBuilder.Case<T>>,
+) : AdapterValueCodec<T> {
+  override val jsonType = "object"
+  override val kotlinType = typeFqn
+  override val literalType = "union"
+  override val stateType: String? = null
+
+  /** Null unless every class case's codec can be exported. */
+  override val exportCodec: ExportProjection.Codec? = run {
+    val exported = cases.map { case ->
+      case.name to
+        (if (case.codec == null) ExportProjection.Codec.Singleton(requireNotNull(case.singletonFqn))
+        else case.codec.exportCodec ?: return@run null)
+    }
+    ExportProjection.Codec.Union(typeFqn, exported.toMap())
+  }
+
+  override val editor: JsonObject = buildJsonObject {
+    put("control", "union")
+    put("unionType", typeFqn)
+    put(
+      "cases",
+      JsonArray(
+        cases.map { case ->
+          buildJsonObject {
+            put("name", case.name)
+            val codec = case.codec
+            if (codec == null) put("objectType", requireNotNull(case.singletonFqn))
+            else {
+              put("objectType", codec.typeFqn)
+              put("fields", codec.editor.getValue("fields"))
+            }
+          }
+        }
+      ),
+    )
+  }
+
+  private fun caseOf(value: T): AdapterUnionCodecBuilder.Case<T> =
+    requireNotNull(cases.firstOrNull { it.matches(value) }) {
+      "$typeFqn: ${value::class.simpleName} is none of ${cases.map { it.name }}"
+    }
+
+  /** `{"case": "<name>", "fields"?: {…}}`: the wrapper without its `type`. */
+  override fun encode(value: T): JsonElement {
+    val case = caseOf(value)
+    return buildJsonObject {
+      put("case", case.name)
+      case.codec?.let { codec -> put("fields", codec.encodeAny(value)) }
+    }
+  }
+
+  override fun decode(value: JsonElement): T {
+    require(value is JsonObject) { "expected a case of $typeFqn" }
+    val name = (value["case"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    val case =
+      requireNotNull(cases.firstOrNull { it.name == name }) {
+        "`$name` is not one of ${cases.map { it.name }.sorted()}"
+      }
+    val codec = case.codec
+    if (codec == null) {
+      require(value.keys == setOf("case")) {
+        "the `${case.name}` case stores no fields, found ${(value.keys - "case").sorted()}"
+      }
+      return requireNotNull(case.singleton)
+    }
+    require(value.keys == setOf("case", "fields")) {
+      "the `${case.name}` case stores {\"case\", \"fields\"}, found ${value.keys.sorted()}"
+    }
+    // The case's codec decodes a C, which the builder required to be a T.
+    @Suppress("UNCHECKED_CAST")
+    return try {
+      codec.decode(value.getValue("fields")) as T
+    } catch (e: IllegalArgumentException) {
+      throw IllegalArgumentException("(${case.name}): ${e.message}", e)
+    }
+  }
+
+  override fun wrap(value: T): JsonObject = buildJsonObject {
+    put("type", literalType)
+    (encode(value) as JsonObject).forEach { (key, element) -> put(key, element) }
+  }
+
+  override fun unwrap(wrapper: JsonObject): T {
+    val stated = (wrapper["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    require(stated == literalType) { "expected a `$literalType` wrapper, found `$stated`" }
+    return decode(JsonObject(wrapper - "type"))
+  }
+}
+
+/** [AdapterObjectCodec.encode] for a value the caller has matched to this codec's class. */
+@Suppress("UNCHECKED_CAST")
+private fun AdapterObjectCodec<*>.encodeAny(value: Any): JsonElement =
+  (this as AdapterObjectCodec<Any>).encode(value)
 
 /** One field of an [AdapterObjectCodec]: its wire [name], the property it reads and its codec. */
 class AdapterObjectField<T, F>
@@ -585,6 +904,8 @@ internal constructor(
       else JsonPrimitive(codec.jsonType),
     )
     put("required", false)
+    codec.format?.let { put("format", it) }
+    if (codec.nullable) put("nullable", true)
     codec.editor?.let { put("editor", it) }
   }
 }
@@ -604,13 +925,27 @@ internal constructor(
   }
 }
 
-/** A zero-argument callback referenced from the adapter model. */
-class AdapterEvent<P>
+/**
+ * A callback referenced from the adapter model; a design's action runs when the component calls it.
+ * [arity] is how many arguments it takes, which the canvas discards: an action carries none.
+ */
+open class AdapterEvent<P>
 internal constructor(
   internal val owner: TypedComponentAdapter<P>,
   val name: String,
   val eventName: String,
+  val arity: Int = 0,
 )
+
+/** A one-argument [AdapterEvent], `(A) -> Unit`: a row's click handing back its item. */
+class AdapterEvent1<P, A>
+internal constructor(owner: TypedComponentAdapter<P>, name: String, eventName: String) :
+  AdapterEvent<P>(owner, name, eventName, arity = 1)
+
+/** A two-argument [AdapterEvent], `(A, B) -> Unit`: a connect form's `(host, port)`. */
+class AdapterEvent2<P, A, B>
+internal constructor(owner: TypedComponentAdapter<P>, name: String, eventName: String) :
+  AdapterEvent<P>(owner, name, eventName, arity = 2)
 
 /** A checked link between a callback's payload type and a property it updates. */
 class AdapterStateChange<P, T>
@@ -860,14 +1195,31 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     return AdapterSlot(this, name, required).also(declaredSlots::add)
   }
 
-  protected fun event(reference: KProperty1<P, () -> Unit>): AdapterEvent<P> {
-    val eventName = reference.name.removePrefix("on").replaceFirstChar { it.lowercase() }
+  protected fun event(reference: KProperty1<P, () -> Unit>): AdapterEvent<P> =
+    AdapterEvent(this, reference.name, eventName(reference.name)).also(declaredEvents::add)
+
+  /**
+   * A callback with one argument, which the canvas discards: the design's action runs, as for a
+   * plain [event]. Not exported through [exportAs]'s `events`, which write zero-argument lambdas.
+   */
+  @JvmName("event1")
+  protected fun <A> event(reference: KProperty1<P, (A) -> Unit>): AdapterEvent1<P, A> =
+    AdapterEvent1<P, A>(this, reference.name, eventName(reference.name)).also(declaredEvents::add)
+
+  /** A callback with two arguments; see the one-argument [event]. */
+  @JvmName("event2")
+  protected fun <A, B> event(reference: KProperty1<P, (A, B) -> Unit>): AdapterEvent2<P, A, B> =
+    AdapterEvent2<P, A, B>(this, reference.name, eventName(reference.name))
+      .also(declaredEvents::add)
+
+  private fun eventName(reference: String): String {
+    val eventName = reference.removePrefix("on").replaceFirstChar { it.lowercase() }
     require(eventName.isNotBlank() && eventName !in declaredEventNames) {
       "$id: duplicate or blank event name $eventName"
     }
-    declare(reference.name)
+    declare(reference)
     declaredEventNames.add(eventName)
-    return AdapterEvent(this, reference.name, eventName).also(declaredEvents::add)
+    return eventName
   }
 
   protected fun <T> stateChange(
@@ -903,9 +1255,12 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
       }
       val parameter = parameters[property.name]
       if (parameter == null) add("$id: unknown property ${property.name}")
-      else if (parameter.typeFqn != property.codec.kotlinType || parameter.nullable) {
+      else if (
+        parameter.typeFqn != property.codec.kotlinType ||
+          parameter.nullable != property.codec.nullable
+      ) {
         add(
-          "$id.${property.name}: expected ${property.codec.kotlinType}, discovered ${parameter.typeFqn}${if (parameter.nullable) "?" else ""}"
+          "$id.${property.name}: expected ${property.codec.kotlinType}${if (property.codec.nullable) "?" else ""}, discovered ${parameter.typeFqn}${if (parameter.nullable) "?" else ""}"
         )
       }
     }
@@ -917,8 +1272,8 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           add("$id: ${slot.name} is not a composable slot")
       }
       for (event in declaredEvents) {
-        if (!matchesCallback(parameters[event.name], null))
-          add("$id: ${event.name} is not a () -> Unit callback")
+        if (!matchesEvent(parameters[event.name], event.arity))
+          add("$id: ${event.name} is not ${callbackShape(event.arity)}")
       }
     }
     for (change in declaredChanges) {
@@ -1140,7 +1495,10 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
     }
     for ((event, name) in target.events) {
-      if (declaredEvents.none { it.eventName == event }) add("$where: event $event is not declared")
+      val declared = declaredEvents.firstOrNull { it.eventName == event }
+      if (declared == null) add("$where: event $event is not declared")
+      else if (declared.arity != 0)
+        add("$where: event $event takes arguments, which an export cannot write")
       if (!matchesCallback(parameters[name], null))
         add("$where: $name is not a () -> Unit callback")
     }
@@ -1224,6 +1582,25 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             ExportProjection.Codec.Bool -> "kotlin.Boolean"
             ExportProjection.Codec.Whole -> "kotlin.Int"
             ExportProjection.Codec.Fractional32 -> "kotlin.Float"
+            ExportProjection.Codec.WholeLong -> "kotlin.Long"
+            ExportProjection.Codec.Fractional64 -> "kotlin.Double"
+            is ExportProjection.Codec.Parsed -> codec.typeFqn
+            is ExportProjection.Codec.Union -> codec.typeFqn
+            is ExportProjection.Codec.Singleton -> codec.typeFqn
+            // The value's own type: a parameter's nullability is not part of its classifier.
+            is ExportProjection.Codec.Nullable ->
+              when (val inner = codec.value) {
+                is ExportProjection.Codec.ListOf -> LIST_TYPE
+                is ExportProjection.Codec.Object -> inner.typeFqn
+                is ExportProjection.Codec.Union -> inner.typeFqn
+                else ->
+                  writtenType(
+                    ExportProjection.Value.Property(value.name, inner, value.omitWhen),
+                    properties,
+                    where,
+                    problems,
+                  )
+              }
             is ExportProjection.Codec.Color -> COLOR_TYPE
             is ExportProjection.Codec.Enum -> codec.typeFqn
             ExportProjection.Codec.MaterialIcon -> IMAGE_VECTOR_TYPE
@@ -1279,6 +1656,27 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     }
     return reasons.takeIf { it.isNotEmpty() }?.joinToString(", ")
   }
+
+  /**
+   * Whether [parameter] is a callback an [AdapterEvent] of [arity] arguments may fill: a
+   * `kotlin.Function<arity>` returning `Unit`, nullable or not (a nullable one is passed the
+   * handler). Its argument types are the property reference's, checked when the adapter compiles.
+   */
+  private fun matchesEvent(parameter: TargetParameter?, arity: Int): Boolean {
+    if (arity == 0 && parameter?.nullable != true) return matchesCallback(parameter, null)
+    return parameter != null &&
+      !parameter.composableSlot &&
+      parameter.scopeDslReceiver == null &&
+      parameter.lambdaReturnTypeFqn == "kotlin.Unit" &&
+      parameter.typeFqn == "kotlin.Function$arity"
+  }
+
+  private fun callbackShape(arity: Int): String =
+    when (arity) {
+      0 -> "a () -> Unit callback"
+      1 -> "a (A) -> Unit callback"
+      else -> "a callback of $arity arguments returning Unit"
+    }
 
   // Callback input classifiers are not qualified in the current discovery contract. Check exact
   // tokens (never erase arbitrary package substrings), structural function/receiver flags and the
