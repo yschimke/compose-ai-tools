@@ -50,7 +50,7 @@ class PreviewPermutationsTest {
   }
 
   @Test
-  fun `a Glance Wear widget's large font sibling stops at the Wear maximum`() {
+  fun `a Glance Wear widget's large font sibling is 1.24x`() {
     val widget =
       PreviewInfo(
         id = "WeatherWidgetRoundPreview",

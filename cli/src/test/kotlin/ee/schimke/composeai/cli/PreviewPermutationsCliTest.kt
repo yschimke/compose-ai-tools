@@ -24,7 +24,7 @@ class PreviewPermutationsCliTest {
   }
 
   @Test
-  fun `a Glance Wear widget's large font sibling stops at the Wear maximum`() {
+  fun `a Glance Wear widget's large font sibling is 1.24x`() {
     // Named exactly as the Gradle plugin's PreviewPermutations names it, so a CLI read of the
     // plugin's renders finds the same file.
     val base =

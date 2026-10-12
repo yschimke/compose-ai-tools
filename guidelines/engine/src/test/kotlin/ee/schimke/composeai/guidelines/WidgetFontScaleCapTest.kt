@@ -23,20 +23,20 @@ class WidgetFontScaleCapTest {
   private val screen = PreviewSubject(previewId = "s", surface = GuidelineSurfaces.SCREEN)
 
   @Test
-  fun `a widget's largest font scale is its host's`() {
+  fun `a widget is checked at 1.24x on Wear and 1.5x elsewhere`() {
     assertThat(
-        GuidelineSurfaces.maxFontScale(
+        GuidelineSurfaces.checkFontScale(
           GuidelineSurfaces.WIDGET,
           GuidelineSurfaces.WEAR_WIDGETS_PROFILE,
         )
       )
       .isEqualTo(1.24)
-    assertThat(GuidelineSurfaces.maxFontScale(GuidelineSurfaces.WIDGET, null)).isEqualTo(1.5)
-    assertThat(GuidelineSurfaces.maxFontScale(GuidelineSurfaces.SCREEN, null)).isNull()
+    assertThat(GuidelineSurfaces.checkFontScale(GuidelineSurfaces.WIDGET, null)).isEqualTo(1.5)
+    assertThat(GuidelineSurfaces.checkFontScale(GuidelineSurfaces.SCREEN, null)).isNull()
   }
 
   @Test
-  fun `a render need past a widget's maximum is held to it, and nothing else changes`() {
+  fun `a render need past a widget's check scale is held to it, and nothing else changes`() {
     // The triage's large-font offer asks for 1.5x; a model may ask for 2x.
     assertThat(need(1.5).cappedFor(wearWidget).fontScale).isEqualTo(1.24)
     assertThat(need(2.0).cappedFor(launcherWidget).fontScale).isEqualTo(1.5)
@@ -44,7 +44,7 @@ class WidgetFontScaleCapTest {
   }
 
   @Test
-  fun `needs within the maximum, without a font scale, or for a screen pass unchanged`() {
+  fun `needs within the check scale, without a font scale, or for a screen pass unchanged`() {
     val within = need(1.1)
     assertThat(within.cappedFor(wearWidget)).isSameInstanceAs(within)
     val none = need(null)
