@@ -303,7 +303,7 @@ android-compose-screenshot = "0.0.1-alpha16"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.2.3"
+checker-qual = "4.3.0"
 # Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
 # `:samples:sdk21:android-metro-viewmodel` module to demonstrate that
 # constructor-injected ViewModels render under the renderer's @Preview
