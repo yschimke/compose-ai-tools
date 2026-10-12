@@ -304,6 +304,37 @@ class ExportProjectionTest {
   }
 
   @Test
+  fun `a scope member's scope is an owner the host must admit`() {
+    val scope = "androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope"
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            button.canonicalId,
+            emptyMap(),
+            contexts =
+              mapOf(
+                "list-item" to
+                  ExportProjection.Context(
+                    modifier =
+                      listOf(
+                        ChainLink(
+                          "$scope.minimumVerticalContentPadding",
+                          positional = listOf(ScreenValue.Whole(4)),
+                          receiverScopeFqn = scope,
+                        )
+                      )
+                  )
+              ),
+          )
+        )
+      )
+    // Never imported, but the generator still holds `$scope.minimumVerticalContentPadding` to the
+    // allowlist, so a host that admitted only imported owners refused the row.
+    assertThat(projection.qualifiedOwners).contains(scope)
+  }
+
+  @Test
   fun `a context must name a structural role and not rewrite what the target writes`() {
     fun target(role: String, context: ExportProjection.Context) = runCatching {
       ExportProjection.Target(
