@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.55.0](https://github.com/yschimke/compose-ai-tools/compare/v2.54.0...v2.55.0) (2026-10-12)
+
+
+### Features
+
+* check widgets at 1.24x (Wear) and 1.5x (mobile) font scale ([#5920](https://github.com/yschimke/compose-ai-tools/issues/5920)) ([6ce02e7](https://github.com/yschimke/compose-ai-tools/commit/6ce02e7ec529f54757a34604e2787b151ea1a4f7))
+* **ci:** reusable workflow to publish a prebuilt typed catalog ([#5915](https://github.com/yschimke/compose-ai-tools/issues/5915)) ([d122416](https://github.com/yschimke/compose-ai-tools/commit/d1224164eeec47e296a1bb92dadeb43083ae42d4))
+* **render-host:** add the swift-appkit Remote Compose lane over rc-swift-render ([#5921](https://github.com/yschimke/compose-ai-tools/issues/5921)) ([9c283d9](https://github.com/yschimke/compose-ai-tools/commit/9c283d919eef7cce501e57d93609c37e04f563e7))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.16.0 ([#5928](https://github.com/yschimke/compose-ai-tools/issues/5928)) ([7a14996](https://github.com/yschimke/compose-ai-tools/commit/7a149966ce221e7d8e96b07aac8a218bb6cd6d95))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.10.0 ([#5923](https://github.com/yschimke/compose-ai-tools/issues/5923)) ([8bb4e09](https://github.com/yschimke/compose-ai-tools/commit/8bb4e090a4a55f6e55ac8224058aa2646104c128))
+* **guidelines:** allow paired semantic domain colours alongside theme roles ([#5924](https://github.com/yschimke/compose-ai-tools/issues/5924)) ([6ad98dd](https://github.com/yschimke/compose-ai-tools/commit/6ad98dde9da239cd443524ca927a1eb40085acbd))
+* **guidelines:** keep the comment to one line when nothing was checked ([#5926](https://github.com/yschimke/compose-ai-tools/issues/5926)) ([a1a6699](https://github.com/yschimke/compose-ai-tools/commit/a1a6699bc8e9d5eda9d6b1798e4e8be7e63c40f5))
+
 ## [2.54.0](https://github.com/yschimke/compose-ai-tools/compare/v2.53.0...v2.54.0) (2026-10-12)
 
 
