@@ -2,7 +2,7 @@
   "schema": "compose-ui-builder/catalog-guidelines/v1",
   "catalog": "remote-compose",
   "platform": "any",
-  "version": 1,
+  "version": 2,
   "about": "Guidance common to every Remote Compose surface (Wear widgets, launcher widgets, androidx players): what a RemoteDocument can carry, declarative actions and state, deferred units, text sizing, accessibility, themed colours and profiles. No text-entry rules: a remote document has no text input. Quotes developer.android.com (the Remote Compose reference and the Wear widgets guides, which are the only prose guidance published for it).",
   "rules": [
     {
@@ -50,7 +50,7 @@
       "kind": "structure",
       "severity": "info",
       "guidance": "Creates a themed RemoteColor that resolves to different Android system colors in light and dark mode.",
-      "check": "Do the document's colours come from the theme or from themed remote colours (RemoteColor.createThemedRemoteColor, or the catalog's colour roles), rather than fixed ARGB values that ignore the host's light, dark or dynamic colours? Images and brand artwork are exempt. Answer not_applicable when the document sets no colour.",
+      "check": "Do the document's UI chrome colours come from the theme or from themed remote colours (RemoteColor.createThemedRemoteColor, or the catalog's colour roles), rather than fixed ARGB values that ignore the host's light, dark or dynamic colours? Images, brand artwork and semantic domain colours (such as weather conditions, status levels, transit lines or chart series) paired with high-contrast foreground colours are exempt. Answer not_applicable when the document sets no colour.",
       "source": "https://developer.android.com/reference/kotlin/androidx/compose/remote/creation/compose/state/package-summary"
     },
     {
