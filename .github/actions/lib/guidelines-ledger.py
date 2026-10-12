@@ -15,7 +15,8 @@ next, and adds a task-list box that decides whether the next push is checked at 
     guidelines-ledger.py finalize --body new.md --previous prev.md --sha <head> --run-usd 0.0981
         Appends the ledger section to `new.md` (a body this run wrote): the PR's total so far,
         this run's spend and an unticked box. `--not-a-check` for a body written without asking
-        the model (the "nothing needed" resolution), which keeps the totals and counts no run.
+        the model (the "nothing needed" resolution), which keeps the totals and counts no run;
+        while the PR has had no model check at all, that section is only the hidden ledger.
 
     guidelines-ledger.py skipped --previous prev.md --sha <head> --out body.md
         Writes the earlier comment back with a banner saying this revision was NOT checked and
@@ -137,6 +138,17 @@ def place(body: str, block: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip("\n") + "\n"
 
 
+def quiet_section(totals: dict) -> str:
+    """The ledger with nothing visible: no check has run for this PR yet, so there is no spend
+    to report, and the box would decide nothing (the next push runs unasked, see [gate])."""
+    data = json.dumps(
+        {"v": 1, "runs": 0, "usd": round(totals["usd"], 6), "skipped": totals["skipped"],
+         "sha": totals["sha"]},
+        separators=(",", ":"),
+    )
+    return "\n".join([SECTION_START, f"<!-- guidelines-ledger {data} -->", SECTION_END, ""])
+
+
 def section(totals: dict, this_run: str, max_cost: str) -> str:
     runs = totals["runs"]
     skipped = totals["skipped"]
@@ -175,6 +187,8 @@ def finalize(body: str, previous: str, sha: str, run_usd: float, checked: bool,
         totals["usd"] += run_usd
         totals["sha"] = sha
         this_run = f"This revision (`{short(sha)}`): ${run_usd:.4f}."
+    elif totals["runs"] == 0:
+        return place(strip(body), quiet_section(totals))
     else:
         this_run = f"This revision (`{short(sha)}`) asked the model nothing: $0."
     return place(strip(body), section(totals, this_run, max_cost))

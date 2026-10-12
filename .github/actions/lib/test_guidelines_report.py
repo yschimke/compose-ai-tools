@@ -414,7 +414,7 @@ class ReportTest(unittest.TestCase):
         body = gr.build(self.tmp, _args())
         assert body is not None
         # Nothing says a catalog publish checks guidelines, so nothing is promised.
-        self.assertIn("This PR changes the design guidelines.", body)
+        self.assertIn("Guidelines changed:", body)
         self.assertIn("were not re-checked against the new rules", body)
         self.assertNotIn("re-checks every other preview", body)
         args = _args()
@@ -423,7 +423,7 @@ class ReportTest(unittest.TestCase):
                       gr.build(self.tmp, args))
         (self.tmp / "_rules_changed.json").write_text(
             json.dumps({"modules": ["catalog"], "sweep": True}))
-        self.assertNotIn("This PR changes the design guidelines.", gr.build(self.tmp, _args()))
+        self.assertNotIn("Guidelines changed:", gr.build(self.tmp, _args()))
 
     def test_results_from_the_catalog_cache_are_counted(self) -> None:
         report = json.loads((self.tmp / "catalog" / "guidelines.json").read_text())
@@ -1070,6 +1070,27 @@ class LedgerTest(unittest.TestCase):
             "- [ ] Re-check", "- [x] Re-check"), "d" * 40, 0.01, True, "")
         self.assertNotIn(gl.BANNER_START, checked)
         self.assertEqual(gl.ledger(checked)["runs"], 2)
+
+    def test_a_resolution_before_any_check_shows_no_ledger_or_box(self) -> None:
+        resolved = gl.MARKER + "\n## Design guidelines\n\nNothing needed.\n"
+        body = gl.finalize(resolved, "", self.SHA1, 0.0, False, "0.25")
+        self.assertEqual(gl.ledger(body), {"runs": 0, "usd": 0.0, "skipped": 0, "sha": ""})
+        self.assertNotIn("This PR so far", body)
+        self.assertNotIn(gl.BOX_MARKER, body)
+        self.assertNotIn("\n---\n", body)
+        # Only the heading and the one line are visible.
+        visible = [l for l in body.splitlines() if l and not l.startswith("<!--")]
+        self.assertEqual(visible, ["## Design guidelines", "Nothing needed."])
+        self.assertEqual(gl.gate(body), "run")
+        # Rewritten again: still one (hidden) section.
+        again = gl.finalize(resolved, body, self.SHA2, 0.0, False, "0.25")
+        self.assertEqual(again.count(gl.SECTION_START), 1)
+        # The first real check brings the total and the box.
+        checked = gl.finalize(gl.MARKER + "\n## Design guidelines\n\nFindings.\n", again,
+                              self.SHA2, 0.03, True, "0.25")
+        self.assertIn("This PR so far: $0.0300", checked)
+        self.assertIn(gl.BOX_MARKER, checked)
+        self.assertEqual(checked.count(gl.SECTION_START), 1)
 
     def test_a_resolution_keeps_the_total_without_counting_a_check(self) -> None:
         resolved = gl.MARKER + "\n## Design guidelines\n\nNothing needed.\n"

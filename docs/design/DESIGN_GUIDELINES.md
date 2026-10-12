@@ -708,7 +708,8 @@ round counts against the one `guidelines-max-cost` budget.
 `guidelines-max-cost` is one run's budget, and a PR is checked on more than one run, so the PR's
 spend is kept apart from it. The sticky comment carries a ledger (`guidelines-ledger.py`): the
 PR's total over its model checks, this revision's share and the pushes not re-checked, carried from
-each body to the next. Each run saves its results to an Actions cache keyed by the PR number, and
+each body to the next. Until the PR has had a model check the ledger is hidden: a revision that
+needed none gets a one-line comment with no total and no box. Each run saves its results to an Actions cache keyed by the PR number, and
 the next run seeds them into the staged modules (`guidelines-budget.py --collect` /
 `--seed-pr-cache`), so a push pays only for previews whose inputs changed since the PR's last check.
 A cached result costs the run nothing, though its record still says what it first cost. With
