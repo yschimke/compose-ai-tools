@@ -763,6 +763,12 @@ class ExportProjectionTest {
           .single()
       )
       .contains("is not a Material icon key")
+    // A host building its allowlist from the owners admits the icons the table writes.
+    assertThat(projection.qualifiedOwners).contains("androidx.compose.material.icons")
+    // A closed icon set decodes only its own keys, as the other closed codecs do.
+    val closed = AdapterValueCodecs.materialIcon(setOf("filled/add"))
+    assertThat(closed.decode(JsonPrimitive("filled/add"))).isEqualTo("filled/add")
+    assertThat(runCatching { closed.decode(JsonPrimitive("filled/nope")) }.isFailure).isTrue()
     val json = ExportProjectionJson.encode(projection)
     assertThat(json.toString()).contains("\"codec\":\"materialIcon\"")
     assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(projection)
