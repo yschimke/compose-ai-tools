@@ -228,10 +228,11 @@ data class ExportProjection(
       val upper: Int
         get() = max ?: if (rest == null) to.size else Int.MAX_VALUE
 
+      // `rest` is filled whenever more lines than [to] names are needed to match at all.
       override val parameters: Map<String, Boolean>
         get() =
           to.mapIndexed { index, name -> name to (index < min) }.toMap() +
-            listOfNotNull(rest).associateWith { false }
+            listOfNotNull(rest).associateWith { min > to.size }
     }
 
     /** Every remaining child, at least one, goes to [to]. */
