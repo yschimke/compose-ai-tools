@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.56.0](https://github.com/yschimke/compose-ai-tools/compare/v2.55.0...v2.56.0) (2026-10-12)
+
+
+### Features
+
+* **cli:** launch the MCP server from compose-preview-mcp releases ([#5929](https://github.com/yschimke/compose-ai-tools/issues/5929)) ([adff9f0](https://github.com/yschimke/compose-ai-tools/commit/adff9f0567053736c96ffea22ef468358ff10d7d))
+
+
+### Bug Fixes
+
+* **install:** wait out the release-publication window before failing ([#5931](https://github.com/yschimke/compose-ai-tools/issues/5931)) ([dd302d2](https://github.com/yschimke/compose-ai-tools/commit/dd302d2df4be502d98cfe264707454ab613654db))
+
 ## [2.55.0](https://github.com/yschimke/compose-ai-tools/compare/v2.54.0...v2.55.0) (2026-10-12)
 
 
