@@ -1336,6 +1336,12 @@ object TypedAdapterCatalog {
   private fun variantId(adapter: TypedComponentAdapter<*>, variant: ComponentRecord) =
     "${adapter.id}-${variant.symbol.name.lowercase()}"
 
+  /**
+   * The off-shelf id an implementation's record ships under; see `generate`'s `implementations`.
+   */
+  private fun implementationId(adapter: TypedComponentAdapter<*>) =
+    variantId(adapter, adapter.component)
+
   fun generate(
     discovered: ComponentRecordFile,
     cover: UiBuilderCatalogs.CoverSheet,
@@ -1347,13 +1353,26 @@ object TypedAdapterCatalog {
      * stale, exactly as a stale component record is.
      */
     factories: List<FactorySignature> = emptyList(),
+    /**
+     * Adapters implementing one of [policy]'s builtins (the list, say), each with that builtin's
+     * id. The builtin stays what the editor places; the adapter's record ships off the shelf
+     * carrying its projection, and the builtin's `implementation` names it, which is how the
+     * builder exports a builtin through a projection. Stated apart from [adapters] so an adapter
+     * that merely shares a builtin's id is still refused as a collision.
+     */
+    implementations: List<TypedComponentAdapter<*>> = emptyList(),
   ): GeneratedAdapterCatalog {
     require(adapters.isNotEmpty()) { "declare at least one adapter" }
-    require(adapters.map { it.id }.distinct().size == adapters.size) {
-      "duplicate adapter component ids"
-    }
-    require(adapters.map { it.component.canonicalId }.distinct().size == adapters.size) {
+    val all = adapters + implementations
+    require(all.map { it.id }.distinct().size == all.size) { "duplicate adapter component ids" }
+    require(all.map { it.component.canonicalId }.distinct().size == all.size) {
       "duplicate adapter component records"
+    }
+    for (adapter in implementations) {
+      require(adapter.id in policy.builtins) {
+        "${adapter.id}: implements no builtin; the policy declares " +
+          policy.builtins.keys.sorted().joinToString()
+      }
     }
     require(
       discovered.components.map { it.canonicalId }.distinct().size == discovered.components.size
@@ -1364,7 +1383,7 @@ object TypedAdapterCatalog {
       "typed catalog owns its component inventory; do not merge another component inventory"
     }
     val byId = discovered.components.associateBy { it.canonicalId }
-    adapters.forEach { adapter ->
+    all.forEach { adapter ->
       for (expected in listOf(adapter.component) + adapter.variantRecords) {
         val current =
           requireNotNull(byId[expected.canonicalId]) {
@@ -1384,15 +1403,18 @@ object TypedAdapterCatalog {
     // A projection's variant targets (`FilledTonalButton` for a `variant` of `Button`) ship in the
     // record so export can print them, kept off the shelf: the adapter's id is their one identity.
     val variants =
-      adapters
+      all
         .flatMap { adapter -> adapter.variantRecords.map { adapter to it } }
         .distinctBy { it.second.canonicalId }
-        .filter { (_, record) -> adapters.none { it.component.canonicalId == record.canonicalId } }
+        .filter { (_, record) -> all.none { it.component.canonicalId == record.canonicalId } }
     val record =
       discovered
         .newBuilder()
         .also { b ->
-          b.components = adapters.map { it.recordWithPolicy() } + variants.map { it.second }
+          b.components =
+            adapters.map { it.recordWithPolicy() } +
+              implementations.map { it.component } +
+              variants.map { it.second }
           b.builderOrphans = emptyList()
         }
         .build()
@@ -1402,6 +1424,16 @@ object TypedAdapterCatalog {
         .also { b ->
           b.components =
             adapters.associate { it.id to it.policy() } +
+              implementations.associate { adapter ->
+                implementationId(adapter) to
+                  UiBuilderAuthoredComponent.Builder()
+                    .also {
+                      it.record = adapter.component.canonicalId
+                      it.excluded = "the implementation of builtin ${adapter.id}"
+                      it.exportProjection = adapter.projection?.let(ExportProjectionJson::encode)
+                    }
+                    .build()
+              } +
               variants.associate { (adapter, variant) ->
                 variantId(adapter, variant) to
                   UiBuilderAuthoredComponent.Builder()
@@ -1411,11 +1443,21 @@ object TypedAdapterCatalog {
                     }
                     .build()
               }
+          b.builtins =
+            policy.builtins.mapValues { (id, builtin) ->
+              val adapter = implementations.firstOrNull { it.id == id } ?: return@mapValues builtin
+              builtin
+                .newBuilder()
+                .also { it.implementation = adapter.component.canonicalId }
+                .build()
+            }
         }
         .build()
     val catalog = requireNotNull(UiBuilderCatalogs.generate(record, cover, authored))
-    // The one finding generation expects is the variant targets it kept off the shelf itself.
-    val variantIds = variants.map { (adapter, variant) -> variantId(adapter, variant) }.toSet()
+    // The one finding generation expects is the export targets it kept off the shelf itself.
+    val variantIds =
+      variants.map { (adapter, variant) -> variantId(adapter, variant) }.toSet() +
+        implementations.map(::implementationId)
     val unexpected =
       catalog.diagnostics.filterNot {
         it.code == UiBuilderCatalogs.Diagnostics.COMPONENT_EXCLUDED && it.subject in variantIds
