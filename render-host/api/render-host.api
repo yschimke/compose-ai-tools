@@ -2868,8 +2868,8 @@ public final class ee/schimke/composeai/cli/serve/RcJvmWorkerPool : java/lang/Au
 	public static final field WIRE_THEME_DARK I
 	public static final field WIRE_THEME_LIGHT I
 	public static final field WORKER_MAIN_CLASS Ljava/lang/String;
-	public fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/util/List;IIJJLkotlin/jvm/functions/Function0;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/util/List;IIJJLkotlin/jvm/functions/Function0;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/util/List;IIJJLkotlin/jvm/functions/Function0;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/util/List;IIJJLkotlin/jvm/functions/Function0;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public final fun render ([BLee/schimke/composeai/cli/serve/RcJvmRenderSpec;Ljava/lang/String;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$Format;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderTheme;J)Lee/schimke/composeai/cli/serve/RcJvmWorkerPool$PoolResult;
 	public static synthetic fun render$default (Lee/schimke/composeai/cli/serve/RcJvmWorkerPool;[BLee/schimke/composeai/cli/serve/RcJvmRenderSpec;Ljava/lang/String;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$Format;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderTheme;JILjava/lang/Object;)Lee/schimke/composeai/cli/serve/RcJvmWorkerPool$PoolResult;
@@ -2954,6 +2954,7 @@ public final class ee/schimke/composeai/cli/serve/RcPlayerBackend : java/lang/En
 	public static final field CMP_JVM Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field CMP_WASM Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field Companion Lee/schimke/composeai/cli/serve/RcPlayerBackend$Companion;
+	public static final field SWIFT_APPKIT Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public final fun getClientSide ()Z
 	public final fun getDaemonPlayerId ()Ljava/lang/String;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
@@ -3079,6 +3080,25 @@ public final synthetic class ee/schimke/composeai/cli/serve/RcSummaryRow$$serial
 
 public final class ee/schimke/composeai/cli/serve/RcSummaryRow$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/cli/serve/RcSwiftServerRenderer {
+	public static final field ASSET_NAME Ljava/lang/String;
+	public static final field ENV_BINARY Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/RcSwiftServerRenderer;
+	public static final field LANE Ljava/lang/String;
+	public static final field SYS_PROP_BINARY Ljava/lang/String;
+	public static final field SYS_PROP_CACHE_DIR Ljava/lang/String;
+	public static final field SYS_PROP_DOWNLOAD Ljava/lang/String;
+	public static final field SYS_PROP_RELEASE_BASE_URL Ljava/lang/String;
+	public static final field SYS_PROP_VERSION Ljava/lang/String;
+	public final fun isAvailable ()Z
+	public final fun isSupportedHost ()Z
+	public final fun render ([BLee/schimke/composeai/cli/serve/RcJvmRenderSpec;Ljava/util/Map;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderTheme;)Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderResult;
+	public static synthetic fun render$default (Lee/schimke/composeai/cli/serve/RcSwiftServerRenderer;[BLee/schimke/composeai/cli/serve/RcJvmRenderSpec;Ljava/util/Map;Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderTheme;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/RcJvmServerRenderer$RenderResult;
+	public final fun shutdownPool ()V
+	public final fun unavailableReason ()Ljava/lang/String;
+	public final fun version ()Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/cli/serve/RenderBreakerSnapshot {
@@ -3709,6 +3729,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public abstract fun subscribeStream (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public static synthetic fun subscribeStream$default (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public fun supportsCmpJvm (Ljava/lang/String;)Z
+	public fun supportsSwiftAppKit (Ljava/lang/String;)Z
 	public fun tagIndexForPreview (Ljava/lang/String;)Ljava/util/Map;
 	public fun themeOptimizationSnapshot ()Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public fun themeReplayColors (Ljava/lang/String;)Ljava/util/Map;
@@ -3789,6 +3810,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun stagedRcPlayers (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Ljava/util/List;
 	public static synthetic fun subscribeStream$default (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public static fun supportsCmpJvm (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
+	public static fun supportsSwiftAppKit (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun tagIndexForPreview (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Ljava/util/Map;
 	public static fun themeOptimizationSnapshot (Lee/schimke/composeai/cli/serve/ServeHost;)Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public static fun themeReplayColors (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Ljava/util/Map;
@@ -4213,6 +4235,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public static synthetic fun startStream$default (Lee/schimke/composeai/cli/serve/ServeRenderHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public fun subscribeStream (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public fun supportsCmpJvm (Ljava/lang/String;)Z
+	public fun supportsSwiftAppKit (Ljava/lang/String;)Z
 	public fun tagIndexForPreview (Ljava/lang/String;)Ljava/util/Map;
 	public fun themeOptimizationSnapshot ()Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public fun themeReplayColors (Ljava/lang/String;)Ljava/util/Map;

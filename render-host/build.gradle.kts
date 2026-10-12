@@ -59,6 +59,24 @@ kotlin {
   @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
 }
 
+// The rc-players release `RcSwiftServerRenderer` downloads `rc-swift-render` from: the same
+// `rcplayers` version the rest of this build resolves the players at; a Renovate bump moves both.
+val rcSwiftRenderProperties =
+  tasks.register<WriteProperties>("rcSwiftRenderProperties") {
+    destinationFile.set(
+      layout.buildDirectory.file(
+        "generated/rc-swift-render/ee/schimke/composeai/cli/serve/rc-swift-render.properties"
+      )
+    )
+    property("version", libs.versions.rcplayers.get())
+  }
+
+sourceSets.main {
+  resources.srcDir(
+    rcSwiftRenderProperties.map { layout.buildDirectory.dir("generated/rc-swift-render") }
+  )
+}
+
 // `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin.
 tasks.named("check") { dependsOn("checkKotlinAbi") }
 

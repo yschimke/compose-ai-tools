@@ -2191,8 +2191,16 @@ they are in published links.
 | `androidx-embedded` | vendored AndroidX embedded player (`third-party-rc-embedded-player`) | daemon, `remoteCompose.player = EMBEDDED` | `embedded` |
 | `cmp-android` | CMP player on Android | daemon, `remoteCompose.playerId = "cmp-android"` | — |
 | `cmp-jvm` | CMP player on the desktop JVM (`:rc-render-jvm` subprocess) | serve | `rcplayer-jvm` |
+| `swift-appkit` | native Swift player's AppKit renderer (rc-players' `rc-swift-render` subprocess) | serve, macOS on Apple silicon only | — |
 | `cmp-wasm` | CMP player, Wasm | browser | `rcplayer-wasm` |
 | `camaelon-js` | vendored TypeScript player | browser | `js` |
+
+`swift-appkit` is the one lane drawn by Apple's own text shaping and antialiasing. `serve` runs
+`rc-swift-render` from `-Dcomposeai.rcswift.binary`, `$COMPOSEAI_RC_SWIFT_RENDER` or `PATH`;
+failing those, it downloads the `rc-swift-render-macos-arm64.zip` asset from the rc-players release
+matching its `rcplayers` version into `~/.cache/composeai/rc-swift-render/<version>/`, checking the
+`.sha256` sidecar first. `-Dcomposeai.rcswift.download=off` turns the download off. On any other
+host the chip is listed but disabled. The renderer is PNG only.
 
 `cmp-android` used to name the AndroidX embedded player. It now names the CMP player on Android
 (compose-preview-daemon's replay-only `cmp-android` backend), and the bare `cmp` is retired. A
