@@ -316,6 +316,16 @@ public interface ServeHost : AutoCloseable {
       RcJvmServerRenderer.isAvailable()
 
   /**
+   * Whether the server-side swift-appkit lane can render [previewId]: the same document and render
+   * spec as [supportsCmpJvm], and an `rc-swift-render` this host can run
+   * ([RcSwiftServerRenderer.isAvailable] — macOS on Apple silicon only).
+   */
+  public fun supportsSwiftAppKit(previewId: String): Boolean =
+    hasRemoteComposeDoc(previewId) &&
+      remoteComposeRenderSpec(previewId) != null &&
+      RcSwiftServerRenderer.isAvailable()
+
+  /**
    * [bakedRcPlayer] as a backend. Uses [RcPlayerBackend.fromCapturePlayer], not `fromWire`: older
    * captures used `cmp-android` for the embedded player.
    */
@@ -333,6 +343,7 @@ public interface ServeHost : AutoCloseable {
       buildList {
         add(RcPlayerBackend.CAMAELON_JS)
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
+        if (supportsSwiftAppKit(previewId)) add(RcPlayerBackend.SWIFT_APPKIT)
         // cmp-wasm is excluded: it is an interactive iframe lane needing an installed Wasm
         // distribution.
         addAll(

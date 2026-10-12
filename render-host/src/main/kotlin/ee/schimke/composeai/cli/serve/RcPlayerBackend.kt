@@ -16,6 +16,9 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   `playerId` ([daemonPlayerId]).
  * * [CMP_JVM] — the CMP player over Skiko/Desktop in [RcJvmServerRenderer]'s subprocess (not the
  *   daemon); enabled via [ServeHost.supportsCmpJvm].
+ * * [SWIFT_APPKIT] — the native Swift player's AppKit renderer (yschimke/rc-players'
+ *   `rc-swift-render`) in [RcSwiftServerRenderer]'s subprocess; macOS on Apple silicon only,
+ *   enabled via [ServeHost.supportsSwiftAppKit].
  * * [CMP_WASM] — the CMP player compiled to Wasm, in a browser iframe.
  * * [CAMAELON_JS] — the vendored TypeScript player (`RC.RcdPlayer`), client-side in a `<canvas>`.
  *
@@ -29,7 +32,7 @@ public enum class RcPlayerBackend(
   public val label: String,
   /**
    * The daemon player kind via `remoteCompose.player`, or null for lanes that don't use it
-   * (client-side lanes, [CMP_JVM], and [CMP_ANDROID], which uses [daemonPlayerId]).
+   * (client-side lanes, [CMP_JVM], [SWIFT_APPKIT], and [CMP_ANDROID], which uses [daemonPlayerId]).
    */
   public val playerKind: RemoteComposePlayerKind?,
   /**
@@ -98,6 +101,14 @@ public enum class RcPlayerBackend(
     daemonPlayerId = null,
     clientSide = false,
     rcCompareLane = "cmp-jvm",
+  ),
+  SWIFT_APPKIT(
+    "swift-appkit",
+    "Swift AppKit",
+    playerKind = null,
+    daemonPlayerId = null,
+    clientSide = false,
+    rcCompareLane = null,
   );
 
   /** True when the daemon draws this lane, through either [playerKind] or [daemonPlayerId]. */
@@ -151,7 +162,8 @@ public enum class RcPlayerBackend(
 
     /**
      * True when [raw] names a lane that never rides the daemon ([CAMAELON_JS], [CMP_WASM],
-     * [CMP_JVM]), so `rcPlayer=` must not forward it as a `playerId` the daemon would only refuse.
+     * [CMP_JVM], [SWIFT_APPKIT]), so `rcPlayer=` must not forward it as a `playerId` the daemon
+     * would only refuse.
      */
     public fun isNonDaemonLane(raw: String): Boolean = fromWire(raw)?.ridesDaemon == false
 

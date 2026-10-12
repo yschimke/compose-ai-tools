@@ -22,6 +22,7 @@ class RcPlayerBackendTest {
         RcPlayerBackend.ANDROIDX_EMBEDDED to "androidx-embedded",
         RcPlayerBackend.CMP_ANDROID to "cmp-android",
         RcPlayerBackend.CMP_JVM to "cmp-jvm",
+        RcPlayerBackend.SWIFT_APPKIT to "swift-appkit",
       ),
       RcPlayerBackend.entries.associateWith { it.wire },
     )
@@ -73,7 +74,15 @@ class RcPlayerBackendTest {
   @Test
   fun `lanes that never ride the daemon are recognised by canonical and legacy ids`() {
     for (raw in
-      listOf("camaelon-js", "js", "cmp-wasm", "rcplayer-wasm", "cmp-jvm", "rcplayer-jvm")) {
+      listOf(
+        "camaelon-js",
+        "js",
+        "cmp-wasm",
+        "rcplayer-wasm",
+        "cmp-jvm",
+        "rcplayer-jvm",
+        "swift-appkit",
+      )) {
       assertTrue(RcPlayerBackend.isNonDaemonLane(raw), raw)
       assertNull(RcPlayerBackend.serverSideFromParam(raw), raw)
     }

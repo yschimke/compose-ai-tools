@@ -61,6 +61,14 @@ public class RcJvmWorkerPool(
    * Compose/Skiko.
    */
   private val workerMainClass: String = WORKER_MAIN_CLASS,
+  /**
+   * The whole worker command line, replacing the `java -cp … [workerMainClass]` one. Set for a
+   * renderer that is not a JVM but speaks the same frames: `rc-swift-render --worker`
+   * ([RcSwiftServerRenderer]). [classpath], [javaBin] and [extraJvmArgs] are then unused.
+   */
+  private val workerCommand: List<String>? = null,
+  /** The lane named in failure reasons, so a Swift worker's error does not blame `cmp-jvm`. */
+  private val lane: String = "cmp-jvm",
 ) : AutoCloseable {
 
   public sealed interface PoolResult {
@@ -105,7 +113,7 @@ public class RcJvmWorkerPool(
       disabledReason?.let {
         return PoolResult.Unusable(it)
       }
-      if (closed) return PoolResult.Unusable("cmp-jvm worker pool is closed")
+      if (closed) return PoolResult.Unusable("$lane worker pool is closed")
     }
 
     permits.acquire()
@@ -204,15 +212,17 @@ public class RcJvmWorkerPool(
   }
 
   private fun startWorker(timeoutSeconds: Long): StartOutcome {
-    val command = buildList {
-      add(javaBin)
-      addAll(extraJvmArgs)
-      add("-cp")
-      add(classpath.joinToString(File.pathSeparator) { it.absolutePath })
-      add(workerMainClass)
-    }
+    val command =
+      workerCommand
+        ?: buildList {
+          add(javaBin)
+          addAll(extraJvmArgs)
+          add("-cp")
+          add(classpath.joinToString(File.pathSeparator) { it.absolutePath })
+          add(workerMainClass)
+        }
     return try {
-      val worker = Worker(command, watchdog, clock())
+      val worker = Worker(command, watchdog, clock(), lane)
       worker.handshake(minOf(HANDSHAKE_TIMEOUT_SECONDS, timeoutSeconds.coerceAtLeast(1)))
       val registered =
         synchronized(lock) {
@@ -222,12 +232,12 @@ public class RcJvmWorkerPool(
         }
       if (!registered) {
         worker.close()
-        StartOutcome.Failed("cmp-jvm worker pool is closed")
+        StartOutcome.Failed("$lane worker pool is closed")
       } else {
         StartOutcome.Started(worker)
       }
     } catch (e: Exception) {
-      val reason = "cmp-jvm worker pool could not start a worker: ${e.message}"
+      val reason = "$lane worker pool could not start a worker: ${e.message}"
       synchronized(lock) {
         startFailures++
         if (startFailures >= MAX_START_FAILURES) {
@@ -258,6 +268,7 @@ public class RcJvmWorkerPool(
     command: List<String>,
     private val watchdog: java.util.concurrent.ScheduledExecutorService,
     private val bornAtMillis: Long,
+    private val lane: String,
   ) {
     private val process = ProcessBuilder(command).redirectErrorStream(false).start()
     private val toWorker = DataOutputStream(process.outputStream.buffered())
@@ -299,13 +310,13 @@ public class RcJvmWorkerPool(
       try {
         val magic = fromWorker.readInt()
         if (magic != MAGIC_HELLO) {
-          throw IOException("unexpected hello magic $magic (is lib-rcjvm stale?)")
+          throw IOException("unexpected hello magic $magic (is the $lane worker stale?)")
         }
         val version = fromWorker.readInt()
         if (version != PROTOCOL_VERSION) {
           throw IOException(
             "worker speaks protocol $version, this cli speaks $PROTOCOL_VERSION " +
-              "(is lib-rcjvm stale?)"
+              "(is the $lane worker stale?)"
           )
         }
       } catch (e: Exception) {
@@ -360,16 +371,16 @@ public class RcJvmWorkerPool(
         return if (status == STATUS_OK) {
           PoolResult.Ok(payload)
         } else {
-          PoolResult.Failed("cmp-jvm render failed: ${String(payload, Charsets.UTF_8).take(300)}")
+          PoolResult.Failed("$lane render failed: ${String(payload, Charsets.UTF_8).take(300)}")
         }
       } catch (e: Exception) {
         timedOut = guard.fired()
         close()
         val reason =
           if (timedOut) {
-            "cmp-jvm render timed out after ${renderTimeoutSeconds}s"
+            "$lane render timed out after ${renderTimeoutSeconds}s"
           } else {
-            "cmp-jvm pooled worker failed: ${e.message}${stderrSuffix()}"
+            "$lane pooled worker failed: ${e.message}${stderrSuffix()}"
           }
         // Unusable, not Failed: the worker broke, so the caller may try the one-shot path.
         return PoolResult.Unusable(reason)
