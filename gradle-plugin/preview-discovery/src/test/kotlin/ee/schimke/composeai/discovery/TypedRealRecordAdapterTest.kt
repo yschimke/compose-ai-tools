@@ -1089,6 +1089,49 @@ class TypedRealRecordAdapterTest {
     }
 
   @Test
+  fun `an adapter for a builtin ships its record off the shelf as the builtin's implementation`() {
+    val list = transformingList()
+    val adapter = listAdapter(mapOf("content" to "item"), list)
+    val pair =
+      TypedAdapterCatalog.generate(
+        ComponentRecordFile.Builder("catalog", "debug", listOf(list, button, tonal)).build(),
+        UiBuilderCatalogs.CoverSheet("wear-m3", "Wear"),
+        UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear")
+          .also { it.builtins = mapOf("wear-m3/list" to UiBuilderBuiltin.Builder("list").build()) }
+          .build(),
+        listOf(WearButtonAdapter()),
+        FACTORIES,
+        implementations = listOf(adapter),
+      )
+    // The record carries the plain call: the builtin, not a record entry, is what the canvas draws.
+    assertThat(pair.record.components.single { it.canonicalId == list.canonicalId }.builder)
+      .isNull()
+    val semantics = pair.catalog.statusSemantics
+    assertThat(semantics.builtins.getValue("wear-m3/list").implementation)
+      .isEqualTo(list.canonicalId)
+    val call = semantics.components.values.single { it.record == list.canonicalId }
+    assertThat(call.excluded).contains("implementation of builtin wear-m3/list")
+    assertThat(ExportProjectionJson.decode(call.exportProjection!!).getOrThrow())
+      .isEqualTo(adapter.projection)
+    // Its id is no shelf component; the button beside it still is.
+    assertThat(semantics.components).doesNotContainKey("wear-m3/list")
+    assertThat(semantics.components.getValue("wear-m3/button").excluded).isNull()
+    // An implementation names a builtin the policy declares.
+    val stray = runCatching {
+      TypedAdapterCatalog.generate(
+        ComponentRecordFile.Builder("catalog", "debug", listOf(list, button, tonal)).build(),
+        UiBuilderCatalogs.CoverSheet("wear-m3", "Wear"),
+        UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear").build(),
+        listOf(WearButtonAdapter()),
+        FACTORIES,
+        implementations = listOf(adapter),
+      )
+    }
+      .exceptionOrNull()
+    assertThat(stray).hasMessageThat().contains("wear-m3/list: implements no builtin")
+  }
+
+  @Test
   fun `a DSL slot validates when its children are wrapped in an item member`() {
     assertThat(listAdapter(mapOf("content" to "item")).validateAgainst(transformingList()))
       .isEmpty()
