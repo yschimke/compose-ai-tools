@@ -20,9 +20,11 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingStartResult
 import ee.schimke.composeai.daemon.protocol.RecordingStopResult
+import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
+import ee.schimke.composeai.data.fonts.FigmaSvgFontWarningsSidecar
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
@@ -334,9 +336,10 @@ class DaemonSemanticsFetcherTest {
 
   @Test
   fun `short inactivity timeout does not reduce the daemon render deadline`() {
-    // Review follow-up for #3198: host.submit starts its deadline while a render waits behind
-    // earlier previews. Forwarding a short inactivity window directly would therefore turn it
-    // back into a batch-wide cutoff for queued tail previews even when renders keep completing.
+    // Review follow-up for #3198: released daemons start host.submit's deadline while a render
+    // waits behind earlier previews (desktop times from dequeue only since compose-preview-daemon
+    // #247). Forwarding a short inactivity window directly would turn it back into a batch-wide
+    // cutoff for queued tail previews even when renders keep completing.
     val projectDir = newTempFolder("semantics-short-daemon-timeout")
     writeDescriptor(projectDir)
     val factory = FakeFactory(produced = emptyMap())
@@ -346,6 +349,310 @@ class DaemonSemanticsFetcherTest {
 
     assertEquals(300_000.milliseconds, factory.openedConfig?.maxRenderTime)
     assertEquals(2.seconds, factory.openedConfig?.shutdownTimeout)
+  }
+
+  @Test
+  fun `renders are submitted in bounded windows, refilled as each finishes`() {
+    // Released daemons start a render's deadline when it is queued, so a catalog handed over in
+    // one renderNow shares one deadline and its tail fails together. Never more than the window may
+    // be
+    // queued at once, and every preview must still be rendered.
+    val projectDir = newTempFolder("semantics-window")
+    writeDescriptor(projectDir)
+    val ids = (1..40).map { "Preview$it" }
+    val factory =
+      FakeFactory(
+        produced = ids.associateWith { """{"root":{"nodeId":"$it"}}""" },
+        staggerMs = 2,
+      )
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory, window = 3)
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(ids.toSet(), outcome.semanticsById.keys)
+    val session = factory.sessions.single()
+    assertTrue(session.batches.size > 1, "expected several renderNow calls, got ${session.batches}")
+    assertTrue(
+      session.batches.all { it.size <= 3 },
+      "a batch exceeded the window: ${session.batches}",
+    )
+    assertTrue(
+      session.maxOutstanding.get() <= 3,
+      "at most the window may be queued at once, saw ${session.maxOutstanding.get()}",
+    )
+    // Submission order is input order: the window changes when, not what.
+    assertEquals(ids, factory.submitted.toList())
+  }
+
+  @Test
+  fun `a rejected render frees its window slot`() {
+    val projectDir = newTempFolder("semantics-window-rejected")
+    writeDescriptor(projectDir)
+    val ids = listOf("A", "B", "C", "D")
+    val factory =
+      RejectingFactory(
+        rejected = setOf("A", "B"),
+        delegate = FakeFactory(produced = ids.associateWith { "{}" }),
+      )
+    val logs = mutableListOf<String>()
+
+    val outcome =
+      DaemonSemanticsFetcher(
+          factory = factory,
+          window = 2,
+          onLog = { synchronized(logs) { logs += it } },
+        )
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(setOf("C", "D"), outcome.semanticsById.keys)
+    assertTrue(logs.any { "render rejected for 'A'" in it }, "got: $logs")
+    assertTrue(logs.none { "timed out" in it }, "a rejection must not stall the window: $logs")
+  }
+
+  @Test
+  fun `workers split the previews across daemons, each rendered exactly once`() {
+    val projectDir = newTempFolder("semantics-workers")
+    writeDescriptor(projectDir)
+    val ids = (1..60).map { "Preview$it" }
+    val produced = ids.associateWith { """{"root":{"nodeId":"$it"}}""" }
+    val factory = FakeFactory(produced = produced, staggerMs = 1)
+    val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory, workers = 3, window = 4, onLog = { logs += it })
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(3, factory.sessions.size)
+    // Distinct workspace names keep each daemon's log attributable.
+    assertEquals(
+      setOf(
+        "${projectDir.name}-semantics-1",
+        "${projectDir.name}-semantics-2",
+        "${projectDir.name}-semantics-3",
+      ),
+      factory.openedConfigs.map { it.workspaceName }.toSet(),
+    )
+    // Several daemons on one module must not share a history dir.
+    assertTrue(
+      factory.openedConfigs.all {
+        it.systemPropertyOverrides["composeai.history.enabled"] == "false"
+      }
+    )
+    // Every id rendered by exactly one daemon, so no two daemons race on one sidecar.
+    assertEquals(ids.sorted(), factory.submitted.toList().sorted())
+    // The result is in input order whichever daemon rendered each id: deterministic output.
+    assertEquals(ids, outcome.semanticsById.keys.toList())
+    assertEquals(
+      produced.getValue("Preview17"),
+      outcome.semanticsById.getValue("Preview17").toString(Charsets.UTF_8),
+    )
+    assertTrue(
+      logs.any { it.startsWith("render timings: 60 finished, 0 failed") && "3 daemon(s)" in it },
+      "got: $logs",
+    )
+  }
+
+  @Test
+  fun `a single worker keeps the module's workspace name and the daemon's history`() {
+    val projectDir = newTempFolder("semantics-one-worker")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+
+    DaemonSemanticsFetcher(factory = factory)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+
+    assertEquals(projectDir.name, factory.openedConfig?.workspaceName)
+    assertEquals(
+      null,
+      factory.openedConfig?.systemPropertyOverrides?.get("composeai.history.enabled"),
+    )
+  }
+
+  @Test
+  fun `a stalled daemon gives up only its own renders, the others drain the queue`() {
+    val projectDir = newTempFolder("semantics-worker-stall")
+    writeDescriptor(projectDir)
+    val ids = (1..30).map { "Preview$it" }
+    val factory =
+      FakeFactory(
+        produced = ids.associateWith { "{}" },
+        // Whichever daemon draws Preview1 never reports it, and goes quiet with it in flight.
+        silentIds = setOf("Preview1"),
+        staggerMs = 5,
+      )
+    val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    val outcome =
+      DaemonSemanticsFetcher(
+          factory = factory,
+          workers = 2,
+          window = 1,
+          renderTimeout = 500.milliseconds,
+          onLog = { logs += it },
+        )
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals((ids - "Preview1").toSet(), outcome.semanticsById.keys)
+    assertTrue(logs.any { "timed out" in it && "Preview1" in it }, "got: $logs")
+    assertTrue(logs.any { "1 stalled" in it }, "the summary must count the stall, got: $logs")
+  }
+
+  @Test
+  fun `a daemon that fails to open leaves its share to the others`() {
+    val projectDir = newTempFolder("semantics-worker-open-fails")
+    writeDescriptor(projectDir)
+    val ids = (1..10).map { "Preview$it" }
+    val factory = FakeFactory(produced = ids.associateWith { "{}" }, failingOpens = setOf(0))
+    val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory, workers = 2, onLog = { logs += it })
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(ids.toSet(), outcome.semanticsById.keys)
+    assertTrue(logs.any { "failed to open" in it }, "got: $logs")
+  }
+
+  @Test
+  fun `every daemon failing to open is OpenFailed`() {
+    val projectDir = newTempFolder("semantics-workers-all-fail")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap(), failingOpens = setOf(0, 1))
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory, workers = 2)
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A", "B"))
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.OpenFailed, "got $outcome")
+  }
+
+  @Test
+  fun `the pack's data kinds are requested from the daemon`() {
+    val projectDir = newTempFolder("semantics-kinds")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+
+    DaemonSemanticsFetcher(factory = factory)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      listOf("compose/semantics", "layout/inspector", "fonts/used", "compose/figma-svg"),
+      factory.openedConfig?.attachDataProducts,
+    )
+
+    DaemonSemanticsFetcher(
+        factory = factory,
+        requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = false),
+      )
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      listOf("compose/semantics", "layout/inspector", "fonts/used"),
+      factory.openedConfig?.attachDataProducts,
+    )
+  }
+
+  @Test
+  fun `the desktop post-capture allowlist matches the requested kinds`() {
+    // compose-preview-daemon#247: desktop gates post-capture work only on this launch property;
+    // attachDataProducts alone leaves every extension running.
+    val projectDir = newTempFolder("semantics-post-capture-kinds")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+    val prop = "composeai.daemon.postCaptureKinds"
+
+    DaemonSemanticsFetcher(factory = factory)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      "compose/semantics,layout/inspector,fonts/used,compose/figma-svg",
+      factory.openedConfig?.systemPropertyOverrides?.get(prop),
+    )
+
+    // --no-figma-svg drops the export from the allowlist, so desktop skips it.
+    DaemonSemanticsFetcher(
+        factory = factory,
+        requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = false),
+      )
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(
+      "compose/semantics,layout/inspector,fonts/used",
+      factory.openedConfig?.systemPropertyOverrides?.get(prop),
+    )
+
+    // Every parallel daemon gets it, alongside the history override.
+    DaemonSemanticsFetcher(factory = factory, workers = 2)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A", "B"))
+    val parallel = factory.openedConfigs.takeLast(2).map { it.systemPropertyOverrides }
+    assertTrue(parallel.all { it[prop]?.endsWith("compose/figma-svg") == true }, "got $parallel")
+    assertTrue(parallel.all { it["composeai.history.enabled"] == "false" }, "got $parallel")
+
+    // No requested kinds: no allowlist, so the daemon keeps its default (run everything).
+    DaemonSemanticsFetcher(factory = factory, requestedKinds = null)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("A"))
+    assertEquals(null, factory.openedConfig?.systemPropertyOverrides?.get(prop))
+  }
+
+  @Test
+  fun `a stale figma font-warning sidecar never reaches a run without the export`() {
+    // A previous run degraded and left `figma-fonts.warnings.json`; this run passes --no-figma-svg,
+    // so nothing rewrites it. Reading it would fail the lost-font-family check on old data.
+    val projectDir = newTempFolder("semantics-stale-font-warnings")
+    writeDescriptor(projectDir)
+    val dataDir = File(projectDir, "build/compose-previews/data/AlphaPreview").also { it.mkdirs() }
+    val staleWarnings = File(dataDir, FigmaSvgFontWarningsSidecar.FILE)
+    staleWarnings.writeText("""{"lostFamilies":["Stale"]}""")
+    File(dataDir, "compose-figma.svg").writeText("<svg/>")
+
+    val outcome =
+      DaemonSemanticsFetcher(
+          factory = FakeFactory(mapOf("AlphaPreview" to """{"root":{"nodeId":"1"}}""")),
+          requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = false),
+        )
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("AlphaPreview"))
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(outcome.figmaFontWarningsById.isEmpty(), "stale warnings must not be carried")
+    assertTrue(outcome.figmaSvgById.isEmpty(), "no figma-svg without the export requested")
+    assertTrue(
+      !staleWarnings.exists(),
+      "the stale warnings sidecar should be cleared before render",
+    )
+  }
+
+  @Test
+  fun `figma artefacts are still carried when the export is requested`() {
+    val projectDir = newTempFolder("semantics-figma-requested")
+    writeDescriptor(projectDir)
+    val factory =
+      object : RenderSessionFactory {
+        val inner = FakeFactory(mapOf("AlphaPreview" to """{"root":{"nodeId":"1"}}"""))
+        override val backendKind = RenderSessionBackend.Subprocess
+
+        override fun open(config: RenderSessionConfig): RenderSession {
+          val session = inner.open(config)
+          // The daemon writes the export (and, degraded, its warning) during this run's render.
+          session.onNotification { method, _ ->
+            if (method == "renderFinished") {
+              val dir = File(projectDir, "build/compose-previews/data/AlphaPreview")
+              File(dir, "compose-figma.svg").writeText("<svg/>")
+              File(dir, FigmaSvgFontWarningsSidecar.FILE).writeText("""{"lostFamilies":["X"]}""")
+            }
+          }
+          return session
+        }
+      }
+
+    val outcome =
+      DaemonSemanticsFetcher(factory = factory)
+        .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("AlphaPreview"))
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(setOf("AlphaPreview"), outcome.figmaSvgById.keys)
+    assertEquals(setOf("AlphaPreview"), outcome.figmaFontWarningsById.keys)
   }
 
   @Test
@@ -392,21 +699,65 @@ class DaemonSemanticsFetcherTest {
     private val failedIds: Map<String, String> = emptyMap(),
     private val silentIds: Set<String> = emptySet(),
     private val staggerMs: Long = 0,
+    /** Open attempts (0-based, in call order) that throw, as a daemon failing to start would. */
+    private val failingOpens: Set<Int> = emptySet(),
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
-    var openedConfig: RenderSessionConfig? = null
+    @Volatile var openedConfig: RenderSessionConfig? = null
+    val openedConfigs = java.util.concurrent.CopyOnWriteArrayList<RenderSessionConfig>()
+    val sessions = java.util.concurrent.CopyOnWriteArrayList<FakeSession>()
+    /** Every id any session was asked to render, across sessions, in submission order. */
+    val submitted = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    private val opens = java.util.concurrent.atomic.AtomicInteger()
 
     override fun open(config: RenderSessionConfig): RenderSession {
+      if (opens.getAndIncrement() in failingOpens) {
+        throw RenderSessionException("simulated daemon open failure")
+      }
       openedConfig = config
+      openedConfigs += config
       return FakeSession(
-        workspaceRoot = config.workspaceRoot.absolutePath,
-        produced = produced,
-        fontsProduced = fontsProduced,
-        failedIds = failedIds,
-        silentIds = silentIds,
-        staggerMs = staggerMs,
-        dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
-      )
+          workspaceRoot = config.workspaceRoot.absolutePath,
+          produced = produced,
+          fontsProduced = fontsProduced,
+          failedIds = failedIds,
+          silentIds = silentIds,
+          staggerMs = staggerMs,
+          dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
+          submitted = submitted,
+        )
+        .also { sessions += it }
+    }
+  }
+
+  /** Wraps [delegate]'s sessions so `renderNow` reports [rejected] ids as rejected, unrendered. */
+  private class RejectingFactory(
+    private val rejected: Set<String>,
+    private val delegate: FakeFactory,
+  ) : RenderSessionFactory {
+    override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
+
+    override fun open(config: RenderSessionConfig): RenderSession {
+      val inner = delegate.open(config)
+      return object : RenderSession by inner {
+        override fun renderNow(
+          previewIds: List<String>,
+          tier: RenderTier,
+          reason: String?,
+          overrides: PreviewOverrides?,
+          timeout: kotlin.time.Duration,
+        ): RenderNowResult {
+          val accepted = previewIds.filterNot { it in rejected }
+          val ack =
+            if (accepted.isEmpty()) RenderNowResult(queued = emptyList(), rejected = emptyList())
+            else inner.renderNow(accepted, tier, reason, overrides, timeout)
+          return RenderNowResult(
+            queued = ack.queued,
+            rejected =
+              previewIds.filter { it in rejected }.map { RejectedRender(it, "unknown preview") },
+          )
+        }
+      }
     }
   }
 
@@ -430,8 +781,15 @@ class DaemonSemanticsFetcherTest {
     private val failedIds: Map<String, String> = emptyMap(),
     private val silentIds: Set<String> = emptySet(),
     private val staggerMs: Long = 0,
+    private val submitted: java.util.Queue<String> = java.util.concurrent.ConcurrentLinkedQueue(),
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
+
+    /** Each `renderNow` call's ids, in call order. */
+    val batches = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
+    private val outstanding = java.util.concurrent.atomic.AtomicInteger()
+    /** The most renders this session ever held between `renderNow` and a terminal event. */
+    val maxOutstanding = java.util.concurrent.atomic.AtomicInteger()
 
     override val modulePath: String = ":sample"
     override val initializeResult: InitializeResult =
@@ -463,6 +821,9 @@ class DaemonSemanticsFetcherTest {
       overrides: PreviewOverrides?,
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
+      batches += previewIds
+      submitted.addAll(previewIds)
+      maxOutstanding.accumulateAndGet(outstanding.addAndGet(previewIds.size), ::maxOf)
       // With a stagger, model the real daemon: `renderNow` acks, then terminal notifications land
       // one at a time on a background thread, so total time can exceed the inactivity window while
       // each gap stays inside it.
@@ -482,6 +843,8 @@ class DaemonSemanticsFetcherTest {
     }
 
     private fun emitTerminal(id: String) {
+      if (id in silentIds) return
+      outstanding.decrementAndGet()
       val failure = failedIds[id]
       if (failure != null) {
         // A render whose composition throws emits `renderFailed` and *no* `renderFinished` — the
@@ -494,7 +857,6 @@ class DaemonSemanticsFetcherTest {
         listeners.forEach { it.onNotification("renderFailed", params) }
         return
       }
-      if (id in silentIds) return
       produced[id]?.let { content ->
         val dir = File(dataRoot, id).also { it.mkdirs() }
         File(dir, "compose-semantics.json").writeText(content)
@@ -509,6 +871,8 @@ class DaemonSemanticsFetcherTest {
         kotlinx.serialization.json.buildJsonObject {
           put("id", id)
           put("pngPath", "$id.png")
+          put("tookMs", 100L + id.length)
+          putJsonObject("workTrace") { putJsonObject("stepMs") { put("compose/semantics", 7L) } }
         }
       listeners.forEach { it.onNotification("renderFinished", params) }
     }

@@ -49,6 +49,7 @@ internal object CliFlags {
       "--exclude-preview-id",
       "--exclude-preview-id-file",
       "--exclude-preview-row",
+      "--semantics-workers",
       "--output",
       // Classified by hand (the registry scanner only matches `--` flags); otherwise `bundle merge
       // a.png b.png -o out.png` reads the output path as an operand.

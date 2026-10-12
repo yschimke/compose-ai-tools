@@ -397,6 +397,8 @@ internal object CliFlagValidation {
             "--trust",
             "--view-only",
             "--with-semantics",
+            "--semantics-workers",
+            "--no-figma-svg",
             "--allow-lost-font-families",
           ),
       "mcp" to

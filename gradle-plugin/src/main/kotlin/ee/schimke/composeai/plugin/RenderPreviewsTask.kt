@@ -252,10 +252,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // almost always a mistake, and the counts expose partial exclusions.
     val exclusionMatches =
       previewIdExclusionMatches(idSelected, previewIdExcludes.getOrElse(emptyList()))
-    for (match in exclusionMatches) {
+    for ((text, warn) in previewIdExclusionReport(exclusionMatches)) {
       // `warn` for a zero match: it reports a probable mistake.
-      if (match.matched == 0) logger.warn("composePreviewRender: ${match.line}")
-      else logger.lifecycle("composePreviewRender: ${match.line}")
+      if (warn) logger.warn("composePreviewRender: $text")
+      else logger.lifecycle("composePreviewRender: $text")
     }
     val idFiltered = excludePreviewIds(idSelected, previewIdExcludes.getOrElse(emptyList()))
 
@@ -975,6 +975,34 @@ internal data class PreviewIdExclusionMatch(
           " — nothing excluded. Check the pattern: preview ids keep spaces where render filenames " +
             "use underscores, and a plain pattern matches on substring."
         else ""
+}
+
+/**
+ * The lines to log for [matches], as `(text, warn)`: one per pattern up to [detailLimit] patterns,
+ * else a summary plus only the patterns that matched nothing (capped). A render sharder's generated
+ * exclusion list runs to thousands of patterns, and logging each pushed the useful output out of
+ * CI's log tail. Mirrored by the CLI's `PackPreviewIdExclusions.reportLines`.
+ */
+internal fun previewIdExclusionReport(
+  matches: List<PreviewIdExclusionMatch>,
+  detailLimit: Int = 20,
+): List<Pair<String, Boolean>> {
+  if (matches.size <= detailLimit) return matches.map { it.line to (it.matched == 0) }
+  val unmatched = matches.filter { it.matched == 0 }
+  return buildList {
+    add(
+      "--exclude-preview-id: ${matches.size} pattern(s) over ${matches.first().total} " +
+        "preview(s); ${matches.size - unmatched.size} matched, ${unmatched.size} matched nothing " +
+        "(per-pattern lines are listed only for up to $detailLimit patterns)" to false
+    )
+    unmatched.take(detailLimit).forEach { add(it.line to true) }
+    if (unmatched.size > detailLimit) {
+      add(
+        "--exclude-preview-id: … and ${unmatched.size - detailLimit} more pattern(s) matched " +
+          "nothing" to true
+      )
+    }
+  }
 }
 
 /**

@@ -101,7 +101,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       A <bundle> below is a local path OR an http(s)/file URL — URLs are downloaded first.
 
       Usage:
-        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics] [--allow-lost-font-families]
+        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics [--semantics-workers <n|auto>] [--no-figma-svg]] [--allow-lost-font-families]
         compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
         compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only | --shared-classpath-out <pool>] [--carriage-report <file.json>]
         compose-preview bundle inspect <bundle.png | URL>
@@ -201,6 +201,16 @@ class BundleCommand(args: List<String>) : Command(args) {
                             --allow-lost-font-families.
                             Produced by a short-lived daemon render (no separate --with-extension
                             pass needed). Off by default; ignored with --no-render.
+        --semantics-workers <n|auto>
+                            Capture --with-semantics through n daemons in parallel (default 1),
+                            sharing one queue of previews. Each daemon is a JVM holding the module's
+                            whole classpath, so this multiplies memory: 'auto' takes half the cores,
+                            bounded by MemAvailable over the descriptor's -Xmx (+512 MB), one daemon
+                            per 50 previews, and 8. Also read from COMPOSE_PREVIEW_SEMANTICS_WORKERS.
+        --no-figma-svg      Don't request the compose/figma-svg export from the semantics daemons
+                            (seconds per preview), for a catalog that generates vectors on demand.
+                            No previews/<id>.figma.svg is carried, and so the lost-font-family check
+                            below has nothing to inspect.
         --allow-lost-font-families
                             Pack anyway when a figma-svg export lost a font family. Such a preview
                             exports its text as missing-glyph boxes, which is loud in the sticker
@@ -273,6 +283,17 @@ private class PackSubcommand(private val args: List<String>) {
    * `-Dcomposeai.fonts.failOnFallback`).
    */
   private val allowLostFontFamilies: Boolean = "--allow-lost-font-families" in args
+
+  /**
+   * `--semantics-workers <n|auto>` (or its env var): parallel daemons for the semantics capture.
+   */
+  private val semanticsWorkersSpec: String? = SemanticsWorkers.specFrom(args)
+
+  /**
+   * `--no-figma-svg`: don't ask the semantics daemons for the `compose/figma-svg` export, the
+   * capture's most expensive product, when a catalog regenerates vectors on demand instead.
+   */
+  private val noFigmaSvg: Boolean = "--no-figma-svg" in args
   private val perPreview: Boolean = "--per-preview" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val progress: Boolean = verbose || "--progress" in args
@@ -301,6 +322,10 @@ private class PackSubcommand(private val args: List<String>) {
   private val excludePreviewRows: List<String> = PackPreviewIdExclusions.rowsFromArgs(args)
 
   fun run() {
+    SemanticsWorkers.problemWith(semanticsWorkersSpec)?.let {
+      System.err.println("bundle pack: $it")
+      exitProcess(2)
+    }
     if (perPreview) {
       runPerPreview()
       return
@@ -675,9 +700,12 @@ private class PackSubcommand(private val args: List<String>) {
     // Skip excluded previews here too (a daemon render each). They stay listed in the bundle so
     // they remain addressable, just without sidecars.
     val captureIds = PackPreviewIdExclusions.retain(rawIds, excludePreviewIds)
-    // One line per pattern: a pattern matching nothing is usually a typo.
-    for (match in PackPreviewIdExclusions.matches(rawIds, excludePreviewIds)) {
-      System.err.println("bundle pack: ${match.line}")
+    // A pattern matching nothing is usually a typo; a generated list is summarised, not echoed.
+    for (line in
+      PackPreviewIdExclusions.reportLines(
+        PackPreviewIdExclusions.matches(rawIds, excludePreviewIds)
+      )) {
+      System.err.println("bundle pack: ${line.text}")
     }
     val excludedFromCapture = rawIds.size - captureIds.size
     if (excludedFromCapture > 0) {
@@ -694,10 +722,24 @@ private class PackSubcommand(private val args: List<String>) {
       return null
     }
     val captureCount = captureIds.size
+    val workers =
+      SemanticsWorkers.resolve(
+        spec = semanticsWorkersSpec,
+        previewCount = captureCount,
+        descriptorFile = File(target.projectDir, "build/compose-previews/daemon-launch.json"),
+      )
+    if (semanticsWorkersSpec != null) {
+      System.err.println(
+        "bundle pack: --with-semantics capturing $captureCount preview(s) with $workers daemon(s) " +
+          "(${SemanticsWorkers.FLAG} $semanticsWorkersSpec)."
+      )
+    }
     val fetcher =
       DaemonSemanticsFetcher(
         onLog = { System.err.println("[daemon semantics] $it") },
         renderTimeout = renderTimeout,
+        workers = workers,
+        requestedKinds = DaemonSemanticsFetcher.kindsFor(figmaSvg = !noFigmaSvg),
       )
     val outcome =
       fetcher.fetch(
