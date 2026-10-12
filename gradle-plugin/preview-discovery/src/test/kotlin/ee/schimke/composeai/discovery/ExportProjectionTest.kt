@@ -700,6 +700,44 @@ class ExportProjectionTest {
   }
 
   @Test
+  fun `a Material icon key is written from the host's icon table, and refused without one`() {
+    val projection =
+      ExportProjection(
+        listOf(
+          ExportProjection.Target(
+            "wear/androidx.wear.compose.material3.IconKt.Icon",
+            mapOf(
+              "imageVector" to
+                ExportProjection.Value.Property("iconKey", ExportProjection.Codec.MaterialIcon)
+            ),
+          )
+        )
+      )
+    val vector =
+      ScreenValue.Reference(
+        "androidx.compose.material.icons.Icons",
+        listOf("Filled"),
+        typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+      )
+    val table = mapOf("filled/newReleases" to vector)
+    val key = mapOf("iconKey" to JsonPrimitive("filled/newReleases"))
+    val node = projection.lower(key, null, table::get) as ExportProjection.Lowered.Node
+    assertThat(node.arguments).containsExactly("imageVector", vector)
+    assertThat((projection.lower(key) as ExportProjection.Lowered.Refused).reasons.single())
+      .contains("this host writes none")
+    assertThat(
+        (projection.lower(mapOf("iconKey" to JsonPrimitive("filled/nope")), null, table::get)
+            as ExportProjection.Lowered.Refused)
+          .reasons
+          .single()
+      )
+      .contains("is not a Material icon key")
+    val json = ExportProjectionJson.encode(projection)
+    assertThat(json.toString()).contains("\"codec\":\"materialIcon\"")
+    assertThat(ExportProjectionJson.decode(json).getOrThrow()).isEqualTo(projection)
+  }
+
+  @Test
   fun `a parameter is filled once, whether by a pattern, a line or a synthesized child`() {
     fun failure(build: () -> Any) = runCatching(build).exceptionOrNull()?.message
     assertThat(

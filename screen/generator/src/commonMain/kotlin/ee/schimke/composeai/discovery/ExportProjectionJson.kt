@@ -317,6 +317,7 @@ object ExportProjectionJson {
   private fun codec(codec: ExportProjection.Codec): JsonElement =
     when (codec) {
       ExportProjection.Codec.Text -> JsonPrimitive("text")
+      ExportProjection.Codec.MaterialIcon -> JsonPrimitive("materialIcon")
       ExportProjection.Codec.Bool -> JsonPrimitive("bool")
       ExportProjection.Codec.Whole -> JsonPrimitive("whole")
       ExportProjection.Codec.Fractional32 -> JsonPrimitive("float")
@@ -421,6 +422,7 @@ object ExportProjectionJson {
     if (element is JsonPrimitive) {
       return when (element.content) {
         "text" -> ExportProjection.Codec.Text
+        "materialIcon" -> ExportProjection.Codec.MaterialIcon
         "bool" -> ExportProjection.Codec.Bool
         "whole" -> ExportProjection.Codec.Whole
         "float" -> ExportProjection.Codec.Fractional32
