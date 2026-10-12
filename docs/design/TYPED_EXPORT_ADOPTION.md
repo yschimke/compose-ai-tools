@@ -22,7 +22,8 @@ approximated.
 class RealIconAdapter(record: ComponentRecord) :
   TypedComponentAdapter<RealIconProperties>("wear-m3/icon", record) {
   val iconKey = wireProperty(RealIconProperties::iconKey, AdapterValueCodecs.materialIcon(), "filled/add")
-  val sizeDp = wireProperty(RealIconProperties::sizeDp, AdapterValueCodecs.unit("dp"), 0f)
+  // Positive: the seeded 0 is the composable's own size, not `Modifier.size(0.dp)`.
+  val sizeDp = wireProperty(RealIconProperties::sizeDp, AdapterValueCodecs.unit("dp", positive = true), 0f)
   val color = wireProperty(RealIconProperties::color, COLOR, WireColor.Unset)
 
   init {
@@ -48,7 +49,7 @@ class RealIconAdapter(record: ComponentRecord) :
 | The property holds | Codec |
 | --- | --- |
 | text, flags, whole numbers | `AdapterValueCodecs.String` / `Boolean` / `Int` |
-| a `Dp` / `Sp` | `unit("dp")`, `unit("sp")` |
+| a `Dp` / `Sp` | `unit("dp")`, `unit("sp")`; `positive = true` when 0 means the composable's own default |
 | a theme colour or literal | `color(ExportProjection.Codec.Color(theme))` with `WireColor` |
 | a theme token (`typography.titleMedium`) | `token(ExportProjection.Codec.Token(…))` |
 | a Kotlin enum member | `enumOf(typeFqn, members)` |
