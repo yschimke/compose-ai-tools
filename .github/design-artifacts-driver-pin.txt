@@ -63,5 +63,5 @@
 # only ever validated its SHAPE rather than whether it was true, and a timestamp
 # that quietly stops tracking reality is worse than none: the commit and the PR
 # already record when the pin moved.
-sha=9310fba0525c3d146736f23aa95626cac5ac8e21
-tag=v2.52.0
+sha=962ce1ae32fba49d145b207e1c71b39619d2ab20
+tag=v2.53.0
