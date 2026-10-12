@@ -61,7 +61,7 @@ class TypedValueTypesTest {
 
   @Test
   fun `long and double store int and number wrappers and keep their range and precision`() {
-    val big = 9_007_199_254_740_993L
+    val big = 9_007_199_254_740_991L
     assertThat(AdapterValueCodecs.Long.wrap(big)).isEqualTo(json("""{"type":"int","value":$big}"""))
     assertThat(AdapterValueCodecs.Long.unwrap(json("""{"type":"int","value":$big}""")))
       .isEqualTo(big)
@@ -72,6 +72,13 @@ class TypedValueTypesTest {
     assertThat(AdapterValueCodecs.Double.stateType).isEqualTo("number")
     assertThrows(IllegalArgumentException::class.java) {
       AdapterValueCodecs.Long.unwrap(json("""{"type":"int","value":"1"}"""))
+    }
+    // Beyond JavaScript's safe integers, which a browser's JSON.parse would round.
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.Long.unwrap(json("""{"type":"int","value":9007199254740993}"""))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      AdapterValueCodecs.Long.encode(9_007_199_254_740_992L)
     }
     assertThrows(IllegalArgumentException::class.java) {
       AdapterValueCodecs.Double.encode(Double.NaN)
@@ -252,7 +259,7 @@ class TypedValueTypesTest {
             ),
           "key" to json("""{"type":"string","value":"a1b2"}"""),
           "seen" to json("""{"type":"null"}"""),
-          "storedKb" to json("""{"type":"int","value":9007199254740993}"""),
+          "storedKb" to json("""{"type":"int","value":4294967296}"""),
           "latitude" to json("""{"type":"number","value":59.437}"""),
         )
       ) as ExportProjection.Lowered.Node
@@ -260,7 +267,7 @@ class TypedValueTypesTest {
     val source = generated(failed, target)
     assertThat(source)
       .contains(
-        "status = FixtureStatus.Failed(message = \"timeout\", retries = 0), key = FixtureKey.fromHex(\"a1b2\"), storedKb = 9007199254740993L, latitude = 59.437"
+        "status = FixtureStatus.Failed(message = \"timeout\", retries = 0), key = FixtureKey.fromHex(\"a1b2\"), storedKb = 4294967296L, latitude = 59.437"
       )
     val idle =
       projection.lower(

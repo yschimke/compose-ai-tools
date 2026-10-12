@@ -197,6 +197,8 @@ object AdapterValueCodecs {
   /**
    * A whole number for a `Long` parameter (a byte count, a timestamp in milliseconds), stored as an
    * `int` wrapper like [Int] and, like it, literal-only: the state schema's `number` is a float.
+   * Limited to ±(2^53 − 1), JavaScript's safe integers: a document a browser editor parses with
+   * `JSON.parse` would silently round anything larger, so it is refused rather than stored.
    */
   val Long: AdapterValueCodec<Long> =
     object : AdapterValueCodec<Long> {
@@ -204,11 +206,16 @@ object AdapterValueCodecs {
       override val kotlinType = "kotlin.Long"
       override val exportCodec = ExportProjection.Codec.WholeLong
 
-      override fun encode(value: Long): JsonElement = JsonPrimitive(value)
+      override fun encode(value: Long): JsonElement {
+        require(value in -MAX_SAFE_INTEGER..MAX_SAFE_INTEGER) { "$value is beyond ±(2^53 − 1)" }
+        return JsonPrimitive(value)
+      }
 
       override fun decode(value: JsonElement): Long {
         require(value is JsonPrimitive && !value.isString) { "expected a JSON integer" }
-        return requireNotNull(value.longOrNull) { "expected a JSON integer" }
+        val long = requireNotNull(value.longOrNull) { "expected a JSON integer" }
+        require(long in -MAX_SAFE_INTEGER..MAX_SAFE_INTEGER) { "$long is beyond ±(2^53 − 1)" }
+        return long
       }
     }
 
@@ -516,6 +523,9 @@ private class NullableCodec<T : Any>(private val value: AdapterValueCodec<T>) :
 }
 
 private const val NULL_TYPE = "null"
+
+/** The largest integer every JSON reader holds exactly, JavaScript's `Number.MAX_SAFE_INTEGER`. */
+private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 
 /** Declares the cases of a [AdapterValueCodecs.union]. */
 class AdapterUnionCodecBuilder<T : Any> internal constructor(private val typeFqn: String) {

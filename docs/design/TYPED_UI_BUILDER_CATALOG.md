@@ -146,7 +146,7 @@ These cover the model types real app components take, beyond text, numbers, list
 
 | Codec | Stored as | Exported as |
 | --- | --- | --- |
-| `AdapterValueCodecs.Long` | `{"type": "int", "value": 9007199254740993}` | `9007199254740993L` (a small value as a plain literal) |
+| `AdapterValueCodecs.Long` | `{"type": "int", "value": 4294967296}` | `4294967296L` (a value in `Int` range as a plain literal) |
 | `AdapterValueCodecs.Double` | `{"type": "number", "value": 59.437}` | `59.437` |
 | `AdapterValueCodecs.Instant` | `{"type": "string", "value": "2026-10-12T08:00:00Z"}` | `Instant.parse("2026-10-12T08:00:00Z")` |
 | `AdapterValueCodecs.parsed(type, parseFqn, format, parse, print)` | `{"type": "string", "value": "…"}` | `<parseFqn>("…")`, e.g. `PublicKey.fromHex("…")` |
@@ -155,7 +155,8 @@ These cover the model types real app components take, beyond text, numbers, list
 
 `Long` is stored as an `int` wrapper and `Double` as a `number` one, so an editor needs nothing new
 to author them; `Long` is literal-only like `Int`, and `Double` binds to a `number` state variable
-like `Float`.
+like `Float`. `Long` holds ±(2^53 − 1), JavaScript's safe integers, and refuses anything larger: a
+browser editor reading the document with `JSON.parse` would silently round it.
 
 `parsed` is for a type with a text spelling of its own: an instant, a hex key, a byte string. It is
 a `string` wrapper whose `shape` (and top-level capability) adds `"format"` (`date-time`, `hex`, …)
