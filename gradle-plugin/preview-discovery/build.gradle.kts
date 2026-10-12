@@ -22,6 +22,13 @@ sourceSets.named("main") {
   kotlin.srcDir(rootDir.resolve("../screen/generator/src/commonMain/kotlin"))
 }
 
+// The same interfaces (`AdapterValueCodec`, …) are compiled here and into `screen-model`, whose
+// Kotlin Multiplatform build emits real JVM default methods. Gradle's embedded Kotlin compiled them
+// here with `DefaultImpls` only, so a codec an app wrote against `screen-model` (no bridge for
+// `shape()`) failed with `AbstractMethodError` when this jar's copy loaded first. ENABLE emits both
+// the default methods and `DefaultImpls`, so code compiled against either copy links to this one.
+kotlin { compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.ENABLE) } }
+
 dependencies {
   api(libs.kotlinx.serialization.json)
   // The contracts BOM supplies the versions; declared here because this module doesn't apply

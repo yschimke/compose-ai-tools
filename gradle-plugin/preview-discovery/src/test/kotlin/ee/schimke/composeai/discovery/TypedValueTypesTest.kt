@@ -393,6 +393,15 @@ class TypedValueTypesTest {
       .contains("a set holds each value once")
   }
 
+  @Test
+  fun `the codec interface's defaults are JVM default methods, as screen-model's are`() {
+    // An app codec compiled against screen-model's copy gets no bridge for these; this jar's copy
+    // must carry the bodies too, or it fails with AbstractMethodError when it loads first.
+    val defaults =
+      AdapterValueCodec::class.java.methods.filter { it.isDefault }.map { it.name }.toSet()
+    assertThat(defaults).containsAtLeast("shape", "wrap", "unwrap", "getLiteralType", "getFormat")
+  }
+
   private fun generated(node: ExportProjection.Lowered.Node, record: ComponentRecord): String {
     val result =
       ScreenGenerator.generate(
