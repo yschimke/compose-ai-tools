@@ -442,6 +442,59 @@ object AdapterValueCodecs {
     }
 
   /**
+   * A set of [element] values, stored as the same `{"type": "list", "values": […]}` a [list] is (so
+   * an editor authors it as a list) and exported as `setOf(…)`. A stored repeat is refused rather
+   * than silently dropped, as the set would hold fewer values than the design shows.
+   */
+  fun <E> set(element: AdapterValueCodec<E>): AdapterValueCodec<Set<E>> =
+    object : AdapterValueCodec<Set<E>> {
+      private val list = list(element)
+      override val jsonType = list.jsonType
+      override val kotlinType = SET_TYPE
+      override val literalType = list.literalType
+      override val stateType: String? = null
+      override val exportCodec =
+        element.exportCodec?.let {
+          ExportProjection.Codec.ListOf(it, element.literalType, set = true)
+        }
+      override val editor = list.editor
+
+      override fun encode(value: Set<E>): JsonElement = list.encode(value.toList())
+
+      override fun decode(value: JsonElement): Set<E> = list.decode(value).distinctSet()
+
+      override fun wrap(value: Set<E>): JsonObject = list.wrap(value.toList())
+
+      override fun unwrap(wrapper: JsonObject): Set<E> = list.unwrap(wrapper).distinctSet()
+
+      private fun List<E>.distinctSet(): Set<E> {
+        val set = toSet()
+        require(set.size == size) { "a set holds each value once; ${size - set.size} repeat" }
+        return set
+      }
+    }
+
+  /**
+   * A Kotlin enum [E] as one of its [entries]' names, decoded to the member itself (unlike
+   * [enumOf], which decodes to the wire name), so it can be an [obj] field or a property passed
+   * straight to the component. Exported as `<typeFqn>.<NAME>`; the shelf offers the names.
+   */
+  fun <E : Enum<E>> enumValue(typeFqn: String, entries: List<E>): AdapterValueCodec<E> =
+    object : AdapterValueCodec<E> {
+      private val names = enumOf(typeFqn, entries.associate { it.name to "$typeFqn.${it.name}" })
+      override val jsonType = names.jsonType
+      override val kotlinType = typeFqn
+      override val stateType: String? = null
+      override val exportCodec = names.exportCodec
+      override val allowedValues = names.allowedValues
+
+      override fun encode(value: E): JsonElement = names.encode(value.name)
+
+      override fun decode(value: JsonElement): E =
+        names.decode(value).let { name -> entries.single { it.name == name } }
+    }
+
+  /**
    * A value of the class [typeFqn], stored as `{"type": "object", "fields": {"<name>": <wrapper>}}`
    * and exported as a constructor call with named arguments (`Contact(name = "Ada", unread = 2)`),
    * [callableFqn] being the callable it writes (the class itself by default). [declare] adds each
@@ -837,6 +890,7 @@ private fun requireWrapper(wrapper: JsonObject, type: String, content: String) {
 }
 
 private const val LIST_TYPE = "kotlin.collections.List"
+private const val SET_TYPE = "kotlin.collections.Set"
 
 /** A colour as a design stores it, before a theme resolves a role. */
 sealed interface WireColor {
@@ -1600,7 +1654,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             // The value's own type: a parameter's nullability is not part of its classifier.
             is ExportProjection.Codec.Nullable ->
               when (val inner = codec.value) {
-                is ExportProjection.Codec.ListOf -> LIST_TYPE
+                is ExportProjection.Codec.ListOf -> if (inner.set) SET_TYPE else LIST_TYPE
                 is ExportProjection.Codec.Object -> inner.typeFqn
                 is ExportProjection.Codec.Union -> inner.typeFqn
                 else ->
@@ -1620,7 +1674,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             is ExportProjection.Codec.Token -> codec.typeFqn
             // The erased classifier, as discovery records a parameter's; the element type is held
             // by the property reference and the element codec at compile time.
-            is ExportProjection.Codec.ListOf -> LIST_TYPE
+            is ExportProjection.Codec.ListOf -> if (codec.set) SET_TYPE else LIST_TYPE
             is ExportProjection.Codec.Object -> codec.typeFqn
           }
       }

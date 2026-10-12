@@ -429,6 +429,7 @@ object ExportProjectionJson {
               put("element", ExportProjectionJson.codec(codec.element))
               if (codec.elementLiteralType != codec.element.literalType)
                 put("literalType", codec.elementLiteralType)
+              if (codec.set) put("set", true)
             },
           )
         }
@@ -522,6 +523,7 @@ object ExportProjectionJson {
       return ExportProjection.Codec.ListOf(
         elementCodec,
         list["literalType"]?.jsonPrimitive?.contentOrNull ?: elementCodec.literalType,
+        list["set"]?.jsonPrimitive?.booleanOrNull ?: false,
       )
     }
     obj["parsed"]?.jsonObject?.let { parsed ->
