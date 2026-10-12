@@ -59,6 +59,13 @@ class ScreenToggleAndSlotTest {
       parameter("onCheckedChange", "((Boolean) -> Unit)?", "kotlin.Function1", nullable = true),
     )
 
+  // A Boolean callback on something that is not a toggle (no `checked`): its value is information.
+  private val permission =
+    record(
+      "Permission",
+      parameter("onCheckedChange", "(Boolean) -> Unit", "kotlin.Function1"),
+    )
+
   private val field =
     record(
       "Field",
@@ -89,7 +96,9 @@ class ScreenToggleAndSlotTest {
       ),
       M3Palette.records
         .newBuilder()
-        .also { it.components = M3Palette.records.components + checkbox + field + item }
+        .also {
+          it.components = M3Palette.records.components + checkbox + field + item + permission
+        }
         .build(),
       expressionPackages = M3Palette.expressionPackages,
       frame = null,
@@ -141,7 +150,20 @@ class ScreenToggleAndSlotTest {
   }
 
   @Test
-  fun `an empty optional slot is absent, or null when it has no default`() {
+  fun `a Boolean callback without a checked state still refuses an intent`() {
+    val node =
+      ScreenNode(
+        "permission",
+        arguments =
+          mapOf("onCheckedChange" to ScreenValue.ParameterRead("onResult", "kotlin.Function0")),
+      )
+    val result =
+      generate(node, ScreenFunction("Ask", listOf(ScreenParameter.Callback("onResult")), node))
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Refused)
+  }
+
+  @Test
+  fun `an empty optional slot is null, even with a default`() {
     val node =
       ScreenNode(
         "item",
@@ -156,7 +178,7 @@ class ScreenToggleAndSlotTest {
     val result = generate(node, ScreenFunction("Row", emptyList(), node))
     assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
     val source = (result as ScreenGenerator.Result.Emitted).source
-    assertFalse(source, "label =" in source)
+    assertTrue(source, "label = null" in source)
     assertTrue(source, "icon = null" in source)
   }
 }
