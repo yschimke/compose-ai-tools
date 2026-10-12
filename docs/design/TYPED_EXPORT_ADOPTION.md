@@ -69,6 +69,7 @@ All of these are arguments to `target(…)`:
 | a property drawn as a child (a header's text as a `Text`) | `synthesize` |
 | more arguments when placed in a role (a list row's `transformation`, `Modifier.transformedHeight`) | `contexts = mapOf("list-item" to Context(…))` |
 | a DSL whose children are each wrapped (`item { … }`) | `items = mapOf("content" to "item")`, plus `itemRoles` for the role that opens |
+| a line of text into each slot (`title`, then the rest as `content`) | a `Lines` matcher; a `rest` the minimum needs counts as always written |
 
 When a property genuinely cannot be written, say so with `exportRefuses(property)`. It stays on
 the shelf, and the builder refuses any node that sets it. Validation reports every declared
@@ -102,6 +103,23 @@ TypedAdapterCatalog.generate(
     declares (`listState`, `spec`, `contentPadding`), and the `scopes` a role's lambda runs in;
   - `composeSourceExport = compose-component-records` (version 1), which selects the generic
     export.
+
+### The screen frame and its other slots
+
+The `screen-root` template's `${content}` hole holds the generated root. A scaffold slot that a
+design fills besides `content` goes into the hole of the same name: `${edgeButton}` inside the
+scaffold's argument, or `${overlays}` after it for a dialog. Templates have no conditionals, so
+publish one frame per set of filled slots, keyed `screen-root+<slot>[+<slot>]` in sorted order,
+for example `screen-root+edgeButton` and `screen-root+edgeButton+overlays`. A design that fills a
+set with no published frame is refused by name.
+
+### The shared layouts
+
+The builder's own `layout/column`, `layout/row` and `layout/box` export as Compose's
+`Column`, `Row` and `Box` when the catalog's record carries those calls under the shared ids.
+Discover them like any library composable, set each record's `componentIds` to its `layout/…` id,
+and publish them off the shelf. A plain column of texts inside a slot with a `lines` pattern is
+folded into the pattern's parameters instead, so it isn't written as a `Column`.
 
 ### 5. Export every committed design in a test
 
