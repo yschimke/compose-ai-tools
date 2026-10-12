@@ -726,6 +726,25 @@ class ExportProjectionTest {
       .contains("also a line's parameter")
   }
 
+  @Test
+  fun `a rest needed to reach the minimum is always filled, and otherwise optional`() {
+    // Wear's `AppCard`: an app name, a title and a required content of the lines after them.
+    assertThat(
+        ExportProjection.Matcher.Lines(
+            "wear-m3/text",
+            listOf("appName", "title"),
+            min = 3,
+            rest = "content",
+          )
+          .parameters
+      )
+      .containsExactly("appName", true, "title", true, "content", true)
+    assertThat(
+        ExportProjection.Matcher.Lines("wear-m3/text", listOf("title"), rest = "content").parameters
+      )
+      .containsExactly("title", true, "content", false)
+  }
+
   private val inbox =
     ComponentRecord.Builder(
         canonicalId = "app/com.example.InboxKt.Inbox",
