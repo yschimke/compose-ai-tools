@@ -76,6 +76,7 @@
       ".github/design-artifacts-driver/**",
       ".github/scripts/install-export-driver.sh",
       ".github/workflows/design-artifacts-reusable.yml",
+      ".github/workflows/typed-catalog-artifacts-reusable.yml",
       ".github/actions/lib/**",
       "samples/design-catalog-m3/**",
       "samples/design-catalog-wear-m3/**",

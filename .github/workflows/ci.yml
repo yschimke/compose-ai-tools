@@ -1091,6 +1091,11 @@ jobs:
         run: .github/scripts/install-export-driver.sh "$RUNNER_TEMP/export-driver" >/dev/null
       - name: Run the driver contract tests
         run: node --test scripts/design-artifacts/driver-contract.test.mjs
+      # The typed-catalog assembler publishes through the same driver's publishers, so its suite
+      # runs against the same install. It is everything typed-catalog-artifacts-reusable.yml checks
+      # before a typed pair reaches a delivery branch.
+      - name: Run the typed-catalog assembler tests
+        run: node --test scripts/design-artifacts/assemble-typed-catalog.test.mjs
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a

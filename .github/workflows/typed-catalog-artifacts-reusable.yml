@@ -1,0 +1,566 @@
+name: Typed Catalog Artifacts (reusable)
+
+# Publish a PREBUILT typed catalog — a typed pair (components.json + ui-builder.json selecting the
+# `compose-component-records` v1 export, with its templates), a catalog renderer archive, and
+# optionally guidelines, a readiness report and images — to `design-artifacts/<system>`, in the
+# same branch layout design-artifacts-reusable.yml publishes, so a preview server serves it beside
+# the catalog's rendered production branch (for example to A/B the typed Compose export against a
+# hand-written one).
+#
+#   jobs:
+#     build:
+#       # Builds the pair and the runtime however the catalog does, then uploads ONE artifact:
+#       #   catalog/                 components.json, ui-builder.json, ui-builder/designs/*.json
+#       #   runtime.zip              the renderer archive (runtime-manifest.json inside)
+#       #   images/  guidelines.json  readiness.json   (each optional)
+#       ...
+#     typed-pilot:
+#       needs: build
+#       permissions:
+#         contents: read
+#       uses: yschimke/compose-ai-tools/.github/workflows/typed-catalog-artifacts-reusable.yml@<sha>
+#       with:
+#         system: your-catalog-typed-pilot
+#         artifact: your-catalog-typed-pilot-inputs
+#         images-path: images
+#         publish: ${{ github.repository == 'you/your-catalog' && github.event_name != 'pull_request' }}
+#       secrets:
+#         artifacts_token: ${{ secrets.ARTIFACTS_TOKEN }}
+#
+# WHY A SIBLING WORKFLOW, NOT A MODE OF design-artifacts-reusable.yml. That workflow's product is a
+# rendered `@Preview` bundle: every one of its jobs (driver/scope, render-shard, ui-builder-renderer,
+# generate, publish-catalog) is about discovering, rendering, merging, joining to a catalog spec and
+# carrying forward render history, and its 74 inputs configure that. A typed catalog renders no
+# preview and has no spec to join, so a "skip rendering" mode would have to gate every job and leave
+# most inputs meaningless; the shared part is only the tail — the export driver's publishers and
+# `push-branch.sh` — which this workflow reuses from the same pinned compose-ai-tools revision.
+# Catalogs grew forked copies of exactly this (wear-m3-catalog's typed-catalog.yml `publish` job,
+# m3-catalog's typed-pilot-artifacts.yml); this is the generic input their AGENTS.md asks for.
+#
+# Two ways to supply the inputs, exactly one per call:
+#
+#  * `artifact` (recommended): the name of an artifact an earlier job of the CALLING run uploaded.
+#    Nothing of the caller's is built or executed here, which also suits builds that need extra
+#    checkouts, xvfb or a browser check this workflow knows nothing about.
+#  * `build-command`: a bash command run in a checkout of the calling repository, with JDKs
+#    (`java-versions`) and Gradle set up as design-artifacts-reusable.yml does.
+#
+# Either way the `*-path` inputs are relative to the inputs' root: the artifact's root, or
+# `working-directory` in the checkout.
+#
+# What is checked before anything is written (scripts/design-artifacts/assemble-typed-catalog.mjs):
+# the catalog id is `system`; the export is compose-component-records v1 and something carries an
+# exportProjection; every builder `record` exists in components.json; templates exist, are contained
+# and parse (re-pinned to `system`); guidelines are readable and re-addressed to `system`; the
+# runtime archive matches its own manifest (fields, entrypoint, tree digest) and its id starts with
+# `runtime-id-prefix`; a readiness report that records a browser verification verified THIS runtime.
+#
+# IMAGES. compose-preview-server refuses a catalog that declares no baked image and no deferred
+# preview ("catalog had no usable images"), and stages a catalog's runtime only when it loads that
+# catalog — so a branch with no images ships a runtime no server serves. A typed catalog has no
+# daemon preview ids for deferred records, so it needs at least one PNG under `images-path`.
+# `require-images` (default true) fails the run without one; set it false only to publish the files
+# for a reader other than the preview server.
+#
+# The write token never shares a runner with the caller's build: `assemble` (read-only) uploads the
+# tree, and `publish`, which runs nothing of the caller's, pushes it. `publish` pushes only from
+# `publish-branch` (default main), and only while the run's commit is still that branch's tip, so an
+# older run finishing late can never replace a newer catalog.
+#
+# THE SCRIPTS COME FROM THE EXPORT-DRIVER PIN, as in design-artifacts-reusable.yml: an external
+# caller runs the compose-ai-tools commit named by `.github/design-artifacts-driver-pin.txt` on
+# `main` (this repository's own runs use their own commit). The assembler is new, so this workflow
+# works for an external caller only once that pin names a release that carries it; until then
+# `assemble` fails with a message saying so.
+
+on:
+  workflow_call:
+    inputs:
+      system:
+        description: >-
+          Catalog id; the delivery branch is design-artifacts/<system>, and ui-builder.json's
+          catalog.id must equal it.
+        required: true
+        type: string
+      artifact:
+        description: >-
+          Name of an artifact uploaded earlier in the calling run that holds the inputs. Exactly one
+          of artifact and build-command.
+        required: false
+        type: string
+        default: ''
+      build-command:
+        description: >-
+          Bash command that builds the inputs in a checkout of the calling repository, run in
+          working-directory. Exactly one of artifact and build-command.
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'build-command only: the ref of the calling repository to check out (default: the triggering commit).'
+        required: false
+        type: string
+        default: ''
+      working-directory:
+        description: 'build-command only: directory of the checkout the command runs in and the *-path inputs resolve against.'
+        required: false
+        type: string
+        default: '.'
+      java-versions:
+        description: 'build-command only: JDKs to install (setup-java `java-version`, newline-separated); the last is JAVA_HOME. Empty installs none.'
+        required: false
+        type: string
+        default: '21'
+      pair-path:
+        description: 'Directory holding components.json and ui-builder.json (and, by default, the templates ui-builder.json names).'
+        required: false
+        type: string
+        default: 'catalog'
+      templates-root:
+        description: 'Directory the template paths ui-builder.json names (ui-builder/designs/…) resolve against. Empty: pair-path.'
+        required: false
+        type: string
+        default: ''
+      runtime-path:
+        description: 'The catalog renderer archive (a zip carrying runtime-manifest.json).'
+        required: false
+        type: string
+        default: 'runtime.zip'
+      runtime-id-prefix:
+        description: "Prefix the runtime id must start with. Empty: '<system>-'."
+        required: false
+        type: string
+        default: ''
+      guidelines-path:
+        description: 'Optional ui-builder guidelines (catalog-guidelines/v1); re-addressed to system.'
+        required: false
+        type: string
+        default: ''
+      readiness-path:
+        description: 'Optional readiness report, published as readiness.json. If it records browserVerification, that must name the published runtime.'
+        required: false
+        type: string
+        default: ''
+      require-browser-verification:
+        description: 'Fail unless readiness-path records a browserVerification of the published runtime.'
+        required: false
+        type: boolean
+        default: false
+      images-path:
+        description: >-
+          Optional directory of PNGs, one sticker component per file (path below it, minus
+          extension, is the case name). See require-images for why a served catalog needs them.
+        required: false
+        type: string
+        default: ''
+      image-variant:
+        description: >-
+          Take only `<case>-<variant>.png` and publish them as images/<case>/<variant>.png (for
+          parity evidence such as `<case>-typed.png`). Empty: every PNG, variant `default`.
+        required: false
+        type: string
+        default: ''
+      image-section:
+        description: 'Section for the image components.'
+        required: false
+        type: string
+        default: ''
+      image-group:
+        description: 'Group for the image components.'
+        required: false
+        type: string
+        default: ''
+      image-caption:
+        description: "Caption for each image component; '{name}' is replaced by its case name."
+        required: false
+        type: string
+        default: '{name}'
+      image-component-prefix:
+        description: "Prefix of each image component's id. Empty: '<system>/'."
+        required: false
+        type: string
+        default: ''
+      require-images:
+        description: >-
+          Fail when no image is published. compose-preview-server refuses a catalog with no usable
+          images, so a branch without them is never served.
+        required: false
+        type: boolean
+        default: true
+      title:
+        description: "catalog.json title. Empty: ui-builder.json's catalog.title, else system."
+        required: false
+        type: string
+        default: ''
+      library:
+        description: 'Newline-separated Maven coordinates for catalog.json `library`.'
+        required: false
+        type: string
+        default: ''
+      renderer:
+        description: "catalog.json `renderer` label. Empty: 'typed-catalog <runtimeId>'."
+        required: false
+        type: string
+        default: ''
+      source-module:
+        description: >-
+          When set, catalog.json carries `source: {repo, ref, module}` for the calling repository and
+          commit. Leave empty unless a server should be able to re-render that module: a source block
+          offers trusted server-side re-render, and a typed catalog's stickers are not its previews.
+        required: false
+        type: string
+        default: ''
+      artifact-repository:
+        description: "Repository the delivery branch is pushed to. Empty: '<caller>-out'."
+        required: false
+        type: string
+        default: ''
+      publish:
+        description: >-
+          Push the assembled tree. False (the default) assembles, validates and uploads it as the
+          `<system>-catalog-out` artifact only — what a pull request should do.
+        required: false
+        type: boolean
+        default: false
+      publish-branch:
+        description: >-
+          The only branch a run publishes from, and only while the run's commit is still its tip.
+        required: false
+        type: string
+        default: 'main'
+      commit-user-name:
+        description: 'Author/committer name for the delivery-branch commit.'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      commit-user-email:
+        description: 'Author/committer email for the delivery-branch commit.'
+        required: false
+        type: string
+        default: '41898282+github-actions[bot]@users.noreply.github.com'
+      node-version:
+        description: 'Node.js for the assembler.'
+        required: false
+        type: string
+        default: '24'
+      runs-on:
+        description: 'Runner label.'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      timeout-minutes:
+        description: 'Timeout of the assemble job (which runs build-command).'
+        required: false
+        type: number
+        default: 45
+    secrets:
+      artifacts_token:
+        description: 'Contents-write token for artifact-repository. Required when publish is true.'
+        required: false
+    outputs:
+      runtime-id:
+        description: 'The published runtime id.'
+        value: ${{ jobs.assemble.outputs.runtime-id }}
+      out-artifact:
+        description: 'Name of the artifact holding the assembled delivery tree.'
+        value: ${{ jobs.assemble.outputs.out-artifact }}
+
+permissions: {}
+
+env:
+  # Same trust boundary as design-artifacts-reusable.yml: an external caller runs the immutable
+  # release commit the pin file on `main` names, never a revision it can steer; compose-ai-tools'
+  # own runs use the commit they are on.
+  DRIVER_PIN_REPO: yschimke/compose-ai-tools
+  DRIVER_PIN_PATH: .github/design-artifacts-driver-pin.txt
+  INPUT_SYSTEM: ${{ inputs.system }}
+
+jobs:
+  assemble:
+    name: ${{ inputs.system }} · assemble
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      driver-ref: ${{ steps.driver.outputs.ref }}
+      runtime-id: ${{ steps.assemble.outputs.runtime-id }}
+      out-artifact: ${{ steps.assemble.outputs.out-artifact }}
+    steps:
+      - name: Validate inputs
+        env:
+          INPUT_ARTIFACT: ${{ inputs.artifact }}
+          INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+          INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          INPUT_PAIR_PATH: ${{ inputs.pair-path }}
+          INPUT_TEMPLATES_ROOT: ${{ inputs.templates-root }}
+          INPUT_RUNTIME_PATH: ${{ inputs.runtime-path }}
+          INPUT_GUIDELINES_PATH: ${{ inputs.guidelines-path }}
+          INPUT_READINESS_PATH: ${{ inputs.readiness-path }}
+          INPUT_IMAGES_PATH: ${{ inputs.images-path }}
+          INPUT_PUBLISH_BRANCH: ${{ inputs.publish-branch }}
+          INPUT_ARTIFACT_REPOSITORY: ${{ inputs.artifact-repository }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Typed catalog ${INPUT_SYSTEM}::$*"; exit 1; }
+          [[ "$INPUT_SYSTEM" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || fail "system '$INPUT_SYSTEM' is not a catalog id."
+          if [ -n "$INPUT_ARTIFACT" ] && [ -n "$INPUT_BUILD_COMMAND" ]; then
+            fail "set artifact or build-command, not both."
+          fi
+          if [ -z "$INPUT_ARTIFACT" ] && [ -z "$INPUT_BUILD_COMMAND" ]; then
+            fail "set artifact (a prebuilt pair + runtime uploaded earlier in this run) or build-command."
+          fi
+          # Every path stays beneath the inputs' root: no absolute paths, no `..`.
+          for pair in "working-directory=$INPUT_WORKING_DIRECTORY" "pair-path=$INPUT_PAIR_PATH" \
+                      "templates-root=$INPUT_TEMPLATES_ROOT" "runtime-path=$INPUT_RUNTIME_PATH" \
+                      "guidelines-path=$INPUT_GUIDELINES_PATH" "readiness-path=$INPUT_READINESS_PATH" \
+                      "images-path=$INPUT_IMAGES_PATH"; do
+            name="${pair%%=*}"; value="${pair#*=}"
+            if [[ "$value" = /* ]] || [[ "/$value/" = *"/../"* ]]; then
+              fail "$name '$value' must be a relative path without '..'."
+            fi
+          done
+          [ -n "$INPUT_RUNTIME_PATH" ] || fail "runtime-path is required."
+          [ -n "$INPUT_PAIR_PATH" ] || fail "pair-path is required."
+          [[ "$INPUT_PUBLISH_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "publish-branch '$INPUT_PUBLISH_BRANCH' is not a branch name."
+          if [ -n "$INPUT_ARTIFACT_REPOSITORY" ] && [[ ! "$INPUT_ARTIFACT_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            fail "artifact-repository '$INPUT_ARTIFACT_REPOSITORY' is not owner/name."
+          fi
+
+      - name: Resolve the export-driver revision
+        id: driver
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER: ${{ github.repository }}
+          CALLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$CALLER" = "$DRIVER_PIN_REPO" ]; then
+            ref="$CALLER_SHA"
+          else
+            # Read from `main`, as design-artifacts-reusable.yml does; its `driver` job explains
+            # why a reusable workflow cannot learn its own revision instead.
+            ref=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.raw" \
+                    "${GITHUB_API_URL}/repos/${DRIVER_PIN_REPO}/contents/${DRIVER_PIN_PATH}?ref=main" \
+                  | sed -nE 's/^sha=([0-9a-f]{40})$/\1/p' | head -n1)
+          fi
+          printf '%s' "$ref" | grep -qE '^[0-9a-f]{40}$' || {
+            echo "::error::could not resolve a 40-hex export-driver commit (got '${ref}')"
+            exit 1
+          }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Export driver: \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out compose-ai-tools (export driver)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          ref: ${{ steps.driver.outputs.ref }}
+          path: .typed-catalog-tools
+          persist-credentials: false
+          sparse-checkout: |
+            .github/design-artifacts-driver
+            .github/scripts
+            scripts/design-artifacts
+
+      - name: Check the driver revision carries the assembler
+        env:
+          DRIVER_REF: ${{ steps.driver.outputs.ref }}
+        run: |
+          if [ ! -f .typed-catalog-tools/scripts/design-artifacts/assemble-typed-catalog.mjs ]; then
+            echo "::error title=Typed catalog ${INPUT_SYSTEM}::the export-driver revision ${DRIVER_REF} predates scripts/design-artifacts/assemble-typed-catalog.mjs. This workflow runs for external callers once ${DRIVER_PIN_PATH} names a compose-ai-tools release that carries it."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install the export driver (@design-parity/export-driver)
+        run: .typed-catalog-tools/.github/scripts/install-export-driver.sh "$RUNNER_TEMP/export-driver" >/dev/null
+
+      # ── artifact mode ────────────────────────────────────────────────────────────────────────
+      - name: Download the prebuilt inputs
+        if: ${{ inputs.artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/typed-catalog-inputs
+
+      # ── build-command mode ───────────────────────────────────────────────────────────────────
+      - name: Check out the calling repo
+        if: ${{ inputs.build-command != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          path: .typed-catalog-caller
+          persist-credentials: false
+
+      - name: Set up JDKs
+        if: ${{ inputs.build-command != '' && inputs.java-versions != '' }}
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-versions }}
+
+      - name: Set up Gradle
+        if: ${{ inputs.build-command != '' }}
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref != format('refs/heads/{0}', inputs.publish-branch) }}
+          add-job-summary: on-failure
+
+      - name: Build the typed catalog inputs
+        if: ${{ inputs.build-command != '' }}
+        working-directory: .typed-catalog-caller/${{ inputs.working-directory }}
+        env:
+          INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -euo pipefail -c "$INPUT_BUILD_COMMAND"
+
+      - name: Assemble and validate design-artifacts/${{ inputs.system }}
+        id: assemble
+        env:
+          INPUTS_ROOT: >-
+            ${{ inputs.artifact != '' && format('{0}/typed-catalog-inputs', runner.temp) ||
+            format('{0}/.typed-catalog-caller/{1}', github.workspace, inputs.working-directory) }}
+          INPUT_PAIR_PATH: ${{ inputs.pair-path }}
+          INPUT_TEMPLATES_ROOT: ${{ inputs.templates-root }}
+          INPUT_RUNTIME_PATH: ${{ inputs.runtime-path }}
+          INPUT_RUNTIME_ID_PREFIX: ${{ inputs.runtime-id-prefix }}
+          INPUT_GUIDELINES_PATH: ${{ inputs.guidelines-path }}
+          INPUT_READINESS_PATH: ${{ inputs.readiness-path }}
+          INPUT_REQUIRE_BROWSER_VERIFICATION: ${{ inputs.require-browser-verification }}
+          INPUT_IMAGES_PATH: ${{ inputs.images-path }}
+          INPUT_IMAGE_VARIANT: ${{ inputs.image-variant }}
+          INPUT_IMAGE_SECTION: ${{ inputs.image-section }}
+          INPUT_IMAGE_GROUP: ${{ inputs.image-group }}
+          INPUT_IMAGE_CAPTION: ${{ inputs.image-caption }}
+          INPUT_IMAGE_COMPONENT_PREFIX: ${{ inputs.image-component-prefix }}
+          INPUT_REQUIRE_IMAGES: ${{ inputs.require-images }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_LIBRARY: ${{ inputs.library }}
+          INPUT_RENDERER: ${{ inputs.renderer }}
+          INPUT_SOURCE_MODULE: ${{ inputs.source-module }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          at() { [ -n "$1" ] && printf '%s/%s' "$INPUTS_ROOT" "$1" || true; }
+          args=(
+            --system "$INPUT_SYSTEM"
+            --pair "$(at "$INPUT_PAIR_PATH")"
+            --runtime "$(at "$INPUT_RUNTIME_PATH")"
+            --templates-root "$(at "$INPUT_TEMPLATES_ROOT")"
+            --guidelines "$(at "$INPUT_GUIDELINES_PATH")"
+            --readiness "$(at "$INPUT_READINESS_PATH")"
+            --images "$(at "$INPUT_IMAGES_PATH")"
+            --runtime-id-prefix "$INPUT_RUNTIME_ID_PREFIX"
+            --image-variant "$INPUT_IMAGE_VARIANT"
+            --image-section "$INPUT_IMAGE_SECTION"
+            --image-group "$INPUT_IMAGE_GROUP"
+            --image-caption "$INPUT_IMAGE_CAPTION"
+            --image-component-prefix "$INPUT_IMAGE_COMPONENT_PREFIX"
+            --title "$INPUT_TITLE"
+            --renderer "$INPUT_RENDERER"
+            --out "$RUNNER_TEMP/typed-catalog-out"
+          )
+          [ "$INPUT_REQUIRE_IMAGES" = "true" ] && args+=(--require-images)
+          [ "$INPUT_REQUIRE_BROWSER_VERIFICATION" = "true" ] && args+=(--require-browser-verification)
+          while IFS= read -r coordinate; do
+            coordinate="$(printf '%s' "$coordinate" | xargs)"
+            [ -n "$coordinate" ] && args+=(--library "$coordinate")
+          done <<< "$INPUT_LIBRARY"
+          if [ -n "$INPUT_SOURCE_MODULE" ]; then
+            args+=(--source-repo "$GITHUB_REPOSITORY" --source-ref "$SOURCE_SHA" --source-module "$INPUT_SOURCE_MODULE")
+          fi
+          node .typed-catalog-tools/scripts/design-artifacts/assemble-typed-catalog.mjs "${args[@]}"
+          out="$RUNNER_TEMP/typed-catalog-out"
+          echo "runtime-id=$(jq -r .uiBuilderRuntime.runtimeId "$out/catalog.json")" >> "$GITHUB_OUTPUT"
+          echo "out-artifact=${INPUT_SYSTEM}-catalog-out" >> "$GITHUB_OUTPUT"
+          {
+            echo "### design-artifacts/${INPUT_SYSTEM}"
+            echo '```'
+            (cd "$out" && find . -type f | sort | head -n 200)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the delivery tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.assemble.outputs.out-artifact }}
+          path: ${{ runner.temp }}/typed-catalog-out/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: ${{ inputs.system }} · publish
+    needs: assemble
+    if: ${{ inputs.publish }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # One publisher per delivery branch, and a started publish always finishes; a pending one is
+    # replaced by a newer pending one, which is the newest-wins order a delivery branch wants.
+    concurrency:
+      group: typed-catalog-publish-${{ github.repository }}-${{ inputs.system }}
+      cancel-in-progress: false
+    steps:
+      # The push helper, from the same revision the assembler ran from. Nothing of the caller's runs
+      # in this job: it downloads a tree and pushes it.
+      - name: Check out compose-ai-tools (push helper)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          ref: ${{ needs.assemble.outputs.driver-ref }}
+          path: .typed-catalog-tools
+          persist-credentials: false
+          sparse-checkout: .github/actions/apply/lib
+
+      - name: Download the delivery tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.assemble.outputs.out-artifact }}
+          path: ${{ runner.temp }}/out
+
+      - name: Publish to design-artifacts/${{ inputs.system }}
+        env:
+          ARTIFACT_TOKEN: ${{ secrets.artifacts_token }}
+          GH_TOKEN: ${{ github.token }}
+          OUT_REPOSITORY: ${{ inputs.artifact-repository || format('{0}-out', github.repository) }}
+          PUBLISH_BRANCH: ${{ inputs.publish-branch }}
+          RUNTIME_ID: ${{ needs.assemble.outputs.runtime-id }}
+          INPUT_COMMIT_USER_NAME: ${{ inputs.commit-user-name }}
+          INPUT_COMMIT_USER_EMAIL: ${{ inputs.commit-user-email }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ARTIFACT_TOKEN" ]; then
+            echo "::error title=Typed catalog ${INPUT_SYSTEM}::publish needs the artifacts_token secret (Contents write on ${OUT_REPOSITORY})."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/$PUBLISH_BRANCH" ]; then
+            echo "::notice title=Typed catalog ${INPUT_SYSTEM}::not publishing from $GITHUB_REF; only $PUBLISH_BRANCH publishes."
+            exit 0
+          fi
+          # Only the branch's current tip publishes. A run whose commit the branch has moved past
+          # would replace a newer catalog with an older one; the newer commit's own run publishes.
+          tip=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${PUBLISH_BRANCH}" --jq .object.sha)
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "::notice title=Typed catalog ${INPUT_SYSTEM}::${GITHUB_SHA::12} is no longer ${PUBLISH_BRANCH}'s tip (${tip::12}); its run publishes instead."
+            exit 0
+          fi
+          cd "$RUNNER_TEMP/out"
+          # Appended on the existing tip, like the rendered lanes, so the branch keeps a history the
+          # server's revision menu and runtime history can read. SKIP_IF_UNCHANGED drops the commit
+          # when the tree is byte-identical; the runtime id names the source commit, so a new commit
+          # is a new generation.
+          TARGET_BRANCH="design-artifacts/${INPUT_SYSTEM}" \
+          REPO="$OUT_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$ARTIFACT_TOKEN" \
+          MSG="chore(design-artifacts): regenerate ${INPUT_SYSTEM} catalog ($(date -u +%F), ${GITHUB_SHA::12}, ${RUNTIME_ID})" \
+          SKIP_IF_UNCHANGED=1 \
+          GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+          GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+            bash "$GITHUB_WORKSPACE/.typed-catalog-tools/.github/actions/apply/lib/push-branch.sh"

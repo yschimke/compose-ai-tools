@@ -764,6 +764,23 @@ The payoff is that every consumer's pipeline can't silently drift from the share
 one; the cost is one small upstream input per new feature, paid by the caller
 that introduces it.
 
+### Publishing a prebuilt typed catalog
+
+A **typed catalog** (a typed pair — `components.json` plus a `ui-builder.json` selecting the
+`compose-component-records` v1 export — and a catalog renderer archive) renders no `@Preview`, so
+it does not go through `design-artifacts-reusable.yml`. Its sibling,
+[`typed-catalog-artifacts-reusable.yml`](../../.github/workflows/typed-catalog-artifacts-reusable.yml),
+takes the prebuilt inputs (an artifact the caller uploaded, or a `build-command`), assembles the
+same branch layout with the export driver's publishers
+([`scripts/design-artifacts/assemble-typed-catalog.mjs`](../../scripts/design-artifacts/assemble-typed-catalog.mjs)),
+validates it, and pushes `design-artifacts/<system>` to `<caller>-out` from a separate job, only
+from `main` and only while the run's commit is still its tip. It replaced the per-catalog copies
+wear-m3-catalog and m3-catalog grew for their typed pilots.
+
+A served typed catalog needs **at least one image**: compose-preview-server refuses a catalog with
+no baked image and no deferred preview ("catalog had no usable images"), and a typed catalog has
+no daemon preview id to defer to. `require-images` (on by default) fails a run that supplies none.
+
 ## Rendering a catalog
 
 ```sh
