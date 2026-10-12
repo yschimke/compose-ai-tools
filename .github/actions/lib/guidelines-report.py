@@ -296,17 +296,14 @@ def rules_changed_note(dir_: Path) -> bool:
 
 
 RULES_CHANGED_LINE = (
-    "<sub>This PR changes the design guidelines. Only the previews it changed are checked here; "
-    "the catalog publish on the default branch re-checks every other preview against the new "
+    "<sub>Guidelines changed: the catalog publish re-checks every other preview against the new "
     "rules.</sub>"
 )
 # Without `guidelines-cache-key` the action cannot tell a catalog publish checks guidelines at all
 # (a sharded publish, or one without `guidelines: true`, never does), so it promises nothing.
 RULES_CHANGED_UNCONFIRMED_LINE = (
-    "<sub>This PR changes the design guidelines. Only the previews it changed are checked here; "
-    "the others were not re-checked against the new rules. A catalog publish with `guidelines: "
-    "true` re-checks them on the default branch, or set `guidelines-rules-sweep: 'true'` to check "
-    "some here.</sub>"
+    "<sub>Guidelines changed: previews this PR did not change were not re-checked against the "
+    "new rules (`guidelines-rules-sweep: 'true'` checks some here).</sub>"
 )
 
 

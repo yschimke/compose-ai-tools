@@ -2238,7 +2238,7 @@ runs:
           echo "$MARKER"
           echo "## Design guidelines"
           echo
-          echo "Nothing in this revision needed a design-guidelines check, so there are no findings. Findings from earlier revisions no longer apply."
+          echo "Nothing in this revision needed a design-guidelines check."
           if [ -n "$rules_line" ]; then
             echo
             echo "$rules_line"
