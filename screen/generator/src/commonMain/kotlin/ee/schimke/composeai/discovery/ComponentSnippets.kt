@@ -317,6 +317,12 @@ object ComponentSnippets {
    * Whether a bare `{ … }` satisfies the function type [type] — whether a slot can take children.
    * Shared with [ScreenGenerator] so the two can't disagree.
    */
+  /** `(Boolean) -> Unit` (nullable or not, with no receiver): a toggle's change callback. */
+  internal fun isToggleCallback(type: String): Boolean {
+    val bare = unwrapNullable(type).trim()
+    return bare == "(Boolean) -> Unit" || bare == "(kotlin.Boolean) -> Unit"
+  }
+
   internal fun acceptsBareLambda(type: String): Boolean =
     // A nullable slot renders as `(() -> Unit)?`; Kotlin accepts a non-null lambda for it, so
     // unwrap before asking about the shape. `emptyLambda` itself doesn't unwrap, since

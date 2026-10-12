@@ -1210,6 +1210,16 @@ object ScreenGenerator {
               }
             }
           }
+          // An optional slot the document left empty is absent, not an empty lambda: Material lays
+          // out `label = {}` with the label's space, and `label = null` without it.
+          children != null &&
+            children.isEmpty() &&
+            parameter.nullable &&
+            node.slotItems[parameter.name] == null -> {
+            if (!parameter.hasDefault) {
+              arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = null"
+            }
+          }
           children != null &&
             fillable(parameter, node.slotItems[parameter.name]) &&
             !ComponentSnippets.acceptsBareLambda(parameter.type) -> {
@@ -1784,6 +1794,19 @@ object ScreenGenerator {
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
+      // A toggle's change callback (`onCheckedChange: (Boolean) -> Unit`) reports the complement of
+      // the `checked` the caller supplied, so a component that exposes the toggle as an intent
+      // (`onBoxCheckedChange: () -> Unit`) loses nothing by ignoring it: the caller flips its own
+      // state. Any other reported value (a typed string, a slider position) is refused below.
+      if (
+        value is ScreenValue.ParameterRead &&
+          parameterScope?.get(value.parameter) is ScreenParameter.Callback &&
+          !parameter.composableSlot &&
+          ComponentSnippets.isToggleCallback(parameter.type)
+      ) {
+        val callback = expression(value, where, depth = 0) ?: return null
+        return "{ _ -> $callback() }"
+      }
       if (
         value is ScreenValue.ParameterRead &&
           parameterScope?.get(value.parameter) is ScreenParameter.Callback &&
