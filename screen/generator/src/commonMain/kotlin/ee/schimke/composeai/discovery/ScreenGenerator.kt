@@ -103,6 +103,8 @@ object ScreenGenerator {
   private const val FRAME_CONTENT = "content"
 
   private const val INDENT = "    "
+  /** The change callback a toggle (`checked` + `onCheckedChange`) reports through. */
+  private const val TOGGLE_CALLBACK = "onCheckedChange"
 
   /** How many identical siblings it takes before a `repeat` reads better than the calls. */
   private const val MINIMUM_FOLDED_RUN = 3
@@ -860,6 +862,9 @@ object ScreenGenerator {
      */
     private var slotScope: String? = null
 
+    /** Whether the call [argument] is filling takes `checked: Boolean`: a toggle. */
+    private var toggleCall = false
+
     private data class RowScope(val variable: String, val fields: Map<String, String>)
 
     /** A slot lambda's parameter bound by [ScreenNode.slotParameters]: its local name and type. */
@@ -1235,6 +1240,11 @@ object ScreenGenerator {
         .filterNot { key -> parameters.any { it.name == key } }
         .sorted()
         .forEach { reasons += "`${record.symbol.name}` has no `$it` to bind a handler to" }
+      // Evidence the call is a toggle, for the callback adaptation in [argument]. Set again before
+      // each argument, because the children walked in between are other calls.
+      val isToggle = parameters.any {
+        it.name == "checked" && ComponentSnippets.qualifiedTypeOf(it) == "kotlin.Boolean"
+      }
       for (parameter in parameters) {
         val supplied = node.arguments[parameter.name]
         val children = node.slots[parameter.name]
@@ -1247,6 +1257,7 @@ object ScreenGenerator {
         }
         when {
           supplied != null -> {
+            toggleCall = isToggle
             argument(supplied, parameter, record.symbol.name)?.let {
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
             }
@@ -1260,6 +1271,16 @@ object ScreenGenerator {
                 children.forEach { node(it, depth + 1) }
               }
             }
+          }
+          // An optional slot the document left empty is `null`, not an empty lambda: Material lays
+          // out `label = {}` with the label's space, and `label = null` without it. Written even
+          // when the slot has a default, which may not be null. Older records spell nullability
+          // only in the type, `(() -> Unit)?`.
+          children != null &&
+            children.isEmpty() &&
+            (parameter.nullable || parameter.type.trim().endsWith("?")) &&
+            node.slotItems[parameter.name] == null -> {
+            arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = null"
           }
           children != null &&
             fillable(parameter, node.slotItems[parameter.name]) &&
@@ -1835,6 +1856,22 @@ object ScreenGenerator {
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
+      // A toggle's change callback (`onCheckedChange: (Boolean) -> Unit`, on a component that also
+      // takes `checked: Boolean`, see [toggleCall]) reports the complement of
+      // the `checked` the caller supplied, so a component that exposes the toggle as an intent
+      // (`onBoxCheckedChange: () -> Unit`) loses nothing by ignoring it: the caller flips its own
+      // state. Any other reported value (a typed string, a slider position) is refused below.
+      if (
+        value is ScreenValue.ParameterRead &&
+          parameterScope?.get(value.parameter) is ScreenParameter.Callback &&
+          !parameter.composableSlot &&
+          parameter.name == TOGGLE_CALLBACK &&
+          toggleCall &&
+          ComponentSnippets.isToggleCallback(parameter.type)
+      ) {
+        val callback = expression(value, where, depth = 0) ?: return null
+        return "{ _ -> $callback() }"
+      }
       if (
         value is ScreenValue.ParameterRead &&
           parameterScope?.get(value.parameter) is ScreenParameter.Callback &&
