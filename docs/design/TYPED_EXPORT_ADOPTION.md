@@ -115,16 +115,17 @@ set with no published frame is refused by name.
 
 ### The shared layouts
 
-The builder's own `layout/column`, `layout/row` and `layout/box` export as Compose's
-`Column`, `Row` and `Box` when the catalog's record carries those calls under the shared ids.
-Discover them like any library composable, set each record's `componentIds` to its `layout/…` id,
-and publish them off the shelf. A plain column of texts inside a slot with a `lines` pattern is
-folded into the pattern's parameters instead, so it isn't written as a `Column`.
+The builder's own `layout/column`, `layout/row` and `layout/box` export as Compose's `Column`,
+`Row` and `Box` from compose-ui-builder's foundation record pack, which a host joins to every
+catalog's record. Don't publish them again: two records for one `layout/…` id identify neither. In
+the catalog's export test, join them as the host does. A plain column of texts in a slot with a
+`lines` pattern is folded into the pattern's parameters instead, so it isn't written as a `Column`.
 
 ### 5. Export every committed design in a test
 
 Run each fixture design through compose-ui-builder's `ScreenExportGate` with the generated pair,
-as `RealWearExportTest` does. Assert two things: what emits, and what is still refused. The
+as `RealWearExportTest` does, which exports all seven Wear fixtures. Assert two things: what
+emits, and what is still refused. The
 refusals are the remaining port work. A definition that lands moves its fixture from "refused" to
 "emitted".
 
