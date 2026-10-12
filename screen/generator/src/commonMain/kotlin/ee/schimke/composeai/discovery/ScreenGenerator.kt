@@ -85,7 +85,9 @@ object ScreenGenerator {
    * around the generated [ScreenDocument.root]: the structure no single record prints, such as
    * Wear's `ScreenScaffold` sharing a hoisted `listState` with the list inside it.
    *
-   * Its one hole is `${content}`, the root's call. The names it declares for the root to read are
+   * Its `${content}` hole is the root's call. Its other holes are the screen root's other slots
+   * (`${edgeButton}`), filled from [generate]'s `frameSlots`; a catalog publishes one template per
+   * set of filled slots rather than a conditional. The names it declares for the root to read are
    * the `locals` of [generate], and [imports] are the ones its own text needs; both come from the
    * same catalog `code` block, which is validated when the catalog is published.
    */
@@ -97,8 +99,8 @@ object ScreenGenerator {
     COMPONENTS,
   }
 
-  /** The holes a [Frame] may write: the root, and nothing a template could leave empty. */
-  private val FRAME_HOLES = setOf("content")
+  /** The hole a [Frame] writes the root into; any other hole is one of `frameSlots`. */
+  private const val FRAME_CONTENT = "content"
 
   private const val INDENT = "    "
 
@@ -187,7 +189,41 @@ object ScreenGenerator {
     locals: Map<String, String> = emptyMap(),
     frame: Frame?,
     output: Output,
+  ): Result =
+    generate(
+      document,
+      components,
+      packageName,
+      expressionPackages,
+      preview,
+      locals,
+      frame,
+      output,
+      emptyMap(),
+    )
+
+  /**
+   * [generate], with [frameSlots]: the children of the screen root's other slots, each written into
+   * [frame]'s hole of the same name (`${edgeButton}`), siblings one per line. Every filled slot
+   * must have its hole and every hole besides `content` its slot, so a frame chosen for other slots
+   * is refused rather than written with a hole left empty or a child dropped.
+   */
+  fun generate(
+    document: ScreenDocument,
+    components: ComponentRecordFile,
+    packageName: String = "generated.screen",
+    expressionPackages: Set<String> = emptySet(),
+    preview: Preview? = null,
+    locals: Map<String, String> = emptyMap(),
+    frame: Frame?,
+    output: Output,
+    frameSlots: Map<String, List<ScreenNode>>,
   ): Result {
+    if (frame == null && frameSlots.isNotEmpty()) {
+      return Result.Refused(
+        frameSlots.keys.sorted().map { "frame slot `$it` has no screen frame to be written into" }
+      )
+    }
     if (output == Output.COMPONENTS) {
       val issues = buildList {
         if (document.functions.isEmpty()) add("the document declares no components to write")
@@ -253,7 +289,7 @@ object ScreenGenerator {
     }
     if (localIssues.isNotEmpty()) return Result.Refused(localIssues)
     if (frame != null) {
-      val frameIssues = frameRefusals(frame)
+      val frameIssues = frameRefusals(frame, frameSlots)
       if (frameIssues.isNotEmpty()) return Result.Refused(frameIssues)
     }
     val functionNames = document.functions.map { it.name }.toSet()
@@ -471,9 +507,11 @@ object ScreenGenerator {
       else
         when (
           val framed =
-            StructuralTemplate.render(frame.template) { _ ->
-              // Checked by frameRefusals: `content` is the only hole a frame reaches here.
-              context.node(document.root, depth = 0)
+            StructuralTemplate.render(frame.template) { hole ->
+              // Checked by frameRefusals: every named hole is `content` or a filled frame slot.
+              val name = (hole as StructuralTemplate.Hole.Named).name
+              if (name == FRAME_CONTENT) context.node(document.root, depth = 0)
+              else frameSlots.getValue(name).joinToString("\n") { context.node(it, depth = 0) }
             }
         ) {
           is StructuralTemplate.Result.Refused -> return Result.Refused(framed.reasons)
@@ -613,25 +651,32 @@ object ScreenGenerator {
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
   }
 
-  /** Why [frame] cannot be written around a screen, or empty when it can. */
-  private fun frameRefusals(frame: Frame): List<String> = buildList {
-    when (val holes = StructuralTemplate.holes(frame.template)) {
-      is StructuralTemplate.Result2.Failed -> holes.reasons.forEach { add("screen frame: $it") }
-      is StructuralTemplate.Result2.Ok -> {
-        val named = holes.value.filterIsInstance<StructuralTemplate.Hole.Named>().map { it.name }
-        if (holes.value.any { it is StructuralTemplate.Hole.Call })
-          add("screen frame: a `call(…)` hole has no record to call; the root is `content`")
-        (named.toSet() - FRAME_HOLES).sorted().forEach {
-          add("screen frame: `$it` is not a hole a frame can fill; it writes only `content`")
+  /** Why [frame] cannot be written around a screen and [frameSlots], or empty when it can. */
+  private fun frameRefusals(frame: Frame, frameSlots: Map<String, List<ScreenNode>>): List<String> =
+    buildList {
+      when (val holes = StructuralTemplate.holes(frame.template)) {
+        is StructuralTemplate.Result2.Failed -> holes.reasons.forEach { add("screen frame: $it") }
+        is StructuralTemplate.Result2.Ok -> {
+          val named = holes.value.filterIsInstance<StructuralTemplate.Hole.Named>().map { it.name }
+          if (holes.value.any { it is StructuralTemplate.Hole.Call })
+            add("screen frame: a `call(…)` hole has no record to call; the root is `content`")
+          val filled = frameSlots.filterValues { it.isNotEmpty() }.keys
+          (named.toSet() - FRAME_CONTENT - filled).sorted().forEach {
+            add(
+              "screen frame: `$it` is not a hole this screen fills; it writes `content`" +
+                filled.sorted().joinToString("") { slot -> " and `$slot`" }
+            )
+          }
+          for (hole in (filled + FRAME_CONTENT).sorted()) {
+            val count = named.count { it == hole }
+            if (count != 1) add("screen frame: writes `$hole` $count times, not once")
+          }
         }
-        if (named.count { it == "content" } != 1)
-          add("screen frame: writes `content` ${named.count { it == "content" }} times, not once")
+      }
+      frame.imports.filterNot(::isQualifiedName).forEach {
+        add("screen frame: import `$it` is not a qualified Kotlin name")
       }
     }
-    frame.imports.filterNot(::isQualifiedName).forEach {
-      add("screen frame: import `$it` is not a qualified Kotlin name")
-    }
-  }
 
   /**
    * Whether a group of same-named imports is extensions that no single call could mean two of: each

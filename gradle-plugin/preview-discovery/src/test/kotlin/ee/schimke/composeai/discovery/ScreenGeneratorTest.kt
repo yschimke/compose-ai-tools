@@ -1852,13 +1852,48 @@ class ScreenGeneratorTest {
     assertThat(refusals("${'$'}{content}\n${'$'}{content}"))
       .contains("screen frame: writes `content` 2 times, not once")
     assertThat(refusals("${'$'}{content} ${'$'}{edgeButton}"))
-      .contains(
-        "screen frame: `edgeButton` is not a hole a frame can fill; it writes only `content`"
-      )
+      .contains("screen frame: `edgeButton` is not a hole this screen fills; it writes `content`")
     assertThat(refusals("${'$'}{call(modifier = \"Modifier\")}").joinToString())
       .contains("a `call(…)` hole has no record to call")
     assertThat(refusals("${'$'}{content}", listOf("not a name")))
       .contains("screen frame: import `not a name` is not a qualified Kotlin name")
+  }
+
+  @Test
+  fun `a frame writes each filled root slot into its own hole`() {
+    fun generate(template: String, slots: Map<String, List<ScreenNode>>) =
+      ScreenGenerator.generate(
+        list(attested, textNode("a")),
+        catalog(lazyColumn, text),
+        frame = ScreenGenerator.Frame(template),
+        output = ScreenGenerator.Output.SCREEN,
+        frameSlots = slots,
+      )
+    val source =
+      (generate(
+          "Scaffold(edgeButton = {\n  ${'$'}{edgeButton}\n}) {\n  ${'$'}{content}\n}\n${'$'}{overlays}",
+          mapOf(
+            "edgeButton" to listOf(textNode("Go")),
+            "overlays" to listOf(textNode("one"), textNode("two")),
+          ),
+        )
+          as ScreenGenerator.Result.Emitted)
+        .source
+    assertThat(source).contains("    Scaffold(edgeButton = {\n      Text(text = \"Go\")\n    }) {")
+    assertThat(source).contains("    }\n    Text(text = \"one\")\n    Text(text = \"two\")\n}")
+    // A filled slot the frame has no hole for is refused, never dropped; so is a hole left empty.
+    assertThat(
+        (generate("${'$'}{content}", mapOf("edgeButton" to listOf(textNode("Go"))))
+            as ScreenGenerator.Result.Refused)
+          .reasons
+      )
+      .contains("screen frame: writes `edgeButton` 0 times, not once")
+    assertThat(
+        (generate("${'$'}{content}\n${'$'}{edgeButton}", emptyMap())
+            as ScreenGenerator.Result.Refused)
+          .reasons
+      )
+      .contains("screen frame: `edgeButton` is not a hole this screen fills; it writes `content`")
   }
 
   @Test
