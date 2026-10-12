@@ -1046,7 +1046,8 @@ object ScreenGenerator {
         val parameter = byName[name] ?: return false
         val stated = value.typeFqn ?: continue
         val declared = parameter.typeFqn ?: continue
-        if (stated.removeSuffix("?") != declared.removeSuffix("?")) return false
+        if (!ComponentSnippets.sameType(stated.removeSuffix("?"), declared.removeSuffix("?")))
+          return false
       }
       for (name in node.slots.keys) {
         val parameter = byName[name] ?: return false
@@ -1794,10 +1795,11 @@ object ScreenGenerator {
         reasons += "$where cannot take a zero-argument Unit callback parameter"
         return null
       }
-      if (value.typeFqn != null) {
+      val stated = value.typeFqn
+      if (stated != null) {
         val rendered = expression(value, where, depth = 0) ?: return null
-        if (value.typeFqn != type) {
-          reasons += "$where is $type, and this value is a ${value.typeFqn}"
+        if (!ComponentSnippets.sameType(stated, type)) {
+          reasons += "$where is $type, and this value is a $stated"
           return null
         }
         return rendered

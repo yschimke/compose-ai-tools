@@ -175,6 +175,14 @@ object ComponentSnippets {
   internal fun qualifiedTypeOf(parameter: TargetParameter): String =
     parameter.typeFqn ?: "kotlin.${parameter.type}"
 
+  /**
+   * Whether two qualified type names are one type. A nested class is `Outer.Nested` to discovery's
+   * metadata reader and `Outer$Nested` to a class file reader, and records and values from both
+   * meet here: `androidx.compose.ui.Alignment$Horizontal` is `Alignment.Horizontal`.
+   */
+  internal fun sameType(a: String, b: String): Boolean =
+    a == b || a.replace('$', '.') == b.replace('$', '.')
+
   internal fun isHardKeyword(name: String): Boolean = name in HARD_KEYWORDS
 
   /**

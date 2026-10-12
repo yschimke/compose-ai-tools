@@ -679,6 +679,60 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `a nested type matches whether it is spelled with a dollar or a dot`() {
+    // The builder's foundation pack records `Alignment$Horizontal`; discovery writes the dot.
+    val column =
+      component(
+        "Column",
+        "androidx.compose.foundation.layout.Column",
+        listOf(
+          TargetParameter.Builder(name = "horizontalAlignment", type = "Alignment.Horizontal")
+            .also {
+              it.typeFqn = "androidx.compose.ui.Alignment\$Horizontal"
+              it.hasDefault = true
+            }
+            .build()
+        ),
+      )
+    fun generate(typeFqn: String) =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          "Screen",
+          ScreenNode(
+            column.canonicalId,
+            arguments =
+              mapOf(
+                "horizontalAlignment" to
+                  ScreenValue.Reference(
+                    rootFqn = "androidx.compose.ui.Alignment",
+                    members = listOf("Start"),
+                    typeFqn = typeFqn,
+                  )
+              ),
+          ),
+        ),
+        catalog(column),
+        expressionPackages = setOf("androidx.compose.ui"),
+      )
+    for (spelling in
+      listOf(
+        "androidx.compose.ui.Alignment.Horizontal",
+        "androidx.compose.ui.Alignment\$Horizontal",
+      )) {
+      val result = generate(spelling)
+      assertThat((result as? ScreenGenerator.Result.Refused)?.reasons.orEmpty()).isEmpty()
+      assertThat((result as ScreenGenerator.Result.Emitted).source)
+        .contains("horizontalAlignment = Alignment.Start")
+    }
+    assertThat(
+        (generate("androidx.compose.ui.Alignment.Vertical") as ScreenGenerator.Result.Refused)
+          .reasons
+          .joinToString()
+      )
+      .contains("and this value is a androidx.compose.ui.Alignment.Vertical")
+  }
+
+  @Test
   fun `a remembered placeholder beside a supplied argument imports its factory`() {
     // The refusal is the icon; the state is answered by the `remember…` factory discovery found,
     // which the generated file names by its simple name and so has to import.
