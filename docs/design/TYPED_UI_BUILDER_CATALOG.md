@@ -151,6 +151,8 @@ These cover the model types real app components take, beyond text, numbers, list
 | `AdapterValueCodecs.Instant` | `{"type": "string", "value": "2026-10-12T08:00:00Z"}` | `Instant.parse("2026-10-12T08:00:00Z")` |
 | `AdapterValueCodecs.parsed(type, parseFqn, format, parse, print)` | `{"type": "string", "value": "…"}` | `<parseFqn>("…")`, e.g. `PublicKey.fromHex("…")` |
 | `AdapterValueCodecs.nullable(codec)` | `codec`'s wrapper, or `{"type": "null"}` | the value, or nothing for null |
+| `AdapterValueCodecs.set(element)` | a `list` wrapper; a repeat is refused | `setOf(…)` |
+| `AdapterValueCodecs.enumValue(type, E.entries)` | `{"type": "string", "value": "NAME"}` | `Type.NAME`, decoded to the member itself |
 | `AdapterValueCodecs.union(type) { … }` | `{"type": "union", "case": "<name>", "fields"?: {…}}` | the case's constructor call, or a reference to a `data object` |
 
 `Long` is stored as an `int` wrapper and `Double` as a `number` one, so an editor needs nothing new

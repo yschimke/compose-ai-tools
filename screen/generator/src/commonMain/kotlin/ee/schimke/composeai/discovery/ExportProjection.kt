@@ -513,6 +513,8 @@ data class ExportProjection(
     data class ListOf(
       val element: Codec,
       val elementLiteralType: String = element.literalType,
+      /** Written `setOf(…)` for a `Set` parameter rather than `listOf(…)`; stored the same way. */
+      val set: Boolean = false,
     ) : Codec {
       init {
         require(!element.composite || elementLiteralType == element.literalType) {
@@ -923,6 +925,12 @@ data class ExportProjection(
         val values =
           composite(stored, "list", "values") as? JsonArray
             ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
+        // A set holds each value once, as its codec reads it; a repeat would be written and then
+        // silently collapsed, so the export would hold fewer values than the design shows.
+        if (codec.set && values.distinct().size != values.size)
+          return refuse(
+            "a set holds each value once; ${values.size - values.distinct().size} repeat"
+          )
         val before = reasons.size
         val written = values.mapIndexed { index, item ->
           nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons, icons)
@@ -930,9 +938,9 @@ data class ExportProjection(
         if (reasons.size != before) null
         else
           ScreenValue.Construct(
-            LIST_OF,
+            if (codec.set) SET_OF else LIST_OF,
             positional = written.filterNotNull(),
-            typeFqn = LIST,
+            typeFqn = if (codec.set) SET else LIST,
           )
       }
       is Codec.Object -> {
@@ -1129,6 +1137,8 @@ data class ExportProjection(
     const val MODIFIER = "modifier"
     const val LIST = "kotlin.collections.List"
     const val LIST_OF = "kotlin.collections.listOf"
+    const val SET = "kotlin.collections.Set"
+    const val SET_OF = "kotlin.collections.setOf"
     const val MATERIAL_ICONS = "androidx.compose.material.icons"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =

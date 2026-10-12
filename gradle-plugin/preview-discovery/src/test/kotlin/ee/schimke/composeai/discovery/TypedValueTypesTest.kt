@@ -307,6 +307,92 @@ class TypedValueTypesTest {
       .containsExactly("app/com.example.StatusKt.Status.names <- names[0]: cannot be null here")
   }
 
+  @Test
+  fun `a set is stored as a list, refuses repeats and exports setOf`() {
+    val codec = AdapterValueCodecs.set(AdapterValueCodecs.String)
+    val wrapped = codec.wrap(linkedSetOf("a", "b"))
+    assertThat(wrapped)
+      .isEqualTo(
+        json(
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}"""
+        )
+      )
+    assertThat(codec.unwrap(wrapped)).containsExactly("a", "b").inOrder()
+    assertThat(codec.kotlinType).isEqualTo("kotlin.collections.Set")
+    assertThat(codec.editor).isEqualTo(AdapterValueCodecs.list(AdapterValueCodecs.String).editor)
+    assertThrows(IllegalArgumentException::class.java) {
+      codec.unwrap(
+        json(
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"a"}]}"""
+        )
+      )
+    }
+  }
+
+  @Test
+  fun `an enum value decodes to the member and exports its qualified name`() {
+    val codec = AdapterValueCodecs.enumValue(LEVEL, FixtureLevel.entries)
+    assertThat(codec.wrap(FixtureLevel.High))
+      .isEqualTo(json("""{"type":"string","value":"High"}"""))
+    assertThat(codec.unwrap(json("""{"type":"string","value":"Low"}""")))
+      .isEqualTo(FixtureLevel.Low)
+    assertThat(codec.allowedValues).containsExactly("Low", "High")
+    assertThrows(IllegalArgumentException::class.java) {
+      codec.unwrap(json("""{"type":"string","value":"Medium"}"""))
+    }
+  }
+
+  @Test
+  fun `a set and an enum value are exported as setOf and the member`() {
+    val target =
+      record(
+        parameter("tags", "Set<String>", "kotlin.collections.Set"),
+        parameter("level", "Level", LEVEL, default = true),
+      )
+    class Tagged(record: ComponentRecord) :
+      TypedComponentAdapter<TaggedProps>("acme/tagged", record) {
+      val tags =
+        property(TaggedProps::tags, AdapterValueCodecs.set(AdapterValueCodecs.String), emptySet())
+      val level =
+        property(
+          TaggedProps::level,
+          AdapterValueCodecs.enumValue(LEVEL, FixtureLevel.entries),
+          FixtureLevel.Low,
+        )
+
+      init {
+        exportAs(target(record, mapOf("tags" to from(tags), "level" to from(level))))
+      }
+    }
+    val adapter = Tagged(target)
+    assertThat(adapter.validateAgainst(target)).isEmpty()
+    val projection = adapter.projection!!
+    assertThat(ExportProjectionJson.decode(ExportProjectionJson.encode(projection)).getOrThrow())
+      .isEqualTo(projection)
+    val node =
+      projection.lower(
+        mapOf(
+          "tags" to json("""{"type":"list","values":[{"type":"string","value":"vip"}]}"""),
+          "level" to json("""{"type":"string","value":"High"}"""),
+        )
+      ) as ExportProjection.Lowered.Node
+    val source = generated(node, target)
+    assertThat(source).contains("tags = setOf(\"vip\")")
+    assertThat(source).contains("level = FixtureLevel.High")
+    assertThat(source).contains("import kotlin.collections.setOf")
+    val repeated =
+      projection.lower(
+        mapOf(
+          "tags" to
+            json(
+              """{"type":"list","values":[{"type":"string","value":"vip"},{"type":"string","value":"vip"}]}"""
+            )
+        )
+      )
+    assertThat((repeated as ExportProjection.Lowered.Refused).reasons.single())
+      .contains("a set holds each value once")
+  }
+
   private fun generated(node: ExportProjection.Lowered.Node, record: ComponentRecord): String {
     val result =
       ScreenGenerator.generate(
@@ -315,7 +401,13 @@ class TypedValueTypesTest {
           root = ScreenNode(node.record, arguments = node.arguments),
         ),
         ComponentRecordFile.Builder("app", "debug", listOf(record)).build(),
-        expressionPackages = setOf("kotlin.time", "ee.schimke.composeai.discovery", "com.example"),
+        expressionPackages =
+          setOf(
+            "kotlin.time",
+            "kotlin.collections",
+            "ee.schimke.composeai.discovery",
+            "com.example",
+          ),
       )
     assertThat(result).isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
     return (result as ScreenGenerator.Result.Emitted).source
@@ -324,6 +416,14 @@ class TypedValueTypesTest {
 
 private const val STATUS = "ee.schimke.composeai.discovery.FixtureStatus"
 private const val KEY = "ee.schimke.composeai.discovery.FixtureKey"
+private const val LEVEL = "ee.schimke.composeai.discovery.FixtureLevel"
+
+internal enum class FixtureLevel {
+  Low,
+  High,
+}
+
+private data class TaggedProps(val tags: Set<String>, val level: FixtureLevel)
 
 internal sealed interface FixtureStatus {
   data object Idle : FixtureStatus
