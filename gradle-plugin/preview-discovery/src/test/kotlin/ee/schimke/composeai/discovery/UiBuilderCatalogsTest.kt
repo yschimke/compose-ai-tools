@@ -1865,6 +1865,35 @@ class UiBuilderCatalogsTest {
       )
     assertThat(outside.single().subject).isEqualTo("wear-m3/button.Button.shape")
     assertThat(outside.single().message).contains("outside a role context")
+    // So is a target's own modifier link, which no role context holds.
+    val linked =
+      projectionDiagnostics(
+        ExportProjectionJson.encode(
+          ExportProjection(
+            listOf(
+              ExportProjection.Target(
+                ":catalog/androidx.wear.compose.material3.ButtonKt.Button",
+                emptyMap(),
+                modifier =
+                  listOf(
+                    ExportProjection.ModifierLink(
+                      "androidx.wear.compose.material3.lazy.transformedHeight",
+                      listOf(
+                        ExportProjection.Value.Fixed(
+                          ScreenValue.ScopeRead.Builder(itemScope).build()
+                        )
+                      ),
+                    )
+                  ),
+              )
+            )
+          )
+        ),
+        wearCode(),
+      )
+    assertThat(linked.single().subject)
+      .isEqualTo("wear-m3/button.Button.modifier transformedHeight[0]")
+    assertThat(linked.single().message).contains("outside a role context")
   }
 
   @Test

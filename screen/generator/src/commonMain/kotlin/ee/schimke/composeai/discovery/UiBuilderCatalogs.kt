@@ -914,6 +914,16 @@ object UiBuilderCatalogs {
       for (target in projection.targets) {
         val record = target.record.substringAfterLast('.')
         target.parameters.forEach { (name, value) -> visit(value, null, "$record.$name") }
+        // A target's own modifier links are written wherever it is, so read no role's names.
+        for (link in target.modifier) {
+          link.arguments.forEachIndexed { index, value ->
+            visit(
+              value,
+              null,
+              "$record.modifier ${link.callableFqn.substringAfterLast('.')}[$index]",
+            )
+          }
+        }
         for ((role, context) in target.contexts) {
           context.parameters.forEach { (name, value) -> visit(value, role, "$record[$role].$name") }
           for (link in context.modifier) {

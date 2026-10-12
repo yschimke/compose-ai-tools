@@ -734,6 +734,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
     synthesize: Map<String, ExportProjection.Synthesis> = emptyMap(),
     items: Map<String, String> = emptyMap(),
     itemRoles: Map<String, String> = emptyMap(),
+    modifier: List<ExportProjection.ModifierLink> = emptyList(),
   ): ProjectionTarget =
     ProjectionTarget(
       record,
@@ -750,6 +751,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         synthesize,
         items,
         itemRoles,
+        modifier,
       ),
     )
 
@@ -967,6 +969,13 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           target.parameters.mapValues { (name, value) ->
             writtenType(value, properties, "$where.$name", this)
           }
+        // A modifier link's values are checked as any written value is; the link itself is a
+        // top-level extension the generator imports, and appends to the node's own `modifier`.
+        for (link in target.modifier) {
+          link.arguments.forEachIndexed { index, value ->
+            writtenType(value, properties, "$where.modifier ${link.callableFqn}[$index]", this)
+          }
+        }
         val candidates: List<ComponentOverload?> = targetRecord.overloads.ifEmpty { listOf(null) }
         // The overload the record speaks for, which the generator calls whenever it applies.
         val own = candidates.indexOfFirst {
