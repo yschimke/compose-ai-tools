@@ -248,3 +248,33 @@ typed state/event dispatch, a real Compose component with a slot child, and Wasm
 No catalogue is registered or published by these tests. The next promotion step is to release this
 tools API, bump the builder's tools pin, move its opt-in bridge into normal SDK sources, then finish
 catalog runtime packaging and general JVM host installation as separate changes.
+
+## Publishing a typed catalog
+
+`design-artifacts-reusable.yml` publishes a typed catalog onto the delivery branch beside the
+sticker sheet when the caller names the task that generates it:
+
+```yaml
+uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@<sha>
+with:
+  system: my-app
+  artifact-repository: me/my-app-out          # optional: the generated branches' own repository
+  ui-builder-catalog-task: ':ui-builder-catalog:exportTypedCatalog'
+  ui-builder-catalog-dir: ui-builder-catalog/build/catalog
+  # optional: the catalog's own Wasm renderer, built against a compose-ui-builder release
+  ui-builder-runtime-task: ':ui-builder-catalog-renderer:rendererArchive'
+  ui-builder-runtime-archive: ui-builder-catalog-renderer/build/ui-builder-runtime.zip
+  ui-builder-runtime-source-ref: v3.109.0
+secrets:
+  artifacts_token: ${{ secrets.ARTIFACTS_TOKEN }}
+```
+
+The task writes `ui-builder.json`, the record it composes with as `components.json`, and optionally
+a `ui-builder/` tree of the seed designs its policy's `templates` name. They are published as the
+branch's `ui-builder.json`, `ui-builder/components.json` and `ui-builder/…`, and `catalog.json`'s
+`uiBuilderFile` and `componentsFile` point at them: a server composes a published `ui-builder.json`
+with the record `componentsFile` names, and the branch's top-level `components.json` is everything
+discovery found, which would shelve every composable rather than the adapted ones. A renderer archive
+is verified and declared (`uiBuilderRuntime`) exactly as for a policy-generated catalog. A catalog has
+one builder definition, so a render that also generated a `ui-builder.json` from a
+`ui-builder.policy.json` fails the step.
