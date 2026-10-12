@@ -419,7 +419,7 @@ composeai-contracts = "3.30.0"
 # 3.15.2 stops renderer-desktop putting material3 on the consumer's render classpath
 # (compose-preview-daemon#235): conflict resolution raised a consumer's material3 to the
 # renderer's, which threw AbstractMethodError against an older foundation. Contracts 3.25.0.
-composeai-preview-daemon = "3.15.3"
+composeai-preview-daemon = "3.15.4"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
