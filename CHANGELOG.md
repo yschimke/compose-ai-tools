@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.54.0](https://github.com/yschimke/compose-ai-tools/compare/v2.53.0...v2.54.0) (2026-10-12)
+
+
+### Features
+
+* **design-artifacts:** publish a typed-adapter UI-builder catalog and its renderer ([#5917](https://github.com/yschimke/compose-ai-tools/issues/5917)) ([994dfb6](https://github.com/yschimke/compose-ai-tools/commit/994dfb61d1a0942832e8f5a7d43317b02557fa6e))
+* **typed-adapters:** Long, Double, parsed text, nullable, sealed and payload-callback values ([#5914](https://github.com/yschimke/compose-ai-tools/issues/5914)) ([c71c627](https://github.com/yschimke/compose-ai-tools/commit/c71c627de9d42b308b3b023a59cd4342cf89ce39))
+* **typed-adapters:** set and enumValue codecs ([#5919](https://github.com/yschimke/compose-ai-tools/issues/5919)) ([156dbd1](https://github.com/yschimke/compose-ai-tools/commit/156dbd117f9a9fed0be13a7d516f0226f7f89790))
+
+
+### Performance Improvements
+
+* **design-artifacts:** run the export driver 1.14.1, which publishes design references in parallel ([#5922](https://github.com/yschimke/compose-ai-tools/issues/5922)) ([485b19a](https://github.com/yschimke/compose-ai-tools/commit/485b19ada414723287f1feff9cb3a49051b0bebb))
+
 ## [2.53.0](https://github.com/yschimke/compose-ai-tools/compare/v2.52.0...v2.53.0) (2026-10-12)
 
 
