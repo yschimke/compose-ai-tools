@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.53.0](https://github.com/yschimke/compose-ai-tools/compare/v2.52.0...v2.53.0) (2026-10-12)
+
+
+### Features
+
+* **screen-generator:** toggle intents and empty optional slots ([#5896](https://github.com/yschimke/compose-ai-tools/issues/5896)) ([97936b1](https://github.com/yschimke/compose-ai-tools/commit/97936b12b8cd28414c5ba92c45aa99408b4f0830))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.15.4 ([#5913](https://github.com/yschimke/compose-ai-tools/issues/5913)) ([85e2640](https://github.com/yschimke/compose-ai-tools/commit/85e2640ea6a6bd0fe83b5ea3eb5a27a7a3c76ad7))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.9.0 ([#5910](https://github.com/yschimke/compose-ai-tools/issues/5910)) ([7561f03](https://github.com/yschimke/compose-ai-tools/commit/7561f03798893724661eca7ab7f9006d8ba99ec9))
+* **design-artifacts:** upload the standalone UI-builder renderer by its resolved path ([#5912](https://github.com/yschimke/compose-ai-tools/issues/5912)) ([8c59914](https://github.com/yschimke/compose-ai-tools/commit/8c599149f31c63f0bfe4b4ef3a1bc95c597eb1ae))
+
 ## [2.52.0](https://github.com/yschimke/compose-ai-tools/compare/v2.51.0...v2.52.0) (2026-10-12)
 
 
