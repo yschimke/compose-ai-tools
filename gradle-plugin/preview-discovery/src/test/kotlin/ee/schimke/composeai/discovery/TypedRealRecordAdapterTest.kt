@@ -1129,6 +1129,21 @@ class TypedRealRecordAdapterTest {
     }
       .exceptionOrNull()
     assertThat(stray).hasMessageThat().contains("wear-m3/list: implements no builtin")
+    // A catalog whose only typed definition implements a builtin still generates.
+    val implementationOnly =
+      TypedAdapterCatalog.generate(
+        ComponentRecordFile.Builder("catalog", "debug", listOf(list)).build(),
+        UiBuilderCatalogs.CoverSheet("wear-m3", "Wear"),
+        UiBuilderPolicyFile.Builder(UI_BUILDER_POLICY_SCHEMA, "wear")
+          .also { it.builtins = mapOf("wear-m3/list" to UiBuilderBuiltin.Builder("list").build()) }
+          .build(),
+        emptyList(),
+        implementations = listOf(adapter),
+      )
+    assertThat(
+        implementationOnly.catalog.statusSemantics.builtins.getValue("wear-m3/list").implementation
+      )
+      .isEqualTo(list.canonicalId)
   }
 
   @Test
