@@ -116,12 +116,19 @@ public class RcJvmWorkerPool(
       if (closed) return PoolResult.Unusable("$lane worker pool is closed")
     }
 
-    permits.acquire()
+    // Admission is part of the budget: waiting for a busy worker must not hand the render a fresh
+    // timeout once one frees up, or a queued request could run for twice its caller's budget.
+    val admissionStart = System.nanoTime()
+    if (!permits.tryAcquire(timeoutSeconds.coerceAtLeast(1), TimeUnit.SECONDS)) {
+      return PoolResult.Unusable("$lane worker pool stayed busy for ${timeoutSeconds}s")
+    }
+    val remainingSeconds =
+      (timeoutSeconds - (System.nanoTime() - admissionStart) / 1_000_000_000L).coerceAtLeast(1)
     var worker: Worker? = null
     try {
       worker =
         takeIdle()
-          ?: when (val started = startWorker(timeoutSeconds)) {
+          ?: when (val started = startWorker(remainingSeconds)) {
             is StartOutcome.Started -> started.worker
             is StartOutcome.Failed -> return PoolResult.Unusable(started.reason)
           }
@@ -134,7 +141,7 @@ public class RcJvmWorkerPool(
           format,
           theme,
           requestIds.incrementAndGet(),
-          timeoutSeconds,
+          remainingSeconds,
         )
       if (result is PoolResult.Unusable) {
         // The worker broke mid-request and is already destroyed; the next caller spawns a fresh
