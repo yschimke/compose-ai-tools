@@ -2199,8 +2199,9 @@ they are in published links.
 `rc-swift-render` from `-Dcomposeai.rcswift.binary`, `$COMPOSEAI_RC_SWIFT_RENDER` or `PATH`;
 failing those, it downloads the `rc-swift-render-macos-arm64.zip` asset from the rc-players release
 matching its `rcplayers` version into `~/.cache/composeai/rc-swift-render/<version>/`, checking the
-`.sha256` sidecar first. `-Dcomposeai.rcswift.download=off` turns the download off. On any other
-host the chip is listed but disabled. The renderer is PNG only.
+`.sha256` sidecar first. `-Dcomposeai.rcswift.download=off` turns the download off. The player is
+offered only on macOS on Apple silicon; on any other host — a Linux deployment, or
+`compose-preview browse` on Linux — the server does not list it at all. The renderer is PNG only.
 
 `cmp-android` used to name the AndroidX embedded player. It now names the CMP player on Android
 (compose-preview-daemon's replay-only `cmp-android` backend), and the bare `cmp` is retired. A
