@@ -538,7 +538,8 @@ data class ExportProjection(
 
   /**
    * The qualified owners a lowered node may print — factory owners, enum owners, colour-scheme
-   * roots and the colour type — so a host's expression allowlist can admit exactly these.
+   * roots, the colour type and, for a Material icon, the icons package — so a host's expression
+   * allowlist can admit exactly these.
    */
   val qualifiedOwners: Set<String>
     get() = buildSet {
@@ -560,6 +561,8 @@ data class ExportProjection(
             add(owned.callableFqn.substringBeforeLast('.'))
             owned.fields.values.forEach { codec(it.codec) }
           }
+          // `Icons.<Style>.<Name>` and the style packages its extensions live in.
+          Codec.MaterialIcon -> add(MATERIAL_ICONS)
           else -> Unit
         }
       }
@@ -988,6 +991,7 @@ data class ExportProjection(
     const val MODIFIER = "modifier"
     const val LIST = "kotlin.collections.List"
     const val LIST_OF = "kotlin.collections.listOf"
+    const val MATERIAL_ICONS = "androidx.compose.material.icons"
     val UNITS = setOf("dp", "sp")
     val UNIT_TYPES =
       mapOf("dp" to "androidx.compose.ui.unit.Dp", "sp" to "androidx.compose.ui.unit.TextUnit")

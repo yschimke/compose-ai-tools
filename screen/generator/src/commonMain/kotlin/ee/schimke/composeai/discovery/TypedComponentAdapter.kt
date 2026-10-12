@@ -206,6 +206,9 @@ object AdapterValueCodecs {
 
       override fun decode(value: JsonElement): String {
         require(value is JsonPrimitive && value.isString) { "expected an icon key" }
+        require(allowed == null || value.content in allowed) {
+          "expected one of ${allowed.orEmpty().sorted()}"
+        }
         return value.content
       }
     }
