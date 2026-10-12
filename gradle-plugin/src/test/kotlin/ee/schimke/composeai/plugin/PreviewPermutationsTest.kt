@@ -50,7 +50,7 @@ class PreviewPermutationsTest {
   }
 
   @Test
-  fun `a Glance Wear widget's large font sibling is 1.24x`() {
+  fun `a Glance Wear widget's large font sibling uses the Wear check scale`() {
     val widget =
       PreviewInfo(
         id = "WeatherWidgetRoundPreview",

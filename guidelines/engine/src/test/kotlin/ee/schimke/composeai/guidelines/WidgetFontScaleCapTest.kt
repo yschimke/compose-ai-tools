@@ -23,7 +23,7 @@ class WidgetFontScaleCapTest {
   private val screen = PreviewSubject(previewId = "s", surface = GuidelineSurfaces.SCREEN)
 
   @Test
-  fun `a widget is checked at 1.24x on Wear and 1.5x elsewhere`() {
+  fun `a widget's check scale is lower on Wear than elsewhere`() {
     assertThat(
         GuidelineSurfaces.checkFontScale(
           GuidelineSurfaces.WIDGET,
