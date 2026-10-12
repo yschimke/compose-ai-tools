@@ -38,14 +38,35 @@ internal object PreviewPermutations {
             outputTag = "_rtl",
             params = preview.params.copy(locale = "ar-XB"),
           ),
-          preview.accessibilityVariant(
-            idSuffix = "_fontscale-2x",
-            outputTag = "_fontscale-2x",
-            params = preview.params.copy(fontScale = 2.0f),
-          ),
+          largestFontScale(preview.params).let { scale ->
+            preview.accessibilityVariant(
+              idSuffix = fontScaleTag(scale),
+              outputTag = fontScaleTag(scale),
+              params = preview.params.copy(fontScale = scale),
+            )
+          },
         )
     }
   }
+
+  /**
+   * The font scale the accessibility variant renders at: the 2x phone accessibility scale, but a
+   * Glance Wear widget (fed an `androidx.glance.wear.*` `@PreviewParameter` provider) only reaches
+   * the Wear system's largest text size, 1.24x. Read from params alone so the Gradle plugin's
+   * `PreviewPermutations` and the CLI's `PreviewPermutationsCli` always name the same variant.
+   */
+  internal fun largestFontScale(params: PreviewParams): Float =
+    if (params.previewParameterProviderClassName?.startsWith(WEAR_WIDGET_PROVIDER_PREFIX) == true)
+      WEAR_WIDGET_MAX_FONT_SCALE
+    else ACCESSIBILITY_FONT_SCALE
+
+  /** `_fontscale-2x`, `_fontscale-1.24x`. */
+  internal fun fontScaleTag(scale: Float): String =
+    "_fontscale-" + (if (scale % 1f == 0f) scale.toInt().toString() else scale.toString()) + "x"
+
+  private const val ACCESSIBILITY_FONT_SCALE = 2.0f
+  private const val WEAR_WIDGET_MAX_FONT_SCALE = 1.24f
+  private const val WEAR_WIDGET_PROVIDER_PREFIX = "androidx.glance.wear."
 
   private fun PreviewInfo.accessibilityVariant(
     idSuffix: String,

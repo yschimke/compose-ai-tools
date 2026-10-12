@@ -152,6 +152,24 @@ public object GuidelineSurfaces {
    */
   public const val WEAR_WIDGETS_PROFILE: String = "wear-widgets"
 
+  /** The largest font scale a Wear widget is checked at: the Wear system's largest text size. */
+  public const val WEAR_WIDGET_MAX_FONT_SCALE: Double = 1.24
+
+  /** The largest font scale any other (mobile, launcher) widget is checked at. */
+  public const val MOBILE_WIDGET_MAX_FONT_SCALE: Double = 1.5
+
+  /**
+   * The largest font scale a subject of [surface] on [profile] is rendered at, or null when its
+   * surface sets none. A widget's text is sized for its host's largest setting, not a phone's 2x
+   * accessibility scale, so a larger render shows clipping no user can reach.
+   */
+  public fun maxFontScale(surface: String, profile: String?): Double? =
+    when {
+      surface != WIDGET -> null
+      profile == WEAR_WIDGETS_PROFILE -> WEAR_WIDGET_MAX_FONT_SCALE
+      else -> MOBILE_WIDGET_MAX_FONT_SCALE
+    }
+
   /**
    * What a `previews.json` entry is to the guidelines: its surface and, when known, its profile.
    * One answer for every host, so a preview is judged by the same rules everywhere.
