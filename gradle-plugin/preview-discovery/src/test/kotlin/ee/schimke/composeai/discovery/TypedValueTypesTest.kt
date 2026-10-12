@@ -380,6 +380,17 @@ class TypedValueTypesTest {
     assertThat(source).contains("tags = setOf(\"vip\")")
     assertThat(source).contains("level = FixtureLevel.High")
     assertThat(source).contains("import kotlin.collections.setOf")
+    val repeated =
+      projection.lower(
+        mapOf(
+          "tags" to
+            json(
+              """{"type":"list","values":[{"type":"string","value":"vip"},{"type":"string","value":"vip"}]}"""
+            )
+        )
+      )
+    assertThat((repeated as ExportProjection.Lowered.Refused).reasons.single())
+      .contains("a set holds each value once")
   }
 
   private fun generated(node: ExportProjection.Lowered.Node, record: ComponentRecord): String {

@@ -925,6 +925,12 @@ data class ExportProjection(
         val values =
           composite(stored, "list", "values") as? JsonArray
             ?: return refuse("expected a {\"type\": \"list\", \"values\": […]} wrapper")
+        // A set holds each value once, as its codec reads it; a repeat would be written and then
+        // silently collapsed, so the export would hold fewer values than the design shows.
+        if (codec.set && values.distinct().size != values.size)
+          return refuse(
+            "a set holds each value once; ${values.size - values.distinct().size} repeat"
+          )
         val before = reasons.size
         val written = values.mapIndexed { index, item ->
           nested(codec.element, codec.elementLiteralType, item, "$where[$index]", reasons, icons)
