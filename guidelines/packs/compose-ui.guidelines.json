@@ -2,7 +2,7 @@
   "schema": "compose-ui-builder/catalog-guidelines/v1",
   "catalog": "compose-ui",
   "platform": "any",
-  "version": 1,
+  "version": 2,
   "about": "Compose UI guidance that holds on every form factor, independent of Material: accessibility semantics, text, theming from tokens, measured touch targets and contrast, credentials and text entry, loading and error states, destructive actions. Each rule quotes developer.android.com and links it. A form-factor pack included after this one replaces a rule by id (wear-compose replaces the text-entry and sign-in rules Wear does differently).",
   "rules": [
     {
@@ -128,7 +128,7 @@
       "kind": "structure",
       "severity": "info",
       "guidance": "Warning: Prefer colors from the theme rather than hard-coded colors. Even though it's possible to access colors using the colorResource function, it's recommended that the colors of your app are defined in a MaterialTheme",
-      "check": "Judge from the source. Do the subject's colours come from the theme (the theme's colour roles, or the component's defaults) rather than hard-coded Color(0x…) or Color.Red literals? Images and brand artwork are exempt. Answer not_applicable when the source sets no colour.",
+      "check": "Judge from the source. Do the subject's UI colours come from the theme (the theme's colour roles, or the component's defaults) or from named semantic domain colours (such as weather conditions, status levels, transit lines or chart series) paired for contrast, rather than ad-hoc Color(0x…) or Color.Red literals scattered on components? Images, brand artwork and semantic domain palettes are exempt. Answer not_applicable when the source sets no colour.",
       "source": "https://developer.android.com/develop/ui/compose/resources"
     },
     {
