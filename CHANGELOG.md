@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.52.0](https://github.com/yschimke/compose-ai-tools/compare/v2.51.0...v2.52.0) (2026-10-12)
+
+
+### Features
+
+* **guidelines:** ask only some sizes of each preview, and send a shared source once ([#5882](https://github.com/yschimke/compose-ai-tools/issues/5882)) ([dcba2ad](https://github.com/yschimke/compose-ai-tools/commit/dcba2ad35c907a3f5ce9e7917d21e9446525052a))
+* **screen:** a Material icon codec the host writes from its icon table ([#5891](https://github.com/yschimke/compose-ai-tools/issues/5891)) ([2abaa4a](https://github.com/yschimke/compose-ai-tools/commit/2abaa4ab8588b19d36eded19c2fd57eca168b182))
+* **screen:** a screen frame writes the root's other slots into their own holes ([#5901](https://github.com/yschimke/compose-ai-tools/issues/5901)) ([5d5f7f6](https://github.com/yschimke/compose-ai-tools/commit/5d5f7f6739ed2ff9b8dd7752b07997f7d2fe3fdc))
+* **screen:** generate a builtin's implementation from a typed adapter ([#5894](https://github.com/yschimke/compose-ai-tools/issues/5894)) ([3064864](https://github.com/yschimke/compose-ai-tools/commit/30648644413f9d884c39eb23f70c8310fe7324bb))
+* **screen:** write a projection target's modifier links from its properties ([#5893](https://github.com/yschimke/compose-ai-tools/issues/5893)) ([2992bc9](https://github.com/yschimke/compose-ai-tools/commit/2992bc98e7c377903e3859629d2189e0328cdc73))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.8.0 ([#5902](https://github.com/yschimke/compose-ai-tools/issues/5902)) ([d2e04f0](https://github.com/yschimke/compose-ai-tools/commit/d2e04f00bbe1769b7e41812bd35d7b33ce4f1989))
+* **deps:** update dependency org.checkerframework:checker-qual to v4.3.0 ([#5898](https://github.com/yschimke/compose-ai-tools/issues/5898)) ([1d6ace5](https://github.com/yschimke/compose-ai-tools/commit/1d6ace593547f7f9e7c9a2bff29e32cb5a2ac8a4))
+* **deps:** update dependency org.ow2.asm:asm to v9.11 ([#5899](https://github.com/yschimke/compose-ai-tools/issues/5899)) ([b38a9a5](https://github.com/yschimke/compose-ai-tools/commit/b38a9a5b30cd9341db10b1c54466384c31adbc37))
+* **deps:** update dependency org.ow2.asm:asm-commons to v9.11 ([#5900](https://github.com/yschimke/compose-ai-tools/issues/5900)) ([b8dfd74](https://github.com/yschimke/compose-ai-tools/commit/b8dfd74ee6bf04ab74199f907639791f905d2c2e))
+* **screen-generator:** a components file annotates opt-ins once and frees the screen's name ([#5885](https://github.com/yschimke/compose-ai-tools/issues/5885)) ([deecd3c](https://github.com/yschimke/compose-ai-tools/commit/deecd3c05d119ee24a840d8888fb1c0704d3d824))
+* **screen:** a lines matcher's rest is filled when the minimum needs it ([#5903](https://github.com/yschimke/compose-ai-tools/issues/5903)) ([3d60be0](https://github.com/yschimke/compose-ai-tools/commit/3d60be0ae925be94bda686b5b4671256ad6fc7b5))
+* **screen:** generate a catalog whose only typed definitions implement builtins ([#5906](https://github.com/yschimke/compose-ai-tools/issues/5906)) ([d5fb209](https://github.com/yschimke/compose-ai-tools/commit/d5fb2096b4a01f96cd2c4fe50e845a23c50cf291))
+* **screen:** match a nested type whether it is spelled with a dollar or a dot ([#5904](https://github.com/yschimke/compose-ai-tools/issues/5904)) ([46b35da](https://github.com/yschimke/compose-ai-tools/commit/46b35da43a144de65e66646554ead418e10a82aa))
+* **screen:** name a scope member's scope among a projection's owners ([#5890](https://github.com/yschimke/compose-ai-tools/issues/5890)) ([9a1f885](https://github.com/yschimke/compose-ai-tools/commit/9a1f885571d4b784b15cb7fff0781063b52a9e89))
+* **screen:** name the icons package as a Material icon's owner, and close its key set ([#5905](https://github.com/yschimke/compose-ai-tools/issues/5905)) ([609f21c](https://github.com/yschimke/compose-ai-tools/commit/609f21cc5af7b78fbec4f531f4020aab5da08df8))
+* **screen:** write a factory call as the parameter type it is passed as ([#5886](https://github.com/yschimke/compose-ai-tools/issues/5886)) ([8cba4e7](https://github.com/yschimke/compose-ai-tools/commit/8cba4e76f20bb9ce30ece5930058519372539044))
+
+
+### Performance Improvements
+
+* **cli:** window semantics renders and split them across parallel daemons ([#5888](https://github.com/yschimke/compose-ai-tools/issues/5888)) ([62d8745](https://github.com/yschimke/compose-ai-tools/commit/62d8745c39d93e24c0177c04eecc5499957e6496))
+
 ## [2.51.0](https://github.com/yschimke/compose-ai-tools/compare/v2.50.0...v2.51.0) (2026-10-11)
 
 
