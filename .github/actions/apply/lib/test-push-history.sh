@@ -60,13 +60,17 @@ run_helper() {
 }
 
 tip_has_history() {
-  check="$ROOT/check-$RANDOM"
+  # A fresh directory per clone: `$RANDOM` repeats within a run, and a clone into a
+  # non-empty path fails.
+  check="$(mktemp -d "$ROOT/check-XXXXXX")"
   git clone -q --branch "$BRANCH" "$REMOTE" "$check"
   test -f "$check/history.json"
 }
 
 tip_commits() {
-  check="$ROOT/count-$RANDOM"
+  # A fresh directory per clone: `$RANDOM` repeats within a run, and a clone into a
+  # non-empty path fails.
+  check="$(mktemp -d "$ROOT/count-XXXXXX")"
   git clone -q --branch "$BRANCH" "$REMOTE" "$check"
   git -C "$check" rev-list --count HEAD
 }
