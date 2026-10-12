@@ -469,9 +469,12 @@ public final class ee/schimke/composeai/guidelines/GuidelineSubjectKind {
 public final class ee/schimke/composeai/guidelines/GuidelineSurfaces {
 	public static final field COMPONENT Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/guidelines/GuidelineSurfaces;
+	public static final field MOBILE_WIDGET_CHECK_FONT_SCALE D
 	public static final field SCREEN Ljava/lang/String;
 	public static final field WEAR_WIDGETS_PROFILE Ljava/lang/String;
+	public static final field WEAR_WIDGET_CHECK_FONT_SCALE D
 	public static final field WIDGET Ljava/lang/String;
+	public final fun checkFontScale (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Double;
 	public final fun of (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/guidelines/GuidelineSubjectKind;
 }
 

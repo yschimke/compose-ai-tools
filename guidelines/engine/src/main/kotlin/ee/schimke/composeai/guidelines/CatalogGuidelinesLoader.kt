@@ -152,6 +152,25 @@ public object GuidelineSurfaces {
    */
   public const val WEAR_WIDGETS_PROFILE: String = "wear-widgets"
 
+  /** The largest font scale a Wear widget is checked at. */
+  public const val WEAR_WIDGET_CHECK_FONT_SCALE: Double = 1.24
+
+  /** The largest font scale any other (mobile, launcher) widget is checked at. */
+  public const val MOBILE_WIDGET_CHECK_FONT_SCALE: Double = 1.5
+
+  /**
+   * The largest font scale a subject of [surface] on [profile] is rendered at, or null when its
+   * surface sets none. A widget can be shown at 2x, but its fixed-size cells clip at that scale so
+   * widely that the findings bury everything else a check could say; 1.24x (Wear) and 1.5x (mobile)
+   * still catch text that does not grow or does not fit.
+   */
+  public fun checkFontScale(surface: String, profile: String?): Double? =
+    when {
+      surface != WIDGET -> null
+      profile == WEAR_WIDGETS_PROFILE -> WEAR_WIDGET_CHECK_FONT_SCALE
+      else -> MOBILE_WIDGET_CHECK_FONT_SCALE
+    }
+
   /**
    * What a `previews.json` entry is to the guidelines: its surface and, when known, its profile.
    * One answer for every host, so a preview is judged by the same rules everywhere.

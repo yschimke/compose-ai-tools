@@ -216,9 +216,10 @@ public class GuidelineResultCache(private val directory: File) {
      * reused. 8: replies list only what does not pass, plus an `others` statement per subject. 9:
      * the reasoning effort is sent (`low` by default) and `max_tokens` sized for it, and a reply
      * cut at `max_tokens` no longer passes the rules it left out. 10: content cut at the end of a
-     * long screenshot stopped at its scroll limit is no longer read as clipped.
+     * long screenshot stopped at its scroll limit is no longer read as clipped. 11: a widget's
+     * follow-up renders are held to its check font scale (1.24x Wear, 1.5x mobile).
      */
-    public const val REQUEST_FORMAT: Int = 10
+    public const val REQUEST_FORMAT: Int = 11
 
     /**
      * The identity of one judgement: [subject]'s id, surface, profile, pictures, accessibility data

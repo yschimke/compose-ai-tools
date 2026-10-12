@@ -50,6 +50,30 @@ class PreviewPermutationsTest {
   }
 
   @Test
+  fun `a Glance Wear widget's large font sibling uses the Wear check scale`() {
+    val widget =
+      PreviewInfo(
+        id = "WeatherWidgetRoundPreview",
+        functionName = "WeatherWidgetRoundPreview",
+        className = "com.example.WeatherWidgetKt",
+        params =
+          PreviewParams(
+            previewParameterProviderClassName =
+              "androidx.glance.wear.tooling.preview.RoundAllWidgetPreviewParams"
+          ),
+        captures = listOf(Capture(renderOutput = "renders/WeatherWidgetRoundPreview.png")),
+      )
+
+    val expanded = PreviewPermutations.expand(listOf(widget), listOf("accessibility"))
+
+    assertThat(expanded.map { it.id }).contains("WeatherWidgetRoundPreview_fontscale-1.24x")
+    val large = expanded.single { it.id.endsWith("_fontscale-1.24x") }
+    assertThat(large.params.fontScale).isEqualTo(1.24f)
+    assertThat(large.captures.single().renderOutput)
+      .isEqualTo("renders/WeatherWidgetRoundPreview_fontscale-1.24x.png")
+  }
+
+  @Test
   fun `accessibility leaves non compose preview kinds alone`() {
     val lottie =
       PreviewInfo(

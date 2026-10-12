@@ -1529,14 +1529,17 @@ public class GuidelineEngine(
                   }
                 }
               GuidelineEvidenceNeedV1.KIND_RENDER -> {
+                // A widget is checked no larger than its surface's check scale, whatever the
+                // triage offer or the model asked for: 2x clipping would drown the findings.
+                val capped = need.cappedFor(subject)
                 val already =
                   updated.pictures.any {
-                    it.theme == need.theme &&
-                      it.fontScale == need.fontScale &&
-                      it.device == need.device
+                    it.theme == capped.theme &&
+                      it.fontScale == capped.fontScale &&
+                      it.device == capped.device
                   }
                 if (!already) {
-                  host.render(subject.previewId, need)?.let {
+                  host.render(subject.previewId, capped)?.let {
                     updated = updated.copy(pictures = updated.pictures + it)
                   }
                 }
@@ -1756,3 +1759,11 @@ public fun PreviewGuidelineResult.failures(minConfidence: Double = 0.5): List<Gu
   record.verdicts
     .filter { it.verdict == GuidelineVerdictV1.FAIL && it.confidence >= minConfidence }
     .sortedByDescending { it.confidence }
+
+/** [this] with its font scale held to [subject]'s [GuidelineSurfaces.checkFontScale]. */
+internal fun GuidelineEvidenceNeedV1.cappedFor(subject: PreviewSubject): GuidelineEvidenceNeedV1 {
+  val requested = fontScale ?: return this
+  val cap = GuidelineSurfaces.checkFontScale(subject.surface, subject.profile) ?: return this
+  if (requested <= cap) return this
+  return newBuilder().apply { fontScale = cap }.build()
+}
