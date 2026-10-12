@@ -367,7 +367,8 @@ data class ExportProjection(
   sealed interface Codec {
     /** Whether this codec reads a `list` / `object` wrapper rather than a scalar's `value`. */
     val composite: Boolean
-      get() = this is ListOf || this is Object
+      get() =
+        this is ListOf || this is Object || this is Union || (this is Nullable && value.composite)
 
     /**
      * The wrapper `type` a value of this codec is stored under by default, as the typed adapters'
@@ -381,13 +382,19 @@ data class ExportProjection(
           is Color,
           is Enum,
           is Token,
+          is Parsed,
           MaterialIcon -> "string"
           Bool -> "bool"
-          Whole -> "int"
+          Whole,
+          WholeLong -> "int"
           Fractional32,
+          Fractional64,
           is Unit -> "number"
           is ListOf -> "list"
-          is Object -> "object"
+          is Object,
+          is Singleton -> "object"
+          is Union -> "union"
+          is Nullable -> value.literalType
         }
 
     data object Text : Codec
@@ -406,6 +413,59 @@ data class ExportProjection(
     data object Whole : Codec
 
     data object Fractional32 : Codec
+
+    /** A whole number written for a `Long` parameter; stored as an `int` wrapper, like [Whole]. */
+    data object WholeLong : Codec
+
+    /** A finite number written as a `Double` literal (`1.5`); stored as a `number` wrapper. */
+    data object Fractional64 : Codec
+
+    /**
+     * A value of [typeFqn] stored as text and written as a call of the one-`String` factory
+     * [parseFqn] on it: `Instant.parse("2026-10-12T08:00:00Z")`, `PublicKey.fromHex("…")`. The
+     * factory is a top-level function or a member of a classifier's companion, as any call is.
+     */
+    data class Parsed(val typeFqn: String, val parseFqn: String) : Codec {
+      init {
+        require(typeFqn.contains('.') && parseFqn.contains('.')) {
+          "a parsed codec names qualified declarations: $typeFqn, $parseFqn"
+        }
+      }
+    }
+
+    /**
+     * [value], or null: a stored `{"type": "null"}` writes nothing, so the parameter (or the object
+     * field) it fills must itself default to null, which is the only way a Kotlin call written by
+     * name passes one. Inside a list, where nothing cannot be written, null is refused.
+     */
+    data class Nullable(val value: Codec) : Codec {
+      init {
+        require(value !is Nullable) { "a nullable codec is not nullable twice" }
+      }
+    }
+
+    /**
+     * One case of the sealed type [typeFqn], stored as `{"type": "union", "case": "<name>",
+     * "fields"?: {…}}`: an [Object] case is written as its constructor call from `fields`, a
+     * [Singleton] case (a `data object`, which stores no `fields`) as a reference to it.
+     */
+    data class Union(val typeFqn: String, val cases: Map<String, Codec>) : Codec {
+      init {
+        require(cases.isNotEmpty()) { "a union codec has at least one case" }
+        require(cases.values.all { it is Object || it is Singleton }) {
+          "a union's cases are objects or singletons"
+        }
+      }
+    }
+
+    /**
+     * A `data object` (or any `object`) [typeFqn], written as a reference to it; a [Union] case.
+     */
+    data class Singleton(val typeFqn: String) : Codec {
+      init {
+        require(typeFqn.contains('.')) { "a singleton names a qualified object: $typeFqn" }
+      }
+    }
 
     /**
      * A colour: `#RRGGBB` / `#AARRGGBB` as `Color(0x…)`, `transparent` as `Color.Transparent`, any
@@ -563,6 +623,10 @@ data class ExportProjection(
           }
           // `Icons.<Style>.<Name>` and the style packages its extensions live in.
           Codec.MaterialIcon -> add(MATERIAL_ICONS)
+          is Codec.Parsed -> add(owned.parseFqn.substringBeforeLast('.'))
+          is Codec.Nullable -> codec(owned.value)
+          is Codec.Union -> owned.cases.values.forEach(::codec)
+          is Codec.Singleton -> add(owned.typeFqn.substringBeforeLast('.'))
           else -> Unit
         }
       }
@@ -756,11 +820,17 @@ data class ExportProjection(
     where: String,
     reasons: MutableList<String>,
     icons: ((String) -> ScreenValue?)?,
-  ): ScreenValue? =
-    when (value) {
+  ): ScreenValue? {
+    return when (value) {
       is Value.Fixed -> value.value
       is Value.Property -> {
         val stated = properties[value.name]
+        val nullable = value.codec as? Codec.Nullable
+        // A stored null writes nothing: the parameter's own default, which must be null.
+        if (nullable != null) {
+          return if (isNullWrapper(stated)) null
+          else write(value.copy(codec = nullable.value), properties, where, reasons, icons)
+        }
         val raw = if (value.codec.composite) null else wireValue(stated)
         if (value.codec.composite) {
           if (stated == null || stated is JsonNull) null
@@ -790,6 +860,7 @@ data class ExportProjection(
         else ScreenValue.Construct(value.callableFqn, named = arguments, typeFqn = value.typeFqn)
       }
     }
+  }
 
   /**
    * One stored wrapper inside a list or object (or a list or object property itself), written
@@ -808,7 +879,46 @@ data class ExportProjection(
       reasons += "$where: $message"
       return null
     }
+    if (codec is Codec.Nullable) {
+      // An object field skips a stored null before it gets here (see [Codec.Nullable]).
+      return if (isNullWrapper(stored)) refuse("cannot be null here")
+      else nested(codec.value, codec.value.literalType, stored, where, reasons, icons)
+    }
     return when (codec) {
+      is Codec.Union -> {
+        val wrapper =
+          stored as? JsonObject
+            ?: return refuse("expected a {\"type\": \"union\", \"case\": …} wrapper")
+        val stated = (wrapper["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val name = (wrapper["case"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (stated != "union" || name == null)
+          return refuse("expected a {\"type\": \"union\", \"case\": …} wrapper")
+        when (val case = codec.cases[name]) {
+          null -> refuse("`$name` is not one of ${codec.cases.keys.sorted()}")
+          is Codec.Singleton ->
+            if (wrapper.keys != setOf("type", "case"))
+              refuse("the `$name` case stores no fields, found ${wrapper.keys.sorted()}")
+            else ScreenValue.Reference(case.typeFqn, emptyList(), typeFqn = codec.typeFqn)
+          else -> {
+            if (wrapper.keys != setOf("type", "case", "fields"))
+              return refuse(
+                "a `union` wrapper of the `$name` case is {\"type\", \"case\", \"fields\"}, found ${wrapper.keys.sorted()}"
+              )
+            val fields = wrapper.getValue("fields")
+            // Typed as the sealed type it is passed as, which is what the parameter takes.
+            (nested(
+                case,
+                case.literalType,
+                JsonObject(mapOf("type" to JsonPrimitive("object"), "fields" to fields)),
+                "$where($name)",
+                reasons,
+                icons,
+              )
+                as? ScreenValue.Construct)
+              ?.copy(typeFqn = codec.typeFqn)
+          }
+        }
+      }
       is Codec.ListOf -> {
         val values =
           composite(stored, "list", "values") as? JsonArray
@@ -844,6 +954,8 @@ data class ExportProjection(
                   null
                 }
                 ?: continue
+            // A null field is the callable's own null default, written by leaving it out.
+            if (field.codec is Codec.Nullable && isNullWrapper(value)) continue
             nested(field.codec, field.literalType, value, "$where.$name", reasons, icons)?.let {
               put(name, it)
             }
@@ -913,6 +1025,21 @@ data class ExportProjection(
         raw.doubleOrNull
           ?.takeIf { !raw.isString && it.isFinite() }
           ?.let { ScreenValue.Fractional32(it.toFloat()) } ?: refuse("expected a number")
+      Codec.WholeLong ->
+        raw.longOrNull?.takeIf { !raw.isString }?.let { ScreenValue.Whole(it) }
+          ?: refuse("expected a whole number")
+      Codec.Fractional64 ->
+        raw.doubleOrNull
+          ?.takeIf { !raw.isString && it.isFinite() }
+          ?.let { ScreenValue.Fractional(it) } ?: refuse("expected a number")
+      is Codec.Parsed ->
+        if (!raw.isString) refuse("expected text")
+        else
+          ScreenValue.Construct(
+            codec.parseFqn,
+            positional = listOf(ScreenValue.Text(raw.content)),
+            typeFqn = codec.typeFqn,
+          )
       is Codec.Enum ->
         codec.members[raw.content]?.let { member ->
           ScreenValue.Reference(
@@ -947,7 +1074,11 @@ data class ExportProjection(
             ScreenValue.Reference(codec.rootFqn, codec.members + it, typeFqn = codec.typeFqn)
           } ?: refuse("`${raw.content}` is not a token of ${codec.members.joinToString(".")}")
       is Codec.ListOf,
-      is Codec.Object -> refuse("expected a list or object wrapper, not a scalar")
+      is Codec.Object,
+      is Codec.Union,
+      is Codec.Singleton -> refuse("expected a list, object or union wrapper, not a scalar")
+      // Unwrapped by [write] and [nested] before a scalar is encoded.
+      is Codec.Nullable -> encode(codec.value, raw, where, reasons, icons)
     }
   }
 
@@ -982,6 +1113,13 @@ data class ExportProjection(
       is JsonPrimitive -> element
       else -> null
     }
+
+  /** A stored `{"type": "null"}`, the one spelling of a null value. */
+  private fun isNullWrapper(element: JsonElement?): Boolean {
+    if (element !is JsonObject) return false
+    val type = (element["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    return type == "null" && element.keys == setOf("type")
+  }
 
   private fun sameScalar(a: JsonPrimitive, b: JsonPrimitive): Boolean =
     a.content == b.content && a.isString == b.isString

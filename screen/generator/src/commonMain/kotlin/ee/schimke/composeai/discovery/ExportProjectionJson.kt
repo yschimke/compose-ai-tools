@@ -348,6 +348,35 @@ object ExportProjectionJson {
       ExportProjection.Codec.Bool -> JsonPrimitive("bool")
       ExportProjection.Codec.Whole -> JsonPrimitive("whole")
       ExportProjection.Codec.Fractional32 -> JsonPrimitive("float")
+      ExportProjection.Codec.WholeLong -> JsonPrimitive("long")
+      ExportProjection.Codec.Fractional64 -> JsonPrimitive("double")
+      is ExportProjection.Codec.Parsed ->
+        buildJsonObject {
+          put(
+            "parsed",
+            buildJsonObject {
+              put("type", codec.typeFqn)
+              put("parse", codec.parseFqn)
+            },
+          )
+        }
+      is ExportProjection.Codec.Nullable ->
+        buildJsonObject { put("nullable", ExportProjectionJson.codec(codec.value)) }
+      is ExportProjection.Codec.Union ->
+        buildJsonObject {
+          put(
+            "union",
+            buildJsonObject {
+              put("type", codec.typeFqn)
+              put(
+                "cases",
+                JsonObject(codec.cases.mapValues { (_, case) -> ExportProjectionJson.codec(case) }),
+              )
+            },
+          )
+        }
+      is ExportProjection.Codec.Singleton ->
+        buildJsonObject { put("singleton", buildJsonObject { put("type", codec.typeFqn) }) }
       is ExportProjection.Codec.Color ->
         buildJsonObject {
           put(
@@ -453,6 +482,8 @@ object ExportProjectionJson {
         "bool" -> ExportProjection.Codec.Bool
         "whole" -> ExportProjection.Codec.Whole
         "float" -> ExportProjection.Codec.Fractional32
+        "long" -> ExportProjection.Codec.WholeLong
+        "double" -> ExportProjection.Codec.Fractional64
         else -> throw IllegalArgumentException("unknown codec ${element.content}")
       }
     }
@@ -492,6 +523,24 @@ object ExportProjectionJson {
         elementCodec,
         list["literalType"]?.jsonPrimitive?.contentOrNull ?: elementCodec.literalType,
       )
+    }
+    obj["parsed"]?.jsonObject?.let { parsed ->
+      return ExportProjection.Codec.Parsed(
+        parsed.getValue("type").jsonPrimitive.content,
+        parsed.getValue("parse").jsonPrimitive.content,
+      )
+    }
+    obj["nullable"]?.let { value ->
+      return ExportProjection.Codec.Nullable(readCodec(value))
+    }
+    obj["union"]?.jsonObject?.let { union ->
+      return ExportProjection.Codec.Union(
+        union.getValue("type").jsonPrimitive.content,
+        union.getValue("cases").jsonObject.mapValues { (_, case) -> readCodec(case) },
+      )
+    }
+    obj["singleton"]?.jsonObject?.let { singleton ->
+      return ExportProjection.Codec.Singleton(singleton.getValue("type").jsonPrimitive.content)
     }
     obj["object"]?.jsonObject?.let { record ->
       val type = record.getValue("type").jsonPrimitive.content

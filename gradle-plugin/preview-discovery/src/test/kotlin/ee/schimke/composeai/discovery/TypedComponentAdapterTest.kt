@@ -235,9 +235,12 @@ class TypedComponentAdapterTest {
           .newBuilder()
           .also { it.composableSlot = true }
           .build(),
-        parameter("onClick", "() -> Unit", "kotlin.Function0")
+        parameter("onClick", "(() -> Unit)?", "kotlin.Function0")
           .newBuilder()
-          .also { it.nullable = true }
+          .also {
+            it.nullable = true
+            it.composableSlot = true
+          }
           .build(),
       )) {
       val changed =
@@ -263,6 +266,23 @@ class TypedComponentAdapterTest {
         }
         .build()
     assertThat(adapter.validateAgainst(qualified)).isEmpty()
+    // An optional handler (`onRetry: (() -> Unit)?`) is filled with the design's action too.
+    val optional =
+      original
+        .newBuilder()
+        .also { b ->
+          b.parameters =
+            original.parameters.map {
+              if (it.name == "onClick")
+                parameter("onClick", "(() -> Unit)?", "kotlin.Function0")
+                  .newBuilder()
+                  .also { p -> p.nullable = true }
+                  .build()
+              else it
+            }
+        }
+        .build()
+    assertThat(adapter.validateAgainst(optional)).isEmpty()
   }
 
   @Test

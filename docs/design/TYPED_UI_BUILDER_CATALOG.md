@@ -60,7 +60,8 @@ editor, nor does the declaration provide general callback source-export lowering
 are published because the existing format explicitly supports their hoisting contract. General
 externally discoverable events need a coordinated protocol/editor/export change before promotion.
 
-Callback validation checks function arity, non-nullability, the absence of composable/DSL receiver
+Callback validation checks function arity, non-nullability (an event may fill an optional handler;
+see below), the absence of composable/DSL receiver
 flags, the qualified Unit return classifier and exact type tokens. Discovery's current callback
 input spelling uses simple names; it cannot distinguish a domain `Boolean` from `kotlin.Boolean`
 there. The compiled renderer call is the authoritative input-type check. Missing structural callback
@@ -71,7 +72,7 @@ codec at compile time. The bridge delegates write-back and event execution to th
 `slot("content")` creates a handle used by `Slot(adapter.content)` and by the generated slot
 metadata; validation checks it names a real composable slot. Slot names are currently validated at
 build/test time, not referenced as Kotlin parameters. Receiver-scoped layout logic remains ordinary
-Compose in the renderer; lazy DSL slots and callback payload slots are outside this initial API.
+Compose in the renderer; lazy DSL slots and composable slots with parameters are outside this API.
 
 The supplied scalar codecs are String, Boolean, Int and Float, plus colour, enum, unit and token
 codecs for catalogs. A codec is invariant in its value type, converts
@@ -129,7 +130,8 @@ object fields add `name`, `required` and, when declared, the `default` wrapper:
 
 Validation compares a list property with the parameter's erased classifier
 (`kotlin.collections.List`; the element type is the property reference's compile-time check) and an
-object property with the class the codec names; nullable parameters are refused as before. Exported
+object property with the class the codec names; a nullable parameter needs a `nullable` codec (see
+below). Exported
 through `from(property)`, a list is written `listOf(…)` and an object as a named-argument call to its
 class (or the `callableFqn` given to `obj`), recursively. Every field is written: one a stored
 object omits takes the default declared with `field(…, default = …)`, which the export codec carries,
@@ -137,6 +139,69 @@ since the class's constructor need not share it, and an omitted required field i
 scalar must be exactly its codec's literal wrapper, as `unwrap` requires. A host's
 `expressionPackages` must admit `kotlin.collections` and the object's package, which the
 projection's `qualifiedOwners` lists.
+
+### Longs, doubles, parsed text, nulls, sealed types and payload callbacks
+
+These cover the model types real app components take, beyond text, numbers, lists and objects:
+
+| Codec | Stored as | Exported as |
+| --- | --- | --- |
+| `AdapterValueCodecs.Long` | `{"type": "int", "value": 4294967296}` | `4294967296L` (a value in `Int` range as a plain literal) |
+| `AdapterValueCodecs.Double` | `{"type": "number", "value": 59.437}` | `59.437` |
+| `AdapterValueCodecs.Instant` | `{"type": "string", "value": "2026-10-12T08:00:00Z"}` | `Instant.parse("2026-10-12T08:00:00Z")` |
+| `AdapterValueCodecs.parsed(type, parseFqn, format, parse, print)` | `{"type": "string", "value": "…"}` | `<parseFqn>("…")`, e.g. `PublicKey.fromHex("…")` |
+| `AdapterValueCodecs.nullable(codec)` | `codec`'s wrapper, or `{"type": "null"}` | the value, or nothing for null |
+| `AdapterValueCodecs.union(type) { … }` | `{"type": "union", "case": "<name>", "fields"?: {…}}` | the case's constructor call, or a reference to a `data object` |
+
+`Long` is stored as an `int` wrapper and `Double` as a `number` one, so an editor needs nothing new
+to author them; `Long` is literal-only like `Int`, and `Double` binds to a `number` state variable
+like `Float`. `Long` holds ±(2^53 − 1), JavaScript's safe integers, and refuses anything larger: a
+browser editor reading the document with `JSON.parse` would silently round it.
+
+`parsed` is for a type with a text spelling of its own: an instant, a hex key, a byte string. It is
+a `string` wrapper whose `shape` (and top-level capability) adds `"format"` (`date-time`, `hex`, …)
+for an editor to check and pick a control by; `parse` must throw on malformed text, which is
+refused like any malformed value. The export calls `parseFqn`, a top-level function or a member of
+a classifier's companion taking one `String`, so the host's `expressionPackages` must admit its
+owner (`kotlin.time` for `Instant`).
+
+`nullable` matches a parameter or object field of the nullable type, and only that: validation
+refuses a nullable codec on a non-null parameter and a plain codec on a nullable one. The shape and
+capability add `"nullable": true`. A Kotlin call written by name passes null only by leaving the
+argument out, so an export writes a stored null as nothing: the parameter, or the object field's
+constructor parameter, must default to null. A null list element cannot be written that way and is
+refused. A nullable value never binds to state. On a node itself, the builder already spells
+"unset this property" as `setProperty` with `{"type": "null"}`, so a top-level null is the property
+left unset, which reads as the adapter's default: give a nullable property a null default. Inside a
+list, an object or a union case, `{"type": "null"}` is stored as the value it says.
+
+`union` stores one case of a sealed type:
+
+```kotlin
+val StateCodec: AdapterValueCodec<LoadState> =
+  AdapterValueCodecs.union("com.example.LoadState") {
+    singleton("loading", LoadState.Loading, "com.example.LoadState.Loading")
+    case("failed", FailedCodec) // an obj codec of LoadState.Failed
+  }
+```
+
+A class case keeps its own `obj` codec and stores its `fields`; a `singleton` stores none and is
+exported as a reference to the object. Its editor hint lists the cases, each with its `objectType`
+and, for a class case, the same `fields` an object's editor has:
+
+```json
+{"control": "union", "unionType": "com.example.LoadState", "cases": [
+  {"name": "loading", "objectType": "com.example.LoadState.Loading"},
+  {"name": "failed", "objectType": "com.example.LoadState.Failed", "fields": [ … ]}]}
+```
+
+`event(Props::onPick)` also takes a callback of one or two arguments (`(Contact) -> Unit`,
+`(String, Int) -> Unit`), returning an `AdapterEvent1` / `AdapterEvent2`: the canvas runs the
+design's action and discards the arguments, since an action carries none. An optional handler,
+`(() -> Unit)?` or `((Contact) -> Unit)?`, is an event too and is passed the action. Validation
+checks the arity and the `Unit` return; the argument types are the property reference's, checked
+when the adapter compiles. A payload event is not exported through `exportAs`'s `events`, which
+write zero-argument lambdas, and declaring one there is refused.
 
 ## Generate and publish
 
