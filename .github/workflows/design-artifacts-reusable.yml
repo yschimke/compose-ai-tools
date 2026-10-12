@@ -2783,13 +2783,18 @@ jobs:
           add-job-summary: on-failure
 
       - name: Build catalog-owned UI-builder renderer
-        run: bash -c "$UI_BUILDER_RENDERER_SH" ui-builder-renderer --build-cache
+        id: renderer
+        run: |
+          bash -c "$UI_BUILDER_RENDERER_SH" ui-builder-renderer --build-cache
+          # upload-artifact rejects any `.` or `..` segment, and RENDER_DIR is `.` for a caller that
+          # renders from its repository root, so hand it the resolved path rather than the joined one.
+          echo "archive=$(realpath "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")" >> "$GITHUB_OUTPUT"
 
       - name: Upload the UI-builder renderer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.system }}-ui-builder-renderer
-          path: ${{ github.workspace }}/${{ env.RENDER_DIR }}/${{ inputs.ui-builder-runtime-archive }}
+          path: ${{ steps.renderer.outputs.archive }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
