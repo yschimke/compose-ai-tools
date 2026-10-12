@@ -895,6 +895,8 @@ jobs:
         run: python3 .github/actions/install/test_resolve_version.py -v
       - name: Run install plugin-readiness tests
         run: python3 .github/actions/install/test_plugin_readiness.py -v
+      - name: Run install release-wait tests
+        run: python3 .github/actions/install/test_wait_for_release.py -v
       - name: Run apply skew-guard tests
         run: python3 .github/actions/apply/test_check_skew.py -v
       - name: Run baseline-selection tests

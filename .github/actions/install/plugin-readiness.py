@@ -60,6 +60,18 @@ MARKER_ARTIFACT = f"{PLUGIN_ID}.gradle.plugin"
 # published by *this* release, together, that propagate independently.
 OWN_GROUP_PREFIX = "ee.schimke.composeai"
 
+# Both mirrors are, in effect, Maven Central's CDN. The plugin is published to Central only (there is
+# no `publishPlugins` to the Plugin Portal), and plugins.gradle.org/m2 answers *every* path it does
+# not host itself, published or not, with a 303 to repo.maven.apache.org; a Gradle build whose
+# pluginManagement lists gradlePluginPortal() follows that same redirect. So the portal's 303 is not
+# evidence the plugin is there, and is never accepted on its own: urllib follows it, and the verdict
+# is whatever Central's edge answers. That is the right question, because it is the one the consumer's
+# Gradle will ask.
+#
+# Which means a Central edge holding a stale 404 fails the probe and the build alike, and only time
+# fixes it: m3-catalog run 38232802836 (2026-10-12) saw 404s on one shard for the whole 300 s budget
+# while five sibling shards resolved 2.53.0. The guard already re-probes every RETRY_SECONDS; the
+# action's default budget is 600 s so a lagging edge has time to expire its negative cache.
 MIRRORS = (
     "https://plugins.gradle.org/m2",
     "https://repo1.maven.org/maven2",

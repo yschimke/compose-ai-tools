@@ -73,6 +73,20 @@ happens, so a very small timeout buys one attempt rather than none.
 still — but it needs a JDK and a Gradle distribution, and this action installs
 neither by design.)
 
+Both mirrors are Maven Central in practice: the plugin is published to Central
+only, and plugins.gradle.org answers every path it does not host with a `303` to
+`repo.maven.apache.org`, so its redirect is followed rather than counted as a
+hit. A Central CDN edge can keep serving a stale `404` for minutes after its
+siblings have the release, which is why the default budget is 600 s.
+
+The CLI tarball has a window of its own. Release assets `404` at the public
+download URL while the release is still a draft, and the release can be
+published after its plugin is already on Central. So when the first download
+fails, the action polls the asset URL with backoff for whatever is left of the
+same `plugin-readiness-timeout` budget, then retries the download or fails with
+a message naming the publication window. A release that is already public is
+downloaded exactly as before.
+
 ## Pin the CLI to a Gradle version catalog
 
 > **Avoid CLI / plugin version skew.** `version: latest` floats to the
@@ -149,7 +163,7 @@ See [`action.yml`](action.yml) for the full schema. Summary:
 | `catalog-key` | `composePreviewCli` | `[versions]` key read when `version=catalog` or `version=pin`. |
 | `properties-path` | `gradle.properties` | File read for `composePreview.version` when `version=pin`. |
 | `github-token` | workflow token | Token used for the releases API call. Falls back to `github.token`. |
-| `plugin-readiness-timeout` | `300` | Seconds to wait for the resolved version's Gradle plugin to be resolvable before failing with an explicit message. `0` skips the probe. |
+| `plugin-readiness-timeout` | `600` | Seconds to wait for the resolved version to be installable (its Gradle plugin resolvable, its CLI tarball public) before failing with an explicit message. One budget covers both waits. `0` skips the plugin probe and the release wait. |
 | `require-digest` | `false` | `true` refuses to install when the release's sha256 digest cannot be read, instead of warning and installing unverified. |
 
 ## Related actions
