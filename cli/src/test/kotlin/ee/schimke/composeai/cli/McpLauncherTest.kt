@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -151,6 +152,9 @@ class McpLauncherTest {
     val hint = ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP)
     assertTrue(hint.contains("compose-preview-mcp"), hint)
     assertTrue(hint.contains("COMPOSE_PREVIEW_MCP"), hint)
+    // The binary is released from its own repository now, not compose-preview-server's.
+    assertTrue(hint.contains("yschimke/compose-preview-mcp,"), hint)
+    assertFalse(hint.contains(PREVIEW_SERVER_REPO), hint)
     // `mcp install` and `mcp doctor` are offline and stayed in this CLI; saying so is the
     // difference between "MCP is broken" and "one subcommand needs a download".
     assertTrue(hint.contains("mcp install"), hint)

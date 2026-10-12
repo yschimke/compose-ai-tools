@@ -486,13 +486,13 @@ tar xzf compose-preview.tar.gz
 ### MCP server (standalone)
 
 The CLI command `compose-preview mcp serve` downloads the newest published MCP
-distribution on first use. Set `COMPOSE_PREVIEW_SERVER_VERSION` to pin a
-specific release when needed. The archive is published by
-[`yschimke/compose-preview-server`](https://github.com/yschimke/compose-preview-server/releases),
+distribution on first use. Set `COMPOSE_PREVIEW_MCP_VERSION` to pin a specific
+release when needed. The archive is published by
+[`yschimke/compose-preview-mcp`](https://github.com/yschimke/compose-preview-mcp/releases),
 not by this repository. Consumers that need the standalone binary can download
-`compose-preview-mcp-<server-version>.tar.gz` from that releases page. The server
-has an independent version line, so do not substitute the compose-ai-tools
-release version in that filename.
+`compose-preview-mcp-<mcp-version>.tar.gz` from that releases page. The MCP server
+has an independent version line (`4.x`), so do not substitute the compose-ai-tools
+or compose-preview-server release version in that filename.
 
 ### VS Code extension
 
