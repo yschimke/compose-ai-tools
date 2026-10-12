@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { crc32, deflateSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -52,14 +53,25 @@ function treeIntegrity(files) {
   return digest.digest("hex");
 }
 
+/** A real, decodable PNG: 8-bit greyscale, one filter byte and `width` zero bytes per row. */
 function png(width, height) {
-  const bytes = Buffer.alloc(33);
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-  bytes.writeUInt32BE(13, 8);
-  bytes.write("IHDR", 12, "latin1");
-  bytes.writeUInt32BE(width, 16);
-  bytes.writeUInt32BE(height, 20);
-  return bytes;
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, "latin1"), data])));
+    return Buffer.concat([head, Buffer.from(type, "latin1"), data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth; colour type 0 (greyscale), no interlace
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(Buffer.alloc((width + 1) * height))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 function builderCatalog({
@@ -335,7 +347,35 @@ test("images: every PNG by default, non-PNG bytes refused", async () => {
   assert.deepEqual(pngSize(png(3, 4)), { width: 3, height: 4 });
   assert.equal(pngSize(Buffer.from("not a png at all, really not")), null);
   await writeFile(join(f.root, "evidence/broken-typed.png"), "nope");
-  await assert.rejects(planImages(join(f.root, "evidence"), { variant: "typed" }), /not a PNG/);
+  await assert.rejects(
+    planImages(join(f.root, "evidence"), { variant: "typed" }),
+    /not a whole PNG/,
+  );
+});
+
+test("a truncated or corrupt PNG is refused", async () => {
+  const good = png(4, 4);
+  assert.deepEqual(pngSize(good), { width: 4, height: 4 });
+  // Truncated: cut inside IDAT, and just before IEND.
+  assert.equal(pngSize(good.subarray(0, 45)), null);
+  assert.equal(pngSize(good.subarray(0, good.length - 12)), null);
+  // A flipped byte inside IDAT fails its CRC; one inside IHDR fails IHDR's.
+  const idat = Buffer.from(good);
+  idat[45] ^= 0xff;
+  assert.equal(pngSize(idat), null);
+  const ihdr = Buffer.from(good);
+  ihdr[17] ^= 0x01;
+  assert.equal(pngSize(ihdr), null);
+  // Zero width, with a CRC that matches it.
+  assert.equal(pngSize(png(0, 4)), null);
+  // Trailing bytes after IEND.
+  assert.equal(pngSize(Buffer.concat([good, Buffer.from([0])])), null);
+  const f = await fixture();
+  await writeFile(join(f.root, "evidence/cut-typed.png"), good.subarray(0, good.length - 12));
+  await assert.rejects(
+    assembleTypedCatalog(base(f, { images: join(f.root, "evidence"), imageVariant: "typed" })),
+    /cut-typed\.png is not a whole PNG/,
+  );
 });
 
 test("a template the catalog advertises must ship", async () => {

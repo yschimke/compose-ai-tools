@@ -64,8 +64,11 @@ name: Typed Catalog Artifacts (reusable)
 #
 # The write token never shares a runner with the caller's build: `assemble` (read-only) uploads the
 # tree, and `publish`, which runs nothing of the caller's, pushes it. `publish` pushes only from
-# `publish-branch` (default main), and only while the run's commit is still that branch's tip, so an
-# older run finishing late can never replace a newer catalog.
+# `publish-branch` (default main), and only while the commit the inputs were BUILT from is still
+# that branch's tip, so an older run finishing late can never replace a newer catalog and a build
+# of another ref never publishes under the branch's name. That commit is the checkout's HEAD in
+# build-command mode; in artifact mode the caller declares it with `source-sha` (default
+# github.sha, right only when its build job checked out the triggering commit).
 #
 # THE SCRIPTS COME FROM THE EXPORT-DRIVER PIN, as in design-artifacts-reusable.yml: an external
 # caller runs the compose-ai-tools commit named by `.github/design-artifacts-driver-pin.txt` on
@@ -98,6 +101,16 @@ on:
         default: ''
       ref:
         description: 'build-command only: the ref of the calling repository to check out (default: the triggering commit).'
+        required: false
+        type: string
+        default: ''
+      source-sha:
+        description: >-
+          artifact only: the full commit SHA of the calling repository the artifact was built from.
+          Empty: the triggering commit (github.sha), which is right only when the build job checked
+          out the default ref. Set it when that job checked out anything else. It is what
+          catalog.json's source, the delivery commit subject and the publish tip check name. In
+          build-command mode the checked-out commit is read from the checkout and this must be empty.
         required: false
         type: string
         default: ''
@@ -284,6 +297,7 @@ jobs:
       contents: read
     outputs:
       driver-ref: ${{ steps.driver.outputs.ref }}
+      source-sha: ${{ steps.source.outputs.sha }}
       runtime-id: ${{ steps.assemble.outputs.runtime-id }}
       out-artifact: ${{ steps.assemble.outputs.out-artifact }}
     steps:
@@ -300,6 +314,7 @@ jobs:
           INPUT_IMAGES_PATH: ${{ inputs.images-path }}
           INPUT_PUBLISH_BRANCH: ${{ inputs.publish-branch }}
           INPUT_ARTIFACT_REPOSITORY: ${{ inputs.artifact-repository }}
+          INPUT_SOURCE_SHA: ${{ inputs.source-sha }}
         run: |
           set -euo pipefail
           fail() { echo "::error title=Typed catalog ${INPUT_SYSTEM}::$*"; exit 1; }
@@ -320,6 +335,10 @@ jobs:
               fail "$name '$value' must be a relative path without '..'."
             fi
           done
+          if [ -n "$INPUT_SOURCE_SHA" ]; then
+            [ -n "$INPUT_ARTIFACT" ] || fail "source-sha applies to artifact mode only; build-command mode reads the checked-out commit."
+            [[ "$INPUT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "source-sha must be a full 40-hex commit SHA."
+          fi
           [ -n "$INPUT_RUNTIME_PATH" ] || fail "runtime-path is required."
           [ -n "$INPUT_PAIR_PATH" ] || fail "pair-path is required."
           [[ "$INPUT_PUBLISH_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "publish-branch '$INPUT_PUBLISH_BRANCH' is not a branch name."
@@ -397,6 +416,24 @@ jobs:
           path: .typed-catalog-caller
           persist-credentials: false
 
+      # The commit the inputs are built from: the checkout's HEAD in build-command mode (which may be
+      # `ref`, not the triggering commit), else what the caller declares for its artifact.
+      - name: Record the source commit
+        id: source
+        env:
+          INPUT_SOURCE_SHA: ${{ inputs.source-sha }}
+          BUILD_MODE: ${{ inputs.build-command != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$BUILD_MODE" = "true" ]; then
+            sha=$(git -C .typed-catalog-caller rev-parse HEAD)
+          else
+            sha="${INPUT_SOURCE_SHA:-$GITHUB_SHA}"
+          fi
+          printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$' || { echo "::error::no source commit (got '$sha')"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Source commit: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up JDKs
         if: ${{ inputs.build-command != '' && inputs.java-versions != '' }}
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -442,7 +479,7 @@ jobs:
           INPUT_LIBRARY: ${{ inputs.library }}
           INPUT_RENDERER: ${{ inputs.renderer }}
           INPUT_SOURCE_MODULE: ${{ inputs.source-module }}
-          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           at() { [ -n "$1" ] && printf '%s/%s' "$INPUTS_ROOT" "$1" || true; }
@@ -530,6 +567,7 @@ jobs:
           OUT_REPOSITORY: ${{ inputs.artifact-repository || format('{0}-out', github.repository) }}
           PUBLISH_BRANCH: ${{ inputs.publish-branch }}
           RUNTIME_ID: ${{ needs.assemble.outputs.runtime-id }}
+          SOURCE_SHA: ${{ needs.assemble.outputs.source-sha }}
           INPUT_COMMIT_USER_NAME: ${{ inputs.commit-user-name }}
           INPUT_COMMIT_USER_EMAIL: ${{ inputs.commit-user-email }}
         run: |
@@ -542,11 +580,17 @@ jobs:
             echo "::notice title=Typed catalog ${INPUT_SYSTEM}::not publishing from $GITHUB_REF; only $PUBLISH_BRANCH publishes."
             exit 0
           fi
-          # Only the branch's current tip publishes. A run whose commit the branch has moved past
-          # would replace a newer catalog with an older one; the newer commit's own run publishes.
+          # Only the branch's current tip publishes, and it is the commit the inputs were BUILT from
+          # that is compared, not the triggering one: a run whose commit the branch has moved past
+          # would replace a newer catalog with an older one (the newer commit's own run publishes),
+          # and a build of some other `ref` must never publish under the branch's name.
           tip=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${PUBLISH_BRANCH}" --jq .object.sha)
-          if [ "$tip" != "$GITHUB_SHA" ]; then
-            echo "::notice title=Typed catalog ${INPUT_SYSTEM}::${GITHUB_SHA::12} is no longer ${PUBLISH_BRANCH}'s tip (${tip::12}); its run publishes instead."
+          if [ "$SOURCE_SHA" != "$GITHUB_SHA" ] && [ "$SOURCE_SHA" != "$tip" ]; then
+            echo "::error title=Typed catalog ${INPUT_SYSTEM}::the inputs were built from ${SOURCE_SHA::12}, which is not ${PUBLISH_BRANCH}'s tip (${tip::12}); refusing to publish a non-tip build."
+            exit 1
+          fi
+          if [ "$tip" != "$SOURCE_SHA" ]; then
+            echo "::notice title=Typed catalog ${INPUT_SYSTEM}::${SOURCE_SHA::12} is no longer ${PUBLISH_BRANCH}'s tip (${tip::12}); its run publishes instead."
             exit 0
           fi
           cd "$RUNNER_TEMP/out"
@@ -557,7 +601,7 @@ jobs:
           TARGET_BRANCH="design-artifacts/${INPUT_SYSTEM}" \
           REPO="$OUT_REPOSITORY" \
           GITHUB_TOKEN_INLINE="$ARTIFACT_TOKEN" \
-          MSG="chore(design-artifacts): regenerate ${INPUT_SYSTEM} catalog ($(date -u +%F), ${GITHUB_SHA::12}, ${RUNTIME_ID})" \
+          MSG="chore(design-artifacts): regenerate ${INPUT_SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA::12}, ${RUNTIME_ID})" \
           SKIP_IF_UNCHANGED=1 \
           GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \

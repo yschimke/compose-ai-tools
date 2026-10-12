@@ -110,11 +110,48 @@ export const slugOf = (value) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-/** Width and height from a PNG's IHDR, or null for bytes that are not a PNG. */
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const byte of bytes) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * Width and height of a structurally whole PNG, or null. Not a decode, but it catches what a
+ * truncated or corrupt sticker looks like: the signature; IHDR first, 13 bytes long, with nonzero
+ * dimensions; every chunk inside the file with a matching CRC; at least one IDAT; and IEND as the
+ * last chunk, ending exactly at the end of the file.
+ */
 export function pngSize(bytes) {
-  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
-  if (bytes.toString("latin1", 12, 16) !== "IHDR") return null;
-  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  if (bytes.length < 8 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
+  let offset = 8;
+  let size = null;
+  let sawData = false;
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (length > 0x7fffffff || end > bytes.length) return null;
+    const type = bytes.toString("latin1", offset + 4, offset + 8);
+    const body = bytes.subarray(offset + 8, offset + 8 + length);
+    if (crc32(bytes.subarray(offset + 4, offset + 8 + length)) !== bytes.readUInt32BE(end - 4))
+      return null;
+    if (size === null) {
+      if (type !== "IHDR" || length !== 13) return null;
+      size = { width: body.readUInt32BE(0), height: body.readUInt32BE(4) };
+      if (size.width === 0 || size.height === 0) return null;
+    } else if (type === "IDAT") {
+      sawData = true;
+    } else if (type === "IEND") {
+      return sawData && end === bytes.length ? size : null;
+    }
+    offset = end;
+  }
+  return null;
 }
 
 async function filesUnder(dir, { skip = () => false } = {}) {
@@ -154,7 +191,7 @@ export async function planImages(dir, options = {}) {
     slugs.add(slug);
     const bytes = await readFile(source);
     const size = pngSize(bytes);
-    if (!size) refuse(`${key} is not a PNG`);
+    if (!size) refuse(`${key} is not a whole PNG (truncated or corrupt)`);
     const path = `images/${slug}/${variant}.png`;
     planned.push({
       source,
