@@ -1383,8 +1383,8 @@ object TypedAdapterCatalog {
      */
     implementations: List<TypedComponentAdapter<*>> = emptyList(),
   ): GeneratedAdapterCatalog {
-    require(adapters.isNotEmpty()) { "declare at least one adapter" }
     val all = adapters + implementations
+    require(all.isNotEmpty()) { "declare at least one adapter" }
     require(all.map { it.id }.distinct().size == all.size) { "duplicate adapter component ids" }
     require(all.map { it.component.canonicalId }.distinct().size == all.size) {
       "duplicate adapter component records"
