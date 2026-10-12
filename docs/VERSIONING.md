@@ -210,10 +210,16 @@ What names one is **the newest release**, resolved at run time. There is no pin 
 the first `serve` that finds no server, fetches that release's
 `compose-preview-server-<version>.tar.gz`, and caches it under
 `<cache>/composeai/preview-server/<version>/` — keyed on the server's version, so a CLI upgrade does
-not orphan an unchanged server. `compose-preview mcp serve` takes
-`compose-preview-mcp-<version>.tar.gz` from the **same** release, so one resolution still governs
-that pair: the two archives ride one release and there is no cadence on which they would skew
-usefully.
+not orphan an unchanged server.
+
+`compose-preview mcp serve` works the same way against a **different** repository:
+[yschimke/compose-preview-mcp](https://github.com/yschimke/compose-preview-mcp), where the MCP
+server moved onto its own version line (from 4.0.0, above the 3.x releases the server shipped it
+under). It resolves that repository's newest release, fetches `compose-preview-mcp-<version>.tar.gz`
+and caches it under `<cache>/composeai/preview-mcp/<version>/`; `COMPOSE_PREVIEW_MCP_VERSION` pins
+it, independently of `COMPOSE_PREVIEW_SERVER_VERSION`. The two used to ride one release; they
+skew now by design, and what they share is the MCP Apps viewer, which compose-preview-mcp copies
+from a server release with its provenance.
 
 **Why there is no pin.** There used to be two — `composeai-preview-server-dist` for the release an
 installed CLI downloads, `composeai-preview-serve` for the published jar this repository compiled

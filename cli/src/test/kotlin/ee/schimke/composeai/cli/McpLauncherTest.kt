@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -93,9 +94,9 @@ class McpLauncherTest {
 
   @Test
   fun `the two distributions cache and fetch under separate names`() {
-    // One release, two archives. Sharing a cache directory would let an interrupted fetch of one
-    // satisfy the completeness check for the other.
-    val version = "3.1.0"
+    // Two repositories, two archives. Sharing a cache directory would let an interrupted fetch of
+    // one satisfy the completeness check for the other.
+    val version = "4.0.0"
     assertEquals(
       "compose-preview-mcp-$version.tar.gz",
       ServerDistributionProvision.assetName(version, ReleasedDistribution.MCP),
@@ -104,8 +105,13 @@ class McpLauncherTest {
       "compose-preview-server-$version.tar.gz",
       ServerDistributionProvision.assetName(version, ReleasedDistribution.SERVER),
     )
+    assertEquals(
+      "https://github.com/yschimke/compose-preview-mcp/releases/download/v$version/" +
+        "compose-preview-mcp-$version.tar.gz",
+      ServerDistributionProvision.assetUrl(version, ReleasedDistribution.MCP),
+    )
     assertTrue(
-      ServerDistributionProvision.assetUrl(version, ReleasedDistribution.MCP)
+      ServerDistributionProvision.assetUrl(version, ReleasedDistribution.SERVER)
         .startsWith("https://github.com/$PREVIEW_SERVER_REPO/releases/download/v$version/")
     )
     val server = ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.SERVER)
@@ -114,10 +120,41 @@ class McpLauncherTest {
   }
 
   @Test
+  fun `the MCP server resolves and pins its own release, not the preview server's`() {
+    val seen = mutableListOf<String>()
+    val resolved =
+      ServerDistributionProvision.latestVersion(
+        ReleasedDistribution.MCP,
+        fetcher = { url, dest ->
+          seen += url
+          dest.writeText("""{"tag_name":"v4.1.0"}""")
+        },
+      )
+    assertEquals("4.1.0", resolved)
+    assertEquals(
+      listOf("https://api.github.com/repos/yschimke/compose-preview-mcp/releases/latest"),
+      seen,
+    )
+    val env =
+      mapOf("COMPOSE_PREVIEW_MCP_VERSION" to "4.0.0", "COMPOSE_PREVIEW_SERVER_VERSION" to "3.9.0")
+    assertEquals(
+      "4.0.0",
+      ServerDistributionProvision.requestedVersion(ReleasedDistribution.MCP, env::get),
+    )
+    assertEquals(
+      "3.9.0",
+      ServerDistributionProvision.requestedVersion(ReleasedDistribution.SERVER, env::get),
+    )
+  }
+
+  @Test
   fun `the installation hint names the MCP binary and what still works without it`() {
     val hint = ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP)
     assertTrue(hint.contains("compose-preview-mcp"), hint)
     assertTrue(hint.contains("COMPOSE_PREVIEW_MCP"), hint)
+    // The binary is released from its own repository now, not compose-preview-server's.
+    assertTrue(hint.contains("yschimke/compose-preview-mcp,"), hint)
+    assertFalse(hint.contains(PREVIEW_SERVER_REPO), hint)
     // `mcp install` and `mcp doctor` are offline and stayed in this CLI; saying so is the
     // difference between "MCP is broken" and "one subcommand needs a download".
     assertTrue(hint.contains("mcp install"), hint)

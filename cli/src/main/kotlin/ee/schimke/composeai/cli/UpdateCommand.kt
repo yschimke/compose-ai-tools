@@ -46,13 +46,15 @@ class UpdateCommand(private val args: List<String>) {
   companion object {
     /**
      * Drop cached MCP servers older than the newest release so the next `mcp serve` fetches it.
-     * Returns the line to print, or null. A `COMPOSE_PREVIEW_SERVER_VERSION` pin, or an
-     * unresolvable newest, leaves everything alone.
+     * Returns the line to print, or null. A `COMPOSE_PREVIEW_MCP_VERSION` pin, or an unresolvable
+     * newest, leaves everything alone.
      */
     internal fun pruneStaleMcp(
-      requested: String? = ServerDistributionProvision.requestedVersion(),
+      requested: String? = ServerDistributionProvision.requestedVersion(ReleasedDistribution.MCP),
       offline: Boolean = ServerDistributionProvision.defaultOffline(),
-      latest: () -> String? = { ServerDistributionProvision.latestVersion() },
+      latest: () -> String? = {
+        ServerDistributionProvision.latestVersion(ReleasedDistribution.MCP)
+      },
       cacheRoot: File = ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.MCP),
     ): String? {
       if (requested != null || offline || !cacheRoot.isDirectory) return null

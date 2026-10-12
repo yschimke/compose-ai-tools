@@ -171,8 +171,8 @@ internal object ServerBinaryDiscovery {
     """
     ${distribution.usedBy} needs ${distribution.label}, which ships separately from this CLI.
 
-    The CLI normally fetches it for you on first use, from the pinned release of
-    $PREVIEW_SERVER_REPO, into its own cache. That did not work this time — the line above
+    The CLI normally fetches it for you on first use, from the releases of
+    ${distribution.repository}, into its own cache. That did not work this time — the line above
     says why (no network, a proxy, or no room on disk are the usual ones). Running the
     command again retries it.
 
