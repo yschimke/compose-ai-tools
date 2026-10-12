@@ -219,6 +219,11 @@ object ScreenGenerator {
     output: Output,
     frameSlots: Map<String, List<ScreenNode>>,
   ): Result {
+    if (FRAME_CONTENT in frameSlots) {
+      return Result.Refused(
+        listOf("frame slot `$FRAME_CONTENT` is the document's root, never a frame slot")
+      )
+    }
     if (frame == null && frameSlots.isNotEmpty()) {
       return Result.Refused(
         frameSlots.keys.sorted().map { "frame slot `$it` has no screen frame to be written into" }

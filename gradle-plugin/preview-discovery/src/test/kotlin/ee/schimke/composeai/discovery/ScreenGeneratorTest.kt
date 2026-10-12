@@ -1894,6 +1894,13 @@ class ScreenGeneratorTest {
           .reasons
       )
       .contains("screen frame: `edgeButton` is not a hole this screen fills; it writes `content`")
+    // `content` is the root's hole; a slot of that name would be dropped, so it is refused.
+    assertThat(
+        (generate("${'$'}{content}", mapOf("content" to listOf(textNode("x"))))
+            as ScreenGenerator.Result.Refused)
+          .reasons
+      )
+      .containsExactly("frame slot `content` is the document's root, never a frame slot")
   }
 
   @Test
