@@ -343,9 +343,9 @@ jobs:
   release-pr-policy:
     needs: [update-release-pr, reconcile-release-pr]
     if: >-
-      ${{ !cancelled() && (needs.update-release-pr.result == 'success'
-      || needs.reconcile-release-pr.result == 'success')
-      && (needs.update-release-pr.outputs.pr || needs.reconcile-release-pr.outputs.pr) != '' }}
+      ${{ !cancelled() && ((needs.update-release-pr.result == 'success'
+      && needs.update-release-pr.outputs.in_flight != 'true')
+      || needs.reconcile-release-pr.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -359,7 +359,13 @@ jobs:
         run: |
           set -euo pipefail
           number="$(jq -r '.number // empty' <<<"$RP_PR")"
-          test -n "$number"
+          if [ -z "$number" ]; then
+            number="$(gh api "repos/${GH_REPO}/pulls?state=open&per_page=100" --jq '[.[] | select(.head.ref | startswith("release-please--branches--")) | select(.head.ref | endswith("--release-notes") | not)][0].number // empty')"
+          fi
+          if [ -z "$number" ]; then
+            echo "no open release PR; nothing to dispatch"
+            exit 0
+          fi
           pr="$(gh pr view "$number" --json state,headRefName)"
           if [ "$(jq -r .state <<<"$pr")" != OPEN ]; then
             echo "release PR is no longer open; nothing to dispatch"
