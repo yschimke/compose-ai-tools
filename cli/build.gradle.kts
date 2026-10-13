@@ -128,6 +128,7 @@ dependencies {
   // The preview-bundle format (reader/writer, manifest, sidecar injectors, signing, hydration).
   // `api` because the types keep the `ee.schimke.composeai.cli` package.
   api(project(":bundle-format"))
+  implementation(project(":bundle-producer"))
   api(libs.composeai.agent.grant.protocol)
 
   // Turns a bundle's recorded Maven coordinates back into local jars. `api` for in-package source

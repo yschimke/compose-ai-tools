@@ -1,0 +1,29 @@
+public final class ee/schimke/composeai/bundle/producer/BazelMavenMatch {
+	public fun <init> (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;Ljava/lang/String;)V
+	public final fun component1 ()Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;Ljava/lang/String;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/producer/BazelMavenMatch;Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
+	public final fun getMethod ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/producer/BundleProducerCli {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/producer/BundleProducerCli;
+	public static final fun main ([Ljava/lang/String;)V
+}
+
+public final class ee/schimke/composeai/bundle/producer/BundleProducerKt {
+	public static final fun bakePreparedBundle (Ljava/io/File;Ljava/io/File;Ljava/io/File;)V
+	public static final fun bazelBundleAppJar (Ljava/util/List;)[B
+	public static final fun bazelBundleSha (Ljava/io/File;)Ljava/lang/String;
+	public static final fun bazelMavenCoordinates (Ljava/util/List;)Ljava/util/List;
+	public static final fun matchBazelMaven (Ljava/io/File;Ljava/util/List;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
+	public static final fun previewPngName (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;Z)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public static synthetic fun writeBazelBundle$default (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+}
+

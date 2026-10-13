@@ -1074,14 +1074,38 @@ private class RenderSubcommand(private val args: List<String>) {
         System.err.println(e.message)
         exitProcess(1)
       }
+    val selectedIds =
+      BundleReader.readMetadata(file)
+        .manifest
+        .previewIds
+        .filter { id ->
+          (args.flagValue("--filter")?.let { id.contains(it, true) } ?: true) &&
+            (args.flagValue("--id")?.let { id == it } ?: true)
+        }
+        .toSet()
+    require(selectedIds.isNotEmpty()) { "No previews match the selection" }
+    val outputFile = outDir?.takeIf { it.endsWith(".png", true) }?.let { File(it).absoluteFile }
+    require(outputFile == null || selectedIds.size == 1) {
+      "A PNG output path requires exactly one selected preview"
+    }
     val target =
-      File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render"))
+      File(
+          (if (outputFile != null) outputFile.parent else outDir)
+            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render")
+        )
         .absoluteFile
     target.mkdirs()
 
     // Theme overrides need the daemon path (the one `serve` uses) rather than the source subprocess
     // renderer. See [renderBundleWithOverrides].
     if (knobs.isNotEmpty()) {
+      require(
+        selectedIds.size == BundleReader.readMetadata(file).manifest.previewIds.size &&
+          outputFile == null &&
+          "--json" !in args
+      ) {
+        "Filtered/file/JSON bundle renders currently require the stock renderer"
+      }
       if (!renderBundleWithOverrides(file, target, knobs, resPool, withSvg, verbose)) exitProcess(1)
       return
     }
@@ -1095,7 +1119,13 @@ private class RenderSubcommand(private val args: List<String>) {
     }
 
     val renderer =
-      BundleRenderer(bundleFile = file, outputDir = target, verbose = verbose, resPoolDir = resPool)
+      BundleRenderer(
+        bundleFile = file,
+        outputDir = target,
+        verbose = verbose,
+        resPoolDir = resPool,
+        selectedIds = selectedIds,
+      )
     val result =
       try {
         renderer.run()
@@ -1105,6 +1135,52 @@ private class RenderSubcommand(private val args: List<String>) {
         exitProcess(1)
       }
 
+    if (outputFile != null && result.allOk)
+      result.succeeded.single().outputFile.copyTo(outputFile, overwrite = true)
+    if ("--json" in args) {
+      println(
+        kotlinx.serialization.json.buildJsonObject {
+          put(
+            "previews",
+            kotlinx.serialization.json.JsonArray(
+              result.succeeded.map { rendered ->
+                kotlinx.serialization.json.buildJsonObject {
+                  put("id", kotlinx.serialization.json.JsonPrimitive(rendered.id))
+                  put(
+                    "outputFile",
+                    kotlinx.serialization.json.JsonPrimitive(
+                      (outputFile ?: rendered.outputFile).path
+                    ),
+                  )
+                  put(
+                    "sha256",
+                    kotlinx.serialization.json.JsonPrimitive(
+                      ee.schimke.composeai.bundle.producer.bazelBundleSha(
+                        outputFile ?: rendered.outputFile
+                      )
+                    ),
+                  )
+                }
+              }
+            ),
+          )
+          put(
+            "failed",
+            kotlinx.serialization.json.JsonArray(
+              result.failed.map { failure ->
+                kotlinx.serialization.json.buildJsonObject {
+                  put("id", kotlinx.serialization.json.JsonPrimitive(failure.id))
+                  put("exitCode", kotlinx.serialization.json.JsonPrimitive(failure.exitCode))
+                  put("diagnostic", kotlinx.serialization.json.JsonPrimitive(failure.tail))
+                }
+              }
+            ),
+          )
+        }
+      )
+      if (!result.allOk) exitProcess(1)
+      return
+    }
     println(
       "rendered ${result.succeeded.size} / ${result.previewCount} preview(s) → ${target.path}"
     )

@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
+import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions

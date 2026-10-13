@@ -160,7 +160,11 @@ internal class BazelCommand(
         if (operation == "prepare") {
           println(prepareBazelDesktopDaemon(artifacts, prepared, root).absolutePath)
         } else {
-          if (reuse) {
+          val noRender = operation == "bundle" && "--no-render" in args
+          require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
+          if (noRender) {
+            // Discovery and packaging require no renderer provisioning.
+          } else if (reuse) {
             reuseBazelCaptures(prepared, root, copyOutput = operation != "bundle")
           } else {
             val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
@@ -204,7 +208,15 @@ internal class BazelCommand(
                 .map { it.id }
                 .toSet()
             val manifest =
-              writeBazelBundle(artifacts, prepared, selected, locks, bundle, "--embed-deps" in args)
+              writeBazelBundle(
+                artifacts,
+                prepared,
+                selected,
+                locks,
+                bundle,
+                "--embed-deps" in args,
+                includeRenders = !noRender,
+              )
             System.err.println(
               "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)"
             )
@@ -381,6 +393,7 @@ internal class BazelCommand(
       --reuse-renders             Reuse existing captures with imported artifacts; no daemon starts.
       --bundle                   render: additionally pack the portable PNG/ZIP bundle.
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
+      --no-render                bundle: prepare a runnable bundle with a stub cover, offline.
       --embed-deps               Embed all dependencies for offline bundle use.
       --out <dir>                Prepared manifest/descriptor directory; default per target/config.
       --timeout <seconds>        Build/render deadline (default 300).
