@@ -87,7 +87,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: yschimke/compose-ai-tools/.github/actions/install@cb9e0d5388657c6ea5be2cb34608f019b4a90143 # v2.43.0
+      - uses: yschimke/compose-ai-tools/.github/actions/install@77e7f8ba122a79a0829006e3574ea6ae32767046 # v2.45.0
         with:
           version: '2.45.0'
           plugin-readiness-timeout: '0'
