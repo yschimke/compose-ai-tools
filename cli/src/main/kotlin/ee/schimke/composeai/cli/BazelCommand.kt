@@ -52,6 +52,9 @@ internal class BazelCommand(
     require(operation in setOf("init", "prepare", "list", "render", "show", "bundle")) {
       "Expected init, prepare, list, render, show or bundle"
     }
+    require("--no-render" !in args || operation == "bundle") {
+      "--no-render is only supported for bazel bundle"
+    }
     val format = args.flagValue("--format")
     require(format == null || format == "png") {
       "Bazel rendering currently supports --format png; '$format' needs an additional export capability"

@@ -1136,7 +1136,7 @@ private class RenderSubcommand(private val args: List<String>) {
       }
 
     if (outputFile != null && result.allOk)
-      result.succeeded.single().outputFile.copyTo(outputFile, overwrite = true)
+      copyBundleRenderOutput(result.succeeded.single().outputFile, outputFile)
     if ("--json" in args) {
       println(
         kotlinx.serialization.json.buildJsonObject {
@@ -1693,4 +1693,11 @@ internal fun lostFontFamilyRefusal(
     "\nEach carries previews/<id>$BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX in $bundlePath naming the " +
     "face that was lost. Fix the export, or pass --allow-lost-font-families to publish the boxes " +
     "deliberately."
+}
+
+/** Copy an explicitly named capture, retaining an image already written to that same file. */
+internal fun copyBundleRenderOutput(source: File, destination: File) {
+  if (destination.exists() && java.nio.file.Files.isSameFile(source.toPath(), destination.toPath()))
+    return
+  source.copyTo(destination, overwrite = true)
 }
