@@ -357,7 +357,9 @@ coil3 = "3.5.0"
 # 3.30.0 carries every overload on a component record (`ComponentRecord.overloads`), and the item
 # scope, scope and template-local reads and `UiBuilderCode.locals`/`scopes` that structural
 # projections write (docs/design/TYPED_STRUCTURAL_TEMPLATES.md).
-composeai-contracts = "3.30.0"
+# 3.31.0 carries a catalog's new-design `description` and `primary` on the authored policy and the
+# published `statusSemantics.newDesign`.
+composeai-contracts = "3.31.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this

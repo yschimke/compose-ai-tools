@@ -1210,6 +1210,8 @@ internal fun newDesignSemantics(policy: UiBuilderPolicyFile): UiBuilderNewDesign
     .also { builder ->
       builder.label = policy.newDesign?.label
       builder.order = policy.newDesign?.order
+      builder.description = policy.newDesign?.description
+      builder.primary = policy.newDesign?.primary
       builder.templates =
         policy.templates.map {
           UiBuilderNewDesignTemplateSemantics.Builder(id = it.resolvedId, path = it.path)
