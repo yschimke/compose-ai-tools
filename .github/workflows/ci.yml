@@ -156,7 +156,7 @@ jobs:
         run: ./gradlew :gradle-plugin:test
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unit-test-results
           path: gradle-plugin/build/reports/tests/
@@ -273,7 +273,7 @@ jobs:
           fi
       - name: Upload test reports on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: module-unit-test-reports
           path: |
@@ -305,7 +305,7 @@ jobs:
         run: ./gradlew :gradle-plugin:functionalTest
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: functional-test-results
           path: gradle-plugin/build/reports/tests/
@@ -438,14 +438,14 @@ jobs:
           echo "Studio-parity gate compared ${count} fixture(s)."
       - name: Upload Studio-parity side-by-sides
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: studio-parity-side-by-sides
           path: samples/android-screenshot-test/build/studio-parity/
           if-no-files-found: warn
       - name: Upload preview manifests
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: preview-manifests
           path: |
@@ -454,7 +454,7 @@ jobs:
             samples/cmp/build/compose-previews/previews.json
       - name: Upload screenshot-test renders
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: samples-android-screenshot-test-renders
           path: samples/android-screenshot-test/build/compose-previews/renders/
@@ -516,25 +516,25 @@ jobs:
         run: ./gradlew :samples:android:composePreviewRenderAndroidResources
       - name: Upload full-suite manifests
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: full-sample-preview-manifests
           path: samples/android/build/compose-previews/resources.json
       - name: Upload Android resource renders
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: samples-android-resource-renders
           path: samples/android/build/compose-previews/renders/resources/
       - name: Upload Wear sample renders
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: samples-wear-renders
           path: samples/wear/build/compose-previews/renders/
       - name: Upload Wear sample test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: samples-wear-test-results
           path: samples/wear/build/reports/tests/
@@ -699,7 +699,7 @@ jobs:
         run: ./gradlew functionalTestWithBundleRender -Pbundle.render.e2e=true --stacktrace
       - name: Upload functionalTest reports on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundle-render-functional-test-reports
           path: gradle-plugin/build/reports/tests/functionalTest/
@@ -775,7 +775,7 @@ jobs:
         run: ./gradlew functionalTestWithAndroidBundleDaemon -Pbundle.daemon.android.e2e=true --stacktrace
       - name: Upload functionalTest reports on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-bundle-daemon-functional-test-reports
           path: gradle-plugin/build/reports/tests/functionalTest/
@@ -820,7 +820,7 @@ jobs:
         run: python3 skills/compose-preview-review/scripts/run-agent-audit-samples.py
       - name: Upload agent audit outputs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: agent-audit-sample-outputs
           path: build/agent-audit-samples/
@@ -1080,7 +1080,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       # `design-map/` is a PUBLISHED package (@yschimke/compose-design-map) with no dependencies at

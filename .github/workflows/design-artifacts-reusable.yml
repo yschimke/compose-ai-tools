@@ -1495,7 +1495,7 @@ jobs:
         # made a driver fix look like a five-line change; the driver revision is
         # now resolved separately (see DRIVER_PIN_* at the top of this file) and
         # this ref only needs to move when the install action itself changes.
-        uses: yschimke/compose-ai-tools/.github/actions/install@d1b83538299667194b297a90d6b583f5fff6127b # v2.32.1
+        uses: yschimke/compose-ai-tools/.github/actions/install@cb9e0d5388657c6ea5be2cb34608f019b4a90143 # v2.43.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -2187,7 +2187,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@d1b83538299667194b297a90d6b583f5fff6127b # v2.32.1
+        uses: yschimke/compose-ai-tools/.github/actions/install@cb9e0d5388657c6ea5be2cb34608f019b4a90143 # v2.43.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -2371,7 +2371,7 @@ jobs:
       # / shard-preview-ids). The fetch above installed the locked tree they import; no browser is
       # installed here, which is the part only `generate` needs.
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
@@ -2740,7 +2740,7 @@ jobs:
       # delivery branch.
       - name: Upload shard ${{ matrix.shard }}
         if: ${{ steps.shard-plan.outputs.previews != '0' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.system }}-render-shard-${{ matrix.shard }}
           path: |
@@ -2814,7 +2814,7 @@ jobs:
           echo "archive=$(realpath "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")" >> "$GITHUB_OUTPUT"
 
       - name: Upload the UI-builder renderer
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.system }}-ui-builder-renderer
           path: ${{ steps.renderer.outputs.archive }}
@@ -3501,7 +3501,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@d1b83538299667194b297a90d6b583f5fff6127b # v2.32.1
+        uses: yschimke/compose-ai-tools/.github/actions/install@cb9e0d5388657c6ea5be2cb34608f019b4a90143 # v2.43.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -3819,7 +3819,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/compose-ai-tools/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       # The fetch above already installed the locked tree. A checkout from before the lock runs its
@@ -4492,7 +4492,7 @@ jobs:
 
       - name: Download shard renders
         if: ${{ inputs.render-shards > 1 }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ inputs.system }}-render-shard-*
           path: ${{ github.workspace }}/shards
@@ -4762,7 +4762,7 @@ jobs:
       - name: Upload the failing render's test results
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.system }}-render-failure-diagnostics
           path: render-failure-diagnostics
@@ -4847,7 +4847,7 @@ jobs:
       # render output. Downloaded only when that job ran — otherwise the step below builds inline.
       - name: Download the UI-builder renderer
         if: ${{ needs.ui-builder-renderer.result == 'success' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.system }}-ui-builder-renderer
           path: ${{ runner.temp }}/ui-builder-renderer
@@ -5155,7 +5155,7 @@ jobs:
 
       - name: Download section bundle to fold in
         if: ${{ inputs.fold-artifact != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.fold-artifact }}
           path: ${{ github.workspace }}/fold-in
@@ -5958,7 +5958,7 @@ jobs:
 
       - name: Upload CMP/Wasm parity evidence
         if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.system }}-rc-cmp-wasm-evidence
           path: |
@@ -6012,7 +6012,7 @@ jobs:
           persist-credentials: false
       - name: Download prepared catalog section
         if: ${{ inputs.catalog-section-artifact != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.catalog-section-artifact }}
           path: _catalog_section
@@ -6030,7 +6030,7 @@ jobs:
         # publish job, which is a different job precisely so the push and the render do not
         # share a token. `upload-out` remains what a caller sets to get it for itself.
         if: ${{ inputs.publish || inputs.upload-out }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.system }}-catalog-out
           path: ${{ github.workspace }}/out
@@ -6114,7 +6114,7 @@ jobs:
           fi
 
       - name: Download the rendered catalog
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.system }}-catalog-out
           path: ${{ github.workspace }}/out
