@@ -15,8 +15,14 @@ on:
   # without making every PR wait on them.
   schedule:
     - cron: "23 4 * * *"
-  # Manual full run, including the nightly-only drift detectors above.
+  # Manual full run by default. Release automation opts out of nightly drift
+  # detectors only; ordinary build/test jobs retain their author/actor guard.
   workflow_dispatch:
+    inputs:
+      release_pr_checks:
+        description: Report release-PR checks without the nightly drift suite
+        type: boolean
+        default: false
 
 # Workflow-level default: minimum viable scope. Individual jobs can widen if
 # they need it (none here do — all jobs are read-only builds + artifact upload,
@@ -477,7 +483,7 @@ jobs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !(inputs.release_pr_checks && startsWith(github.ref_name, 'release-please--'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -612,7 +618,7 @@ jobs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !(inputs.release_pr_checks && startsWith(github.ref_name, 'release-please--'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -669,7 +675,7 @@ jobs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !(inputs.release_pr_checks && startsWith(github.ref_name, 'release-please--'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -720,7 +726,7 @@ jobs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !(inputs.release_pr_checks && startsWith(github.ref_name, 'release-please--'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -796,7 +802,7 @@ jobs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !(inputs.release_pr_checks && startsWith(github.ref_name, 'release-please--'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

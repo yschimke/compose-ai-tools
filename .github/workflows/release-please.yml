@@ -372,7 +372,7 @@ jobs:
             exit 0
           fi
           branch="$(jq -r .headRefName <<<"$pr")"
-          gh workflow run ci.yml --ref "$branch"
+          gh workflow run ci.yml --ref "$branch" -f release_pr_checks=true
           gh workflow run pr-title.yml --ref "$branch" -f pr="$number"
           gh workflow run no-agent-attribution.yml --ref "$branch" -f pr="$number"
 
