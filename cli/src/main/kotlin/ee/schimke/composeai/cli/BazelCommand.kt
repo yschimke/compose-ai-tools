@@ -4,8 +4,10 @@ import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
-import ee.schimke.composeai.discovery.PreviewManifest
+import ee.schimke.composeai.discovery.PreviewManifest as DiscoveryManifest
 import ee.schimke.composeai.io.composeAiCacheDir
+import ee.schimke.composeai.previewdata.PreviewManifest as ResultManifest
+import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
@@ -22,8 +24,15 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /** Explicit Bazel-family entry point; opening a repository never runs its build configuration. */
-internal class BazelCommand(private val args: List<String>) {
-  fun run() {
+internal class BazelCommand(
+  args: List<String>,
+  private val normalSurface: Boolean = true,
+  private val invocationDirectory: File? = null,
+) : Command(args) {
+  override val rowAwareSelection: Boolean
+    get() = true
+
+  override fun run() {
     if (args.isEmpty() || args.any { it in setOf("help", "--help", "-h") }) {
       printHelp()
       return
@@ -40,10 +49,18 @@ internal class BazelCommand(private val args: List<String>) {
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
-    require(operation in setOf("init", "prepare", "list", "render")) {
-      "Expected init, prepare, list or render"
+    require(operation in setOf("init", "prepare", "list", "render", "show")) {
+      "Expected init, prepare, list, render or show"
     }
-    val root = File(args.flagValue("--project") ?: ".").canonicalFile
+    val format = args.flagValue("--format")
+    require(format == null || format == "png") {
+      "Bazel rendering currently supports --format png; '$format' needs an additional export capability"
+    }
+    val requestedDirectory = File(args.flagValue("--project") ?: ".").canonicalFile
+    val root =
+      if (args.flagValue("--artifacts") == null)
+        detectBazelRoot(requestedDirectory) ?: requestedDirectory
+      else requestedDirectory
     require(root.isDirectory) { "Project directory missing: $root" }
     val timeout =
       args.flagValue("--timeout")?.let {
@@ -61,9 +78,23 @@ internal class BazelCommand(private val args: List<String>) {
     require(args.flagValue("--config") == null || configFile.isFile) {
       "Config missing: $configFile"
     }
+    val configText = configFile.takeIf { it.isFile }?.readText()
     var config =
-      if (configFile.isFile) bazelJson.decodeFromString<BazelBuildConfig>(configFile.readText())
+      if (configText != null) bazelJson.decodeFromString<BazelBuildConfig>(configText)
       else BazelBuildConfig()
+    if (
+      configText == null ||
+        "buildCommand" !in (bazelJson.parseToJsonElement(configText) as JsonObject)
+    ) {
+      config =
+        config.copy(
+          buildCommand =
+            listOf(
+              if (args.flagValue("--build-system") == "blaze") "blaze"
+              else defaultBazelBuildCommand(root)
+            )
+        )
+    }
     args.flagValue("--build-command")?.let { config = config.copy(buildCommand = listOf(it)) }
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config = config.copy(buildArgs = config.buildArgs + args.flagValuesAll("--bazel-arg"))
@@ -82,11 +113,13 @@ internal class BazelCommand(private val args: List<String>) {
         }
         metadata.resolve(executionRoot)
       } else {
-        val target = args.flagValue("--target") ?: error("--target is required")
+        val explicitTarget = args.flagValue("--target") ?: args.flagValue("--module")
+        val target =
+          explicitTarget
+            ?: BazelBuild()
+              .selectTarget(root, invocationDirectory ?: requestedDirectory, config, timeout)
         if (config.aspect == BazelBuildConfig().aspect) {
-          check(root.resolve(".compose-preview/bazel/runtime.bzl").isFile) {
-            "Run `compose-preview bazel init --project $root` once, or configure an existing aspect / use --artifacts."
-          }
+          if (!root.resolve(".compose-preview/bazel/runtime.bzl").isFile) installBazelAspect(root)
         }
         BazelBuild().collect(root, target, config, timeout)
       }
@@ -102,23 +135,29 @@ internal class BazelCommand(private val args: List<String>) {
         .digest((artifacts.metadata.target + "\n" + artifacts.metadata.configuration).toByteArray())
         .take(8)
         .joinToString("") { "%02x".format(it) }
-    val output =
+    val outputBase =
       args.flagValue("--out")?.let { resolve(root, it) }
         ?: root.resolve(".compose-preview/outputs/$targetKey")
+    val output = if (normalSurface) outputBase.resolve("build/compose-previews") else outputBase
     val prepared = prepareBazelPreviews(artifacts, root, output)
     when (operation) {
       "list" -> {
-        if ("--json" in args) println(bazelJson.encodeToString(prepared.manifest))
+        if (normalSurface) emitNormalResults(prepared, rendering = false)
+        else if ("--json" in args) println(bazelJson.encodeToString(prepared.manifest))
         else
           prepared.manifest.previews.forEach {
             println("${it.id}\t${it.className}.${it.functionName}")
           }
       }
       "prepare",
+      "show",
       "render" -> {
         val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
         if (operation == "prepare") println(descriptor.absolutePath)
-        else renderBazelPreviews(prepared, descriptor, root, timeout)
+        else {
+          renderBazelPreviews(prepared, descriptor, root, timeout)
+          if (normalSurface) emitNormalResults(prepared, rendering = true)
+        }
       }
     }
   }
@@ -178,12 +217,42 @@ internal class BazelCommand(private val args: List<String>) {
       check(png != null && png.isFile && png.length() > 0) {
         "Render failed for ${preview.id}: $notification"
       }
+      // The daemon reports its actual filename. Stage the returned artifact at the
+      // discovery manifest's declared path so every normal result consumer sees it.
+      preview.captures.firstOrNull()?.let { capture ->
+        val declared = prepared.manifestFile.parentFile.resolve(capture.renderOutput)
+        declared.parentFile.mkdirs()
+        if (declared.canonicalFile != png.canonicalFile) {
+          Files.copy(png.toPath(), declared.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+      }
       if (output != null) {
         output.parentFile?.mkdirs()
         Files.copy(png.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
       }
-      println("${preview.id}\t${output?.absolutePath ?: png.absolutePath}")
+      if (!normalSurface) println("${preview.id}\t${output?.absolutePath ?: png.absolutePath}")
     }
+  }
+
+  private fun emitNormalResults(prepared: PreparedBazelPreviews, rendering: Boolean) {
+    val moduleDirectory = prepared.manifestFile.parentFile.parentFile.parentFile
+    val manifest = bazelJson.decodeFromString<ResultManifest>(prepared.manifestFile.readText())
+    val module = PreviewModule(manifest.module, moduleDirectory)
+    val all = buildResults(listOf(module to manifest))
+    val requested = selectRequested(all)
+    val results =
+      if (rendering && changedOnly) requested.filter { it.hasChangedCapture() } else requested
+    if ("--json" in args)
+      println(encodeResponse(results, countsScope = if (rendering) requested else null))
+    else if (!rendering) results.forEach { println("${it.id}  (${it.sourceFile ?: "unknown"})") }
+    else
+      results.forEach { result ->
+        println(
+          "${result.functionName} (${result.id})${previewStatusTag(result)}${result.sha256?.let { "  sha=${it.take(12)}" } ?: ""}"
+        )
+        result.captures.forEach { capture -> capture.pngPath?.let { println("  $it") } }
+      }
+    if (results.isEmpty() && !changedOnly) error("No previews match the selection")
   }
 
   private fun resolve(root: File, path: String): File =
@@ -196,11 +265,14 @@ internal class BazelCommand(private val args: List<String>) {
 
       Usage:
         compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>]
-        compose-preview bazel list --target //app:ui [--json]
+        compose-preview list [--target //app:ui] [--json]
+        compose-preview bazel list [--target //app:ui] [--json]
         compose-preview bazel prepare --target //app:ui
         compose-preview bazel render --target //app:ui [--id <id> | --filter <text>] [--output <png>]
 
-      init creates a small aspect package; existing application BUILD files are untouched.
+      Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
+      The default aspect package is installed on first use; application BUILD files are untouched.
+      A configured target wins; otherwise a single JVM target in the current package is selected.
       Default provider: @rules_java//java/common:java_info.bzl (requires visible rules_java).
       Configure .compose-preview/bazel.json for a different build command/provider deployment.
       --config <file>             Read explicit JSON config (paths relative to --project).
@@ -247,7 +319,7 @@ internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
   contents.forEach { (name, text) -> directory.resolve(name).writeText(text) }
 }
 
-internal data class PreparedBazelPreviews(val manifest: PreviewManifest, val manifestFile: File)
+internal data class PreparedBazelPreviews(val manifest: DiscoveryManifest, val manifestFile: File)
 
 internal fun prepareBazelPreviews(
   artifacts: ResolvedBazelArtifacts,

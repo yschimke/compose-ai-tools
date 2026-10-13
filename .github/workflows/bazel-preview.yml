@@ -58,7 +58,7 @@ jobs:
           COMPOSE_PREVIEW_BAZEL_FIXTURE: ${{ github.workspace }}/contrib-fixture/bazel-desktop
           COMPOSE_PREVIEW_BAZEL_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/greeting.png
         run: >-
-          ./gradlew :cli:test --tests '*Bazel*'
+          ./gradlew :cli:test --tests '*Bazel*' --tests '*ProjectBuildTest*'
           :gradle-plugin:preview-discovery:test --tests '*PreviewDiscoveryCliTest*'
           :cli:checkCliDaemonLibraryBoundary :cli:checkLayerBoundary :cli:checkHttpServerFloor
           --stacktrace

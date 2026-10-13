@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 @Serializable
 internal data class BazelBuildConfig(
   val schemaVersion: Int = 1,
+  val target: String? = null,
   val buildCommand: List<String> = listOf("bazel"),
   val startupArgs: List<String> = emptyList(),
   val buildArgs: List<String> = listOf("--remote_download_outputs=all"),
@@ -200,6 +201,49 @@ private fun bazelMetadataFile(events: Sequence<String>, target: String, outputGr
 internal class BazelBuild(
   private val execute: (List<String>, File, Long) -> String = BazelProcess::run
 ) {
+  fun selectTarget(
+    root: File,
+    directory: File,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+  ): String {
+    config.target?.let {
+      return it
+    }
+    var packageDirectory: File? = directory.canonicalFile
+    while (packageDirectory != null && packageDirectory.toPath().startsWith(root.toPath())) {
+      val pkg = packageDirectory
+      if (listOf("BUILD.bazel", "BUILD").any { pkg.resolve(it).isFile }) {
+        val path = pkg.relativeTo(root).invariantSeparatorsPath
+        val expression =
+          "kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', //$path:*)"
+        val targets =
+          execute(
+              config.buildCommand +
+                config.startupArgs +
+                listOf("query", expression, "--output=label"),
+              root,
+              timeoutSeconds,
+            )
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("//") || it.startsWith("@") }
+            .distinct()
+            .sorted()
+            .toList()
+        check(targets.size == 1) {
+          "${if (targets.isEmpty()) "No JVM targets" else "Multiple JVM targets: ${targets.joinToString()}"} in //$path. Select --target <label>, or commit target in .compose-preview/bazel.json."
+        }
+        return targets.single()
+      }
+      if (pkg == root) break
+      packageDirectory = pkg.parentFile
+    }
+    error(
+      "No BUILD file found below $root; select --target or configure target in .compose-preview/bazel.json"
+    )
+  }
+
   fun collect(
     root: File,
     target: String,

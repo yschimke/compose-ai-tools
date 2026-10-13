@@ -165,14 +165,30 @@ internal object CliFlagValidation {
       "--wasm-ui-dir",
     )
 
+  private val projectBuildFlags =
+    setOf(
+      "--project",
+      "--target",
+      "--build-system",
+      "--config",
+      "--build-command",
+      "--bazel-arg",
+      "--aspect",
+      "--artifacts",
+      "--execution-root",
+      "--out",
+    )
+
   val BY_COMMAND: Map<String, Set<String>> =
     mapOf(
       "show" to
         commandBase +
+          projectBuildFlags +
           setOf("--json", "--images", "--link", "--openai-plugin-id", "--openai-marketplace"),
       "show-resources" to commandBase + setOf("--json"),
-      "list" to commandBase + setOf("--json"),
-      "render" to commandBase + setOf("--output", "--bundle", "--embed-deps", "--format"),
+      "list" to commandBase + projectBuildFlags + setOf("--json"),
+      "render" to
+        commandBase + projectBuildFlags + setOf("--output", "--bundle", "--embed-deps", "--format"),
       "render-matrix" to
         commandBase +
           setOf(
@@ -337,6 +353,12 @@ internal object CliFlagValidation {
       // narrow.
       "bazel" to
         setOf(
+          "--build-system",
+          "--format",
+          "--module",
+          "--preview",
+          "--brief",
+          "--changed-only",
           "--project",
           "--target",
           "--config",

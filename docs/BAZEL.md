@@ -6,20 +6,58 @@ desktop daemon. No Gradle preview plugin, IntelliJ installation, Bazel distribut
 or Android SDK is added to the CLI. The pure JVM discovery library and descriptor
 builder are reused; renderer sidecars are provisioned on first prepare/render.
 
-## Quick start
+## Normal commands and build selection
 
-From a workspace that already compiles Compose (including its compiler plugin):
+Normal `list`, `render`, and `show` now select the build system from the repository:
 
 ```sh
-compose-preview bazel init
-compose-preview bazel list --target //app:ui
-compose-preview bazel render --target //app:ui --filter Greeting --output greeting.png
+compose-preview list
+compose-preview show --filter Greeting --json
+compose-preview render --filter Greeting --output greeting.png
 ```
 
-`init` writes three small files under `.compose-preview/bazel/`. Commit them if
-useful. It does not change application BUILD files or MODULE.bazel. Repeating init
-is safe; it refuses to overwrite a customized aspect/provider. Ignore generated
-`.compose-preview/outputs/` in your repository.
+Gradle settings (`settings.gradle.kts` / `settings.gradle`) win within a workspace,
+with the existing wrapper fallback. Otherwise `MODULE.bazel`, `WORKSPACE[.bazel]`,
+`.blazerc`, or BUILD files select the Bazel-family driver. Nested workspaces and
+repository boundaries prevent selecting an unrelated outer build. Use
+`--build-system gradle|bazel|blaze` to override a mixed checkout and `--project`
+to select a workspace from elsewhere. `list`/`show --json` use the same versioned
+CLI response on both paths, including capture paths, hashes and changed state.
+
+The explicit form remains available: `compose-preview bazel list|render|show`.
+It uses the same normal result envelope; `prepare` additionally prints the prepared
+descriptor path. The default aspect package is installed on the first
+build/discovery command. It does not modify application BUILD files or MODULE.bazel,
+and it refuses to overwrite customized tool files. `bazel init` remains useful
+for selecting an internal JavaInfo provider before the first build.
+
+### Target and executable selection
+
+An explicit `--target` (or a Bazel-label `--module`) wins, then `target` in the shared
+`.compose-preview/bazel.json`. Without either, the driver queries JVM targets in
+the nearest package. One target is selected; multiple candidates produce a useful
+selection error. It does not scan `//...` or guess which target a large monorepo
+should build. A repo can commit the default once so every developer runs the
+normal commands without repeating labels:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "//app:ui",
+  "buildCommand": ["blaze"],
+  "buildArgs": ["--config=desktop"]
+}
+```
+
+For public Bazel use its build command/flags; the default materializes remote
+outputs. Explicit `--build-command` wins over configured argv. Otherwise `.blazerc`
+selects Blaze; the driver looks for Bazel, Bazelisk, then Blaze on PATH. It never
+runs those executables merely to detect the build system.
+
+Ignore generated `.compose-preview/bazel/` and `.compose-preview/outputs/`, but
+keep the shared JSON config trackable. The current adapter renders static Desktop
+PNG captures; other formats/native target labels are described in the
+[artifact and native-target design](design/BAZEL_PREVIEW_TARGETS.md).
 
 The default provider load is `@rules_java//java/common:java_info.bzl`. It needs
 `rules_java` visible to the main repository; a transitive bzlmod dependency is not
@@ -61,8 +99,8 @@ or a file selected explicitly with `--config <file>`:
 
 `buildCommand` is an argv array, never a shell command string. Relative executable
 paths are resolved by the process runner against the selected workspace; use an
-absolute path for a wrapper outside it. Config is consumed only by an explicit
-`bazel` operation, never merely by opening a project. `--project` selects the
+absolute path for a wrapper outside it. Config is consumed when a preview command selects the Bazel-family driver,
+never merely by opening a project. `--project` selects the
 workspace, and `--timeout` bounds each build command and render wait (300 seconds
 by default). Failed builds, remote-only/missing artifacts and ambiguous configured
 outputs fail with diagnostics rather than borrowing outputs from another build.
@@ -121,7 +159,8 @@ internal API review. Unknown build systems can use artifact import now.
 `daemon-launch.json`, whose path is printed to stdout, for existing RenderSession
 consumers. `render` uses that descriptor. The manifest, components record, artifact
 metadata and descriptor live under `.compose-preview/outputs/<target-config-hash>/`,
-or `--out <dir>`. Each run rebuilds/discovers; there is no independent stale cache.
+or `--out <dir>`. Prepared files use a `build/compose-previews/` subdirectory
+so the existing result/state consumers work unchanged. Each run rebuilds/discovers; there is no independent stale cache.
 
 The aspect requests metadata and runtime output groups. JavaInfo supplies the
 transitive closure, including `runtime_deps`, without traversing every rule and
@@ -135,7 +174,7 @@ JAR-packaged JVM resources work. The adapter records/materializes loose runfiles
 but does not synthesize arbitrary Bazel runfiles trees or configure custom JNI
 library paths. Applications relying on those layouts may need an adapted launcher.
 Android resource APKs/manifests/R classes, Robolectric configuration, CMP iOS/Wasm,
-watch/rebuild subscriptions and target auto-selection are not implemented here.
+watch/rebuild subscriptions and automatic whole-workspace target enumeration are not implemented here.
 An already-building Compose JVM target is required. Bytecode discovery also needs
 an annotation retained in compiled classes, such as modern
 `androidx.compose.ui.tooling.preview.Preview`. The legacy

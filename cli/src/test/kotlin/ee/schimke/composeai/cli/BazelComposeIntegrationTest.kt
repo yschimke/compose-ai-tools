@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli
 
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.PrintStream
 import java.nio.file.Files
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
@@ -90,6 +92,52 @@ class BazelComposeIntegrationTest {
         darkPixels > 25 && lightPixels > 1000,
         "Compose UI must contain visible dark text on an opaque light background",
       )
+      // The normal commands detect Bazel, use the shared repo target/config and retain
+      // the existing CLI JSON envelope. No --target or explicit bazel verb is needed.
+      val configFile = root.resolve(".compose-preview/bazel.json")
+      val previousConfig = configFile.takeIf { it.isFile }?.readText()
+      configFile.writeText(bazelJson.encodeToString(config.copy(target = "//:aspect_app")))
+      fun capture(command: String, extra: List<String> = emptyList()): PreviewListResponse {
+        val buffer = ByteArrayOutputStream()
+        val original = System.out
+        try {
+          System.setOut(PrintStream(buffer))
+          runProjectPreviewCommand(
+            command,
+            listOf(
+              "--project",
+              root.path,
+              "--json",
+              "--out",
+              output.resolve("normal").path,
+              "--timeout",
+              "60",
+            ) + extra,
+          )
+        } finally {
+          System.setOut(original)
+        }
+        return bazelJson.decodeFromString(buffer.toString(Charsets.UTF_8))
+      }
+      try {
+        assertEquals(
+          ProjectBuildKind.BAZEL,
+          previewBuildRoute(listOf("--project", root.path))?.kind,
+        )
+        val listed = capture("list")
+        assertEquals(SHOW_LIST_SCHEMA, listed.schema)
+        assertEquals(
+          setOf("RuntimeGreeting", "GeneratedGreeting"),
+          listed.previews.map { it.functionName }.toSet(),
+        )
+        val shown = capture("show", listOf("--preview", "RuntimeGreeting"))
+        assertEquals(1, shown.previews.size)
+        assertTrue(File(requireNotNull(shown.previews.single().pngPath)).isFile)
+        assertTrue(shown.previews.single().sha256?.isNotBlank() == true)
+        assertEquals(1, shown.counts?.total)
+      } finally {
+        if (previousConfig == null) configFile.delete() else configFile.writeText(previousConfig)
+      }
       val evidence = System.getenv("COMPOSE_PREVIEW_BAZEL_EVIDENCE")?.let(::File)
       if (evidence != null) {
         evidence.parentFile.mkdirs()

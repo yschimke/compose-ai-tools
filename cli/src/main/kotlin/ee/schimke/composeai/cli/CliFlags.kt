@@ -18,6 +18,7 @@ internal object CliFlags {
    */
   val VALUE_FLAGS: Set<String> =
     setOf(
+      "--build-system",
       "--target",
       "--config",
       "--build-command",
