@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.57.0](https://github.com/yschimke/compose-ai-tools/compare/v2.56.0...v2.57.0) (2026-10-13)
+
+
+### Features
+
+* support Bazel Compose previews and runnable Maven bundles ([#5947](https://github.com/yschimke/compose-ai-tools/issues/5947)) ([a4e5ce1](https://github.com/yschimke/compose-ai-tools/commit/a4e5ce1d9680647b3117d51196176503180cbe2f))
+
+
+### Bug Fixes
+
+* **deps:** build on rc-players 2.11.0 for the CMP player's CanvasContent sizing ([#5936](https://github.com/yschimke/compose-ai-tools/issues/5936)) ([a90cabb](https://github.com/yschimke/compose-ai-tools/commit/a90cabb0dd1df469fd9ad0b1ee8de137ccf9d537))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.11.0 ([#5938](https://github.com/yschimke/compose-ai-tools/issues/5938)) ([90f4a93](https://github.com/yschimke/compose-ai-tools/commit/90f4a93ebe2c96ea754ad320ba9621ffaeb05e4e))
+* **deps:** update dependency org.jetbrains.skiko:skiko-awt to v0.153.0 ([#5944](https://github.com/yschimke/compose-ai-tools/issues/5944)) ([29b763b](https://github.com/yschimke/compose-ai-tools/commit/29b763be83a57d7004a29a204e0c3a92ebaedd56))
+* **deps:** use daemon 3.16.1 for visible-font export auditing ([#5948](https://github.com/yschimke/compose-ai-tools/issues/5948)) ([9366c83](https://github.com/yschimke/compose-ai-tools/commit/9366c83340190e9cef2d6f8e7618461fec59ab8b))
+* **preview-discovery:** compile the shared interfaces with JVM default methods ([#5935](https://github.com/yschimke/compose-ai-tools/issues/5935)) ([4f6e225](https://github.com/yschimke/compose-ai-tools/commit/4f6e22594ac77f753b37c1dd24377b3ba1c203e6))
+* **release:** dispatch the required build checks on release PRs ([#5943](https://github.com/yschimke/compose-ai-tools/issues/5943)) ([778711b](https://github.com/yschimke/compose-ai-tools/commit/778711b55ff75a5d4060276316a845d5b5e7e666))
+
 ## [2.56.0](https://github.com/yschimke/compose-ai-tools/compare/v2.55.0...v2.56.0) (2026-10-12)
 
 
