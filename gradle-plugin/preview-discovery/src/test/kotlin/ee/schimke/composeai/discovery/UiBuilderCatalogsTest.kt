@@ -2735,6 +2735,8 @@ class UiBuilderCatalogsTest {
               .also { b ->
                 b.label = "Wear app"
                 b.order = 2
+                b.description = "Screens for a watch"
+                b.primary = false
               }
               .build()
           b3.templates =
@@ -2757,6 +2759,8 @@ class UiBuilderCatalogsTest {
       .inOrder()
     val chooser = checkNotNull(semantics.newDesign)
     assertThat(chooser.label).isEqualTo("Wear app")
+    assertThat(chooser.description).isEqualTo("Screens for a watch")
+    assertThat(chooser.primary).isFalse()
     assertThat(chooser.templates.map { it.id })
       .containsExactly("wear-screen", "wear-list")
       .inOrder()
