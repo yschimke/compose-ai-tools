@@ -1,3 +1,7 @@
+import org.gradle.api.file.FileCollection
+import org.gradle.api.tasks.Classpath
+import org.gradle.process.CommandLineArgumentProvider
+
 plugins {
   id("composeai.maven-publishing")
   // No versions: the parent build's `kotlin-dsl` already supplies the embedded Kotlin plugins, and
@@ -60,8 +64,16 @@ dependencies {
 
 // Compile external consumers, including deliberately broken references, against this module's
 // real output and dependencies rather than a stubbed copy of the typed API.
+class DiscoveryCompileClasspathArgs(@get:Classpath val files: FileCollection) :
+  CommandLineArgumentProvider {
+  override fun asArguments(): Iterable<String> =
+    listOf("-DtypedAdapterCompileClasspath=${files.asPath}")
+}
+
 tasks.named<Test>("test") {
-  systemProperty("typedAdapterCompileClasspath", sourceSets["test"].runtimeClasspath.asPath)
+  // Resolve in the task's JVM argument provider, not while a parent composite realizes it.
+  // Gradle 9.7 rejects that eager resolution without the included project's exclusive lock.
+  jvmArgumentProviders.add(DiscoveryCompileClasspathArgs(sourceSets["test"].runtimeClasspath))
 }
 
 composeAiMavenPublishing {

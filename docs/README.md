@@ -118,3 +118,5 @@ not as separate docs — read them next to the code.
   split out in [#2533](https://github.com/yschimke/compose-ai-tools/issues/2533).
 
 - [Optional UID design audit CI](UID_DESIGN_AUDIT_CI.md): shared, default-branch OpenRouter audit of bounded preview artifacts.
+
+- [Bazel CLI and configurable artifact producers](BAZEL.md) — aspect setup, discovery/rendering, and internal build-system configuration.

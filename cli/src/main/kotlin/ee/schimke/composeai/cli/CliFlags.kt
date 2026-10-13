@@ -18,6 +18,14 @@ internal object CliFlags {
    */
   val VALUE_FLAGS: Set<String> =
     setOf(
+      "--target",
+      "--config",
+      "--build-command",
+      "--bazel-arg",
+      "--aspect",
+      "--artifacts",
+      "--execution-root",
+      "--java-info-load",
       "--module",
       "--filter",
       // `guidelines`

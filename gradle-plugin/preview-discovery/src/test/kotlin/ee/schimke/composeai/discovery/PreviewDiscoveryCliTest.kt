@@ -66,6 +66,26 @@ class PreviewDiscoveryCliTest {
   }
 
   @Test
+  fun `project jars remain separate from filtered dependencies`() {
+    val parsed =
+      PreviewDiscoveryCli.parse(
+        baseArgs +
+          arrayOf(
+            "--project-jars",
+            "/app.jar${File.pathSeparator}/generated.jar",
+            "--project-jars",
+            "/other.jar",
+            "--dependency-jars",
+            "/runtime.jar",
+          )
+      )
+    assertThat(parsed.input.projectClassJars.map { it.path })
+      .containsExactly("/app.jar", "/generated.jar", "/other.jar")
+      .inOrder()
+    assertThat(parsed.input.dependencyJars.map { it.path }).containsExactly("/runtime.jar")
+  }
+
+  @Test
   fun `--fail-on-empty defaults to false when absent`() {
     val parsed =
       PreviewDiscoveryCli.parse(

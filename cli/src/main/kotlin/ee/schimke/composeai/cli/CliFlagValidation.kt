@@ -335,6 +335,28 @@ internal object CliFlagValidation {
         ),
       // Flags the preview server passes when spawning the Gradle half of `serve`; deliberately
       // narrow.
+      "bazel" to
+        setOf(
+          "--project",
+          "--target",
+          "--config",
+          "--build-command",
+          "--bazel-arg",
+          "--aspect",
+          "--artifacts",
+          "--execution-root",
+          "--java-info-load",
+          "--out",
+          "--output",
+          "--id",
+          "--filter",
+          "--json",
+          "--timeout",
+          "--verbose",
+          "-v",
+          "--help",
+          "-h",
+        ),
       "build-host" to setOf("--stdio", "--module", "--variant", "--verbose", "-v"),
       "share-preview" to
         setOf(

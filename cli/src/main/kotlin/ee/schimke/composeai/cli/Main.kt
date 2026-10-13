@@ -36,6 +36,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "ui-builder" to { a -> UiBuilderCommand(a).run() },
     "design" to { a -> DesignCommand(a).run() },
     "a2ui" to { a -> A2uiCommand(a).run() },
+    "bazel" to { a -> BazelCommand(a).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -142,7 +143,7 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
-      setup     update · init-script · pin · auth
+      setup     update · init-script · pin · auth · bazel
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
@@ -285,6 +286,8 @@ private fun printFullUsage() {
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
                        (--no-modify-path leaves shell startup files alone)
+      bazel            init | list | prepare | render for an existing Compose JVM target.
+                       Run `compose-preview bazel --help` for setup and build configuration.
       init-script      Materialise the bundled auto-inject init script and print the path
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
