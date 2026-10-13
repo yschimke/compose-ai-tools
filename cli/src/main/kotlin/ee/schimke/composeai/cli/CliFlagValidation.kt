@@ -355,6 +355,7 @@ internal object CliFlagValidation {
       // narrow.
       "bazel" to
         setOf(
+          "--reuse-renders",
           "--bundle",
           "--embed-deps",
           "--maven-install",

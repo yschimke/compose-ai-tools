@@ -127,6 +127,27 @@ class BazelComposeIntegrationTest {
           )
         )
         .execute()
+      val reused = output.resolve("reused.png")
+      BazelCommand(
+          listOf(
+            "render",
+            "--reuse-renders",
+            "--project",
+            root.path,
+            "--artifacts",
+            metadata.path,
+            "--execution-root",
+            executionRoot,
+            "--out",
+            output.resolve("portable").path,
+            "--filter",
+            "RuntimeGreeting",
+            "--output",
+            reused.path,
+          )
+        )
+        .execute()
+      assertEquals(bazelBundleSha(png), bazelBundleSha(reused))
       val packed = BundleReader.readMetadata(bundle).manifest
       assertEquals("bazel", packed.producer)
       val coordinates = packed.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()

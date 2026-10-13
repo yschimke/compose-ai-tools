@@ -225,7 +225,7 @@ Consumers can pin a full Git commit or a release archive with SHA-256, and separ
 pin the CLI archive using `compose_preview_cli_repository`.
 
 ```sh
-bazel run //app:ui-preview-run -- --filter Greeting --output greeting.png
+bazel run //app:ui-preview -- --filter Greeting --output greeting.png
 bazel build //app:ui-preview
 ```
 
@@ -254,9 +254,9 @@ refer to the published artifact. `dependency-resolution.json` records inferred
 coordinates and built/published hashes. Unidentified or unpublished project JARs
 remain embedded; `--embed-deps` explicitly requests an offline bundle.
 
-For native builds set `bundle = True, maven_install = ":maven_install.json"` on
-`compose_preview`, then build `//app:ui-preview-bundle`. It produces
-`bazel-bin/app/ui-preview-bundle.png`. CMP framework coordinates resolve through
+For native builds set `outputs = ["png", "bundle"], maven_install = ":maven_install.json"` on
+`compose_preview`, then build `//app:ui-preview --output_groups=bundle`. It produces
+`bazel-bin/app/ui-preview.bundle.png`. CMP framework coordinates resolve through
 Maven Central; some AndroidX dependencies use Google Maven, already supported by
 the server. Bundle packaging preserves reflection/runtime-only resources instead
 of pruning the runtime closure through bytecode-only reachability.
