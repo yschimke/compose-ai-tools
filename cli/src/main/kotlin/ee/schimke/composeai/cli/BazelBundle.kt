@@ -12,15 +12,30 @@ internal fun writeBazelBundle(
   output: File,
   embedDeps: Boolean = false,
   includeRenders: Boolean = true,
-): BundleReader.Manifest =
-  produceBundle(
+): BundleReader.Manifest {
+  val sourcePaths =
+    artifacts.sourceFiles.zip(artifacts.metadata.sourceFiles.distinct()).associate { (file, path) ->
+      file.canonicalFile to path
+    }
+  val portable =
+    prepared.manifest.copy(
+      previews =
+        prepared.manifest.previews.map { preview ->
+          preview.copy(
+            sourceFile =
+              preview.sourceFile?.let { path -> sourcePaths[File(path).canonicalFile] ?: path }
+          )
+        }
+    )
+  return produceBundle(
     artifacts.metadata.target,
     artifacts.projectJars,
     artifacts.runtimeJars,
-    prepared.manifest,
+    portable,
     prepared.manifestFile.parentFile.takeIf { includeRenders },
     selectedIds,
     lockFiles,
     output,
     embedDeps,
   )
+}

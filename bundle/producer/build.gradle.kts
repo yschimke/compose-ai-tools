@@ -59,3 +59,14 @@ val checkProducerRuntime by tasks.registering {
 }
 
 tasks.named("check") { dependsOn(checkProducerRuntime) }
+
+// Keep the independently published producer JAR/distribution archives reproducible too.
+tasks.withType<AbstractArchiveTask>().configureEach {
+  isPreserveFileTimestamps = false
+  isReproducibleFileOrder = true
+}
+
+tasks.named<Tar>("distTar") {
+  compression = Compression.GZIP
+  archiveExtension.set("tar.gz")
+}

@@ -35,3 +35,13 @@ build-tools API, renderer/native and HTTP dependencies. Shared DTO/device catalo
 artifacts remain; their legacy `daemon-*` names do not imply a running daemon.
 Source-only consumers need the independent producer distribution, not this repo's
 full build or CLI distribution. They can omit the native rule's `cli` attribute.
+
+Reproducibility is verified with byte-identical declared runtime inputs and the
+same pinned producer/JDK: sorted ZIP entries, fixed DOS timestamps independent
+of timezone, UTF-8 encoding, canonical JSON object keys and stable preview IDs.
+Runtime classpath and capture array order remain semantic and are preserved.
+Baking is also byte reproducible given the same prepared bundle and PNG bytes;
+image generation itself still depends on the renderer/native/font environment.
+The external-consumer test copies all inputs to two different roots and executes
+the producer under different JVM locales/timezones, comparing complete SHA-256s
+with the original Bazel artifact, rather than relying on a cache hit.

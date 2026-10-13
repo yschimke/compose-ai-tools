@@ -5,6 +5,7 @@ import ee.schimke.composeai.discovery.PreviewManifest
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
+import java.time.LocalDateTime
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -199,8 +200,8 @@ public fun bazelBundleAppJar(jars: List<File>): ByteArray {
 private fun bazelBundleZip(contents: Map<String, ByteArray>): ByteArray =
   ByteArrayOutputStream().use { bytes ->
     ZipOutputStream(bytes).use { zip ->
-      contents.forEach { (name, content) ->
-        zip.putNextEntry(ZipEntry(name).apply { time = 0 })
+      contents.toSortedMap().forEach { (name, content) ->
+        zip.putNextEntry(ZipEntry(name).apply { setTimeLocal(LocalDateTime.of(1980, 1, 2, 0, 0)) })
         zip.write(content)
         zip.closeEntry()
       }
@@ -219,7 +220,7 @@ public fun writeBazelBundle(
   output: File,
   embedDeps: Boolean = false,
 ): BundleReader.Manifest {
-  val previews = discovery.previews.filter { it.id in selectedIds }
+  val previews = discovery.previews.filter { it.id in selectedIds }.sortedBy { it.id }
   require(previews.isNotEmpty()) { "No previews selected for bundle" }
   val known = bazelMavenCoordinates(lockFiles)
   val appJar = bazelBundleAppJar(projectJars)
@@ -275,10 +276,10 @@ public fun writeBazelBundle(
       resolution = if (maven && embedded) "mixed" else if (maven) "coordinates" else "embedded",
     )
   contents["dependency-resolution.json"] =
-    kotlinx.serialization.json.JsonArray(decisions).toString().toByteArray()
-  contents["bundle.json"] = bazelJson.encodeToString(manifest).toByteArray()
+    canonicalJsonBytes(kotlinx.serialization.json.JsonArray(decisions).toString())
+  contents["bundle.json"] = canonicalJsonBytes(bazelJson.encodeToString(manifest))
   contents["previews.json"] =
-    bazelJson.encodeToString(discovery.copy(previews = previews)).toByteArray()
+    canonicalJsonBytes(bazelJson.encodeToString(discovery.copy(previews = previews)))
   previews.forEach { preview ->
     require(!preview.id.contains('/') && !preview.id.contains('\\')) {
       "Invalid bundle preview ID: ${preview.id}"
@@ -349,3 +350,18 @@ public fun bakePreparedBundle(bundle: File, renders: File, output: File): Unit {
 /** Filename shared by the existing bundle renderer and offline baked-image packaging. */
 public fun previewPngName(id: String): String =
   id.map { if (it.isLetterOrDigit() || it in "._-") it else '_' }.joinToString("") + ".png"
+
+// Object member order is not semantic. Arrays (particularly classpaths/captures) retain order.
+private fun canonicalJsonBytes(text: String): ByteArray {
+  fun normalize(
+    value: kotlinx.serialization.json.JsonElement
+  ): kotlinx.serialization.json.JsonElement =
+    when (value) {
+      is kotlinx.serialization.json.JsonObject ->
+        kotlinx.serialization.json.JsonObject(value.toSortedMap().mapValues { normalize(it.value) })
+      is kotlinx.serialization.json.JsonArray ->
+        kotlinx.serialization.json.JsonArray(value.map(::normalize))
+      else -> value
+    }
+  return normalize(bazelJson.parseToJsonElement(text)).toString().toByteArray(Charsets.UTF_8)
+}
