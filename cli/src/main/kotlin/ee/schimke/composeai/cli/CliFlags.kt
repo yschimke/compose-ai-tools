@@ -185,6 +185,7 @@ internal object CliFlags {
       "--limit",
       "--mode",
       "--project",
+      "--maven-install",
       "--ref",
       "--repo",
       "--replicas-per-daemon",

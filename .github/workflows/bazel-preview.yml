@@ -56,6 +56,7 @@ jobs:
       - name: Verify the CLI aspect and render actual Compose UI
         env:
           COMPOSE_PREVIEW_BAZEL_FIXTURE: ${{ github.workspace }}/contrib-fixture/bazel-desktop
+          COMPOSE_PREVIEW_BAZEL_BUNDLE_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/runnable-bundle.png
           COMPOSE_PREVIEW_BAZEL_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/greeting.png
         run: >-
           ./gradlew :cli:test --tests '*Bazel*' --tests '*ProjectBuildTest*'
@@ -65,5 +66,5 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bazel-desktop-render
-          path: build/bazel-preview/greeting.png
+          path: build/bazel-preview/
           if-no-files-found: error

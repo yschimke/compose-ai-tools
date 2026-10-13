@@ -188,7 +188,9 @@ internal object CliFlagValidation {
       "show-resources" to commandBase + setOf("--json"),
       "list" to commandBase + projectBuildFlags + setOf("--json"),
       "render" to
-        commandBase + projectBuildFlags + setOf("--output", "--bundle", "--embed-deps", "--format"),
+        commandBase +
+          projectBuildFlags +
+          setOf("--output", "--bundle", "--embed-deps", "--format", "--maven-install"),
       "render-matrix" to
         commandBase +
           setOf(
@@ -353,6 +355,9 @@ internal object CliFlagValidation {
       // narrow.
       "bazel" to
         setOf(
+          "--bundle",
+          "--embed-deps",
+          "--maven-install",
           "--build-system",
           "--format",
           "--module",

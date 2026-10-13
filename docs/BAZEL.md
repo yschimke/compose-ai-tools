@@ -237,3 +237,26 @@ hermetic remote-render toolchain. Full installation and publication instructions
 a checksum-producing packager and a fresh-workspace integration test live in the
 rule repository. CLI-first attachment still needs no application BUILD edits;
 native labels require an explicit `compose_preview` declaration.
+
+## Portable runnable PNG/ZIP bundles
+
+```sh
+compose-preview render --bundle --maven-install maven_install.json
+compose-preview bazel bundle --target //app:ui --maven-install maven_install.json --output bundle.png
+```
+
+The polyglot carries a real PNG cover, baked preview images, own bytecode/resources,
+and the complete runtime classpath. The existing preview server can resolve and
+re-render it. Published dependencies prefer Maven coordinates even when Bazel has
+transformed their bytes: lockfile paths/names, Maven layout, pom.properties and
+manifest version hints identify the published artifact. Available lockfile checksums
+refer to the published artifact. `dependency-resolution.json` records inferred
+coordinates and built/published hashes. Unidentified or unpublished project JARs
+remain embedded; `--embed-deps` explicitly requests an offline bundle.
+
+For native builds set `bundle = True, maven_install = ":maven_install.json"` on
+`compose_preview`, then build `//app:ui-preview-bundle`. It produces
+`bazel-bin/app/ui-preview-bundle.png`. CMP framework coordinates resolve through
+Maven Central; some AndroidX dependencies use Google Maven, already supported by
+the server. Bundle packaging preserves reflection/runtime-only resources instead
+of pruning the runtime closure through bytecode-only reachability.

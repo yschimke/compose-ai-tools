@@ -33,7 +33,7 @@ internal class BazelCommand(
     get() = true
 
   override fun run() {
-    if (args.isEmpty() || args.any { it in setOf("help", "--help", "-h") }) {
+    if (bazelHelpRequested(args)) {
       printHelp()
       return
     }
@@ -49,8 +49,8 @@ internal class BazelCommand(
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
-    require(operation in setOf("init", "prepare", "list", "render", "show")) {
-      "Expected init, prepare, list, render or show"
+    require(operation in setOf("init", "prepare", "list", "render", "show", "bundle")) {
+      "Expected init, prepare, list, render, show or bundle"
     }
     val format = args.flagValue("--format")
     require(format == null || format == "png") {
@@ -107,11 +107,11 @@ internal class BazelCommand(
         val metadata =
           bazelJson.decodeFromString<BazelArtifacts>(resolve(root, imported).readText())
         args.flagValue("--target")?.let {
-          require(metadata.target.removePrefix("@@") == it.removePrefix("@@")) {
+          require(normalizeBazelLabel(metadata.target) == normalizeBazelLabel(it)) {
             "Imported artifacts do not match --target"
           }
         }
-        metadata.resolve(executionRoot)
+        metadata.resolve(executionRoot, root)
       } else {
         val explicitTarget = args.flagValue("--target") ?: args.flagValue("--module")
         val target =
@@ -151,11 +151,55 @@ internal class BazelCommand(
       }
       "prepare",
       "show",
-      "render" -> {
+      "render",
+      "bundle" -> {
         val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
         if (operation == "prepare") println(descriptor.absolutePath)
         else {
-          renderBazelPreviews(prepared, descriptor, root, timeout)
+          renderBazelPreviews(
+            prepared,
+            descriptor,
+            root,
+            timeout,
+            copyOutput = operation != "bundle",
+          )
+          if (operation == "bundle" || "--bundle" in args) {
+            val locks =
+              args
+                .flagValuesAll("--maven-install")
+                .map { resolve(root, it) }
+                .ifEmpty {
+                  if (imported == null)
+                    listOfNotNull(root.resolve("maven_install.json").takeIf { it.isFile })
+                  else emptyList()
+                }
+            val bundle =
+              if (operation == "bundle")
+                args.flagValue("--output")?.let { resolve(root, it) }
+                  ?: output.resolve("bundle.png")
+              else output.resolve("bundle.png")
+            val selected =
+              prepared.manifest.previews
+                .filter {
+                  (args.flagValue("--preview") == null ||
+                    previewMatchesReference(
+                      args.flagValue("--preview")!!,
+                      it.id,
+                      it.className,
+                      it.functionName,
+                    )) &&
+                    (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
+                    (args.flagValue("--filter") == null ||
+                      it.id.contains(args.flagValue("--filter")!!, ignoreCase = true))
+                }
+                .map { it.id }
+                .toSet()
+            val manifest =
+              writeBazelBundle(artifacts, prepared, selected, locks, bundle, "--embed-deps" in args)
+            System.err.println(
+              "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)"
+            )
+          }
           if (normalSurface) emitNormalResults(prepared, rendering = true)
         }
       }
@@ -167,16 +211,24 @@ internal class BazelCommand(
     descriptor: File,
     root: File,
     timeout: Long,
+    copyOutput: Boolean = true,
   ) {
     val exactId = args.flagValue("--id")
     val filter = args.flagValue("--filter")
     val previews =
       prepared.manifest.previews.filter {
-        (exactId == null || it.id == exactId) &&
+        (args.flagValue("--preview") == null ||
+          previewMatchesReference(
+            args.flagValue("--preview")!!,
+            it.id,
+            it.className,
+            it.functionName,
+          )) &&
+          (exactId == null || it.id == exactId) &&
           (filter == null || it.id.contains(filter, ignoreCase = true))
       }
     require(previews.isNotEmpty()) { "No previews match the selection" }
-    val output = args.flagValue("--output")?.let { resolve(root, it) }
+    val output = if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null
     require(output == null || previews.size == 1) {
       "--output requires one preview; select it with --id or --filter"
     }
@@ -268,6 +320,7 @@ internal class BazelCommand(
         compose-preview list [--target //app:ui] [--json]
         compose-preview bazel list [--target //app:ui] [--json]
         compose-preview bazel prepare --target //app:ui
+        compose-preview bazel bundle --target //app:ui --maven-install maven_install.json --output bundle.png
         compose-preview bazel render --target //app:ui [--id <id> | --filter <text>] [--output <png>]
 
       Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
@@ -281,6 +334,9 @@ internal class BazelCommand(
       --aspect <label.bzl%name>   Override the aspect entry point.
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
+      --bundle                   render: additionally pack the portable PNG/ZIP bundle.
+      --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
+      --embed-deps               Embed all dependencies for offline bundle use.
       --out <dir>                Prepared manifest/descriptor directory; default per target/config.
       --timeout <seconds>        Build/render deadline (default 300).
       --project <workspace>      Default current directory.
@@ -401,3 +457,8 @@ internal fun prepareBazelDesktopDaemon(
     it.writeText(DaemonLaunchBuilder.encode(descriptor))
   }
 }
+
+internal fun bazelHelpRequested(args: List<String>): Boolean =
+  args.isEmpty() ||
+    args.any { it == "--help" || it == "-h" } ||
+    args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray())) == "help"

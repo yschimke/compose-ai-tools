@@ -214,4 +214,111 @@ class BazelBuildTest {
       root.deleteRecursively()
     }
   }
+
+  @Test
+  fun `help values are valid and abbreviated labels match expanded events`() {
+    assertTrue(!bazelHelpRequested(listOf("render", "--filter", "help")))
+    assertTrue(!bazelHelpRequested(listOf("list", "--config", "help")))
+    assertTrue(bazelHelpRequested(listOf("help")))
+    assertTrue(bazelHelpRequested(listOf("render", "--help")))
+    assertEquals("//app:app", normalizeBazelLabel("//app"))
+    assertEquals("//app:app", normalizeBazelLabel("@@//app:app"))
+    assertEquals(normalizeBazelLabel("@repo+//app"), normalizeBazelLabel("@@repo+//app:app"))
+    val root = Files.createTempDirectory("bazel-labels").toFile()
+    try {
+      val metadata = root.resolve("metadata.json").apply { writeText("{}") }
+      assertEquals(
+        metadata,
+        bazelMetadataFile(
+          completed("//app:app", "set") + "\n" + eventSet("set", listOf(metadata)),
+          "//app",
+          "compose_preview_metadata",
+        ),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `workspace sources map back to checkout while generated sources retain execution root`() {
+    val root = Files.createTempDirectory("bazel-source-roots").toFile()
+    try {
+      val workspace = root.resolve("checkout").apply { mkdirs() }
+      val execution = root.resolve("execution").apply { mkdirs() }
+      listOf(workspace, execution).forEach { dir ->
+        dir.resolve("app/Greeting.kt").apply {
+          parentFile.mkdirs()
+          writeText("source")
+        }
+      }
+      execution.resolve("app.jar").writeText("")
+      execution.resolve("bazel-out/config/Generated.kt").apply {
+        parentFile.mkdirs()
+        writeText("generated")
+      }
+      val artifacts =
+        BazelArtifacts(
+          1,
+          "//:app",
+          "config",
+          listOf("app.jar"),
+          listOf("app.jar"),
+          listOf("app/Greeting.kt", "bazel-out/config/Generated.kt"),
+        )
+      assertEquals(
+        listOf(
+          workspace.resolve("app/Greeting.kt"),
+          execution.resolve("bazel-out/config/Generated.kt"),
+        ),
+        artifacts.resolve(execution, workspace).sourceFiles,
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `apparent external repositories are resolved before building and matching metadata`() {
+    val root = Files.createTempDirectory("bazel-external-label").toFile()
+    try {
+      root.resolve("app.jar").writeText("")
+      val metadata =
+        root.resolve("meta.json").apply {
+          writeText(
+            bazelJson.encodeToString(
+              BazelArtifacts(
+                1,
+                "@@canonical+//app:app",
+                "config",
+                listOf("app.jar"),
+                listOf("app.jar"),
+              )
+            )
+          )
+        }
+      val calls = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        calls += argv
+        when {
+          "cquery" in argv -> "@@canonical+//app:app\n"
+          "build" in argv -> {
+            File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+              .writeText(
+                completed("@canonical+//app:app", "set") + "\n" + eventSet("set", listOf(metadata))
+              )
+            ""
+          }
+          else -> root.path
+        }
+      }
+      assertEquals(
+        "@@canonical+//app:app",
+        build.collect(root, "@alias//app", BazelBuildConfig(), 10).metadata.target,
+      )
+      assertTrue("@@canonical+//app:app" in calls.single { "build" in it })
+    } finally {
+      root.deleteRecursively()
+    }
+  }
 }

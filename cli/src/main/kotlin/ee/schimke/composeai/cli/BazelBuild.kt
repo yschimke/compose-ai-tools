@@ -38,7 +38,7 @@ internal data class BazelArtifacts(
   val sourceFiles: List<String> = emptyList(),
   val dataFiles: List<String> = emptyList(),
 ) {
-  fun resolve(executionRoot: File): ResolvedBazelArtifacts {
+  fun resolve(executionRoot: File, workspaceRoot: File? = null): ResolvedBazelArtifacts {
     require(schemaVersion == 1) { "Unsupported Bazel artifacts schemaVersion $schemaVersion" }
     require(target.isNotBlank() && configuration.isNotBlank()) {
       "Missing target/configuration identity"
@@ -67,7 +67,19 @@ internal data class BazelArtifacts(
       this,
       project,
       runtime,
-      resolvePaths(sourceFiles),
+      resolvePaths(sourceFiles).mapIndexed { index, file ->
+        val path = sourceFiles.distinct()[index]
+        val local = workspaceRoot?.resolve(path)
+        if (
+          !File(path).isAbsolute &&
+            !path.startsWith("bazel-out/") &&
+            !path.startsWith("external/") &&
+            !path.startsWith("../") &&
+            local?.isFile == true
+        )
+          local.absoluteFile
+        else file
+      },
       resolvePaths(dataFiles),
     )
   }
@@ -156,7 +168,10 @@ private fun bazelMetadataFile(events: Sequence<String>, target: String, outputGr
         sets[setId] = event["namedSetOfFiles"] as? JsonObject ?: error("Missing namedSetOfFiles")
       }
       val targetCompleted = id["targetCompleted"] as? JsonObject
-      if (targetCompleted?.get("label")?.jsonPrimitive?.contentOrNull == target) {
+      if (
+        targetCompleted?.get("label")?.jsonPrimitive?.contentOrNull?.let(::normalizeBazelLabel) ==
+          normalizeBazelLabel(target)
+      ) {
         val completed = event["completed"] as? JsonObject ?: error("Missing target completion")
         check(completed["success"]?.jsonPrimitive?.booleanOrNull == true) {
           "Target did not build successfully: $target"
@@ -270,6 +285,29 @@ internal class BazelBuild(
       "Aspect and output groups must be configured"
     }
     val invocation = config.buildCommand + config.startupArgs
+    val selectedTarget =
+      if (target.startsWith("@") && !target.startsWith("@@") && !target.startsWith("@//")) {
+        val canonical =
+          execute(
+              invocation +
+                listOf("cquery") +
+                config.buildArgs +
+                listOf(
+                  target,
+                  "--output=starlark",
+                  "--starlark:expr=str(target.label)",
+                ),
+              root,
+              timeoutSeconds,
+            )
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("//") || it.startsWith("@") }
+            .distinct()
+            .toList()
+        check(canonical.size == 1) { "Expected one configured external target label for $target" }
+        canonical.single()
+      } else normalizeBazelLabel(target)
     val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
     try {
       execute(
@@ -280,18 +318,18 @@ internal class BazelBuild(
             "--aspects=${config.aspect}",
             "--output_groups=${config.metadataOutputGroup},${config.runtimeOutputGroup}",
             "--build_event_json_file=${bep.absolutePath}",
-            target,
+            selectedTarget,
           ),
         root,
         timeoutSeconds,
       )
       val metadata =
         bep.bufferedReader().use {
-          bazelMetadataFile(it.lineSequence(), target, config.metadataOutputGroup)
+          bazelMetadataFile(it.lineSequence(), selectedTarget, config.metadataOutputGroup)
         }
       val artifacts = bazelJson.decodeFromString<BazelArtifacts>(metadata.readText())
       // Main-repository labels may be emitted with @@ canonical spelling by newer Bazel.
-      require(artifacts.target.removePrefix("@@") == target.removePrefix("@@")) {
+      require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
         "Metadata target ${artifacts.target} does not match $target"
       }
       val executionRoot =
@@ -299,9 +337,17 @@ internal class BazelBuild(
       check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
         "Build tool returned an invalid execution_root: $executionRoot"
       }
-      return artifacts.resolve(File(executionRoot))
+      return artifacts.resolve(File(executionRoot), root)
     } finally {
       bep.delete()
     }
   }
+}
+
+/** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */
+internal fun normalizeBazelLabel(label: String): String {
+  val repository = label.substringBefore("//", "").trimStart('@')
+  val body = label.substringAfter("//", label)
+  val expanded = if (':' in body) body else "$body:${body.substringAfterLast('/')}"
+  return (if (repository.isBlank()) "" else "@@$repository") + "//" + expanded
 }
