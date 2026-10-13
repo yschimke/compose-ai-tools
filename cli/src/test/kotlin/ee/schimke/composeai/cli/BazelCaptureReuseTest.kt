@@ -48,8 +48,13 @@ class BazelCaptureReuseTest {
       claimBazelCaptures(prepared, first)
       assertEquals("rendered from first build", png.readText())
 
-      // Same target/config and preview ids, different jar: the output directory is shared.
-      app.writeText("second build, different bytes")
+      // Same target/config, preview ids, size and mtime; different bytes (a cache restore or a
+      // timestamp-preserving copy). The output directory is shared, so only content tells.
+      val mtime = app.lastModified()
+      app.writeText("first BUILD")
+      app.setLastModified(mtime)
+      assertEquals(mtime, app.lastModified())
+      assertEquals("first build".length.toLong(), app.length())
       val second = bazelArtifactsFingerprint(artifacts)
       assertNotEquals(first, second)
       assertFalse(bazelCapturesMatch(prepared, second))

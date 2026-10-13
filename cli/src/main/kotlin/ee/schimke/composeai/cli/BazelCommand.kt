@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
+import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
@@ -495,8 +496,9 @@ internal fun prepareBazelPreviews(
 }
 
 /**
- * Identifies the runtime inputs a capture is rendered from. Path, size and mtime keep reuse cheap;
- * a rebuild that merely touches an artifact costs one re-render, never a stale PNG.
+ * Identifies the runtime inputs a capture is rendered from by content, so a same-size,
+ * timestamp-preserving replacement (cache restore, copy) still invalidates reuse. Classpath order
+ * is kept because it decides which class or resource wins; hashing is far cheaper than rendering.
  */
 internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): String {
   val digest = MessageDigest.getInstance("SHA-256")
@@ -504,9 +506,7 @@ internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): Strin
     .flatMap {
       if (it.isDirectory) it.walkTopDown().filter(File::isFile).sorted().toList() else listOf(it)
     }
-    .forEach {
-      digest.update("${it.absolutePath}\t${it.length()}\t${it.lastModified()}\n".toByteArray())
-    }
+    .forEach { digest.update("${it.absolutePath}\t${bazelBundleSha(it)}\n".toByteArray()) }
   return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
