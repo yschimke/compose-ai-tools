@@ -153,16 +153,25 @@ internal class BazelCommand(
       "show",
       "render",
       "bundle" -> {
-        val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
-        if (operation == "prepare") println(descriptor.absolutePath)
-        else {
-          renderBazelPreviews(
-            prepared,
-            descriptor,
-            root,
-            timeout,
-            copyOutput = operation != "bundle",
-          )
+        val reuse = "--reuse-renders" in args
+        require(!reuse || (imported != null && operation != "prepare")) {
+          "--reuse-renders requires imported artifacts and render, show or bundle"
+        }
+        if (operation == "prepare") {
+          println(prepareBazelDesktopDaemon(artifacts, prepared, root).absolutePath)
+        } else {
+          if (reuse) {
+            reuseBazelCaptures(prepared, root, copyOutput = operation != "bundle")
+          } else {
+            val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
+            renderBazelPreviews(
+              prepared,
+              descriptor,
+              root,
+              timeout,
+              copyOutput = operation != "bundle",
+            )
+          }
           if (operation == "bundle" || "--bundle" in args) {
             val locks =
               args
@@ -202,6 +211,41 @@ internal class BazelCommand(
           }
           if (normalSurface) emitNormalResults(prepared, rendering = true)
         }
+      }
+    }
+  }
+
+  private fun reuseBazelCaptures(prepared: PreparedBazelPreviews, root: File, copyOutput: Boolean) {
+    val selected =
+      prepared.manifest.previews.filter {
+        (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
+          (args.flagValue("--filter") == null ||
+            it.id.contains(args.flagValue("--filter")!!, ignoreCase = true)) &&
+          (args.flagValue("--preview") == null ||
+            previewMatchesReference(
+              args.flagValue("--preview")!!,
+              it.id,
+              it.className,
+              it.functionName,
+            ))
+      }
+    require(selected.isNotEmpty()) { "No previews match the selection" }
+    val output = if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null
+    require(output == null || selected.size == 1) { "--output requires one preview" }
+    selected.forEach { preview ->
+      preview.captures.forEach { capture ->
+        val png = prepared.manifestFile.parentFile.resolve(capture.renderOutput)
+        require(png.isFile && png.length() > 0) {
+          "Prepared capture missing: $png; build the png output group first"
+        }
+      }
+      if (output != null) {
+        output.parentFile?.mkdirs()
+        Files.copy(
+          prepared.manifestFile.parentFile.resolve(preview.captures.first().renderOutput).toPath(),
+          output.toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+        )
       }
     }
   }
@@ -334,6 +378,7 @@ internal class BazelCommand(
       --aspect <label.bzl%name>   Override the aspect entry point.
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
+      --reuse-renders             Reuse existing captures with imported artifacts; no daemon starts.
       --bundle                   render: additionally pack the portable PNG/ZIP bundle.
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
       --embed-deps               Embed all dependencies for offline bundle use.

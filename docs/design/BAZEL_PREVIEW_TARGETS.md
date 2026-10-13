@@ -28,7 +28,7 @@ preview target. Bazel/Blaze requires a verb:
 
 ```sh
 blaze build //app:ui-preview
-blaze run //app:ui-preview-run -- --filter Greeting
+blaze run //app:ui-preview -- --filter Greeting
 blaze test //app:ui-preview-test
 ```
 
