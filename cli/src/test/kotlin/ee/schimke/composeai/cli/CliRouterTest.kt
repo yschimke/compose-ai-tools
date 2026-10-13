@@ -11,6 +11,18 @@ import kotlin.test.assertTrue
  */
 class CliRouterTest {
   @Test
+  fun `no-render is accepted for the documented Bazel bundle command only`() {
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags("bazel", listOf("bundle", "--no-render")),
+    )
+    assertEquals(
+      listOf("--no-render"),
+      CliFlagValidation.unknownFlags("render", listOf("--no-render")),
+    )
+  }
+
+  @Test
   fun `dispatch table matches the router's known commands`() {
     assertEquals(
       CliRouter.KNOWN_FLAT,

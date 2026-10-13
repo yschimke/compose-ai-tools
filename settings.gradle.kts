@@ -146,6 +146,9 @@ project(":bundle-format").projectDir = file("bundle/format")
 
 // Resolves a bundle's recorded Maven coordinates into local jars (cache probes, then HTTP). Kept
 // out of `:bundle-format`, which stays offline.
+include(":bundle-producer")
+project(":bundle-producer").projectDir = file("bundle/producer")
+
 include(":bundle-coordinates")
 
 project(":bundle-coordinates").projectDir = file("bundle/coordinates")

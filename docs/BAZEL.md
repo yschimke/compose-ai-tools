@@ -220,7 +220,7 @@ feature is included in a published CLI release.
 
 Reusable rules live in [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel),
 independently versioned from the CLI. The `rules_compose_preview` Bzlmod module
-provides `compose_preview(name = "ui-preview", module = ":ui", cli = "@compose_preview_cli//:cli")`.
+provides `compose_preview(name = "ui-preview", module = ":ui", producer = "@compose_preview_producer//:producer", cli = "@compose_preview_cli//:cli")`.
 Consumers can pin a full Git commit or a release archive with SHA-256, and separately
 pin the CLI archive using `compose_preview_cli_repository`.
 
@@ -229,14 +229,14 @@ bazel run //app:ui-preview -- --filter Greeting --output greeting.png
 bazel build //app:ui-preview
 ```
 
-Both consume JavaInfo directly and call the CLI artifact-import path without a
-nested build. The build emits actual PNGs and manifests in a declared tree;
-rendering is currently local, uncached and non-remote because daemon/native
-provisioning uses host caches. This is experimental Desktop JVM support, not a
-hermetic remote-render toolchain. Full installation and publication instructions,
-a checksum-producing packager and a fresh-workspace integration test live in the
-rule repository. CLI-first attachment still needs no application BUILD edits;
-native labels require an explicit `compose_preview` declaration.
+The native rule uses a separate `producer` executable, built from `:bundle-producer`.
+It prepares runnable bundles offline from declared JavaInfo inputs with normal Bazel
+caching. `outputs = ["bundle"]` is the default; `png` and `rendered_bundle` are
+optional products. `bazel run //app:ui-preview -- render --filter Greeting` calls
+the existing bundle renderer against the cached prepared bundle. Rendering remains
+local, uncached and non-remote until native/font/renderer inputs form a declared
+toolchain. Neither mode starts a nested build. See the rule repository for pinned
+producer/CLI distribution provisioning and fresh-consumer verification.
 
 ## Portable runnable PNG/ZIP bundles
 
@@ -254,9 +254,18 @@ refer to the published artifact. `dependency-resolution.json` records inferred
 coordinates and built/published hashes. Unidentified or unpublished project JARs
 remain embedded; `--embed-deps` explicitly requests an offline bundle.
 
-For native builds set `outputs = ["png", "bundle"], maven_install = ":maven_install.json"` on
+Use `--no-render` on `bazel bundle` to package without provisioning a renderer or
+reading old captures. The PNG/ZIP uses a valid stub cover and remains runnable.
+
+For native builds set `outputs = ["bundle"], maven_install = ":maven_install.json"` on
 `compose_preview`, then build `//app:ui-preview --output_groups=bundle`. It produces
 `bazel-bin/app/ui-preview.bundle.png`. CMP framework coordinates resolve through
 Maven Central; some AndroidX dependencies use Google Maven, already supported by
 the server. Bundle packaging preserves reflection/runtime-only resources instead
 of pruning the runtime closure through bytecode-only reachability.
+
+`--output_groups=rendered_bundle` instead produces a separate baked-image bundle.
+The small offline producer module contains discovery, coordinate recovery and JAR
+packaging; it has no CLI, server, build driver or renderer dependency. Both CLI and
+native builds share it. Runtime CLI filters leave preparation untouched; build-time
+rule filters are declared action arguments and invalidate the preparation cache.

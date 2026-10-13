@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
+import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
@@ -127,6 +128,37 @@ class BazelComposeIntegrationTest {
           )
         )
         .execute()
+      val sourceBundle = output.resolve("unrendered.png")
+      BazelCommand(
+          listOf(
+            "bundle",
+            "--no-render",
+            "--project",
+            root.path,
+            "--artifacts",
+            metadata.path,
+            "--execution-root",
+            executionRoot,
+            "--out",
+            output.resolve("portable").path,
+            "--filter",
+            "RuntimeGreeting",
+            "--maven-install",
+            root.resolve("maven_install.json").path,
+            "--output",
+            sourceBundle.path,
+          )
+        )
+        .execute()
+      java.util.zip
+        .ZipInputStream(java.io.ByteArrayInputStream(BundleReader.extractZipBytes(sourceBundle)))
+        .use { zip ->
+          val entries = generateSequence { zip.nextEntry }.map { it.name }.toList()
+          assertTrue(
+            entries.none { it.startsWith("previews/") && it.endsWith(".png") },
+            "--no-render must not read stale captures",
+          )
+        }
       val reused = output.resolve("reused.png")
       BazelCommand(
           listOf(

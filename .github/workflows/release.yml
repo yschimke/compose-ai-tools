@@ -233,7 +233,7 @@ jobs:
         env:
           MAVEN_LINE_VERSION: ${{ needs.plan-maven-publication.outputs.plugin_version }}
         run: |
-          ./gradlew :cli:distZip :cli:distTar
+          ./gradlew :cli:distZip :cli:distTar :bundle-producer:checkProducerRuntime :bundle-producer:distZip :bundle-producer:distTar
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-dist
@@ -241,6 +241,15 @@ jobs:
             cli/build/distributions/compose-preview-*.zip
             cli/build/distributions/compose-preview-*.tar.gz
           retention-days: 1
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: producer-dist
+          path: |
+            bundle/producer/build/distributions/compose-preview-producer-*.zip
+            bundle/producer/build/distributions/compose-preview-producer-*.tar.gz
+          retention-days: 1
+          if-no-files-found: error
 
   # `@yschimke/compose-design-map` — the design-map projection (`design-map/`), published to npm so
   # a downstream catalog repo can `npx` it at a pinned version.

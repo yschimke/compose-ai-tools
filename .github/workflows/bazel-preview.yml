@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'cli/**'
+      - 'bundle/producer/**'
       - 'gradle-plugin/preview-discovery/**'
       - 'gradle-plugin/daemon-launch-builder/**'
       - 'gradle-plugin/build.gradle.kts'
@@ -17,6 +18,7 @@ on:
     branches: [main]
     paths:
       - 'cli/**'
+      - 'bundle/producer/**'
       - 'gradle-plugin/preview-discovery/**'
       - 'gradle-plugin/daemon-launch-builder/**'
       - 'gradle/libs.versions.toml'

@@ -190,7 +190,13 @@ internal object CliFlagValidation {
       "render" to
         commandBase +
           projectBuildFlags +
-          setOf("--output", "--bundle", "--embed-deps", "--format", "--maven-install"),
+          setOf(
+            "--output",
+            "--bundle",
+            "--embed-deps",
+            "--format",
+            "--maven-install",
+          ),
       "render-matrix" to
         commandBase +
           setOf(
@@ -355,6 +361,7 @@ internal object CliFlagValidation {
       // narrow.
       "bazel" to
         setOf(
+          "--no-render",
           "--reuse-renders",
           "--bundle",
           "--embed-deps",
