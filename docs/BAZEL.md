@@ -215,3 +215,25 @@ the output groups; its metadata must implement the artifact contract above. If
 that interface is unavailable, an internal wrapper can produce the artifact JSON
 and use `--artifacts` instead. Use a binary built from this branch until the
 feature is included in a published CLI release.
+
+## Native Bazel build/run targets and publication
+
+Reusable rules live in [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel),
+independently versioned from the CLI. The `rules_compose_preview` Bzlmod module
+provides `compose_preview(name = "ui-preview", module = ":ui", cli = "@compose_preview_cli//:cli")`.
+Consumers can pin a full Git commit or a release archive with SHA-256, and separately
+pin the CLI archive using `compose_preview_cli_repository`.
+
+```sh
+bazel run //app:ui-preview-run -- --filter Greeting --output greeting.png
+bazel build //app:ui-preview
+```
+
+Both consume JavaInfo directly and call the CLI artifact-import path without a
+nested build. The build emits actual PNGs and manifests in a declared tree;
+rendering is currently local, uncached and non-remote because daemon/native
+provisioning uses host caches. This is experimental Desktop JVM support, not a
+hermetic remote-render toolchain. Full installation and publication instructions,
+a checksum-producing packager and a fresh-workspace integration test live in the
+rule repository. CLI-first attachment still needs no application BUILD edits;
+native labels require an explicit `compose_preview` declaration.

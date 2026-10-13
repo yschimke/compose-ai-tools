@@ -1,8 +1,11 @@
 # Native preview targets and artifact exports
 
-Status: design proposal. Normal Gradle/Bazel routing and the Desktop PNG adapter
-are implemented in tools #5947. The macro, installer commands and additional
-exports below are proposed; they are not available target definitions yet.
+Status: normal Gradle/Bazel routing and the Desktop PNG adapter are implemented
+in tools #5947. A local PNG `compose_preview` build/run macro now lives in
+[compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel).
+Verification targets, installer commands, remote/cacheable render actions and
+additional exports below remain proposals. The implemented macro requires a
+separately declared CLI executable; it currently accepts only `formats = ["png"]`.
 
 ## Two complementary entry points
 
