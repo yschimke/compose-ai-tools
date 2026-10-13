@@ -77,6 +77,7 @@ public object PreviewDiscoveryCli {
 
   internal fun parse(args: Array<String>): ParsedArgs {
     val classDirs = mutableListOf<File>()
+    val projectClassJars = mutableListOf<File>()
     val dependencyJars = mutableListOf<File>()
     val sourceFiles = mutableListOf<File>()
     var moduleName: String? = null
@@ -95,6 +96,8 @@ public object PreviewDiscoveryCli {
       val arg = args[i]
       when (arg) {
         "--classes" -> classDirs += splitPathList(requireValue(args, i)).map { File(it) }
+        "--project-jars" ->
+          projectClassJars += splitPathList(requireValue(args, i)).map { File(it) }
         "--dependency-jars" ->
           dependencyJars += splitPathList(requireValue(args, i)).map { File(it) }
         "--source-files" -> sourceFiles += splitPathList(requireValue(args, i)).map { File(it) }
@@ -143,6 +146,7 @@ public object PreviewDiscoveryCli {
       input =
         PreviewDiscovery.Input(
           classDirs = classDirs,
+          projectClassJars = projectClassJars,
           dependencyJars = dependencyJars,
           sourceFiles = sourceFiles,
           moduleName = module,
@@ -182,6 +186,7 @@ public object PreviewDiscoveryCli {
 
       Inputs (path-separator-delimited, repeatable):
         --classes <dir>[:<dir>...]            Compiled .class directories belonging to the module.
+        --project-jars <jar>[:<jar>...]       Compiled module JARs (not dependency/ABI JARs).
         --dependency-jars <jar>[:<jar>...]    Dependency JARs to merge onto the scan classpath.
         --source-files <file>[:<file>...]     Source files used to resolve module-relative paths.
 

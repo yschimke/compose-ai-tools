@@ -165,14 +165,32 @@ internal object CliFlagValidation {
       "--wasm-ui-dir",
     )
 
+  private val projectBuildFlags =
+    setOf(
+      "--project",
+      "--target",
+      "--build-system",
+      "--config",
+      "--build-command",
+      "--bazel-arg",
+      "--aspect",
+      "--artifacts",
+      "--execution-root",
+      "--out",
+    )
+
   val BY_COMMAND: Map<String, Set<String>> =
     mapOf(
       "show" to
         commandBase +
+          projectBuildFlags +
           setOf("--json", "--images", "--link", "--openai-plugin-id", "--openai-marketplace"),
       "show-resources" to commandBase + setOf("--json"),
-      "list" to commandBase + setOf("--json"),
-      "render" to commandBase + setOf("--output", "--bundle", "--embed-deps", "--format"),
+      "list" to commandBase + projectBuildFlags + setOf("--json"),
+      "render" to
+        commandBase +
+          projectBuildFlags +
+          setOf("--output", "--bundle", "--embed-deps", "--format", "--maven-install"),
       "render-matrix" to
         commandBase +
           setOf(
@@ -335,6 +353,37 @@ internal object CliFlagValidation {
         ),
       // Flags the preview server passes when spawning the Gradle half of `serve`; deliberately
       // narrow.
+      "bazel" to
+        setOf(
+          "--bundle",
+          "--embed-deps",
+          "--maven-install",
+          "--build-system",
+          "--format",
+          "--module",
+          "--preview",
+          "--brief",
+          "--changed-only",
+          "--project",
+          "--target",
+          "--config",
+          "--build-command",
+          "--bazel-arg",
+          "--aspect",
+          "--artifacts",
+          "--execution-root",
+          "--java-info-load",
+          "--out",
+          "--output",
+          "--id",
+          "--filter",
+          "--json",
+          "--timeout",
+          "--verbose",
+          "-v",
+          "--help",
+          "-h",
+        ),
       "build-host" to setOf("--stdio", "--module", "--variant", "--verbose", "-v"),
       "share-preview" to
         setOf(

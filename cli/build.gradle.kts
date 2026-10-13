@@ -117,6 +117,9 @@ dependencies {
   // uses its types. Shape only, so the preview server can depend on it without the Tooling API.
   api(project(":build-host-protocol"))
   implementation(project(":common-image-crop"))
+  // Pure JVM discovery and descriptor production; no Bazel/IDE/renderer dependency.
+  implementation("ee.schimke.composeai:preview-discovery")
+  implementation("ee.schimke.composeai:daemon-launch-builder")
 
   // Gradle Tooling-API render pipeline and `GradleConnection` plumbing. `api` for in-package source
   // compatibility.

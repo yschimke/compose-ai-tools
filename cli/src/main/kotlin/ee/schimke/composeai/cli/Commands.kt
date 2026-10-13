@@ -899,7 +899,8 @@ abstract class Command(
     }
   }
 
-  protected fun findProjectRoot(): File? = findGradleProjectRoot()
+  protected fun findProjectRoot(): File? =
+    findGradleProjectRoot(args.flagValue("--project")?.let(::File) ?: File(".").absoluteFile)
 
   /** `~/.compose-preview/settings.json` defaults ([CliPreviewSettings]), read once per command. */
   protected val previewSettings: CliPreviewSettings by lazy { CliPreviewSettingsFile.read() }

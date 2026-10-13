@@ -1,0 +1,70 @@
+name: Bazel Compose preview
+
+on:
+  pull_request:
+    paths:
+      - 'cli/**'
+      - 'gradle-plugin/preview-discovery/**'
+      - 'gradle-plugin/daemon-launch-builder/**'
+      - 'gradle-plugin/build.gradle.kts'
+      - 'gradle/libs.versions.toml'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradlew*'
+      - 'gradle/wrapper/**'
+      - '.github/workflows/bazel-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - 'gradle-plugin/preview-discovery/**'
+      - 'gradle-plugin/daemon-launch-builder/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/bazel-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazel-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Bazel discovery and desktop render
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-ai-contrib
+          # Binary-retained previews, generated Kotlin, runtime-only class + resource,
+          # and a dependency-owned preview that discovery must exclude.
+          ref: ffeaedb1b1bf3aea92c1e2319cc61df846f8ea06
+          path: contrib-fixture
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: bazel-contrib/setup-bazel@8cb04a772ab4c1eb984e9c1b493a182e96c5e425 # v0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+      - name: Verify the CLI aspect and render actual Compose UI
+        env:
+          COMPOSE_PREVIEW_BAZEL_FIXTURE: ${{ github.workspace }}/contrib-fixture/bazel-desktop
+          COMPOSE_PREVIEW_BAZEL_BUNDLE_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/runnable-bundle.png
+          COMPOSE_PREVIEW_BAZEL_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/greeting.png
+        run: >-
+          ./gradlew :cli:test --tests '*Bazel*' --tests '*ProjectBuildTest*'
+          :gradle-plugin:preview-discovery:test --tests '*PreviewDiscoveryCliTest*'
+          :cli:checkCliDaemonLibraryBoundary :cli:checkLayerBoundary :cli:checkHttpServerFloor
+          --stacktrace
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bazel-desktop-render
+          path: build/bazel-preview/
+          if-no-files-found: error

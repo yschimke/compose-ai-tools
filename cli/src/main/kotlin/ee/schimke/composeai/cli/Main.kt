@@ -8,10 +8,10 @@ import kotlin.system.exitProcess
  */
 internal val COMMANDS: Map<String, (List<String>) -> Unit> =
   mapOf(
-    "show" to { a -> ShowCommand(a).run() },
+    "show" to { a -> runProjectPreviewCommand("show", a) },
     "show-resources" to { a -> ShowResourcesCommand(a).run() },
-    "list" to { a -> ListCommand(a).run() },
-    "render" to { a -> RenderCommand(a).run() },
+    "list" to { a -> runProjectPreviewCommand("list", a) },
+    "render" to { a -> runProjectPreviewCommand("render", a) },
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
@@ -36,6 +36,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "ui-builder" to { a -> UiBuilderCommand(a).run() },
     "design" to { a -> DesignCommand(a).run() },
     "a2ui" to { a -> A2uiCommand(a).run() },
+    "bazel" to { a -> BazelCommand(a).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -142,8 +143,11 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
-      setup     update · init-script · pin · auth
+      setup     update · init-script · pin · auth · bazel
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
+
+    Project builds: Gradle settings/wrapper first, otherwise Bazel/Blaze workspace or BUILD files.
+      list/render/show accept --target <label> and --build-system auto|gradle|bazel|blaze.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
       --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
@@ -285,6 +289,8 @@ private fun printFullUsage() {
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
                        (--no-modify-path leaves shell startup files alone)
+      bazel            init | list | prepare | render for an existing Compose JVM target.
+                       Run `compose-preview bazel --help` for setup and build configuration.
       init-script      Materialise the bundled auto-inject init script and print the path
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses

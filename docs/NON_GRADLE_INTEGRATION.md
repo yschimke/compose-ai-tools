@@ -7,6 +7,11 @@ or a hand-rolled shell pipeline. The recipe is the same in every case:
 classes, then open a `RenderSession`**. The Gradle plugin is one producer
 of that descriptor; this document is for everyone else.
 
+For an already-building Compose Desktop target, start with
+[`compose-preview bazel`](BAZEL.md): it attaches a small runtime aspect, builds the
+selected target, discovers previews and prepares/renders through these contracts.
+It also accepts artifact JSON from other build systems without running Bazel.
+
 The two contracts you implement against:
 
 | Artifact | Schema | Wire-stable | Producer |
