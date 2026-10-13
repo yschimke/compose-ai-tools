@@ -15,6 +15,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
+import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -51,6 +52,7 @@ class BundleRenderer(
    * `/fonts/…` resolves. Null for a self-contained bundle.
    */
   private val resPoolDir: File? = null,
+  private val selectedIds: Set<String>? = null,
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -80,7 +82,22 @@ class BundleRenderer(
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
 
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
-    val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
+    val selectedJson =
+      if (selectedIds == null) previewsJsonBytes
+      else {
+        val root = MANIFEST_JSON.parseToJsonElement(previewsJsonBytes).jsonObject
+        JsonObject(
+            root +
+              ("previews" to
+                JsonArray(
+                  root.getValue("previews").jsonArray.filter {
+                    it.jsonObject.getValue("id").jsonPrimitive.content in selectedIds
+                  }
+                ))
+          )
+          .toString()
+      }
+    val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), selectedJson)
 
     // Rehydrate externalized fonts into the classes dir (first on the classpath). Fail-closed when
     // resources are needed but the pool is missing or an entry fails verification.
@@ -96,8 +113,7 @@ class BundleRenderer(
 
     return when (manifest.backend) {
       "desktop" -> renderDesktop(classesDir, libJars, manifest, previews)
-      "android" ->
-        renderAndroid(workDir, classesDir, libJars, manifest, previews, previewsJsonBytes)
+      "android" -> renderAndroid(workDir, classesDir, libJars, manifest, previews, selectedJson)
       else ->
         throw UnsupportedOperationException(
           "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')"
@@ -153,7 +169,8 @@ class BundleRenderer(
         )
         continue
       }
-      val outFile = outputDir.resolve(safeFilename(preview.id) + ".png")
+      val outFile =
+        outputDir.resolve(ee.schimke.composeai.bundle.producer.previewPngName(preview.id))
       val (exitCode, tail) = spawnRenderer(classpathString, preview, outFile)
       if (exitCode == 0 && outFile.isFile && outFile.length() > 0) {
         succeeded += RenderedPreview(preview.id, outFile)
@@ -410,8 +427,8 @@ class BundleRenderer(
     val widthDp = preview.params.widthDp ?: preview.params.wrapSandboxWidthDp ?: 400
     val heightDp = preview.params.heightDp ?: preview.params.wrapSandboxHeightDp ?: 800
     val density = preview.params.density ?: DEFAULT_DENSITY
-    val widthPx = (widthDp * density).toInt().coerceAtLeast(1)
-    val heightPx = (heightDp * density).toInt().coerceAtLeast(1)
+    val widthPx = (widthDp * density).roundToInt().coerceAtLeast(1)
+    val heightPx = (heightDp * density).roundToInt().coerceAtLeast(1)
     val wrapWidth = preview.params.widthDp == null
     val wrapHeight = preview.params.heightDp == null
     val base =
@@ -462,17 +479,6 @@ class BundleRenderer(
     Runtime.getRuntime().addShutdownHook(Thread { fileSystem.deleteRecursively(dirPath) })
     return dirPath.toFile()
   }
-
-  /** Strip filesystem-hostile characters from a preview id. */
-  private fun safeFilename(id: String): String =
-    id
-      .map { c ->
-        when {
-          c.isLetterOrDigit() || c in "._-" -> c
-          else -> '_'
-        }
-      }
-      .joinToString("")
 
   companion object {
     /**

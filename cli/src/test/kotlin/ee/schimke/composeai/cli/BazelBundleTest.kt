@@ -1,6 +1,10 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.producer.bazelBundleAppJar
+import ee.schimke.composeai.bundle.producer.bazelBundleSha
+import ee.schimke.composeai.bundle.producer.bazelMavenCoordinates
+import ee.schimke.composeai.bundle.producer.matchBazelMaven
 import ee.schimke.composeai.discovery.Capture
 import ee.schimke.composeai.discovery.PreviewInfo
 import ee.schimke.composeai.discovery.PreviewManifest
@@ -128,6 +132,45 @@ class BazelBundleTest {
         )
       val prepared = PreparedBazelPreviews(manifest, manifestFile)
       val bundle = root.resolve("bundle.png")
+      // Preparation works with no image and never picks up stale captures from an earlier run.
+      writeBazelBundle(
+        metadata.resolve(root),
+        prepared,
+        setOf(id),
+        listOf(lock),
+        bundle,
+        includeRenders = false,
+      )
+      val unrendered = bundle.readBytes()
+      ZipInputStream(ByteArrayInputStream(BundleReader.extractZipBytes(bundle))).use { zip ->
+        val names = generateSequence { zip.nextEntry }.map { it.name }.toList()
+        assertTrue("previews/$id.png" !in names)
+      }
+      writeBazelBundle(
+        metadata.resolve(root),
+        prepared,
+        setOf(id),
+        listOf(lock),
+        bundle,
+        includeRenders = false,
+      )
+      assertTrue(
+        unrendered.contentEquals(bundle.readBytes()),
+        "Unchanged preparation must be deterministic",
+      )
+      val captures = root.resolve("captures").apply { mkdirs() }
+      captures.resolve("$id.png").writeBytes(png)
+      val baked = root.resolve("baked.png")
+      ee.schimke.composeai.bundle.producer.bakePreparedBundle(bundle, captures, baked)
+      assertEquals(
+        BundleReader.readMetadata(bundle).manifest,
+        BundleReader.readMetadata(baked).manifest,
+      )
+      assertTrue(baked.readBytes().take(png.size).toByteArray().contentEquals(png))
+      captures.resolve("$id.png").delete()
+      assertFailsWith<IllegalArgumentException> {
+        ee.schimke.composeai.bundle.producer.bakePreparedBundle(bundle, captures, baked)
+      }
       writeBazelBundle(metadata.resolve(root), prepared, setOf(id), listOf(lock), bundle)
       val read = BundleReader.readMetadata(bundle).manifest
       assertEquals("bazel", read.producer)

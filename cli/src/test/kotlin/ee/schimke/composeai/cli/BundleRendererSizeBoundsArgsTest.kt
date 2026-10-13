@@ -24,6 +24,17 @@ class BundleRendererSizeBoundsArgsTest {
     PreviewInfo(id = "a.Foo", functionName = "Foo", className = "a.Kt", params = params)
 
   @Test
+  fun `fractional density rounds half pixels like the desktop daemon`() {
+    val args =
+      renderer.buildRendererArgs(
+        preview(PreviewParams(widthDp = 320, heightDp = 180, density = 2.625f)),
+        File("out.png"),
+      )
+    assertEquals("840", args[2])
+    assertEquals("473", args[3])
+  }
+
+  @Test
   fun `no bounds keeps the short positional arg list`() {
     val args = renderer.buildRendererArgs(preview(PreviewParams()), File("/tmp/out.png"))
     // className, functionName, widthPx, heightPx, density, showBackground, backgroundColor,
