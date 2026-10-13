@@ -17,6 +17,19 @@ name: PR Title
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Number of a pull request a workflow opened, checked on its head branch
+        required: true
+        type: number
+
+# `workflow_dispatch` is for pull requests a workflow opened (release-please, the asset syncs).
+# GitHub starts no workflow for anything done with GITHUB_TOKEN, so such a PR never gets the
+# `pull_request` run this check is required from, and its auto-merge waits forever. The workflow
+# that opens it dispatches this one on the PR's branch with the PR's number instead; the run
+# reports the same check name on the branch head, which is the commit the ruleset reads. It refuses
+# when the PR's head is not that commit, so it never certifies a commit the PR no longer has.
 
 permissions:
   contents: read
@@ -53,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -71,6 +85,32 @@ jobs:
             style
             revert
           requireScope: false
+
+      # The action reads its event payload, which a dispatch does not carry, so the dispatched run
+      # applies the same rule to the PR's current title itself. Keep the types in step with the
+      # list above.
+      - name: Check a workflow-opened PR's title
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          pr_head="$(gh pr view "$PR" --json headRefOid --jq .headRefOid)"
+          if [ "$pr_head" != "$HEAD_SHA" ]; then
+            echo "::error::#${PR}'s head is ${pr_head}, not ${HEAD_SHA}; dispatch on its branch"
+            exit 1
+          fi
+          title="$(gh pr view "$PR" --json title --jq .title)"
+          types='feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert'
+          if [[ ! "$title" =~ ^(${types})(\([^\)]+\))?!?:\ [^[:space:]] ]]; then
+            echo "::error::#${PR}'s title is not a Conventional Commit"
+            printf 'title: %s\n' "$title"
+            exit 1
+          fi
+          echo "#${PR}: ${title}"
 
   # The `!` is the ONLY way this repository can cut a major version by accident.
   #
@@ -104,7 +144,16 @@ jobs:
         # straight into the shell.
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            set -euo pipefail
+            test "$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" = "$HEAD_SHA"
+            PR_TITLE="$(gh pr view "$PR" --json title --jq .title)"
+          fi
           # Matches the conventional-commit breaking marker: `type!:` or
           # `type(scope)!:`. A `!` anywhere else in the subject is fine.
           if ! printf '%s' "${PR_TITLE}" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then

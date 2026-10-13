@@ -64,6 +64,19 @@ on:
     types: [opened, edited, synchronize, reopened]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Number of a pull request a workflow opened, scanned on its head branch
+        required: true
+        type: number
+
+# `workflow_dispatch` is for pull requests a workflow opened (release-please, the asset syncs).
+# GitHub starts no workflow for anything done with GITHUB_TOKEN, so such a PR never gets the
+# `pull_request` run this check is required from, and its auto-merge waits forever. The workflow
+# that opens it dispatches this one on the PR's branch with the PR's number instead; the run
+# reports the same check name on the branch head, which is the commit the ruleset reads. It refuses
+# when the PR's head is not that commit, so it never certifies a commit the PR no longer has.
 
 permissions:
   contents: read
@@ -104,7 +117,7 @@ concurrency:
 jobs:
   scan:
     name: Reject agent attribution
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,13 +138,24 @@ jobs:
       # Writing the file here also keeps untrusted text out of the shell
       # entirely, rather than routing it through env: as before.
       - name: Read the PR's current title and body
+        id: pr
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCHED_PR: ${{ inputs.pr }}
         with:
           script: |
+            const number = context.payload.pull_request?.number ?? Number(process.env.DISPATCHED_PR)
             const { data: pr } = await github.rest.pulls.get({
               ...context.repo,
-              pull_number: context.payload.pull_request.number,
+              pull_number: number,
             })
+            // A dispatched run reports on the branch head; refuse a PR that has moved past it.
+            if (!context.payload.pull_request && pr.head.sha !== context.sha) {
+              core.setFailed(`#${number}'s head is ${pr.head.sha}, not ${context.sha}`)
+              return
+            }
+            core.setOutput('base', pr.base.sha)
+            core.setOutput('head', pr.head.sha)
             const fs = require('node:fs')
             fs.writeFileSync('pr_text.txt', `${pr.title ?? ''}\n${pr.body ?? ''}\n`)
 
@@ -140,8 +164,9 @@ jobs:
           # The commit range stays on the payload: this check reports against
           # the head SHA of the event that started it, and a push produces its
           # own run. Only the metadata is re-read.
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # A dispatched run has no payload, so it takes both from the PR it was handed.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || steps.pr.outputs.base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || steps.pr.outputs.head }}
         run: |
           set -uo pipefail
 
