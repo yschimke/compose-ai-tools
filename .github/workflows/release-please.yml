@@ -338,6 +338,43 @@ jobs:
           manifest-file: .release-please-manifest.json
           skip-github-release: true
 
+  # GITHUB_TOKEN does not start pull_request checks. Dispatch the same gates on the
+  # exact release branch after either PR-only pass writes it.
+  release-pr-policy:
+    needs: [update-release-pr, reconcile-release-pr]
+    if: >-
+      ${{ !cancelled() && ((needs.update-release-pr.result == 'success'
+      && needs.update-release-pr.outputs.in_flight != 'true')
+      || needs.reconcile-release-pr.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Run the required policy checks on the release PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RP_PR: ${{ needs.update-release-pr.outputs.pr || needs.reconcile-release-pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          number="$(jq -r '.number // empty' <<<"$RP_PR")"
+          if [ -z "$number" ]; then
+            number="$(gh api "repos/${GH_REPO}/pulls?state=open&per_page=100" --jq '[.[] | select(.head.ref | startswith("release-please--branches--")) | select(.head.ref | endswith("--release-notes") | not)][0].number // empty')"
+          fi
+          if [ -z "$number" ]; then
+            echo "no open release PR; nothing to dispatch"
+            exit 0
+          fi
+          pr="$(gh pr view "$number" --json state,headRefName)"
+          if [ "$(jq -r .state <<<"$pr")" != OPEN ]; then
+            echo "release PR is no longer open; nothing to dispatch"
+            exit 0
+          fi
+          branch="$(jq -r .headRefName <<<"$pr")"
+          gh workflow run pr-title.yml --ref "$branch" -f pr="$number"
+          gh workflow run no-agent-attribution.yml --ref "$branch" -f pr="$number"
+
   # Which Maven coordinates merging the release PR would publish, as one comment on that PR. The
   # publish plan only runs inside the release, so the answer was visible only after the
   # irreversible upload. Same script, same Maven Central baseline, run against the release PR's
