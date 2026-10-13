@@ -120,7 +120,7 @@ jobs:
           # the CLI, and the diff bot all honour — see #2159 for the history
           # of the `warn` override this replaces.
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: github.event_name == 'pull_request'
         with:
           name: compose-preview-handoff-compose
@@ -173,7 +173,7 @@ jobs:
           notifications-module: 'samples:android'
           timeout: '1800'
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: github.event_name == 'pull_request'
         with:
           name: compose-preview-handoff-a11y
