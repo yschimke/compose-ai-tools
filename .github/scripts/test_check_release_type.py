@@ -50,6 +50,12 @@ class ReleaseTypeTest(unittest.TestCase):
             "screen/model/src/jvmTest/kotlin/GeneratorTest.kt",
         )
 
+    def test_rename_out_of_main_ships(self) -> None:
+        # The workflow lists a rename's old path beside its new one.
+        self.assertAccepted(
+            "fix: move Foo", "alpha/src/test/kotlin/Foo.kt", "alpha/src/main/kotlin/Foo.kt"
+        )
+
     def test_samples_only(self) -> None:
         self.assertRejected("fix: sample theme", "samples/android/src/main/kotlin/Theme.kt")
 

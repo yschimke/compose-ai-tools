@@ -211,7 +211,10 @@ jobs:
             test "$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" = "$HEAD_SHA"
             PR_TITLE="$(gh pr view "$PR" --json title --jq .title)"
           fi
-          gh api --paginate "repos/${GH_REPO}/pulls/${PR}/files" --jq '.[].filename' > "$RUNNER_TEMP/paths"
+          # A rename lists its old path too: moving `src/main/Foo.kt` into `src/test/` removes
+          # shipped code, and the new path alone would read as a test-only change.
+          gh api --paginate "repos/${GH_REPO}/pulls/${PR}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/paths"
           if python3 .github/scripts/check-release-type.py "$PR_TITLE" < "$RUNNER_TEMP/paths"; then
             exit 0
           fi
