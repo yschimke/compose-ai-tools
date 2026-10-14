@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
+import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
@@ -167,10 +168,14 @@ internal class BazelCommand(
           require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
           if (noRender) {
             // Discovery and packaging require no renderer provisioning.
-          } else if (reuse) {
-            reuseBazelCaptures(prepared, root, copyOutput = operation != "bundle")
+          } else if (
+            reuse &&
+              reuseBazelCaptures(prepared, artifacts, root, copyOutput = operation != "bundle")
+          ) {
+            // Every selected capture was rendered from these exact artifacts.
           } else {
             val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
+            claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
               prepared,
               descriptor,
@@ -230,7 +235,16 @@ internal class BazelCommand(
     }
   }
 
-  private fun reuseBazelCaptures(prepared: PreparedBazelPreviews, root: File, copyOutput: Boolean) {
+  /**
+   * Returns false, without copying anything, when a selected capture is missing or was rendered
+   * from different artifacts; the caller then renders instead of returning stale PNGs.
+   */
+  private fun reuseBazelCaptures(
+    prepared: PreparedBazelPreviews,
+    artifacts: ResolvedBazelArtifacts,
+    root: File,
+    copyOutput: Boolean,
+  ): Boolean {
     val selected =
       prepared.manifest.previews.filter {
         (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
@@ -247,13 +261,20 @@ internal class BazelCommand(
     require(selected.isNotEmpty()) { "No previews match the selection" }
     val output = if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null
     require(output == null || selected.size == 1) { "--output requires one preview" }
+    if (!bazelCapturesMatch(prepared, bazelArtifactsFingerprint(artifacts))) {
+      System.err.println("Captures were not rendered from the imported artifacts; rendering")
+      return false
+    }
     selected.forEach { preview ->
       preview.captures.forEach { capture ->
         val png = prepared.manifestFile.parentFile.resolve(capture.renderOutput)
-        require(png.isFile && png.length() > 0) {
-          "Prepared capture missing: $png; build the png output group first"
+        if (!png.isFile || png.length() == 0L) {
+          System.err.println("Prepared capture missing: $png; rendering")
+          return false
         }
       }
+    }
+    selected.forEach { preview ->
       if (output != null) {
         output.parentFile?.mkdirs()
         Files.copy(
@@ -263,6 +284,7 @@ internal class BazelCommand(
         )
       }
     }
+    return true
   }
 
   private fun renderBazelPreviews(
@@ -393,7 +415,7 @@ internal class BazelCommand(
       --aspect <label.bzl%name>   Override the aspect entry point.
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
-      --reuse-renders             Reuse existing captures with imported artifacts; no daemon starts.
+      --reuse-renders             Reuse captures rendered from the same imported artifacts; else render.
       --bundle                   render: additionally pack the portable PNG/ZIP bundle.
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
       --no-render                bundle: prepare a runnable bundle with a stub cover, offline.
@@ -471,6 +493,43 @@ internal fun prepareBazelPreviews(
     .resolveSibling("build-artifacts.json")
     .writeText(bazelJson.encodeToString(artifacts.metadata))
   return PreparedBazelPreviews(outcome.manifest, file)
+}
+
+/**
+ * Identifies the runtime inputs a capture is rendered from by content, so a same-size,
+ * timestamp-preserving replacement (cache restore, copy) still invalidates reuse. Classpath order
+ * is kept because it decides which class or resource wins; hashing is far cheaper than rendering.
+ */
+internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  (artifacts.runtimeJars + artifacts.dataFiles)
+    .flatMap {
+      if (it.isDirectory) it.walkTopDown().filter(File::isFile).sorted().toList() else listOf(it)
+    }
+    .forEach { digest.update("${it.absolutePath}\t${bazelBundleSha(it)}\n".toByteArray()) }
+  return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+private fun PreparedBazelPreviews.capturesFingerprintFile(): File =
+  manifestFile.resolveSibling("captures-artifacts.sha256")
+
+internal fun bazelCapturesMatch(prepared: PreparedBazelPreviews, fingerprint: String): Boolean =
+  prepared.capturesFingerprintFile().let { it.isFile && it.readText() == fingerprint }
+
+/**
+ * Records that captures in this output come from [fingerprint]. The output directory is keyed only
+ * by target/config, so captures left by different artifacts are deleted first; a partial render
+ * then can never lend its fresh fingerprint to an unrendered preview's stale PNG.
+ */
+internal fun claimBazelCaptures(prepared: PreparedBazelPreviews, fingerprint: String) {
+  if (bazelCapturesMatch(prepared, fingerprint)) return
+  val directory = prepared.manifestFile.parentFile
+  prepared.manifest.previews.forEach { preview ->
+    preview.captures
+      .filter { it.renderOutput.isNotEmpty() }
+      .forEach { directory.resolve(it.renderOutput).delete() }
+  }
+  prepared.capturesFingerprintFile().writeText(fingerprint)
 }
 
 internal fun prepareBazelDesktopDaemon(

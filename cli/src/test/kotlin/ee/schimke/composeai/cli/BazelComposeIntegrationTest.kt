@@ -180,6 +180,37 @@ class BazelComposeIntegrationTest {
         )
         .execute()
       assertEquals(bazelBundleSha(png), bazelBundleSha(reused))
+      // Captures left by different artifacts (same target/config and preview ids) are re-rendered,
+      // never returned. Simulate them with a foreign fingerprint and a bogus capture.
+      val portable = output.resolve("portable/build/compose-previews")
+      portable.resolve("captures-artifacts.sha256").writeText("earlier-artifacts")
+      val captured =
+        portable.resolve(greeting.captures.first { it.renderOutput.isNotEmpty() }.renderOutput)
+      captured.writeText("stale capture")
+      reused.delete()
+      BazelCommand(
+          listOf(
+            "render",
+            "--reuse-renders",
+            "--project",
+            root.path,
+            "--artifacts",
+            metadata.path,
+            "--execution-root",
+            executionRoot,
+            "--out",
+            output.resolve("portable").path,
+            "--filter",
+            "RuntimeGreeting",
+            "--output",
+            reused.path,
+            "--timeout",
+            "60",
+          )
+        )
+        .execute()
+      assertEquals(bazelBundleSha(png), bazelBundleSha(reused))
+      assertEquals(bazelBundleSha(png), bazelBundleSha(captured))
       val packed = BundleReader.readMetadata(bundle).manifest
       assertEquals("bazel", packed.producer)
       val coordinates = packed.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
