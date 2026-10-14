@@ -124,7 +124,7 @@ class ProjectBuildTest {
     }
 
   @Test
-  fun `query stays in the nearest package and refuses an ambiguous target`() = fixture { root ->
+  fun `query stays in the nearest package and selects all of its targets`() = fixture { root ->
     root.resolve("MODULE.bazel").writeText("")
     val app =
       root.resolve("app").apply {
@@ -136,21 +136,30 @@ class ProjectBuildTest {
       query = argv
       "//app:ui\n"
     }
-    assertEquals("//app:ui", build.selectTarget(root, app, BazelBuildConfig(), 20))
+    assertEquals(
+      BazelTargetSelection("//app:ui", listOf("//app:ui")),
+      build.selectTargets(root, app, BazelBuildConfig(), 20),
+    )
     assertTrue(query.any { it.contains("//app:*") })
     assertTrue(query.none { "..." in it })
-    val ambiguous = BazelBuild { _, _, _ -> "//app:ui\n//app:test\n" }
+    // Several targets in the package: all of them, named as `//app:all` selects them.
+    val several = BazelBuild { _, _, _ -> "//app:ui\n//app:model\n" }
+    assertEquals(
+      BazelTargetSelection("//app:all", listOf("//app:model", "//app:ui")),
+      several.selectTargets(root, app, BazelBuildConfig(), 20),
+    )
+    val none = BazelBuild { _, _, _ -> "" }
     assertTrue(
       assertFailsWith<IllegalStateException> {
-          ambiguous.selectTarget(root, app, BazelBuildConfig(), 20)
+          none.selectTargets(root, app, BazelBuildConfig(), 20)
         }
         .message!!
         .contains("--target")
     )
     val configured = BazelBuild { _, _, _ -> error("Configured target must not query") }
     assertEquals(
-      "//app:ui",
-      configured.selectTarget(root, app, BazelBuildConfig(target = "//app:ui"), 20),
+      BazelTargetSelection("//app:ui", listOf("//app:ui")),
+      configured.selectTargets(root, app, BazelBuildConfig(target = "//app:ui"), 20),
     )
   }
 }
