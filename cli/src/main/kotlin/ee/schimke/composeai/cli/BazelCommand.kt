@@ -138,7 +138,7 @@ internal class BazelCommand(
         if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
           System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
         }
-        val requested = requestedTargets(config)
+        val requested = requestedTargets()
         val selection =
           if (requested.isNotEmpty())
             BazelTargetSelection(
@@ -150,7 +150,8 @@ internal class BazelCommand(
               .selectTargets(root, invocationDirectory ?: requestedDirectory, config, timeout)
         selectionLabel = selection.label
         val targets = selection.targets
-        candidates = targets.size > 1 || requested.any(::isBazelTargetPattern)
+        candidates =
+          targets.size > 1 || selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
         if (candidates) {
           System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
         }
@@ -315,16 +316,15 @@ internal class BazelCommand(
 
   /**
    * Labels and patterns from every `--target` (each may hold several, space separated, as on a
-   * `bazel build` line), else a label passed as `--module`, else `targets` in the config. Empty
-   * leaves the choice to the configured `target` or the current package.
+   * `bazel build` line), else a label passed as `--module`. Empty leaves the choice to
+   * [BazelBuild.selectTargets]: the configured `target`, then `targets`, then the current package.
    */
-  private fun requestedTargets(config: BazelBuildConfig): List<String> =
+  private fun requestedTargets(): List<String> =
     args
       .flagValuesAll("--target")
       .flatMap { it.split(Regex("\\s+")) }
       .filter { it.isNotBlank() }
       .ifEmpty { listOfNotNull(args.flagValue("--module")) }
-      .ifEmpty { config.targets }
 
   /** The previews of [prepared] that `--preview`, `--id` and `--filter` select. */
   private fun selectedPreviews(prepared: PreparedBazelPreviews) =

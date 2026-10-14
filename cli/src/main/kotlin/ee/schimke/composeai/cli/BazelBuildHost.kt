@@ -133,23 +133,27 @@ internal class BazelBuildHost(
       args.flagValue("--project")?.let(::File) ?: File(".")
 
     /**
-     * `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. A selection of
-     * several targets keeps its patterns readable: `//app/... -//app/legacy/...` →
-     * `app.all+-app.legacy.all`, `//...` → `all`.
+     * `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. An external
+     * repository stays part of the name, so `@vendor//app:lib` (`vendor~app:lib`) never collides
+     * with `//app:lib`. A selection of several targets keeps its patterns readable: `//app/...
+     * -//app/legacy/...` → `app.all+-app.legacy.all`, `//...` → `all`.
      */
     fun modulePath(label: String): String =
       label.trim().split(Regex("\\s+")).joinToString("+") { token ->
         val excluded = token.startsWith("-")
+        val label = token.removePrefix("-")
+        val repository =
+          label.substringBefore("//", "").trimStart('@').replace(Regex("[^A-Za-z0-9._-]"), "_")
         val path =
-          token
-            .removePrefix("-")
+          label
             .substringAfter("//")
             .replace("/...", ".all")
             .replace("...", "all")
             .replace('/', '.')
             .removePrefix(":")
             .ifEmpty { "root" }
-        if (excluded) "-$path" else path
+        val named = if (repository.isEmpty()) path else "$repository~$path"
+        if (excluded) "-$named" else named
       }
 
     /** The normal surface writes into `<base>/build/compose-previews`. */

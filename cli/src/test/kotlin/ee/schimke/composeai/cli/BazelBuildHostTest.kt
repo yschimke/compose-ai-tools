@@ -239,6 +239,9 @@ class BazelBuildHostTest {
     assertEquals("app.ui:lib", BazelBuildHost.modulePath("//app/ui:lib"))
     assertEquals("aspect_app", BazelBuildHost.modulePath("//:aspect_app"))
     assertEquals("app:app", BazelBuildHost.modulePath("//app:app"))
+    // An external repository stays in the name, so it never collides with the main repository's.
+    assertEquals("vendor~app:lib", BazelBuildHost.modulePath("@vendor//app:lib"))
+    assertEquals("rules_ui_~app:lib", BazelBuildHost.modulePath("@@rules_ui+//app:lib"))
     // A selection of several targets keeps its patterns readable, and never a bare `..`.
     assertEquals("app.all", BazelBuildHost.modulePath("//app/..."))
     assertEquals("all", BazelBuildHost.modulePath("//..."))

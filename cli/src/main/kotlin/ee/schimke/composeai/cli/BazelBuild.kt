@@ -380,9 +380,10 @@ internal class BazelBuild(
 
   /**
    * The targets [patterns] select, as `bazel build` reads them: labels, `...`, `:all`, `:*`, and
-   * `-` prefixed exclusions. A single plain label is returned as given; anything else goes through
-   * `query`, filtered by `kind()` to rules the aspect can read ([BazelBuildConfig.targetKinds]), so
-   * a genrule or test under a `...` pattern is not handed to an aspect that would fail on it.
+   * `-` prefixed exclusions. Plain labels alone are returned as given; otherwise `query` expands
+   * the patterns, filtered by `kind()` to rules the aspect can read
+   * ([BazelBuildConfig.targetKinds]), so a genrule or test under a `...` pattern is not handed to
+   * an aspect that would fail on it.
    */
   fun expandTargets(
     root: File,
@@ -401,15 +402,23 @@ internal class BazelBuild(
         "Target patterns must be absolute (//pkg/..., @repo//pkg:all): $it"
       }
     }
-    val expression =
-      (listOf(included.joinToString(" + ") { "\"$it\"" }) + excluded.map { "\"$it\"" })
-        .joinToString(" - ")
+    // Only patterns are filtered: a label named explicitly is a requirement and keeps its own
+    // kind (an alias, a custom rule the configured aspect reads), as it does when named alone.
+    val wildcards = included.filter(::isBazelTargetPattern)
+    val labels = included.filterNot(::isBazelTargetPattern)
+    if (wildcards.isEmpty() && excluded.isEmpty()) return labels.distinct()
     val kinds = config.targetKinds ?: defaultTargetKinds(config.aspect)
+    val selected =
+      listOfNotNull(
+        wildcards
+          .takeIf { it.isNotEmpty() }
+          ?.joinToString(" + ", prefix = "kind('$kinds', ", postfix = ")") { "\"$it\"" }
+      ) + labels.map { "\"$it\"" }
+    val expression =
+      "(${selected.joinToString(" + ")})" + excluded.joinToString("") { " - \"$it\"" }
     val targets =
       execute(
-          config.buildCommand +
-            config.startupArgs +
-            listOf("query", "kind('$kinds', $expression)", "--output=label"),
+          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
           root,
           timeoutSeconds,
         )
