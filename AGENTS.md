@@ -104,7 +104,9 @@ and hard-rejected by sibling repos' CI (meshcore-mobile).
 `fix:`, `feat:`, `docs:`, `test:`, `ci:`, … PRs are squash-merged with
 `squash_merge_commit_message=BLANK`, so the squashed commit carries the **PR title
 only** — release-please reads that. The
-[`PR Title`](.github/workflows/pr-title.yml) workflow checks it.
+[`PR Title`](.github/workflows/pr-title.yml) workflow checks it, and rejects `feat:` / `fix:` /
+`perf:` on a PR that changes only internal paths (CI, release scripts, tests, docs): use `ci:`,
+`build:`, `test:`, `docs:` or `chore:` there, since a release would ship nothing.
 
 <!-- invariant: format-before-commit -->
 ### Run the formatter before committing

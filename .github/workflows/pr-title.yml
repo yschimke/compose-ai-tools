@@ -13,6 +13,9 @@ name: PR Title
 #
 # A second job rejects the conventional-commit breaking marker (`feat!:`), which
 # is the only way a major can be cut by accident here. See its own comment.
+#
+# A third job rejects a release-cutting type (`feat`, `fix`, `perf`) on a PR
+# whose every changed path is internal, since that release would ship nothing.
 
 on:
   pull_request:
@@ -180,4 +183,52 @@ jobs:
             echo "  publishes. See docs/RELEASING.md."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Breaking-change marker in PR title::The '!' cuts a major on merge. See the job summary."
+          exit 1
+
+  # `feat:`, `fix:` and `perf:` cut a release on merge, and every release moves the CLI tag,
+  # rewrites the public actions' `@vX` refs and hands consumers a version to bump. A pull request
+  # that changes only internal paths (the release plan's scripts, internal workflows, CI pins, tests,
+  # docs) ships nothing, so its title should be `ci:`, `build:`, `test:`, `docs:` or `chore:` —
+  # 12 of 238 release-cutting commits on `main` were that case. What counts as internal, and why
+  # unknown paths count as shipped, is in the script.
+  releasing:
+    name: Release-cutting title ships something
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare the title's type with the changed paths
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" = "$HEAD_SHA"
+            PR_TITLE="$(gh pr view "$PR" --json title --jq .title)"
+          fi
+          # A rename lists its old path too: moving `src/main/Foo.kt` into `src/test/` removes
+          # shipped code, and the new path alone would read as a test-only change.
+          gh api --paginate "repos/${GH_REPO}/pulls/${PR}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/paths"
+          if python3 .github/scripts/check-release-type.py "$PR_TITLE" < "$RUNNER_TEMP/paths"; then
+            exit 0
+          fi
+          {
+            echo "### This title cuts a release for changes no release carries"
+            echo
+            echo "\`${PR_TITLE}\`"
+            echo
+            echo "Every path this pull request changes is internal (CI, the release scripts, tests,"
+            echo "docs, samples), so a release would only move version numbers. Retitle it as"
+            echo "\`ci:\`, \`build:\`, \`test:\`, \`docs:\` or \`chore:\`."
+            echo
+            echo "If one of the paths does ship, the classification in"
+            echo "\`.github/scripts/check-release-type.py\` is wrong; fix it there."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Release-cutting title on internal-only changes::Retitle as ci:/build:/test:/docs:/chore:. See the job summary."
           exit 1

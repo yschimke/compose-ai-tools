@@ -111,6 +111,9 @@ jobs:
         run: python3 .github/scripts/test_check_release_plugin_pins.py -v
       - name: Validate release examples
         run: python3 .github/scripts/check-release-plugin-pins.py
+      # Which paths a release carries, for the PR Title workflow's release-cutting-type check.
+      - name: Test release-type path classification
+        run: python3 .github/scripts/test_check_release_type.py -v
 
   # Split out of `changes` so its ~4 min of Gradle model resolution stops
   # sitting on the critical path of every other job (see the note on `changes`).
