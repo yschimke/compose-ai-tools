@@ -219,19 +219,70 @@ public fun writeBazelBundle(
   lockFiles: List<File>,
   output: File,
   embedDeps: Boolean = false,
+): BundleReader.Manifest =
+  writeBazelBundle(
+    modulePath,
+    projectJars,
+    runtimeJars,
+    discovery,
+    renders,
+    selectedIds,
+    lockFiles,
+    output,
+    embedDeps,
+    android = null,
+  )
+
+/**
+ * The Android resources an Android Bazel target renders against: the linked, standalone resource
+ * APK, the manifest Robolectric reads the package and theme from, and the final-ID R classes.
+ * Packed under `android/` exactly where a Gradle `backend="android"` bundle carries them, so
+ * `bundle render` and `bundle daemon` replay both the same way.
+ */
+public class BazelAndroidResources(
+  public val packageName: String,
+  public val resourceApk: File,
+  public val manifest: File,
+  public val rJar: File?,
+)
+
+/** [writeBazelBundle] for an Android target when [android] is set: `backend="android"`. */
+public fun writeBazelBundle(
+  modulePath: String,
+  projectJars: List<File>,
+  runtimeJars: List<File>,
+  discovery: PreviewManifest,
+  renders: File?,
+  selectedIds: Set<String>,
+  lockFiles: List<File>,
+  output: File,
+  embedDeps: Boolean,
+  android: BazelAndroidResources?,
 ): BundleReader.Manifest {
   val previews = discovery.previews.filter { it.id in selectedIds }.sortedBy { it.id }
   require(previews.isNotEmpty()) { "No previews selected for bundle" }
   val known = bazelMavenCoordinates(lockFiles)
   val appJar = bazelBundleAppJar(projectJars)
   val contents = linkedMapOf("classes/app.jar" to appJar)
+  val androidResources = android?.let {
+    contents[ANDROID_RESOURCE_APK] = it.resourceApk.readBytes()
+    contents[ANDROID_MANIFEST] = it.manifest.readBytes()
+    it.rJar?.let { jar -> contents[ANDROID_R_CLASSES] = jar.readBytes() }
+    BundleReader.AndroidResources(
+      resourceApkPath = ANDROID_RESOURCE_APK,
+      mergedManifestPath = ANDROID_MANIFEST,
+      rClassesJarPath = ANDROID_R_CLASSES.takeIf { _ -> it.rJar != null },
+      applicationPackage = it.packageName,
+    )
+  }
   val classpath =
     mutableListOf<BundleReader.ClasspathEntry>(
       BundleReader.ClasspathEntry.Module("classes/app.jar")
     )
   val decisions = mutableListOf<kotlinx.serialization.json.JsonObject>()
+  // The R classes travel as `android/r-classes.jar`, which the Android replay puts on the `-cp`.
   runtimeJars
-    .filter { it !in projectJars }
+    .filter { it !in projectJars && it != android?.rJar }
     .forEachIndexed { index, jar ->
       val sha = bazelBundleSha(jar)
       val match = matchBazelMaven(jar, known)
@@ -265,7 +316,7 @@ public fun writeBazelBundle(
   val manifest =
     BundleReader.Manifest(
       schemaVersion = 9,
-      backend = "desktop",
+      backend = if (android != null) "android" else "desktop",
       previewIds = previews.map { it.id },
       rawPreviewIds = previews.map { it.id },
       coverPreviewId = previews.first().id,
@@ -274,6 +325,7 @@ public fun writeBazelBundle(
       producedBy = "compose-preview Bazel bundle",
       producer = "bazel",
       resolution = if (maven && embedded) "mixed" else if (maven) "coordinates" else "embedded",
+      androidResources = androidResources,
     )
   contents["dependency-resolution.json"] =
     canonicalJsonBytes(kotlinx.serialization.json.JsonArray(decisions).toString())
@@ -298,6 +350,10 @@ public fun writeBazelBundle(
   }
   return manifest
 }
+
+private const val ANDROID_RESOURCE_APK = "android/resources.ap_"
+private const val ANDROID_MANIFEST = "android/AndroidManifest.xml"
+private const val ANDROID_R_CLASSES = "android/r-classes.jar"
 
 private val bazelJson = Json {
   prettyPrint = true

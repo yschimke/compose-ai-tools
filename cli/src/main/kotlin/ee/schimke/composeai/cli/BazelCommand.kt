@@ -206,9 +206,6 @@ internal class BazelCommand(
             )
           }
           if (operation == "bundle" || "--bundle" in args) {
-            require(artifacts.android == null) {
-              "Bundles of Android Bazel targets are not supported yet; render or list them instead"
-            }
             val locks =
               args
                 .flagValuesAll("--maven-install")

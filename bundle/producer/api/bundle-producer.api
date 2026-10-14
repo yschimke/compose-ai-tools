@@ -1,3 +1,11 @@
+public final class ee/schimke/composeai/bundle/producer/BazelAndroidResources {
+	public fun <init> (Ljava/lang/String;Ljava/io/File;Ljava/io/File;Ljava/io/File;)V
+	public final fun getManifest ()Ljava/io/File;
+	public final fun getPackageName ()Ljava/lang/String;
+	public final fun getRJar ()Ljava/io/File;
+	public final fun getResourceApk ()Ljava/io/File;
+}
+
 public final class ee/schimke/composeai/bundle/producer/BazelMavenMatch {
 	public fun <init> (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;Ljava/lang/String;)V
 	public final fun component1 ()Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
@@ -24,6 +32,7 @@ public final class ee/schimke/composeai/bundle/producer/BundleProducerKt {
 	public static final fun matchBazelMaven (Ljava/io/File;Ljava/util/List;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
 	public static final fun previewPngName (Ljava/lang/String;)Ljava/lang/String;
 	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;Z)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZLee/schimke/composeai/bundle/producer/BazelAndroidResources;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
 	public static synthetic fun writeBazelBundle$default (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
 }
 
