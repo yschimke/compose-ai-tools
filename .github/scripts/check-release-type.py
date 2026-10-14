@@ -28,7 +28,7 @@ import sys
 RELEASING = re.compile(r"^(feat|fix|perf)(\([^)]*\))?!?:")
 
 # Kept in step with TEST_SOURCE in maven-publish-plan.sh.
-TEST_SOURCE = re.compile(r"(^|/)src/(?!testFixtures/)(test[A-Za-z]*|[a-z][A-Za-z]*Test[A-Za-z]*)/")
+TEST_SOURCE = re.compile(r"(^|/)src/(?!testFixtures/)(test[A-Za-z0-9]*|[a-z][A-Za-z0-9]*Test[A-Za-z0-9]*)/")
 
 INTERNAL = [
     re.compile(r"\.md$"),

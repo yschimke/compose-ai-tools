@@ -48,6 +48,7 @@ class ReleaseTypeTest(unittest.TestCase):
             "gradle-plugin/src/test/kotlin/ManifestTest.kt",
             "gradle-plugin/src/functionalTest/kotlin/PluginTest.kt",
             "screen/model/src/jvmTest/kotlin/GeneratorTest.kt",
+            "rc/src/iosArm64Test/kotlin/NativeTest.kt",
         )
 
     def test_rename_out_of_main_ships(self) -> None:
