@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -241,7 +242,16 @@ class BazelBuildHostTest {
     assertEquals("app:app", BazelBuildHost.modulePath("//app:app"))
     // An external repository stays in the name, so it never collides with the main repository's.
     assertEquals("vendor~app:lib", BazelBuildHost.modulePath("@vendor//app:lib"))
-    assertEquals("rules_ui_~app:lib", BazelBuildHost.modulePath("@@rules_ui+//app:lib"))
+    assertEquals("rules_ui-2b~app:lib", BazelBuildHost.modulePath("@@rules_ui+//app:lib"))
+    // Repositories differing only in punctuation stay distinct.
+    assertNotEquals(
+      BazelBuildHost.modulePath("@@foo+bar_baz+repo//app:lib"),
+      BazelBuildHost.modulePath("@@foo_bar+baz+repo//app:lib"),
+    )
+    assertNotEquals(
+      BazelBuildHost.modulePath("@@a-b//app:lib"),
+      BazelBuildHost.modulePath("@@a_b//app:lib"),
+    )
     // A selection of several targets keeps its patterns readable, and never a bare `..`.
     assertEquals("app.all", BazelBuildHost.modulePath("//app/..."))
     assertEquals("all", BazelBuildHost.modulePath("//..."))

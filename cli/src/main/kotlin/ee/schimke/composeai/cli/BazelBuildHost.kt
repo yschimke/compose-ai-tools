@@ -134,16 +134,26 @@ internal class BazelBuildHost(
 
     /**
      * `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. An external
-     * repository stays part of the name, so `@vendor//app:lib` (`vendor~app:lib`) never collides
-     * with `//app:lib`. A selection of several targets keeps its patterns readable: `//app/...
-     * -//app/legacy/...` → `app.all+-app.legacy.all`, `//...` → `all`.
+     * repository stays part of the name, reversibly escaped, so `@vendor//app:lib`
+     * (`vendor~app:lib`) never collides with `//app:lib`, nor `@@rules_ui+` (`rules_ui-2b`) with
+     * another canonical repository. A selection of several targets keeps its patterns readable:
+     * `//app/... -//app/legacy/...` → `app.all+-app.legacy.all`, `//...` → `all`.
      */
     fun modulePath(label: String): String =
       label.trim().split(Regex("\\s+")).joinToString("+") { token ->
         val excluded = token.startsWith("-")
         val label = token.removePrefix("-")
+        // Reversible, so distinct canonical repositories never share a name: `-` is the escape,
+        // and every character outside `[A-Za-z0-9._]` (`-` included) is written as `-<hex>`.
         val repository =
-          label.substringBefore("//", "").trimStart('@').replace(Regex("[^A-Za-z0-9._-]"), "_")
+          label
+            .substringBefore("//", "")
+            .trimStart('@')
+            .map { c ->
+              if (c.isLetterOrDigit() && c.code < 128 || c == '.' || c == '_') "$c"
+              else "-" + c.code.toString(16)
+            }
+            .joinToString("")
         val path =
           label
             .substringAfter("//")
