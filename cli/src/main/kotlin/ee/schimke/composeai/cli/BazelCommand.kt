@@ -49,13 +49,16 @@ internal class BazelCommand(
     }
   }
 
-  /** Runs the operation; returns the prepared previews (null for `init`) for in-process callers. */
-  internal fun execute(): PreparedBazelPreviews? {
+  /** Runs the operation; returns each target's prepared previews (none for `init`). */
+  internal fun execute(): List<PreparedBazelPreviews> {
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
     require(operation in setOf("init", "prepare", "list", "render", "show", "bundle")) {
       "Expected init, prepare, list, render, show or bundle"
+    }
+    require("--reuse-renders" !in args || operation in setOf("render", "show", "bundle")) {
+      "--reuse-renders requires imported artifacts and render, show or bundle"
     }
     require("--no-render" !in args || operation == "bundle") {
       "--no-render is only supported for bazel bundle"
@@ -78,7 +81,7 @@ internal class BazelCommand(
     if (operation == "init") {
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
-      return null
+      return emptyList()
     }
     val configFile =
       args.flagValue("--config")?.let { resolve(root, it) }
@@ -113,7 +116,10 @@ internal class BazelCommand(
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config = config.copy(buildArgs = config.buildArgs + args.flagValuesAll("--bazel-arg"))
     val imported = args.flagValue("--artifacts")
-    val artifacts =
+    // A pattern's or a package's matches are candidates: one without previews is left out. An
+    // explicitly named target is a requirement and fails as before.
+    var candidates = false
+    val collected =
       if (imported != null) {
         val executionRoot =
           args.flagValue("--execution-root")?.let { resolve(root, it) }
@@ -125,17 +131,22 @@ internal class BazelCommand(
             "Imported artifacts do not match --target"
           }
         }
-        metadata.resolve(executionRoot, root)
+        listOf(metadata.resolve(executionRoot, root))
       } else {
         // Report before target selection, which may already run the chosen tool.
         if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
           System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
         }
-        val explicitTarget = args.flagValue("--target") ?: args.flagValue("--module")
-        val target =
-          explicitTarget
-            ?: BazelBuild()
-              .selectTarget(root, invocationDirectory ?: requestedDirectory, config, timeout)
+        val requested = requestedTargets(config)
+        val targets =
+          if (requested.isNotEmpty()) BazelBuild().expandTargets(root, requested, config, timeout)
+          else
+            BazelBuild()
+              .selectTargets(root, invocationDirectory ?: requestedDirectory, config, timeout)
+        candidates = targets.size > 1 || requested.any(::isBazelTargetPattern)
+        if (candidates) {
+          System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
+        }
         // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
         if (
           config.aspect == DEFAULT_BAZEL_ASPECT &&
@@ -147,47 +158,85 @@ internal class BazelCommand(
           }
           installBazelAspect(root)
         }
-        BazelBuild().collect(root, target, config, timeout)
+        BazelBuild().collectAll(root, targets, config, timeout, skipWithoutMetadata = candidates)
       }
-    if ("--verbose" in args || "-v" in args) {
-      System.err.println(
-        "[bazel] ${artifacts.metadata.target} (${artifacts.metadata.configuration}): " +
-          "${artifacts.projectJars.size} application jars, ${artifacts.runtimeJars.size} runtime jars, " +
-          "${artifacts.sourceFiles.size} sources, ${artifacts.dataFiles.size} runfiles"
-      )
+    require(args.flagValue("--out") == null || collected.size == 1) {
+      "--out names one target's output; select one with --target"
     }
-    val targetKey =
-      MessageDigest.getInstance("SHA-256")
-        .digest((artifacts.metadata.target + "\n" + artifacts.metadata.configuration).toByteArray())
-        .take(8)
-        .joinToString("") { "%02x".format(it) }
-    val outputBase =
-      args.flagValue("--out")?.let { resolve(root, it) }
-        ?: root.resolve(".compose-preview/outputs/$targetKey")
-    val output = if (normalSurface) outputBase.resolve("build/compose-previews") else outputBase
-    val prepared = prepareBazelPreviews(artifacts, root, output)
+    val selections = collected.mapNotNull { artifacts ->
+      if ("--verbose" in args || "-v" in args) {
+        System.err.println(
+          "[bazel] ${artifacts.metadata.target} (${artifacts.metadata.configuration}): " +
+            "${artifacts.projectJars.size} application jars, ${artifacts.runtimeJars.size} runtime jars, " +
+            "${artifacts.sourceFiles.size} sources, ${artifacts.dataFiles.size} runfiles"
+        )
+      }
+      val targetKey =
+        MessageDigest.getInstance("SHA-256")
+          .digest(
+            (artifacts.metadata.target + "\n" + artifacts.metadata.configuration).toByteArray()
+          )
+          .take(8)
+          .joinToString("") { "%02x".format(it) }
+      val outputBase =
+        args.flagValue("--out")?.let { resolve(root, it) }
+          ?: root.resolve(".compose-preview/outputs/$targetKey")
+      val output = if (normalSurface) outputBase.resolve("build/compose-previews") else outputBase
+      val prepared = prepareBazelPreviews(artifacts, root, output, failOnEmpty = !candidates)
+      if (prepared.manifest.previews.isEmpty()) {
+        System.err.println("[bazel] ${artifacts.metadata.target}: no previews, skipped")
+        null
+      } else BazelSelection(artifacts, prepared, output)
+    }
+    check(selections.isNotEmpty()) {
+      "No previews in ${collected.joinToString(" ") { it.metadata.target }}"
+    }
     when (operation) {
       "list" -> {
-        if (normalSurface) emitNormalResults(prepared, rendering = false)
-        else if ("--json" in args) println(bazelJson.encodeToString(prepared.manifest))
-        else
-          prepared.manifest.previews.forEach {
-            println("${it.id}\t${it.className}.${it.functionName}")
-          }
+        if (normalSurface) emitNormalResults(selections.map { it.prepared }, rendering = false)
+        else if ("--json" in args) {
+          val manifests = selections.map { it.prepared.manifest }
+          println(
+            if (manifests.size == 1) bazelJson.encodeToString(manifests.single())
+            else bazelJson.encodeToString(manifests)
+          )
+        } else
+          selections
+            .flatMap { it.prepared.manifest.previews }
+            .forEach { println("${it.id}\t${it.className}.${it.functionName}") }
       }
-      "prepare",
+      "prepare" -> {
+        selections.forEach { (artifacts, prepared) ->
+          println(prepareBazelDaemon(artifacts, prepared, root).absolutePath)
+        }
+      }
       "show",
       "render",
       "bundle" -> {
         val reuse = "--reuse-renders" in args
-        require(!reuse || (imported != null && operation != "prepare")) {
+        require(!reuse || imported != null) {
           "--reuse-renders requires imported artifacts and render, show or bundle"
         }
-        if (operation == "prepare") {
-          println(prepareBazelDaemon(artifacts, prepared, root).absolutePath)
-        } else {
-          val noRender = operation == "bundle" && "--no-render" in args
-          require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
+        val bundling = operation == "bundle" || "--bundle" in args
+        require(!bundling || selections.size == 1) {
+          "A bundle packs one target; ${selections.size} have previews " +
+            "(${selections.joinToString(" ") { it.artifacts.metadata.target }}). Select one with --target."
+        }
+        val noRender = operation == "bundle" && "--no-render" in args
+        require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
+        // The selection flags apply across targets; --output still names one preview in all.
+        val selected = selections.associateWith { selectedPreviews(it.prepared) }
+        require(selected.values.any { it.isNotEmpty() }) { "No previews match the selection" }
+        require(
+          args.flagValue("--output") == null ||
+            operation == "bundle" ||
+            selected.values.sumOf { it.size } == 1
+        ) {
+          "--output requires one preview; select it with --id or --filter"
+        }
+        selected.forEach { (selection, previews) ->
+          val (artifacts, prepared, output) = selection
+          if (previews.isEmpty() && !bundling) return@forEach
           if (noRender) {
             // Discovery and packaging require no renderer provisioning.
           } else if (
@@ -206,7 +255,7 @@ internal class BazelCommand(
               copyOutput = operation != "bundle",
             )
           }
-          if (operation == "bundle" || "--bundle" in args) {
+          if (bundling) {
             val locks =
               args
                 .flagValuesAll("--maven-install")
@@ -221,27 +270,11 @@ internal class BazelCommand(
                 args.flagValue("--output")?.let { resolve(root, it) }
                   ?: output.resolve("bundle.png")
               else output.resolve("bundle.png")
-            val selected =
-              prepared.manifest.previews
-                .filter {
-                  (args.flagValue("--preview") == null ||
-                    previewMatchesReference(
-                      args.flagValue("--preview")!!,
-                      it.id,
-                      it.className,
-                      it.functionName,
-                    )) &&
-                    (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
-                    (args.flagValue("--filter") == null ||
-                      it.id.contains(args.flagValue("--filter")!!, ignoreCase = true))
-                }
-                .map { it.id }
-                .toSet()
             val manifest =
               writeBazelBundle(
                 artifacts,
                 prepared,
-                selected,
+                previews.map { it.id }.toSet(),
                 locks,
                 bundle,
                 "--embed-deps" in args,
@@ -251,12 +284,47 @@ internal class BazelCommand(
               "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)"
             )
           }
-          if (normalSurface) emitNormalResults(prepared, rendering = true)
         }
+        if (normalSurface) emitNormalResults(selections.map { it.prepared }, rendering = true)
       }
     }
-    return prepared
+    return selections.map { it.prepared }
   }
+
+  /** One target's artifacts, its discovered previews, and the directory they were written to. */
+  private data class BazelSelection(
+    val artifacts: ResolvedBazelArtifacts,
+    val prepared: PreparedBazelPreviews,
+    val output: File,
+  )
+
+  /**
+   * Labels and patterns from every `--target` (each may hold several, space separated, as on a
+   * `bazel build` line), else a label passed as `--module`, else `targets` in the config. Empty
+   * leaves the choice to the configured `target` or the current package.
+   */
+  private fun requestedTargets(config: BazelBuildConfig): List<String> =
+    args
+      .flagValuesAll("--target")
+      .flatMap { it.split(Regex("\\s+")) }
+      .filter { it.isNotBlank() }
+      .ifEmpty { listOfNotNull(args.flagValue("--module")) }
+      .ifEmpty { config.targets }
+
+  /** The previews of [prepared] that `--preview`, `--id` and `--filter` select. */
+  private fun selectedPreviews(prepared: PreparedBazelPreviews) =
+    prepared.manifest.previews.filter {
+      (args.flagValue("--preview") == null ||
+        previewMatchesReference(
+          args.flagValue("--preview")!!,
+          it.id,
+          it.className,
+          it.functionName,
+        )) &&
+        (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
+        (args.flagValue("--filter") == null ||
+          it.id.contains(args.flagValue("--filter")!!, ignoreCase = true))
+    }
 
   /**
    * Returns false, without copying anything, when a selected capture is missing or was rendered
@@ -390,11 +458,15 @@ internal class BazelCommand(
     }
   }
 
-  private fun emitNormalResults(prepared: PreparedBazelPreviews, rendering: Boolean) {
-    val moduleDirectory = prepared.manifestFile.parentFile.parentFile.parentFile
-    val manifest = bazelJson.decodeFromString<ResultManifest>(prepared.manifestFile.readText())
-    val module = PreviewModule(manifest.module, moduleDirectory)
-    val all = buildResults(listOf(module to manifest))
+  private fun emitNormalResults(prepared: List<PreparedBazelPreviews>, rendering: Boolean) {
+    val all =
+      buildResults(
+        prepared.map {
+          val moduleDirectory = it.manifestFile.parentFile.parentFile.parentFile
+          val manifest = bazelJson.decodeFromString<ResultManifest>(it.manifestFile.readText())
+          PreviewModule(manifest.module, moduleDirectory) to manifest
+        }
+      )
     val requested = selectRequested(all)
     val results =
       if (rendering && changedOnly) requested.filter { it.hasChangedCapture() } else requested
@@ -422,6 +494,7 @@ internal class BazelCommand(
       Usage:
         compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>]
         compose-preview list [--target //app:ui] [--json]
+        compose-preview list --target //app/... [--target -//app/legacy/...] [--json]
         compose-preview bazel list [--target //app:ui] [--json]
         compose-preview bazel prepare --target //app:ui
         compose-preview bazel bundle --target //app:ui --maven-install maven_install.json --output bundle.png
@@ -429,7 +502,12 @@ internal class BazelCommand(
 
       Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
       The default aspect package is installed on first use; application BUILD files are untouched.
-      A configured target wins; otherwise a single JVM target in the current package is selected.
+      --target is repeatable and takes labels or patterns, as bazel build does: //app/...,
+      //app:all, //app:*, and -//pattern exclusions. A pattern is expanded with query and filtered
+      to the aspect's rule kinds (targetKinds in bazel.json overrides them). Each target with
+      previews is one module, and matched targets without previews are skipped. Without --target,
+      target/targets in .compose-preview/bazel.json win; otherwise the current package (//pkg:all),
+      or outside any package everything below the directory (//dir/...), is selected.
       Default provider: @rules_java//java/common:java_info.bzl (requires visible rules_java).
       Configure .compose-preview/bazel.json for a different build command/provider deployment.
       --config <file>             Read explicit JSON config (paths relative to --project).
@@ -493,6 +571,8 @@ internal fun prepareBazelPreviews(
   artifacts: ResolvedBazelArtifacts,
   root: File,
   output: File,
+  /** False for a pattern's candidate targets, which may hold no previews and are then skipped. */
+  failOnEmpty: Boolean = true,
 ): PreparedBazelPreviews {
   val outcome =
     PreviewDiscovery.discover(
@@ -504,7 +584,7 @@ internal fun prepareBazelPreviews(
         moduleName = artifacts.metadata.target,
         variantName = artifacts.metadata.configuration,
         projectDirectory = root,
-        failOnEmpty = true,
+        failOnEmpty = failOnEmpty,
         catalogRenderSupported = false,
         animatedPreviewApngSupported = true,
         // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.

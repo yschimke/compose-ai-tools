@@ -38,10 +38,10 @@ class BazelBuildHostTest {
 
   /** What `compose-preview bazel render|prepare` leaves behind for `//app/ui:lib`. */
   private class FakeBazel(private val root: File, var fail: Boolean = false) :
-    (List<String>) -> PreparedBazelPreviews? {
+    (List<String>) -> List<PreparedBazelPreviews> {
     val calls = mutableListOf<List<String>>()
 
-    override fun invoke(args: List<String>): PreparedBazelPreviews {
+    override fun invoke(args: List<String>): List<PreparedBazelPreviews> {
       calls += args
       if (fail) error("Build command exited 1")
       val output =
@@ -62,7 +62,7 @@ class BazelBuildHostTest {
         )
       val file =
         output.resolve("previews.json").apply { writeText(bazelJson.encodeToString(manifest)) }
-      return PreparedBazelPreviews(manifest, file)
+      return listOf(PreparedBazelPreviews(manifest, file))
     }
   }
 
@@ -194,6 +194,45 @@ class BazelBuildHostTest {
     )
     assertEquals(File("."), BazelBuildHost.invocationDirectory(listOf("--stdio")))
   }
+
+  @Test
+  fun `a target pattern reports one module per target and starts each one's daemon`() =
+    workspace { root ->
+      val calls = mutableListOf<List<String>>()
+      val prepare = { label: String, key: String ->
+        val output =
+          root.resolve(".compose-preview/outputs/$key/build/compose-previews").apply { mkdirs() }
+        output.resolve("daemon-launch.json").writeText("{}")
+        val manifest =
+          PreviewManifest(
+            label,
+            "bazel-out/k8-fastbuild/bin",
+            listOf(
+              PreviewInfo("$key.P", "P", key, captures = listOf(Capture(renderOutput = "r.png")))
+            ),
+          )
+        PreparedBazelPreviews(
+          manifest,
+          output.resolve("previews.json").apply { writeText(bazelJson.encodeToString(manifest)) },
+        )
+      }
+      val args =
+        listOf(BuildHostProtocol.STDIO_FLAG, "--project", root.path, "--target", "//app/...")
+      val host =
+        BazelBuildHost(root.canonicalFile, args) { bazelArgs ->
+          calls += bazelArgs
+          listOf(prepare("//app/ui:lib", "ui"), prepare("//app/data:lib", "data"))
+        }
+
+      val (ok, manifests) = host.discoverAndBuild()
+
+      assertTrue(ok)
+      assertEquals(listOf("app.ui:lib", "app.data:lib"), manifests.map { it.module.gradlePath })
+      assertEquals("//app/...", calls.single().let { it[it.indexOf("--target") + 1] })
+      // Each module's descriptor is already there: starting either builds nothing more.
+      assertTrue(host.runTasks(listOf(":app.data:lib:composePreviewDaemonStart")))
+      assertEquals(1, calls.size)
+    }
 
   @Test
   fun `labels map to Gradle-shaped module paths without slashes`() {

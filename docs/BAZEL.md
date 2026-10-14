@@ -33,12 +33,33 @@ for selecting an internal JavaInfo provider before the first build.
 
 ### Target and executable selection
 
-An explicit `--target` (or a Bazel-label `--module`) wins, then `target` in the shared
-`.compose-preview/bazel.json`. Without either, the driver queries JVM targets in
-the nearest package. One target is selected; multiple candidates produce a useful
-selection error. It does not scan `//...` or guess which target a large monorepo
-should build. A repo can commit the default once so every developer runs the
-normal commands without repeating labels:
+Targets are selected the way `bazel build` reads them. In order, the first that is set wins:
+
+1. `--target`, repeatable. Each value is a label or a target pattern: `//app/...`, `//app:all`,
+   `//app:*`, or a `-` exclusion such as `-//app/legacy/...`. A Bazel-label `--module` also counts.
+2. `target` (one label) or `targets` (labels and patterns) in the shared
+   `.compose-preview/bazel.json`.
+3. The nearest package at or above the current directory, as `//pkg:all`.
+4. Outside any package, such as a workspace root whose BUILD files are all below it, everything
+   below the current directory, as `//dir/...`.
+
+Patterns are expanded with `query`, filtered by `kind()` to the rules the aspect can read. That
+means JVM library and binary rules for the default aspect, and `android_library` /
+`kt_android_library` for the Android aspect. Set `targetKinds` (a `kind()` regex) for other rules,
+such as an internal macro's rule class. The filter matters: a `...` pattern also matches genrules
+and tests, and the aspect fails on a rule without `JavaInfo`.
+
+Every selected target builds in one invocation, so Bazel analyses the graph once. Each target
+then gets its own output directory, and each is one module to `browse` and compose-preview-mcp.
+A target a pattern matched is a candidate: if it has no previews, or the aspect reports nothing
+for it, it is skipped with a note. A single label you name explicitly must build and hold
+previews, as before. `list`, `render` and `show` report across all the targets. `--id`,
+`--filter` and `--preview` select across them, and `--output` still names exactly one preview.
+`bazel bundle` and `--out` take one target. To build past a broken target in a large pattern,
+pass Bazel's own `--bazel-arg=--keep_going`.
+
+A repo can commit the default once, so every developer runs the normal commands without
+repeating labels:
 
 ```json
 {
@@ -46,6 +67,15 @@ normal commands without repeating labels:
   "target": "//app:ui",
   "buildCommand": ["blaze"],
   "buildArgs": ["--config=desktop"]
+}
+```
+
+or, for every UI library under `//app` except the legacy tree:
+
+```json
+{
+  "schemaVersion": 1,
+  "targets": ["//app/...", "-//app/legacy/..."]
 }
 ```
 
@@ -285,16 +315,16 @@ preview that reads string and colour resources on the Robolectric daemon.
 asks its build host Gradle-shaped questions, and in a workspace that routes to Bazel the host
 answers them from this driver:
 
-- discovery builds the configured target (`target` in `.compose-preview/bazel.json`, or a label
-  passed as `--module`/`--target`), discovers and renders its previews, and reports it as one
-  module. A label becomes a slash-free module name (`//app/ui:lib` → `app.ui:lib`), because the
+- discovery builds the selected targets (see [Target and executable selection](#target-and-executable-selection);
+  `--target` patterns work here too), discovers and renders their previews, and reports each
+  target as one module. A label becomes a slash-free module name (`//app/ui:lib` → `app.ui:lib`), because the
   server puts module names in URL segments;
 - starting a module's daemon uses the `daemon-launch.json` the render wrote, preparing it again
   only if it is missing;
 - there is no Gradle root, so the server skips its Gradle-only Wasm app and git history discovery
   instead of walking `bazel-*` output symlinks.
 
-One target per invocation, and the build host allows 1800 seconds per build by default (a first
+The build host allows 1800 seconds per build by default (a first
 build compiles the toolchain); pass `--timeout` to change it.
 
 
