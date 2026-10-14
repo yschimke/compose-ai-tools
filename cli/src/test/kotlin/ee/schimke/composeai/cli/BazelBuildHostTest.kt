@@ -187,6 +187,15 @@ class BazelBuildHostTest {
   }
 
   @Test
+  fun `target selection starts from the directory browse was pointed at, not the workspace root`() {
+    assertEquals(
+      File("/ws/app/ui"),
+      BazelBuildHost.invocationDirectory(listOf("--project", "/ws/app/ui", "--stdio")),
+    )
+    assertEquals(File("."), BazelBuildHost.invocationDirectory(listOf("--stdio")))
+  }
+
+  @Test
   fun `labels map to Gradle-shaped module paths without slashes`() {
     assertEquals("app.ui:lib", BazelBuildHost.modulePath("//app/ui:lib"))
     assertEquals("aspect_app", BazelBuildHost.modulePath("//:aspect_app"))

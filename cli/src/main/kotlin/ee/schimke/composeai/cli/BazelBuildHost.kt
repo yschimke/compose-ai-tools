@@ -25,7 +25,8 @@ internal class BazelBuildHost(
   private val args: List<String>,
   /** Runs a `compose-preview bazel` operation in-process; replaced in tests. */
   private val bazel: (List<String>) -> PreparedBazelPreviews? = { bazelArgs ->
-    BazelCommand(bazelArgs, normalSurface = true, invocationDirectory = root).execute()
+    BazelCommand(bazelArgs, normalSurface = true, invocationDirectory = invocationDirectory(args))
+      .execute()
   },
 ) {
   private val labelsByModule = linkedMapOf<String, String>()
@@ -109,6 +110,14 @@ internal class BazelBuildHost(
     const val DAEMON_START = ":composePreviewDaemonStart"
     const val DESCRIPTOR = "build/compose-previews/daemon-launch.json"
     const val DEFAULT_TIMEOUT_SECONDS = "1800"
+
+    /**
+     * Where target selection starts looking for the nearest `BUILD` file: the `--project` the user
+     * passed (a subpackage, say) or the working directory, never the workspace root it resolved to
+     * — the same rule `list` and `render` follow.
+     */
+    fun invocationDirectory(args: List<String>): File =
+      args.flagValue("--project")?.let(::File) ?: File(".")
 
     /** `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. */
     fun modulePath(label: String): String =
