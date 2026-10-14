@@ -23,15 +23,15 @@ It's configured with `composePreview.daemon { ... }` and defaults on for
 editor use. You don't start or manage it by hand — the extension and MCP
 server bring it up as needed.
 
-## What ships
+## Where it ships from
 
-- **`:daemon:core`** — renderer-agnostic JSON-RPC server, protocol types,
-  preview index, classloader holder, classpath fingerprint, history manager.
-- **`:daemon:android`** — Robolectric backend; holds a sandbox open across
-  renders.
-- **`:daemon:desktop`** — Compose-Desktop backend; holds a warm render thread.
-- **`:mcp`** — multiplexes per-`(workspace, module)` daemons behind one MCP
-  surface (see [Agents & MCP](../mcp/)).
+The daemon modules (`daemon-core`, the Robolectric Android backend and the
+Compose-Desktop backend) live in
+[`compose-preview-daemon`](https://github.com/yschimke/compose-preview-daemon),
+and the local MCP server that multiplexes per-`(workspace, module)` daemons
+behind one MCP surface lives in
+[`compose-preview-mcp`](https://github.com/yschimke/compose-preview-mcp) (see
+[Agents & MCP](../mcp/)). This repository consumes them at a pinned version.
 
 ## Going deeper
 

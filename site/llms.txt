@@ -2,18 +2,22 @@
 
 > compose-ai-tools renders Jetpack Compose and Compose Multiplatform `@Preview` composables to PNG outside Android Studio, and produces structured UI data so developers and coding agents can inspect and verify changes.
 
-Use the install guide for consumer setup. The project supports a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension, CI actions, and an optional MCP server and render daemon. Java 17 or newer and Gradle 8.13 or newer are required.
+Start here: https://ui.coo.ee/start (the human start page). The project supports a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension, CI actions, and an optional MCP server and render daemon. Java 17 or newer and Gradle 8.13 or newer are required.
+
+MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio, renders the user's own project). The hosted catalog server has one URL, `https://preview.coo.ee/mcp`; `https://ui.coo.ee/mcp` is an alias of the same server, so never configure both.
 
 ## Getting started
 
 - [Overview](https://yschimke.github.io/compose-ai-tools/): Choose the agent, editor, or command-line workflow and see the core rendering capabilities.
-- [Installation and requirements](https://yschimke.github.io/compose-ai-tools/install/): Install the CLI, Gradle plugin, VS Code extension, or CI actions; includes compatibility requirements and configuration examples.
+- [Installation and requirements](https://yschimke.github.io/compose-ai-tools/install/): Gradle plugin, CLI build integration, CI actions, compatibility requirements and configuration examples.
+- [CLI and skills setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md): Installing and updating the `compose-preview` CLI and agent skills.
+- [Agent host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md): Plugins and MCP wiring per agent host.
 - [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews.
 
 ## Core documentation
 
 - [Data product reference](https://yschimke.github.io/compose-ai-tools/reference/): Index of structured outputs including accessibility, layout, theme, resources, recomposition, localization, and render traces.
-- [Agents and MCP](https://yschimke.github.io/compose-ai-tools/mcp/): Agent workflows and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
+- [Agents and MCP](https://yschimke.github.io/compose-ai-tools/mcp/): Local vs hosted MCP server, agent workflows, and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
 - [Render daemon](https://yschimke.github.io/compose-ai-tools/daemon/): Optional long-lived renderer for low-latency preview iteration.
 - [How rendering works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md): Preview discovery, rendering backends, caching, and project structure.
 

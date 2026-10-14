@@ -7,59 +7,25 @@ permalink: /install/
 
 # Install
 
-Most people don't need this page — the [home page](./) covers the one-step
-paths for agents, VS Code, and the CLI. This page is the full reference:
-every install surface, requirements, and CI recipes.
+**Start here: <https://ui.coo.ee/start>.** This page is the reference for the
+parts this repository owns: the CLI's build integration, the Gradle plugin,
+CI, and requirements.
+
+| You want | Go to |
+|---|---|
+| The CLI and agent skills (`install.sh`, `npx skills`, flags, updating) | [compose-preview setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md) |
+| Plugins and MCP wiring per agent host (Claude Code, Codex, Gemini/Antigravity, OpenCode) | [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md) |
+| The local vs hosted MCP server, and the one hosted URL | [Agents & MCP](../mcp/#two-mcp-servers-local-and-hosted) |
 
 ## CLI
 
 The `compose-preview` binary works against any Compose project with **no
 build edits** — it injects the preview plugin at runtime via a bundled
-Gradle init script.
-
-The default route installs the agent skills with the
-[skills CLI](https://skills.sh), then runs the stub bundled with the
-`compose-preview` skill once:
-
-```sh
-npx skills add yschimke/skills --global --yes --skill compose-preview --skill compose-ui-builder
-~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
-```
-
-`npx skills add` installs the skill content only, into `~/.agents/skills/` with
-per-agent links. The stub's first run executes the canonical installer with
-`--cli-only`: it downloads the CLI, links `~/.local/bin/compose-preview`, adds
-`~/.local/bin` to your bash/zsh/fish startup files, and re-execs. Open a new
-terminal afterwards. To update: `compose-preview update` updates the CLI (and
-PATH), `npx skills update` updates the skills.
-
-That installs `compose-preview` and `compose-ui-builder`. The other skills
-(`compose-preview-review`, `compose-preview-ci`, `compose-preview-design-board`,
-`compose-design-catalog`, `figma-catalog-import`, `design-parity-review`) are
-opt-in: add another `--skill <name>`; the curl installer takes `--skills a,b`
-or `--all-skills`.
-
-**Fallback: the installer.** When there's no Node, or you want the CLI and
-skills in one step:
+Gradle init script. Install it (and the default skills) with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
-
-The installer drops the CLI on your `$PATH` and (unless you pass
-`--cli-only`) the agent skills into the Claude / Codex / Gemini skill
-directories. Useful flags (pass them as `… | bash -s -- <flags>`):
-
-| Flag | Effect |
-|------|--------|
-| `--cli-only` | Install the CLI only, skip the skill bundles. |
-| `--skills a,b` | Install these skills in addition to the default two. |
-| `--all-skills` | Install every skill in the repo. |
-| `--with-skills` | Refresh skill content even when npx or a plugin installed it. |
-| `--no-modify-path` | Don't add `~/.local/bin` to shell startup files. |
-| `--android-sdk` | Also install the Android `cmdline-tools` + platform + build-tools. |
-| `--jdk 17,21` | Install the listed JDK majors. |
-| `VERSION` | Install a specific release instead of latest. |
 
 Then:
 
@@ -72,13 +38,9 @@ compose-preview render-matrix --id com.example.MyPreview \
     --ui-mode light,dark --font-scale 1.0,2.0   # one preview across a grid
 ```
 
-`browse` scans every valid preview module. When a conventional executable CMP Wasm browser project
-owns the previews or depends on their module, its distribution is built and attached automatically:
-
-```sh
-compose-preview browse
-```
-
+`browse` scans every valid preview module and starts a loopback-only server. When a conventional
+executable CMP Wasm browser project owns the previews or depends on their module (including the
+common `:shared:ui` → `:webApp` split), its distribution is built and attached automatically.
 Java/Android-only composables remain available as rendered snapshots with their sample source.
 `--module :shared:ui` is an optional narrowing control, not required setup.
 
@@ -222,6 +184,52 @@ included build — that's not drop-in for an external project.)
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
+### Rendering a subset
+
+Iterating on one screen? Narrow the render to a single preview (or a glob) so
+an unrelated broken preview can't poison the run:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --preview '*ExportHelpDialogPreview'
+# or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'
+```
+
+`--preview` selects whole `@Preview` **functions**. To skip one member of a
+function's fan-out — a multipreview member, or one of several `@Preview`
+annotations, which share a function name but have distinct ids — exclude it by id
+instead:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --exclude-preview-id '*_Dark'
+# or, as a Gradle property: -PcomposePreview.idExclude='*_Dark'
+```
+
+Ids take the same pattern syntax as `--preview` (a `*`/`?` glob, or a plain
+substring). `--preview-id` is the positive form ("render only these"); prefer
+`--exclude-preview-id` when you're deferring part of a fan-out, since a stale
+pattern then renders too much rather than dropping a preview you wanted. Either
+way a filtered run is never stored in the build cache, since its render directory
+is only part of the module's output.
+
+One fan-out has no ids to name: a `@PreviewParameter` provider's rows exist only
+once the renderer enumerates the provider, so discovery lists the parameterized
+function as a single preview. Those are skipped by **label** — the token in
+`<stem>_<label>.png`, matched case-insensitively:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --exclude-preview-row 'Dark,ExtraDark'
+# or, as a Gradle property: -PcomposePreview.rowExclude='Dark,ExtraDark'
+```
+
+A row exclusion never empties a preview's rows: if every row matches, they all
+render, so nothing can silently produce a preview with no pixels.
+
+All four filters work on both backends. An Android module renders through a
+Robolectric test task rather than the desktop one, and it reads the same options
+and the same `composePreview.*` properties.
+
+### Using the init script directly
+
 For direct `./gradlew` use with the auto-inject script (e.g. a CI step that
 needs extra Gradle flags), materialise the init script once and thread its
 path through each invocation:
@@ -240,53 +248,14 @@ and [Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)
 Ctrl+Shift+X), search **Compose Preview**, click *Install*. It auto-injects
 on every Gradle invocation it makes — no project changes needed.
 
-## Agent skill
+## Agents
 
 Point any agent that can fetch a URL at the
-[`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
-— a complete install-and-iterate playbook. The skill checks whether the CLI
-is present and bootstraps it (via its bundled stub and the installer above) if not, so "point the
-agent at the skill" and "run the installer" converge on the same place. See
-[Agents & MCP](../mcp/) for the agent loop the skill drives.
-
-### Per-harness plugins
-
-For agent setup, follow the [Compose Agent Plugins quick start](https://github.com/yschimke/compose-agent-plugins#quick-start).
-The repository is now `yschimke/compose-agent-plugins`; existing installs using the old
-marketplace name should follow its [migration steps](https://github.com/yschimke/compose-agent-plugins#moving-from-compose-ag-plugin).
-
-- `compose-skills` supplies the canonical workflows from [`yschimke/skills`](https://github.com/yschimke/skills).
-- `compose-preview` supplies local MCP wiring and hooks. Local rendering needs the CLI on `PATH`,
-  Java 17 or newer, and `compose-preview mcp install` run once from each Compose project's root.
-- `compose-catalogs` connects to hosted catalogs and the UI Builder without a local toolchain.
-
-The quick start has the commands for
-[Antigravity](https://github.com/yschimke/compose-agent-plugins#antigravity),
-[Claude Code](https://github.com/yschimke/compose-agent-plugins#claude-code),
-[Codex](https://github.com/yschimke/compose-agent-plugins#codex) and
-[OpenCode](https://github.com/yschimke/compose-agent-plugins#opencode).
-Use one copy of each skill bundle and MCP registration; the single marketplace also installs
-`compose-skills`, so a separate skills marketplace is unnecessary.
-
-When Antigravity, Claude Code, or Codex is detected, `mcp install` prints the
-matching wiring-plugin commands as a reminder; pass `--no-plugin-hint` for
-config-only automation.
-
-Once the Antigravity `compose-preview` plugin is installed
-(`~/.gemini/config/plugins/compose-preview`), `mcp install` and `mcp register`
-leave Antigravity's global config alone: the plugin already provides the server,
-and a global entry would be a second copy of every tool. If an older global
-`compose-preview-mcp` entry exists in `~/.gemini/antigravity/mcp_config.json` or
-`~/.gemini/config/mcp_config.json`, both commands and `mcp doctor` name the file
-to remove it from. Pass `--antigravity` to write the global entry anyway.
-
-Host registration is global and one-time: each entry is `<stable launcher> mcp
-serve`, with no `--project`. `mcp install` in a project only adds a missing
-entry or repairs a broken one. `compose-preview mcp register` does the
-registration without touching Gradle, and `compose-preview mcp repair` (run by
-`compose-preview update`) points existing entries at the stable launcher and
-drops a global `--project`, for example after an upgrade removed an old
-`compose-preview-<version>` directory.
+[`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md);
+it checks for the CLI and bootstraps it if missing. Per-host plugins and MCP
+registration are in the
+[host setup notes](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md);
+what `compose-preview mcp install` writes is on [Agents & MCP](../mcp/#register-the-local-server).
 
 ## CI / GitHub Actions
 
