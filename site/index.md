@@ -25,12 +25,14 @@ That's the whole idea. Everything else is optional.
 
 ## Get started
 
-**Start here: <https://ui.coo.ee/start>** — the guided start page for agents,
-editors and the hosted catalogs.
+This page is the start page for the CLI and your project's previews. Designing
+a new screen with an agent in the UI Builder? That flow starts at <https://ui.coo.ee/start>.
 
 ### 🤖 With an AI coding agent
 
-One command installs the `compose-preview` CLI and the default agent skills:
+One command installs the `compose-preview` CLI and the default agent skills
+(Antigravity doesn't read that skills folder; install its plugins instead, from
+[host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md#antigravity)):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
