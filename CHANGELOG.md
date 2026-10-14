@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.59.0](https://github.com/yschimke/compose-ai-tools/compare/v2.58.0...v2.59.0) (2026-10-14)
+
+
+### Features
+
+* **bazel:** bundle Android Bazel targets as backend="android" bundles ([#5966](https://github.com/yschimke/compose-ai-tools/issues/5966)) ([ca5da5c](https://github.com/yschimke/compose-ai-tools/commit/ca5da5cc27bac1158686c37689085d355d200c19))
+* **bazel:** render Android Bazel targets on the Robolectric daemon ([#5965](https://github.com/yschimke/compose-ai-tools/issues/5965)) ([4ca7f55](https://github.com/yschimke/compose-ai-tools/commit/4ca7f55d67acb307192a7aaa2259ece4e4b4f20d))
+
+
+### Bug Fixes
+
+* **bazel:** portable driver defaults for Bazel-family tools ([#5961](https://github.com/yschimke/compose-ai-tools/issues/5961)) ([6a1217d](https://github.com/yschimke/compose-ai-tools/commit/6a1217d658ef50b3d16cbadb7f9587f20ce4d820))
+* **bazel:** report the build command before target discovery runs it ([#5963](https://github.com/yschimke/compose-ai-tools/issues/5963)) ([7c7232b](https://github.com/yschimke/compose-ai-tools/commit/7c7232b22825f6a13da02748a09ae06cf22ac831))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.197 ([#5964](https://github.com/yschimke/compose-ai-tools/issues/5964)) ([975ba9d](https://github.com/yschimke/compose-ai-tools/commit/975ba9d01e18997322c896c08b3c5f399e0714a7))
+
 ## [2.58.0](https://github.com/yschimke/compose-ai-tools/compare/v2.57.0...v2.58.0) (2026-10-13)
 
 
