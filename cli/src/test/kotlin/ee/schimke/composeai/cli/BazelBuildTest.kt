@@ -5,6 +5,8 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -252,6 +254,211 @@ class BazelBuildTest {
       )
     } finally {
       root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `target patterns expand through query, filtered to the aspect's rule kinds`() {
+    val root = Files.createTempDirectory("bazel-patterns").toFile()
+    try {
+      val queries = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        queries += argv
+        "//app:ui\n//app/feature:screens\n//app:ui\n"
+      }
+      // One plain label is taken as given: no query.
+      assertEquals(
+        listOf("//app:ui"),
+        build.expandTargets(root, listOf("//app:ui"), BazelBuildConfig(), 9),
+      )
+      assertTrue(queries.isEmpty())
+
+      assertEquals(
+        listOf("//app/feature:screens", "//app:ui"),
+        build.expandTargets(
+          root,
+          listOf("//app/...", "//lib:all", "-//app/legacy/..."),
+          BazelBuildConfig(buildCommand = listOf("blaze")),
+          9,
+        ),
+      )
+      assertEquals(
+        listOf(
+          "blaze",
+          "query",
+          "kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', " +
+            "\"//app/...\" + \"//lib:all\" - \"//app/legacy/...\")",
+          "--output=label",
+        ),
+        queries.single(),
+      )
+
+      // An Android aspect reads Android libraries; targetKinds overrides either default.
+      build.expandTargets(
+        root,
+        listOf("//..."),
+        BazelBuildConfig(
+          aspect = "@rules_compose_preview//:android.bzl%compose_preview_android_aspect"
+        ),
+        9,
+      )
+      assertTrue(
+        queries
+          .last()
+          .single { it.startsWith("kind(") }
+          .startsWith("kind('(kt_android_library|android_library)'")
+      )
+      build.expandTargets(root, listOf("//..."), BazelBuildConfig(targetKinds = "my_rule"), 9)
+      assertTrue(queries.last().single { it.startsWith("kind(") }.startsWith("kind('my_rule'"))
+
+      val failure =
+        assertFailsWith<IllegalArgumentException> {
+          build.expandTargets(root, listOf("-//app/..."), BazelBuildConfig(), 9)
+        }
+      assertTrue(failure.message!!.contains("include nothing"))
+      assertFailsWith<IllegalStateException> {
+        BazelBuild { _, _, _ -> "" }
+          .expandTargets(root, listOf("//none/..."), BazelBuildConfig(), 9)
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `several targets build in one invocation and a candidate without metadata is skipped`() {
+    val root = Files.createTempDirectory("bazel-multi").toFile()
+    try {
+      root.resolve("ui.jar").writeText("")
+      root.resolve("model.jar").writeText("")
+      fun metadata(target: String, jar: String) =
+        root.resolve("$jar.json").apply {
+          writeText(
+            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar)))
+          )
+        }
+      val calls = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        calls += argv
+        if ("build" in argv) {
+          File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+            .writeText(
+              listOf(
+                  completed("//app:ui", "ui"),
+                  eventSet("ui", listOf(metadata("//app:ui", "ui.jar"))),
+                  completed("//app:model", "model"),
+                  eventSet("model", listOf(metadata("//app:model", "model.jar"))),
+                  // An Android aspect over a JVM-only library reports no metadata for it.
+                  completed("//app:jvm_only", "empty"),
+                  eventSet("empty"),
+                )
+                .joinToString("\n")
+            )
+          ""
+        } else root.absolutePath + "\n"
+      }
+      val targets = listOf("//app:ui", "//app:model", "//app:jvm_only")
+
+      val collected =
+        build.collectAll(root, targets, BazelBuildConfig(), 9, skipWithoutMetadata = true)
+
+      assertEquals(listOf("//app:ui", "//app:model"), collected.map { it.metadata.target })
+      val builds = calls.filter { "build" in it }
+      assertEquals(1, builds.size)
+      assertEquals(targets, builds.single().takeLast(3))
+      // Named explicitly, the same target is a requirement.
+      assertFailsWith<IllegalStateException> {
+        build.collectAll(root, targets, BazelBuildConfig(), 9)
+      }
+      assertFailsWith<IllegalArgumentException> {
+        build.collectAll(root, listOf("//app/..."), BazelBuildConfig(), 9)
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `outside any package the selection is everything below the directory`() {
+    val root = Files.createTempDirectory("bazel-nopkg").toFile()
+    try {
+      val apps = root.resolve("apps").apply { mkdirs() }
+      val queries = mutableListOf<String>()
+      val build = BazelBuild { argv, _, _ ->
+        queries += argv.single { it.startsWith("kind(") }
+        "//apps/a:ui\n//apps/b:ui\n"
+      }
+      assertEquals(
+        BazelTargetSelection("//apps/...", listOf("//apps/a:ui", "//apps/b:ui")),
+        build.selectTargets(root, apps, BazelBuildConfig(), 9),
+      )
+      assertTrue(queries.single().contains("\"//apps/...\""))
+      build.selectTargets(root, root, BazelBuildConfig(), 9)
+      assertTrue(queries.last().contains("\"//...\""))
+      // Configured patterns win over the directory.
+      build.selectTargets(root, apps, BazelBuildConfig(targets = listOf("//lib/...")), 9)
+      assertTrue(queries.last().contains("\"//lib/...\""))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a selected set is one module on the union of its classpaths`() {
+    val root = Files.createTempDirectory("bazel-merge").toFile()
+    try {
+      fun jar(name: String) = root.resolve(name).apply { writeText("") }
+      fun target(label: String, own: String, deps: List<String>, config: String = "k8") =
+        BazelArtifacts(label, config, listOf(own), listOf(own) + deps, listOf("$own.kt"))
+          .also {
+            jar(own)
+            deps.forEach(::jar)
+            jar("$own.kt")
+          }
+          .resolve(root)
+      val ui = target("//app:ui", "ui.jar", listOf("compose.jar", "shared.jar"))
+      val model = target("//app:model", "model.jar", listOf("shared.jar", "json.jar"))
+
+      val merged = assertNotNull(mergeBazelArtifacts("//app/...", listOf(ui, model)))
+
+      assertEquals("//app/...", merged.metadata.target)
+      assertEquals(listOf("ui.jar", "model.jar"), merged.projectJars.map { it.name })
+      assertEquals(
+        listOf("ui.jar", "compose.jar", "shared.jar", "model.jar", "json.jar"),
+        merged.runtimeJars.map { it.name },
+      )
+      assertEquals(merged.metadata.sourceFiles.size, merged.sourceFiles.size)
+      assertNull(mergeBazelArtifacts("//app:ui", listOf(ui)))
+
+      val other = target("//app:other", "other.jar", emptyList(), config = "k8-opt")
+      assertNull(mergeBazelArtifacts("//app/...", listOf(ui, other)))
+      assertTrue(bazelMergeBlocker(listOf(ui, other))!!.contains("configurations"))
+      val android =
+        ui.copy(
+          android =
+            ResolvedAndroidArtifacts("com.example", jar("res.apk"), jar("Manifest.xml"), null, 35)
+        )
+      assertNull(mergeBazelArtifacts("//app/...", listOf(android, model)))
+      assertTrue(bazelMergeBlocker(listOf(android, model))!!.contains("Android"))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `target patterns are recognised the way bazel build reads them`() {
+    listOf(
+        "//...",
+        "//app/...",
+        "//app/...:all",
+        "//app:all",
+        "//app:*",
+        "//app:all-targets",
+        "-//x/...",
+      )
+      .forEach { assertTrue(isBazelTargetPattern(it), it) }
+    listOf("//app:ui", "//app", "@repo//app:lib", "//app:all_screens").forEach {
+      assertTrue(!isBazelTargetPattern(it), it)
     }
   }
 

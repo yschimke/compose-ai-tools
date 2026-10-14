@@ -19,6 +19,16 @@ import kotlinx.serialization.json.jsonPrimitive
 internal data class BazelBuildConfig(
   val schemaVersion: Int = 1,
   val target: String? = null,
+  /**
+   * Labels and target patterns (`//app/...`, `//pkg:all`, `-//app/legacy/...`) selecting several
+   * targets, as on a `bazel build` command line. `--target` flags replace them.
+   */
+  val targets: List<String> = emptyList(),
+  /**
+   * The `kind()` regex a pattern's matches are filtered by: rules the configured aspect can read.
+   * Defaults to JVM rules, or Android library rules for an Android aspect ([defaultTargetKinds]).
+   */
+  val targetKinds: String? = null,
   val buildCommand: List<String> = listOf("bazel"),
   val startupArgs: List<String> = emptyList(),
   /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
@@ -218,9 +228,7 @@ internal fun bazelMetadataFile(
   target: String,
   outputGroup: String,
   executionRoot: File? = null,
-): File {
-  return bazelMetadataFile(events.lineSequence(), target, outputGroup, executionRoot)
-}
+): File = bazelMetadataFile(events.lineSequence(), target, outputGroup, executionRoot)
 
 private fun bazelMetadataFile(
   events: Sequence<String>,
@@ -228,6 +236,20 @@ private fun bazelMetadataFile(
   outputGroup: String,
   executionRoot: File?,
 ): File {
+  val files = bazelMetadataFiles(events, target, outputGroup, executionRoot)
+  check(files.size == 1) {
+    "Expected one '$outputGroup' metadata file for $target, found ${files.size}. Select one configured JVM target or use --artifacts."
+  }
+  return files.single().also { check(it.isFile) { "Metadata output missing: $it" } }
+}
+
+/** Every [outputGroup] file [target] produced; empty when the aspect reported nothing for it. */
+internal fun bazelMetadataFiles(
+  events: Sequence<String>,
+  target: String,
+  outputGroup: String,
+  executionRoot: File?,
+): List<File> {
   val sets = mutableMapOf<String, JsonObject>()
   val roots = mutableListOf<String>()
   // Stream the build log; retain only artifact sets and the selected completion's group.
@@ -291,36 +313,43 @@ private fun bazelMetadataFile(
     }
   }
   roots.forEach(::visit)
-  check(files.size == 1) {
-    "Expected one '$outputGroup' metadata file for $target, found ${files.size}. Select one configured JVM target or use --artifacts."
-  }
-  return files.single().also { check(it.isFile) { "Metadata output missing: $it" } }
+  return files.toList()
 }
 
 internal class BazelBuild(
   private val execute: (List<String>, File, Long) -> String = BazelProcess::run
 ) {
-  fun selectTarget(
+  /**
+   * The targets of the nearest package at or above [directory], like `//pkg:all`: every rule there
+   * of the aspect's kinds ([BazelBuildConfig.targetKinds]); outside any package, everything below
+   * [directory] (`//dir/...`). A configured `target`, then `targets`, wins.
+   */
+  fun selectTargets(
     root: File,
     directory: File,
     config: BazelBuildConfig,
     timeoutSeconds: Long,
-  ): String {
+  ): BazelTargetSelection {
     config.target?.let {
-      return it
+      return BazelTargetSelection(it, listOf(it))
+    }
+    if (config.targets.isNotEmpty()) {
+      return BazelTargetSelection(
+        config.targets.joinToString(" "),
+        expandTargets(root, config.targets, config, timeoutSeconds),
+      )
     }
     var packageDirectory: File? = directory.canonicalFile
     while (packageDirectory != null && packageDirectory.toPath().startsWith(root.toPath())) {
       val pkg = packageDirectory
       if (listOf("BUILD.bazel", "BUILD").any { pkg.resolve(it).isFile }) {
         val path = pkg.relativeTo(root).invariantSeparatorsPath
-        val expression =
-          "kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', //$path:*)"
+        val kinds = config.targetKinds ?: defaultTargetKinds(config.aspect)
         val targets =
           execute(
               config.buildCommand +
                 config.startupArgs +
-                listOf("query", expression, "--output=label"),
+                listOf("query", "kind('$kinds', //$path:*)", "--output=label"),
               root,
               timeoutSeconds,
             )
@@ -330,17 +359,71 @@ internal class BazelBuild(
             .distinct()
             .sorted()
             .toList()
-        check(targets.size == 1) {
-          "${if (targets.isEmpty()) "No JVM targets" else "Multiple JVM targets: ${targets.joinToString()}"} in //$path. Select --target <label>, or commit target in .compose-preview/bazel.json."
+        check(targets.isNotEmpty()) {
+          "No targets of kind $kinds in //$path. Select --target <label or pattern>, or commit " +
+            "target in .compose-preview/bazel.json."
         }
-        return targets.single()
+        return BazelTargetSelection(targets.singleOrNull() ?: "//$path:all", targets)
       }
       if (pkg == root) break
       packageDirectory = pkg.parentFile
     }
-    error(
-      "No BUILD file found below $root; select --target or configure target in .compose-preview/bazel.json"
+    // Not inside a package (a workspace root whose BUILD files are all below it): everything under
+    // the directory, `//dir/...`, the way a build of the whole tree is usually written.
+    val below = directory.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath
+    val pattern = if (below.isEmpty()) "//..." else "//$below/..."
+    return BazelTargetSelection(
+      pattern,
+      expandTargets(root, listOf(pattern), config, timeoutSeconds),
     )
+  }
+
+  /**
+   * The targets [patterns] select, as `bazel build` reads them: labels, `...`, `:all`, `:*`, and
+   * `-` prefixed exclusions. A single plain label is returned as given; anything else goes through
+   * `query`, filtered by `kind()` to rules the aspect can read ([BazelBuildConfig.targetKinds]), so
+   * a genrule or test under a `...` pattern is not handed to an aspect that would fail on it.
+   */
+  fun expandTargets(
+    root: File,
+    patterns: List<String>,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+  ): List<String> {
+    if (patterns.size == 1 && !isBazelTargetPattern(patterns.single())) return patterns
+    val included = patterns.filterNot { it.startsWith("-") }
+    val excluded = patterns.filter { it.startsWith("-") }.map { it.removePrefix("-") }
+    require(included.isNotEmpty()) {
+      "Target patterns ${patterns.joinToString(" ")} include nothing; add a pattern to subtract from"
+    }
+    (included + excluded).forEach {
+      require((it.startsWith("//") || it.startsWith("@")) && '"' !in it) {
+        "Target patterns must be absolute (//pkg/..., @repo//pkg:all): $it"
+      }
+    }
+    val expression =
+      (listOf(included.joinToString(" + ") { "\"$it\"" }) + excluded.map { "\"$it\"" })
+        .joinToString(" - ")
+    val kinds = config.targetKinds ?: defaultTargetKinds(config.aspect)
+    val targets =
+      execute(
+          config.buildCommand +
+            config.startupArgs +
+            listOf("query", "kind('$kinds', $expression)", "--output=label"),
+          root,
+          timeoutSeconds,
+        )
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.startsWith("//") || it.startsWith("@") }
+        .distinct()
+        .sorted()
+        .toList()
+    check(targets.isNotEmpty()) {
+      "No targets of kind $kinds match ${patterns.joinToString(" ")}; set targetKinds in " +
+        ".compose-preview/bazel.json for other rules"
+    }
+    return targets
   }
 
   fun collect(
@@ -348,18 +431,33 @@ internal class BazelBuild(
     target: String,
     config: BazelBuildConfig,
     timeoutSeconds: Long,
-  ): ResolvedBazelArtifacts {
+  ): ResolvedBazelArtifacts = collectAll(root, listOf(target), config, timeoutSeconds).single()
+
+  /**
+   * Builds every target in one aspect invocation and resolves each one's artifacts. With
+   * [skipWithoutMetadata], a target the aspect reported nothing for (an Android aspect over a
+   * JVM-only library, say) is left out instead of failing the selection: a pattern's matches are
+   * candidates, an explicitly named target is a requirement.
+   */
+  fun collectAll(
+    root: File,
+    targets: List<String>,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+    skipWithoutMetadata: Boolean = false,
+  ): List<ResolvedBazelArtifacts> {
     require(config.schemaVersion == 1) {
       "Unsupported build config schemaVersion ${config.schemaVersion}"
     }
     require(config.buildCommand.isNotEmpty() && config.buildCommand.first().isNotBlank()) {
       "buildCommand must be a nonempty argv array"
     }
-    require(target.startsWith("//") || target.startsWith("@")) {
-      "--target must be an absolute Bazel label"
-    }
-    require(!target.contains("...") && !target.endsWith(":all") && !target.endsWith(":*")) {
-      "Select one JVM target, not a target pattern"
+    require(targets.isNotEmpty()) { "No targets selected" }
+    targets.forEach { target ->
+      require(target.startsWith("//") || target.startsWith("@")) {
+        "--target must be an absolute Bazel label"
+      }
+      require(!isBazelTargetPattern(target)) { "Select one JVM target, not a target pattern" }
     }
     require(
       config.aspect.isNotBlank() &&
@@ -369,7 +467,7 @@ internal class BazelBuild(
       "Aspect and output groups must be configured"
     }
     val invocation = config.buildCommand + config.startupArgs
-    val selectedTarget =
+    val selectedTargets = targets.map { target ->
       if (target.startsWith("@") && !target.startsWith("@@") && !target.startsWith("@//")) {
         val canonical =
           execute(
@@ -390,8 +488,9 @@ internal class BazelBuild(
             .distinct()
             .toList()
         check(canonical.size == 1) { "Expected one configured external target label for $target" }
-        canonical.single()
-      } else normalizeBazelLabel(target)
+        target to canonical.single()
+      } else target to normalizeBazelLabel(target)
+    }
     val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
     try {
       execute(
@@ -402,8 +501,8 @@ internal class BazelBuild(
             "--aspects=${config.aspect}",
             "--output_groups=${config.metadataOutputGroup},${config.runtimeOutputGroup}",
             "--build_event_json_file=${bep.absolutePath}",
-            selectedTarget,
-          ),
+          ) +
+          selectedTargets.map { it.second },
         root,
         timeoutSeconds,
       )
@@ -412,26 +511,131 @@ internal class BazelBuild(
       check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
         "Build tool returned an invalid execution_root: $executionRoot"
       }
-      val metadata =
-        bep.bufferedReader().use {
-          bazelMetadataFile(
-            it.lineSequence(),
-            selectedTarget,
-            config.metadataOutputGroup,
-            File(executionRoot),
-          )
+      return selectedTargets.mapNotNull { (target, selectedTarget) ->
+        val metadata =
+          if (skipWithoutMetadata) {
+            val files =
+              bep.bufferedReader().use {
+                bazelMetadataFiles(
+                  it.lineSequence(),
+                  selectedTarget,
+                  config.metadataOutputGroup,
+                  File(executionRoot),
+                )
+              }
+            if (files.isEmpty()) {
+              System.err.println("[bazel] $selectedTarget: no preview metadata, skipped")
+              return@mapNotNull null
+            }
+            check(files.size == 1) {
+              "Expected one '${config.metadataOutputGroup}' metadata file for $selectedTarget, " +
+                "found ${files.size}"
+            }
+            files.single()
+          } else
+            bep.bufferedReader().use {
+              bazelMetadataFile(
+                it.lineSequence(),
+                selectedTarget,
+                config.metadataOutputGroup,
+                File(executionRoot),
+              )
+            }
+        val artifacts = bazelJson.decodeFromString<BazelArtifacts>(metadata.readText())
+        // Main-repository labels may be emitted with @@ canonical spelling by newer Bazel.
+        require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
+          "Metadata target ${artifacts.target} does not match $target"
         }
-      val artifacts = bazelJson.decodeFromString<BazelArtifacts>(metadata.readText())
-      // Main-repository labels may be emitted with @@ canonical spelling by newer Bazel.
-      require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
-        "Metadata target ${artifacts.target} does not match $target"
+        artifacts.resolve(File(executionRoot), root)
       }
-      return artifacts.resolve(File(executionRoot), root)
     } finally {
       bep.delete()
     }
   }
 }
+
+/**
+ * What was asked for ([label]: a label, a package's `//pkg:all`, or the patterns as written) and
+ * the targets it selects.
+ */
+internal data class BazelTargetSelection(val label: String, val targets: List<String>)
+
+/**
+ * The selected targets as one module, so a browsed set shows on one page, rendered by one daemon:
+ * every target's own jars are discovered, on the union of their runtime classpaths (in order, first
+ * occurrence wins). Bazel resolves a workspace's dependencies to one version per configuration, so
+ * the union does not mix versions. [label] names it, and rebuilding it means selecting it again.
+ * Null when there is one target, or [bazelMergeBlocker] gives a reason they cannot share a daemon.
+ */
+internal fun mergeBazelArtifacts(
+  label: String,
+  artifacts: List<ResolvedBazelArtifacts>,
+): ResolvedBazelArtifacts? {
+  if (artifacts.size < 2 || bazelMergeBlocker(artifacts) != null) return null
+  // Resolved files line up with their metadata paths (each list is resolved from the distinct
+  // paths in order), so pairs keep the two in step and dedupe by path.
+  fun merged(
+    files: (ResolvedBazelArtifacts) -> List<File>,
+    paths: (BazelArtifacts) -> List<String>,
+  ): Pair<List<File>, List<String>> {
+    val pairs =
+      artifacts
+        .flatMap { files(it).zip(paths(it.metadata).distinct()) }
+        .distinctBy { (_, path) -> path }
+    return pairs.map { it.first } to pairs.map { it.second }
+  }
+  val project = merged({ it.projectJars }, { it.projectJars })
+  val runtime = merged({ it.runtimeJars }, { it.runtimeJars })
+  val sources = merged({ it.sourceFiles }, { it.sourceFiles })
+  val data = merged({ it.dataFiles }, { it.dataFiles })
+  return ResolvedBazelArtifacts(
+    metadata =
+      BazelArtifacts(
+        label,
+        artifacts.first().metadata.configuration,
+        project.second,
+        runtime.second,
+        sources.second,
+        data.second,
+      ),
+    projectJars = project.first,
+    runtimeJars = runtime.first,
+    sourceFiles = sources.first,
+    dataFiles = data.first,
+  )
+}
+
+/**
+ * Why [artifacts] cannot be one module: Android targets each carry their own linked resources, and
+ * Robolectric loads one resource APK; targets from different configurations were compiled against
+ * different dependency sets.
+ */
+internal fun bazelMergeBlocker(artifacts: List<ResolvedBazelArtifacts>): String? =
+  when {
+    artifacts.size > 1 && artifacts.any { it.android != null } ->
+      "Android targets each carry their own resources"
+    artifacts.map { it.metadata.configuration }.distinct().size > 1 ->
+      "they were built in different configurations"
+    else -> null
+  }
+
+/** `...`, `:all`, `:*`, `:all-targets`, or a `-` exclusion: selects targets, never names one. */
+internal fun isBazelTargetPattern(target: String): Boolean =
+  target.startsWith("-") ||
+    target.endsWith("...") ||
+    "...:" in target ||
+    target.endsWith(":all") ||
+    target.endsWith(":*") ||
+    target.endsWith(":all-targets")
+
+private const val JVM_TARGET_KINDS = "(kt_jvm_library|kt_jvm_binary|java_library|java_binary)"
+private const val ANDROID_TARGET_KINDS = "(kt_android_library|android_library)"
+
+/** JVM library and binary rules, or Android library rules when [aspect] is an Android one. */
+internal fun defaultTargetKinds(aspect: String): String =
+  if ("android" in aspect.substringAfterLast('%') || aspect.contains("android.bzl"))
+    ANDROID_TARGET_KINDS
+  else JVM_TARGET_KINDS
 
 /** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */
 internal fun normalizeBazelLabel(label: String): String {

@@ -24,7 +24,7 @@ internal class BazelBuildHost(
   private val root: File,
   private val args: List<String>,
   /** Runs a `compose-preview bazel` operation in-process; replaced in tests. */
-  private val bazel: (List<String>) -> PreparedBazelPreviews? = { bazelArgs ->
+  private val bazel: (List<String>) -> List<PreparedBazelPreviews> = { bazelArgs ->
     BazelCommand(bazelArgs, normalSurface = true, invocationDirectory = invocationDirectory(args))
       .execute()
   },
@@ -36,24 +36,33 @@ internal class BazelBuildHost(
     WireModule(module, WireModule.wirePath(base))
   }
 
-  /** Builds, discovers and renders the target; a failed build reports `buildOk = false`. */
+  /**
+   * Builds, discovers and renders the selected targets, one module each; a failed build reports
+   * `buildOk = false`. A pattern (`//app/...`) or a package with several targets yields several.
+   */
   fun discoverAndBuild(): Pair<Boolean, List<WireModuleManifest>> {
     val prepared =
-      runCatching { bazel(operation("render", requestedTarget())) }
+      runCatching { bazel(operation("render", requestedTargets())) }
         .onFailure { System.err.println("compose-preview bazel: ${it.message}") }
         .getOrNull() ?: return false to emptyList()
+    return true to
+      prepared.map { each ->
+        val module = record(each)
+        WireModuleManifest(
+          WireModule(module, WireModule.wirePath(outputBase(each))),
+          // The result form the server consumes, read back as `render` itself reports it.
+          bazelJson.decodeFromString<ResultManifest>(each.manifestFile.readText()),
+        )
+      }
+  }
+
+  /** Remembers [prepared]'s label and output base under its module path, which it returns. */
+  private fun record(prepared: PreparedBazelPreviews): String {
     val label = prepared.manifest.module
     val module = modulePath(label)
     labelsByModule[module] = label
     outputBases[module] = outputBase(prepared)
-    return true to
-      listOf(
-        WireModuleManifest(
-          WireModule(module, WireModule.wirePath(outputBase(prepared))),
-          // The result form the server consumes, read back as `render` itself reports it.
-          bazelJson.decodeFromString<ResultManifest>(prepared.manifestFile.readText()),
-        )
-      )
+    return module
   }
 
   /**
@@ -76,27 +85,31 @@ internal class BazelBuildHost(
   private fun daemonStart(module: String): Boolean {
     val base = outputBases[module]
     if (base != null && base.resolve(DESCRIPTOR).isFile) return true
-    val label = labelsByModule[module] ?: requestedTarget()
+    val label = labelsByModule[module]
     val prepared =
-      runCatching { bazel(operation("prepare", label)) }
+      runCatching { bazel(operation("prepare", label?.let(::listOf) ?: requestedTargets())) }
         .onFailure { System.err.println("compose-preview bazel: ${it.message}") }
         .getOrNull() ?: return false
-    val prepareModule = modulePath(prepared.manifest.module)
-    labelsByModule[prepareModule] = prepared.manifest.module
-    outputBases[prepareModule] = outputBase(prepared)
-    return outputBase(prepared).resolve(DESCRIPTOR).isFile
+    prepared.forEach(::record)
+    return outputBases[module]?.resolve(DESCRIPTOR)?.isFile == true
   }
 
-  /** `--target`, or a label passed as `--module`; null lets the driver select from bazel.json. */
-  private fun requestedTarget(): String? =
-    args.flagValue("--target")
-      ?: args.flagValue("--module")?.takeIf { it.startsWith("//") || it.startsWith("@") }
+  /**
+   * Every `--target` (labels or patterns), or a label passed as `--module`; empty lets the driver
+   * select from bazel.json or the current package.
+   */
+  private fun requestedTargets(): List<String> =
+    args.flagValuesAll("--target").ifEmpty {
+      listOfNotNull(
+        args.flagValue("--module")?.takeIf { it.startsWith("//") || it.startsWith("@") }
+      )
+    }
 
-  private fun operation(name: String, target: String?): List<String> = buildList {
+  private fun operation(name: String, targets: List<String>): List<String> = buildList {
     add(name)
     add("--project")
     add(root.absolutePath)
-    target?.let {
+    targets.forEach {
       add("--target")
       add(it)
     }
@@ -119,9 +132,25 @@ internal class BazelBuildHost(
     fun invocationDirectory(args: List<String>): File =
       args.flagValue("--project")?.let(::File) ?: File(".")
 
-    /** `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. */
+    /**
+     * `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. A selection of
+     * several targets keeps its patterns readable: `//app/... -//app/legacy/...` →
+     * `app.all+-app.legacy.all`, `//...` → `all`.
+     */
     fun modulePath(label: String): String =
-      label.substringAfter("//").replace('/', '.').removePrefix(":").ifEmpty { "root" }
+      label.trim().split(Regex("\\s+")).joinToString("+") { token ->
+        val excluded = token.startsWith("-")
+        val path =
+          token
+            .removePrefix("-")
+            .substringAfter("//")
+            .replace("/...", ".all")
+            .replace("...", "all")
+            .replace('/', '.')
+            .removePrefix(":")
+            .ifEmpty { "root" }
+        if (excluded) "-$path" else path
+      }
 
     /** The normal surface writes into `<base>/build/compose-previews`. */
     fun outputBase(prepared: PreparedBazelPreviews): File =

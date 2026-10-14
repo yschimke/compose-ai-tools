@@ -404,6 +404,70 @@ class BazelComposeIntegrationTest {
         )
         assertTrue((responses[3] as BuildHostResponse.BuildResult).buildOk)
         assertTrue(File(module.projectDir).resolve(BazelBuildHost.DESCRIPTOR).isFile)
+
+        // Target patterns, as `bazel build` reads them. `//...` selects every JVM target, and the
+        // set is one module, so `browse` shows it on one page with one daemon: each target's own
+        // previews (`dependency_ui`'s too, now that it is selected itself), on the union of their
+        // classpaths. A `-` pattern excludes, and `--target` flags replace the configured target.
+        val patternHost =
+          BuildHostCommand(hostArgs + listOf("--target", "//...")).let { host ->
+            val out = java.io.StringWriter()
+            host.serve(
+              (listOf(BuildHostRequest.Handshake(), BuildHostRequest.DiscoverAndBuild(true))
+                  .mapIndexed { i, r ->
+                    BuildHostCodec.encode(BuildHostEnvelope(i + 1L, request = r))
+                  }
+                  .joinToString("\n") + "\n")
+                .reader()
+                .buffered(),
+              out,
+            )
+            out
+              .toString()
+              .lines()
+              .filter { it.isNotBlank() }
+              .map(BuildHostCodec::decode)
+              .mapNotNull { it.response }
+          }
+        val patternDiscovery = patternHost[1] as BuildHostResponse.Discovery
+        assertTrue(patternDiscovery.buildOk)
+        assertEquals(
+          mapOf(
+            "all" to setOf("Greeting", "RuntimeGreeting", "GeneratedGreeting", "DependencyPreview")
+          ),
+          patternDiscovery.manifests.associate { (m, manifest) ->
+            m.gradlePath to manifest.previews.map { it.functionName }.toSet()
+          },
+        )
+        val excluded = ByteArrayOutputStream()
+        val original = System.out
+        try {
+          System.setOut(PrintStream(excluded))
+          runProjectPreviewCommand(
+            "list",
+            listOf(
+              "--project",
+              root.path,
+              "--json",
+              "--target",
+              "//...",
+              "--target",
+              "-//:dependency_ui",
+              "--timeout",
+              "300",
+            ),
+          )
+        } finally {
+          System.setOut(original)
+        }
+        assertEquals(
+          setOf("Greeting", "RuntimeGreeting", "GeneratedGreeting"),
+          bazelJson
+            .decodeFromString<PreviewListResponse>(excluded.toString(Charsets.UTF_8))
+            .previews
+            .map { it.functionName }
+            .toSet(),
+        )
       } finally {
         if (previousConfig == null) configFile.delete() else configFile.writeText(previousConfig)
       }
