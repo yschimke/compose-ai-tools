@@ -119,7 +119,8 @@ internal class BazelCommand(
     // A pattern's or a package's matches are candidates: one without previews is left out. An
     // explicitly named target is a requirement and fails as before.
     var candidates = false
-    val collected =
+    var selectionLabel: String? = null
+    val built =
       if (imported != null) {
         val executionRoot =
           args.flagValue("--execution-root")?.let { resolve(root, it) }
@@ -138,11 +139,17 @@ internal class BazelCommand(
           System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
         }
         val requested = requestedTargets(config)
-        val targets =
-          if (requested.isNotEmpty()) BazelBuild().expandTargets(root, requested, config, timeout)
+        val selection =
+          if (requested.isNotEmpty())
+            BazelTargetSelection(
+              requested.joinToString(" "),
+              BazelBuild().expandTargets(root, requested, config, timeout),
+            )
           else
             BazelBuild()
               .selectTargets(root, invocationDirectory ?: requestedDirectory, config, timeout)
+        selectionLabel = selection.label
+        val targets = selection.targets
         candidates = targets.size > 1 || requested.any(::isBazelTargetPattern)
         if (candidates) {
           System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
@@ -160,6 +167,14 @@ internal class BazelCommand(
         }
         BazelBuild().collectAll(root, targets, config, timeout, skipWithoutMetadata = candidates)
       }
+    // A selected set is one module (one page in `browse`, one daemon), unless it cannot share one.
+    val merged = selectionLabel?.let { mergeBazelArtifacts(it, built) }
+    if (merged == null && built.size > 1) {
+      System.err.println(
+        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built)}"
+      )
+    }
+    val collected = merged?.let(::listOf) ?: built
     require(args.flagValue("--out") == null || collected.size == 1) {
       "--out names one target's output; select one with --target"
     }
@@ -504,8 +519,8 @@ internal class BazelCommand(
       The default aspect package is installed on first use; application BUILD files are untouched.
       --target is repeatable and takes labels or patterns, as bazel build does: //app/...,
       //app:all, //app:*, and -//pattern exclusions. A pattern is expanded with query and filtered
-      to the aspect's rule kinds (targetKinds in bazel.json overrides them). Each target with
-      previews is one module, and matched targets without previews are skipped. Without --target,
+      to the aspect's rule kinds (targetKinds in bazel.json overrides them). The selection is one
+      module rendered by one daemon (Android targets stay separate, one per target). Without --target,
       target/targets in .compose-preview/bazel.json win; otherwise the current package (//pkg:all),
       or outside any package everything below the directory (//dir/...), is selected.
       Default provider: @rules_java//java/common:java_info.bzl (requires visible rules_java).

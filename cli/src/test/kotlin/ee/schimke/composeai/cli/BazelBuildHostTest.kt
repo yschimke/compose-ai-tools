@@ -239,5 +239,13 @@ class BazelBuildHostTest {
     assertEquals("app.ui:lib", BazelBuildHost.modulePath("//app/ui:lib"))
     assertEquals("aspect_app", BazelBuildHost.modulePath("//:aspect_app"))
     assertEquals("app:app", BazelBuildHost.modulePath("//app:app"))
+    // A selection of several targets keeps its patterns readable, and never a bare `..`.
+    assertEquals("app.all", BazelBuildHost.modulePath("//app/..."))
+    assertEquals("all", BazelBuildHost.modulePath("//..."))
+    assertEquals("app:all", BazelBuildHost.modulePath("//app:all"))
+    assertEquals(
+      "app.all+-app.legacy.all",
+      BazelBuildHost.modulePath("//app/... -//app/legacy/..."),
+    )
   }
 }

@@ -49,13 +49,19 @@ means JVM library and binary rules for the default aspect, and `android_library`
 such as an internal macro's rule class. The filter matters: a `...` pattern also matches genrules
 and tests, and the aspect fails on a rule without `JavaInfo`.
 
-Every selected target builds in one invocation, so Bazel analyses the graph once. Each target
-then gets its own output directory, and each is one module to `browse` and compose-preview-mcp.
-A target a pattern matched is a candidate: if it has no previews, or the aspect reports nothing
-for it, it is skipped with a note. A single label you name explicitly must build and hold
+Every selected target builds in one invocation, so Bazel analyses the graph once. The selection
+is then **one module**, named by what you asked for (`//app/...`, or `//pkg:all` for a package).
+Each target's own previews are discovered, and one daemon renders them all on the union of the
+targets' runtime classpaths. Bazel resolves a workspace's dependencies to one version per
+configuration, so the union does not mix versions. `browse` therefore shows the whole set on one
+page, and compose-preview-mcp runs one daemon for it and rebuilds it by selecting it again. Two
+cases stay separate modules, with a note: Android targets, because each carries its own linked
+resources and Robolectric loads one resource APK, and targets built in different configurations.
+A target a pattern matched is a candidate: if the aspect reports nothing for it, it is skipped
+with a note. A single label you name explicitly must build and hold
 previews, as before. `list`, `render` and `show` report across all the targets. `--id`,
 `--filter` and `--preview` select across them, and `--output` still names exactly one preview.
-`bazel bundle` and `--out` take one target. To build past a broken target in a large pattern,
+`bazel bundle` and `--out` take one module, so a JVM selection packs as one bundle. To build past a broken target in a large pattern,
 pass Bazel's own `--bazel-arg=--keep_going`.
 
 A repo can commit the default once, so every developer runs the normal commands without
@@ -316,8 +322,8 @@ asks its build host Gradle-shaped questions, and in a workspace that routes to B
 answers them from this driver:
 
 - discovery builds the selected targets (see [Target and executable selection](#target-and-executable-selection);
-  `--target` patterns work here too), discovers and renders their previews, and reports each
-  target as one module. A label becomes a slash-free module name (`//app/ui:lib` → `app.ui:lib`), because the
+  `--target` patterns work here too), discovers and renders their previews, and reports the
+  selection as one module, so it is one page. A label becomes a slash-free module name (`//app/ui:lib` → `app.ui:lib`, `//app/...` → `app.all`), because the
   server puts module names in URL segments;
 - starting a module's daemon uses the `daemon-launch.json` the render wrote, preparing it again
   only if it is missing;

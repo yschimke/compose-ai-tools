@@ -329,12 +329,16 @@ internal class BazelBuild(
     directory: File,
     config: BazelBuildConfig,
     timeoutSeconds: Long,
-  ): List<String> {
+  ): BazelTargetSelection {
     config.target?.let {
-      return listOf(it)
+      return BazelTargetSelection(it, listOf(it))
     }
-    if (config.targets.isNotEmpty())
-      return expandTargets(root, config.targets, config, timeoutSeconds)
+    if (config.targets.isNotEmpty()) {
+      return BazelTargetSelection(
+        config.targets.joinToString(" "),
+        expandTargets(root, config.targets, config, timeoutSeconds),
+      )
+    }
     var packageDirectory: File? = directory.canonicalFile
     while (packageDirectory != null && packageDirectory.toPath().startsWith(root.toPath())) {
       val pkg = packageDirectory
@@ -359,7 +363,7 @@ internal class BazelBuild(
           "No targets of kind $kinds in //$path. Select --target <label or pattern>, or commit " +
             "target in .compose-preview/bazel.json."
         }
-        return targets
+        return BazelTargetSelection(targets.singleOrNull() ?: "//$path:all", targets)
       }
       if (pkg == root) break
       packageDirectory = pkg.parentFile
@@ -367,11 +371,10 @@ internal class BazelBuild(
     // Not inside a package (a workspace root whose BUILD files are all below it): everything under
     // the directory, `//dir/...`, the way a build of the whole tree is usually written.
     val below = directory.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath
-    return expandTargets(
-      root,
-      listOf(if (below.isEmpty()) "//..." else "//$below/..."),
-      config,
-      timeoutSeconds,
+    val pattern = if (below.isEmpty()) "//..." else "//$below/..."
+    return BazelTargetSelection(
+      pattern,
+      expandTargets(root, listOf(pattern), config, timeoutSeconds),
     )
   }
 
@@ -550,6 +553,71 @@ internal class BazelBuild(
     }
   }
 }
+
+/**
+ * What was asked for ([label]: a label, a package's `//pkg:all`, or the patterns as written) and
+ * the targets it selects.
+ */
+internal data class BazelTargetSelection(val label: String, val targets: List<String>)
+
+/**
+ * The selected targets as one module, so a browsed set shows on one page, rendered by one daemon:
+ * every target's own jars are discovered, on the union of their runtime classpaths (in order, first
+ * occurrence wins). Bazel resolves a workspace's dependencies to one version per configuration, so
+ * the union does not mix versions. [label] names it, and rebuilding it means selecting it again.
+ * Null when there is one target, or [bazelMergeBlocker] gives a reason they cannot share a daemon.
+ */
+internal fun mergeBazelArtifacts(
+  label: String,
+  artifacts: List<ResolvedBazelArtifacts>,
+): ResolvedBazelArtifacts? {
+  if (artifacts.size < 2 || bazelMergeBlocker(artifacts) != null) return null
+  // Resolved files line up with their metadata paths (each list is resolved from the distinct
+  // paths in order), so pairs keep the two in step and dedupe by path.
+  fun merged(
+    files: (ResolvedBazelArtifacts) -> List<File>,
+    paths: (BazelArtifacts) -> List<String>,
+  ): Pair<List<File>, List<String>> {
+    val pairs =
+      artifacts
+        .flatMap { files(it).zip(paths(it.metadata).distinct()) }
+        .distinctBy { (_, path) -> path }
+    return pairs.map { it.first } to pairs.map { it.second }
+  }
+  val project = merged({ it.projectJars }, { it.projectJars })
+  val runtime = merged({ it.runtimeJars }, { it.runtimeJars })
+  val sources = merged({ it.sourceFiles }, { it.sourceFiles })
+  val data = merged({ it.dataFiles }, { it.dataFiles })
+  return ResolvedBazelArtifacts(
+    metadata =
+      BazelArtifacts(
+        label,
+        artifacts.first().metadata.configuration,
+        project.second,
+        runtime.second,
+        sources.second,
+        data.second,
+      ),
+    projectJars = project.first,
+    runtimeJars = runtime.first,
+    sourceFiles = sources.first,
+    dataFiles = data.first,
+  )
+}
+
+/**
+ * Why [artifacts] cannot be one module: Android targets each carry their own linked resources, and
+ * Robolectric loads one resource APK; targets from different configurations were compiled against
+ * different dependency sets.
+ */
+internal fun bazelMergeBlocker(artifacts: List<ResolvedBazelArtifacts>): String? =
+  when {
+    artifacts.size > 1 && artifacts.any { it.android != null } ->
+      "Android targets each carry their own resources"
+    artifacts.map { it.metadata.configuration }.distinct().size > 1 ->
+      "they were built in different configurations"
+    else -> null
+  }
 
 /** `...`, `:all`, `:*`, `:all-targets`, or a `-` exclusion: selects targets, never names one. */
 internal fun isBazelTargetPattern(target: String): Boolean =

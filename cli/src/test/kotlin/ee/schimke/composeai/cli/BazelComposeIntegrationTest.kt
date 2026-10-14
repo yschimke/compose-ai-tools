@@ -405,10 +405,10 @@ class BazelComposeIntegrationTest {
         assertTrue((responses[3] as BuildHostResponse.BuildResult).buildOk)
         assertTrue(File(module.projectDir).resolve(BazelBuildHost.DESCRIPTOR).isFile)
 
-        // Target patterns, as `bazel build` reads them. `//...` selects every JVM target; each
-        // with previews is a module of its own (`dependency_ui`'s preview is its own module's,
-        // never `aspect_app`'s), and `runtime_message`, a Java library with none, is skipped.
-        // A `-` pattern excludes, and `--target` flags replace the configured target.
+        // Target patterns, as `bazel build` reads them. `//...` selects every JVM target, and the
+        // set is one module, so `browse` shows it on one page with one daemon: each target's own
+        // previews (`dependency_ui`'s too, now that it is selected itself), on the union of their
+        // classpaths. A `-` pattern excludes, and `--target` flags replace the configured target.
         val patternHost =
           BuildHostCommand(hostArgs + listOf("--target", "//...")).let { host ->
             val out = java.io.StringWriter()
@@ -433,9 +433,7 @@ class BazelComposeIntegrationTest {
         assertTrue(patternDiscovery.buildOk)
         assertEquals(
           mapOf(
-            "app" to setOf("Greeting"),
-            "aspect_app" to setOf("RuntimeGreeting", "GeneratedGreeting"),
-            "dependency_ui" to setOf("DependencyPreview"),
+            "all" to setOf("Greeting", "RuntimeGreeting", "GeneratedGreeting", "DependencyPreview")
           ),
           patternDiscovery.manifests.associate { (m, manifest) ->
             m.gradlePath to manifest.previews.map { it.functionName }.toSet()

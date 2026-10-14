@@ -136,13 +136,16 @@ class ProjectBuildTest {
       query = argv
       "//app:ui\n"
     }
-    assertEquals(listOf("//app:ui"), build.selectTargets(root, app, BazelBuildConfig(), 20))
+    assertEquals(
+      BazelTargetSelection("//app:ui", listOf("//app:ui")),
+      build.selectTargets(root, app, BazelBuildConfig(), 20),
+    )
     assertTrue(query.any { it.contains("//app:*") })
     assertTrue(query.none { "..." in it })
-    // Several targets in the package: all of them, as `//app:all` would select.
+    // Several targets in the package: all of them, named as `//app:all` selects them.
     val several = BazelBuild { _, _, _ -> "//app:ui\n//app:model\n" }
     assertEquals(
-      listOf("//app:model", "//app:ui"),
+      BazelTargetSelection("//app:all", listOf("//app:model", "//app:ui")),
       several.selectTargets(root, app, BazelBuildConfig(), 20),
     )
     val none = BazelBuild { _, _, _ -> "" }
@@ -155,7 +158,7 @@ class ProjectBuildTest {
     )
     val configured = BazelBuild { _, _, _ -> error("Configured target must not query") }
     assertEquals(
-      listOf("//app:ui"),
+      BazelTargetSelection("//app:ui", listOf("//app:ui")),
       configured.selectTargets(root, app, BazelBuildConfig(target = "//app:ui"), 20),
     )
   }

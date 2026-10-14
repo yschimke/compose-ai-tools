@@ -132,9 +132,25 @@ internal class BazelBuildHost(
     fun invocationDirectory(args: List<String>): File =
       args.flagValue("--project")?.let(::File) ?: File(".")
 
-    /** `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. */
+    /**
+     * `//app/ui:lib` → `app.ui:lib`, `//:app` → `app`: Gradle-shaped, no `/`. A selection of
+     * several targets keeps its patterns readable: `//app/... -//app/legacy/...` →
+     * `app.all+-app.legacy.all`, `//...` → `all`.
+     */
     fun modulePath(label: String): String =
-      label.substringAfter("//").replace('/', '.').removePrefix(":").ifEmpty { "root" }
+      label.trim().split(Regex("\\s+")).joinToString("+") { token ->
+        val excluded = token.startsWith("-")
+        val path =
+          token
+            .removePrefix("-")
+            .substringAfter("//")
+            .replace("/...", ".all")
+            .replace("...", "all")
+            .replace('/', '.')
+            .removePrefix(":")
+            .ifEmpty { "root" }
+        if (excluded) "-$path" else path
+      }
 
     /** The normal surface writes into `<base>/build/compose-previews`. */
     fun outputBase(prepared: PreparedBazelPreviews): File =

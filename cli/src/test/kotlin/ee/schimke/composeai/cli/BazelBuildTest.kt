@@ -5,6 +5,8 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -387,7 +389,7 @@ class BazelBuildTest {
         "//apps/a:ui\n//apps/b:ui\n"
       }
       assertEquals(
-        listOf("//apps/a:ui", "//apps/b:ui"),
+        BazelTargetSelection("//apps/...", listOf("//apps/a:ui", "//apps/b:ui")),
         build.selectTargets(root, apps, BazelBuildConfig(), 9),
       )
       assertTrue(queries.single().contains("\"//apps/...\""))
@@ -396,6 +398,48 @@ class BazelBuildTest {
       // Configured patterns win over the directory.
       build.selectTargets(root, apps, BazelBuildConfig(targets = listOf("//lib/...")), 9)
       assertTrue(queries.last().contains("\"//lib/...\""))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a selected set is one module on the union of its classpaths`() {
+    val root = Files.createTempDirectory("bazel-merge").toFile()
+    try {
+      fun jar(name: String) = root.resolve(name).apply { writeText("") }
+      fun target(label: String, own: String, deps: List<String>, config: String = "k8") =
+        BazelArtifacts(label, config, listOf(own), listOf(own) + deps, listOf("$own.kt"))
+          .also {
+            jar(own)
+            deps.forEach(::jar)
+            jar("$own.kt")
+          }
+          .resolve(root)
+      val ui = target("//app:ui", "ui.jar", listOf("compose.jar", "shared.jar"))
+      val model = target("//app:model", "model.jar", listOf("shared.jar", "json.jar"))
+
+      val merged = assertNotNull(mergeBazelArtifacts("//app/...", listOf(ui, model)))
+
+      assertEquals("//app/...", merged.metadata.target)
+      assertEquals(listOf("ui.jar", "model.jar"), merged.projectJars.map { it.name })
+      assertEquals(
+        listOf("ui.jar", "compose.jar", "shared.jar", "model.jar", "json.jar"),
+        merged.runtimeJars.map { it.name },
+      )
+      assertEquals(merged.metadata.sourceFiles.size, merged.sourceFiles.size)
+      assertNull(mergeBazelArtifacts("//app:ui", listOf(ui)))
+
+      val other = target("//app:other", "other.jar", emptyList(), config = "k8-opt")
+      assertNull(mergeBazelArtifacts("//app/...", listOf(ui, other)))
+      assertTrue(bazelMergeBlocker(listOf(ui, other))!!.contains("configurations"))
+      val android =
+        ui.copy(
+          android =
+            ResolvedAndroidArtifacts("com.example", jar("res.apk"), jar("Manifest.xml"), null, 35)
+        )
+      assertNull(mergeBazelArtifacts("//app/...", listOf(android, model)))
+      assertTrue(bazelMergeBlocker(listOf(android, model))!!.contains("Android"))
     } finally {
       root.deleteRecursively()
     }
