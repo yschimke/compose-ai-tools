@@ -24,7 +24,9 @@ public final class ee/schimke/composeai/bundle/AndroidBundleLaunch$Companion {
 
 public final class ee/schimke/composeai/bundle/AndroidBundleResources {
 	public static final field INSTANCE Lee/schimke/composeai/bundle/AndroidBundleResources;
+	public final fun daemonClasspath (Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;Ljava/io/File;Ljava/lang/String;Z)Ljava/util/List;
 	public final fun daemonClasspath ([BLjava/io/File;Ljava/lang/String;Z)Ljava/util/List;
+	public static synthetic fun daemonClasspath$default (Lee/schimke/composeai/bundle/AndroidBundleResources;Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;Ljava/io/File;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
 	public static synthetic fun daemonClasspath$default (Lee/schimke/composeai/bundle/AndroidBundleResources;[BLjava/io/File;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
 	public final fun extract ([BLjava/io/File;)Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;
 	public final fun stripApplicationName (Ljava/lang/String;)Ljava/lang/String;
