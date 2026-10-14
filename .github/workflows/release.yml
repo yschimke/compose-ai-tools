@@ -294,19 +294,44 @@ jobs:
           package-manager-cache: false
       - name: Upgrade npm (OIDC trusted publishing needs >= 11.5.1)
         run: npm install -g npm@latest
+      # Publish only when the package changed. Every release used to put a new version on npm —
+      # 88 versions across v2.0.0..v2.59.0 for 2 releases that touched `design-map/` — and the
+      # consumer pins it in committed CI, so each one was a Renovate bump downstream that changed
+      # nothing. Compared against the version npm calls `latest`, over the files `package.json`
+      # ships (tests are not in `files`). Fails open: no answer from npm, no such tag, or a fetch
+      # that fails all publish, because a skipped change cannot be recovered short of the next one.
+      - name: Decide whether the package changed
+        id: changed
+        run: |
+          set -uo pipefail
+          publish() { echo "$1; publishing" >&2; echo 'publish=true' >> "$GITHUB_OUTPUT"; exit 0; }
+          latest=$(npm view @yschimke/compose-design-map version 2>/dev/null) || publish "npm has no latest version"
+          [ -n "$latest" ] || publish "npm has no latest version"
+          base="v${latest}"
+          git fetch -q --no-tags --depth=1 origin "refs/tags/${base}:refs/tags/${base}" ||
+            publish "could not fetch ${base}"
+          if git diff --quiet "${base}" HEAD -- design-map ':(exclude)design-map/*.test.mjs'; then
+            echo "design-map/ unchanged since ${base} (npm latest); not publishing" >&2
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          else
+            publish "design-map/ changed since ${base}"
+          fi
       # The package tests are the only gate in front of an irreversible publish — npm refuses to
       # overwrite a published version, so a broken projection would have to be superseded rather
       # than fixed. They are dependency-free and take a second.
       - name: Test
+        if: steps.changed.outputs.publish != 'false'
         working-directory: design-map
         run: npm test
       - name: Set version from the tag
+        if: steps.changed.outputs.publish != 'false'
         working-directory: design-map
         # The committed version is a placeholder (0.0.0); the tag is the release coordinate, the
         # same arrangement the other build jobs use. Read from $TAG_NAME in the env rather
         # than templating it, so a tag name can't inject arguments into `npm version`.
         run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
       - name: Publish
+        if: steps.changed.outputs.publish != 'false'
         env:
           # Only a workflow_dispatch recovery builds a tag while the ref points elsewhere; there,
           # npm's provenance generator would attest a commit that did not produce the tarball. A

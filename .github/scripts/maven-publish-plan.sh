@@ -10,7 +10,7 @@
 #
 #   1. a file under it changed since the tag IT last published at (not since the last release —
 #      a module skipped for three releases is compared against its own baseline, so nothing is
-#      ever missed by a gap), or
+#      ever missed by a gap), other than in a test source set (see TEST_SOURCE), or
 #   2. a module it depends on is being published, or
 #   3. a shared build input changed, which can move every artifact at once, or
 #   4. the version catalog changed an entry its own build script uses (see SHARED below: a catalog
@@ -440,15 +440,27 @@ def shared_verdict(tag, files):
         return True, None
     return False, pats
 
+# Test source sets, which `check` compiles and no artifact carries: `src/test`, `src/functionalTest`,
+# the KMP `src/<target>Test` sets and the `screenshotTest*` ones. In 12 of the 88 v2.0.0..v2.59.0
+# release windows the only `gradle-plugin/` change was a test, and all four plugin coordinates
+# republished for it. `src/testFixtures` is NOT one:
+# `java-test-fixtures` publishes it as a variant (`:render-host` applies it). `--no-renames` keeps a
+# main source moved into a test directory visible as a deletion from main.
+TEST_SOURCE = re.compile(r"(^|/)src/(?!testFixtures/)(test[A-Za-z]*|[a-z][A-Za-z]*Test[A-Za-z]*)/")
+
 def changed_since(version, directories):
-    """Did any of `directories` move between the tag for `version` and head?"""
+    """Did anything published from `directories` move between the tag for `version` and head?"""
     tag = f"v{version}"
     if subprocess.run(["git", "rev-parse", "--verify", "-q", tag + "^{commit}"],
                       capture_output=True).returncode != 0:
         print(f"  {directories[0]}: no tag {tag}; publishing", file=sys.stderr)
         return True
     out = git("diff", "--no-renames", "--name-only", f"{tag}..{head}", "--", *directories)
-    return bool(out.strip())
+    changed = [f for f in out.split("\n") if f]
+    shipped = [f for f in changed if not TEST_SOURCE.search(f)]
+    if changed and not shipped:
+        print(f"  {directories[0]}: only test sources changed since {tag}", file=sys.stderr)
+    return bool(shipped)
 
 shared_changed = False
 catalog_pats = {}  # baseline version -> patterns for the catalog entries changed since it

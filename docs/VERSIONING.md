@@ -45,6 +45,12 @@ Ordinary semver, with the major effectively frozen:
 | `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release | — |
 | a new major | **basically never** | only a from-scratch rewrite |
 
+A `feat:`, `fix:` or `perf:` that changes only internal paths — CI, the release scripts, tests, docs,
+samples — is rejected by the `Release-cutting title ships something` job in
+[`pr-title.yml`](../.github/workflows/pr-title.yml): it would cut a release that ships nothing.
+The path rules, and why an unknown path counts as shipped, are in
+[`check-release-type.py`](../.github/scripts/check-release-type.py).
+
 This is release-please's **default** strategy — there is deliberately no `versioning` key in the
 config. The `!` that would otherwise cut a major is rejected by CI (the `No breaking-change marker`
 job in [`pr-title.yml`](../.github/workflows/pr-title.yml)), so the only route to one is a

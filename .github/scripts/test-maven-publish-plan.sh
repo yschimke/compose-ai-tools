@@ -289,6 +289,30 @@ check catalog_sibling_bom ""
 change_catalog_sibling_baked() { sed -i 's/composeai-preview-daemon = "3.0.0"/composeai-preview-daemon = "3.1.0"/' gradle/libs.versions.toml; }
 check catalog_sibling_baked "compose-preview-config compose-preview-plugin daemon-launch-builder preview-discovery"
 
+# A test-only change in a module publishes nothing: no artifact carries a test source set.
+change_module_test_only() {
+  mkdir -p alpha/src/test/kotlin lib/gamma/src/jvmTest/kotlin gradle-plugin/src/functionalTest/kotlin
+  echo 'class AlphaTest' > alpha/src/test/kotlin/AlphaTest.kt
+  echo 'class GammaTest' > lib/gamma/src/jvmTest/kotlin/GammaTest.kt
+  echo 'class PluginTest' > gradle-plugin/src/functionalTest/kotlin/PluginTest.kt
+}
+check module_test_only ""
+
+# ...but `src/testFixtures` is published as a variant by `java-test-fixtures`, so it counts.
+change_module_test_fixtures() {
+  mkdir -p alpha/src/testFixtures/kotlin
+  echo 'class AlphaFixture' > alpha/src/testFixtures/kotlin/AlphaFixture.kt
+}
+check module_test_fixtures "alpha beta"
+
+# A test change beside a main change still publishes the module.
+change_module_test_and_main() {
+  mkdir -p alpha/src/test/kotlin alpha/src/main/kotlin
+  echo 'class AlphaTest' > alpha/src/test/kotlin/AlphaTest.kt
+  echo 'class Alpha' > alpha/src/main/kotlin/Alpha.kt
+}
+check module_test_and_main "alpha beta"
+
 # Verification-only build logic is not a shared input.
 change_verification_only() { echo 'val gate = 1' >> build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckLayerBoundary.kt; }
 check verification_only ""
