@@ -542,7 +542,9 @@
       "description": "How this catalog appears in the New design chooser, as a whole: the chip a person picks it by and where that chip sits. Labelled by what is being made (`Mobile app`, `Wear widget`) rather than by the catalog's name. Absent leaves the builder's own label for a catalog it knows and the catalog's title otherwise.",
       "properties": {
         "label": { "type": "string" },
-        "order": { "type": "integer", "description": "Ascending position among the chooser's catalogs." }
+        "order": { "type": "integer", "description": "Ascending position among the chooser's catalogs." },
+        "description": { "type": "string", "description": "The chip's second line, saying what the catalog makes (`Dashboard cards and widgets`)." },
+        "primary": { "type": "boolean", "description": "Whether the chip sits among the primary design types (true) or under Other design types (false). Absent leaves it to the builder." }
       }
     },
     "colorTokens": {
