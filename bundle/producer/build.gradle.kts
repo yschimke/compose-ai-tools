@@ -31,12 +31,13 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
-// `preview-discovery` is declared without a version: the included plugin build substitutes it.
-// Without this the POM names it versionless and Maven Central rejects the whole deployment
-// ("Dependency version information is missing"), render-host and every other module with it. The
-// resolved version is the one that build publishes it at (`PublishedVersions`).
-publishing.publications.withType<MavenPublication>().configureEach {
-  versionMapping { allVariants { fromResolutionResult() } }
+// `preview-discovery` is declared without a version and substituted from the included
+// `gradle-plugin` build, so the POM would carry no `<version>` and Maven Central rejects the whole
+// release deployment (2.58.0 to 2.60.0). Write the resolved version instead.
+publishing {
+  publications.withType<MavenPublication>().configureEach {
+    versionMapping { allVariants { fromResolutionResult() } }
+  }
 }
 
 kotlin {
