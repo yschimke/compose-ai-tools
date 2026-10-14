@@ -25,49 +25,34 @@ That's the whole idea. Everything else is optional.
 
 ## Get started
 
-Pick the one that fits you.
+**Start here: <https://ui.coo.ee/start>** — the guided start page for agents,
+editors and the hosted catalogs.
 
 ### 🤖 With an AI coding agent
 
-Install the agent skills with the [skills CLI](https://skills.sh), then run
-the bundled stub once to install the `compose-preview` CLI:
-
-```sh
-npx skills add yschimke/skills --global --yes --skill compose-preview --skill compose-ui-builder
-~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
-```
-
-Open a new terminal afterwards. To update: `compose-preview update` (CLI) and
-`npx skills update` (skills).
-
-That installs `compose-preview` and `compose-ui-builder`. The other skills
-(`compose-preview-review`, `compose-preview-ci`, `compose-preview-design-board`,
-`compose-design-catalog`, `figma-catalog-import`, `design-parity-review`) are
-opt-in: add another `--skill <name>`; the curl installer takes `--skills a,b`
-or `--all-skills`.
-
-No Node? Use the one-line installer instead, which drops the CLI **and** the
-skills into place:
+One command installs the `compose-preview` CLI and the default agent skills:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
-Then just ask your agent to preview a composable. The
+Then ask your agent to preview a composable. The
 [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview)
-is the playbook — it tells the agent how to render, iterate, and check its
-own work. You don't have to learn the commands; the agent reads the skill.
+tells it how to render, iterate and check its own work; an agent that can only
+fetch URLs can read the
+[SKILL.md](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
+and bootstrap the CLI itself.
 
-> Already have an agent that fetches URLs but can't run the installer? Point
-> it straight at the
-> [skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
-> — it's self-contained and will bootstrap the CLI itself.
+- Other install routes (`npx skills`, flags, updating):
+  [setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md).
+- Plugins and MCP wiring for Claude Code, Codex, Gemini/Antigravity, OpenCode:
+  [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md).
+- Which MCP server is which: [Agents & MCP](./mcp/#two-mcp-servers-local-and-hosted).
 
 ### 🧩 In VS Code (or Cursor / Windsurf / VSCodium)
 
 Open the Extensions view (⇧⌘X / Ctrl+Shift+X), search **Compose Preview**,
-click *Install*. That's it — it renders previews inline and needs no project
-changes.
+click *Install*. It renders previews inline and needs no project changes.
 
 [Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview) ·
 [Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)
@@ -79,35 +64,18 @@ project — no build edits required:
 
 ```sh
 compose-preview render    # render every @Preview to PNG
+compose-preview browse    # Storybook-like local component catalog
 ```
-
-To browse those previews in a streamlined, Storybook-like component catalog:
-
-```sh
-compose-preview browse
-```
-
-This discovers every local preview-bearing module, starts a loopback-only server, and opens its
-browser URL. Compatible CMP browser targets are built and connected automatically; other
-components retain the baked snapshot and source-code experience. Pass `--module :app` only to
-deliberately narrow the project-wide catalog.
 
 The CLI injects itself into your build at runtime, so projects that already
 use `com.android.application` / `com.android.library` /
-`org.jetbrains.compose` just work. Full options on the
-[Install page](./install/).
+`org.jetbrains.compose` just work.
 
----
+### 🐘 With the Gradle plugin
 
-## Want a version-pinned Gradle plugin instead?
-
-If you'd rather wire it into your build explicitly, the plugin is on
+Prefer a version-pinned plugin in your build? It's on
 [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
-— no auth, no token:
-
-Replace `<published-version>` with the version currently shown on the linked Maven Central page.
-The placeholder deliberately stays outside release-please's version markers because CLI-only
-releases do not publish a matching plugin coordinate.
+— no auth, no token. Replace `<published-version>` with the version shown there.
 
 <!-- published-plugin-version-example -->
 ```kotlin
@@ -121,51 +89,7 @@ plugins {
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
-Iterating on one screen? On Compose Desktop / Multiplatform-JVM modules you can
-narrow the render to a single preview (or a glob) so an unrelated broken preview
-can't poison the run:
-
-```sh
-./gradlew :desktopApp:composePreviewRender --preview '*ExportHelpDialogPreview'
-# or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'
-```
-
-`--preview` selects whole `@Preview` **functions**. To skip one member of a
-function's fan-out — a multipreview member, or one of several `@Preview`
-annotations, which share a function name but have distinct ids — exclude it by id
-instead:
-
-```sh
-./gradlew :desktopApp:composePreviewRender --exclude-preview-id '*_Dark'
-# or, as a Gradle property: -PcomposePreview.idExclude='*_Dark'
-```
-
-Ids take the same pattern syntax as `--preview` (a `*`/`?` glob, or a plain
-substring). `--preview-id` is the positive form ("render only these"); prefer
-`--exclude-preview-id` when you're deferring part of a fan-out, since a stale
-pattern then renders too much rather than dropping a preview you wanted. Either
-way a filtered run is never stored in the build cache, since its render directory
-is only part of the module's output.
-
-One fan-out has no ids to name: a `@PreviewParameter` provider's rows exist only
-once the renderer enumerates the provider, so discovery lists the parameterized
-function as a single preview. Those are skipped by **label** — the token in
-`<stem>_<label>.png`, matched case-insensitively:
-
-```sh
-./gradlew :desktopApp:composePreviewRender --exclude-preview-row 'Dark,ExtraDark'
-# or, as a Gradle property: -PcomposePreview.rowExclude='Dark,ExtraDark'
-```
-
-A row exclusion never empties a preview's rows: if every row matches, they all
-render, so nothing can silently produce a preview with no pixels.
-
-All four filters work on both backends. An Android module renders through a
-Robolectric test task rather than this desktop one, and it reads the same options
-and the same `composePreview.*` properties — `#2977` closed the gap where they were
-desktop-only.
-
-Requirements and CI recipes live on the [Install page](./install/).
+Render filters, CI recipes and requirements are on the [Install page](./install/).
 
 ---
 

@@ -11,6 +11,10 @@ You don't need any of this to use compose-ai-tools — rendering `@Preview`s to
 PNG already lets an agent see its work. This page is for when you want a
 tighter, push-based loop than "run a command, read a file."
 
+Configuring an MCP client? The hosted server's one URL is
+`https://preview.coo.ee/mcp`; the local server is `compose-preview mcp serve`.
+See [Two MCP servers](#two-mcp-servers-local-and-hosted) before adding either.
+
 ## The agent loop
 
 A token-frugal feedback loop over Compose UI — the way
@@ -51,9 +55,36 @@ server (and the `compose-preview` CLI where noted).
 Cost budget for these in
 [`docs/TOKEN_USAGE.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md).
 
-## The MCP server
+## Two MCP servers: local and hosted
 
-The `:mcp` module exposes the preview daemon's JSON-RPC over stdio, so
+There are two different MCP servers. Configure each at most once.
+
+| | Local daemon MCP | Hosted catalog MCP |
+|---|---|---|
+| What it renders | **Your** project's `@Preview`s, on your machine | Published design-system catalogs (Material 3, Wear M3, …) and the UI Builder |
+| How it runs | stdio: `compose-preview mcp serve` | Streamable HTTP at **`https://preview.coo.ee/mcp`** |
+| Server name in configs | `compose-preview-mcp` | `compose-preview-catalog` |
+| Needs | The CLI on `PATH`, Java 17+, a Gradle project | Nothing local |
+
+**`https://ui.coo.ee/mcp` is an alias of the same hosted server**, not a second
+one: same process, same tools. Never configure both. Two entries give the agent
+every tool twice, and because the CLI keys access grants by origin they also
+mean two separate grants to approve and refresh. If a config already has a
+`ui.coo.ee` entry, replace its URL with `https://preview.coo.ee/mcp` rather than
+adding a second server. (`https://ui.coo.ee/start` is the human start page; it
+is not an MCP endpoint.)
+
+The per-harness plugins in
+[`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins)
+wire both servers for you; how each host is configured is in its
+[host setup notes](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md).
+The rest of this page is about the local server.
+
+## The local MCP server
+
+`compose-preview mcp serve` launches the local server (published from
+[`compose-preview-mcp`](https://github.com/yschimke/compose-preview-mcp) and
+fetched on first use). It exposes the preview daemon's JSON-RPC over stdio, so
 MCP-aware agents can render previews on demand and be *notified* when bytes
 change — instead of running Gradle (10s+ cold) or polling PNGs off disk with
 no way to request a re-render.
@@ -68,75 +99,44 @@ long-running calls. Data products are read via `list_data_products`,
 For the full tool surface, URI scheme, and wire protocol see
 [`docs/daemon/MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md).
 
-### Register the local server with OpenCode
+### Register the local server
 
-OpenCode v2 stores local MCP servers under `mcp.servers`. Register the server
-globally in the user config (`$XDG_CONFIG_HOME/opencode/opencode.json` when set,
-otherwise `~/.config/opencode/opencode.json`):
+Run `compose-preview mcp install` once from each Compose project's root. It
+writes daemon descriptors and runs discovery for every module with the plugin
+applied, then registers `compose-preview-mcp` with each agent host it detects
+(Claude Code, Codex, OpenCode, Antigravity; `--<host>` / `--no-<host>` force or
+skip one). `compose-preview mcp register` does only the host registration,
+without touching Gradle; `compose-preview mcp doctor` reports what is set up.
 
-```sh
-compose-preview mcp install --opencode
-```
+- **One global entry per host.** Each entry is `<stable launcher> mcp serve`
+  (for example `~/.local/bin/compose-preview`), never a versioned
+  `compose-preview-<version>/bin/` path that the next upgrade deletes, and has no
+  `--project`: the server finds the project from the client's roots or working
+  directory. Only OpenCode's `--scope project` writes a project-local
+  `opencode.json` with `--project=<dir>`.
+- **Healthy entries are left alone.** `mcp install` only adds a missing entry or
+  repairs a broken one, preserving sibling keys and servers.
+  `compose-preview mcp repair` (run by `compose-preview update`) points existing
+  entries at the stable launcher and drops a global `--project`, for example
+  after an upgrade removed an old versioned directory.
+- **Plugins win.** With the Antigravity `compose-preview` plugin installed
+  (`~/.gemini/config/plugins/compose-preview`), `mcp install` and `mcp register`
+  write no global Antigravity entry, since the plugin already provides the
+  server; `mcp doctor` names any older global `compose-preview-mcp` entry (in
+  `~/.gemini/antigravity/mcp_config.json` or `~/.gemini/config/mcp_config.json`)
+  to remove. `--antigravity` writes the global entry anyway. When Antigravity,
+  Claude Code or Codex is detected, `mcp install` prints the matching
+  wiring-plugin commands; `--no-plugin-hint` suppresses them.
+- **Comments are never rewritten.** An `opencode.jsonc`, or any config with
+  comments, gets the snippet and the file to merge it into printed instead.
+  OpenCode entries use the v2 `mcp.servers` shape; the older
+  `mcp.compose-preview-mcp` shape with `enabled: true` is not v2 configuration.
 
-Use a project-local `opencode.json` instead, or name an explicit config file:
-
-```sh
-compose-preview mcp install --opencode --scope project
-compose-preview mcp install --opencode --opencode-config /path/to/opencode.json
-```
-
-The command preserves existing top-level, `mcp`, and sibling server keys while
-adding this current-v2 shape when it is missing or broken (a healthy entry is
-left as it is). The launcher is the stable one (for example
-`~/.local/bin/compose-preview`), never a versioned
-`compose-preview-<version>/bin/` path that the next upgrade deletes. A user-scope
-entry has no `--project`: the server finds the project from the client's roots
-or working directory. Only `--scope project` adds `--project=<dir>`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "compose-preview-mcp": {
-        "type": "local",
-        "command": [
-          "/home/you/.local/bin/compose-preview",
-          "mcp",
-          "serve"
-        ],
-        "codemode": false
-      }
-    }
-  }
-}
-```
-
-If `opencode.jsonc` already exists at the selected user or project scope, the
-CLI selects that existing file and takes the manual-merge path rather than
-creating a competing `opencode.json`.
-
-The older direct `mcp.compose-preview-mcp` shape and `enabled: true` are not
-OpenCode v2 configuration. If the target is `.jsonc` or contains comments,
-the CLI does not rewrite it because that would discard comments; it prints the
-v2 snippet and the exact file to merge manually. Restart OpenCode and run
-`opencode mcp list` to verify the connection. OpenCode skill installation is
-covered in the
-[cross-harness guide](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/opencode.md).
-
-### Register the local server with Antigravity
-
-Prefer the `compose-preview` plugin from
-[`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins): it
-registers the server and also carries the skill and hooks. When it is installed
-(`~/.gemini/config/plugins/compose-preview`), `mcp install` writes no global
-entry, because that would duplicate the plugin's server.
-
-Without the plugin, `mcp install --antigravity` merges `compose-preview-mcp`
-into `mcpServers` of whichever Antigravity config already exists:
-`~/.gemini/antigravity/mcp_config.json` first, then
-`~/.gemini/config/mcp_config.json`. `--antigravity-config <path>` names the file
-explicitly. `compose-preview mcp doctor` lists both paths, whether each holds an
-entry, whether the plugin is installed, and any global entry that duplicates it.
+`--codex-config`, `--opencode-config` and `--antigravity-config` name an
+explicit config file. Full flag list: `compose-preview mcp --help`. Per-host
+paths and verification steps (`opencode mcp list`, …):
+[host setup notes](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md#registering-the-local-mcp-server)
+and the [OpenCode guide](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/opencode.md).
 
 ### Connect a remote UI-builder session
 
@@ -222,8 +222,6 @@ id, and its links will not resolve.
 
 Point the agent at the
 [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview).
-It's the install-and-iterate playbook: it checks for the CLI, bootstraps it
-via the [installer](../install/) if missing, and walks the agent through
-rendering and verifying. The skill and the installer aren't alternatives —
-the installer is just the one command the skill runs to get the CLI in place.
-</content>
+It's the install-and-iterate playbook: it checks for the CLI, bootstraps it if
+missing ([setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md)),
+and walks the agent through rendering and verifying.

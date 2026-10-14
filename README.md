@@ -15,58 +15,27 @@ That's the whole idea. Everything else on this page is optional.
 
 ## Get started
 
-Pick the one that fits you.
+**Start here: <https://ui.coo.ee/start>** — the guided start page for agents,
+editors and the hosted catalogs.
 
 ### 🤖 With an AI coding agent
 
-Install the agent skills with the [skills CLI](https://skills.sh), then run
-the bundled stub once to install the `compose-preview` CLI:
-
-```sh
-npx skills add yschimke/skills --global --yes --skill compose-preview --skill compose-ui-builder
-~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
-```
-
-Open a new terminal afterwards. To update: `compose-preview update` (CLI) and
-`npx skills update` (skills).
-
-That installs `compose-preview` and `compose-ui-builder`. The other skills
-(`compose-preview-review`, `compose-preview-ci`, `compose-preview-design-board`,
-`compose-design-catalog`, `figma-catalog-import`, `design-parity-review`) are
-opt-in: add another `--skill <name>`; the curl installer takes `--skills a,b`
-or `--all-skills`.
-
-No Node, or want the CLI and skills in one step? Use the installer
-instead (add `-s -- --no-modify-path` to leave your shell startup files alone):
+One command installs the `compose-preview` CLI and the default agent skills:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
-Then just ask your agent to preview a composable. The
+Then ask your agent to preview a composable. The
 [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview)
-is the playbook — it tells the agent how to render, iterate, and check its own
-work. You don't have to learn the commands; the agent reads the skill. (If
-your agent can fetch URLs but not run commands, point it straight at the
-[SKILL.md](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
-— it bootstraps the CLI itself.)
+is the playbook — you don't have to learn the commands; the agent reads the skill.
 
-For agent setup, follow the [Compose Agent Plugins quick start](https://github.com/yschimke/compose-agent-plugins#quick-start).
-The repository is now `yschimke/compose-agent-plugins`; existing installs using the old
-marketplace name should follow its [migration steps](https://github.com/yschimke/compose-agent-plugins#moving-from-compose-ag-plugin).
-
-- `compose-skills` supplies the canonical workflows from [`yschimke/skills`](https://github.com/yschimke/skills).
-- `compose-preview` supplies local MCP wiring and hooks. Local rendering needs the CLI on `PATH`,
-  Java 17 or newer, and `compose-preview mcp install` run once from each Compose project's root.
-- `compose-catalogs` connects to hosted catalogs and the UI Builder without a local toolchain.
-
-The quick start has the commands for
-[Antigravity](https://github.com/yschimke/compose-agent-plugins#antigravity),
-[Claude Code](https://github.com/yschimke/compose-agent-plugins#claude-code),
-[Codex](https://github.com/yschimke/compose-agent-plugins#codex) and
-[OpenCode](https://github.com/yschimke/compose-agent-plugins#opencode).
-Use one copy of each skill bundle and MCP registration; the single marketplace also installs
-`compose-skills`, so a separate skills marketplace is unnecessary.
+- Other install routes (`npx skills`, flags, opt-in skills, updating):
+  [setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md).
+- Plugins and MCP wiring for Claude Code, Codex, Gemini/Antigravity and OpenCode:
+  [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md).
+- The hosted catalog MCP server is `https://preview.coo.ee/mcp`; configure it once.
+  Local vs hosted MCP: [Agents & MCP](https://yschimke.github.io/compose-ai-tools/mcp/#two-mcp-servers-local-and-hosted).
 
 ### 🧩 In VS Code (or Cursor / Windsurf / VSCodium)
 
@@ -84,11 +53,6 @@ project — **no build edits required**:
 compose-preview render    # render every @Preview to PNG
 compose-preview browse    # open the streamlined component browser
 ```
-
-`browse` includes every preview-bearing module in one catalog. It automatically builds and uses a
-compatible CMP Wasm browser app (including the common `:shared:ui` → `:webApp` split), while
-JVM/Android-dependent components retain their baked preview and source-code experience. Use
-`--module :app` only when you deliberately want to narrow the catalog.
 
 The CLI injects itself into your build at runtime, so projects that already
 apply `com.android.application` / `com.android.library` /
