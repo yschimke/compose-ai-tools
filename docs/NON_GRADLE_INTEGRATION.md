@@ -318,6 +318,25 @@ the resolver hands back. Concretely:
 
 Pass `--help` to any of them for the full flag list.
 
+## From a packed bundle, with no build at all
+
+A build system that can run `compose-preview bundle pack`, or any CI that
+publishes its bundle, can skip the two contracts above. Instead,
+`compose-preview bundle prepare` unpacks the bundle into a workspace that
+daemon clients start from:
+
+```
+compose-preview bundle prepare catalog.png -o <dir>
+# → <dir>/build/compose-previews/{daemon-launch.json, previews.json, classes/, …}
+```
+
+This is the same layout a Gradle module's `composePreviewDaemonStart`
+writes, with module path `:catalog`, so anything that finds descriptors by
+that path treats the bundle as a module. compose-preview-mcp takes the
+bundle directly, as `project=<bundle file or URL>`, and runs this command
+for you. A bundle is fixed when it is packed: to pick up a change, repack it
+and register it again.
+
 ## Limitations and follow-ups
 
 - **Renderer-android requires Robolectric.** Driving the Android renderer
