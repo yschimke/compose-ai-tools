@@ -123,14 +123,15 @@ internal class BazelCommand(
         }
         metadata.resolve(executionRoot, root)
       } else {
+        // Report before target selection, which may already run the chosen tool.
+        if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
+          System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
+        }
         val explicitTarget = args.flagValue("--target") ?: args.flagValue("--module")
         val target =
           explicitTarget
             ?: BazelBuild()
               .selectTarget(root, invocationDirectory ?: requestedDirectory, config, timeout)
-        if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
-          System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
-        }
         // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
         if (
           config.aspect == DEFAULT_BAZEL_ASPECT &&
