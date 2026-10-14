@@ -286,8 +286,8 @@ class BazelBuildTest {
         listOf(
           "blaze",
           "query",
-          "kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', " +
-            "\"//app/...\" + \"//lib:all\" - \"//app/legacy/...\")",
+          "(kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', " +
+            "\"//app/...\" + \"//lib:all\")) - \"//app/legacy/...\"",
           "--output=label",
         ),
         queries.single(),
@@ -305,11 +305,30 @@ class BazelBuildTest {
       assertTrue(
         queries
           .last()
-          .single { it.startsWith("kind(") }
-          .startsWith("kind('(kt_android_library|android_library)'")
+          .single { it.startsWith("(kind(") }
+          .startsWith("(kind('(kt_android_library|android_library)'")
       )
       build.expandTargets(root, listOf("//..."), BazelBuildConfig(targetKinds = "my_rule"), 9)
-      assertTrue(queries.last().single { it.startsWith("kind(") }.startsWith("kind('my_rule'"))
+      assertTrue(queries.last().single { it.startsWith("(kind(") }.startsWith("(kind('my_rule'"))
+
+      // Explicit labels are requirements: never kind-filtered, and alone they need no query.
+      val asked = queries.size
+      assertEquals(
+        listOf("//app:alias", "//app:custom"),
+        build.expandTargets(root, listOf("//app:alias", "//app:custom"), BazelBuildConfig(), 9),
+      )
+      assertEquals(asked, queries.size)
+      build.expandTargets(
+        root,
+        listOf("//lib/...", "//app:alias", "-//lib/old/..."),
+        BazelBuildConfig(),
+        9,
+      )
+      assertEquals(
+        "(kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', \"//lib/...\") + " +
+          "\"//app:alias\") - \"//lib/old/...\"",
+        queries.last()[2],
+      )
 
       val failure =
         assertFailsWith<IllegalArgumentException> {
@@ -385,7 +404,7 @@ class BazelBuildTest {
       val apps = root.resolve("apps").apply { mkdirs() }
       val queries = mutableListOf<String>()
       val build = BazelBuild { argv, _, _ ->
-        queries += argv.single { it.startsWith("kind(") }
+        queries += argv.single { it.startsWith("(kind(") }
         "//apps/a:ui\n//apps/b:ui\n"
       }
       assertEquals(
@@ -395,9 +414,18 @@ class BazelBuildTest {
       assertTrue(queries.single().contains("\"//apps/...\""))
       build.selectTargets(root, root, BazelBuildConfig(), 9)
       assertTrue(queries.last().contains("\"//...\""))
-      // Configured patterns win over the directory.
+      // Configured patterns win over the directory, and the singular target wins over both.
       build.selectTargets(root, apps, BazelBuildConfig(targets = listOf("//lib/...")), 9)
       assertTrue(queries.last().contains("\"//lib/...\""))
+      assertEquals(
+        BazelTargetSelection("//app:ui", listOf("//app:ui")),
+        build.selectTargets(
+          root,
+          apps,
+          BazelBuildConfig(target = "//app:ui", targets = listOf("//lib/...")),
+          9,
+        ),
+      )
     } finally {
       root.deleteRecursively()
     }

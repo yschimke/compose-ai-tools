@@ -61,8 +61,7 @@ A target a pattern matched is a candidate: if the aspect reports nothing for it,
 with a note. A single label you name explicitly must build and hold
 previews, as before. `list`, `render` and `show` report across all the targets. `--id`,
 `--filter` and `--preview` select across them, and `--output` still names exactly one preview.
-`bazel bundle` and `--out` take one module, so a JVM selection packs as one bundle. To build past a broken target in a large pattern,
-pass Bazel's own `--bazel-arg=--keep_going`.
+`bazel bundle` and `--out` take one module, so a JVM selection packs as one bundle.
 
 A repo can commit the default once, so every developer runs the normal commands without
 repeating labels:
