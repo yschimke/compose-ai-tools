@@ -116,7 +116,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle sign    <bundle.png> --key <private-key> --key-id <id> [--producer <name>]
         compose-preview bundle verify  <bundle.png | URL> [--trust <store.json>] [--origin <repo@branch>]
         compose-preview bundle daemon  <bundle.png | URL> [-v]         (spawn the desktop daemon over stdio)
-        compose-preview bundle prepare <bundle.png | URL> -o <dir>     (write <dir>/build/compose-previews/daemon-launch.json for daemon clients such as compose-preview-mcp)
+        compose-preview bundle prepare <bundle.png | URL> -o <dir> [--res <pool>]  (write <dir>/build/compose-previews/daemon-launch.json for daemon clients such as compose-preview-mcp)
 
       Signing (producer trust for the public preview server):
         keygen  Mint an Ed25519 keypair; prints a ready-to-paste trust-store \"keys\" entry.
