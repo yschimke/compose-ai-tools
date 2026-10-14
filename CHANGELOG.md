@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.58.0](https://github.com/yschimke/compose-ai-tools/compare/v2.57.0...v2.58.0) (2026-10-13)
+
+
+### Features
+
+* prepare source bundles without renderer dependencies ([#5953](https://github.com/yschimke/compose-ai-tools/issues/5953)) ([93ab0f7](https://github.com/yschimke/compose-ai-tools/commit/93ab0f7652ef5d4784ff0208900c823f68eea219))
+* reuse built Bazel captures for single-target workflows ([#5950](https://github.com/yschimke/compose-ai-tools/issues/5950)) ([02ebd2a](https://github.com/yschimke/compose-ai-tools/commit/02ebd2a86a46426ce84c29ae37c0dc3a903d2dcc))
+* **ui-builder:** publish a catalog's new-design description and primary flag ([#5955](https://github.com/yschimke/compose-ai-tools/issues/5955)) ([f175f92](https://github.com/yschimke/compose-ai-tools/commit/f175f922bb926e3395a1a0cdb686704ba72ba205))
+
 ## [2.57.0](https://github.com/yschimke/compose-ai-tools/compare/v2.56.0...v2.57.0) (2026-10-13)
 
 
