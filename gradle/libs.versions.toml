@@ -236,7 +236,7 @@ compose-remote = "1.0.0-alpha20"
 json-org = "20250517"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
-androidx-collection = "1.6.0"
+androidx-collection = "1.7.0"
 # `FontRequest` / `FontsContractCompat` — the downloadable-fonts provider API the vendored embedded
 # player's typeface resolver uses to service `google:` font prefixes.
 androidx-core = "1.19.1"
