@@ -1,5 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.buildhost.BuildHostCodec
+import ee.schimke.composeai.buildhost.BuildHostEnvelope
+import ee.schimke.composeai.buildhost.BuildHostProtocol
+import ee.schimke.composeai.buildhost.BuildHostRequest
+import ee.schimke.composeai.buildhost.BuildHostResponse
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
@@ -365,6 +370,40 @@ class BazelComposeIntegrationTest {
         assertTrue(File(requireNotNull(shown.previews.single().pngPath)).isFile)
         assertTrue(shown.previews.single().sha256?.isNotBlank() == true)
         assertEquals(1, shown.counts?.total)
+
+        // `browse` / `serve --discover`: the preview server's build-host exchange, answered from
+        // the Bazel driver. The server then reads <projectDir>/build/compose-previews/.
+        val hostArgs =
+          listOf(BuildHostProtocol.STDIO_FLAG, "--project", root.path, "--timeout", "300")
+        val requests =
+          listOf(
+              BuildHostRequest.Handshake(),
+              BuildHostRequest.GradleProjectRoot,
+              BuildHostRequest.DiscoverAndBuild(silenceStdout = true),
+              BuildHostRequest.RunGradleTasks(listOf(":aspect_app:composePreviewDaemonStart")),
+            )
+            .mapIndexed { i, r -> BuildHostCodec.encode(BuildHostEnvelope(i + 1L, request = r)) }
+            .joinToString("\n") + "\n"
+        val wire = java.io.StringWriter()
+        BuildHostCommand(hostArgs).serve(requests.reader().buffered(), wire)
+        val responses =
+          wire
+            .toString()
+            .lines()
+            .filter { it.isNotBlank() }
+            .map(BuildHostCodec::decode)
+            .mapNotNull { it.response }
+        assertEquals(null, (responses[1] as BuildHostResponse.Path).path)
+        val discovery = responses[2] as BuildHostResponse.Discovery
+        assertTrue(discovery.buildOk)
+        val (module, manifest) = discovery.manifests.single()
+        assertEquals("aspect_app", module.gradlePath)
+        assertEquals(
+          setOf("RuntimeGreeting", "GeneratedGreeting"),
+          manifest.previews.map { it.functionName }.toSet(),
+        )
+        assertTrue((responses[3] as BuildHostResponse.BuildResult).buildOk)
+        assertTrue(File(module.projectDir).resolve(BazelBuildHost.DESCRIPTOR).isFile)
       } finally {
         if (previousConfig == null) configFile.delete() else configFile.writeText(previousConfig)
       }

@@ -49,7 +49,8 @@ internal class BazelCommand(
     }
   }
 
-  internal fun execute() {
+  /** Runs the operation; returns the prepared previews (null for `init`) for in-process callers. */
+  internal fun execute(): PreparedBazelPreviews? {
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
@@ -77,7 +78,7 @@ internal class BazelCommand(
     if (operation == "init") {
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
-      return
+      return null
     }
     val configFile =
       args.flagValue("--config")?.let { resolve(root, it) }
@@ -254,6 +255,7 @@ internal class BazelCommand(
         }
       }
     }
+    return prepared
   }
 
   /**

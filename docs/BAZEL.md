@@ -279,7 +279,24 @@ The end-to-end proof is compose-ai-contrib's `bazel-android-render` job: it buil
 the rules_android Compose sample in `bazel-apk/` through this driver and renders a
 preview that reads string and colour resources on the Robolectric daemon.
 
-## Verification
+## Browsing (`browse`, `serve --discover`)
+
+`compose-preview browse` works in a Bazel workspace with no server change. The preview server
+asks its build host Gradle-shaped questions, and in a workspace that routes to Bazel the host
+answers them from this driver:
+
+- discovery builds the configured target (`target` in `.compose-preview/bazel.json`, or a label
+  passed as `--module`/`--target`), discovers and renders its previews, and reports it as one
+  module. A label becomes a slash-free module name (`//app/ui:lib` → `app.ui:lib`), because the
+  server puts module names in URL segments;
+- starting a module's daemon uses the `daemon-launch.json` the render wrote, preparing it again
+  only if it is missing;
+- there is no Gradle root, so the server skips its Gradle-only Wasm app and git history discovery
+  instead of walking `bazel-*` output symlinks.
+
+One target per invocation, and the build host allows 1800 seconds per build by default (a first
+build compiles the toolchain); pass `--timeout` to change it.
+
 
 The dedicated Bazel CI test builds the contrib Desktop fixture with the bundled
 aspect, discovers source and generated previews, excludes a dependency preview,

@@ -23,6 +23,17 @@ import java.io.Writer
  */
 class BuildHostCommand(args: List<String>) : Command(args) {
 
+  /**
+   * Set when this host's project routes to Bazel (the same rule `render` and `list` use): the
+   * Gradle-shaped requests are then answered from the Bazel driver ([BazelBuildHost]).
+   */
+  internal var bazel: BazelBuildHost? = runCatching {
+    previewBuildRoute(args)
+  }
+    .getOrNull()
+    ?.takeIf { it.kind == ProjectBuildKind.BAZEL }
+    ?.let { BazelBuildHost(it.root, args) }
+
   override fun run() {
     if ("--help" in args || "-h" in args) {
       printUsage()
@@ -117,29 +128,45 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         }
 
       is BuildHostRequest.AutoInjectInitScriptArgs ->
-        BuildHostResponse.Strings(
-          autoInjectInitScriptArgs(args, projectRoot = File(request.projectRoot))
-        )
+        if (bazel != null) BuildHostResponse.Strings(emptyList())
+        else
+          BuildHostResponse.Strings(
+            autoInjectInitScriptArgs(args, projectRoot = File(request.projectRoot))
+          )
 
+      // No Gradle root in a Bazel workspace: the server then skips its Gradle-only Wasm and git
+      // discovery instead of walking `bazel-*` output symlinks.
       BuildHostRequest.GradleProjectRoot ->
+        if (bazel != null) BuildHostResponse.Path(null)
+        else
         // Normalised via `WireModule.wirePath` like module dirs: the server may not share this
         // working directory, and `findProjectRoot()` can return `<root>/.`.
         BuildHostResponse.Path(findProjectRoot()?.let(WireModule::wirePath))
 
-      BuildHostRequest.GradleVariantArgs -> BuildHostResponse.Strings(variantGradleArgs())
+      BuildHostRequest.GradleVariantArgs ->
+        BuildHostResponse.Strings(if (bazel != null) emptyList() else variantGradleArgs())
 
       is BuildHostRequest.GradleBuildArgs ->
-        BuildHostResponse.Strings(gradleArgsWithForce(request.extra))
+        BuildHostResponse.Strings(
+          if (bazel != null) emptyList() else gradleArgsWithForce(request.extra)
+        )
 
-      BuildHostRequest.GradleProjects -> {
-        var found = emptyList<ee.schimke.composeai.previewdata.PreviewModule>()
-        withGradle { gradle -> found = gradle.findGradleProjects(timeoutSeconds) }
-        BuildHostResponse.Modules(found.map(WireModule::from))
-      }
+      BuildHostRequest.GradleProjects ->
+        bazel?.let { BuildHostResponse.Modules(it.modules()) }
+          ?: run {
+            var found = emptyList<ee.schimke.composeai.previewdata.PreviewModule>()
+            withGradle { gradle -> found = gradle.findGradleProjects(timeoutSeconds) }
+            BuildHostResponse.Modules(found.map(WireModule::from))
+          }
 
       is BuildHostRequest.RunGradleTasks -> {
         var ok = false
+        val bazelHost = bazel
         streamingBuildOutput(id, responses, request.silenceStdout) {
+          if (bazelHost != null) {
+            ok = bazelHost.runTasks(request.tasks)
+            return@streamingBuildOutput
+          }
           withGradle(silenceStdout = request.silenceStdout) { gradle ->
             ok = runGradle(gradle, *request.tasks.toTypedArray(), arguments = request.arguments)
           }
@@ -147,24 +174,32 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         BuildHostResponse.BuildResult(ok)
       }
 
-      is BuildHostRequest.DiscoverAndBuild -> {
-        var outcome: RenderModulesOutcome? = null
-        streamingBuildOutput(id, responses, request.silenceStdout) {
-          outcome = renderAllModules(silenceStdout = request.silenceStdout)
+      is BuildHostRequest.DiscoverAndBuild ->
+        bazel?.let { bazelHost ->
+          var result: Pair<Boolean, List<WireModuleManifest>> = false to emptyList()
+          streamingBuildOutput(id, responses, request.silenceStdout) {
+            result = bazelHost.discoverAndBuild()
+          }
+          BuildHostResponse.Discovery(buildOk = result.first, manifests = result.second)
         }
-        val settled = outcome
-        if (settled == null) {
-          BuildHostResponse.Discovery(buildOk = false, manifests = emptyList())
-        } else {
-          BuildHostResponse.Discovery(
-            buildOk = settled.buildOk,
-            manifests =
-              settled.manifests.map { (module, manifest) ->
-                WireModuleManifest(WireModule.from(module), manifest)
-              },
-          )
-        }
-      }
+          ?: run {
+            var outcome: RenderModulesOutcome? = null
+            streamingBuildOutput(id, responses, request.silenceStdout) {
+              outcome = renderAllModules(silenceStdout = request.silenceStdout)
+            }
+            val settled = outcome
+            if (settled == null) {
+              BuildHostResponse.Discovery(buildOk = false, manifests = emptyList())
+            } else {
+              BuildHostResponse.Discovery(
+                buildOk = settled.buildOk,
+                manifests =
+                  settled.manifests.map { (module, manifest) ->
+                    WireModuleManifest(WireModule.from(module), manifest)
+                  },
+              )
+            }
+          }
     }
 
   /**
