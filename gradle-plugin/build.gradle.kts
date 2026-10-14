@@ -172,6 +172,32 @@ fun resolveAndroidSdk(rootDir: java.io.File): String {
   return ""
 }
 
+// The version a root-build coordinate the plugin injects is published at. Selective publishing
+// (`.github/scripts/maven-publish-plan.sh`) leaves a module a release skips at the version it last
+// published, so the plugin's own version would name an artifact that was never uploaded. Same rule
+// as `ComposeAiMavenPublishingPlugin`: the tag when the module is in the publish set (or no plan
+// ran), else its recorded version from `publishing-manifest.json`; this build's version outside a
+// release.
+fun siblingPublishedVersion(artifactId: String): String {
+  val tag =
+    providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
+      ?: return project.version.toString()
+  val manifest =
+    generateSequence(rootDir) { it.parentFile }
+      .map { it.resolve("publishing-manifest.json") }
+      .firstOrNull { it.isFile }
+      ?.readText() ?: "{}"
+  return ee.schimke.composeai.buildlogic.PublishedVersions.resolve(
+    artifactId = artifactId,
+    tagVersion = tag,
+    publishSet =
+      ee.schimke.composeai.buildlogic.PublishedVersions.parsePublishSet(
+        providers.gradleProperty("composeai.publishSet").orNull
+      ),
+    manifestText = manifest,
+  )
+}
+
 // Bake the plugin version into a resource so external consumers resolve the matching renderer at
 // runtime.
 val generatePluginVersionResource =
@@ -194,7 +220,12 @@ val generatePluginVersionResource =
     // The Kotlin the theme-pin compiler plugin is built with; `ThemePinning` only attaches it to
     // consumers on the same line, since compiler plugins link against compiler internals.
     val themePinKotlin = libs.versions.kotlin.get()
+    // The theme-pin pair's own published versions; see [siblingPublishedVersion].
+    val themePinRuntime = siblingPublishedVersion("theme-pin-runtime")
+    val themePinCompilerPlugin = siblingPublishedVersion("theme-pin-compiler-plugin")
     inputs.property("version", pluginVersion)
+    inputs.property("themePinRuntime", themePinRuntime)
+    inputs.property("themePinCompilerPlugin", themePinCompilerPlugin)
     inputs.property("previewDaemon", previewDaemon)
     inputs.property("themePinKotlin", themePinKotlin)
     inputs.property("xrCompose", xrCompose)
@@ -209,7 +240,8 @@ val generatePluginVersionResource =
         outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
       base.parentFile.mkdirs()
       base.writeText(
-        "version=$pluginVersion\npreviewDaemon=$previewDaemon\nthemePinKotlin=$themePinKotlin\n"
+        "version=$pluginVersion\npreviewDaemon=$previewDaemon\nthemePinKotlin=$themePinKotlin\n" +
+          "themePinRuntime=$themePinRuntime\nthemePinCompilerPlugin=$themePinCompilerPlugin\n"
       )
       val xr =
         outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
