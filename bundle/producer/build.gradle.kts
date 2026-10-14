@@ -31,6 +31,15 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
+// `preview-discovery` is declared without a version and substituted from the included
+// `gradle-plugin` build, so the POM would carry no `<version>` and Maven Central rejects the whole
+// release deployment (2.58.0 to 2.60.0). Write the resolved version instead.
+publishing {
+  publications.withType<MavenPublication>().configureEach {
+    versionMapping { allVariants { fromResolutionResult() } }
+  }
+}
+
 kotlin {
   explicitApi()
   @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
