@@ -73,7 +73,7 @@ class ProjectBuildTest {
     assertEquals(ProjectBuild(ProjectBuildKind.BAZEL, root), detectProjectBuild(app))
     root.resolve(".blazerc").writeText("")
     assertEquals(ProjectBuild(ProjectBuildKind.BAZEL, root), detectProjectBuild(app))
-    assertEquals("blaze", defaultBazelBuildCommand(root, ""))
+    assertEquals("blaze", selectBazelBuildCommand(root, "", override = null).command)
   }
 
   @Test
@@ -96,9 +96,32 @@ class ProjectBuildTest {
         resolve("bazelisk").writeText("")
         resolve("bazelisk").setExecutable(true)
       }
-    assertEquals("bazelisk", defaultBazelBuildCommand(root, bin.path))
+    assertEquals("bazelisk", selectBazelBuildCommand(root, bin.path, override = null).command)
     assertEquals(root, previewBuildRoute(listOf("--project", root.path), bin)?.root)
   }
+
+  @Test
+  fun `bazelversion prefers bazelisk and the environment override wins over detection`() =
+    fixture { root ->
+      root.resolve("MODULE.bazel").writeText("")
+      val bin =
+        root.resolve("bin").apply {
+          mkdir()
+          listOf("bazel", "bazelisk").forEach {
+            resolve(it).writeText("")
+            resolve(it).setExecutable(true)
+          }
+        }
+      assertEquals("bazel", selectBazelBuildCommand(root, bin.path, override = null).command)
+      root.resolve(".bazelversion").writeText("9.2.0\n")
+      val pinned = selectBazelBuildCommand(root, bin.path, override = null)
+      assertEquals("bazelisk", pinned.command)
+      assertTrue(pinned.reason.contains(".bazelversion"))
+      root.resolve(".blazerc").writeText("")
+      val overridden = selectBazelBuildCommand(root, bin.path, override = "/opt/wrapper")
+      assertEquals("/opt/wrapper", overridden.command)
+      assertTrue(overridden.reason.contains(BUILD_COMMAND_ENV))
+    }
 
   @Test
   fun `query stays in the nearest package and refuses an ambiguous target`() = fixture { root ->

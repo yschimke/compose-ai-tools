@@ -49,10 +49,19 @@ normal commands without repeating labels:
 }
 ```
 
-For public Bazel use its build command/flags; the default materializes remote
-outputs. Explicit `--build-command` wins over configured argv. Otherwise `.blazerc`
-selects Blaze; the driver looks for Bazel, Bazelisk, then Blaze on PATH. It never
-runs those executables merely to detect the build system.
+The executable is chosen in this order, and the first match wins:
+
+1. `--build-command`;
+2. `buildCommand` in `.compose-preview/bazel.json` — commit it to make the choice
+   predictable for everyone;
+3. `--build-system blaze`;
+4. the `COMPOSE_PREVIEW_BUILD_COMMAND` environment variable;
+5. `.blazerc` in the workspace root selects `blaze`;
+6. `.bazelversion` with `bazelisk` on PATH selects `bazelisk`, which honours the pin;
+7. the first of `bazel`, `bazelisk`, `blaze` on PATH.
+
+A detected choice (steps 4–7) is reported on stderr with its reason, as is every
+choice under `--verbose`. The driver never runs a candidate merely to detect it.
 
 Ignore generated `.compose-preview/bazel/` and `.compose-preview/outputs/`, but
 keep the shared JSON config trackable. The current adapter renders static Desktop
@@ -90,8 +99,9 @@ or a file selected explicitly with `--config <file>`:
   "schemaVersion": 1,
   "buildCommand": ["bazelisk"],
   "startupArgs": ["--output_user_root=/path/to/cache"],
-  "buildArgs": ["--config=desktop", "--remote_download_outputs=all"],
+  "buildArgs": ["--config=desktop", "--remote_download_outputs=toplevel"],
   "aspect": "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect",
+  "installAspect": true,
   "metadataOutputGroup": "compose_preview_metadata",
   "runtimeOutputGroup": "compose_preview_runtime"
 }
@@ -105,9 +115,38 @@ workspace, and `--timeout` bounds each build command and render wait (300 second
 by default). Failed builds, remote-only/missing artifacts and ambiguous configured
 outputs fail with diagnostics rather than borrowing outputs from another build.
 
-For Blaze testing, change `buildCommand` to the approved executable/wrapper,
-select the supported provider load/aspect, and replace `buildArgs` if the internal
-system does not support `--remote_download_outputs=all`. The direct adapter expects
+`buildArgs` is empty by default: no flag is passed that a Bazel-family tool,
+version or wrapper might reject. Flags worth configuring:
+
+| Flag | Why |
+| --- | --- |
+| `--remote_download_outputs=toplevel` (or `all`) | With Build without the Bytes, materializes the requested metadata/runtime output groups locally. Unmaterialized outputs fail with a diagnostic. |
+| `--config=<name>` | Select the same configuration the application build uses. |
+| `--norun_validations` | Validation actions say nothing about renderability; skipping them shortens the build. |
+| `--tool_tag=compose-preview` | Attributes these invocations in build-event and remote-execution logs. |
+
+BEP outputs reported with a non-`file` URI (for example `bytestream://` from a
+remote cache) are resolved through their `pathPrefix` and `name` against
+`info execution_root`; only an output that is absent there fails.
+
+### Aspect deployment
+
+With the default `aspect`, the driver copies a small aspect package into
+`//.compose-preview/bazel` on first use. A configured non-default `aspect` label
+is used as-is and nothing is written to the source tree. Where a new top-level
+package is unwelcome (large monorepos, repository policy), either:
+
+- depend on the rules module (`bazel_dep(name = "rules_compose_preview", ...)`,
+  see [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel))
+  and set `"aspect": "@rules_compose_preview//:runtime.bzl%compose_preview_aspect"`,
+  which ships the same aspect and output groups; or
+- point `aspect` at an approved internal aspect producing the same metadata.
+
+Setting `"installAspect": false` makes this a hard rule: if the default package is
+missing the driver fails instead of creating it.
+
+For Blaze testing, change `buildCommand` to the approved executable/wrapper and
+select the supported provider load/aspect. The direct adapter expects
 `build`, `info execution_root`, JSON BEP with named sets/output groups, and
 command-line aspects. **Public Bazel is tested; Blaze compatibility needs internal
 validation.** An IDE installation is unnecessary. Historical IntelliJ

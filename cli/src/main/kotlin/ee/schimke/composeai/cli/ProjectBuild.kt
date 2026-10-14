@@ -118,8 +118,22 @@ private fun removeProjectFlag(args: List<String>): List<String> = buildList {
   }
 }
 
-internal fun defaultBazelBuildCommand(root: File, path: String? = System.getenv("PATH")): String {
-  if (root.resolve(".blazerc").isFile) return "blaze"
+internal data class BazelBuildCommandChoice(val command: String, val reason: String)
+
+/** Name of the environment override; a committed `buildCommand` in bazel.json still wins. */
+internal const val BUILD_COMMAND_ENV = "COMPOSE_PREVIEW_BUILD_COMMAND"
+
+/**
+ * Picks the executable when neither `--build-command` nor a configured `buildCommand` names one.
+ * Never runs a candidate; the reason is reported so a surprising choice is diagnosable.
+ */
+internal fun selectBazelBuildCommand(
+  root: File,
+  path: String? = System.getenv("PATH"),
+  override: String? = System.getenv(BUILD_COMMAND_ENV),
+): BazelBuildCommandChoice {
+  if (!override.isNullOrBlank()) return BazelBuildCommandChoice(override, "\$$BUILD_COMMAND_ENV")
+  if (root.resolve(".blazerc").isFile) return BazelBuildCommandChoice("blaze", ".blazerc")
   fun present(name: String): Boolean =
     path
       .orEmpty()
@@ -130,5 +144,10 @@ internal fun defaultBazelBuildCommand(root: File, path: String? = System.getenv(
           File(directory, binary).let { it.isFile && it.canExecute() }
         }
       }
-  return listOf("bazel", "bazelisk", "blaze").firstOrNull(::present) ?: "bazel"
+  // .bazelversion pins a version that only Bazelisk honours.
+  if (root.resolve(".bazelversion").isFile && present("bazelisk"))
+    return BazelBuildCommandChoice("bazelisk", ".bazelversion and bazelisk on PATH")
+  return listOf("bazel", "bazelisk", "blaze").firstOrNull(::present)?.let {
+    BazelBuildCommandChoice(it, "first of bazel, bazelisk, blaze on PATH")
+  } ?: BazelBuildCommandChoice("bazel", "no candidate on PATH")
 }
