@@ -31,6 +31,14 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
+// `preview-discovery` is declared without a version: the included plugin build substitutes it.
+// Without this the POM names it versionless and Maven Central rejects the whole deployment
+// ("Dependency version information is missing"), render-host and every other module with it. The
+// resolved version is the one that build publishes it at (`PublishedVersions`).
+publishing.publications.withType<MavenPublication>().configureEach {
+  versionMapping { allVariants { fromResolutionResult() } }
+}
+
 kotlin {
   explicitApi()
   @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
