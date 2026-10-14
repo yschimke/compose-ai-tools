@@ -244,5 +244,21 @@ class BazelAndroidTest {
       assertEquals("linked", extracted.resourceApk.readText())
       assertTrue("com.example.ui.App" in extracted.mergedManifest.readText())
       assertTrue(checkNotNull(extracted.rClassesJar).isFile)
+
+      // The one-shot `bundle render` lane restores the same carriage, R classes included.
+      val carriage =
+        BundleRenderer.androidResourceCarriage(
+          BundleReader.extractZipBytes(bundle),
+          root.resolve("one-shot"),
+          manifest,
+        )
+      assertTrue(
+        carriage
+          .first()
+          .resolve("com/android/tools/test_config.properties")
+          .readText()
+          .contains("android_custom_package=com.example.ui")
+      )
+      assertEquals("r-classes.jar", carriage.last().name)
     }
 }
