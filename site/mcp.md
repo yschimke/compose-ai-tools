@@ -71,8 +71,8 @@ one: same process, same tools. Never configure both. Two entries give the agent
 every tool twice, and because the CLI keys access grants by origin they also
 mean two separate grants to approve and refresh. If a config already has a
 `ui.coo.ee` entry, replace its URL with `https://preview.coo.ee/mcp` rather than
-adding a second server. (`https://ui.coo.ee/start` is the human start page; it
-is not an MCP endpoint.)
+adding a second server. (`https://ui.coo.ee/start` is the UI Builder start page
+for people; it is not an MCP endpoint.)
 
 The per-harness plugins in
 [`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins)

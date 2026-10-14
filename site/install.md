@@ -7,7 +7,7 @@ permalink: /install/
 
 # Install
 
-**Start here: <https://ui.coo.ee/start>.** This page is the reference for the
+**New here? Start at the [home page](../).** This page is the reference for the
 parts this repository owns: the CLI's build integration, the Gradle plugin,
 CI, and requirements.
 

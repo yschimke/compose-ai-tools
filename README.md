@@ -15,8 +15,9 @@ That's the whole idea. Everything else on this page is optional.
 
 ## Get started
 
-**Start here: <https://ui.coo.ee/start>** — the guided start page for agents,
-editors and the hosted catalogs.
+**Start here: <https://yschimke.github.io/compose-ai-tools/>** — rendering and inspecting your project's previews
+with the CLI, an agent, VS Code or the Gradle plugin. Designing a new screen
+with an agent in the UI Builder? That flow starts at <https://ui.coo.ee/start>.
 
 ### 🤖 With an AI coding agent
 

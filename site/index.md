@@ -25,8 +25,8 @@ That's the whole idea. Everything else is optional.
 
 ## Get started
 
-**Start here: <https://ui.coo.ee/start>** — the guided start page for agents,
-editors and the hosted catalogs.
+This page is the start page for the CLI and your project's previews. Designing
+a new screen with an agent in the UI Builder? That flow starts at <https://ui.coo.ee/start>.
 
 ### 🤖 With an AI coding agent
 
