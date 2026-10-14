@@ -19,11 +19,20 @@ internal data class BazelBuildConfig(
   val target: String? = null,
   val buildCommand: List<String> = listOf("bazel"),
   val startupArgs: List<String> = emptyList(),
-  val buildArgs: List<String> = listOf("--remote_download_outputs=all"),
-  val aspect: String = "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect",
+  /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
+  val buildArgs: List<String> = emptyList(),
+  val aspect: String = DEFAULT_BAZEL_ASPECT,
+  /**
+   * When false, the default aspect is never copied into the source tree; a missing package fails
+   * and asks for a configured `aspect` label instead.
+   */
+  val installAspect: Boolean = true,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
+
+internal const val DEFAULT_BAZEL_ASPECT =
+  "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect"
 
 /**
  * Producer contract for an aspect or an external build wrapper; paths are execution-root relative.
@@ -148,12 +157,26 @@ internal object BazelProcess {
   }
 }
 
-/** Resolve only the selected target's metadata output group, including forward-referenced sets. */
-internal fun bazelMetadataFile(events: String, target: String, outputGroup: String): File {
-  return bazelMetadataFile(events.lineSequence(), target, outputGroup)
+/**
+ * Resolve only the selected target's metadata output group, including forward-referenced sets.
+ * Non-`file` URIs (remote caches, `bytestream://`) resolve through `pathPrefix` + `name` against
+ * [executionRoot] when the output was materialized there.
+ */
+internal fun bazelMetadataFile(
+  events: String,
+  target: String,
+  outputGroup: String,
+  executionRoot: File? = null,
+): File {
+  return bazelMetadataFile(events.lineSequence(), target, outputGroup, executionRoot)
 }
 
-private fun bazelMetadataFile(events: Sequence<String>, target: String, outputGroup: String): File {
+private fun bazelMetadataFile(
+  events: Sequence<String>,
+  target: String,
+  outputGroup: String,
+  executionRoot: File?,
+): File {
   val sets = mutableMapOf<String, JsonObject>()
   val roots = mutableListOf<String>()
   // Stream the build log; retain only artifact sets and the selected completion's group.
@@ -193,14 +216,24 @@ private fun bazelMetadataFile(events: Sequence<String>, target: String, outputGr
     if (!visited.add(id)) return
     val set = sets[id] ?: error("BEP references missing named set $id")
     (set["files"] as? JsonArray).orEmpty().forEach { value ->
-      val uri =
-        (value as JsonObject)["uri"]?.jsonPrimitive?.contentOrNull
-          ?: error("Metadata output has no local URI; materialize it first")
-      val parsedUri = URI(uri)
-      check(parsedUri.scheme == "file") {
-        "Metadata output is remote ($uri); materialize it through your build system first"
-      }
-      files += File(parsedUri)
+      val file = value as JsonObject
+      val uri = file["uri"]?.jsonPrimitive?.contentOrNull?.let(::URI)
+      files +=
+        if (uri?.scheme == "file") File(uri)
+        else {
+          val name = file["name"]?.jsonPrimitive?.contentOrNull
+          val prefix = (file["pathPrefix"] as? JsonArray).orEmpty().map { it.jsonPrimitive.content }
+          val local =
+            if (executionRoot != null && !name.isNullOrBlank())
+              (prefix + name).fold(executionRoot) { dir, part -> dir.resolve(part) }
+            else null
+          check(local?.isFile == true) {
+            "Metadata output ${uri ?: name} is not materialized under the execution root" +
+              "${local?.let { " ($it)" }.orEmpty()}; materialize it through your build system " +
+              "first, e.g. --remote_download_outputs=toplevel"
+          }
+          local!!
+        }
     }
     (set["fileSets"] as? JsonArray).orEmpty().forEach {
       visit((it as JsonObject).getValue("id").jsonPrimitive.content)
@@ -323,19 +356,24 @@ internal class BazelBuild(
         root,
         timeoutSeconds,
       )
+      val executionRoot =
+        execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
+      check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
+        "Build tool returned an invalid execution_root: $executionRoot"
+      }
       val metadata =
         bep.bufferedReader().use {
-          bazelMetadataFile(it.lineSequence(), selectedTarget, config.metadataOutputGroup)
+          bazelMetadataFile(
+            it.lineSequence(),
+            selectedTarget,
+            config.metadataOutputGroup,
+            File(executionRoot),
+          )
         }
       val artifacts = bazelJson.decodeFromString<BazelArtifacts>(metadata.readText())
       // Main-repository labels may be emitted with @@ canonical spelling by newer Bazel.
       require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
         "Metadata target ${artifacts.target} does not match $target"
-      }
-      val executionRoot =
-        execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
-      check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
-        "Build tool returned an invalid execution_root: $executionRoot"
       }
       return artifacts.resolve(File(executionRoot), root)
     } finally {

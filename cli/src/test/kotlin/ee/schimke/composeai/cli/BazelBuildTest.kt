@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -108,6 +109,53 @@ class BazelBuildTest {
           .message!!
           .contains("materialize")
       )
+      // Remote-cache URIs resolve through pathPrefix + name when materialized locally.
+      val executionRoot = root.resolve("execroot").apply { mkdirs() }
+      val materialized =
+        executionRoot.resolve("bazel-out/k8-fastbuild/bin/app.compose-preview.json").apply {
+          parentFile.mkdirs()
+          writeText("{}")
+        }
+      val bytestream =
+        completed("//:app", "one") +
+          "\n" +
+          buildJsonObject {
+            put("id", buildJsonObject { put("namedSet", buildJsonObject { put("id", "one") }) })
+            put(
+              "namedSetOfFiles",
+              buildJsonObject {
+                put(
+                  "files",
+                  JsonArray(
+                    listOf(
+                      buildJsonObject {
+                        put("name", "app.compose-preview.json")
+                        put("uri", "bytestream://cache.example/blobs/abc/2")
+                        put(
+                          "pathPrefix",
+                          JsonArray(
+                            listOf("bazel-out", "k8-fastbuild", "bin").map { JsonPrimitive(it) }
+                          ),
+                        )
+                      }
+                    )
+                  ),
+                )
+              },
+            )
+          }
+      assertEquals(
+        materialized,
+        bazelMetadataFile(bytestream, "//:app", "compose_preview_metadata", executionRoot),
+      )
+      materialized.delete()
+      assertTrue(
+        assertFailsWith<IllegalStateException> {
+            bazelMetadataFile(bytestream, "//:app", "compose_preview_metadata", executionRoot)
+          }
+          .message!!
+          .contains("materialize")
+      )
     } finally {
       root.deleteRecursively()
     }
@@ -198,6 +246,15 @@ class BazelBuildTest {
     } finally {
       root.deleteRecursively()
     }
+  }
+
+  @Test
+  fun `default config passes no tool-specific build flags`() {
+    assertEquals(emptyList(), BazelBuildConfig().buildArgs)
+    assertEquals(
+      BazelBuildConfig(installAspect = false),
+      bazelJson.decodeFromString<BazelBuildConfig>("""{"installAspect": false}"""),
+    )
   }
 
   @Test

@@ -86,20 +86,26 @@ internal class BazelCommand(
     var config =
       if (configText != null) bazelJson.decodeFromString<BazelBuildConfig>(configText)
       else BazelBuildConfig()
-    if (
-      configText == null ||
-        "buildCommand" !in (bazelJson.parseToJsonElement(configText) as JsonObject)
-    ) {
-      config =
-        config.copy(
-          buildCommand =
-            listOf(
-              if (args.flagValue("--build-system") == "blaze") "blaze"
-              else defaultBazelBuildCommand(root)
-            )
-        )
-    }
-    args.flagValue("--build-command")?.let { config = config.copy(buildCommand = listOf(it)) }
+    // Precedence: --build-command, a committed buildCommand, --build-system blaze, then detection.
+    val commandSource =
+      when {
+        args.flagValue("--build-command") != null -> {
+          config = config.copy(buildCommand = listOf(args.flagValue("--build-command")!!))
+          "--build-command"
+        }
+        configText != null &&
+          "buildCommand" in (bazelJson.parseToJsonElement(configText) as JsonObject) ->
+          "buildCommand in $configFile"
+        args.flagValue("--build-system") == "blaze" -> {
+          config = config.copy(buildCommand = listOf("blaze"))
+          "--build-system blaze"
+        }
+        else -> {
+          val choice = selectBazelBuildCommand(root)
+          config = config.copy(buildCommand = listOf(choice.command))
+          "detected: ${choice.reason}; commit buildCommand in .compose-preview/bazel.json to pin it"
+        }
+      }
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config = config.copy(buildArgs = config.buildArgs + args.flagValuesAll("--bazel-arg"))
     val imported = args.flagValue("--artifacts")
@@ -122,8 +128,19 @@ internal class BazelCommand(
           explicitTarget
             ?: BazelBuild()
               .selectTarget(root, invocationDirectory ?: requestedDirectory, config, timeout)
-        if (config.aspect == BazelBuildConfig().aspect) {
-          if (!root.resolve(".compose-preview/bazel/runtime.bzl").isFile) installBazelAspect(root)
+        if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
+          System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
+        }
+        // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
+        if (
+          config.aspect == DEFAULT_BAZEL_ASPECT &&
+            !root.resolve(".compose-preview/bazel/runtime.bzl").isFile
+        ) {
+          require(config.installAspect) {
+            "installAspect is false and $DEFAULT_BAZEL_ASPECT is missing; configure aspect, " +
+              "e.g. @rules_compose_preview//:runtime.bzl%compose_preview_aspect"
+          }
+          installBazelAspect(root)
         }
         BazelBuild().collect(root, target, config, timeout)
       }
@@ -411,6 +428,9 @@ internal class BazelCommand(
       Configure .compose-preview/bazel.json for a different build command/provider deployment.
       --config <file>             Read explicit JSON config (paths relative to --project).
       --build-command <path>      Use bazelisk, blaze or an executable wrapper; no shell parsing.
+                                  Otherwise: configured buildCommand, then
+                                  ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
+                                  (bazelisk), then bazel/bazelisk/blaze on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
       --aspect <label.bzl%name>   Override the aspect entry point.
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
