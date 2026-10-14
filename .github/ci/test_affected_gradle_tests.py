@@ -65,6 +65,22 @@ class AffectedGradleTestsTest(unittest.TestCase):
         tasks = mod.resolve(["app/src/App.kt"], self.config, self.projects, self.root).split()
         self.assertEqual(tasks, [":app:test"])
 
+    def test_a_published_module_runs_its_pom_check(self):
+        # The regression this exists for: #5953 gave `bundle-producer` a versionless POM
+        # dependency, nothing read the POM before the 2.59.0 upload, and Maven Central refused
+        # that release and the next. Only projects that publish have the task; `:app` must not be
+        # handed it, for the same reason as `checkKotlinAbi`.
+        projects = [dict(p) for p in self.projects]
+        next(p for p in projects if p["path"] == ":core")["hasPomCheck"] = True
+        self.assertEqual(
+            mod.resolve(["core/src/Core.kt"], self.config, projects, self.root),
+            ":app:test :core:checkKotlinAbi :core:checkPomDependencyVersions :core:test",
+        )
+        self.assertEqual(
+            mod.resolve(["app/src/App.kt"], self.config, projects, self.root),
+            ":app:test",
+        )
+
     def test_a_multiplatform_module_runs_its_jvmTest(self):
         # The regression this exists for: a KMP module names its JVM tests `jvmTest` and has no
         # `test` task, so the graph said "no tests", this resolver emitted nothing, and
@@ -146,7 +162,10 @@ class ModuleUnitTestsGateTest(unittest.TestCase):
         `checkKotlinAbi` already relies on.
         """
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
-        self.assertIn("./gradlew test jvmTest desktopTest checkKotlinAbi --continue", ci)
+        self.assertIn(
+            "./gradlew test jvmTest desktopTest checkKotlinAbi checkPomDependencyVersions --continue",
+            ci,
+        )
 
     def test_ci_absorbs_a_none_task_list_without_invoking_gradle(self):
         """`none` is a real output of this script and must never reach `gradlew`.

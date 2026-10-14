@@ -10,6 +10,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
+import org.gradle.api.publish.maven.tasks.GenerateMavenPom
 import org.gradle.kotlin.dsl.configure
 
 abstract class ComposeAiMavenPublishingExtension
@@ -45,6 +46,7 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
     project.version = project.publishedVersion()
 
     project.configureAndroidLibraryPublication()
+    project.configurePomDependencyVersionCheck()
 
     project.afterEvaluate {
       project.configureComposeAiPublication(
@@ -104,6 +106,24 @@ internal fun Project.configureComposeAiPublication(
         developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
       }
     }
+  }
+}
+
+/**
+ * Check every POM this project generates for versionless dependencies
+ * ([CheckPomDependencyVersions]), under `check` and named by CI, so the pull request that
+ * introduces one fails rather than the release upload.
+ */
+private fun Project.configurePomDependencyVersionCheck() {
+  val checkPoms =
+    tasks.register("checkPomDependencyVersions", CheckPomDependencyVersions::class.java) {
+      group = "verification"
+      description = "Fails when a generated POM names a dependency Maven Central would reject."
+      pomFiles.from(tasks.withType(GenerateMavenPom::class.java))
+      gradleUserHome.set(gradle.gradleUserHomeDir)
+    }
+  pluginManager.withPlugin("lifecycle-base") {
+    tasks.named("check") { dependsOn(checkPoms) }
   }
 }
 
