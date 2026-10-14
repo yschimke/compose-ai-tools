@@ -39,17 +39,28 @@ internal object ThemePinning {
       "org.jetbrains.kotlin.android",
     )
 
-  /** The Kotlin version `theme-pin-compiler-plugin` was compiled against. */
-  val compilerPluginKotlin: String by lazy {
-    val props = Properties()
-    ThemePinning::class
-      .java
-      .classLoader
-      .getResourceAsStream("ee/schimke/composeai/plugin/plugin-version.properties")
-      ?.use { props.load(it) }
-    props.getProperty("themePinKotlin")
-      ?: error("themePinKotlin missing from plugin-version.properties")
+  private val versions: Properties by lazy {
+    Properties().apply {
+      ThemePinning::class
+        .java
+        .classLoader
+        .getResourceAsStream("ee/schimke/composeai/plugin/plugin-version.properties")
+        ?.use { load(it) }
+    }
   }
+
+  private fun baked(key: String): String =
+    versions.getProperty(key) ?: error("$key missing from plugin-version.properties")
+
+  /** The Kotlin version `theme-pin-compiler-plugin` was compiled against. */
+  val compilerPluginKotlin: String by lazy { baked("themePinKotlin") }
+
+  /**
+   * The versions the pair is published at, which selective publishing lets differ from this
+   * plugin's: a release that changes the plugin but not the pair leaves the pair where it was.
+   */
+  val runtimeVersion: String by lazy { baked("themePinRuntime") }
+  val compilerPluginVersion: String by lazy { baked("themePinCompilerPlugin") }
 
   fun apply(project: Project) {
     val enabled =
@@ -78,8 +89,8 @@ internal object ThemePinning {
     wire(
       project,
       multiplatform,
-      runtime = artifact(project, RUNTIME_ARTIFACT),
-      compilerPlugin = artifact(project, COMPILER_PLUGIN_ARTIFACT),
+      runtime = artifact(project, RUNTIME_ARTIFACT, runtimeVersion),
+      compilerPlugin = artifact(project, COMPILER_PLUGIN_ARTIFACT, compilerPluginVersion),
     )
   }
 
@@ -124,13 +135,11 @@ internal object ThemePinning {
       }
     }
 
-  /**
-   * The published coordinate at this plugin's version, or the sibling project inside this build.
-   */
-  private fun artifact(project: Project, artifactId: String): Any =
+  /** The published coordinate at [version], or the sibling project inside this build. */
+  private fun artifact(project: Project, artifactId: String, version: String): Any =
     project.findProject(":$artifactId")?.let {
       project.dependencies.project(mapOf("path" to it.path))
-    } ?: "ee.schimke.composeai:$artifactId:${PluginVersion.value}"
+    } ?: "ee.schimke.composeai:$artifactId:$version"
 
   /** True when [consumer] and [builtFor] are on the same `major.minor` Kotlin line. */
   internal fun isSupported(consumer: String?, builtFor: String): Boolean =

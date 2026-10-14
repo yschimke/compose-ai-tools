@@ -79,6 +79,14 @@ class ThemePinningTest {
     assertThat(ThemePinning.compilerPluginKotlin).matches("""\d+\.\d+\.\d+.*""")
   }
 
+  @Test
+  fun `the pair's own published versions are baked into the plugin`() {
+    // Outside a release both equal this build's version; on a release that skips the pair they are
+    // the versions it last published at, never the plugin's.
+    assertThat(ThemePinning.runtimeVersion).matches("""\d+\.\d+\.\d+.*""")
+    assertThat(ThemePinning.compilerPluginVersion).matches("""\d+\.\d+\.\d+.*""")
+  }
+
   private fun project(): Project = ProjectBuilder.builder().build()
 
   private fun Project.deps(configuration: String): List<String> =
