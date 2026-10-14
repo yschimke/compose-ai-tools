@@ -49,7 +49,7 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
     val broadcast =
       broadcasts[key]
         ?: run {
-          val fresh = Broadcast(key)
+          val fresh = Broadcast(key, previewId, overrides, codec, maxFps, onUnavailable)
           // Hold the lock across the open so racing first subscribers can't open two upstreams.
           val handle =
             opener.open(previewId, overrides, codec, maxFps, onUnavailable, fresh::onUpstreamFrame)
@@ -64,6 +64,39 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
   /** Live shared upstream streams (one per distinct key). For tests / diagnostics. */
   public fun activeStreamCount(): Int = lock.withLock { broadcasts.size }
 
+  /**
+   * Reopen every live upstream, keeping its watchers: after the classes behind a held stream are
+   * replaced ([ServeHost.sourcesChanged]), the daemon's held scene still runs the old ones until it
+   * is restarted. A stream that can no longer open (its preview went away) is dropped. Returns how
+   * many reopened.
+   */
+  public fun restartAll(): Int = lock.withLock {
+    var reopened = 0
+    for (broadcast in broadcasts.values.toList()) {
+      runCatching { broadcast.handle?.close() }
+      val handle = runCatching {
+        opener.open(
+          broadcast.previewId,
+          broadcast.overrides,
+          broadcast.codec,
+          broadcast.maxFps,
+          broadcast.onUnavailable,
+          broadcast::onUpstreamFrame,
+        )
+      }
+        .getOrNull()
+      if (handle == null) {
+        broadcasts.remove(broadcast.key, broadcast)
+        broadcast.handle = null
+        continue
+      }
+      broadcast.handle = handle
+      broadcast.reopened()
+      reopened++
+    }
+    reopened
+  }
+
   private fun release(broadcast: Broadcast, watcher: Broadcast.Watcher) {
     lock.withLock {
       if (broadcast.removeWatcher(watcher) == 0) {
@@ -76,7 +109,14 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
     }
   }
 
-  private inner class Broadcast(val key: String) {
+  private inner class Broadcast(
+    val key: String,
+    val previewId: String,
+    val overrides: PreviewOverrides,
+    val codec: StreamCodec?,
+    val maxFps: Int?,
+    val onUnavailable: ((String) -> Unit)?,
+  ) {
     @Volatile var handle: StreamHandle? = null
     private val watchers = CopyOnWriteArrayList<Watcher>()
     @Volatile private var lastPainted: StreamFrameParams? = null
@@ -158,6 +198,16 @@ public class ServeBroadcastHub(private val opener: StreamOpener) {
       upstreamVisible = visible
       upstreamFps = fps
       handle?.visibility(visible, fps)
+    }
+
+    /**
+     * A fresh upstream starts visible at its default rate; resend the watchers' aggregate. Caller
+     * holds [lock].
+     */
+    fun reopened() {
+      upstreamVisible = true
+      upstreamFps = null
+      syncVisibility()
     }
 
     /** Remove a watcher; returns the remaining count. Caller holds [lock]. */

@@ -249,7 +249,12 @@ public class FakeRenderSession(
 
   override fun setFocus(previewIds: List<String>) = Unit
 
-  override fun fileChanged(path: String, kind: FileKind, changeType: ChangeType) = Unit
+  /** Every `fileChanged` sent, in order: (path, kind). */
+  val fileChanges = CopyOnWriteArrayList<Pair<String, FileKind>>()
+
+  override fun fileChanged(path: String, kind: FileKind, changeType: ChangeType) {
+    fileChanges += path to kind
+  }
 
   override fun renderNow(
     previewIds: List<String>,

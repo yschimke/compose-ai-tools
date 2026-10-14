@@ -164,6 +164,24 @@ class BazelBuildHostTest {
     }
 
   @Test
+  fun `a recompile after an edit always rebuilds the module's selection`() = workspace { root ->
+    val fake = FakeBazel(root)
+    val bazelHost = host(root, fake, "--target", "//app/ui:lib").bazel!!
+    bazelHost.discoverAndBuild()
+
+    // The descriptor exists, but an edit changed the sources: never short-circuit a compile.
+    assertTrue(bazelHost.runTasks(listOf(":app.ui:lib:composePreviewCompile")))
+    assertEquals(2, fake.calls.size)
+    val prepare = fake.calls.last()
+    assertEquals("prepare", prepare.first())
+    assertEquals("//app/ui:lib", prepare[prepare.indexOf("--target") + 1])
+
+    // A failed build answers false, so the server keeps the last good classes.
+    fake.fail = true
+    assertFalse(bazelHost.runTasks(listOf(":app.ui:lib:composePreviewCompile")))
+  }
+
+  @Test
   fun `a missing descriptor is prepared for the module's own label`() = workspace { root ->
     val fake = FakeBazel(root)
     val bazelHost = host(root, fake).bazel!!

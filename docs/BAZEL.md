@@ -327,6 +327,9 @@ answers them from this driver:
   server puts module names in URL segments;
 - starting a module's daemon uses the `daemon-launch.json` the render wrote, preparing it again
   only if it is missing;
+- recompiling a module after an edit (`:<module>:composePreviewCompile`) always runs `prepare` for
+  its selection, into the same output paths, so the daemon's classloader swap loads the new jars.
+  A failed build answers false, and the server keeps the last good classes;
 - there is no Gradle root, so the server skips its Gradle-only Wasm app and git history discovery
   instead of walking `bazel-*` output symlinks.
 

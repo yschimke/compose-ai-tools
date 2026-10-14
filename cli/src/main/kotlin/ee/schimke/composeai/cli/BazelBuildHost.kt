@@ -66,25 +66,36 @@ internal class BazelBuildHost(
   }
 
   /**
-   * Runs the Gradle task names the server sends. Only `:<module>:composePreviewDaemonStart` has a
-   * Bazel meaning; anything else fails with a message naming the task, not a silent success.
+   * Runs the Gradle task names the server sends. Two have a Bazel meaning:
+   * - `:<module>:composePreviewDaemonStart` makes sure the module's descriptor exists;
+   * - `:<module>:composePreviewCompile` rebuilds the module after an edit: `prepare` of its
+   *   selection, always, into the same output base, so the jar paths do not move and the daemon's
+   *   classloader swap ([ee.schimke.composeai.cli.serve.ServeHost.sourcesChanged]) loads the new
+   *   classes. A failed build answers false, so the server keeps the last good classes.
+   *
+   * Anything else fails with a message naming the task, not a silent success.
    */
   fun runTasks(tasks: List<String>): Boolean = tasks.all { task ->
-    val module =
-      task.removePrefix(":").removeSuffix(DAEMON_START).takeIf { task.endsWith(DAEMON_START) }
-    if (module == null) {
-      System.err.println(
-        "compose-preview build-host: $task is a Gradle task; this is a Bazel workspace, where " +
-          "only :<module>$DAEMON_START is supported"
-      )
-      return@all false
+    when {
+      task.endsWith(DAEMON_START) -> daemonStart(task.removePrefix(":").removeSuffix(DAEMON_START))
+      task.endsWith(COMPILE) -> rebuild(task.removePrefix(":").removeSuffix(COMPILE))
+      else -> {
+        System.err.println(
+          "compose-preview build-host: $task is a Gradle task; this is a Bazel workspace, where " +
+            "only :<module>$DAEMON_START and :<module>$COMPILE are supported"
+        )
+        false
+      }
     }
-    daemonStart(module)
   }
 
   private fun daemonStart(module: String): Boolean {
     val base = outputBases[module]
     if (base != null && base.resolve(DESCRIPTOR).isFile) return true
+    return rebuild(module)
+  }
+
+  private fun rebuild(module: String): Boolean {
     val label = labelsByModule[module]
     val prepared =
       runCatching { bazel(operation("prepare", label?.let(::listOf) ?: requestedTargets())) }
@@ -121,6 +132,7 @@ internal class BazelBuildHost(
 
   internal companion object {
     const val DAEMON_START = ":composePreviewDaemonStart"
+    const val COMPILE = ":composePreviewCompile"
     const val DESCRIPTOR = "build/compose-previews/daemon-launch.json"
     const val DEFAULT_TIMEOUT_SECONDS = "1800"
 

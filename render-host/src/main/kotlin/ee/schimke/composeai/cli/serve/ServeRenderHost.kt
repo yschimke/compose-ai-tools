@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
+import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -1550,6 +1551,40 @@ internal constructor(
     )
   }
 
+  /**
+   * Loads the rebuilt classes: one `fileChanged` per path has the daemon swap its user classloader
+   * (and rescan those files for added or removed previews), every cached render is dropped, the
+   * breaker forgets failures of the old classes, and held streams reopen on the new ones. Holds
+   * [renderLock] so an in-flight render finishes, and is cached, before the caches are cleared,
+   * never after. A host whose daemon never started has nothing loaded: it only clears.
+   */
+  override fun sourcesChanged(paths: List<String>): Boolean {
+    if (closed.get()) return false
+    renderLock.withLock {
+      if (daemonStarted) {
+        // The path only scopes incremental discovery; the swap happens either way.
+        paths.ifEmpty { listOf(".") }.forEach { session.fileChanged(it, FileKind.SOURCE) }
+      }
+      listOf(
+          cache,
+          svgCache,
+          scrollSvgCache,
+          scrollPngCache,
+          slotsCache,
+          a11yCache,
+          annotationsCache,
+        )
+        .forEach(LruByteCache::clear)
+      breaker.reset()
+      // The first render on fresh classloaders is effectively cold again.
+      warmedUp.set(false)
+      overridesWarmedUp.set(false)
+    }
+    if (daemonStarted) broadcast.restartAll()
+    onLog("sources changed (${paths.size} file(s)): caches cleared, user classes reloaded")
+    return true
+  }
+
   /** Live shared upstream streams (one per distinct preview/overrides/codec/fps). Diagnostics. */
   override fun activeStreamCount(): Int = broadcast.activeStreamCount()
 
@@ -1678,5 +1713,10 @@ private class LruByteCache(private val maxEntries: Int) {
   @Synchronized
   fun remove(key: String) {
     map.remove(key)
+  }
+
+  @Synchronized
+  fun clear() {
+    map.clear()
   }
 }

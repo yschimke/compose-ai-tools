@@ -15,6 +15,15 @@ public interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
   public val previews: List<ServePreview>
 
+  /**
+   * The sources behind this session changed and the build has rewritten its classes (the preview
+   * server's rebuild after an edit). A live host drops every cached render and has its daemon load
+   * the new classes, so the next request renders the edit; [paths] are the changed source files,
+   * empty when unknown. Returns false for a host with nothing to reload (baked bundles, catalogs),
+   * which the server reports instead of pretending the page refreshed.
+   */
+  public fun sourcesChanged(paths: List<String>): Boolean = false
+
   /** One same-origin asset from a preview's portable spatial scene, or null when unavailable. */
   public fun spatialAsset(previewId: String, relativePath: String): ServeSpatialAsset? = null
 

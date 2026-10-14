@@ -3154,6 +3154,7 @@ public final class ee/schimke/composeai/cli/serve/RenderCircuitBreaker {
 	public final fun peekReason ()Ljava/lang/String;
 	public final fun recordFailure (Ljava/lang/String;)V
 	public final fun recordOk ()V
+	public final fun reset ()V
 	public final fun snapshot ()Lee/schimke/composeai/cli/serve/RenderBreakerSnapshot;
 }
 
@@ -3446,6 +3447,7 @@ public final class ee/schimke/composeai/cli/serve/ServeBakedTheme {
 public final class ee/schimke/composeai/cli/serve/ServeBroadcastHub {
 	public fun <init> (Lee/schimke/composeai/cli/serve/StreamOpener;)V
 	public final fun activeStreamCount ()I
+	public final fun restartAll ()I
 	public final fun subscribe (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/cli/serve/StreamHandle;
 	public static synthetic fun subscribe$default (Lee/schimke/composeai/cli/serve/ServeBroadcastHub;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/StreamHandle;
 }
@@ -3724,6 +3726,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public fun renderSvg (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun renderSvgForWeb (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun replayableThemes ()Ljava/util/List;
+	public fun sourcesChanged (Ljava/util/List;)Z
 	public fun spatialAsset (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
 	public fun stagedRcPlayers (Ljava/lang/String;)Ljava/util/List;
 	public abstract fun subscribeStream (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/cli/serve/StreamHandle;
@@ -3806,6 +3809,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun renderSvg (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public static fun renderSvgForWeb (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public static fun replayableThemes (Lee/schimke/composeai/cli/serve/ServeHost;)Ljava/util/List;
+	public static fun sourcesChanged (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/util/List;)Z
 	public static fun spatialAsset (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
 	public static fun stagedRcPlayers (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Ljava/util/List;
 	public static synthetic fun subscribeStream$default (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/StreamHandle;
@@ -4229,6 +4233,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public fun renderSvg (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun renderSvgForWeb (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun replayableThemes ()Ljava/util/List;
+	public fun sourcesChanged (Ljava/util/List;)Z
 	public fun spatialAsset (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
 	public fun stagedRcPlayers (Ljava/lang/String;)Ljava/util/List;
 	public final fun startStream (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/cli/serve/StreamHandle;

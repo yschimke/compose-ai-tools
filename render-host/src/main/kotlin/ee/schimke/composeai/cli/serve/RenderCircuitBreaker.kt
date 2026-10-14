@@ -147,6 +147,21 @@ public class RenderCircuitBreaker(
           "failed; retrying periodically. Last failure: $reason"
     }
 
+  /**
+   * Forget every outcome and close the breaker, fatal or not. For when the classes behind the
+   * failures are replaced ([ServeHost.sourcesChanged]): a linkage fault in old classes says nothing
+   * about the new ones.
+   */
+  public fun reset(): Unit =
+    synchronized(lock) {
+      window.clear()
+      openReason = null
+      fatal = false
+      openedAtEpochMillis = null
+      tripFailureRate = null
+      nextProbeAtMillis = 0
+    }
+
   /** Point-in-time state for `/status.json`, or null while the breaker has never tripped. */
   public fun snapshot(): RenderBreakerSnapshot? =
     synchronized(lock) {
