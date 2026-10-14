@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.buildartifacts.protocol.AndroidBuildArtifacts
+import ee.schimke.composeai.buildartifacts.protocol.BuildArtifacts
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -36,63 +38,111 @@ internal const val DEFAULT_BAZEL_ASPECT =
 
 /**
  * Producer contract for an aspect or an external build wrapper; paths are execution-root relative.
+ * The shape is compose-preview-contracts' `build-artifacts-protocol`; resolving it is ours.
  */
-@Serializable
-internal data class BazelArtifacts(
-  val schemaVersion: Int,
-  val target: String,
-  val configuration: String,
-  val projectJars: List<String>,
-  val runtimeJars: List<String>,
-  val sourceFiles: List<String> = emptyList(),
-  val dataFiles: List<String> = emptyList(),
-) {
-  fun resolve(executionRoot: File, workspaceRoot: File? = null): ResolvedBazelArtifacts {
-    require(schemaVersion == 1) { "Unsupported Bazel artifacts schemaVersion $schemaVersion" }
-    require(target.isNotBlank() && configuration.isNotBlank()) {
-      "Missing target/configuration identity"
+internal typealias BazelArtifacts = BuildArtifacts
+
+/** Builds [BazelArtifacts]; [schemaVersion] follows from whether [android] is set. */
+internal fun BazelArtifacts(
+  target: String,
+  configuration: String,
+  projectJars: List<String>,
+  runtimeJars: List<String>,
+  sourceFiles: List<String> = emptyList(),
+  dataFiles: List<String> = emptyList(),
+  android: AndroidBuildArtifacts? = null,
+): BazelArtifacts =
+  BuildArtifacts.Builder(target, configuration, projectJars, runtimeJars)
+    .apply {
+      this.sourceFiles = sourceFiles
+      this.dataFiles = dataFiles
+      this.android = android
     }
-    require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
-    fun resolvePaths(paths: List<String>): List<File> =
-      paths.distinct().map { path ->
-        require(path.isNotBlank()) { "Empty artifact path" }
-        val file =
-          File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
-        require(file.exists()) {
-          "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."
-        }
-        file
-      }
-    val project = resolvePaths(projectJars)
-    val runtime = resolvePaths(runtimeJars)
-    require(project.all { it.isFile && it.extension == "jar" }) {
-      "projectJars must contain compiled application jars"
+    .build()
+
+internal fun BazelArtifacts.resolve(
+  executionRoot: File,
+  workspaceRoot: File? = null,
+): ResolvedBazelArtifacts {
+  when (schemaVersion) {
+    BuildArtifacts.SCHEMA_VERSION_JVM ->
+      require(android == null) { "schemaVersion 1 artifacts cannot carry an android block" }
+    BuildArtifacts.SCHEMA_VERSION_ANDROID ->
+      require(android != null) { "schemaVersion 2 artifacts need an android block" }
+    else ->
+      throw IllegalArgumentException("Unsupported Bazel artifacts schemaVersion $schemaVersion")
+  }
+  require(target.isNotBlank() && configuration.isNotBlank()) {
+    "Missing target/configuration identity"
+  }
+  require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
+  fun resolvePath(path: String): File {
+    require(path.isNotBlank()) { "Empty artifact path" }
+    val file = File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+    require(file.exists()) {
+      "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."
     }
-    require(runtime.all { it.isFile && it.extension == "jar" }) {
-      "runtimeJars must contain JVM runtime jars"
-    }
-    require(project.all { it in runtime }) { "runtimeJars must include every project jar" }
-    return ResolvedBazelArtifacts(
-      this,
-      project,
-      runtime,
-      resolvePaths(sourceFiles).mapIndexed { index, file ->
-        val path = sourceFiles.distinct()[index]
-        val local = workspaceRoot?.resolve(path)
-        if (
-          !File(path).isAbsolute &&
-            !path.startsWith("bazel-out/") &&
-            !path.startsWith("external/") &&
-            !path.startsWith("../") &&
-            local?.isFile == true
-        )
-          local.absoluteFile
-        else file
-      },
-      resolvePaths(dataFiles),
+    return file
+  }
+  fun resolvePaths(paths: List<String>): List<File> = paths.distinct().map(::resolvePath)
+  val project = resolvePaths(projectJars)
+  val runtime = resolvePaths(runtimeJars)
+  require(project.all { it.isFile && it.extension == "jar" }) {
+    "projectJars must contain compiled application jars"
+  }
+  require(runtime.all { it.isFile && it.extension == "jar" }) {
+    "runtimeJars must contain JVM runtime jars"
+  }
+  require(project.all { it in runtime }) { "runtimeJars must include every project jar" }
+  val resolvedAndroid = android?.let { block ->
+    require(block.packageName.isNotBlank()) { "android.packageName is required" }
+    // Placed ahead of every library's non-final R classes by the launcher, whether or not the
+    // producer also listed it in runtimeJars.
+    val rJar = block.rJar?.let(::resolvePath)
+    ResolvedAndroidArtifacts(
+      packageName = block.packageName,
+      resourceApk =
+        resolvePath(block.resourceApk).also {
+          require(it.isFile) { "android.resourceApk is not a file: $it" }
+        },
+      manifest =
+        resolvePath(block.manifest).also {
+          require(it.isFile) { "android.manifest is not a file: $it" }
+        },
+      rJar = rJar,
+      compileSdk = block.compileSdk,
     )
   }
+  return ResolvedBazelArtifacts(
+    this,
+    project,
+    runtime,
+    resolvePaths(sourceFiles).mapIndexed { index, file ->
+      val path = sourceFiles.distinct()[index]
+      val local = workspaceRoot?.resolve(path)
+      if (
+        !File(path).isAbsolute &&
+          !path.startsWith("bazel-out/") &&
+          !path.startsWith("external/") &&
+          !path.startsWith("../") &&
+          local?.isFile == true
+      )
+        local.absoluteFile
+      else file
+    },
+    resolvePaths(dataFiles),
+    resolvedAndroid,
+  )
 }
+
+/** The [AndroidBuildArtifacts] block with every path resolved and materialized. */
+internal data class ResolvedAndroidArtifacts(
+  val packageName: String,
+  val resourceApk: File,
+  val manifest: File,
+  val rJar: File?,
+  val compileSdk: Int?,
+)
 
 internal data class ResolvedBazelArtifacts(
   val metadata: BazelArtifacts,
@@ -100,6 +150,7 @@ internal data class ResolvedBazelArtifacts(
   val runtimeJars: List<File>,
   val sourceFiles: List<File>,
   val dataFiles: List<File>,
+  val android: ResolvedAndroidArtifacts? = null,
 )
 
 internal val bazelJson = Json {

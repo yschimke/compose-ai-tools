@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.AndroidBundleLaunch
+import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
@@ -180,7 +183,7 @@ internal class BazelCommand(
           "--reuse-renders requires imported artifacts and render, show or bundle"
         }
         if (operation == "prepare") {
-          println(prepareBazelDesktopDaemon(artifacts, prepared, root).absolutePath)
+          println(prepareBazelDaemon(artifacts, prepared, root).absolutePath)
         } else {
           val noRender = operation == "bundle" && "--no-render" in args
           require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
@@ -192,7 +195,7 @@ internal class BazelCommand(
           ) {
             // Every selected capture was rendered from these exact artifacts.
           } else {
-            val descriptor = prepareBazelDesktopDaemon(artifacts, prepared, root)
+            val descriptor = prepareBazelDaemon(artifacts, prepared, root)
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
               prepared,
@@ -203,6 +206,9 @@ internal class BazelCommand(
             )
           }
           if (operation == "bundle" || "--bundle" in args) {
+            require(artifacts.android == null) {
+              "Bundles of Android Bazel targets are not supported yet; render or list them instead"
+            }
             val locks =
               args
                 .flagValuesAll("--maven-install")
@@ -445,8 +451,11 @@ internal class BazelCommand(
       --timeout <seconds>        Build/render deadline (default 300).
       --project <workspace>      Default current directory.
 
-      list only builds/discovers. prepare/render provision the existing desktop daemon on first use.
-      Desktop JVM rendering is supported; Android resources/Robolectric and iOS/Wasm are separate.
+      list only builds/discovers. prepare/render provision the matching daemon on first use.
+      Desktop JVM targets render on the desktop daemon. Android targets (artifacts schema 2, from
+      @rules_compose_preview//:android.bzl%compose_preview_android_aspect) render on Robolectric;
+      set $ROBOLECTRIC_DEPS_DIR_ENV to pre-provisioned android-all jars to stay offline.
+      iOS/Wasm are separate.
       Build arguments/startup flags and output-group names can be configured for internal systems.
       """
         .trimIndent()
@@ -499,6 +508,8 @@ internal fun prepareBazelPreviews(
         failOnEmpty = true,
         catalogRenderSupported = false,
         animatedPreviewApngSupported = true,
+        // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.
+        mergedManifest = artifacts.android?.manifest,
       )
     )
   check(outcome is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $outcome" }
@@ -523,7 +534,13 @@ internal fun prepareBazelPreviews(
  */
 internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): String {
   val digest = MessageDigest.getInstance("SHA-256")
-  (artifacts.runtimeJars + artifacts.dataFiles)
+  (artifacts.runtimeJars +
+      artifacts.dataFiles +
+      listOfNotNull(
+        artifacts.android?.rJar,
+        artifacts.android?.resourceApk,
+        artifacts.android?.manifest,
+      ))
     .flatMap {
       if (it.isDirectory) it.walkTopDown().filter(File::isFile).sorted().toList() else listOf(it)
     }
@@ -551,6 +568,102 @@ internal fun claimBazelCaptures(prepared: PreparedBazelPreviews, fingerprint: St
       .forEach { directory.resolve(it.renderOutput).delete() }
   }
   prepared.capturesFingerprintFile().writeText(fingerprint)
+}
+
+/** Writes the launch descriptor for the renderer the artifacts call for. */
+internal fun prepareBazelDaemon(
+  artifacts: ResolvedBazelArtifacts,
+  prepared: PreparedBazelPreviews,
+  root: File,
+): File =
+  if (artifacts.android != null) prepareBazelAndroidDaemon(artifacts, prepared, root)
+  else prepareBazelDesktopDaemon(artifacts, prepared, root)
+
+/** Pre-provisioned Robolectric runtime jars (`android-all-instrumented-*.jar`); unset fetches. */
+internal const val ROBOLECTRIC_DEPS_DIR_ENV = "COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR"
+
+/**
+ * Robolectric resolves `android-all-instrumented` from Maven Central on first render. With
+ * [ROBOLECTRIC_DEPS_DIR_ENV] set it runs offline against that directory instead, so a closed
+ * network or a build that must not fetch at render time can supply the jars itself.
+ */
+internal fun robolectricOfflineProperties(
+  dependencyDir: String? = System.getenv(ROBOLECTRIC_DEPS_DIR_ENV)
+): Map<String, String> {
+  if (dependencyDir.isNullOrBlank()) return emptyMap()
+  val dir = File(dependencyDir).absoluteFile
+  require(dir.isDirectory) { "$ROBOLECTRIC_DEPS_DIR_ENV is not a directory: $dir" }
+  return mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to dir.path)
+}
+
+/**
+ * The Robolectric daemon launch for an Android target, built from the linked resources the
+ * artifacts carry rather than from AGP's unit-test config. The resource APK, manifest and package
+ * reach Robolectric through a synthesized `test_config.properties`, exactly as the bundle lanes do
+ * ([AndroidBundleResources]); the final-ID R classes lead both the daemon and the user classpath.
+ */
+internal fun prepareBazelAndroidDaemon(
+  artifacts: ResolvedBazelArtifacts,
+  prepared: PreparedBazelPreviews,
+  root: File,
+): File {
+  val android = requireNotNull(artifacts.android) { "Not an Android target" }
+  DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
+  val daemonJars = locateBundleSidecarJars("lib-daemon-android")
+  check(daemonJars.isNotEmpty()) {
+    "Android daemon sidecar missing; looked in ${bundleSidecarSearchDescription("lib-daemon-android")}"
+  }
+  val androidJar =
+    checkNotNull(
+      AndroidBundleLaunch.resolveAndroidJar(
+        localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile }
+      )
+    ) {
+      "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
+    }
+  val output = prepared.manifestFile.parentFile
+  val resources =
+    AndroidBundleResources.daemonClasspath(
+      AndroidBundleResources.Extracted(android.resourceApk, android.manifest, android.rJar),
+      output.resolve("android-resources"),
+      android.packageName,
+    )
+  val userClasspath =
+    (listOfNotNull(android.rJar) + artifacts.runtimeJars).distinct().joinToString(
+      File.pathSeparator
+    ) {
+      it.absolutePath
+    }
+  val launch = AndroidBundleLaunch()
+  val descriptor =
+    DaemonLaunchBuilder.build(
+      modulePath = artifacts.metadata.target,
+      variant = artifacts.metadata.configuration,
+      mainClass = "ee.schimke.composeai.daemon.DaemonMain",
+      classpath = (resources + daemonJars + androidJar).map { it.absolutePath },
+      jvmArgs = launch.jvmArgs() + "-Xmx2048m",
+      systemProperties =
+        launch.robolectricSystemProperties() +
+          robolectricOfflineProperties() +
+          mapOf(
+            "composeai.daemon.protocolVersion" to "1",
+            "composeai.daemon.modulePath" to artifacts.metadata.target,
+            "composeai.daemon.moduleId" to artifacts.metadata.target,
+            "composeai.daemon.moduleProjectDir" to root.absolutePath,
+            "composeai.daemon.workspaceRoot" to root.absolutePath,
+            "composeai.daemon.previewsJsonPath" to prepared.manifestFile.absolutePath,
+            "composeai.harness.previewsManifest" to prepared.manifestFile.absolutePath,
+            "composeai.render.manifest" to prepared.manifestFile.absolutePath,
+            "composeai.render.outputDir" to output.resolve("renders").absolutePath,
+            "composeai.daemon.userClassDirs" to userClasspath,
+            "composeai.daemon.idleTimeoutMs" to "5000",
+          ),
+      workingDirectory = root.absolutePath,
+      manifestPath = prepared.manifestFile.absolutePath,
+    )
+  return output.resolve("daemon-launch.json").also {
+    it.writeText(DaemonLaunchBuilder.encode(descriptor))
+  }
 }
 
 internal fun prepareBazelDesktopDaemon(

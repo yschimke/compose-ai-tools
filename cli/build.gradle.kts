@@ -146,6 +146,8 @@ dependencies {
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(libs.composeai.common.io)
+  // Schema of the artifacts file the Bazel aspect writes; the CLI resolves and validates it.
+  implementation(libs.composeai.build.artifacts.protocol)
 
   implementation(libs.kotlinx.serialization.json)
 

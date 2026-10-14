@@ -124,7 +124,6 @@ class BazelBundleTest {
       root.resolve("greeting.png").writeBytes(png)
       val metadata =
         BazelArtifacts(
-          1,
           "//:app",
           "desktop",
           listOf(app.path),

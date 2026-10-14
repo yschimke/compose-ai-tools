@@ -110,12 +110,26 @@ public object AndroidBundleResources {
     useConsumerApplication: Boolean = false,
   ): List<File> {
     val res = extract(zipBytes, File(workDir, "android")) ?: return emptyList()
+    return daemonClasspath(res, workDir, applicationPackage, useConsumerApplication)
+  }
+
+  /**
+   * [daemonClasspath] for resources already on disk, e.g. linked by a Bazel aspect rather than
+   * packed in a bundle: synthesize the test config under `<workDir>/test-config` and return the
+   * classpath entries to prepend to the daemon's `-cp`.
+   */
+  public fun daemonClasspath(
+    res: Extracted,
+    workDir: File,
+    applicationPackage: String?,
+    useConsumerApplication: Boolean = false,
+  ): List<File> {
     // Strip `<application android:name>` (see [sanitizeManifestForDaemon]): Robolectric resolves
     // the declared class at bootstrap, and an unpacked custom Application aborts the whole sandbox
     // pool. Left untouched when the daemon opts into the consumer Application.
     val manifestForConfig =
       if (useConsumerApplication) res.mergedManifest
-      else sanitizeManifestForDaemon(res.mergedManifest)
+      else sanitizeManifestForDaemon(res.mergedManifest, File(workDir, "android"))
     val testConfigDir =
       writeTestConfig(
         File(workDir, "test-config"),
@@ -174,15 +188,15 @@ public object AndroidBundleResources {
   private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
   /**
-   * A manifest for the daemon whose `<application>` has no `android:name`, written beside the
-   * original as `AndroidManifest-daemon.xml`. Returns [mergedManifest] unchanged when there's
-   * nothing to strip or it can't be parsed. Other attributes and children are kept; they resolve
-   * lazily.
+   * A manifest for the daemon whose `<application>` has no `android:name`, written to [outputDir]
+   * as `AndroidManifest-daemon.xml`. Returns [mergedManifest] unchanged when there's nothing to
+   * strip or it can't be parsed. Other attributes and children are kept; they resolve lazily.
    */
-  private fun sanitizeManifestForDaemon(mergedManifest: File): File {
+  private fun sanitizeManifestForDaemon(mergedManifest: File, outputDir: File): File {
     val original = runCatching { mergedManifest.readText() }.getOrNull() ?: return mergedManifest
     val stripped = stripApplicationName(original) ?: return mergedManifest
-    val dest = File(mergedManifest.parentFile, "AndroidManifest-daemon.xml")
+    // Written under [outputDir], not beside the original: a build tool's outputs are read-only.
+    val dest = File(outputDir.apply { mkdirs() }, "AndroidManifest-daemon.xml")
     return runCatching {
         dest.writeText(stripped)
         System.err.println(

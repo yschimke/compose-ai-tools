@@ -168,7 +168,6 @@ class BazelBuildTest {
       root.resolve("app.jar").writeText("")
       val metadata =
         BazelArtifacts(
-          1,
           "//:app",
           "bazel-out/config/bin",
           listOf("app.jar"),
@@ -184,9 +183,17 @@ class BazelBuildTest {
         listOf(root.resolve("app.jar"), root.resolve("runtime.jar")),
         metadata.resolve(root).runtimeJars,
       )
-      assertFailsWith<IllegalArgumentException> { metadata.copy(schemaVersion = 2).resolve(root) }
+      // Schema 2 promises an android block; an unknown schema is refused rather than guessed at.
+      val encoded = bazelJson.encodeToString(metadata)
+      listOf("\"schemaVersion\": 2", "\"schemaVersion\": 3").forEach { version ->
+        assertFailsWith<IllegalArgumentException> {
+          bazelJson
+            .decodeFromString<BazelArtifacts>(encoded.replace("\"schemaVersion\": 1", version))
+            .resolve(root)
+        }
+      }
       assertFailsWith<IllegalArgumentException> {
-        metadata.copy(runtimeJars = listOf("runtime.jar")).resolve(root)
+        metadata.newBuilder().apply { runtimeJars = listOf("runtime.jar") }.build().resolve(root)
       }
     } finally {
       root.deleteRecursively()
@@ -202,7 +209,7 @@ class BazelBuildTest {
         root.resolve("meta.json").apply {
           writeText(
             bazelJson.encodeToString(
-              BazelArtifacts(1, "//:app", "config", listOf("app.jar"), listOf("app.jar"))
+              BazelArtifacts("//:app", "config", listOf("app.jar"), listOf("app.jar"))
             )
           )
         }
@@ -316,7 +323,6 @@ class BazelBuildTest {
       }
       val artifacts =
         BazelArtifacts(
-          1,
           "//:app",
           "config",
           listOf("app.jar"),
@@ -345,7 +351,6 @@ class BazelBuildTest {
           writeText(
             bazelJson.encodeToString(
               BazelArtifacts(
-                1,
                 "@@canonical+//app:app",
                 "config",
                 listOf("app.jar"),
