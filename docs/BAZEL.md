@@ -187,7 +187,30 @@ includes every project jar and the complete runtime-only dependency closure.
 `sourceFiles` maps source/generated compilation inputs. `dataFiles` records extra
 runfiles, which the aspect also requests for materialization.
 
-This is a small CLI-owned artifact contract, not the full executable/NDJSON driver
+The shape is published as `ee.schimke.composeai:build-artifacts-protocol`
+(compose-preview-contracts), so producers and the CLI agree on it without copying
+types. Schema 1 is a JVM/Desktop target. Schema 2 adds an `android` block:
+
+```json
+{
+  "schemaVersion": 2,
+  "...": "the schema 1 fields",
+  "android": {
+    "packageName": "com.example.ui",
+    "resourceApk": "bazel-out/<configured-key>/bin/app/_compose_preview/ui/resources.ap_",
+    "manifest": "app/AndroidManifest.xml",
+    "rJar": "bazel-out/<configured-key>/bin/app/_compose_preview/ui/r-final.jar",
+    "compileSdk": 36
+  }
+}
+```
+
+`resourceApk` is a standalone linked resource APK, `manifest` the manifest it was
+linked against, and `rJar` R classes carrying that APK's final IDs; the CLI puts
+it ahead of every library's non-final R classes. A schema-1 file with an `android`
+block, or schema 2 without one, is refused.
+
+This is not the full executable/NDJSON driver
 protocol proposed in [#5945](https://github.com/yschimke/compose-ai-tools/issues/5945).
 That broader handshake/list-targets protocol remains separate work after the
 internal API review. Unknown build systems can use artifact import now.
@@ -212,14 +235,38 @@ runtime jars on the daemon's user classpath, matching bundle replay isolation.
 JAR-packaged JVM resources work. The adapter records/materializes loose runfiles
 but does not synthesize arbitrary Bazel runfiles trees or configure custom JNI
 library paths. Applications relying on those layouts may need an adapted launcher.
-Android resource APKs/manifests/R classes, Robolectric configuration, CMP iOS/Wasm,
-watch/rebuild subscriptions and automatic whole-workspace target enumeration are not implemented here.
+CMP iOS/Wasm, watch/rebuild subscriptions and automatic whole-workspace target
+enumeration are not implemented here.
 An already-building Compose JVM target is required. Bytecode discovery also needs
 an annotation retained in compiled classes, such as modern
 `androidx.compose.ui.tooling.preview.Preview`. The legacy
 `androidx.compose.desktop.ui.tooling.preview.Preview` is source-retained and cannot
 be reconstructed from compiled jars; migrate it or supply a prepared manifest
 through the existing non-Gradle RenderSession API.
+
+## Android targets (experimental)
+
+Schema-2 artifacts render on the Robolectric daemon instead of the desktop one.
+The linked APK, manifest and package reach Robolectric through a synthesized
+`test_config.properties`, as in the bundle lanes, and previews run on
+`android.app.Application` rather than the app's own. Point the driver at the
+Android aspect from [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel),
+which links an `android_library`'s resources itself:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "//app:ui",
+  "aspect": "@rules_compose_preview//:android.bzl%compose_preview_android_aspect"
+}
+```
+
+The Android daemon (`lib-daemon-android`) and `android.jar` (from `ANDROID_HOME`,
+`ANDROID_SDK_ROOT` or `local.properties`) are resolved as for `bundle daemon`.
+Robolectric fetches `android-all-instrumented` from Maven Central on first render;
+set `COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR` to a directory holding those jars to
+run offline (`robolectric.offline`). `bazel bundle` refuses Android targets for
+now; `list`, `prepare`, `render` and `show` support them.
 
 ## Verification
 

@@ -17,7 +17,7 @@ class BazelCaptureReuseTest {
     try {
       val app = root.resolve("app.jar").apply { writeText("first build") }
       val artifacts =
-        BazelArtifacts(1, "//:app", "desktop", listOf(app.path), listOf(app.path)).resolve(root)
+        BazelArtifacts("//:app", "desktop", listOf(app.path), listOf(app.path)).resolve(root)
       val manifest =
         PreviewManifest(
           "//:app",

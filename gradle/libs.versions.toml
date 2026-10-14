@@ -359,7 +359,9 @@ coil3 = "3.5.0"
 # projections write (docs/design/TYPED_STRUCTURAL_TEMPLATES.md).
 # 3.31.0 carries a catalog's new-design `description` and `primary` on the authored policy and the
 # published `statusSemantics.newDesign`.
-composeai-contracts = "3.31.0"
+# 3.32.0 adds `build-artifacts-protocol`, the artifacts file the Bazel aspects write (schema 2
+# carries Android resources).
+composeai-contracts = "3.32.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -491,6 +493,8 @@ composeai-data-layoutinspector-connector = { module = "ee.schimke.composeai:data
 composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core" }
 composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core" }
 composeai-common-io = { module = "ee.schimke.composeai:common-io" }
+# The artifacts file a Bazel aspect or other non-Gradle build integration writes for one target.
+composeai-build-artifacts-protocol = { module = "ee.schimke.composeai:build-artifacts-protocol" }
 # `ServeHost.parityIssues()` — the shape a catalog publishes for component-parity issues. Contracts
 # (layer 0) owns the wire shape; `:render-host` owns validation and storage over it.
 composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol" }
