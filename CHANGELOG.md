@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.60.0](https://github.com/yschimke/compose-ai-tools/compare/v2.59.0...v2.60.0) (2026-10-14)
+
+
+### Features
+
+* add `bundle prepare` to unpack a bundle into a daemon workspace ([#5975](https://github.com/yschimke/compose-ai-tools/issues/5975)) ([b8d5f79](https://github.com/yschimke/compose-ai-tools/commit/b8d5f79da14ef45da817e39ad77eabeeb8ae4db5))
+* **bazel:** browse and serve --discover in Bazel workspaces ([#5974](https://github.com/yschimke/compose-ai-tools/issues/5974)) ([dac5fe5](https://github.com/yschimke/compose-ai-tools/commit/dac5fe55565ebdeb04067276d0f8b53fdd4948bb))
+* reload a preview session's classes after an edit ([#5979](https://github.com/yschimke/compose-ai-tools/issues/5979)) ([ff64af4](https://github.com/yschimke/compose-ai-tools/commit/ff64af4c9146f0a0dbc0268a2902e2018b61e706))
+
+
+### Bug Fixes
+
+* **deps:** update androidx-wear to v1.7.1 ([#5967](https://github.com/yschimke/compose-ai-tools/issues/5967)) ([fde5e3f](https://github.com/yschimke/compose-ai-tools/commit/fde5e3fce78152929d50b40ba13e64f49672eb48))
+* **deps:** update dependency @design-parity/export-driver to v1.15.0 ([#5973](https://github.com/yschimke/compose-ai-tools/issues/5973)) ([c4f7d66](https://github.com/yschimke/compose-ai-tools/commit/c4f7d66a20de63d8649821cf798a7d7168e3b5aa))
+* **deps:** update dependency androidx.collection:collection to v1.7.0 ([#5970](https://github.com/yschimke/compose-ai-tools/issues/5970)) ([4fd0c6b](https://github.com/yschimke/compose-ai-tools/commit/4fd0c6b53947acc70c64614cf2979cdfa4462788))
+* **deps:** update dependency androidx.compose.material3:material3 to v1.5.0-beta01 ([#5968](https://github.com/yschimke/compose-ai-tools/issues/5968)) ([69bc417](https://github.com/yschimke/compose-ai-tools/commit/69bc417fcd14dff47246c56a3b00ec54a4f0be59))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.16.2 ([#5949](https://github.com/yschimke/compose-ai-tools/issues/5949)) ([dda2a36](https://github.com/yschimke/compose-ai-tools/commit/dda2a36e7d8aee13ba10f22697161251f86c3603))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.8.1 ([#5969](https://github.com/yschimke/compose-ai-tools/issues/5969)) ([14f6e53](https://github.com/yschimke/compose-ai-tools/commit/14f6e5301dd2656214393b266d3b49cbc651ad61))
+* land the review fixes that missed [#5975](https://github.com/yschimke/compose-ai-tools/issues/5975) and [#5977](https://github.com/yschimke/compose-ai-tools/issues/5977) ([#5978](https://github.com/yschimke/compose-ai-tools/issues/5978)) ([783417a](https://github.com/yschimke/compose-ai-tools/commit/783417a776e6505d13a2842eb2a480ca43216711))
+* **plugin:** resolve theme-pin at the version it is published at ([#5976](https://github.com/yschimke/compose-ai-tools/issues/5976)) ([91852aa](https://github.com/yschimke/compose-ai-tools/commit/91852aaeecbe98eded404ac17eb6fd3fb3b4213b))
+
 ## [2.59.0](https://github.com/yschimke/compose-ai-tools/compare/v2.58.0...v2.59.0) (2026-10-14)
 
 
