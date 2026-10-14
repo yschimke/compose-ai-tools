@@ -21,8 +21,7 @@ import okio.Path.Companion.toPath
  * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] still keeps its own copy, since it is a
  * separate build with no daemon dependency.
  *
- * Not yet done: bundles don't record the consumer's `compileSdk`, and the one-shot lane packs no
- * merged manifest (only the daemon lane uses [AndroidBundleResources]).
+ * Not yet done: bundles don't record the consumer's `compileSdk`.
  */
 public class AndroidBundleLaunch(
   sdkLevel: Int = DEFAULT_SDK,

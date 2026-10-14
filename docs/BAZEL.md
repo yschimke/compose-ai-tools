@@ -265,8 +265,19 @@ The Android daemon (`lib-daemon-android`) and `android.jar` (from `ANDROID_HOME`
 `ANDROID_SDK_ROOT` or `local.properties`) are resolved as for `bundle daemon`.
 Robolectric fetches `android-all-instrumented` from Maven Central on first render;
 set `COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR` to a directory holding those jars to
-run offline (`robolectric.offline`). `bazel bundle` refuses Android targets for
-now; `list`, `prepare`, `render` and `show` support them.
+run offline (`robolectric.offline`). A first build on a cold cache compiles
+rules_android's own tools (protobuf included) and can run well past the default
+300-second `--timeout`; raise it for that run (the contrib proof uses
+`--timeout 2400`).
+
+`bazel bundle` packs an Android target as a `backend="android"` bundle: the linked
+APK, manifest and final-ID R classes go under `android/`, where a Gradle Android
+bundle carries them, so `bundle render` and `bundle daemon` replay both the same
+way. The R jar travels only there, not on the bundle's user classpath.
+
+The end-to-end proof is compose-ai-contrib's `bazel-android-render` job: it builds
+the rules_android Compose sample in `bazel-apk/` through this driver and renders a
+preview that reads string and colour resources on the Robolectric daemon.
 
 ## Verification
 

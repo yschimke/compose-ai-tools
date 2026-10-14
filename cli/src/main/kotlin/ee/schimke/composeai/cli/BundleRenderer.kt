@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
+import ee.schimke.composeai.bundle.AndroidBundleResources
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
@@ -113,7 +114,8 @@ class BundleRenderer(
 
     return when (manifest.backend) {
       "desktop" -> renderDesktop(classesDir, libJars, manifest, previews)
-      "android" -> renderAndroid(workDir, classesDir, libJars, manifest, previews, selectedJson)
+      "android" ->
+        renderAndroid(workDir, zipBytes, classesDir, libJars, manifest, previews, selectedJson)
       else ->
         throw UnsupportedOperationException(
           "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')"
@@ -193,6 +195,7 @@ class BundleRenderer(
    */
   private fun renderAndroid(
     workDir: File,
+    zipBytes: ByteArray,
     classesDir: File,
     libJars: List<File>,
     manifest: BundleReader.Manifest,
@@ -251,10 +254,17 @@ class BundleRenderer(
     val previewsJsonFile =
       workDir.resolve("previews.json").apply { writeText(rendererPreviewsJson) }
 
-    // Synthesized robolectric.properties first, then consumer classes and deps, the renderer
-    // runtime, and android.jar last (a discovery stub; Robolectric supplies the real framework).
+    // Synthesized robolectric.properties first, then the app's resource carriage, consumer classes
+    // and deps, the renderer runtime, and android.jar last (a discovery stub; Robolectric supplies
+    // the real framework).
     val classpath =
-      (listOf(configRoot, classesDir) + libJars + resolvedJars + rendererJars + listOf(androidJar))
+      (listOf(configRoot) +
+          androidResourceCarriage(zipBytes, workDir, manifest) +
+          listOf(classesDir) +
+          libJars +
+          resolvedJars +
+          rendererJars +
+          listOf(androidJar))
         .joinToString(File.pathSeparator) { it.absolutePath }
 
     outputDir.mkdirs()
@@ -481,6 +491,23 @@ class BundleRenderer(
   }
 
   companion object {
+    /**
+     * The `android/` payload (resource APK, manifest, final-ID R classes) as `-cp` entries, through
+     * the same [AndroidBundleResources] wiring the daemon lane uses: the synthesized
+     * `test_config.properties` is how Robolectric finds the APK, so `stringResource` and `R`
+     * resolve. Empty for a bundle without that payload.
+     */
+    internal fun androidResourceCarriage(
+      zipBytes: ByteArray,
+      workDir: File,
+      manifest: BundleReader.Manifest,
+    ): List<File> =
+      AndroidBundleResources.daemonClasspath(
+        zipBytes,
+        workDir,
+        manifest.androidResources?.applicationPackage,
+      )
+
     /**
      * [raw] `previews.json` with previews whose `id` is in [drop] removed, other fields preserved
      * verbatim (JSON tree, not the lossy model).

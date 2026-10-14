@@ -1,10 +1,16 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.buildartifacts.protocol.AndroidBuildArtifacts
+import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
+import ee.schimke.composeai.discovery.Capture
+import ee.schimke.composeai.discovery.PreviewInfo
 import ee.schimke.composeai.discovery.PreviewManifest
 import java.io.File
 import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -175,5 +181,84 @@ class BazelAndroidTest {
         userClasses.split(File.pathSeparator),
       )
       assertTrue("robolectric.offline" !in descriptor.systemProperties)
+    }
+
+  @Test
+  fun `android bundles carry the linked resources where the bundle replay reads them`() =
+    fixture { root ->
+      val artifacts = androidArtifacts(root)
+      fun jar(path: String, entry: String) =
+        ZipOutputStream(root.resolve(path).outputStream()).use {
+          it.putNextEntry(ZipEntry(entry))
+          it.write(entry.toByteArray())
+          it.closeEntry()
+        }
+      jar("bin/_compose_preview/ui/r-final.jar", "com/example/ui/R.class")
+      jar("bin/ui.jar", "com/example/ui/GreetingKt.class")
+      jar("external/compose.jar", "androidx/compose/ui/Modifier.class")
+      root.resolve("bin/_compose_preview/ui/resources.ap_").writeText("linked")
+      val id = "com.example.ui.GreetingKt.Greeting"
+      val previews =
+        PreviewManifest(
+          "//ui",
+          "bin",
+          listOf(
+            PreviewInfo(
+              id,
+              "Greeting",
+              "com.example.ui.GreetingKt",
+              captures = listOf(Capture(renderOutput = "greeting.png")),
+            )
+          ),
+        )
+      val previewsFile =
+        root.resolve("out/previews.json").apply {
+          parentFile.mkdirs()
+          writeText(bazelJson.encodeToString(previews))
+        }
+      val bundle = root.resolve("bundle.png")
+      val manifest =
+        writeBazelBundle(
+          artifacts.resolve(root),
+          PreparedBazelPreviews(previews, previewsFile),
+          setOf(id),
+          emptyList(),
+          bundle,
+          includeRenders = false,
+        )
+
+      assertEquals("android", manifest.backend)
+      assertEquals("com.example.ui", manifest.androidResources?.applicationPackage)
+      // The R classes ride in the resource carriage, never twice on the user classpath.
+      assertEquals(
+        1,
+        manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Embedded>().size,
+      )
+      val extracted =
+        checkNotNull(
+          AndroidBundleResources.extract(
+            BundleReader.extractZipBytes(bundle),
+            root.resolve("replay"),
+          )
+        )
+      assertEquals("linked", extracted.resourceApk.readText())
+      assertTrue("com.example.ui.App" in extracted.mergedManifest.readText())
+      assertTrue(checkNotNull(extracted.rClassesJar).isFile)
+
+      // The one-shot `bundle render` lane restores the same carriage, R classes included.
+      val carriage =
+        BundleRenderer.androidResourceCarriage(
+          BundleReader.extractZipBytes(bundle),
+          root.resolve("one-shot"),
+          manifest,
+        )
+      assertTrue(
+        carriage
+          .first()
+          .resolve("com/android/tools/test_config.properties")
+          .readText()
+          .contains("android_custom_package=com.example.ui")
+      )
+      assertEquals("r-classes.jar", carriage.last().name)
     }
 }

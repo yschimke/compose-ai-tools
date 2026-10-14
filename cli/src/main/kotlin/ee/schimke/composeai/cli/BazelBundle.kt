@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.producer.BazelAndroidResources
 import ee.schimke.composeai.bundle.producer.writeBazelBundle as produceBundle
 import java.io.File
 
@@ -37,5 +38,8 @@ internal fun writeBazelBundle(
     lockFiles,
     output,
     embedDeps,
+    artifacts.android?.let {
+      BazelAndroidResources(it.packageName, it.resourceApk, it.manifest, it.rJar)
+    },
   )
 }
