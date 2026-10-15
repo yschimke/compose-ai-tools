@@ -331,6 +331,28 @@ declares. `"androidCompileSdk": 36` in `.compose-preview/bazel.json` overrides a
 these. With none, it renders on the default SDK (35). Each render logs the SDK it
 uses and where the level came from, so a default is never silent.
 
+Renders pin the wall clock to `10:10` (the daemon's `composeai.render.fixedTime`), and that
+includes a target's own `System.currentTimeMillis()` calls: classes under `appClockPackages` —
+class-name prefixes matched with `startsWith`, defaulting to the target's `packageName` plus `.` —
+read the pinned instant, as a Gradle module's do under `composePreview.pinAppClock`. Pinning has
+Robolectric instrument the target's own classes; if a preview misbehaves under that, turn it off
+in `.compose-preview/bazel.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "//app:ui",
+  "pinAppClock": false
+}
+```
+
+To pin more than the target's own package, list the prefixes instead:
+`"appClockPackages": ["com.example.app.", "com.example.shared."]`. It reaches the daemon as
+`composeai.render.clockPackages`. It cannot pin `java.time.*.now()`, `Calendar` or `Date()`, which
+read the clock inside the JDK, and the daemon's `fixedTime=off` still gives the host clock. With
+`mergeAndroid`, the default prefix is the merged APK's package (the first target's), so list
+sibling targets' packages in `appClockPackages`.
+
 A first build on a cold cache compiles
 rules_android's own tools (protobuf included) and can run well past the default
 300-second `--timeout`; raise it for that run (the contrib proof uses

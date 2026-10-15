@@ -3,6 +3,7 @@ package ee.schimke.composeai.plugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
@@ -59,6 +60,23 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val buildJavaMajor: Property<Int>
 
+  /**
+   * The consumer's own class-name prefixes whose `System.currentTimeMillis()` reads the pinned
+   * preview clock (`composePreview.pinAppClock`, on by default; the plugin wires the module
+   * namespace here). Empty (the task's own default, and `pinAppClock = false`) writes exactly the
+   * files this task wrote before the knob existed. Non-empty appends them to
+   * `instrumentedPackages=` and registers [CONSUMER_CLOCK_SHADOW] in the composable and app-tour
+   * lanes; the render JVM also needs `composeai.render.clockPackages`, which the caller passes.
+   *
+   * The daemon lane's file is left alone: the daemon reads the same list from its
+   * `composeai.render.clockPackages` launch property and configures its sandbox itself.
+   */
+  @get:Input abstract val clockPackages: ListProperty<String>
+
+  init {
+    clockPackages.convention(emptyList())
+  }
+
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
   @TaskAction
@@ -77,17 +95,23 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // - `ShadowSdkGestureInputManager`: Wear M3 one-handed gestures work off-watch.
     // `ShadowContextWrapperPermissionTracker` is deliberately daemon-only (#3698);
     // `GenerateRobolectricPropertiesTaskTest` pins its absence.
+    // - `ShadowConsumerClock`, under `pinAppClock` (the default): the consumer's own
+    //   `System.currentTimeMillis()` reads the pinned clock; pairs with [clockPackages] being
+    //   instrumented below.
+    val clock = clockPackages.get()
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
         "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
         "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
-        "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager"
+        "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager" +
+        (if (clock.isEmpty()) "" else ",$CONSUMER_CLOCK_SHADOW")
     // Robolectric can only shadow classes it instruments. Entries are class-name prefixes, so
     // naming `ResourcesKt` instruments just the class `ShadowWearTimeSource` targets.
     val instrumentedPackagesLine =
       "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
-        "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl"
+        "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl" +
+        clock.joinToString("") { ",$it" }
     // Not on `@Config`: JUnit resolving `@Config.application()`'s default during discovery can
     // throw
     // `ClassNotFoundException: android.app.Application` (#142).
@@ -245,6 +269,13 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     else ""
 
   companion object {
+    /**
+     * Registered under `pinAppClock`; ships in compose-preview-daemon's renderer from the release
+     * after 3.17.1.
+     */
+    internal const val CONSUMER_CLOCK_SHADOW: String =
+      "ee.schimke.composeai.renderer.ShadowConsumerClock"
+
     /**
      * The `sdk=` this task resolved, read back from its composable-lane file under [outputDir], or
      * null before it has run. The daemon reads it as `composeai.daemon.sandboxSdk`: its sandbox

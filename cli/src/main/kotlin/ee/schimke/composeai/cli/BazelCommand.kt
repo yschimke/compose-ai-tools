@@ -233,7 +233,15 @@ internal class BazelCommand(
       }
       "prepare" -> {
         selections.forEach { (artifacts, prepared) ->
-          println(prepareBazelDaemon(artifacts, prepared, root).absolutePath)
+          println(
+            prepareBazelDaemon(
+                artifacts,
+                prepared,
+                root,
+                bazelClockPackages(config, artifacts.android),
+              )
+              .absolutePath
+          )
         }
       }
       "show",
@@ -271,7 +279,13 @@ internal class BazelCommand(
           ) {
             // Every selected capture was rendered from these exact artifacts.
           } else {
-            val descriptor = prepareBazelDaemon(artifacts, prepared, root)
+            val descriptor =
+              prepareBazelDaemon(
+                artifacts,
+                prepared,
+                root,
+                bazelClockPackages(config, artifacts.android),
+              )
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
               prepared,
@@ -688,9 +702,14 @@ internal fun prepareBazelDaemon(
   artifacts: ResolvedBazelArtifacts,
   prepared: PreparedBazelPreviews,
   root: File,
+  /** [bazelClockPackages]; Android only, since pinning works through Robolectric. */
+  clockPackages: List<String> = emptyList(),
 ): File =
-  if (artifacts.android != null) prepareBazelAndroidDaemon(artifacts, prepared, root)
+  if (artifacts.android != null) prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages)
   else prepareBazelDesktopDaemon(artifacts, prepared, root)
+
+/** The daemon's consumer-clock property (`ConsumerClock.PROPERTY` in the renderer). */
+internal const val BAZEL_CLOCK_PACKAGES_PROPERTY = "composeai.render.clockPackages"
 
 /** Pre-provisioned Robolectric runtime jars (`android-all-instrumented-*.jar`); unset fetches. */
 internal const val ROBOLECTRIC_DEPS_DIR_ENV = "COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR"
@@ -733,6 +752,7 @@ internal fun prepareBazelAndroidDaemon(
   artifacts: ResolvedBazelArtifacts,
   prepared: PreparedBazelPreviews,
   root: File,
+  clockPackages: List<String> = emptyList(),
 ): File {
   val android = requireNotNull(artifacts.android) { "Not an Android target" }
   // First: under the network switch a missing android-all directory refuses before any sidecar is
@@ -798,7 +818,11 @@ internal fun prepareBazelAndroidDaemon(
             "composeai.render.outputDir" to output.resolve("renders").absolutePath,
             "composeai.daemon.userClassDirs" to userClasspath,
             "composeai.daemon.idleTimeoutMs" to "5000",
-          ),
+          ) +
+          // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class
+          // loader from this one property. Absent when off, so the descriptor is unchanged.
+          (if (clockPackages.isEmpty()) emptyMap()
+          else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
       javaLauncher = currentJavaLauncher(),

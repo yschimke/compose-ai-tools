@@ -181,6 +181,8 @@ class BazelAndroidTest {
         userClasses.split(File.pathSeparator),
       )
       assertTrue("robolectric.offline" !in descriptor.systemProperties)
+      // No clock prefixes passed (as for `"pinAppClock": false`): nothing is added to the launch.
+      assertTrue(BAZEL_CLOCK_PACKAGES_PROPERTY !in descriptor.systemProperties)
       // The sandbox follows the target's compileSdk (36), lowered only on a JVM that can't run it.
       assertEquals(
         bazelAndroidSdkLevel(36, log = {}).toString(),
@@ -189,6 +191,75 @@ class BazelAndroidTest {
       // That level was clamped against this JVM, so this JVM is the one that launches it.
       assertEquals(currentJavaLauncher(), descriptor.javaLauncher)
       assertTrue(descriptor.javaLauncher != null)
+    }
+
+  @Test
+  fun `pinAppClock is on by default and opts out from bazel json`() = fixture { root ->
+    val android = androidArtifacts(root).resolve(root).android
+    // Absent keys pin the target's own package.
+    val defaults = bazelJson.decodeFromString<BazelBuildConfig>("""{"schemaVersion": 1}""")
+    assertEquals(true, defaults.pinAppClock)
+    assertNull(defaults.appClockPackages)
+    assertEquals(listOf("com.example.ui."), bazelClockPackages(defaults, android))
+    // A JVM target has nothing to instrument.
+    assertEquals(emptyList(), bazelClockPackages(defaults, null))
+    // No package known: nothing, never an empty prefix that would match every class.
+    assertEquals(emptyList(), bazelClockPackages(defaults, android!!.copy(packageName = " ")))
+
+    val optedOut =
+      bazelJson.decodeFromString<BazelBuildConfig>("""{"schemaVersion": 1, "pinAppClock": false}""")
+    assertEquals(emptyList(), bazelClockPackages(optedOut, android))
+
+    val explicit =
+      bazelJson.decodeFromString<BazelBuildConfig>(
+        """
+        {"schemaVersion": 1,
+         "appClockPackages": [" com.example.ui.", "com.example.shared.", "", ".", "com.example.ui."]}
+        """
+      )
+    assertEquals(
+      listOf("com.example.ui.", "com.example.shared."),
+      bazelClockPackages(explicit, android),
+    )
+    // The opt-out wins over configured packages.
+    assertEquals(emptyList(), bazelClockPackages(explicit.copy(pinAppClock = false), android))
+  }
+
+  @Test
+  fun `pinAppClock reaches the android daemon launch as composeai render clockPackages`() =
+    fixture { root ->
+      val artifacts = androidArtifacts(root).resolve(root)
+      val sidecar = root.resolve("lib-daemon-android").apply { mkdirs() }
+      sidecar.file("daemon-android.jar")
+      root.file("sdk/platforms/android-36/android.jar")
+      root.file("local.properties", "sdk.dir=${root.resolve("sdk").absolutePath}\n")
+      val output = root.resolve("out").apply { mkdirs() }
+      val manifestFile =
+        output.resolve("previews.json").apply {
+          writeText(bazelJson.encodeToString(PreviewManifest("//ui", "bin", emptyList())))
+        }
+      val property = DaemonSidecarProvision.sidecarProperty("lib-daemon-android")
+      val previous = System.getProperty(property)
+      System.setProperty(property, sidecar.absolutePath)
+      val descriptor =
+        try {
+          DaemonLaunchBuilder.decode(
+            prepareBazelDaemon(
+                artifacts,
+                PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
+                root,
+                bazelClockPackages(BazelBuildConfig(), artifacts.android),
+              )
+              .readText()
+          )
+        } finally {
+          if (previous == null) System.clearProperty(property)
+          else System.setProperty(property, previous)
+        }
+      assertEquals(
+        "com.example.ui.",
+        descriptor.systemProperties["composeai.render.clockPackages"],
+      )
     }
 
   @Test

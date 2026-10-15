@@ -53,6 +53,20 @@ internal data class BazelBuildConfig(
    */
   val androidCompileSdk: Int? = null,
   /**
+   * Pins the wall clock an Android target's own code reads (compose-ai-tools#5945): classes under
+   * [appClockPackages] that call `System.currentTimeMillis()` get the render's fixed instant (the
+   * daemon's `composeai.render.fixedTime`, default `10:10`; `off` still gives the host clock). On
+   * by default, as the Gradle plugin's `composePreview.pinAppClock` is. It has Robolectric
+   * instrument the target's own classes, so `"pinAppClock": false` is the escape hatch when a
+   * preview misbehaves under that.
+   */
+  val pinAppClock: Boolean = true,
+  /**
+   * Class-name prefixes [pinAppClock] treats as the target's own code, matched with `startsWith`.
+   * Null defaults to the Android target's `packageName` plus `"."` ([bazelClockPackages]).
+   */
+  val appClockPackages: List<String>? = null,
+  /**
    * How a bundle carries each runtime jar (#6016): `ee.schimke.composeai.bundle.producer
    * .DependencyPolicy.parse`'s shape. Null keeps the original behaviour exactly.
    */
@@ -60,6 +74,26 @@ internal data class BazelBuildConfig(
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
+
+/**
+ * The prefixes `composeai.render.clockPackages` names for [android] under [config]'s
+ * [BazelBuildConfig.pinAppClock]: the configured [BazelBuildConfig.appClockPackages], else the
+ * target's `packageName` with a trailing `.`. Empty when pinning is off (`"pinAppClock": false`),
+ * for a JVM target, or when no package is known. The daemon drops any prefix overlapping the JDK,
+ * Kotlin, Robolectric, the framework or itself.
+ */
+internal fun bazelClockPackages(
+  config: BazelBuildConfig,
+  android: ResolvedAndroidArtifacts?,
+): List<String> {
+  if (!config.pinAppClock || android == null) return emptyList()
+  val default = android.packageName.trim().let { if (it.isEmpty()) emptyList() else listOf("$it.") }
+  // Never an empty (or dots-only) prefix: it would instrument every class.
+  return (config.appClockPackages ?: default)
+    .map { it.trim() }
+    .filter { it.trimEnd('.').isNotEmpty() }
+    .distinct()
+}
 
 internal const val DEFAULT_BAZEL_ASPECT =
   "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect"
