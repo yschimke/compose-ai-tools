@@ -122,6 +122,8 @@ class ProvisionCommandTest {
         listOf("--android", "--android-sdk="),
         listOf("--android", "--android-sdk"),
         listOf("--android-sdk", "35,"),
+        listOf("--android", "--android-sdk=35", "--android-sdk"),
+        listOf("--android-sdk", "--json"),
       )) {
       assertFailsWith<IllegalArgumentException>(args.toString()) {
         ProvisionCommand.androidLevels(args)

@@ -211,9 +211,15 @@ internal class ProvisionCommand(
       val given = args.any { it == "--android-sdk" || it.startsWith("--android-sdk=") }
       val raw = args.flagValuesAll("--android-sdk").flatMap { it.split(',') }.map { it.trim() }
       if (!given) return listOf(AndroidBundleLaunch.DEFAULT_SDK)
-      // A flag given without levels must not quietly provision none (or the default) and then
-      // report the offline set complete.
-      require(raw.isNotEmpty() && raw.none { it.isEmpty() }) {
+      // Every occurrence needs levels: one given without must not quietly provision none (or the
+      // default) and then report the offline set complete.
+      val valueless =
+        args.withIndex().any { (i, arg) ->
+          (arg == "--android-sdk" &&
+            args.getOrNull(i + 1).let { it == null || it.startsWith("--") }) ||
+            arg == "--android-sdk="
+        }
+      require(!valueless && raw.isNotEmpty() && raw.none { it.isEmpty() }) {
         "--android-sdk needs API levels, e.g. --android-sdk 35 or --android-sdk 35,36"
       }
       return raw
