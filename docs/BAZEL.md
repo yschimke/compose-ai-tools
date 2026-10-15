@@ -54,9 +54,20 @@ is then **one module**, named by what you asked for (`//app/...`, or `//pkg:all`
 Each target's own previews are discovered, and one daemon renders them all on the union of the
 targets' runtime classpaths. Bazel resolves a workspace's dependencies to one version per
 configuration, so the union does not mix versions. `browse` therefore shows the whole set on one
-page, and compose-preview-mcp runs one daemon for it and rebuilds it by selecting it again. Two
-cases stay separate modules, with a note: Android targets, because each carries its own linked
-resources and Robolectric loads one resource APK, and targets built in different configurations.
+page, and compose-preview-mcp runs one daemon for it and rebuilds it by selecting it again.
+
+Several Android targets merge the same way. Robolectric loads one resource APK, so the CLI links
+one over the whole selection: rules_compose_preview's `link.sh`, the link the aspect ran for each
+target, now run once over the union of their compiled resources. The overlay order keeps each
+target's own (dependencies first), every target's R package gets R classes with the merged APK's
+IDs, and the APK's own package is the first target's. Each target's own `r-final.jar` leaves the
+classpath, since its IDs belong to its own APK. The link is cached under the module's output
+directory until an input changes. Where two sibling libraries define the same resource, the later
+one in the selection wins, as it would in an `android_binary` that depends on both.
+
+Three cases stay separate modules, with a note: Android and JVM targets together, which render on
+different runtimes; Android targets from an aspect that does not report `android.link` (a
+rules_compose_preview older than the merge); and targets built in different configurations.
 A target a pattern matched is a candidate: if the aspect reports nothing for it, it is skipped
 with a note. A single label you name explicitly must build and hold
 previews, as before. `list`, `render` and `show` report across all the targets. `--id`,

@@ -121,6 +121,18 @@ internal fun BazelArtifacts.resolve(
         },
       rJar = rJar,
       compileSdk = block.compileSdk,
+      link =
+        block.link?.let { link ->
+          ResolvedAndroidLink(
+            script = resolvePath(link.script),
+            aapt2 = resolvePath(link.aapt2),
+            javaHome = resolvePath(link.javaHome),
+            androidJar = resolvePath(link.androidJar),
+            packages = link.packages,
+            compiledResources = resolvePaths(link.compiledResources),
+            assets = link.assets.map { it.path to resolvePath(it.file) },
+          )
+        },
     )
   }
   return ResolvedBazelArtifacts(
@@ -152,6 +164,8 @@ internal data class ResolvedAndroidArtifacts(
   val manifest: File,
   val rJar: File?,
   val compileSdk: Int?,
+  /** What [resourceApk] was linked from, so several targets can be linked into one APK. */
+  val link: ResolvedAndroidLink? = null,
 )
 
 internal data class ResolvedBazelArtifacts(
@@ -574,13 +588,24 @@ internal data class BazelTargetSelection(val label: String, val targets: List<St
  * every target's own jars are discovered, on the union of their runtime classpaths (in order, first
  * occurrence wins). Bazel resolves a workspace's dependencies to one version per configuration, so
  * the union does not mix versions. [label] names it, and rebuilding it means selecting it again.
+ *
+ * Android targets are linked into one resource APK by [linkAndroid] ([planAndroidMerge]): the
+ * union's R classes then carry that APK's IDs in every package, so each target's own final-ID R jar
+ * leaves the classpath and the merged one leads it.
+ *
  * Null when there is one target, or [bazelMergeBlocker] gives a reason they cannot share a daemon.
  */
 internal fun mergeBazelArtifacts(
   label: String,
   artifacts: List<ResolvedBazelArtifacts>,
+  linkAndroid: ((AndroidMergePlan) -> ResolvedAndroidArtifacts)? = null,
 ): ResolvedBazelArtifacts? {
   if (artifacts.size < 2 || bazelMergeBlocker(artifacts) != null) return null
+  val plan = planAndroidMerge(artifacts)
+  val android =
+    if (artifacts.first().android == null) null
+    else linkAndroid?.invoke(checkNotNull(plan)) ?: return null
+  val replaced = plan?.replacedRJars.orEmpty()
   // Resolved files line up with their metadata paths (each list is resolved from the distinct
   // paths in order), so pairs keep the two in step and dedupe by path.
   fun merged(
@@ -591,6 +616,7 @@ internal fun mergeBazelArtifacts(
       artifacts
         .flatMap { files(it).zip(paths(it.metadata).distinct()) }
         .distinctBy { (_, path) -> path }
+        .filterNot { (file, _) -> file in replaced }
     return pairs.map { it.first } to pairs.map { it.second }
   }
   val project = merged({ it.projectJars }, { it.projectJars })
@@ -603,30 +629,51 @@ internal fun mergeBazelArtifacts(
         label,
         artifacts.first().metadata.configuration,
         project.second,
-        runtime.second,
+        // The launcher puts the merged R jar first; listing it keeps the metadata a whole
+        // classpath.
+        listOfNotNull(android?.rJar?.absolutePath) + runtime.second,
         sources.second,
         data.second,
+        android =
+          android?.let {
+            AndroidBuildArtifacts.Builder(
+                it.packageName,
+                it.resourceApk.absolutePath,
+                it.manifest.absolutePath,
+              )
+              .apply {
+                rJar = it.rJar?.absolutePath
+                compileSdk = it.compileSdk
+              }
+              .build()
+          },
       ),
     projectJars = project.first,
-    runtimeJars = runtime.first,
+    runtimeJars = listOfNotNull(android?.rJar) + runtime.first,
     sourceFiles = sources.first,
     dataFiles = data.first,
+    android = android,
   )
 }
 
 /**
- * Why [artifacts] cannot be one module: Android targets each carry their own linked resources, and
- * Robolectric loads one resource APK; targets from different configurations were compiled against
- * different dependency sets.
+ * Why [artifacts] cannot be one module: Android and JVM targets render on different runtimes; an
+ * Android target whose aspect predates `android.link` reports only its own linked APK, and
+ * Robolectric loads one; targets from different configurations were compiled against different
+ * dependency sets.
  */
-internal fun bazelMergeBlocker(artifacts: List<ResolvedBazelArtifacts>): String? =
-  when {
-    artifacts.size > 1 && artifacts.any { it.android != null } ->
-      "Android targets each carry their own resources"
+internal fun bazelMergeBlocker(artifacts: List<ResolvedBazelArtifacts>): String? {
+  val android = artifacts.count { it.android != null }
+  return when {
+    artifacts.size < 2 -> null
+    android in 1 until artifacts.size -> "they mix Android and JVM targets"
+    android > 0 && artifacts.any { it.android?.link == null } ->
+      "their Android aspect does not report link inputs (rules_compose_preview with android.link)"
     artifacts.map { it.metadata.configuration }.distinct().size > 1 ->
       "they were built in different configurations"
     else -> null
   }
+}
 
 /** `...`, `:all`, `:*`, `:all-targets`, or a `-` exclusion: selects targets, never names one. */
 internal fun isBazelTargetPattern(target: String): Boolean =
