@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.61.1](https://github.com/yschimke/compose-ai-tools/compare/v2.61.0...v2.61.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **deps:** bump compose-preview-daemon to 3.17.0 for API 37 daemon renders ([#5994](https://github.com/yschimke/compose-ai-tools/issues/5994)) ([426a5ef](https://github.com/yschimke/compose-ai-tools/commit/426a5ef5d701fae910de973fc911cb02b64dd7b7))
+
 ## [2.61.0](https://github.com/yschimke/compose-ai-tools/compare/v2.60.1...v2.61.0) (2026-10-15)
 
 
