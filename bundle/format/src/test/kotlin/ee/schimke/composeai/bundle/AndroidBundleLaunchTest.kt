@@ -57,6 +57,22 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `the daemon sandbox sdk follows the clamped sdk level`() {
+    // The daemon's sandbox class is outside the packages robolectric.properties covers, so the
+    // level reaches it only through this property.
+    assertEquals(
+      "37",
+      AndroidBundleLaunch(sdkLevel = 37)
+        .robolectricSystemProperties()["composeai.daemon.sandboxSdk"],
+    )
+    assertEquals(
+      AndroidBundleLaunch.MAX_SDK.toString(),
+      AndroidBundleLaunch(sdkLevel = 99)
+        .robolectricSystemProperties()["composeai.daemon.sandboxSdk"],
+    )
+  }
+
+  @Test
   fun `font cache dir is injectable and forwarded to the renderer`() {
     val props =
       AndroidBundleLaunch(fontsCacheDir = "/cache/composeai/fonts").robolectricSystemProperties()

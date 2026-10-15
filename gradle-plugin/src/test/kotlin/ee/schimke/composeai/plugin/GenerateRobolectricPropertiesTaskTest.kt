@@ -241,6 +241,28 @@ class GenerateRobolectricPropertiesTaskTest {
    * The app-tour lane's file is a sibling package of `…renderer`, so nothing merges into it:
    * omitting `application=` means "use the manifest", not "inherit the stub".
    */
+  @Test
+  fun `resolvedSdkIn reads back the sdk the task wrote, for the daemon`() {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val task =
+      project.tasks
+        .register(
+          "composePreviewGenerateRobolectricProperties",
+          GenerateRobolectricPropertiesTask::class.java,
+        )
+        .get()
+    task.useConsumerApplication.set(false)
+    task.appTourUseConsumerApplication.set(false)
+    task.consumerCompileSdk.set(37)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.buildJavaMajor.set(21)
+    val out = tmp.newFolder("resolved-sdk-out")
+    assertThat(GenerateRobolectricPropertiesTask.resolvedSdkIn(out)).isNull()
+    task.outputDir.set(out)
+    task.generate()
+    assertThat(GenerateRobolectricPropertiesTask.resolvedSdkIn(out)).isEqualTo("37")
+  }
+
   private fun generateAppTour(
     useConsumerApplication: Boolean,
     appTourUseConsumerApplication: Boolean,
