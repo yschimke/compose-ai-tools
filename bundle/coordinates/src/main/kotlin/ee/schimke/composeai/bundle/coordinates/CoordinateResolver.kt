@@ -440,7 +440,8 @@ public class CoordinateResolver(
         "${coord.artifact}-${coord.version}.$it"
       }
 
-    private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
+    private val NON_BINARY_CLASSIFIERS =
+      listOf("-sources", "-javadoc", "-samples", "-tests", "-test-fixtures")
 
     /**
      * Whether [name] in a Gradle cache hash directory is [coord]'s primary artifact under a

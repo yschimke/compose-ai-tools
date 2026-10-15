@@ -170,6 +170,8 @@ class CoordinateResolverTest {
         "widgets-1.2.3.aar",
         "widgets-1.2.3-tests.jar",
         "widgets-1.2.3-test-fixtures.jar",
+        "widgets-test-fixtures.aar",
+        "widgets-tests.aar",
         "widgets-sources.jar",
         "widgets-1.2.3-javadoc.jar",
         "widgets.pom",

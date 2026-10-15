@@ -316,12 +316,14 @@ internal object CoordinateResolver {
   private fun isDirectory(path: Path, fileSystem: FileSystem): Boolean =
     followedMetadata(path, fileSystem)?.isDirectory == true
 
-  private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
+  private val NON_BINARY_CLASSIFIERS =
+    listOf("-sources", "-javadoc", "-samples", "-tests", "-test-fixtures")
 
   /**
    * Whether [name] in a Gradle cache hash directory is [coord]'s primary artifact under a variant's
    * own file name: the recorded type or `.aar`, not the exact `<artifact>-<version>` name, and no
-   * `<artifact>-<version>-<classifier>`, sources, javadoc or samples artifact.
+   * `<artifact>-<version>-<classifier>`, sources, javadoc or samples artifact, or a versionless
+   * `-tests` / `-test-fixtures` variant.
    */
   internal fun isGradleVariantFileName(coord: ClasspathEntry.Maven, name: String): Boolean {
     val extension =
