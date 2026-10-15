@@ -109,9 +109,9 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `compileSdk above the Robolectric ceiling clamps to the ceiling`() {
-    // compileSdk 37 (transitive from tiles) clamps to MAX_SUPPORTED_SDK with a warning, not a
+    // A compileSdk past the bundled Robolectric clamps to MAX_SUPPORTED_SDK with a warning, not a
     // failure.
-    val body = generate(useConsumerApplication = false, override = null, compileSdk = 37)
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = 38)
     assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
   }
 
@@ -122,10 +122,10 @@ class GenerateRobolectricPropertiesTaskTest {
       generate(
         useConsumerApplication = false,
         override = null,
-        compileSdk = 37,
-        maxSupportedSdkOverride = 37,
+        compileSdk = 38,
+        maxSupportedSdkOverride = 38,
       )
-    assertThat(body).contains("sdk=37")
+    assertThat(body).contains("sdk=38")
   }
 
   @Test

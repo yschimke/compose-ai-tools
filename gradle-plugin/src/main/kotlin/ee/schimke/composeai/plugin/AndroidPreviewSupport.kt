@@ -59,6 +59,9 @@ internal object AndroidPreviewSupport {
    */
   internal const val RENDERER_COMPOSE_FLOOR_VERSION: String = "1.9.5"
 
+  /** First espresso-core that drives input on API 37; see the injection site. */
+  internal const val ESPRESSO_API_37_FLOOR: String = "androidx.test.espresso:espresso-core:3.7.0"
+
   /**
    * Path segments identifying `androidx.xr.scenecore`'s on-device spatial backend artifacts
    * (module-cache dir, versioned file, or extracted-AAR dir). Anchored so directories merely
@@ -1166,6 +1169,11 @@ internal object AndroidPreviewSupport {
         testImplementationBucket,
         "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
+      // ui-test-junit4 drags in espresso-core, whose pre-3.7 `InputManagerEventInjectionStrategy`
+      // reflects `InputManager.getInstance()`, removed in API 37:
+      //   NoSuchMethodException: android.hardware.input.InputManager.getInstance []
+      // 3.7.0 asks the Context for the service instead. A floor: a newer consumer pin still wins.
+      addPluginDependency(project, testImplementationBucket, ESPRESSO_API_37_FLOOR)
       // Main-variant floor pins for tile-only / non-Compose-UI consumers. AGP builds the merged
       // unit-test resource APK from the main variant, so a main variant without compose-ui and its
       // resource deps lacks R classes the renderer reads. Floors only; no-ops for consumers with
@@ -1234,6 +1242,15 @@ internal object AndroidPreviewSupport {
       recordInjectedDependency(
         project,
         injectedDependencies,
+        coordinate = ESPRESSO_API_37_FLOOR,
+        configuration = testImplementationBucket,
+        outcome = "APPLIED",
+        reason =
+          "espresso-core < 3.7 (transitive from ui-test-junit4) reflects InputManager.getInstance(), removed in API 37, so every render on an API 37 sandbox fails; floor only, a higher consumer version wins",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
         coordinate = "androidx.core:core:1.16.0",
         configuration = "${variantName}Implementation",
         outcome = "APPLIED",
@@ -1292,6 +1309,18 @@ internal object AndroidPreviewSupport {
         configuration = testImplementationBucket,
         outcome = "SKIPPED_BY_CONFIG",
         reason = "manageDependencies=false; consumer must declare this in testImplementation",
+      )
+      // Not added to validateExternallyManagedDependencies: espresso arrives transitively through
+      // ui-test-junit4, and anything below 3.7.0 only breaks at API 37, so requiring a declaration
+      // would fail every pre-37 consumer for nothing.
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = ESPRESSO_API_37_FLOOR,
+        configuration = testImplementationBucket,
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; at sdk 37 the consumer must resolve espresso-core >= 3.7.0 in testImplementation, since older Espresso reflects InputManager.getInstance(), removed in API 37",
       )
       recordInjectedDependency(
         project,
