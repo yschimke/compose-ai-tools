@@ -1945,6 +1945,13 @@ internal object ComposePreviewTasks {
   /**
    * Prunes `data/catalog-tokens/<id>.catalog.json` sidecars whose sheet is gone, mirroring the
    * renderer's `CatalogTokenSidecar` naming.
+   *
+   * Every kind the renderer writes one for is expected: the static token sheets
+   * ([PreviewKind.CATALOG]) and the per-theme token sets of `@ThemeCatalog` / `@WearThemeCatalog`
+   * providers ([PreviewKind.THEME_CATALOG], [PreviewKind.WEAR_THEME_CATALOG], #2179). Missing the
+   * theme kinds deleted every theme's token set straight after the render that wrote it, so
+   * `composePreviewRenderAll` → `composePreviewBundle` packed none and no catalog published its
+   * declared themes.
    */
   internal fun cleanStaleCatalogTokens(
     catalogTokensDir: java.io.File,
@@ -1954,7 +1961,7 @@ internal object ComposePreviewTasks {
     if (!catalogTokensDir.isDirectory) return
     val expected =
       manifest.previews
-        .filter { it.params.kind == PreviewKind.CATALOG }
+        .filter { it.params.kind in CATALOG_TOKEN_KINDS }
         .map { sanitizeCatalogTokenId(it.id) + ".catalog.json" }
         .toSet()
     catalogTokensDir
@@ -1966,6 +1973,10 @@ internal object ComposePreviewTasks {
         }
       }
   }
+
+  /** The kinds the renderer writes a `data/catalog-tokens/` sidecar for. */
+  private val CATALOG_TOKEN_KINDS =
+    setOf(PreviewKind.CATALOG, PreviewKind.THEME_CATALOG, PreviewKind.WEAR_THEME_CATALOG)
 
   // Mirror of `CatalogTokenSidecar.sanitize` so the expected filenames match the renderer's.
   private fun sanitizeCatalogTokenId(id: String): String =

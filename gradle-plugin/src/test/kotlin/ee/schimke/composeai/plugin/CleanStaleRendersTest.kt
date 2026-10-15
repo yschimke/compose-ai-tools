@@ -105,6 +105,52 @@ class CleanStaleRendersTest {
     assertThat(unrelated.exists()).isTrue()
   }
 
+  /**
+   * A `@ThemeCatalog` / `@WearThemeCatalog` provider's sheet writes its resolved token set beside
+   * the static token sheets'. Pruning only [PreviewKind.CATALOG] deleted them after every render,
+   * so the bundle carried no theme and no catalog published one.
+   */
+  @Test
+  fun `keeps the token sets of declared theme sheets`() {
+    val catalogDir = tempDir.root.resolve("build/compose-previews/data/catalog-tokens")
+    catalogDir.mkdirs()
+    val theme = catalogDir.resolve("themecatalog__Brand.catalog.json").apply { writeText("{}") }
+    val wear =
+      catalogDir.resolve("wearthemecatalog__Mushroom_Light.catalog.json").apply { writeText("{}") }
+    val stale = catalogDir.resolve("wearthemecatalog__Gone.catalog.json").apply { writeText("{}") }
+
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "themecatalog__Brand",
+              functionName = "Brand",
+              className = "com.example.BrandThemeCatalog",
+              params = PreviewParams(kind = PreviewKind.THEME_CATALOG),
+            ),
+            PreviewInfo(
+              id = "wearthemecatalog__Mushroom_Light",
+              functionName = "Mushroom Light",
+              className = "com.example.MushroomLightThemeCatalog",
+              params = PreviewParams(kind = PreviewKind.WEAR_THEME_CATALOG),
+            ),
+          ),
+      )
+
+    ComposePreviewTasks.cleanStaleCatalogTokens(
+      catalogDir,
+      manifest,
+      org.gradle.api.logging.Logging.getLogger(CleanStaleRendersTest::class.java),
+    )
+
+    assertThat(theme.exists()).isTrue()
+    assertThat(wear.exists()).isTrue()
+    assertThat(stale.exists()).isFalse()
+  }
+
   @Test
   fun `missing output check includes scroll data products`() {
     val outDir = tempDir.root.resolve("build/compose-previews")
