@@ -85,6 +85,29 @@ class RobolectricDepsProvisionTest {
     assertTrue(e.message!!.contains("35"), e.message)
   }
 
+  @Test
+  fun `the newest provisioned level stands in for one with no android-all`() = fixture { dir ->
+    val sdk35 = RobolectricDepsProvision.artifactFor(robolectricJars, 35).artifact
+    File(dir, sdk35.fileName).writeText("framework")
+    val newest = { level: Int ->
+      RobolectricDepsProvision.highestProvisionedLevel(robolectricJars, dir, level, floor = 21)
+    }
+    assertEquals(35, newest(35))
+    // 36 (and anything Robolectric knows above it) is not there: settle for 35.
+    assertEquals(35, newest(36))
+    assertEquals(35, newest(37))
+    // Nothing at or below the request: no answer, so the caller keeps the request.
+    assertEquals(null, newest(34))
+    val logs = mutableListOf<String>()
+    val offline = mapOf("robolectric.dependency.dir" to dir.path)
+    assertEquals(35, provisionedSdkLevel(36, robolectricJars, offline, log = { logs += it }))
+    assertTrue(logs.single().contains("no android-all for SDK 36"), logs.toString())
+    // Online, or already provisioned: unchanged and silent.
+    assertEquals(36, provisionedSdkLevel(36, robolectricJars, emptyMap(), log = { logs += it }))
+    assertEquals(35, provisionedSdkLevel(35, robolectricJars, offline, log = { logs += it }))
+    assertEquals(1, logs.size)
+  }
+
   private val artifact =
     RobolectricDepsProvision.Artifact(
       "org.robolectric",

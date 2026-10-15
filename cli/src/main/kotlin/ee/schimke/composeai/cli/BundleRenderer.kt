@@ -289,13 +289,18 @@ class BundleRenderer(
             "platforms/android-*/android.jar found)."
         )
 
-    val sdkLevel =
-      androidSdk?.let { bazelAndroidSdkLevel(it, log = logSink, source = "--android-sdk") }
-        ?: AndroidBundleLaunch.sdkLevelFromSystemProperty()
-    val launch = AndroidBundleLaunch(sdkLevel = sdkLevel).withClockPackages(clockPackages)
     // Under the network switch Robolectric needs pre-provisioned android-all; refuse before
     // spawning.
     val offlineProperties = robolectricOfflineProperties()
+    val sdkLevel =
+      provisionedSdkLevel(
+        androidSdk?.let { bazelAndroidSdkLevel(it, log = logSink, source = "--android-sdk") }
+          ?: AndroidBundleLaunch.sdkLevelFromSystemProperty(),
+        rendererJars,
+        offlineProperties,
+        log = logSink,
+      )
+    val launch = AndroidBundleLaunch(sdkLevel = sdkLevel).withClockPackages(clockPackages)
     val configRoot =
       launch.writeRobolectricConfig(workDir.resolve("robolectric-config").apply { mkdirs() })
 
@@ -338,7 +343,8 @@ class BundleRenderer(
     if (verbose) succeeded.forEach { logSink("rendered ${it.id} → ${it.outputFile.path}") }
     if (failed.isNotEmpty()) {
       logSink("bundle render (android): ${failed.size} preview(s) produced no PNG (exit=$exitCode)")
-      if (verbose) logSink(tail)
+      // Always: a build that runs this as an action (Bazel) keeps nothing else of the renderer.
+      logSink(tail)
     }
     return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
   }
@@ -383,7 +389,7 @@ class BundleRenderer(
     val finished = proc.waitFor(RENDER_PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     if (!finished) proc.destroyForcibly()
     drain.join(DRAIN_FLUSH_MILLIS)
-    val tail = sb.toString().lines().takeLast(tailLines).joinToString("\n")
+    val tail = renderOutputSummary(sb.toString(), tailLines)
     return if (finished) {
       proc.exitValue() to tail
     } else {
@@ -556,6 +562,28 @@ class BundleRenderer(
   }
 
   companion object {
+    /**
+     * A render subprocess's output for a failure report: its last [tailLines] lines, led by every
+     * exception headline and `Caused by:` line above them. A JVM failure's tail is mostly stack
+     * frames, and the line naming the actual cause (an `android-all` Robolectric cannot find, a
+     * missing class) is usually far above it.
+     */
+    internal fun renderOutputSummary(output: String, tailLines: Int): String {
+      val lines = output.lines()
+      val tail = lines.takeLast(tailLines)
+      val headline = Regex("""^(Caused by: |[\w.$]+(Exception|Error)(:|$)|Render failed: )""")
+      val causes =
+        lines
+          .dropLast(tailLines)
+          .filter { it.isNotEmpty() && !it.first().isWhitespace() && headline.containsMatchIn(it) }
+          .distinct()
+          .take(MAX_CAUSE_LINES)
+      if (causes.isEmpty()) return tail.joinToString("\n")
+      return (causes + "[…]" + tail).joinToString("\n")
+    }
+
+    private const val MAX_CAUSE_LINES = 12
+
     /**
      * The Android subprocess's main class: [ee.schimke.composeai.cli.androidrender] runs the
      * renderer's `AndroidRendererMainKt` and then exits, which that main does not do on success.
