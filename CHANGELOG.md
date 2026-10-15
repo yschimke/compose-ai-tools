@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.61.0](https://github.com/yschimke/compose-ai-tools/compare/v2.60.1...v2.61.0) (2026-10-15)
+
+
+### Features
+
+* **bazel:** opt-in merge of several Android targets into one module on one linked resource APK ([#5988](https://github.com/yschimke/compose-ai-tools/issues/5988)) ([eef2b0f](https://github.com/yschimke/compose-ai-tools/commit/eef2b0fec202950e5af0800bab4500f9aa52c464))
+
 ## [2.60.1](https://github.com/yschimke/compose-ai-tools/compare/v2.60.0...v2.60.1) (2026-10-15)
 
 
