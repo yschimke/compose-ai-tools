@@ -99,4 +99,22 @@ class BundleAppComposeTest {
       root.deleteRecursively()
     }
   }
+
+  @Test
+  fun `a forced mode applies even without the renderer's selection`() {
+    val root = Files.createTempDirectory("bundle-app-compose").toFile()
+    try {
+      // A `lib-renderer-android` override carries no `:daemon:core`, so no selection class.
+      val renderer = File(root, "renderer-android.jar")
+      ZipOutputStream(renderer.outputStream()).use { it.putNextEntry(ZipEntry("x.txt")) }
+      assertEquals(
+        false,
+        BundleAppCompose.decide(listOf(renderer), emptyList(), "daemon")?.preferApp,
+      )
+      assertEquals(true, BundleAppCompose.decide(listOf(renderer), emptyList(), "app")?.preferApp)
+      assertNull(BundleAppCompose.decide(listOf(renderer), emptyList(), "auto"))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
 }
