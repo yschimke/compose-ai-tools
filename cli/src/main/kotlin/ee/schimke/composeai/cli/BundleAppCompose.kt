@@ -31,9 +31,10 @@ internal object BundleAppCompose {
   data class Decision(val preferApp: Boolean, val logLine: String)
 
   /**
-   * The decision for an app classpath of [appEntries] against the renderer in [rendererJars], or
-   * null when those jars predate `AppComposeSelection` (daemon < 3.18.0), which keeps the old
-   * order.
+   * The decision for an app classpath of [appEntries] against the renderer in [rendererJars]. When
+   * those jars carry no `AppComposeSelection` (daemon < 3.18.0, or a `lib-renderer-android`
+   * override without `:daemon:core`), a forced `app` or `daemon` mode is still applied as given and
+   * `auto` returns null, which keeps the old order.
    */
   fun decide(
     rendererJars: List<File>,
@@ -42,7 +43,7 @@ internal object BundleAppCompose {
     selectionClass: String = SELECTION,
   ): Decision? {
     val jars = rendererJars.filter { it.isFile }
-    if (jars.isEmpty()) return null
+    if (jars.isEmpty()) return forced(mode)
     return URLClassLoader(
         jars.map { it.toURI().toURL() }.toTypedArray(),
         ClassLoader.getPlatformClassLoader(),
@@ -52,7 +53,7 @@ internal object BundleAppCompose {
           try {
             loader.loadClass(selectionClass)
           } catch (_: ClassNotFoundException) {
-            return null
+            return forced(mode)
           }
         val decision =
           try {
@@ -73,6 +74,15 @@ internal object BundleAppCompose {
         )
       }
   }
+
+  /** A forced [mode] applied without the renderer's selection; null for `auto`. */
+  private fun forced(mode: String): Decision? =
+    when (mode.trim().lowercase()) {
+      "app" -> Decision(preferApp = true, logLine = "[appCompose] mode=app runs=app reason=forced")
+      "daemon" ->
+        Decision(preferApp = false, logLine = "[appCompose] mode=daemon runs=daemon reason=forced")
+      else -> null
+    }
 
   /**
    * The flat render classpath: [leading] (launcher, config, resources, app classes) first and
