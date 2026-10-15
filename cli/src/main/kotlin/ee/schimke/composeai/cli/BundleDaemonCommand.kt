@@ -249,10 +249,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * Gradle plugin, and forward `composeai.svg.embedFonts` / offline choices so opt-outs reach the
    * child.
    */
-  private fun desktopFontSysProps(): List<String> = buildList {
+  internal fun desktopFontSysProps(): List<String> = buildList {
     add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
-    (System.getProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY)
-        ?: NetworkPolicy.daemonSystemProperties()[NetworkPolicy.FONTS_OFFLINE_PROPERTY])
+    // The switch wins over an explicit `-Dcomposeai.fonts.offline=false`: fonts never download.
+    (NetworkPolicy.daemonSystemProperties()[NetworkPolicy.FONTS_OFFLINE_PROPERTY]
+        ?: System.getProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY))
       ?.let { add("-D${NetworkPolicy.FONTS_OFFLINE_PROPERTY}=$it") }
     System.getProperty("composeai.svg.embedFonts")?.let { add("-Dcomposeai.svg.embedFonts=$it") }
     // Read in the child daemon, so it must be forwarded.

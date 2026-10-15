@@ -94,16 +94,37 @@ internal object NetworkPolicy {
     if (disabled && !isLoopback(url)) throw refusal(purpose, remedy)
   }
 
-  /** Whether [url]'s host is this machine. Unparseable input is not. */
+  /**
+   * Whether [url]'s host is this machine: `localhost`, or an IP literal in `127.0.0.0/8` or `::1`.
+   * Only literals count, never a DNS name that merely looks like one (`127.example.com`), and
+   * nothing is resolved. Unparseable input is not loopback.
+   */
   fun isLoopback(url: String): Boolean {
     val host =
       runCatching { URI(url.trim()).host }.getOrNull()?.lowercase()?.removeSurrounding("[", "]")
         ?: return false
-    return host == "localhost" ||
-      host == "::1" ||
-      host == "0:0:0:0:0:0:0:1" ||
-      host.startsWith("127.")
+    if (host == "localhost") return true
+    val ipv4 = host.split('.')
+    if (ipv4.size == 4 && ipv4.all { it.toIntOrNull()?.let { n -> n in 0..255 } == true }) {
+      return ipv4[0] == "127" && ipv4.all { it == it.toInt().toString() }
+    }
+    // An IPv6 literal: InetAddress parses one without a lookup; anything else is a name.
+    if (':' !in host) return false
+    return runCatching { java.net.InetAddress.getByName(host).isLoopbackAddress }
+      .getOrDefault(false)
   }
+
+  /**
+   * [client] for a path that let a loopback URL through: under the switch it follows no redirects,
+   * since a local server answering `Location: https://elsewhere` would otherwise take the request
+   * off the machine after the check.
+   */
+  fun noRedirects(
+    client: okhttp3.OkHttpClient,
+    disabled: Boolean = this.disabled,
+  ): okhttp3.OkHttpClient =
+    if (disabled) client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+    else client
 
   /**
    * System properties every daemon or renderer the CLI launches gets under the switch: font
