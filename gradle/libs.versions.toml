@@ -425,7 +425,10 @@ composeai-contracts = "3.33.0"
 # renderer's, which threw AbstractMethodError against an older foundation. Contracts 3.25.0.
 # 3.17.0 raises the Robolectric SDK ceiling to API 37 (compose-preview-daemon#279), matching the
 # plugin's MAX_SUPPORTED_SDK (#5989), so daemon renders stop clamping compileSdk 37 to 36.
-composeai-preview-daemon = "3.17.0"
+# 3.17.1 boots the daemon sandbox at the consumer's SDK (compose-preview-daemon#283) from the
+# `composeai.daemon.sandboxSdk` this build's launchers pass (#5999), so semantics/layout passes run
+# on the same framework as the PNGs.
+composeai-preview-daemon = "3.17.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
