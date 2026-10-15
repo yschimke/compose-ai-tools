@@ -1104,6 +1104,11 @@ private class RenderSubcommand(private val args: List<String>) {
     // Theme overrides need the daemon path (the one `serve` uses) rather than the source subprocess
     // renderer. See [renderBundleWithOverrides].
     if (knobs.isNotEmpty()) {
+      // The daemon path materializes dependencies from Maven repositories only, so a build's own
+      // jars would be silently ignored; refuse rather than render with the wrong bytes.
+      require("--local-jars" !in args) {
+        "bundle render: --local-jars applies to the stock renderer only; drop --knob or --local-jars"
+      }
       require(
         selectedIds.size == BundleReader.readMetadata(file).manifest.previewIds.size &&
           outputFile == null &&
