@@ -65,9 +65,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
-      CoordinateResolver(warn = { System.err.println("[bundle-daemon] $it") })
-        .resolveAll(mavenCoords)
-        .mapNotNull { it.file }
+      resolveBundleCoordinates(
+        CoordinateResolver(
+          warn = { System.err.println("[bundle-daemon] $it") },
+          networkEnabled = !NetworkPolicy.offline,
+        ),
+        mavenCoords,
+      )
     val userClassPath =
       (listOf(classesDir) + libJars + resolvedJars).joinToString(File.pathSeparator) {
         it.absolutePath
@@ -247,7 +251,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    */
   private fun desktopFontSysProps(): List<String> = buildList {
     add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
-    System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
+    (System.getProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY)
+        ?: NetworkPolicy.daemonSystemProperties()[NetworkPolicy.FONTS_OFFLINE_PROPERTY])
+      ?.let { add("-D${NetworkPolicy.FONTS_OFFLINE_PROPERTY}=$it") }
     System.getProperty("composeai.svg.embedFonts")?.let { add("-Dcomposeai.svg.embedFonts=$it") }
     // Read in the child daemon, so it must be forwarded.
     System.getProperty("composeai.svg.background")?.let { add("-Dcomposeai.svg.background=$it") }
@@ -263,6 +269,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * use, or `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` points at a copy.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
+    // Before provisioning: under the network switch Robolectric needs pre-provisioned android-all.
+    val offlineProperties = robolectricOfflineProperties()
     DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
     val daemonJars = locateBundleSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
@@ -292,7 +300,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       classpath =
         (daemonJars + listOf(androidJar)).joinToString(File.pathSeparator) { it.absolutePath },
       jvmArgs = launch.jvmArgs(),
-      sysProps = launch.robolectricSystemProperties().map { (k, v) -> "-D$k=$v" },
+      sysProps =
+        (launch.robolectricSystemProperties() + offlineProperties).map { (k, v) -> "-D$k=$v" },
     )
   }
 

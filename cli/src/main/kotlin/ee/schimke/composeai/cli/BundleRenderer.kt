@@ -145,9 +145,13 @@ class BundleRenderer(
     // CoordinateResolver), layered between consumer classes and the renderer's Compose.
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
-      CoordinateResolver(warn = { logSink("compose-preview: $it") })
-        .resolveAll(mavenCoords)
-        .mapNotNull { it.file }
+      resolveBundleCoordinates(
+        CoordinateResolver(
+          warn = { logSink("compose-preview: $it") },
+          networkEnabled = !NetworkPolicy.offline,
+        ),
+        mavenCoords,
+      )
     val classpathString =
       (listOf(classesDir, skikoNative) + libJars + resolvedJars + rendererJars).joinToString(
         File.pathSeparator
@@ -239,14 +243,21 @@ class BundleRenderer(
         )
 
     val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
+    // Under the network switch Robolectric needs pre-provisioned android-all; refuse before
+    // spawning.
+    val offlineProperties = robolectricOfflineProperties()
     val configRoot =
       launch.writeRobolectricConfig(workDir.resolve("robolectric-config").apply { mkdirs() })
 
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
-      CoordinateResolver(warn = { logSink("compose-preview: $it") })
-        .resolveAll(mavenCoords)
-        .mapNotNull { it.file }
+      resolveBundleCoordinates(
+        CoordinateResolver(
+          warn = { logSink("compose-preview: $it") },
+          networkEnabled = !NetworkPolicy.offline,
+        ),
+        mavenCoords,
+      )
 
     // Hide IR previews from the batch renderer's manifest.
     val rendererPreviewsJson =
@@ -268,7 +279,8 @@ class BundleRenderer(
         .joinToString(File.pathSeparator) { it.absolutePath }
 
     outputDir.mkdirs()
-    val (exitCode, tail) = spawnAndroidRenderer(launch, classpath, previewsJsonFile, outputDir)
+    val (exitCode, tail) =
+      spawnAndroidRenderer(launch, classpath, previewsJsonFile, outputDir, offlineProperties)
 
     val (succeeded, failed) = reconcileAndroidRenders(renderable, outputDir, exitCode, tail)
     if (verbose) succeeded.forEach { logSink("rendered ${it.id} → ${it.outputFile.path}") }
@@ -284,15 +296,15 @@ class BundleRenderer(
     classpath: String,
     previewsJsonFile: File,
     outDir: File,
+    offlineProperties: Map<String, String>,
   ): Pair<Int, String> {
     val javaBin = locateJava()
     val command = buildList {
       add(javaBin)
       addAll(launch.jvmArgs())
-      launch.systemProperties(previewsJsonFile.absolutePath, outDir.absolutePath).forEach { (k, v)
-        ->
-        add("-D$k=$v")
-      }
+      (launch.systemProperties(previewsJsonFile.absolutePath, outDir.absolutePath) +
+          offlineProperties)
+        .forEach { (k, v) -> add("-D$k=$v") }
       add("-cp")
       add(classpath)
       add("ee.schimke.composeai.renderer.AndroidRendererMainKt")
@@ -414,6 +426,7 @@ class BundleRenderer(
           // macOS: run as a background agent (no Dock icon or focus steal); must be set before AWT
           // inits.
           "-Dapple.awt.UIElement=true",
+          *NetworkPolicy.daemonSystemProperties().map { (k, v) -> "-D$k=$v" }.toTypedArray(),
           "-cp",
           classpath,
           "ee.schimke.composeai.renderer.DesktopRendererMainKt",

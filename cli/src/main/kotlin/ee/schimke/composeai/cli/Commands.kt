@@ -314,7 +314,11 @@ abstract class Command(
             root,
             verbose,
             progress,
-            extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
+            extraArguments =
+              injectArgs +
+                variantGradleArgs() +
+                gradleWriteLocksArgs() +
+                NetworkPolicy.gradleArguments(),
           )
           .apply { failureAdvice = ::buildFailureAdvice }
       }

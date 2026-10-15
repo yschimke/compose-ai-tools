@@ -690,14 +690,28 @@ internal const val ROBOLECTRIC_DEPS_DIR_ENV = "COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_
  * Robolectric resolves `android-all-instrumented` from Maven Central on first render. With
  * [ROBOLECTRIC_DEPS_DIR_ENV] set it runs offline against that directory instead, so a closed
  * network or a build that must not fetch at render time can supply the jars itself.
+ *
+ * Under [NetworkPolicy]'s switch ([noNetwork]) the directory is required, since without it
+ * Robolectric would fetch, and font downloads are turned off too.
  */
 internal fun robolectricOfflineProperties(
-  dependencyDir: String? = System.getenv(ROBOLECTRIC_DEPS_DIR_ENV)
+  dependencyDir: String? = System.getenv(ROBOLECTRIC_DEPS_DIR_ENV),
+  noNetwork: Boolean = NetworkPolicy.disabled,
 ): Map<String, String> {
-  if (dependencyDir.isNullOrBlank()) return emptyMap()
+  if (dependencyDir.isNullOrBlank()) {
+    NetworkPolicy.require(
+      "Rendering Android previews on Robolectric (it fetches android-all-instrumented from Maven " +
+        "Central)",
+      "Set $ROBOLECTRIC_DEPS_DIR_ENV to a directory of the android-all-instrumented jars the " +
+        "render daemon's Robolectric version expects.",
+      disabled = noNetwork,
+    )
+    return emptyMap()
+  }
   val dir = File(dependencyDir).absoluteFile
   require(dir.isDirectory) { "$ROBOLECTRIC_DEPS_DIR_ENV is not a directory: $dir" }
-  return mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to dir.path)
+  return mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to dir.path) +
+    NetworkPolicy.daemonSystemProperties(noNetwork)
 }
 
 /**
@@ -712,6 +726,9 @@ internal fun prepareBazelAndroidDaemon(
   root: File,
 ): File {
   val android = requireNotNull(artifacts.android) { "Not an Android target" }
+  // First: under the network switch a missing android-all directory refuses before any sidecar is
+  // provisioned.
+  val offlineProperties = robolectricOfflineProperties()
   DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
   val daemonJars = locateBundleSidecarJars("lib-daemon-android")
   check(daemonJars.isNotEmpty()) {
@@ -748,7 +765,7 @@ internal fun prepareBazelAndroidDaemon(
       jvmArgs = launch.jvmArgs() + "-Xmx2048m",
       systemProperties =
         launch.robolectricSystemProperties() +
-          robolectricOfflineProperties() +
+          offlineProperties +
           mapOf(
             "composeai.daemon.protocolVersion" to "1",
             "composeai.daemon.modulePath" to artifacts.metadata.target,
@@ -807,7 +824,7 @@ internal fun prepareBazelDesktopDaemon(
           // DesktopHost derives its cache/preview root here rather than from Gradle conventions.
           "composeai.daemon.userClassDirs" to userClasspath,
           "composeai.daemon.idleTimeoutMs" to "5000",
-        ),
+        ) + NetworkPolicy.daemonSystemProperties(),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
     )

@@ -83,6 +83,8 @@ internal object ServerDistributionProvision {
   }
 
   private val defaultFetcher = Fetcher { url, dest ->
+    // A backstop: every caller refuses earlier, with a remedy specific to what it fetches.
+    NetworkPolicy.require("Downloading $url", "Pre-provision the file it names.")
     HttpClient(OkHttp).use { client ->
       runBlocking {
         client.prepareGet(url).execute { response ->
@@ -115,6 +117,10 @@ internal object ServerDistributionProvision {
     log: (String) -> Unit = {},
   ): String? {
     val api = latestReleaseApi(distribution)
+    NetworkPolicy.require(
+      "Asking $api for the newest ${distribution.label}",
+      "Set ${distribution.versionEnv} to a release you have cached.",
+    )
     val body = File.createTempFile("${distribution.cacheDirName}-latest", ".json")
     return try {
       fetcher.fetchTo(api, body)
@@ -238,7 +244,8 @@ internal object ServerDistributionProvision {
    *
    * The only function that resolves [latestVersion]; [requested] skips that. Offline
    * (`COMPOSE_PREVIEW_OFFLINE=1` / `-Dcomposeai.bundle.offline=true`) never touches the network and
-   * uses the newest cached copy, or the hint.
+   * uses the newest cached copy, or the hint. Under [NetworkPolicy]'s switch ([noNetwork]) a
+   * missing distribution throws [NetworkDisabledException] instead of returning null.
    */
   fun ensure(
     distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
@@ -248,14 +255,22 @@ internal object ServerDistributionProvision {
     offline: Boolean = defaultOffline(),
     fetcher: Fetcher = defaultFetcher,
     log: (String) -> Unit = { System.err.println(it) },
+    noNetwork: Boolean = NetworkPolicy.disabled,
   ): File? {
     val cached = cachedVersions(distribution, cacheRoot, osName)
 
     // Offline: use what's cached or the hint; never call the API.
-    if (offline) {
+    if (offline || noNetwork) {
       val have = requested ?: cached.firstOrNull()
       val binary = have?.let { cacheBinary(it, distribution, cacheRoot, osName) }
       if (binary != null && isComplete(binary)) return binary
+      NetworkPolicy.require(
+        "Fetching ${distribution.label}" + (requested?.let { " $it" } ?: ""),
+        "Pre-provision it: unpack ${assetUrl(requested ?: "<version>", distribution)} into " +
+          "${File(cacheRoot, requested ?: "<version>").absolutePath} (bin/ and lib/), or " +
+          "install it elsewhere and name it with ${distribution.env}.",
+        disabled = noNetwork,
+      )
       log(
         "compose-preview: no cached ${distribution.label} under ${cacheRoot.absolutePath}" +
           (requested?.let { " at $it" } ?: "") +
@@ -315,6 +330,8 @@ internal object ServerDistributionProvision {
       }
       log("compose-preview: installed ${distribution.label} $version into ${dir.absolutePath}")
       binary.takeIf { isComplete(it) }
+    } catch (e: NetworkDisabledException) {
+      throw e
     } catch (e: Exception) {
       log("compose-preview: could not fetch ${distribution.label} from $url (${e.message ?: e})")
       null
@@ -353,7 +370,5 @@ internal object ServerDistributionProvision {
   fun defaultCacheRoot(distribution: ReleasedDistribution = ReleasedDistribution.SERVER): File =
     composeAiCacheDir(distribution.cacheDirName)
 
-  internal fun defaultOffline(): Boolean =
-    System.getProperty("composeai.bundle.offline").toBoolean() ||
-      System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
+  internal fun defaultOffline(): Boolean = NetworkPolicy.offline
 }

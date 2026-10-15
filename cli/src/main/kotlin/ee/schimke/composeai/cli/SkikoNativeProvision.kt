@@ -26,6 +26,8 @@ internal object SkikoNativeProvision {
   }
 
   private val defaultFetcher = Fetcher { url, dest ->
+    // A backstop; [ensureAvailable] refuses first, naming the directory to pre-provision.
+    NetworkPolicy.require("Downloading $url", "Pre-provision the file it names.")
     HttpClient(OkHttp).use { client ->
       runBlocking {
         client.prepareGet(url).execute { response ->
@@ -99,9 +101,7 @@ internal object SkikoNativeProvision {
         )
     val configuredDir =
       System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.takeIf { it.isNotBlank() }?.let(::File)
-    val offline =
-      System.getProperty("composeai.bundle.offline").toBoolean() ||
-        System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
+    val offline = NetworkPolicy.offline
     val jar =
       ensureAvailable(
         version = version,
@@ -122,6 +122,7 @@ internal object SkikoNativeProvision {
     cacheRoot: File,
     offline: Boolean,
     fetcher: Fetcher,
+    noNetwork: Boolean = NetworkPolicy.disabled,
   ): File {
     val expectedName = jarName(version, platform)
     if (configuredDir != null) {
@@ -135,6 +136,12 @@ internal object SkikoNativeProvision {
 
     val cached = cacheJar(cacheRoot, version, platform)
     if (isValidNativeJar(cached)) return cached
+    NetworkPolicy.require(
+      "Fetching the Skiko native $expectedName",
+      "Pre-provision it: download ${artifactUrl(version, platform)} to ${cached.absolutePath}, " +
+        "or provide -D$CLI_SKIKO_DIR_PROPERTY=<dir> containing $expectedName.",
+      disabled = noNetwork,
+    )
     if (offline) {
       error(
         "Skiko native $expectedName is not cached at ${cached.absolutePath}, and offline mode is " +
@@ -161,6 +168,8 @@ internal object SkikoNativeProvision {
         Files.move(temporary.toPath(), cached.toPath(), StandardCopyOption.REPLACE_EXISTING)
       }
       return cached
+    } catch (e: NetworkDisabledException) {
+      throw e
     } catch (e: Exception) {
       throw IllegalStateException(
         "Could not provision Skiko native $expectedName from $url (${e.message}). " +

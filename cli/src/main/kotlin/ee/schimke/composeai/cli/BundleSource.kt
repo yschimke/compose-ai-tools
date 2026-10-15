@@ -61,6 +61,12 @@ object BundleSource {
   }
 
   private fun download(uri: URI, arg: String, fileSystem: FileSystem = SystemFileSystem): File {
+    // Before the temp file or a client exists; a loopback URL never leaves the machine.
+    NetworkPolicy.requireForUrl(
+      arg,
+      "Downloading the bundle at $arg",
+      "Copy the bundle to this machine and pass its path (or a file:// URL).",
+    )
     // Bundles are always PNG+ZIP polyglots, so a `.png` temp suffix keeps downstream
     // name-derivation (`<name>-render`, the daemon's bundleSource tag) sensible.
     val tempPath = TemporaryDirectory / "compose-preview-bundle-${UUID.randomUUID()}.png"

@@ -72,7 +72,9 @@ only the current host's Maven Central artifact, and caches it under
 For an air-gapped install, copy the matching `skiko-awt-runtime-<platform>-<version>.jar` into a
 directory and launch Java with `-Dcomposeai.cli.skikoDir=<dir>`. Setting
 `-Dcomposeai.bundle.offline=true` or `COMPOSE_PREVIEW_OFFLINE=1` disables fetching and produces an
-actionable error when neither that override nor the cache contains the native.
+actionable error when neither that override nor the cache contains the native. To forbid every
+outbound path of the CLI rather than only this fetch, use `COMPOSE_PREVIEW_NO_NETWORK=1`
+([OFFLINE.md](OFFLINE.md)).
 
 ### 2a. View-only — universal, zero tooling
 
