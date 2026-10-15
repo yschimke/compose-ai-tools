@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.61.2](https://github.com/yschimke/compose-ai-tools/compare/v2.61.1...v2.61.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **deps:** bump compose-preview-daemon to 3.17.1 so daemon passes run at the consumer's SDK ([#6000](https://github.com/yschimke/compose-ai-tools/issues/6000)) ([d8d9f21](https://github.com/yschimke/compose-ai-tools/commit/d8d9f215c97bc41693ec32502981e225bda03e12))
+* **deps:** update kotlin to v2.4.21 ([#5996](https://github.com/yschimke/compose-ai-tools/issues/5996)) ([dab6c2e](https://github.com/yschimke/compose-ai-tools/commit/dab6c2e5aad194d594d18102827b4ae751d10ee3))
+* pass the resolved Robolectric SDK to the daemon's sandbox ([#5999](https://github.com/yschimke/compose-ai-tools/issues/5999)) ([3a25c43](https://github.com/yschimke/compose-ai-tools/commit/3a25c438385f4c27662e59830cad4bd9df0750b5))
+
 ## [2.61.1](https://github.com/yschimke/compose-ai-tools/compare/v2.61.0...v2.61.1) (2026-10-15)
 
 
