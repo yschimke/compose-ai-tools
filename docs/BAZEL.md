@@ -377,6 +377,7 @@ what a bundle does not record, so a build that knows them renders without readin
 | `--android-jar <file>` | The `android.jar` to put on the classpath, instead of the SDK `ANDROID_HOME` or `local.properties` names. |
 | `--clock-packages <prefix,…>` | The app clock to pin, as `appClockPackages`; absent pins nothing, as before. |
 | `--local-jars <list>` | A file of the build's own jar paths, one per line. A Maven coordinate the bundle's `dependency-resolution.json` records for one of them, by its content hash (`builtSha256`), resolves to that file instead of a repository. So a stamped `processed_` jar, rules_kotlin's unversioned `kotlin-stdlib.jar` or a jar newer than the lockfile's pin renders as the exact bytes the producer identified, offline. |
+| `--app-compose auto\|app\|daemon` | Whose Compose runs, decided as the Android daemon decides it (`composeai.daemon.appCompose`, which also sets it): `auto`, the default, runs the app's Compose only when it is newer than the renderer's; `app` and `daemon` force one. The one-shot renderer has a single classpath, so the decision orders it: the renderer's jars before the app's dependencies unless the app's Compose runs. The render logs the decision. |
 
 The producer (`compose-preview-producer --artifacts`) accepts schema-2 artifacts too and writes
 the same `backend="android"` bundle, which is how rules_compose_preview's `compose_preview` rule

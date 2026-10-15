@@ -461,6 +461,7 @@ internal object CliFlagValidation {
             "--android-jar",
             "--clock-packages",
             "--local-jars",
+            "--app-compose",
           ),
       "mcp" to
         setOf(
