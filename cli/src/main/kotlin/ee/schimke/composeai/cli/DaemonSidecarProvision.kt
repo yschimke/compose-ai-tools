@@ -94,8 +94,10 @@ internal object DaemonSidecarProvision {
 
   /**
    * Ensure the cache holds [version]'s [sidecar], fetching if needed, and return its directory.
-   * Returns null (never throws) after explaining via [log]. Offline (`COMPOSE_PREVIEW_OFFLINE=1` /
-   * `-Dcomposeai.bundle.offline=true`) never touches the network.
+   * Returns null after explaining via [log]. Offline (`COMPOSE_PREVIEW_OFFLINE=1` /
+   * `-Dcomposeai.bundle.offline=true`) never touches the network. Under [NetworkPolicy]'s switch
+   * ([noNetwork]) an uncached sidecar throws [NetworkDisabledException] instead, naming how to
+   * pre-provision it.
    */
   fun ensure(
     sidecar: Sidecar,
@@ -104,11 +106,22 @@ internal object DaemonSidecarProvision {
     offline: Boolean = defaultOffline(),
     fetcher: Fetcher = defaultFetcher,
     log: (String) -> Unit = { System.err.println(it) },
+    noNetwork: Boolean = NetworkPolicy.disabled,
   ): File? {
     val dir = cacheDir(version, cacheRoot)
     if (isComplete(dir, sidecar)) return dir
 
     val url = assetUrl(version, sidecar)
+    // Before the archive or stage paths exist, let alone a connection.
+    NetworkPolicy.require(
+      "Fetching ${sidecar.label} $version",
+      "Pre-provision it: unpack $url so ${dir.absolutePath} holds " +
+        sidecar.directories.joinToString(" and ") { "$it/" } +
+        ", or point " +
+        sidecar.directories.joinToString(" and ") { "-D${sidecarProperty(it)}" } +
+        " at unpacked copies.",
+      disabled = noNetwork,
+    )
     if (offline) {
       log(
         "compose-preview: ${sidecar.label} $version is not cached at ${dir.absolutePath}, and " +
@@ -151,6 +164,8 @@ internal object DaemonSidecarProvision {
       }
       log("compose-preview: installed ${sidecar.label} $version into ${dir.absolutePath}")
       dir.takeIf { isComplete(it, sidecar) }
+    } catch (e: NetworkDisabledException) {
+      throw e
     } catch (e: Exception) {
       log("compose-preview: could not fetch ${sidecar.label} from $url (${e.message ?: e})")
       null
@@ -229,7 +244,5 @@ internal object DaemonSidecarProvision {
   /** `${XDG_CACHE_HOME:-~/.cache}/composeai/preview-daemon`, via the shared cache convention. */
   fun defaultCacheRoot(): File = composeAiCacheDir("preview-daemon")
 
-  private fun defaultOffline(): Boolean =
-    System.getProperty("composeai.bundle.offline").toBoolean() ||
-      System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
+  private fun defaultOffline(): Boolean = NetworkPolicy.offline
 }

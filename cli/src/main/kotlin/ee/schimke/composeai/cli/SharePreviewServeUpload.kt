@@ -49,6 +49,12 @@ internal class ServeImageUploader(
    * basename, never a path.
    */
   fun upload(file: File, label: String = file.name): Result {
+    // A backstop for callers other than `share-preview`, which refuses before it gets here.
+    NetworkPolicy.requireForUrl(
+      base,
+      "Uploading ${file.name} to $base",
+      "Keep the renders local, or upload to a preview server on this machine.",
+    )
     val request =
       Request.Builder()
         .url("$base/images?name=${encodeQuery(label)}${hostToken.tokenQuery()}")

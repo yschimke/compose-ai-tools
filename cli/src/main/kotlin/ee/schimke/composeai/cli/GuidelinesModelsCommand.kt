@@ -23,6 +23,10 @@ internal class GuidelinesModelsCommand(
   }
 
   internal fun list(): Int {
+    NetworkPolicy.require(
+      "Listing OpenRouter's models",
+      "Name a model you know with --model, or use a loopback --base-url.",
+    )
     val models =
       try {
         fetch()

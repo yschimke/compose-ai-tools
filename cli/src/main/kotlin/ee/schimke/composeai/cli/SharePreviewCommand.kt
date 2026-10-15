@@ -88,6 +88,12 @@ class SharePreviewCommand(
   private val positional: List<String> = parsePositional(args)
 
   fun run() {
+    // Every mechanism publishes renders off this machine (a gist, a pushed branch, a serve host's
+    // public URL), and even choosing one spawns `gh auth status`; refuse before any of it.
+    NetworkPolicy.require(
+      "share-preview (publishing renders as a gist, a pushed branch or a serve upload)",
+      "Keep the renders local: read them from the render output directory instead of sharing.",
+    )
     if (
       mechanismRaw != null && mechanismRaw.lowercase() !in setOf("auto", "gist", "branch", "serve")
     ) {
