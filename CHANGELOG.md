@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.60.1](https://github.com/yschimke/compose-ai-tools/compare/v2.60.0...v2.60.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* publish bundle-producer's preview-discovery dependency with a version ([#5981](https://github.com/yschimke/compose-ai-tools/issues/5981)) ([f48dce3](https://github.com/yschimke/compose-ai-tools/commit/f48dce326a5cd0857d620668ea01c635dab4df70))
+
 ## [2.60.0](https://github.com/yschimke/compose-ai-tools/compare/v2.59.0...v2.60.0) (2026-10-14)
 
 
