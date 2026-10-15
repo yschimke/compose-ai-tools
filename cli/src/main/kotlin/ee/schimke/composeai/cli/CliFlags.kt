@@ -29,6 +29,8 @@ internal object CliFlags {
       "--java-info-load",
       "--module",
       "--filter",
+      // `provision`
+      "--android-sdk",
       // `guidelines`
       "--model",
       "--backend",

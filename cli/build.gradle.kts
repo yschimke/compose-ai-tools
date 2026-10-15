@@ -87,7 +87,22 @@ val composePreviewUsagePsi =
     isCanBeConsumed = false
   }
 
+// Robolectric's own jars, for `RobolectricDepsProvisionTest`: `provision` asks the
+// `DefaultSdkProvider` on the Android daemon sidecar which `android-all` a level needs, and the
+// test
+// asks a real one in an isolated class loader, as `provision` does. Never on any classpath; only
+// the jars that name the artifact, not the 160 MB native runtime the full graph pulls.
+val robolectricProbe =
+  configurations.create("robolectricProbe") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
 dependencies {
+  for (module in listOf("robolectric", "pluginapi", "utils", "annotations")) {
+    add("robolectricProbe", "org.robolectric:$module:${libs.versions.robolectric.get()}")
+  }
   implementation(platform(libs.rcplayers.bom))
   // BTA implementation + Compose compiler plugin for `lib-bta/`; the frontend comes transitively.
   add(
@@ -383,9 +398,16 @@ tasks.withType<Test>().configureEach {
     .files(usagePsiJars)
     .withPropertyName("libUsagePsiJars")
     .withNormalizer(ClasspathNormalizer::class)
+  val robolectricJars = robolectricProbe.incoming.files
+  inputs
+    .files(robolectricJars)
+    .withPropertyName("robolectricProbeJars")
+    .withNormalizer(ClasspathNormalizer::class)
   jvmArgumentProviders.add(
     CommandLineArgumentProvider {
       listOf(
+        "-Dcomposeai.test.robolectricJars=" +
+          robolectricJars.joinToString(File.pathSeparator) { it.absolutePath },
         "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath },
         "-Dcomposeai.usagePsi.jars=" +
           (usagePsiJars + btaJars).joinToString(File.pathSeparator) { it.absolutePath },

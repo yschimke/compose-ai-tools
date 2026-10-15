@@ -1,0 +1,182 @@
+package ee.schimke.composeai.cli
+
+import java.io.File
+import java.net.URLClassLoader
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class RobolectricDepsProvisionTest {
+  /** A real Robolectric's jars, resolved by `:cli`'s `robolectricProbe` configuration. */
+  private val robolectricJars: List<File> =
+    System.getProperty("composeai.test.robolectricJars")
+      .orEmpty()
+      .split(File.pathSeparator)
+      .filter { it.isNotBlank() }
+      .map(::File)
+
+  private fun fixture(block: (File) -> Unit) {
+    val root = Files.createTempDirectory("robolectric-deps").toFile()
+    try {
+      block(root)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `the artifact is the one Robolectric's DefaultSdkProvider names`() {
+    assertTrue(robolectricJars.isNotEmpty(), "robolectricProbe jars not handed to the test")
+    // Robolectric is not on this test's classpath: it is found only in the jars given.
+    assertFailsWith<ClassNotFoundException> {
+      Class.forName("org.robolectric.plugins.DefaultSdkProvider")
+    }
+    val resolved = RobolectricDepsProvision.artifactFor(robolectricJars, 35)
+    assertEquals(35, resolved.apiLevel)
+    assertEquals("org.robolectric", resolved.artifact.groupId)
+    assertEquals("android-all-instrumented", resolved.artifact.artifactId)
+    assertTrue(
+      Regex("""15-robolectric-\d+(-\d+)?-i\d+""").matches(resolved.artifact.version),
+      resolved.artifact.version,
+    )
+    assertEquals(
+      "android-all-instrumented-${resolved.artifact.version}.jar",
+      resolved.artifact.fileName,
+    )
+    assertEquals(
+      "https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/" +
+        "${resolved.artifact.version}/${resolved.artifact.fileName}",
+      resolved.artifact.url(),
+    )
+  }
+
+  @Test
+  fun `the field reconstruction agrees with Robolectric's own answer`() {
+    // The fallback for a level this JDK cannot run must name what Robolectric would on a newer one.
+    val loader =
+      URLClassLoader(
+        robolectricJars.map { it.toURI().toURL() }.toTypedArray(),
+        ClassLoader.getPlatformClassLoader(),
+      )
+    loader.use {
+      for (level in listOf(28, 33, 35)) {
+        val sdk = RobolectricDepsProvision.defaultSdk(it, level)
+        assertEquals(
+          RobolectricDepsProvision.artifactFor(robolectricJars, level).artifact,
+          RobolectricDepsProvision.preinstrumentedFromFields(sdk),
+        )
+      }
+    }
+    // A level above this JDK's reach still resolves (Robolectric 4.17 needs JDK 21 from SDK 36).
+    val newest = RobolectricDepsProvision.artifactFor(robolectricJars, 36)
+    assertTrue(newest.artifact.version.startsWith("16-robolectric-"), newest.artifact.version)
+    assertEquals(21, newest.requiredJava)
+  }
+
+  @Test
+  fun `an unknown level names the levels Robolectric ships`() {
+    val e =
+      assertFailsWith<IllegalStateException> {
+        RobolectricDepsProvision.artifactFor(robolectricJars, 99)
+      }
+    assertTrue(e.message!!.contains("35"), e.message)
+  }
+
+  private val artifact =
+    RobolectricDepsProvision.Artifact(
+      "org.robolectric",
+      "android-all-instrumented",
+      "15-robolectric-1-i7",
+    )
+
+  @Test
+  fun `a download lands under its Maven name once its checksum matches`() = fixture { dir ->
+    val body = "framework bytes"
+    val bodyFile = File(dir, "body").apply { writeText(body) }
+    val sha256 = RobolectricDepsProvision.digest(bodyFile, "SHA-256")
+    val fetched = mutableListOf<String>()
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      fetched += url
+      when {
+        url.endsWith(".jar") -> dest.writeText(body)
+        url.endsWith(".sha512") -> error("HTTP 404")
+        url.endsWith(".sha256") -> dest.writeText("$sha256  android-all.jar\n")
+        else -> error("unexpected $url")
+      }
+    }
+    val out = File(dir, "deps")
+    val jar =
+      RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
+    assertEquals(File(out, "android-all-instrumented-15-robolectric-1-i7.jar"), jar)
+    assertEquals(body, jar.readText())
+    assertEquals(listOf(jar.name), out.list()!!.toList(), "no temporary files left behind")
+    assertEquals(
+      listOf(artifact.url(), artifact.url() + ".sha512", artifact.url() + ".sha256"),
+      fetched,
+    )
+
+    // Present: nothing is fetched again.
+    fetched.clear()
+    RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
+    assertTrue(fetched.isEmpty())
+  }
+
+  @Test
+  fun `a checksum mismatch keeps the download out`() = fixture { dir ->
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      if (url.endsWith(".jar")) dest.writeText("tampered")
+      else if (url.endsWith(".sha1")) dest.writeText("0".repeat(40)) else error("HTTP 404")
+    }
+    val out = File(dir, "deps")
+    val e =
+      assertFailsWith<IllegalStateException> {
+        RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
+      }
+    assertTrue(e.message!!.contains("SHA-1"), e.message)
+    assertFalse(File(out, artifact.fileName).exists())
+    assertTrue(out.list()!!.isEmpty())
+  }
+
+  @Test
+  fun `a rate-limited fetch is retried and a missing one is not`() = fixture { dir ->
+    var jarAttempts = 0
+    val body = "bytes"
+    val sha1 = RobolectricDepsProvision.digest(File(dir, "b").apply { writeText(body) }, "SHA-1")
+    val pauses = mutableListOf<Int>()
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      when {
+        url.endsWith(".jar") -> if (++jarAttempts < 3) error("HTTP 429") else dest.writeText(body)
+        url.endsWith(".sha1") -> dest.writeText(sha1)
+        else -> error("HTTP 404")
+      }
+    }
+    RobolectricDepsProvision.ensure(
+      artifact,
+      File(dir, "deps"),
+      fetcher = fetcher,
+      pause = { pauses += it },
+      log = {},
+    )
+    assertEquals(3, jarAttempts)
+    assertEquals(listOf(1, 2), pauses)
+
+    val missing = RobolectricDepsProvision.Fetcher { _, _ ->
+      jarAttempts++
+      error("HTTP 404")
+    }
+    jarAttempts = 0
+    assertFailsWith<IllegalStateException> {
+      RobolectricDepsProvision.ensure(
+        artifact,
+        File(dir, "other"),
+        fetcher = missing,
+        pause = {},
+        log = {},
+      )
+    }
+    assertEquals(1, jarAttempts)
+  }
+}

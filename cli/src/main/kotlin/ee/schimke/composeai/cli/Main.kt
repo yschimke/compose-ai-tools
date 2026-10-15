@@ -43,6 +43,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "rc" to { a -> RcCommand(a).run() },
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
+    "provision" to { a -> ProvisionCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
     "pin" to { a -> PinCommand(a).run() },
     "auth" to { a -> AuthCommand(a).run() },
@@ -143,7 +144,7 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
-      setup     update · init-script · pin · auth · bazel
+      setup     update · provision · init-script · pin · auth · bazel
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
     Project builds: Gradle settings/wrapper first, otherwise Bazel/Blaze workspace or BUILD files.
@@ -289,6 +290,11 @@ private fun printFullUsage() {
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
                        (--no-modify-path leaves shell startup files alone)
+      provision        Fetch everything a render downloads on first use (render daemons, Skiko
+                       native, Robolectric's android-all jar, optionally the preview / MCP
+                       servers) into ${'$'}{XDG_CACHE_HOME:-~/.cache}/composeai and print the paths
+                       and environment for an offline run: `provision [--desktop] [--android]
+                       [--server] [--mcp] [--xr] [--all] [--android-sdk <n>] [--json]`
       bazel            init | list | prepare | render for an existing Compose JVM target.
                        Run `compose-preview bazel --help` for setup and build configuration.
       init-script      Materialise the bundled auto-inject init script and print the path
