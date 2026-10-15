@@ -135,15 +135,14 @@ public class CoordinateResolver(
     val found = mutableListOf<File>()
     // The download cache is searched too, so earlier downloads resolve offline.
     for (root in repositoryRoots + downloadCacheDir) {
-      if (fileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
+      if (!isDirectory(root)) continue
       // Recorded type first, then `.aar` (see [candidateFileNames]).
       for (fileName in candidateFileNames(coord)) {
         // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.<ext>
         val mavenVersionDir =
           File(root, "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}")
         val mavenPath = File(mavenVersionDir, fileName)
-        if (fileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
-          found += mavenPath
+        if (isRegularFile(mavenPath)) found += mavenPath
         // [download]'s per-sha256 buckets, one level deeper.
         found += subdirectoryHits(mavenVersionDir, fileName)
         // Gradle modules-2: <root>/<group>/<artifact>/<version>/<sha1>/<fileName>.
@@ -158,19 +157,30 @@ public class CoordinateResolver(
     return found.mapNotNull { materialize(it) }
   }
 
+  /**
+   * [file]'s metadata, following symlinks: okio reports a symlink itself (neither a regular file
+   * nor a directory), and a symlinked jar is how Bazel stages runfiles and sandbox inputs.
+   */
+  private fun followedMetadata(file: File): okio.FileMetadata? {
+    val path = file.path.toPath()
+    val metadata = fileSystem.metadataOrNull(path) ?: return null
+    if (metadata.symlinkTarget == null) return metadata
+    return runCatching { fileSystem.metadataOrNull(fileSystem.canonicalize(path)) }.getOrNull()
+  }
+
+  private fun isRegularFile(file: File): Boolean = followedMetadata(file)?.isRegularFile == true
+
+  private fun isDirectory(file: File): Boolean = followedMetadata(file)?.isDirectory == true
+
   /** Every `<versionDir>/<*>/<fileName>`, one directory level only (never a filesystem walk). */
   private fun subdirectoryHits(versionDir: File, fileName: String): List<File> {
-    if (fileSystem.metadataOrNull(versionDir.path.toPath())?.isDirectory != true) return emptyList()
+    if (!isDirectory(versionDir)) return emptyList()
     return fileSystem
       .listOrNull(versionDir.path.toPath())
       .orEmpty()
       .map { it.toFile() }
-      .filter { fileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
-      .mapNotNull { dir ->
-        File(dir, fileName).takeIf {
-          fileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
-        }
-      }
+      .filter { isDirectory(it) }
+      .mapNotNull { dir -> File(dir, fileName).takeIf { isRegularFile(it) } }
   }
 
   /**
