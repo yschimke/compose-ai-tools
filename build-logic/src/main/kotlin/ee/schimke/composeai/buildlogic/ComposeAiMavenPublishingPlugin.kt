@@ -114,6 +114,15 @@ internal fun Project.configureComposeAiPublication(
  * ([CheckPomDependencyVersions]), under `check` and named by CI, so the pull request that
  * introduces one fails rather than the release upload.
  */
+/** The runtime classpath a JVM, KMP JVM/desktop or Android release publication's POM describes. */
+private val BOM_RESOLVING_CLASSPATHS =
+  setOf(
+    "runtimeClasspath",
+    "jvmRuntimeClasspath",
+    "desktopRuntimeClasspath",
+    "releaseRuntimeClasspath",
+  )
+
 private fun Project.configurePomDependencyVersionCheck() {
   val checkPoms =
     tasks.register("checkPomDependencyVersions", CheckPomDependencyVersions::class.java) {
@@ -121,6 +130,9 @@ private fun Project.configurePomDependencyVersionCheck() {
       description = "Fails when a generated POM names a dependency Maven Central would reject."
       pomFiles.from(tasks.withType(GenerateMavenPom::class.java))
       gradleUserHome.set(gradle.gradleUserHomeDir)
+      resolvedClasspath.from(
+        configurations.matching { it.isCanBeResolved && it.name in BOM_RESOLVING_CLASSPATHS }
+      )
     }
   pluginManager.withPlugin("lifecycle-base") {
     tasks.named("check") { dependsOn(checkPoms) }

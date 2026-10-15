@@ -22,6 +22,18 @@ val gradlePluginKtfmtProjectPaths =
     .split(",")
     .filter { it.isNotEmpty() }
 
+// `checkPomDependencyVersions` runs unqualified across this build, but a task-name selector
+// doesn't reach the `gradle-plugin` included build, whose four projects publish to Maven Central
+// too. Listed by hand: a new publishing project there must be added here.
+tasks.register("checkGradlePluginPomDependencyVersions") {
+  group = "verification"
+  description = "Runs checkPomDependencyVersions on the gradle-plugin build's published projects."
+  val gradlePlugin = gradle.includedBuild("gradle-plugin")
+  listOf("", ":daemon-launch-builder", ":gradle-plugin-config", ":preview-discovery").forEach {
+    dependsOn(gradlePlugin.task("$it:checkPomDependencyVersions"))
+  }
+}
+
 tasks.register("ktfmtCheckAll") {
   group = "verification"
   description = "Runs ktfmtCheck across this build and the gradle-plugin included build."
