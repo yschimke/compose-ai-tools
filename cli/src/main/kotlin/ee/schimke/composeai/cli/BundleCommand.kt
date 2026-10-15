@@ -112,6 +112,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle render  <bundle.png | URL> [-o <dir>] [--knob k=v …] [--res <pool>] [--svg]  (re-render previews; --knob re-themes, --svg also exports vectors)
                                        Android bundles: [--android-sdk <n>] [--android-jar <file>] [--clock-packages <prefix,…>] (sandbox SDK, android.jar, pinned app clock)
                                        [--local-jars <list>] (a build's own jars for the bundle's recorded Maven coordinates)
+                                       [--app-compose auto|app|daemon] (whose Compose runs; auto: the app's when newer)
         compose-preview bundle repack  <bundle.png | URL> --renders <dir> -o <out.png>  (swap baked previews for re-rendered PNGs + figma.svg)
         compose-preview bundle merge   <base.png | URL> <shard.png | URL>… -o <out.png>  (union the previews of bundles packed from disjoint render selections)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
@@ -1068,7 +1069,7 @@ private class RenderSubcommand(private val args: List<String>) {
       System.err.println(
         "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
           "[--res <pool-dir>] [--svg] [--android-sdk <n>] [--android-jar <file>] " +
-          "[--clock-packages <prefix,…>] [--local-jars <list>]"
+          "[--clock-packages <prefix,…>] [--local-jars <list>] [--app-compose auto|app|daemon]"
       )
       exitProcess(64)
     }
@@ -1142,6 +1143,10 @@ private class RenderSubcommand(private val args: List<String>) {
         clockPackages = bundleRenderClockPackages(args.flagValue("--clock-packages")),
         androidJar = args.flagValue("--android-jar")?.let { File(it).absoluteFile },
         localJars = args.flagValue("--local-jars")?.let { readLocalJarList(File(it)) }.orEmpty(),
+        appComposeMode =
+          args.flagValue("--app-compose")
+            ?: System.getProperty(BundleAppCompose.MODE_PROPERTY)
+            ?: BundleAppCompose.DEFAULT_MODE,
       )
     val result =
       try {

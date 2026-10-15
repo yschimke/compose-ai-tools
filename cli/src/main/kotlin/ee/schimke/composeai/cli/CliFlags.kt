@@ -35,6 +35,7 @@ internal object CliFlags {
       "--android-jar",
       "--clock-packages",
       "--local-jars",
+      "--app-compose",
       // `guidelines`
       "--model",
       "--backend",

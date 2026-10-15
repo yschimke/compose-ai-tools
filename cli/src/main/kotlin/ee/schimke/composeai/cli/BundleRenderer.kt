@@ -73,6 +73,12 @@ class BundleRenderer(
    * them, by content hash, resolve to that file instead of a repository ([bundleLocalJars]).
    */
   private val localJars: List<File> = emptyList(),
+  /**
+   * Whose Compose an Android render runs (`--app-compose`, else `-Dcomposeai.daemon.appCompose`):
+   * `auto` (the app's when newer), `app` or `daemon`, as in the daemon lane.
+   */
+  private val appComposeMode: String =
+    System.getProperty(BundleAppCompose.MODE_PROPERTY) ?: BundleAppCompose.DEFAULT_MODE,
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -324,15 +330,25 @@ class BundleRenderer(
     // Synthesized robolectric.properties first, then the app's resource carriage, consumer classes
     // and deps, the renderer runtime, and android.jar last (a discovery stub; Robolectric supplies
     // the real framework).
+    // Whose Compose runs, decided as the daemon lane decides it (see [BundleAppCompose]).
+    val appCompose =
+      BundleAppCompose.decide(
+        rendererJars,
+        listOf(classesDir) + libJars + resolvedJars,
+        mode = appComposeMode,
+      )
+    appCompose?.let { logSink("bundle render (android): ${it.logLine}") }
     val classpath =
-      (listOf(androidRendererLauncher(workDir)) +
-          listOf(configRoot) +
-          androidResourceCarriage(zipBytes, workDir, manifest) +
-          listOf(classesDir) +
-          libJars +
-          resolvedJars +
-          rendererJars +
-          listOf(androidJar))
+      BundleAppCompose.classpath(
+          appCompose,
+          leading =
+            listOf(androidRendererLauncher(workDir), configRoot) +
+              androidResourceCarriage(zipBytes, workDir, manifest) +
+              listOf(classesDir),
+          appDependencies = libJars + resolvedJars,
+          rendererJars = rendererJars,
+          trailing = listOf(androidJar),
+        )
         .joinToString(File.pathSeparator) { it.absolutePath }
 
     outputDir.mkdirs()
