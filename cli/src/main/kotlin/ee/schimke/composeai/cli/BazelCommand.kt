@@ -756,7 +756,8 @@ internal fun prepareBazelAndroidDaemon(
       it.absolutePath
     }
   // The sandbox follows the target's compileSdk (`composeai.daemon.sandboxSdk`), as a Gradle
-  // module's does.
+  // module's does. The level is clamped to what this JVM's Robolectric can render, so the
+  // descriptor pins this JVM as its launcher: a consumer on another JDK must not render it.
   val launch = AndroidBundleLaunch(sdkLevel = bazelAndroidSdkLevel(android.compileSdk))
   val descriptor =
     DaemonLaunchBuilder.build(
@@ -783,10 +784,20 @@ internal fun prepareBazelAndroidDaemon(
           ),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
+      javaLauncher = currentJavaLauncher(),
     )
   return output.resolve("daemon-launch.json").also {
     it.writeText(DaemonLaunchBuilder.encode(descriptor))
   }
+}
+
+/** The `java` executable this CLI runs on, or null when it cannot be found. */
+internal fun currentJavaLauncher(javaHome: String? = System.getProperty("java.home")): String? {
+  val home = javaHome?.let(::File) ?: return null
+  return listOf("bin/java", "bin/java.exe")
+    .map { home.resolve(it) }
+    .firstOrNull { it.isFile && it.canExecute() }
+    ?.absolutePath
 }
 
 internal fun prepareBazelDesktopDaemon(

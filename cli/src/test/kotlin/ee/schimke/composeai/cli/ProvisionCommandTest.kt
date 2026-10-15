@@ -116,6 +116,20 @@ class ProvisionCommandTest {
   }
 
   @Test
+  fun `an android-sdk flag without levels is an error, not a silent default`() {
+    for (args in
+      listOf(
+        listOf("--android", "--android-sdk="),
+        listOf("--android", "--android-sdk"),
+        listOf("--android-sdk", "35,"),
+      )) {
+      assertFailsWith<IllegalArgumentException>(args.toString()) {
+        ProvisionCommand.androidLevels(args)
+      }
+    }
+  }
+
+  @Test
   fun `desktop and android provision the sidecars, skiko and android-all`() = fixture { root ->
     val steps = FakeSteps(root)
     val report =
