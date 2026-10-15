@@ -160,6 +160,31 @@ class CoordinateResolverTest {
     assertEquals(classes.toList(), file.readBytes().toList())
   }
 
+  @Test
+  fun `classifier artifacts are never taken for a variant-named primary artifact`() {
+    val coord = maven().copy(type = "aar")
+    assertTrue(CoordinateResolver.isGradleVariantFileName(coord, "widgets.aar"))
+    assertTrue(CoordinateResolver.isGradleVariantFileName(coord, "widgets-android.aar"))
+    for (name in
+      listOf(
+        "widgets-1.2.3.aar",
+        "widgets-1.2.3-tests.jar",
+        "widgets-1.2.3-test-fixtures.jar",
+        "widgets-sources.jar",
+        "widgets-1.2.3-javadoc.jar",
+        "widgets.pom",
+        "widgets.module",
+      )) {
+      assertFalse(CoordinateResolver.isGradleVariantFileName(coord, name), name)
+    }
+    // Unhashed, with only a classifier artifact in the cache: nothing resolves.
+    File(root, "com.example.foo/widgets/1.2.3/3333/widgets-1.2.3-tests.jar").apply {
+      parentFile.mkdirs()
+      writeBytes(byteArrayOf(1))
+    }
+    assertNull(resolver.resolve(maven()).file)
+  }
+
   private fun maven(sha: String? = null) =
     BundleReader.ClasspathEntry.Maven(
       group = "com.example.foo",

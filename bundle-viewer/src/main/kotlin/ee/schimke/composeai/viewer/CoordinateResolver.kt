@@ -117,24 +117,26 @@ internal object CoordinateResolver {
   ): List<Path> {
     val found = mutableListOf<Path>()
     for (root in roots) {
-      if (fileSystem.metadataOrNull(root)?.isDirectory != true) continue
+      if (!isDirectory(root, fileSystem)) continue
+      val gradleVersionDir = root / "${coord.group}/${coord.artifact}/${coord.version}"
+      val hashDirs =
+        if (isDirectory(gradleVersionDir, fileSystem))
+          fileSystem.list(gradleVersionDir).filter { isDirectory(it, fileSystem) }
+        else emptyList()
       // The recorded type first, then `.aar`; [materialize] turns an `.aar` into its classes.jar.
       for (fileName in candidateFileNames(coord)) {
         val mavenPath =
           root / "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
-        if (fileSystem.metadataOrNull(mavenPath)?.isRegularFile == true) found += mavenPath
-        val gradleVersionDir = root / "${coord.group}/${coord.artifact}/${coord.version}"
-        if (fileSystem.metadataOrNull(gradleVersionDir)?.isDirectory == true) {
-          fileSystem
-            .list(gradleVersionDir)
-            .asSequence()
-            .filter { fileSystem.metadataOrNull(it)?.isDirectory == true }
-            .mapNotNull { hashDir ->
-              (hashDir / fileName).takeIf { fileSystem.metadataOrNull(it)?.isRegularFile == true }
-            }
-            .let { found += it }
-        }
+        if (isRegularFile(mavenPath, fileSystem)) found += mavenPath
+        found += hashDirs.map { it / fileName }.filter { isRegularFile(it, fileSystem) }
       }
+      // Gradle stores a variant under its own file name (`ui-text.aar` for ui-text-android); last,
+      // so an exact name is always preferred.
+      found +=
+        hashDirs
+          .flatMap { fileSystem.list(it) }
+          .filter { isGradleVariantFileName(coord, it.name) && isRegularFile(it, fileSystem) }
+          .sortedBy { it.toString() }
     }
     // Materialize before returning so the hash check (and the classpath) sees real jars — an `.aar`
     // isn't loadable and the bundle's `sha256` is of the extracted `classes.jar`.
@@ -297,6 +299,41 @@ internal object CoordinateResolver {
   /** Maven Central + Google Maven, the two repos that serve almost every Compose/AndroidX dep. */
   val DEFAULT_REMOTE_REPOSITORIES: List<String> =
     listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
+
+  /**
+   * [path]'s metadata, following symlinks: okio describes a symlink itself, neither a regular file
+   * nor a directory, and Bazel stages jars as symlinks.
+   */
+  private fun followedMetadata(path: Path, fileSystem: FileSystem): okio.FileMetadata? {
+    val metadata = fileSystem.metadataOrNull(path) ?: return null
+    if (metadata.symlinkTarget == null) return metadata
+    return runCatching { fileSystem.metadataOrNull(fileSystem.canonicalize(path)) }.getOrNull()
+  }
+
+  private fun isRegularFile(path: Path, fileSystem: FileSystem): Boolean =
+    followedMetadata(path, fileSystem)?.isRegularFile == true
+
+  private fun isDirectory(path: Path, fileSystem: FileSystem): Boolean =
+    followedMetadata(path, fileSystem)?.isDirectory == true
+
+  private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
+
+  /**
+   * Whether [name] in a Gradle cache hash directory is [coord]'s primary artifact under a variant's
+   * own file name: the recorded type or `.aar`, not the exact `<artifact>-<version>` name, and no
+   * `<artifact>-<version>-<classifier>`, sources, javadoc or samples artifact.
+   */
+  internal fun isGradleVariantFileName(coord: ClasspathEntry.Maven, name: String): Boolean {
+    val extension =
+      listOf(coord.type.ifBlank { "jar" }, "aar")
+        .distinct()
+        .map { ".$it" }
+        .firstOrNull { name.endsWith(it) } ?: return false
+    val stem = name.removeSuffix(extension)
+    return name !in candidateFileNames(coord) &&
+      !stem.startsWith("${coord.artifact}-${coord.version}-") &&
+      NON_BINARY_CLASSIFIERS.none { stem.endsWith(it) }
+  }
 
   /**
    * Candidate `<artifact>-<version>.<ext>` filenames: the recorded type first, then `.aar` for
