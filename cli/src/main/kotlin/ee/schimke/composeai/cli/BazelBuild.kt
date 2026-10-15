@@ -121,17 +121,25 @@ internal fun BazelArtifacts.resolve(
         },
       rJar = rJar,
       compileSdk = block.compileSdk,
+      // Only a merge uses these, so a missing one keeps this target on its own APK rather than
+      // failing it: a merge then reports that the link inputs are missing.
       link =
         block.link?.let { link ->
-          ResolvedAndroidLink(
-            script = resolvePath(link.script),
-            aapt2 = resolvePath(link.aapt2),
-            javaHome = resolvePath(link.javaHome),
-            androidJar = resolvePath(link.androidJar),
-            packages = link.packages,
-            compiledResources = resolvePaths(link.compiledResources),
-            assets = link.assets.map { it.path to resolvePath(it.file) },
-          )
+          runCatching {
+            ResolvedAndroidLink(
+              script = resolvePath(link.script),
+              aapt2 = resolvePath(link.aapt2),
+              javaHome = resolvePath(link.javaHome),
+              androidJar = resolvePath(link.androidJar),
+              packages = link.packages,
+              compiledResources = resolvePaths(link.compiledResources),
+              assets = link.assets.map { it.path to resolvePath(it.file) },
+            )
+          }
+            .onFailure {
+              System.err.println("[bazel] $target: link inputs unusable: ${it.message}")
+            }
+            .getOrNull()
         },
     )
   }

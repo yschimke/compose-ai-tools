@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.buildartifacts.protocol.AndroidBuildArtifacts
+import ee.schimke.composeai.buildartifacts.protocol.AndroidLinkInputs
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -212,5 +214,42 @@ class BazelAndroidMergeTest {
     root.resolve("ui.zip").writeText("changed resources")
     linkAndroidMerge(plan, out)
     assertEquals(2, calls.readLines().size, "a changed archive relinks")
+  }
+
+  @Test
+  fun `link inputs that are not on disk keep the target on its own APK`() {
+    val metadata =
+      BazelArtifacts(
+        "//ui",
+        "k8",
+        listOf("ui.jar"),
+        listOf("ui.jar"),
+        android =
+          AndroidBuildArtifacts.Builder(
+              "com.example.ui",
+              "ui.ap_",
+              "ui.xml",
+            )
+            .apply {
+              link =
+                AndroidLinkInputs.Builder(
+                    "link.sh",
+                    "missing/aapt2",
+                    "jdk",
+                    "android.jar",
+                    listOf("com.example.ui"),
+                    listOf("ui.zip"),
+                  )
+                  .build()
+            }
+            .build(),
+      )
+    listOf("ui.jar", "ui.ap_", "ui.xml", "link.sh", "android.jar", "ui.zip").forEach { file(it) }
+    root.resolve("jdk").mkdirs()
+
+    val resolved = metadata.resolve(root)
+
+    assertNotNull(resolved.android)
+    assertNull(resolved.android!!.link)
   }
 }
