@@ -120,13 +120,78 @@ class AndroidPlatformLevelTest {
   @Test
   fun `the render SDK follows compileSdk within what Robolectric runs`() {
     val notes = mutableListOf<String>()
-    assertEquals(AndroidBundleLaunch.DEFAULT_SDK, bazelAndroidSdkLevel(null, 21, notes::add))
     assertEquals(34, bazelAndroidSdkLevel(34, 17, notes::add))
-    assertEquals(36, bazelAndroidSdkLevel(36, 21, notes::add))
-    assertTrue(notes.isEmpty())
+    assertEquals(36, bazelAndroidSdkLevel(36, 21, notes::add, source = "the aspect"))
+    assertEquals("[bazel] rendering on SDK 36 (compileSdk from the aspect)", notes.last())
     assertEquals(35, bazelAndroidSdkLevel(36, 17, notes::add))
-    assertTrue(notes.single().contains("JDK 17"))
+    assertTrue(notes.last().contains("JDK 17"))
     assertEquals(AndroidBundleLaunch.MAX_SDK, bazelAndroidSdkLevel(99, 21, notes::add))
     assertEquals(AndroidBundleLaunch.MIN_SDK, bazelAndroidSdkLevel(19, 21, notes::add))
   }
+
+  @Test
+  fun `a silent default is never silent`() {
+    val notes = mutableListOf<String>()
+    assertEquals(
+      AndroidBundleLaunch.DEFAULT_SDK,
+      bazelAndroidSdkLevel(null, 21, notes::add, target = "//ui"),
+    )
+    assertTrue(notes.single().startsWith("[bazel] //ui: no compileSdk"), notes.single())
+    assertTrue(notes.single().contains("androidCompileSdk"))
+  }
+
+  /** An `android.jar` like a build's generated one: `Build$VERSION_CODES` and nothing beside it. */
+  private fun generatedAndroidJar(root: File, levels: Map<String, Int>): File {
+    val src =
+      root.file(
+        "src/android/os/Build.java",
+        "package android.os; public class Build { public static class VERSION_CODES { " +
+          levels.entries.joinToString(" ") { "public static final int ${it.key} = ${it.value};" } +
+          " } }",
+      )
+    val classes = root.resolve("classes").apply { mkdirs() }
+    val compiler = javax.tools.ToolProvider.getSystemJavaCompiler()
+    assertEquals(0, compiler.run(null, null, null, "-d", classes.path, src.path))
+    val jar = root.resolve("bazel-out/bin/sdk/android.jar").apply { parentFile.mkdirs() }
+    java.util.zip.ZipOutputStream(jar.outputStream()).use { zip ->
+      classes
+        .walkTopDown()
+        .filter { it.isFile }
+        .forEach {
+          zip.putNextEntry(java.util.zip.ZipEntry(it.relativeTo(classes).invariantSeparatorsPath))
+          it.inputStream().use { input -> input.copyTo(zip) }
+          zip.closeEntry()
+        }
+    }
+    return jar
+  }
+
+  @Test
+  fun `a generated android jar names its level through VERSION_CODES`() = fixture { root ->
+    val jar =
+      generatedAndroidJar(
+        root,
+        mapOf("BASE" to 1, "VANILLA_ICE_CREAM" to 35, "BAKLAVA" to 36, "CUR_DEVELOPMENT" to 10000),
+      )
+    assertNull(AndroidPlatformLevel.of(jar))
+    assertEquals(36, AndroidPlatformLevel.fromContents(jar))
+    assertEquals(
+      AndroidPlatformLevel.Detected(36, "android.jar contents"),
+      AndroidPlatformLevel.detect(jar),
+    )
+    assertNull(AndroidPlatformLevel.fromContents(root.file("empty.jar")))
+  }
+
+  @Test
+  fun `the configured level overrides the aspect and detection, and each names its source`() =
+    fixture { root ->
+      val fromPlatform = artifacts(root, compileSdk = null).resolve(root).android!!
+      assertEquals("platform metadata beside android.jar", fromPlatform.compileSdkSource)
+      val fromAspect = artifacts(root, compileSdk = 34).resolve(root).android!!
+      assertEquals("the aspect", fromAspect.compileSdkSource)
+      val overridden =
+        artifacts(root, compileSdk = 34).resolve(root, compileSdkOverride = 33).android!!
+      assertEquals(33, overridden.compileSdk)
+      assertEquals("androidCompileSdk in bazel.json", overridden.compileSdkSource)
+    }
 }

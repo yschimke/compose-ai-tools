@@ -758,7 +758,15 @@ internal fun prepareBazelAndroidDaemon(
   // The sandbox follows the target's compileSdk (`composeai.daemon.sandboxSdk`), as a Gradle
   // module's does. The level is clamped to what this JVM's Robolectric can render, so the
   // descriptor pins this JVM as its launcher: a consumer on another JDK must not render it.
-  val launch = AndroidBundleLaunch(sdkLevel = bazelAndroidSdkLevel(android.compileSdk))
+  val launch =
+    AndroidBundleLaunch(
+      sdkLevel =
+        bazelAndroidSdkLevel(
+          android.compileSdk,
+          target = artifacts.metadata.target,
+          source = android.compileSdkSource,
+        )
+    )
   val descriptor =
     DaemonLaunchBuilder.build(
       modulePath = artifacts.metadata.target,

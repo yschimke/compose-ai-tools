@@ -118,7 +118,15 @@ internal fun linkAndroidMerge(
   val rJar = directory.resolve("r-final.jar")
   val assets = directory.resolve("assets.txt")
   val stamp = directory.resolve("link.fingerprint")
-  val result = ResolvedAndroidArtifacts(plan.packageName, apk, manifest, rJar, plan.compileSdk)
+  val result =
+    ResolvedAndroidArtifacts(
+      plan.packageName,
+      apk,
+      manifest,
+      rJar,
+      plan.compileSdk,
+      compileSdkSource = plan.compileSdk?.let { "the highest of the merged targets" },
+    )
   val fingerprint = androidMergeFingerprint(plan)
   if (
     apk.isFile && rJar.isFile && manifest.isFile && stamp.isFile && stamp.readText() == fingerprint

@@ -325,7 +325,13 @@ the target's `android.jar` path has an `android-<N>` segment, since rules_androi
 `AndroidSdkInfo` carries no API level; otherwise the CLI reads it from the SDK
 platform that jar belongs to (`AndroidVersion.ApiLevel` in the `source.properties`
 beside it, else `ro.build.version.sdk` in its `build.prop`, following a symlinked
-jar to its target). With neither, it renders on the default SDK (35). A first build on a cold cache compiles
+jar to its target), and when that jar is a generated build output with nothing beside
+it, from the jar itself: the highest `android.os.Build.VERSION_CODES` constant it
+declares. `"androidCompileSdk": 36` in `.compose-preview/bazel.json` overrides all of
+these. With none, it renders on the default SDK (35). Each render logs the SDK it
+uses and where the level came from, so a default is never silent.
+
+A first build on a cold cache compiles
 rules_android's own tools (protobuf included) and can run well past the default
 300-second `--timeout`; raise it for that run (the contrib proof uses
 `--timeout 2400`).
