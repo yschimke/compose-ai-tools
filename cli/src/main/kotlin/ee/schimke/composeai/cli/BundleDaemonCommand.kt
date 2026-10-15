@@ -285,7 +285,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           )
           exitProcess(1)
         }
-    val launch = AndroidBundleLaunch()
+    // Same override as the one-shot BundleRenderer: bundles don't record compileSdk, so
+    // `-Dcomposeai.bundle.androidSdk` is the only way to pick the daemon sandbox's SDK.
+    val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
     return DaemonLaunch(
       classpath =
         (daemonJars + listOf(androidJar)).joinToString(File.pathSeparator) { it.absolutePath },
