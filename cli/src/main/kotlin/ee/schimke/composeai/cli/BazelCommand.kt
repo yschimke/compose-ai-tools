@@ -132,7 +132,7 @@ internal class BazelCommand(
             "Imported artifacts do not match --target"
           }
         }
-        listOf(metadata.resolve(executionRoot, root))
+        listOf(metadata.resolve(executionRoot, root, config.androidCompileSdk))
       } else {
         // Report before target selection, which may already run the chosen tool.
         if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
