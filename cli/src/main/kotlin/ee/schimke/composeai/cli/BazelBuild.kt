@@ -46,6 +46,12 @@ internal data class BazelBuildConfig(
    * resource the later wins for both.
    */
   val mergeAndroid: Boolean = false,
+  /**
+   * The API level Android targets render on, overriding the aspect's `android.compileSdk` and the
+   * CLI's own detection: for an SDK provider that exposes no level and an `android.jar` that is a
+   * generated build output.
+   */
+  val androidCompileSdk: Int? = null,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
@@ -80,6 +86,7 @@ internal fun BazelArtifacts(
 internal fun BazelArtifacts.resolve(
   executionRoot: File,
   workspaceRoot: File? = null,
+  compileSdkOverride: Int? = null,
 ): ResolvedBazelArtifacts {
   when (schemaVersion) {
     BuildArtifacts.SCHEMA_VERSION_JVM ->
@@ -135,12 +142,16 @@ internal fun BazelArtifacts.resolve(
           .getOrNull()
       }
     // The aspect omits compileSdk when the target's android.jar path names no `android-<N>`; the
-    // SDK platform that jar belongs to still says which level it is.
-    val compileSdk =
-      block.compileSdk
+    // SDK platform that jar belongs to, or failing that the jar itself, still says which level it
+    // is. A configured level overrides all three.
+    val detected =
+      compileSdkOverride?.let {
+        AndroidPlatformLevel.Detected(it, "androidCompileSdk in bazel.json")
+      }
+        ?: block.compileSdk?.let { AndroidPlatformLevel.Detected(it, "the aspect") }
         ?: (link?.androidJar
             ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() })
-          ?.let(AndroidPlatformLevel::of)
+          ?.let(AndroidPlatformLevel::detect)
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -152,7 +163,8 @@ internal fun BazelArtifacts.resolve(
           require(it.isFile) { "android.manifest is not a file: $it" }
         },
       rJar = rJar,
-      compileSdk = compileSdk,
+      compileSdk = detected?.level,
+      compileSdkSource = detected?.source,
       link = link,
     )
   }
@@ -187,6 +199,8 @@ internal data class ResolvedAndroidArtifacts(
   val compileSdk: Int?,
   /** What [resourceApk] was linked from, so several targets can be linked into one APK. */
   val link: ResolvedAndroidLink? = null,
+  /** What [compileSdk] was read from, for the log line naming the SDK a render uses. */
+  val compileSdkSource: String? = null,
 )
 
 internal data class ResolvedBazelArtifacts(
@@ -590,7 +604,7 @@ internal class BazelBuild(
         require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
           "Metadata target ${artifacts.target} does not match $target"
         }
-        artifacts.resolve(File(executionRoot), root)
+        artifacts.resolve(File(executionRoot), root, config.androidCompileSdk)
       }
     } finally {
       bep.delete()
