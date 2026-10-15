@@ -323,6 +323,157 @@ producers:
    straight from the zip. Trade-off: size (~100 KB → a few MB). Use it only when
    the recipient can't resolve coordinates.
 
+### Dependency policy for Bazel bundles (#6016)
+
+A Bazel bundle has to decide, per runtime jar, whether it travels as a Maven coordinate or
+embedded under `libs/`. Monorepos make that hard: they often consume **unreleased, top-of-tree
+library builds** (androidx built from source or from CI drops) whose version stamp names the
+*next* release, and Bazel's `jvm_import` rewrites every published jar (`processed_*.jar` gains a
+`Target-Label` manifest line), so its bytes never equal the published checksum.
+
+**Unconfigured, nothing changes.** Without a `dependencyPolicy` a bundle is byte-for-byte what it
+was before policies existed (pinned by `DefaultPolicyGoldenTest`):
+
+1. Each jar is identified, first hit wins: lockfile path (`lockfile-path`), lockfile file name
+   (`lockfile-name`), a Maven-layout path (`maven-layout`), a single `pom.properties`
+   (`pom-properties`), a manifest `Implementation-Version` for a pinned artifact name
+   (`manifest-version`), a versioned file name of a pinned artifact (`artifact-name-version`), the
+   lockfile checksum (`content-hash`), and finally a bare pinned artifact name
+   (`closest-lockfile-artifact`).
+2. An identified jar is written as that coordinate, carrying the **lockfile's** checksum when the
+   version is the pinned one; a mismatch with the built bytes is only recorded.
+3. An unidentified jar is embedded (`unidentified-embedded`). `--embed-deps` embeds everything.
+
+As a policy, that is `"default": ["coordinate", "embed"]`.
+
+#### Configuration
+
+`.compose-preview/bazel.json` (or `--config`), read by `compose-preview bazel bundle` and
+`render --bundle` on Bazel:
+
+```json
+{
+  "dependencyPolicy": {
+    "default": ["coordinate-verified", "embed"],
+    "allowTransformed": true,
+    "rules": [
+      { "match": "androidx.*", "policy": ["closest-released", "embed"] },
+      { "match": "com.example:internal-*", "policy": ["embed"] }
+    ]
+  }
+}
+```
+
+The standalone producer (`compose-preview-producer`, the Bazel rule's action) takes the same
+block, or a whole `bazel.json`, with `--dependency-policy file.json`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `default` | `["coordinate", "embed"]` | Fallback chain for jars no rule matches, and for unidentified jars. A single string is a one-step chain. |
+| `rules[].match` | — | Glob (`*`, `?`) over the group, or over `group:artifact` when it contains `:`. First matching rule wins. |
+| `rules[].policy` | — | That rule's chain. |
+| `rules[].allowTransformed`, `allowTransformed` | `false` | Let `coordinate-verified` accept a published version whose bytes differ (Bazel `processed_`, ijar, jetify, desugar). |
+| `versionStamps` | `true` when a block is present | Identify androidx jars by `META-INF/<group>_<artifact>.version`. |
+| `ownerLabels` | `true` when a block is present | Identify jars by the `@repo//:group_artifact` target that produced them (`runtimeJarOwners`). |
+
+Unknown keys and unknown policy names are errors. A chain that runs out embeds the jar.
+
+| Policy | Applies when | Bundle entry |
+|---|---|---|
+| `coordinate` | The jar is identified. Today's behaviour. | `maven` |
+| `coordinate-verified` | The version is published (pinned in the lockfile, or listed in `maven-metadata.xml`) **and** the built sha equals the published one, or `allowTransformed`. Unknown publication falls through. | `maven` |
+| `embed` | Always. | `embedded` |
+| `closest-released` | Group/artifact known. A published version is used as-is; an unpublished one is replaced by the nearest released version **≤** it (`1.14.0-alpha01` → `1.13.0-beta01`; `-SNAPSHOT`s never count). | `maven`; the bundle's `resolution` becomes `"approximate"` |
+| `build-target` | Never yet: always falls through (see below). | — |
+
+Because Bazel's `processed_` jars never match the published sha, a strict `coordinate-verified`
+embeds nearly every dependency of a Bazel build. That is why it is opt-in, and why
+`allowTransformed` exists.
+
+#### Identification signals a policy adds
+
+- **Version stamps.** androidx jars rarely carry `pom.properties`, but they do carry
+  `META-INF/androidx.compose.ui_ui.version` holding the version. The stamp names the KMP root
+  artifact (`ui`) while the runtime jar is usually `ui-android`, so the artifact comes from the
+  jar's file name (`ui-android.jar`, `ui-android-1.14.0-alpha01.jar`, `libui-android.jar`), else a
+  lockfile pin of the same group for exactly one of `ui`, `ui-android`, `ui-jvm`, `ui-desktop`,
+  else the stamped root. Only top-level `META-INF/*.version` files whose group has a `.` count
+  (`kotlinx_coroutines_core.version` is not a stamp), and only one per jar. Method
+  `version-stamp`, tried after `content-hash`.
+- **Owner labels.** When the aspect reports `runtimeJarOwners` (runtime jar → producing target, in
+  the artifacts contract), an external label whose name is a pin's escaped coordinate
+  (`@maven//:androidx_compose_ui_ui_android`) identifies the jar exactly. Method `owner-label`,
+  tried first. Workspace labels (`//app:ui`) identify nothing. An aspect that does not emit the
+  map simply gives no owners.
+
+#### Release lookup and the network
+
+`coordinate-verified` and `closest-released` ask which versions are released: lockfile pins
+first, then `maven-metadata.xml` from Google Maven (`androidx.*`, `com.android.*`,
+`com.google.android.*`) or Maven Central, cached under `composeAiCacheDir("maven-metadata")`
+(`~/.cache/composeai/maven-metadata`) for a day and kept if a refresh fails.
+
+- `COMPOSE_PREVIEW_NO_NETWORK=1`: no lookup, not even the cache. Only lockfile-pinned versions
+  are known; anything else is unknown and falls to the next step.
+- `COMPOSE_PREVIEW_OFFLINE=1`: the cache only, whatever its age.
+- The producer action never touches the network; `--metadata-cache dir` lends it a
+  pre-populated cache.
+
+`closest-released` output depends on what was released at pack time, which is one more reason it
+is marked approximate.
+
+#### Decision records
+
+With a policy configured, every `dependency-resolution.json` record gains:
+
+```json
+{
+  "jar": "ui-android.jar",
+  "method": "version-stamp",
+  "coordinate": "androidx.compose.ui:ui-android:1.13.0-beta01",
+  "builtSha256": "…", "publishedSha256": null,
+  "rule": "androidx.*",
+  "policy": "closest-released",
+  "fallbacks": [{ "policy": "build-target", "reason": "build-target-unsupported" }],
+  "substitutedFrom": "androidx.compose.ui:ui-android:1.14.0-alpha01",
+  "reason": "unpublished-version"
+}
+```
+
+`coordinate` is what the classpath entry references, `substitutedFrom` what the jar actually was.
+Fallback reasons: `unidentified`, `publication-unknown`, `unpublished`, `checksum-mismatch`,
+`checksum-unknown`, `no-earlier-release`, `build-target-unsupported`, and `chain`/`exhausted`
+when the implicit embed ran. `rule` is `default` for the default chain and `embed-deps` under
+`--embed-deps`. Without a policy the record keeps its original five keys.
+
+#### Safety
+
+- `closest-released` is opt-in and visible twice: `resolution: "approximate"` in `bundle.json`
+  and the substitution in `dependency-resolution.json`. Code compiled against unreleased API can
+  hit `NoSuchMethodError` or render differently on the substituted jar.
+- Owner labels expose repository layout, so they identify jars but are never written into a
+  bundle. Nothing workspace-local enters a bundle through a policy; a bundle stays shareable.
+
+#### Not yet: `build-target`
+
+`build-target` would record the producing target and exact built hash, for a consumer in the
+same workspace to rebuild or fetch, and must re-resolve through the next fallback on `share`,
+upload or any export. It is accepted in chains today but always falls through, because:
+
+- every released bundle reader decodes the classpath as a closed polymorphic set keyed by
+  `kind` with no default, so a new `BuildTarget` entry would make older CLIs, daemons, the
+  viewer and the preview server reject the whole bundle; it needs a reader that tolerates
+  unknown kinds to ship first, then a schema bump;
+- no consumer can yet build or fetch a target.
+
+The jar → owning target map it needs now exists as `runtimeJarOwners`, and is already read for
+identification. TODO: add a tolerant `ClasspathEntry` decoder to `:bundle-format`, then the
+entry, then the export re-resolution.
+
+The Gradle bundle task is unaffected: Gradle resolves real coordinates, so it has no
+identification guesswork or transformed bytes to police, and keeps `-PbundleEmbedDeps` as its
+only switch.
+
 ### Tier 2 — teach the existing player to read `libs/`, build it runnable
 
 The player already exists (`compose-preview-viewer`, §2b) — the work is small:

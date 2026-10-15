@@ -472,6 +472,14 @@ refer to the published artifact. `dependency-resolution.json` records inferred
 coordinates and built/published hashes. Unidentified or unpublished project JARs
 remain embedded; `--embed-deps` explicitly requests an offline bundle.
 
+A `dependencyPolicy` block in `.compose-preview/bazel.json` changes that per group: verify
+coordinates against the published checksum (`coordinate-verified`, with `allowTransformed` for
+Bazel's `processed_` jars), substitute the nearest released version for an unreleased top-of-tree
+build (`closest-released`, marking the bundle `approximate`), or embed. It also identifies androidx
+jars by their `META-INF/<group>_<artifact>.version` stamp and by the `runtimeJarOwners` the aspect
+reports. Without the block nothing changes. Format, defaults and examples:
+[portable bundles → dependency policy](portable-bundles.md#dependency-policy-for-bazel-bundles-6016).
+
 Use `--no-render` on `bazel bundle` to package without provisioning a renderer or
 reading old captures. The PNG/ZIP uses a valid stub cover and remains runnable.
 

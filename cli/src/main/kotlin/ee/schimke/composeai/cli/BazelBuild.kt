@@ -52,6 +52,11 @@ internal data class BazelBuildConfig(
    * generated build output.
    */
   val androidCompileSdk: Int? = null,
+  /**
+   * How a bundle carries each runtime jar (#6016): `ee.schimke.composeai.bundle.producer
+   * .DependencyPolicy.parse`'s shape. Null keeps the original behaviour exactly.
+   */
+  val dependencyPolicy: JsonObject? = null,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
@@ -87,6 +92,8 @@ internal fun BazelArtifacts.resolve(
   executionRoot: File,
   workspaceRoot: File? = null,
   compileSdkOverride: Int? = null,
+  /** The raw `runtimeJarOwners` ([bazelRuntimeJarOwners]); empty when the aspect predates it. */
+  runtimeJarOwners: Map<String, String> = emptyMap(),
 ): ResolvedBazelArtifacts {
   when (schemaVersion) {
     BuildArtifacts.SCHEMA_VERSION_JVM ->
@@ -187,6 +194,15 @@ internal fun BazelArtifacts.resolve(
     },
     resolvePaths(dataFiles),
     resolvedAndroid,
+    runtimeJarOwners =
+      runtimeJarOwners.entries
+        .mapNotNull { (path, label) ->
+          // Owners only identify jars; one that names no listed runtime jar is ignored.
+          val file =
+            File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+          file.takeIf { it in runtime }?.let { it to label }
+        }
+        .toMap(),
   )
 }
 
@@ -210,7 +226,23 @@ internal data class ResolvedBazelArtifacts(
   val sourceFiles: List<File>,
   val dataFiles: List<File>,
   val android: ResolvedAndroidArtifacts? = null,
+  /** Runtime jar → producing target label, from the artifacts' optional `runtimeJarOwners`. */
+  val runtimeJarOwners: Map<File, String> = emptyMap(),
 )
+
+/**
+ * The optional `runtimeJarOwners` of an artifacts document (compose-preview-contracts #189), read
+ * from the raw JSON alongside the typed parse so a contracts release without the field, or an
+ * aspect that does not emit it, degrades to no owners.
+ */
+internal fun bazelRuntimeJarOwners(artifactsJson: String): Map<String, String> =
+  ((bazelJson.parseToJsonElement(artifactsJson) as? JsonObject)?.get("runtimeJarOwners")
+      as? JsonObject)
+    .orEmpty()
+    .mapNotNull { (path, label) ->
+      (label as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.let { path to it }
+    }
+    .toMap()
 
 internal val bazelJson = Json {
   prettyPrint = true
@@ -599,12 +631,18 @@ internal class BazelBuild(
                 File(executionRoot),
               )
             }
-        val artifacts = bazelJson.decodeFromString<BazelArtifacts>(metadata.readText())
+        val artifactsText = metadata.readText()
+        val artifacts = bazelJson.decodeFromString<BazelArtifacts>(artifactsText)
         // Main-repository labels may be emitted with @@ canonical spelling by newer Bazel.
         require(normalizeBazelLabel(artifacts.target) == normalizeBazelLabel(selectedTarget)) {
           "Metadata target ${artifacts.target} does not match $target"
         }
-        artifacts.resolve(File(executionRoot), root, config.androidCompileSdk)
+        artifacts.resolve(
+          File(executionRoot),
+          root,
+          config.androidCompileSdk,
+          bazelRuntimeJarOwners(artifactsText),
+        )
       }
     } finally {
       bep.delete()
@@ -690,6 +728,7 @@ internal fun mergeBazelArtifacts(
     sourceFiles = sources.first,
     dataFiles = data.first,
     android = android,
+    runtimeJarOwners = artifacts.fold(emptyMap()) { owners, it -> it.runtimeJarOwners + owners },
   )
 }
 
