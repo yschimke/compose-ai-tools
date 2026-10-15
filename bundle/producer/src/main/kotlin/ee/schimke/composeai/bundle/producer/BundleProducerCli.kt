@@ -3,6 +3,9 @@ package ee.schimke.composeai.bundle.producer
 import ee.schimke.composeai.discovery.PreviewDiscovery
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -12,14 +15,24 @@ public object BundleProducerCli {
   @JvmStatic
   public fun main(args: Array<String>) {
     require(args.size % 2 == 0) {
-      "Expected --artifacts file --output bundle.png [--maven-install file] [--filter text] [--renders directory]"
+      "Expected --artifacts file --output bundle.png [--maven-install file] [--filter text] " +
+        "[--renders directory] [--dependency-policy file] [--metadata-cache directory]"
     }
     val pairs = args.toList().chunked(2)
     val flags = pairs.associate { it[0] to it[1] }
     require(
       flags.keys.all {
         it in
-          setOf("--artifacts", "--output", "--maven-install", "--filter", "--renders", "--bundle")
+          setOf(
+            "--artifacts",
+            "--output",
+            "--maven-install",
+            "--filter",
+            "--renders",
+            "--bundle",
+            "--dependency-policy",
+            "--metadata-cache",
+          )
       }
     ) {
       "Unknown producer option"
@@ -103,6 +116,17 @@ public object BundleProducerCli {
         .filter { flags["--filter"]?.let { filter -> it.id.contains(filter, true) } ?: true }
         .map { it.id }
         .toSet()
+    // A Bazel action is hermetic: release lookups read only a declared, pre-populated cache.
+    val dependencies =
+      DependencyResolutionOptions.Builder()
+        .apply {
+          flags["--dependency-policy"]?.let { policy = readDependencyPolicy(File(it)) }
+          flags["--metadata-cache"]?.let {
+            releasedVersions = MavenMetadataVersions(File(it), network = false)
+          }
+          runtimeJarOwners = runtimeJarOwners(metadata, File(".").absoluteFile)
+        }
+        .build()
     writeBazelBundle(
       module,
       project,
@@ -112,6 +136,35 @@ public object BundleProducerCli {
       selected,
       pairs.filter { it[0] == "--maven-install" }.map { File(it[1]) },
       File(flags.getValue("--output")),
+      embedDeps = false,
+      android = null,
+      dependencies = dependencies,
     )
   }
 }
+
+/**
+ * A `dependencyPolicy` from [file]: either the block itself or a config holding one under
+ * `dependencyPolicy` (so `.compose-preview/bazel.json` can be passed as-is).
+ */
+public fun readDependencyPolicy(file: File): DependencyPolicy {
+  require(file.isFile) { "Dependency policy missing: $file" }
+  val json = Json.parseToJsonElement(file.readText()).jsonObject
+  val block = json["dependencyPolicy"]?.jsonObject ?: json
+  return DependencyPolicy.parse(block)
+}
+
+/**
+ * The artifacts contract's optional `runtimeJarOwners` (runtime jar path → producing target label),
+ * read from the raw JSON so an aspect that predates it, or a contracts release without the typed
+ * field, degrades to no owners. Relative paths resolve against [root].
+ */
+public fun runtimeJarOwners(artifacts: JsonObject, root: File): Map<File, String> =
+  (artifacts["runtimeJarOwners"] as? JsonObject)
+    .orEmpty()
+    .mapNotNull { (path, label) ->
+      val text = (label as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+      val file = File(path).let { if (it.isAbsolute) it else File(root, path) }.absoluteFile
+      file to text
+    }
+    .toMap()

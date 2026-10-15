@@ -125,14 +125,21 @@ internal class BazelCommand(
         val executionRoot =
           args.flagValue("--execution-root")?.let { resolve(root, it) }
             ?: error("--artifacts requires --execution-root")
-        val metadata =
-          bazelJson.decodeFromString<BazelArtifacts>(resolve(root, imported).readText())
+        val metadataText = resolve(root, imported).readText()
+        val metadata = bazelJson.decodeFromString<BazelArtifacts>(metadataText)
         args.flagValue("--target")?.let {
           require(normalizeBazelLabel(metadata.target) == normalizeBazelLabel(it)) {
             "Imported artifacts do not match --target"
           }
         }
-        listOf(metadata.resolve(executionRoot, root, config.androidCompileSdk))
+        listOf(
+          metadata.resolve(
+            executionRoot,
+            root,
+            config.androidCompileSdk,
+            bazelRuntimeJarOwners(metadataText),
+          )
+        )
       } else {
         // Report before target selection, which may already run the chosen tool.
         if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
@@ -298,6 +305,7 @@ internal class BazelCommand(
                 bundle,
                 "--embed-deps" in args,
                 includeRenders = !noRender,
+                dependencies = bazelDependencyOptions(config.dependencyPolicy, artifacts),
               )
             System.err.println(
               "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)"
@@ -542,6 +550,7 @@ internal class BazelCommand(
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
       --no-render                bundle: prepare a runnable bundle with a stub cover, offline.
       --embed-deps               Embed all dependencies for offline bundle use.
+                                 (dependencyPolicy in bazel.json chooses per group otherwise.)
       --out <dir>                Prepared manifest/descriptor directory; default per target/config.
       --timeout <seconds>        Build/render deadline (default 300).
       --project <workspace>      Default current directory.

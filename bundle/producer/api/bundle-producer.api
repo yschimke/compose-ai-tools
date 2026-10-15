@@ -24,15 +24,129 @@ public final class ee/schimke/composeai/bundle/producer/BundleProducerCli {
 	public static final fun main ([Ljava/lang/String;)V
 }
 
+public final class ee/schimke/composeai/bundle/producer/BundleProducerCliKt {
+	public static final fun readDependencyPolicy (Ljava/io/File;)Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+	public static final fun runtimeJarOwners (Lkotlinx/serialization/json/JsonObject;Ljava/io/File;)Ljava/util/Map;
+}
+
 public final class ee/schimke/composeai/bundle/producer/BundleProducerKt {
 	public static final fun bakePreparedBundle (Ljava/io/File;Ljava/io/File;Ljava/io/File;)V
 	public static final fun bazelBundleAppJar (Ljava/util/List;)[B
 	public static final fun bazelBundleSha (Ljava/io/File;)Ljava/lang/String;
 	public static final fun bazelMavenCoordinates (Ljava/util/List;)Ljava/util/List;
 	public static final fun matchBazelMaven (Ljava/io/File;Ljava/util/List;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
+	public static final fun matchBazelMaven (Ljava/io/File;Ljava/util/List;ZLjava/lang/String;)Lee/schimke/composeai/bundle/producer/BazelMavenMatch;
 	public static final fun previewPngName (Ljava/lang/String;)Ljava/lang/String;
 	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;Z)Lee/schimke/composeai/bundle/BundleReader$Manifest;
 	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZLee/schimke/composeai/bundle/producer/BazelAndroidResources;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public static final fun writeBazelBundle (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZLee/schimke/composeai/bundle/producer/BazelAndroidResources;Lee/schimke/composeai/bundle/producer/DependencyResolutionOptions;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
 	public static synthetic fun writeBazelBundle$default (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/discovery/PreviewManifest;Ljava/io/File;Ljava/util/Set;Ljava/util/List;Ljava/io/File;ZILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicy {
+	public static final field Companion Lee/schimke/composeai/bundle/producer/DependencyPolicy$Companion;
+	public final fun getAllowTransformed ()Z
+	public final fun getDefault ()Ljava/util/List;
+	public final fun getExplicit ()Z
+	public final fun getOwnerLabels ()Z
+	public final fun getRules ()Ljava/util/List;
+	public final fun getVersionStamps ()Z
+	public final fun newBuilder ()Lee/schimke/composeai/bundle/producer/DependencyPolicy$Builder;
+	public final fun ruleFor (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/producer/DependencyPolicyRule;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicy$Builder {
+	public fun <init> ()V
+	public final fun build ()Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+	public final fun getAllowTransformed ()Z
+	public final fun getDefault ()Ljava/util/List;
+	public final fun getExplicit ()Z
+	public final fun getOwnerLabels ()Z
+	public final fun getRules ()Ljava/util/List;
+	public final fun getVersionStamps ()Z
+	public final fun setAllowTransformed (Z)V
+	public final fun setDefault (Ljava/util/List;)V
+	public final fun setExplicit (Z)V
+	public final fun setOwnerLabels (Z)V
+	public final fun setRules (Ljava/util/List;)V
+	public final fun setVersionStamps (Z)V
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicy$Companion {
+	public final fun getDEFAULT ()Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+	public final fun getDEFAULT_CHAIN ()Ljava/util/List;
+	public final fun parse (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicyRule {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAllowTransformed ()Z
+	public final fun getMatch ()Ljava/lang/String;
+	public final fun getPolicy ()Ljava/util/List;
+	public final fun matches (Ljava/lang/String;Ljava/lang/String;)Z
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicyStep : java/lang/Enum {
+	public static final field BUILD_TARGET Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static final field CLOSEST_RELEASED Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static final field COORDINATE Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static final field COORDINATE_VERIFIED Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static final field Companion Lee/schimke/composeai/bundle/producer/DependencyPolicyStep$Companion;
+	public static final field EMBED Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getId ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+	public static fun values ()[Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyPolicyStep$Companion {
+	public final fun of (Ljava/lang/String;)Lee/schimke/composeai/bundle/producer/DependencyPolicyStep;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyResolutionOptions {
+	public static final field Companion Lee/schimke/composeai/bundle/producer/DependencyResolutionOptions$Companion;
+	public final fun getPolicy ()Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+	public final fun getReleasedVersions ()Lee/schimke/composeai/bundle/producer/ReleasedVersions;
+	public final fun getRuntimeJarOwners ()Ljava/util/Map;
+	public final fun newBuilder ()Lee/schimke/composeai/bundle/producer/DependencyResolutionOptions$Builder;
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyResolutionOptions$Builder {
+	public fun <init> ()V
+	public final fun build ()Lee/schimke/composeai/bundle/producer/DependencyResolutionOptions;
+	public final fun getPolicy ()Lee/schimke/composeai/bundle/producer/DependencyPolicy;
+	public final fun getReleasedVersions ()Lee/schimke/composeai/bundle/producer/ReleasedVersions;
+	public final fun getRuntimeJarOwners ()Ljava/util/Map;
+	public final fun setPolicy (Lee/schimke/composeai/bundle/producer/DependencyPolicy;)V
+	public final fun setReleasedVersions (Lee/schimke/composeai/bundle/producer/ReleasedVersions;)V
+	public final fun setRuntimeJarOwners (Ljava/util/Map;)V
+}
+
+public final class ee/schimke/composeai/bundle/producer/DependencyResolutionOptions$Companion {
+	public final fun getDEFAULT ()Lee/schimke/composeai/bundle/producer/DependencyResolutionOptions;
+}
+
+public final class ee/schimke/composeai/bundle/producer/MavenMetadataVersions : ee/schimke/composeai/bundle/producer/ReleasedVersions {
+	public static final field Companion Lee/schimke/composeai/bundle/producer/MavenMetadataVersions$Companion;
+	public static final field GOOGLE_MAVEN Ljava/lang/String;
+	public static final field MAVEN_CENTRAL Ljava/lang/String;
+	public fun <init> (Ljava/io/File;ZJLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Ljava/io/File;ZJLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun versions (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/bundle/producer/MavenMetadataVersions$Companion {
+	public final fun parseMavenMetadataVersions (Ljava/lang/String;)Ljava/util/List;
+	public final fun repositoryFor (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/bundle/producer/ReleasedVersions {
+	public static final field Companion Lee/schimke/composeai/bundle/producer/ReleasedVersions$Companion;
+	public abstract fun versions (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/bundle/producer/ReleasedVersions$Companion {
+	public final fun getNONE ()Lee/schimke/composeai/bundle/producer/ReleasedVersions;
 }
 

@@ -48,9 +48,28 @@ public data class BazelMavenMatch(
 public fun matchBazelMaven(
   jar: File,
   pins: List<BundleReader.ClasspathEntry.Maven>,
+): BazelMavenMatch? = matchBazelMaven(jar, pins, versionStamps = false, ownerLabel = null)
+
+/**
+ * [matchBazelMaven] with the opt-in signals of a configured `dependencyPolicy` (#6016):
+ * [ownerLabel], the `@repo//:group_artifact` target that produced the jar (`runtimeJarOwners`), is
+ * tried first because a lockfile pin it names is exact; [versionStamps] reads an androidx
+ * `META-INF/<group>_<artifact>.version` stamp after the content hash, before the weakest name-only
+ * guess. With both off this is exactly the original identification.
+ */
+public fun matchBazelMaven(
+  jar: File,
+  pins: List<BundleReader.ClasspathEntry.Maven>,
+  versionStamps: Boolean,
+  ownerLabel: String?,
 ): BazelMavenMatch? {
   val path = jar.path.replace('\\', '/')
   val name = jar.name.removePrefix("processed_").removeSuffix(".jar")
+  ownerLabel
+    ?.let { matchOwnerLabel(it, pins) }
+    ?.let {
+      return BazelMavenMatch(it, "owner-label")
+    }
   // Maven-layout paths retain group/version even after filename processing or relocation to
   // runfiles.
   pins
@@ -145,6 +164,11 @@ public fun matchBazelMaven(
     ?.let {
       return BazelMavenMatch(it, "content-hash")
     }
+  if (versionStamps) {
+    versionStampCoordinate(jar, name, pins)?.let {
+      return BazelMavenMatch(it, "version-stamp")
+    }
+  }
   pins
     .filter { name == it.artifact }
     .singleOrNull()
@@ -152,6 +176,86 @@ public fun matchBazelMaven(
       return BazelMavenMatch(it, "closest-lockfile-artifact")
     }
   return null
+}
+
+/**
+ * The lockfile pin an external target label names. rules_jvm_external names a pinned artifact's
+ * target after its escaped coordinate (`@maven//:androidx_compose_ui_ui_android`); the main
+ * repository's own targets (`//app:ui`) name no coordinate. Null unless exactly one pin matches.
+ */
+internal fun matchOwnerLabel(
+  label: String,
+  pins: List<BundleReader.ClasspathEntry.Maven>,
+): BundleReader.ClasspathEntry.Maven? {
+  val match = Regex("^@@?([^/]+)//[^:]*:(.+)$").find(label.trim()) ?: return null
+  if (match.groupValues[1].isEmpty()) return null
+  fun escape(text: String): String = text.lowercase().replace(Regex("[^a-z0-9]"), "_")
+  val target = escape(match.groupValues[2])
+  return pins.filter { escape("${it.group}:${it.artifact}") == target }.distinct().singleOrNull()
+}
+
+/**
+ * The coordinate an androidx `META-INF/<group>_<artifact>.version` stamp names. The stamp names the
+ * KMP root artifact (`androidx.compose.ui_ui`) while the runtime jar is usually a platform variant
+ * (`ui-android`), so the artifact is chosen by evidence, in order: the jar's own file name
+ * (`ui-android.jar`, `ui-android-1.14.0-alpha01.jar`, `libui-android.jar`), then a lockfile pin of
+ * the same group for exactly one of `<a>`, `<a>-android`, `<a>-jvm`, `<a>-desktop`, else the root
+ * artifact as stamped. The checksum is a pin's only when that exact version is pinned.
+ */
+internal fun versionStampCoordinate(
+  jar: File,
+  name: String,
+  pins: List<BundleReader.ClasspathEntry.Maven>,
+): BundleReader.ClasspathEntry.Maven? {
+  val stamps =
+    ZipFile(jar).use { zip ->
+      zip
+        .entries()
+        .asSequence()
+        .filter { !it.isDirectory }
+        .mapNotNull { entry ->
+          val file =
+            Regex("^META-INF/([^/]+)\\.version$").find(entry.name)?.groupValues?.get(1)
+              ?: return@mapNotNull null
+          val split = file.indexOf('_')
+          if (split <= 0) return@mapNotNull null
+          val group = file.substring(0, split)
+          val artifact = file.substring(split + 1)
+          // `kotlinx_coroutines_core.version` and friends are not group_artifact stamps.
+          if ('.' !in group || '_' in artifact || artifact.isEmpty()) return@mapNotNull null
+          val version = zip.getInputStream(entry).use { it.readBytes().decodeToString() }.trim()
+          if (!version.matches(Regex("[0-9]+\\.[0-9]+[0-9A-Za-z.+-]*"))) return@mapNotNull null
+          Triple(group, artifact, version)
+        }
+        .distinct()
+        .toList()
+    }
+  val (group, root, version) = stamps.singleOrNull() ?: return null
+  val candidates = listOf(root, "$root-android", "$root-jvm", "$root-desktop")
+  val bare = name.removePrefix("lib")
+  val byName =
+    candidates
+      .sortedByDescending { it.length }
+      .firstOrNull { candidate ->
+        listOf(name, bare).any {
+          it == candidate ||
+            (it.startsWith("$candidate-") &&
+              it.removePrefix("$candidate-").firstOrNull()?.isDigit() == true)
+        }
+      }
+  val artifact =
+    byName
+      ?: pins
+        .filter { it.group == group && it.artifact in candidates }
+        .map { it.artifact }
+        .distinct()
+        .singleOrNull()
+      ?: root
+  val sha =
+    pins
+      .firstOrNull { it.group == group && it.artifact == artifact && it.version == version }
+      ?.sha256
+  return BundleReader.ClasspathEntry.Maven(group, artifact, version, "jar", sha)
 }
 
 public fun bazelBundleSha(file: File): String {
@@ -258,7 +362,43 @@ public fun writeBazelBundle(
   output: File,
   embedDeps: Boolean,
   android: BazelAndroidResources?,
+): BundleReader.Manifest =
+  writeBazelBundle(
+    modulePath,
+    projectJars,
+    runtimeJars,
+    discovery,
+    renders,
+    selectedIds,
+    lockFiles,
+    output,
+    embedDeps,
+    android,
+    DependencyResolutionOptions.DEFAULT,
+  )
+
+/**
+ * [writeBazelBundle] under a `dependencyPolicy` (#6016): [dependencies] decides, per runtime jar,
+ * whether it travels as a coordinate (possibly a substituted, approximate one) or embedded.
+ * [embedDeps] still embeds everything. With [DependencyResolutionOptions.DEFAULT] the bundle is
+ * byte-for-byte what it was before policies existed.
+ */
+public fun writeBazelBundle(
+  modulePath: String,
+  projectJars: List<File>,
+  runtimeJars: List<File>,
+  discovery: PreviewManifest,
+  renders: File?,
+  selectedIds: Set<String>,
+  lockFiles: List<File>,
+  output: File,
+  embedDeps: Boolean,
+  android: BazelAndroidResources?,
+  dependencies: DependencyResolutionOptions,
 ): BundleReader.Manifest {
+  val policy = dependencies.policy
+  val owners = dependencies.runtimeJarOwners.mapKeys { it.key.absoluteFile.normalize() }
+  var substituted = false
   val previews = discovery.previews.filter { it.id in selectedIds }.sortedBy { it.id }
   require(previews.isNotEmpty()) { "No previews selected for bundle" }
   val known = bazelMavenCoordinates(lockFiles)
@@ -285,8 +425,18 @@ public fun writeBazelBundle(
     .filter { it !in projectJars && it != android?.rJar }
     .forEachIndexed { index, jar ->
       val sha = bazelBundleSha(jar)
-      val match = matchBazelMaven(jar, known)
-      val coordinate = match?.coordinate
+      val match =
+        matchBazelMaven(
+          jar,
+          known,
+          versionStamps = policy.versionStamps,
+          ownerLabel = if (policy.ownerLabels) owners[jar.absoluteFile.normalize()] else null,
+        )
+      val outcome =
+        applyDependencyPolicy(match, sha, known, policy, dependencies.releasedVersions, embedDeps)
+      // The record keeps naming what the jar was identified as; a substitution names both.
+      val coordinate = outcome.coordinate ?: match?.coordinate
+      if (outcome.substitutedFrom != null) substituted = true
       decisions.add(
         kotlinx.serialization.json.buildJsonObject {
           put("jar", kotlinx.serialization.json.JsonPrimitive(jar.name))
@@ -302,9 +452,30 @@ public fun writeBazelBundle(
           )
           put("builtSha256", kotlinx.serialization.json.JsonPrimitive(sha))
           put("publishedSha256", kotlinx.serialization.json.JsonPrimitive(coordinate?.sha256))
+          // Only a configured policy extends the record, so a default bundle stays byte-identical.
+          if (policy.explicit) {
+            put("rule", kotlinx.serialization.json.JsonPrimitive(outcome.rule))
+            put("policy", kotlinx.serialization.json.JsonPrimitive(outcome.policy))
+            put(
+              "fallbacks",
+              kotlinx.serialization.json.JsonArray(
+                outcome.fallbacks.map {
+                  kotlinx.serialization.json.buildJsonObject {
+                    put("policy", kotlinx.serialization.json.JsonPrimitive(it.policy))
+                    put("reason", kotlinx.serialization.json.JsonPrimitive(it.reason))
+                  }
+                }
+              ),
+            )
+            put(
+              "substitutedFrom",
+              kotlinx.serialization.json.JsonPrimitive(outcome.substitutedFrom?.gav()),
+            )
+            put("reason", kotlinx.serialization.json.JsonPrimitive(outcome.reason))
+          }
         }
       )
-      if (coordinate != null && !embedDeps) classpath.add(coordinate)
+      if (outcome.coordinate != null) classpath.add(outcome.coordinate)
       else {
         val path = "libs/$index-${sha.take(16)}.jar"
         contents[path] = jar.readBytes()
@@ -324,7 +495,10 @@ public fun writeBazelBundle(
       modulePath = modulePath,
       producedBy = "compose-preview Bazel bundle",
       producer = "bazel",
-      resolution = if (maven && embedded) "mixed" else if (maven) "coordinates" else "embedded",
+      // A substituted coordinate is not the built bytes: say so where every reader looks.
+      resolution =
+        if (substituted) "approximate"
+        else if (maven && embedded) "mixed" else if (maven) "coordinates" else "embedded",
       androidResources = androidResources,
     )
   contents["dependency-resolution.json"] =
