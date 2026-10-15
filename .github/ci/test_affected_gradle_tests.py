@@ -163,7 +163,8 @@ class ModuleUnitTestsGateTest(unittest.TestCase):
         """
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
         self.assertIn(
-            "./gradlew test jvmTest desktopTest checkKotlinAbi checkPomDependencyVersions --continue",
+            "./gradlew test jvmTest desktopTest checkKotlinAbi checkPomDependencyVersions \\\n"
+            "              checkGradlePluginPomDependencyVersions --continue",
             ci,
         )
 

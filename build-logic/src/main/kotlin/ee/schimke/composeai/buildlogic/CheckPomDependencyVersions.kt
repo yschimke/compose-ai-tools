@@ -5,6 +5,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.PathSensitive
@@ -32,11 +33,18 @@ abstract class CheckPomDependencyVersions : DefaultTask() {
   abstract val pomFiles: ConfigurableFileCollection
 
   /**
-   * Gradle's user home, whose module cache holds the BOMs the POMs import: resolving the module's
-   * classpaths fetched them. A BOM missing from it can't be read, so that POM is skipped with a
-   * warning — the check never fails on what it can't see.
+   * Gradle's user home, whose module cache holds the BOMs the POMs import once [resolvedClasspath]
+   * is resolved. A BOM still missing from it can't be read, so that POM is skipped with a warning
+   * — the check never fails on what it can't see.
    */
   @get:Internal abstract val gradleUserHome: DirectoryProperty
+
+  /**
+   * The project's runtime classpath. Not read: resolving it as an input is what puts the imported
+   * BOMs in the module cache before this task runs, so a cold cache or a freshly bumped BOM is
+   * checked rather than skipped.
+   */
+  @get:Classpath abstract val resolvedClasspath: ConfigurableFileCollection
 
   @TaskAction
   fun checkVersions() {
@@ -67,8 +75,8 @@ abstract class CheckPomDependencyVersions : DefaultTask() {
       .child("dependencies")
       ?.children("dependency")
       .orEmpty()
-      .filter { it.text("version").isNullOrBlank() && it.coordinate() !in managed }
-      .map { "${pom.parentFile.name}/${pom.name}: ${it.coordinate()}" }
+      .filter { it.text("version").isNullOrBlank() && it.managementKey() !in managed }
+      .map { "${pom.parentFile.name}/${pom.name}: ${it.managementKey()}" }
   }
 
   /** Every coordinate [project]'s `<dependencyManagement>` versions, following imported BOMs. */
@@ -82,7 +90,7 @@ abstract class CheckPomDependencyVersions : DefaultTask() {
       project.child("dependencyManagement")?.child("dependencies")?.children("dependency")
     for (entry in entries.orEmpty()) {
       if (entry.text("scope") != "import") {
-        managed += entry.coordinate()
+        managed += entry.managementKey()
         continue
       }
       if (!seen.add("${entry.coordinate()}:${entry.text("version")}")) continue
@@ -111,6 +119,16 @@ abstract class CheckPomDependencyVersions : DefaultTask() {
       .documentElement
 
   private fun Element.coordinate(): String = "${text("groupId")}:${text("artifactId")}"
+
+  /**
+   * How Maven matches a dependency to its management entry: group, artifact, type (default `jar`)
+   * and classifier. A versionless `test-jar` of a managed jar is still unversioned.
+   */
+  private fun Element.managementKey(): String {
+    val type = text("type")?.takeIf { it.isNotEmpty() } ?: "jar"
+    val classifier = text("classifier")?.takeIf { it.isNotEmpty() }
+    return listOfNotNull(coordinate(), type, classifier).joinToString(":")
+  }
 
   private fun Element.text(name: String): String? = child(name)?.textContent?.trim()
 
