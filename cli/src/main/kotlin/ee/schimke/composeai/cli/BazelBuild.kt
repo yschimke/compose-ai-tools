@@ -39,6 +39,13 @@ internal data class BazelBuildConfig(
    * and asks for a configured `aspect` label instead.
    */
   val installAspect: Boolean = true,
+  /**
+   * Link a selection of Android targets into one module on one resource APK ([planAndroidMerge]).
+   * Off by default: each library then renders exactly as it does alone, on its own APK, in its own
+   * module; merged, sibling libraries share one resource table, so where two define the same
+   * resource the later wins for both.
+   */
+  val mergeAndroid: Boolean = false,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
@@ -601,14 +608,16 @@ internal data class BazelTargetSelection(val label: String, val targets: List<St
  * union's R classes then carry that APK's IDs in every package, so each target's own final-ID R jar
  * leaves the classpath and the merged one leads it.
  *
- * Null when there is one target, or [bazelMergeBlocker] gives a reason they cannot share a daemon.
+ * Android targets merge only when [mergeAndroid] asks for it. Null when there is one target, or
+ * [bazelMergeBlocker] gives a reason they cannot share a daemon.
  */
 internal fun mergeBazelArtifacts(
   label: String,
   artifacts: List<ResolvedBazelArtifacts>,
+  mergeAndroid: Boolean = false,
   linkAndroid: ((AndroidMergePlan) -> ResolvedAndroidArtifacts)? = null,
 ): ResolvedBazelArtifacts? {
-  if (artifacts.size < 2 || bazelMergeBlocker(artifacts) != null) return null
+  if (artifacts.size < 2 || bazelMergeBlocker(artifacts, mergeAndroid) != null) return null
   val plan = planAndroidMerge(artifacts)
   val android =
     if (artifacts.first().android == null) null
@@ -670,11 +679,16 @@ internal fun mergeBazelArtifacts(
  * Robolectric loads one; targets from different configurations were compiled against different
  * dependency sets.
  */
-internal fun bazelMergeBlocker(artifacts: List<ResolvedBazelArtifacts>): String? {
+internal fun bazelMergeBlocker(
+  artifacts: List<ResolvedBazelArtifacts>,
+  mergeAndroid: Boolean = false,
+): String? {
   val android = artifacts.count { it.android != null }
   return when {
     artifacts.size < 2 -> null
     android in 1 until artifacts.size -> "they mix Android and JVM targets"
+    android > 0 && !mergeAndroid ->
+      "Android targets each render on their own resources (set \"mergeAndroid\": true to link one APK)"
     android > 0 && artifacts.any { it.android?.link == null } ->
       "their Android aspect does not report link inputs (rules_compose_preview with android.link)"
     artifacts.map { it.metadata.configuration }.distinct().size > 1 ->

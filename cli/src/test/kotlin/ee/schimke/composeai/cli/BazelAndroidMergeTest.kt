@@ -115,7 +115,7 @@ class BazelAndroidMergeTest {
 
     val merged =
       assertNotNull(
-        mergeBazelArtifacts("//...", listOf(ui, feature)) {
+        mergeBazelArtifacts("//...", listOf(ui, feature), mergeAndroid = true) {
           plan = it
           linked
         }
@@ -164,8 +164,19 @@ class BazelAndroidMergeTest {
         .also { file("model.jar") }
         .resolve(root)
 
-    assertTrue(bazelMergeBlocker(listOf(withLink, withoutLink))!!.contains("link inputs"))
-    assertNull(mergeBazelArtifacts("//...", listOf(withLink, withoutLink)) { error("not linked") })
+    // Off by default: each library renders on its own APK.
+    assertTrue(bazelMergeBlocker(listOf(withLink, withLink))!!.contains("mergeAndroid"))
+    assertNull(mergeBazelArtifacts("//...", listOf(withLink, withLink)) { error("not linked") })
+    assertTrue(
+      bazelMergeBlocker(listOf(withLink, withoutLink), mergeAndroid = true)!!.contains(
+        "link inputs"
+      )
+    )
+    assertNull(
+      mergeBazelArtifacts("//...", listOf(withLink, withoutLink), mergeAndroid = true) {
+        error("not linked")
+      }
+    )
     assertTrue(bazelMergeBlocker(listOf(withLink, jvm))!!.contains("mix Android and JVM"))
     assertNull(mergeBazelArtifacts("//...", listOf(withLink, jvm)) { error("not linked") })
   }

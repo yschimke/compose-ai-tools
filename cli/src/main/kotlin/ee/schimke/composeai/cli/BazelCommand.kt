@@ -170,7 +170,7 @@ internal class BazelCommand(
       }
     // A selected set is one module (one page in `browse`, one daemon), unless it cannot share one.
     val merged = selectionLabel?.let { label ->
-      mergeBazelArtifacts(label, built) { plan ->
+      mergeBazelArtifacts(label, built, config.mergeAndroid) { plan ->
         val key = bazelTargetKey(label, built.first().metadata.configuration)
         System.err.println(
           "[bazel] linking ${built.size} Android targets' resources into one APK " +
@@ -181,7 +181,7 @@ internal class BazelCommand(
     }
     if (merged == null && built.size > 1) {
       System.err.println(
-        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built)}"
+        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built, config.mergeAndroid)}"
       )
     }
     val collected = merged?.let(::listOf) ?: built
