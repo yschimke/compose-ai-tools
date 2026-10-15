@@ -114,6 +114,52 @@ class CoordinateResolverTest {
     }
   }
 
+  @Test
+  fun `a symlinked jar and a symlinked repository root resolve`() {
+    // Bazel stages inputs and runfiles as symlinks; okio reports a symlink as neither a regular
+    // file nor a directory unless it is followed.
+    val bytes = byteArrayOf(7, 7, 7)
+    val real = Files.createTempDirectory("coord-resolver-real-").toFile()
+    val target = File(real, "processed_widgets-1.2.3.jar").apply { writeBytes(bytes) }
+    val link = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar")
+    link.parentFile.mkdirs()
+    Files.createSymbolicLink(link.toPath(), target.toPath())
+    assertEquals(
+      bytes.toList(),
+      assertNotNull(resolver.resolve(maven(sha256(bytes))).file).readBytes().toList(),
+    )
+
+    val linkedRoot = File(real, "linked-root")
+    Files.createSymbolicLink(linkedRoot.toPath(), root.toPath())
+    val viaLinkedRoot =
+      CoordinateResolver(
+        repositoryRoots = listOf(linkedRoot),
+        warn = { warnings += it },
+        networkEnabled = false,
+      )
+    assertNotNull(viaLinkedRoot.resolve(maven(sha256(bytes))).file)
+    real.deleteRecursively()
+  }
+
+  @Test
+  fun `a Gradle cache aar stored under its variant file name resolves`() {
+    // Gradle module metadata names the file; AndroidX publishes ui-text-android's aar as
+    // ui-text.aar.
+    val classes = byteArrayOf(3, 1, 4)
+    val versionDir = File(root, "com.example.foo/widgets/1.2.3")
+    File(versionDir, "1111/widgets.aar").apply {
+      parentFile.mkdirs()
+      writeBytes(makeAar(classes))
+    }
+    File(versionDir, "2222/widgets-1.2.3-sources.jar").apply {
+      parentFile.mkdirs()
+      writeBytes(byteArrayOf(9))
+    }
+    val file =
+      assertNotNull(localCacheResolver.resolve(maven(sha256(classes)).copy(type = "aar")).file)
+    assertEquals(classes.toList(), file.readBytes().toList())
+  }
+
   private fun maven(sha: String? = null) =
     BundleReader.ClasspathEntry.Maven(
       group = "com.example.foo",

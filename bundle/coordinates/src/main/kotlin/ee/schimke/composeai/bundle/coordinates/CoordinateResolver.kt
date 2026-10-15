@@ -135,15 +135,14 @@ public class CoordinateResolver(
     val found = mutableListOf<File>()
     // The download cache is searched too, so earlier downloads resolve offline.
     for (root in repositoryRoots + downloadCacheDir) {
-      if (fileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
+      if (!isDirectory(root)) continue
       // Recorded type first, then `.aar` (see [candidateFileNames]).
       for (fileName in candidateFileNames(coord)) {
         // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.<ext>
         val mavenVersionDir =
           File(root, "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}")
         val mavenPath = File(mavenVersionDir, fileName)
-        if (fileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
-          found += mavenPath
+        if (isRegularFile(mavenPath)) found += mavenPath
         // [download]'s per-sha256 buckets, one level deeper.
         found += subdirectoryHits(mavenVersionDir, fileName)
         // Gradle modules-2: <root>/<group>/<artifact>/<version>/<sha1>/<fileName>.
@@ -153,24 +152,69 @@ public class CoordinateResolver(
             fileName,
           )
       }
+      // Gradle stores a Gradle-module-metadata variant under the variant's own file name
+      // (`ui-text.aar` for androidx.compose.ui:ui-text-android), not `<artifact>-<version>`. Last,
+      // so an exact name is always preferred; [resolve]'s hash check still picks among them.
+      found +=
+        gradleVariantHits(coord, File(root, "${coord.group}/${coord.artifact}/${coord.version}"))
     }
     // The bundle's sha256 for an `.aar` is of its extracted `classes.jar`.
     return found.mapNotNull { materialize(it) }
   }
 
+  /**
+   * [file]'s metadata, following symlinks: okio reports a symlink itself (neither a regular file
+   * nor a directory), and a symlinked jar is how Bazel stages runfiles and sandbox inputs.
+   */
+  private fun followedMetadata(file: File): okio.FileMetadata? {
+    val path = file.path.toPath()
+    val metadata = fileSystem.metadataOrNull(path) ?: return null
+    if (metadata.symlinkTarget == null) return metadata
+    return runCatching { fileSystem.metadataOrNull(fileSystem.canonicalize(path)) }.getOrNull()
+  }
+
+  private fun isRegularFile(file: File): Boolean = followedMetadata(file)?.isRegularFile == true
+
+  private fun isDirectory(file: File): Boolean = followedMetadata(file)?.isDirectory == true
+
   /** Every `<versionDir>/<*>/<fileName>`, one directory level only (never a filesystem walk). */
   private fun subdirectoryHits(versionDir: File, fileName: String): List<File> {
-    if (fileSystem.metadataOrNull(versionDir.path.toPath())?.isDirectory != true) return emptyList()
+    if (!isDirectory(versionDir)) return emptyList()
     return fileSystem
       .listOrNull(versionDir.path.toPath())
       .orEmpty()
       .map { it.toFile() }
-      .filter { fileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
-      .mapNotNull { dir ->
-        File(dir, fileName).takeIf {
-          fileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
-        }
+      .filter { isDirectory(it) }
+      .mapNotNull { dir -> File(dir, fileName).takeIf { isRegularFile(it) } }
+  }
+
+  /**
+   * Every `<versionDir>/<sha1>/<name>.<ext>` for the recorded type or `.aar` that is not
+   * `<artifact>-<version>.<ext>` (already searched) nor a sources, javadoc or samples artifact.
+   */
+  private fun gradleVariantHits(
+    coord: BundleReader.ClasspathEntry.Maven,
+    versionDir: File,
+  ): List<File> {
+    if (!isDirectory(versionDir)) return emptyList()
+    val extensions = listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map { ".$it" }
+    val exact = candidateFileNames(coord).toSet()
+    return fileSystem
+      .listOrNull(versionDir.path.toPath())
+      .orEmpty()
+      .map { it.toFile() }
+      .filter { isDirectory(it) }
+      .flatMap { dir -> fileSystem.listOrNull(dir.path.toPath()).orEmpty().map { it.toFile() } }
+      .filter { file ->
+        val name = file.name
+        extensions.any { name.endsWith(it) } &&
+          name !in exact &&
+          NON_BINARY_CLASSIFIERS.none {
+            name.endsWith("$it${name.substring(name.lastIndexOf('.'))}")
+          } &&
+          isRegularFile(file)
       }
+      .sortedBy { it.path }
   }
 
   /**
@@ -405,6 +449,8 @@ public class CoordinateResolver(
       listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
         "${coord.artifact}-${coord.version}.$it"
       }
+
+    private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
 
     /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
     public fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
