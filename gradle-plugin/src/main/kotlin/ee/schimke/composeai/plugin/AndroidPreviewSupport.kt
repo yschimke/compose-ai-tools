@@ -1310,6 +1310,18 @@ internal object AndroidPreviewSupport {
         outcome = "SKIPPED_BY_CONFIG",
         reason = "manageDependencies=false; consumer must declare this in testImplementation",
       )
+      // Not added to validateExternallyManagedDependencies: espresso arrives transitively through
+      // ui-test-junit4, and anything below 3.7.0 only breaks at API 37, so requiring a declaration
+      // would fail every pre-37 consumer for nothing.
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = ESPRESSO_API_37_FLOOR,
+        configuration = testImplementationBucket,
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; at sdk 37 the consumer must resolve espresso-core >= 3.7.0 in testImplementation, since older Espresso reflects InputManager.getInstance(), removed in API 37",
+      )
       recordInjectedDependency(
         project,
         injectedDependencies,
