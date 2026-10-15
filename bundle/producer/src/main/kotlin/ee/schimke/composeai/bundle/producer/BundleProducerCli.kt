@@ -59,7 +59,16 @@ public object BundleProducerCli {
     // APK, the manifest it was linked against and the final-ID R classes); it makes the bundle an
     // `backend="android"` one, exactly as `compose-preview bazel bundle` does.
     val schema = metadata.getValue("schemaVersion").jsonPrimitive.content
-    require(schema == "1" || schema == "2") { "Unsupported artifacts schema $schema" }
+    // The artifacts contract, as the CLI's Bazel importer enforces it: the `android` block is
+    // present exactly for schema 2, so malformed metadata can't render on the wrong backend.
+    when (schema) {
+      "1" ->
+        require("android" !in metadata) {
+          "schemaVersion 1 artifacts cannot carry an android block"
+        }
+      "2" -> require("android" in metadata) { "schemaVersion 2 artifacts need an android block" }
+      else -> throw IllegalArgumentException("Unsupported artifacts schema $schema")
+    }
     fun files(key: String): List<File> =
       metadata[key]
         ?.jsonArray
