@@ -113,6 +113,8 @@ class AndroidArtifactsTest {
       for ((metadata, expected) in
         listOf(
           """{"schemaVersion":2}""" to "schemaVersion 2 artifacts need an android block",
+          """{"schemaVersion":2,"android":null}""" to
+            "schemaVersion 2 artifacts need an android block",
           """{"schemaVersion":1,"android":{}}""" to
             "schemaVersion 1 artifacts cannot carry an android block",
         )) {
@@ -125,6 +127,24 @@ class AndroidArtifactsTest {
           }
         assertTrue(expected in error.message.orEmpty(), error.message)
       }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a null android block on schema 1 counts as absent`() {
+    val root = Files.createTempDirectory("android-artifacts").toFile()
+    try {
+      val file =
+        root.resolve("artifacts.json").apply { writeText("""{"schemaVersion":1,"android":null}""") }
+      val error =
+        assertFailsWith<Exception> {
+          BundleProducerCli.main(
+            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+          )
+        }
+      assertTrue("android block" !in error.message.orEmpty(), error.message)
     } finally {
       root.deleteRecursively()
     }
