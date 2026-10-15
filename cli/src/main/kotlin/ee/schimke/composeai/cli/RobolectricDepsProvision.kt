@@ -61,41 +61,70 @@ internal object RobolectricDepsProvision {
    * a newer JDK than this one; the artifact is still wanted, since the render may run on another
    * JDK, so it is then rebuilt from the same `DefaultSdk` fields the refused method joins.
    */
-  fun artifactFor(sidecarJars: List<File>, apiLevel: Int): Resolved {
+  fun artifactFor(sidecarJars: List<File>, apiLevel: Int): Resolved =
+    robolectricLoader(sidecarJars).use { artifactFor(it, apiLevel) }
+
+  /**
+   * The highest SDK level from [requested] down to [floor] whose `android-all` artifact, as the
+   * Robolectric in [sidecarJars] names it, is in [directory]; null when there is none.
+   *
+   * An offline render can only run on a level whose framework jar was provisioned, and a build's
+   * compileSdk can be newer than any `android-all` published for the daemon's Robolectric (a
+   * preview platform installed on the build machine), so the render settles for the newest one it
+   * has, as it does for a JDK too old for the requested level.
+   */
+  fun highestProvisionedLevel(
+    sidecarJars: List<File>,
+    directory: File,
+    requested: Int,
+    floor: Int,
+  ): Int? =
+    robolectricLoader(sidecarJars).use { loader ->
+      (requested downTo floor).firstOrNull { level ->
+        val artifact =
+          runCatching { artifactFor(loader, level).artifact }.getOrNull()
+            ?: return@firstOrNull false
+        File(directory, artifact.fileName).isFile
+      }
+    }
+
+  private fun robolectricLoader(sidecarJars: List<File>): URLClassLoader {
     val robolectric =
       sidecarJars.filter { it.isFile && it.extension == "jar" }.takeIf { it.isNotEmpty() }
         ?: error("no jars to find Robolectric in")
-    URLClassLoader(
-        robolectric.map { it.toURI().toURL() }.toTypedArray(),
-        ClassLoader.getPlatformClassLoader(),
-      )
-      .use { loader ->
-        val sdk = defaultSdk(loader, apiLevel)
-        val required = sdk.field("requiredJavaVersion") as Int
-        val dependency =
-          try {
-            sdk.javaClass.getDeclaredMethod("getAndroidSdkDependency").let {
-              it.isAccessible = true
-              it.invoke(sdk)
-            }
-          } catch (e: InvocationTargetException) {
-            if (e.cause !is UnsupportedClassVersionError) throw e.cause ?: e
-            null
+    return URLClassLoader(
+      robolectric.map { it.toURI().toURL() }.toTypedArray(),
+      ClassLoader.getPlatformClassLoader(),
+    )
+  }
+
+  private fun artifactFor(loader: ClassLoader, apiLevel: Int): Resolved {
+    run {
+      val sdk = defaultSdk(loader, apiLevel)
+      val required = sdk.field("requiredJavaVersion") as Int
+      val dependency =
+        try {
+          sdk.javaClass.getDeclaredMethod("getAndroidSdkDependency").let {
+            it.isAccessible = true
+            it.invoke(sdk)
           }
-        val artifact =
-          if (dependency != null) {
-            fun get(name: String) =
-              dependency.javaClass.getMethod(name).invoke(dependency) as String?
-            Artifact(
-              groupId = get("getGroupId")!!,
-              artifactId = get("getArtifactId")!!,
-              version = get("getVersion")!!,
-              classifier = get("getClassifier"),
-              type = get("getType") ?: "jar",
-            )
-          } else preinstrumentedFromFields(sdk)
-        return Resolved(apiLevel, artifact, required)
-      }
+        } catch (e: InvocationTargetException) {
+          if (e.cause !is UnsupportedClassVersionError) throw e.cause ?: e
+          null
+        }
+      val artifact =
+        if (dependency != null) {
+          fun get(name: String) = dependency.javaClass.getMethod(name).invoke(dependency) as String?
+          Artifact(
+            groupId = get("getGroupId")!!,
+            artifactId = get("getArtifactId")!!,
+            version = get("getVersion")!!,
+            classifier = get("getClassifier"),
+            type = get("getType") ?: "jar",
+          )
+        } else preinstrumentedFromFields(sdk)
+      return Resolved(apiLevel, artifact, required)
+    }
   }
 
   /**

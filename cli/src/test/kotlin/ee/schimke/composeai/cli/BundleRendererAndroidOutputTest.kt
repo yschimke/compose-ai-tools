@@ -129,4 +129,31 @@ class BundleRendererAndroidOutputTest {
     assertEquals(setOf("a.FooKt.One", "a.FooKt.Two"), failed.map { it.id }.toSet())
     assertTrue(failed.all { it.exitCode == 124 })
   }
+
+  @Test
+  fun `a failure summary leads with the causes above the stack tail`() {
+    val output =
+      listOf(
+        "Render failed: null",
+        "java.lang.IllegalStateException: no android-all for SDK 37",
+        "\tat org.robolectric.Foo.bar(Foo.java:1)",
+        "Caused by: java.io.FileNotFoundException: android-all-instrumented-17.jar",
+      ) + List(50) { "\tat frame$it" }
+    val summary = BundleRenderer.renderOutputSummary(output.joinToString("\n"), tailLines = 10)
+    val lines = summary.lines()
+    assertEquals("Render failed: null", lines[0])
+    assertEquals("java.lang.IllegalStateException: no android-all for SDK 37", lines[1])
+    assertEquals(
+      "Caused by: java.io.FileNotFoundException: android-all-instrumented-17.jar",
+      lines[2],
+    )
+    assertEquals("[…]", lines[3])
+    assertEquals("\tat frame49", lines.last())
+    assertEquals(14, lines.size)
+  }
+
+  @Test
+  fun `a short failure is reported whole`() {
+    assertEquals("one\ntwo", BundleRenderer.renderOutputSummary("one\ntwo", tailLines = 10))
+  }
 }

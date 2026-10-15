@@ -743,6 +743,42 @@ internal fun robolectricOfflineProperties(
 }
 
 /**
+ * [level], or, when Robolectric runs offline from a provisioned directory ([offlineProperties],
+ * from [robolectricOfflineProperties]) that has no `android-all` for it, the newest level that
+ * directory does have, as the Robolectric in [robolectricJars] names its jars. A compileSdk newer
+ * than any `android-all` published for that Robolectric (a preview platform on the build machine)
+ * otherwise fails every render; this settles for the newest provisioned framework and says so, as
+ * [bazelAndroidSdkLevel] does for a JDK too old for the requested level. Unchanged when online,
+ * when the level is provisioned, or when no lower level is either (Robolectric then reports it).
+ */
+internal fun provisionedSdkLevel(
+  level: Int,
+  robolectricJars: List<File>,
+  offlineProperties: Map<String, String>,
+  log: (String) -> Unit = { System.err.println(it) },
+): Int {
+  val directory = offlineProperties["robolectric.dependency.dir"]?.let(::File) ?: return level
+  val provisioned =
+    runCatching {
+      RobolectricDepsProvision.highestProvisionedLevel(
+        robolectricJars,
+        directory,
+        requested = level,
+        floor = AndroidBundleLaunch.MIN_SDK,
+      )
+    }
+      .getOrNull() ?: return level
+  if (provisioned != level) {
+    log(
+      "[android] no android-all for SDK $level in $ROBOLECTRIC_DEPS_DIR_ENV ($directory); " +
+        "rendering on SDK $provisioned, the newest provisioned (compose-preview provision " +
+        "--android --android-sdk $level fetches $level where Robolectric publishes it)"
+    )
+  }
+  return provisioned
+}
+
+/**
  * The Robolectric daemon launch for an Android target, built from the linked resources the
  * artifacts carry rather than from AGP's unit-test config. The resource APK, manifest and package
  * reach Robolectric through a synthesized `test_config.properties`, exactly as the bundle lanes do
@@ -790,10 +826,14 @@ internal fun prepareBazelAndroidDaemon(
   val launch =
     AndroidBundleLaunch(
       sdkLevel =
-        bazelAndroidSdkLevel(
-          android.compileSdk,
-          target = artifacts.metadata.target,
-          source = android.compileSdkSource,
+        provisionedSdkLevel(
+          bazelAndroidSdkLevel(
+            android.compileSdk,
+            target = artifacts.metadata.target,
+            source = android.compileSdkSource,
+          ),
+          daemonJars,
+          offlineProperties,
         )
     )
   val descriptor =

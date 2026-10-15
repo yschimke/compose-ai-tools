@@ -320,7 +320,10 @@ fetching; [OFFLINE.md](OFFLINE.md) lists what to pre-provision, including which 
 
 The Robolectric sandbox renders on the target's `compileSdk`, as a Gradle module
 does, clamped to the bundled Robolectric's range and to 35 when the CLI runs on a
-JDK older than 21 (SDK 36 needs JDK 21). The aspect writes `compileSdk` only when
+JDK older than 21 (SDK 36 needs JDK 21). Offline (`COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR`), it is also
+clamped to the newest level that directory has an `android-all` for, since a compileSdk can be
+newer than any published for the daemon's Robolectric (SDK 37 for Robolectric 4.17); the render
+logs the level it settled on. The aspect writes `compileSdk` only when
 the target's `android.jar` path has an `android-<N>` segment, since rules_android's
 `AndroidSdkInfo` carries no API level; otherwise the CLI reads it from the SDK
 platform that jar belongs to (`AndroidVersion.ApiLevel` in the `source.properties`
