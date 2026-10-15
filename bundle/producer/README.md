@@ -7,7 +7,9 @@ coordinates over the network, provision renderer sidecars, or render images.
 
 Build with `scripts/agent-gradle.sh :bundle-producer:installDist :bundle-producer:distTar`.
 The executable takes execution-root-relative metadata paths using the existing
-schema-1 artifacts contract:
+artifacts contract: schema 1 for a JVM target, or schema 2, whose `android` block (the linked
+resource APK, manifest and final-ID R jar an Android aspect wrote) makes a `backend="android"`
+bundle carrying them:
 
 ```
 compose-preview-producer --artifacts app.artifacts.json --output app.bundle.png \

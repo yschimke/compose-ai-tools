@@ -363,6 +363,21 @@ APK, manifest and final-ID R classes go under `android/`, where a Gradle Android
 bundle carries them, so `bundle render` and `bundle daemon` replay both the same
 way. The R jar travels only there, not on the bundle's user classpath.
 
+`bundle render` replays an Android bundle with the one-shot Robolectric renderer, which the
+Android daemon sidecar (`lib-daemon-android`) carries; it is resolved and provisioned as for
+`bundle daemon` (`-Dcomposeai.cli.libRendererAndroidDir` still wins when set). Three flags carry
+what a bundle does not record, so a build that knows them renders without reading the host:
+
+| Flag | Meaning |
+| --- | --- |
+| `--android-sdk <n>` | The sandbox SDK, e.g. the target's `compileSdk`; clamped as above. Default: `-Dcomposeai.bundle.androidSdk`, else 35. |
+| `--android-jar <file>` | The `android.jar` to put on the classpath, instead of the SDK `ANDROID_HOME` or `local.properties` names. |
+| `--clock-packages <prefix,…>` | The app clock to pin, as `appClockPackages`; absent pins nothing, as before. |
+
+The producer (`compose-preview-producer --artifacts`) accepts schema-2 artifacts too and writes
+the same `backend="android"` bundle, which is how rules_compose_preview's `compose_preview` rule
+prepares, renders (with these flags) and bakes an Android library as ordinary Bazel actions.
+
 The end-to-end proof is compose-ai-contrib's `bazel-android-render` job: it builds
 the rules_android Compose sample in `bazel-apk/` through this driver and renders a
 preview that reads string and colour resources on the Robolectric daemon.
@@ -473,9 +488,10 @@ The native rule uses a separate `producer` executable, built from `:bundle-produ
 It prepares runnable bundles offline from declared JavaInfo inputs with normal Bazel
 caching. `outputs = ["bundle"]` is the default; `png` and `rendered_bundle` are
 optional products. `bazel run //app:ui-preview -- render --filter Greeting` calls
-the existing bundle renderer against the cached prepared bundle. Rendering remains
-local, uncached and non-remote until native/font/renderer inputs form a declared
-toolchain. Neither mode starts a nested build. See the rule repository for pinned
+the existing bundle renderer against the cached prepared bundle. Rendering is
+local, uncached and non-remote unless a render toolchain declares the
+native/font/renderer inputs (for an Android `module`, the Android daemon and
+`android-all` jars). Neither mode starts a nested build. See the rule repository for pinned
 producer/CLI distribution provisioning and fresh-consumer verification.
 
 ## Portable runnable PNG/ZIP bundles

@@ -43,6 +43,30 @@ public class AndroidBundleLaunch(
    */
   public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
+  /**
+   * The consumer's own class-name prefixes whose `System.currentTimeMillis()` reads the pinned
+   * preview clock, as `pinAppClock` sets them for a Gradle module or a Bazel Android target. Empty
+   * (the default) leaves the synthesized config and the system properties exactly as they were
+   * before clock pinning existed. Set through [withClockPackages].
+   */
+  public var clockPackages: List<String> = emptyList()
+    private set
+
+  /**
+   * A copy of this launch that pins the wall clock of [packages] (class-name prefixes, ideally with
+   * a trailing `.`): both lanes' `robolectric.properties` instrument them and register the clock
+   * shadow, and [robolectricSystemProperties] names them for the render JVM. Prefixes the renderer
+   * refuses to instrument (the JDK, Kotlin, Robolectric, the framework) are dropped, by
+   * daemon-client's `RobolectricConfig.withClockPackages`.
+   */
+  public fun withClockPackages(packages: List<String>): AndroidBundleLaunch =
+    AndroidBundleLaunch(sdkLevel, useConsumerApplication, fileSystem, fontsCacheDir).also {
+      it.clockPackages =
+        RobolectricConfig(sdkLevel, useConsumerApplication)
+          .withClockPackages(packages)
+          .clockPackages
+    }
+
   /** The daemon's JVM args for Robolectric on JDK 17+ (the `--add-opens` set, #1328). */
   public fun jvmArgs(): List<String> = RobolectricLaunch.jvmArgs()
 
@@ -59,7 +83,9 @@ public class AndroidBundleLaunch(
         // The daemon's sandbox SDK; its test class is outside the packages [robolectricProperties]
         // covers. Ignored by the one-shot renderer and by daemons older than 3.18.
         "composeai.daemon.sandboxSdk" to sdkLevel.toString(),
-      )
+      ) +
+      // `composeai.render.clockPackages`, only when [withClockPackages] named any.
+      robolectricConfig().systemProperties()
 
   /**
    * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads
@@ -89,7 +115,9 @@ public class AndroidBundleLaunch(
   public fun appTourRobolectricPropertiesBody(): String = robolectricConfig().appTourLaneBody()
 
   private fun robolectricConfig(): RobolectricConfig =
-    RobolectricConfig(sdkLevel = sdkLevel, useConsumerApplication = useConsumerApplication)
+    RobolectricConfig(sdkLevel = sdkLevel, useConsumerApplication = useConsumerApplication).let {
+      if (clockPackages.isEmpty()) it else it.withClockPackages(clockPackages)
+    }
 
   /**
    * Write both lanes' `robolectric.properties` under [root] in their packages, and return [root]

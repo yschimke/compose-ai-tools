@@ -457,6 +457,9 @@ internal object CliFlagValidation {
             "--semantics-workers",
             "--no-figma-svg",
             "--allow-lost-font-families",
+            "--android-sdk",
+            "--android-jar",
+            "--clock-packages",
           ),
       "mcp" to
         setOf(

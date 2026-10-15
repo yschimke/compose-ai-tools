@@ -562,9 +562,14 @@ public fun bakePreparedBundle(bundle: File, renders: File, output: File): Unit {
   require(manifest.previewIds.map(::previewPngName).distinct().size == manifest.previewIds.size) {
     "Preview filenames collide"
   }
+  // The Android renderer names a capture by its `renderOutput` leaf rather than [previewPngName].
+  val leaves = renderOutputLeaves(contents["previews.json"])
   manifest.previewIds.forEach { id ->
     require(!id.contains('/') && !id.contains('\\')) { "Unsafe preview ID: $id" }
-    val png = renders.resolve(previewPngName(id))
+    val png =
+      listOfNotNull(previewPngName(id), leaves[id])
+        .map { renders.resolve(it) }
+        .firstOrNull { it.isFile } ?: renders.resolve(previewPngName(id))
     require(png.isFile) { "Rendered capture missing: $png" }
     contents["previews/$id.png"] = png.readBytes()
   }
@@ -575,6 +580,28 @@ public fun bakePreparedBundle(bundle: File, renders: File, output: File): Unit {
     )
     stream.write(bazelBundleZip(contents))
   }
+}
+
+/**
+ * Each preview's primary capture file name (its `renderOutput` leaf) from a bundle's
+ * `previews.json`, the name the Android renderer writes; only safe single-segment names are kept.
+ */
+internal fun renderOutputLeaves(previewsJson: ByteArray?): Map<String, String> {
+  if (previewsJson == null) return emptyMap()
+  val root = bazelJson.parseToJsonElement(previewsJson.decodeToString()) as? JsonObject
+  val previews = root?.get("previews") as? kotlinx.serialization.json.JsonArray ?: return emptyMap()
+  return previews
+    .mapNotNull { element ->
+      val preview = element as? JsonObject ?: return@mapNotNull null
+      val id = preview["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+      val capture =
+        (preview["captures"] as? kotlinx.serialization.json.JsonArray)?.firstOrNull() as? JsonObject
+      val leaf =
+        capture?.get("renderOutput")?.jsonPrimitive?.contentOrNull?.substringAfterLast('/')
+          ?: return@mapNotNull null
+      if (leaf.isEmpty() || leaf == "." || leaf == ".." || '\\' in leaf) null else id to leaf
+    }
+    .toMap()
 }
 
 /** Filename shared by the existing bundle renderer and offline baked-image packaging. */
