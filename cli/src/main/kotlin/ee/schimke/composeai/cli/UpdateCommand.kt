@@ -22,6 +22,10 @@ class UpdateCommand(private val args: List<String>) {
       println(pipeline)
       return
     }
+    NetworkPolicy.require(
+      "compose-preview update (downloading the installer)",
+      "Install a release archive you fetched elsewhere instead.",
+    )
 
     val target = targetVersion ?: "latest"
     System.err.println("==> updating compose-preview (currently $BUNDLE_VERSION) to $target")

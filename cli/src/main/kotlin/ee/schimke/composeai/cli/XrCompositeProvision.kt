@@ -116,6 +116,8 @@ object XrCompositeProvision {
 
   /** Default fetcher: Ktor over OkHttp (follows redirects), streaming the body to disk. */
   internal val defaultFetcher = Fetcher { url, dest ->
+    // A backstop; [ensureCached] refuses first, naming the directory to pre-provision.
+    NetworkPolicy.require("Downloading $url", "Pre-provision the file it names.")
     HttpClient(OkHttp).use { client ->
       runBlocking {
         client.prepareGet(url).execute { response ->
@@ -130,7 +132,9 @@ object XrCompositeProvision {
 
   /**
    * Ensure the cache holds the [version] + host-platform binary, fetching when absent. Returns it,
-   * or null (with a one-line note) on any skip or failure; never throws.
+   * or null (with a one-line note) on any skip or failure. Under [NetworkPolicy]'s switch
+   * ([noNetwork]) an uncached binary throws [NetworkDisabledException] rather than skipping the
+   * composites, so a missing pre-provisioned copy is not mistaken for a render without XR.
    *
    * @param version the pinned `xr-composite` release ([XR_COMPOSITE_VERSION]), not the CLI's
    *   version.
@@ -142,6 +146,7 @@ object XrCompositeProvision {
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
     log: (String) -> Unit = { System.err.println(it) },
+    noNetwork: Boolean = NetworkPolicy.disabled,
   ): File? {
     val platform =
       currentPlatformToken()
@@ -160,6 +165,11 @@ object XrCompositeProvision {
     if (isComplete(dir, binaryName)) return binary
 
     val url = assetUrl(version, platform)
+    NetworkPolicy.require(
+      "Fetching the xr-composite $version binary for XR previews",
+      "Pre-provision it: unpack $url into ${dir.absolutePath} (the binary and materials/).",
+      disabled = noNetwork,
+    )
     val parent = dir.parentFile
     val tmp = File(parent, ".${dir.name}.dl-${UUID.randomUUID()}.tar.gz")
     // Unpack to a staging dir and move it into place once validated, so readers never see a partial
@@ -187,6 +197,8 @@ object XrCompositeProvision {
       }
       log("xr-composite: provisioned $version/$platform into $dir")
       binary
+    } catch (e: NetworkDisabledException) {
+      throw e
     } catch (e: Exception) {
       // Offline / 404 (SNAPSHOT or missing asset) / corrupt archive — all best-effort skips.
       log("xr-composite: could not provision from $url (${e.message}); skipping composite stills")

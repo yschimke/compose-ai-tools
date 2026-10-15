@@ -121,4 +121,6 @@ not as separate docs — read them next to the code.
 
 - [Bazel CLI and configurable artifact producers](BAZEL.md) — aspect setup, discovery/rendering, and internal build-system configuration.
 
+- [Offline deployment](OFFLINE.md) — `COMPOSE_PREVIEW_NO_NETWORK`, the one switch that refuses every outbound path of the CLI, which directories to pre-provision, and how to verify nothing is fetched.
+
 - [Native preview targets and artifact exports](design/BAZEL_PREVIEW_TARGETS.md) — Bazel/Blaze macro proposal and patterns from Gradle, Buck2, and Maven.

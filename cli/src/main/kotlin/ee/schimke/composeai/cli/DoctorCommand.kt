@@ -106,7 +106,8 @@ class DoctorCommand(
     val projectDir = resolveProjectDir()
 
     checkComposeBomVersion()
-    if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1") {
+    networkPolicyCheck()?.let(::addCheck)
+    if (System.getenv("COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK") != "1" && !NetworkPolicy.disabled) {
       checkBundleVersion()
       checkNetworkReach()
     } else {
@@ -213,9 +214,7 @@ class DoctorCommand(
       )
       return
     }
-    val offline =
-      System.getProperty("composeai.bundle.offline").toBoolean() ||
-        System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
+    val offline = NetworkPolicy.offline
     addCheck(
       DoctorCheck(
         id = "env.preview-server",
@@ -415,7 +414,11 @@ class DoctorCommand(
         GradleConnection(
             projectDir,
             verbose = verbose,
-            extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
+            extraArguments =
+              injectArgs +
+                variantGradleArgs() +
+                gradleWriteLocksArgs() +
+                NetworkPolicy.gradleArguments(),
           )
           .apply { failureAdvice = diagnosePublicationRace }
           .use { gc ->
@@ -1367,6 +1370,32 @@ class DoctorCommand(
 
   // --- Helpers ------------------------------------------------------------
 
+  /**
+   * `env.network-policy`, only when the network is off or fetches are skipped: what is already
+   * pre-provisioned, read from disk (never fetched), so an offline deployment can be checked before
+   * its first render.
+   */
+  private fun networkPolicyCheck(): DoctorCheck? =
+    networkPolicyCheck(
+      disabled = NetworkPolicy.disabled,
+      offline = NetworkPolicy.offline,
+      provisioned =
+        linkedMapOf(
+          "desktop render daemon" to
+            (listOf("lib-daemon-desktop", "lib-renderer").all {
+              ee.schimke.composeai.bundle.locateBundleSidecarJars(it).isNotEmpty()
+            } || DaemonSidecarProvision.cached(DaemonSidecarProvision.Sidecar.DESKTOP) != null),
+          "Android render daemon" to
+            (ee.schimke.composeai.bundle
+              .locateBundleSidecarJars("lib-daemon-android")
+              .isNotEmpty() ||
+              DaemonSidecarProvision.cached(DaemonSidecarProvision.Sidecar.ANDROID) != null),
+          "android-all jars ($ROBOLECTRIC_DEPS_DIR_ENV)" to
+            (System.getenv(ROBOLECTRIC_DEPS_DIR_ENV)?.let { File(it).isDirectory } == true),
+          "preview server" to (ServerDistributionProvision.cached() != null),
+        ),
+    )
+
   private fun addCheck(check: DoctorCheck) {
     checks += check
   }
@@ -1828,3 +1857,38 @@ data class DoctorRemediation(
 
 @Serializable
 data class DoctorSummary(val ok: Int, val warning: Int, val error: Int, val skipped: Int)
+
+/**
+ * The `env.network-policy` check: null when the network is allowed; otherwise which pre-provisioned
+ * pieces are on disk ([provisioned], label to present). Missing pieces warn only under the hard
+ * switch, where the path that needs one fails instead of fetching it.
+ */
+internal fun networkPolicyCheck(
+  disabled: Boolean,
+  offline: Boolean,
+  provisioned: Map<String, Boolean>,
+): DoctorCheck? {
+  if (!disabled && !offline) return null
+  val missing = provisioned.filterValues { !it }.keys
+  val detail =
+    provisioned.entries.joinToString("\n") { (label, present) ->
+      "${if (present) "present" else "missing"}: $label"
+    }
+  return DoctorCheck(
+    id = "env.network-policy",
+    category = "env",
+    status = if (disabled && missing.isNotEmpty()) "warning" else "ok",
+    message =
+      if (disabled)
+        "network disabled by ${NetworkPolicy.ENV}: every outbound path refuses, nothing is fetched"
+      else "offline mode: fetches are skipped (set ${NetworkPolicy.ENV}=1 to make them fail)",
+    detail = detail,
+    remediation =
+      if (disabled && missing.isNotEmpty())
+        DoctorRemediation(
+          summary = "pre-provision ${missing.joinToString()} if this machine renders with them",
+          docs = OFFLINE_DOCS,
+        )
+      else null,
+  )
+}

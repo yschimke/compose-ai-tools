@@ -277,6 +277,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       backend = choice.backend
       System.err.println("$command: backend ${choice.backend} (${choice.reason})")
     }
+    // Before a client, a price lookup or a guidelines URL is touched.
+    refuseRemoteGuidelinesBackend(backend, baseUrl)
     if (backend != GuidelinesBackend.OPENROUTER && checker == GuidelineChecker.JEV) {
       System.err.println(
         "$command: --checker jev asks OpenRouter's decisions API; it needs " +
@@ -342,8 +344,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           ?: continue
       val buildDir = projectDir.resolve("build/compose-previews")
       val loaded =
-        guidelinesLocation?.let { CatalogGuidelinesLoader.load(it) }
-          ?: CatalogGuidelinesLoader.load(buildDir.resolve(CatalogGuidelinesV1.FILE_NAME))
+        guidelinesLocation?.let { loadGuidelines(it) }
+          ?: loadGuidelines(buildDir.resolve(CatalogGuidelinesV1.FILE_NAME).path)
       val guidelines = loaded.guidelines
       if (guidelines == null) {
         if (!jsonOutput) {
@@ -556,9 +558,13 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     return OpenAiCompatibleClient(
       url,
       resolved?.key,
-      OpenRouterClient.httpClient(
-        requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-          ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+      // A loopback --base-url passes the network switch; a redirect must not then leave the
+      // machine.
+      NetworkPolicy.noRedirects(
+        OpenRouterClient.httpClient(
+          requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+            ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+        )
       ),
     )
   }
@@ -712,7 +718,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       return 2
     }
     val guidelines =
-      CatalogGuidelinesLoader.load(location).let { loaded ->
+      loadGuidelines(location).let { loaded ->
         loaded.guidelines
           ?: run {
             System.err.println("guidelines: ${loaded.problem ?: "no guidelines at $location"}")
@@ -1142,4 +1148,67 @@ private object NoModel : GuidelineModel {
     request: ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1,
     model: String,
   ): ee.schimke.composeai.guidelines.ModelResponse = error("--estimate asks no model")
+}
+
+/**
+ * Refuses, under [NetworkPolicy]'s switch, a guidelines backend that sends rendered previews off
+ * this machine: OpenRouter, or an OpenAI-compatible endpoint that is not loopback. The prompt
+ * backend (the calling agent answers) and a local model server stay usable.
+ */
+internal fun refuseRemoteGuidelinesBackend(
+  backend: String,
+  baseUrl: String?,
+  disabled: Boolean = NetworkPolicy.disabled,
+) {
+  when (backend) {
+    GuidelinesBackend.OPENROUTER ->
+      NetworkPolicy.require(
+        "guidelines --backend ${GuidelinesBackend.OPENROUTER} (sends renders to openrouter.ai)",
+        "Use --backend ${GuidelinesBackend.PROMPT}, or --backend ${GuidelinesBackend.OPENAI} " +
+          "with a loopback --base-url (a model server on this machine).",
+        disabled = disabled,
+      )
+    GuidelinesBackend.OPENAI ->
+      if (baseUrl != null) {
+        NetworkPolicy.requireForUrl(
+          baseUrl,
+          "guidelines --backend ${GuidelinesBackend.OPENAI} at $baseUrl (sends renders to it)",
+          "Use a loopback --base-url (a model server on this machine), or --backend " +
+            "${GuidelinesBackend.PROMPT}.",
+          disabled = disabled,
+        )
+      }
+  }
+}
+
+/**
+ * [CatalogGuidelinesLoader.load], refusing under [NetworkPolicy]'s switch a guidelines URL or a
+ * file whose `includes` would be fetched, rather than reading a partial rule set.
+ */
+internal fun loadGuidelines(
+  location: String,
+  disabled: Boolean = NetworkPolicy.disabled,
+): CatalogGuidelinesLoader.Loaded {
+  if (!disabled) return CatalogGuidelinesLoader.load(location)
+  // Every URL, loopback included: its `includes` are https packs fetched from wherever they live.
+  if (location.startsWith("http://") || location.startsWith("https://")) {
+    throw NetworkPolicy.refusal(
+      "Reading guidelines from $location",
+      "Download the guidelines file (and the packs it includes) and pass its path to --guidelines.",
+    )
+  }
+  val file = File(location)
+  if (!file.isFile) return CatalogGuidelinesLoader.Loaded(null)
+  var refused: NetworkDisabledException? = null
+  val loaded =
+    CatalogGuidelinesLoader.parse(file.readText(), null) { url ->
+      throw NetworkPolicy.refusal(
+          "Fetching the guidelines pack $url that $location includes",
+          "Inline the pack's rules into $location, or point --guidelines at a copy without " +
+            "remote includes.",
+        )
+        .also { refused = it }
+    }
+  refused?.let { throw it }
+  return loaded
 }

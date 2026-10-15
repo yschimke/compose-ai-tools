@@ -36,6 +36,12 @@ internal class AgentAccessClient(
       )
 
   init {
+    // Before any request is built: an access request names this machine to a remote host.
+    NetworkPolicy.requireForUrl(
+      origin,
+      "Requesting agent access from $origin",
+      "Use a preview server on this machine (http://localhost), or run without an access grant.",
+    )
     require(isSecureEnough(origin)) {
       "refusing to send an access request over plaintext to $origin — use https:// (or a " +
         "loopback address, which never leaves this machine)"

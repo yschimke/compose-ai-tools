@@ -449,10 +449,18 @@ public class CoordinateResolver(
       return roots
     }
 
-    /** On unless `composeai.bundle.offline=true` or `COMPOSE_PREVIEW_OFFLINE=1`. */
+    /**
+     * On unless `composeai.bundle.offline=true` or `COMPOSE_PREVIEW_OFFLINE=1`, or the hard switch
+     * `COMPOSE_PREVIEW_NO_NETWORK=1` / `-Dcomposeai.network=off` (the CLI's `NetworkPolicy`, read
+     * here too so a caller outside the CLI honours it).
+     */
     public fun defaultNetworkEnabled(): Boolean {
       if (System.getProperty("composeai.bundle.offline").toBoolean()) return false
       if (System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1") return false
+      val noNetwork = System.getenv("COMPOSE_PREVIEW_NO_NETWORK")?.trim()?.lowercase()
+      if (noNetwork == "1" || noNetwork == "true") return false
+      val network = System.getProperty("composeai.network")?.trim()?.lowercase()
+      if (network == "off" || network == "false" || network == "none") return false
       return true
     }
 

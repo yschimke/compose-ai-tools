@@ -61,6 +61,12 @@ object BundleSource {
   }
 
   private fun download(uri: URI, arg: String, fileSystem: FileSystem = SystemFileSystem): File {
+    // Before the temp file or a client exists; a loopback URL never leaves the machine.
+    NetworkPolicy.requireForUrl(
+      arg,
+      "Downloading the bundle at $arg",
+      "Copy the bundle to this machine and pass its path (or a file:// URL).",
+    )
     // Bundles are always PNG+ZIP polyglots, so a `.png` temp suffix keeps downstream
     // name-derivation (`<name>-render`, the daemon's bundleSource tag) sensible.
     val tempPath = TemporaryDirectory / "compose-preview-bundle-${UUID.randomUUID()}.png"
@@ -69,20 +75,27 @@ object BundleSource {
     // to disk (via an Okio sink) and only keep the file on a 2xx. `runBlocking` is fine here — this
     // is a one-shot CLI / startup call, not a hot path.
     try {
-      HttpClient(OkHttp).use { client ->
-        runBlocking {
-          client.prepareGet(uri.toString()).execute { response ->
-            if (!response.status.isSuccess()) {
-              throw IllegalArgumentException(
-                "could not download bundle from $arg: HTTP ${response.status.value}"
-              )
-            }
-            fileSystem.sink(tempPath).buffer().use { sink ->
-              response.bodyAsChannel().copyTo(sink.outputStream())
+      // Under the network switch only a loopback URL gets here; following a redirect would take
+      // the request off the machine after that check.
+      val follow = !NetworkPolicy.disabled
+      HttpClient(OkHttp) {
+          followRedirects = follow
+          engine { config { followRedirects(follow).followSslRedirects(follow) } }
+        }
+        .use { client ->
+          runBlocking {
+            client.prepareGet(uri.toString()).execute { response ->
+              if (!response.status.isSuccess()) {
+                throw IllegalArgumentException(
+                  "could not download bundle from $arg: HTTP ${response.status.value}"
+                )
+              }
+              fileSystem.sink(tempPath).buffer().use { sink ->
+                response.bodyAsChannel().copyTo(sink.outputStream())
+              }
             }
           }
         }
-      }
     } catch (e: IllegalArgumentException) {
       fileSystem.delete(tempPath, mustExist = false)
       throw e

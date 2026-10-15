@@ -65,6 +65,9 @@ fun main(args: Array<String>) {
     exitProcess(0)
   }
 
+  // Before any command runs, so modules that read the older offline properties honour the switch.
+  NetworkPolicy.applyToProcess()
+
   when (val route = CliRouter.route(args)) {
     is CliRouter.Route.Run -> {
       for (flag in CliFlagValidation.unknownFlags(route.command, route.args)) {
@@ -75,6 +78,10 @@ fun main(args: Array<String>) {
       } catch (e: NoCredentialHomeException) {
         // Handled at this one boundary so every consumer of the grant store (not just
         // `AuthCommand`) prints the remedy instead of a stack trace.
+        System.err.println("compose-preview: ${e.message}")
+        exitProcess(1)
+      } catch (e: NetworkDisabledException) {
+        // One boundary for every refused outbound path: the message names the switch and remedy.
         System.err.println("compose-preview: ${e.message}")
         exitProcess(1)
       }

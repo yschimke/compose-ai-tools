@@ -314,7 +314,9 @@ The Android daemon (`lib-daemon-android`) and `android.jar` (from `ANDROID_HOME`
 `ANDROID_SDK_ROOT` or `local.properties`) are resolved as for `bundle daemon`.
 Robolectric fetches `android-all-instrumented` from Maven Central on first render;
 set `COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR` to a directory holding those jars to
-run offline (`robolectric.offline`); `compose-preview provision` fills one (below).
+run offline (`robolectric.offline`); `compose-preview provision` fills one (below). For a closed
+network, `COMPOSE_PREVIEW_NO_NETWORK=1` makes every outbound path of the CLI refuse instead of
+fetching; [OFFLINE.md](OFFLINE.md) lists what to pre-provision, including which `android-all` jars.
 
 The Robolectric sandbox renders on the target's `compileSdk`, as a Gradle module
 does, clamped to the bundled Robolectric's range and to 35 when the CLI runs on a
