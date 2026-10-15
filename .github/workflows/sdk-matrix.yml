@@ -50,7 +50,7 @@ jobs:
           # failing at sandbox bootstrap. minSdk=24 parses cleanly against the framework-35 APK.
           # (Was expect:fail before the JDK-aware clamp landed; the matrix surfaced that drift.)
           - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
-          # JDK 17 + compileSdk=37 auto-detect clamps the same way: ceiling = min(jar=36, JDK17=35)
+          # JDK 17 + compileSdk=37 auto-detect clamps the same way: ceiling = min(jar=37, JDK17=35)
           # = 35, so it renders at sdk=35 (the warning notes the APK may still fail if <uses-sdk>
           # is newer — here minSdk=24 is fine). Same JDK-aware-clamp improvement as the row above.
           - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
@@ -69,27 +69,11 @@ jobs:
           - { label: "jdk21 / compileSdk=36 / target=36 / min=24 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
           # The #1248 case JDK 21 fixes outright: minSdk=36 matches the runtime framework.
           - { label: "jdk21 / compileSdk=36 / target=36 / min=36 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
-          # JDK 21 + compileSdk=37 + stable Robolectric: auto-detect clamps to sdk=36 (because
-          # the bundled 4.16.1 has no API 37 jar); minSdk=24 trivially parses. This preserves the
-          # ⚠️ pass-with-clamp behaviour the original SDK matrix PR documented.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
-          # ----- Robolectric snapshot probes -----
-          # Forces `org.robolectric:robolectric:4.17-SNAPSHOT` on the test classpath AND lifts the
-          # task's ceiling to 37 via `maxSupportedSdk` so the snapshot's API 37 work (upstream
-          # commit 0e89b68) actually gets exercised. The ceiling lift is a matrix-internal escape
-          # hatch — production consumers never set it — so a stable-Robolectric 4.16.1 user can't
-          # accidentally turn the clamp-warning behaviour above into a runtime sandbox failure.
-          #
-          # `expect: fail` for now: the `4.17-SNAPSHOT` build now publishes and recognizes the API
-          # 37 framework jar, but sandbox boot reaches an Android 37 InputManager API that the
-          # snapshot shadow does not yet implement. We keep the cells in the matrix specifically
-          # to catch the day upstream completes API 37 support — the cells will then drift to
-          # "pass when expected fail" and surface as ❓ in the aggregated report, which is the
-          # exact signal to flip `expect:` to `pass` and bump `libs.robolectric` in
-          # `gradle/libs.versions.toml`.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "InputManager.getInstance" }
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "InputManager.getInstance" }
+          # JDK 21 + compileSdk=37: Robolectric 4.17 ships the API 37 jar and the plugin's
+          # espresso-core 3.7.0 floor keeps `InputManager.getInstance()` (removed in 37) off the
+          # input path, so auto-detect picks sdk=37 with no clamp. minSdk=36 parses too.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

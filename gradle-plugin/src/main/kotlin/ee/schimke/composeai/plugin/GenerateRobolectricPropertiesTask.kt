@@ -252,7 +252,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
      * Highest API the bundled Robolectric ships a jar for; bump with `libs.robolectric`. The
      * effective ceiling can be lower on old JDKs; see [buildJavaMajor].
      */
-    internal const val MAX_SUPPORTED_SDK: Int = 36
+    internal const val MAX_SUPPORTED_SDK: Int = 37
 
     /** First API Robolectric refuses to bootstrap below JDK [MIN_JAVA_FOR_SDK_36]. */
     internal const val SDK_REQUIRING_JAVA_21: Int = 36
