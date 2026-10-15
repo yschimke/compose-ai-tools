@@ -189,31 +189,21 @@ public class CoordinateResolver(
   }
 
   /**
-   * Every `<versionDir>/<sha1>/<name>.<ext>` for the recorded type or `.aar` that is not
-   * `<artifact>-<version>.<ext>` (already searched) nor a sources, javadoc or samples artifact.
+   * Every `<versionDir>/<sha1>/<name>.<ext>` that [isGradleVariantFileName] accepts: a primary
+   * artifact Gradle stored under its variant's file name.
    */
   private fun gradleVariantHits(
     coord: BundleReader.ClasspathEntry.Maven,
     versionDir: File,
   ): List<File> {
     if (!isDirectory(versionDir)) return emptyList()
-    val extensions = listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map { ".$it" }
-    val exact = candidateFileNames(coord).toSet()
     return fileSystem
       .listOrNull(versionDir.path.toPath())
       .orEmpty()
       .map { it.toFile() }
       .filter { isDirectory(it) }
       .flatMap { dir -> fileSystem.listOrNull(dir.path.toPath()).orEmpty().map { it.toFile() } }
-      .filter { file ->
-        val name = file.name
-        extensions.any { name.endsWith(it) } &&
-          name !in exact &&
-          NON_BINARY_CLASSIFIERS.none {
-            name.endsWith("$it${name.substring(name.lastIndexOf('.'))}")
-          } &&
-          isRegularFile(file)
-      }
+      .filter { isGradleVariantFileName(coord, it.name) && isRegularFile(it) }
       .sortedBy { it.path }
   }
 
@@ -450,7 +440,30 @@ public class CoordinateResolver(
         "${coord.artifact}-${coord.version}.$it"
       }
 
-    private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
+    private val NON_BINARY_CLASSIFIERS =
+      listOf("-sources", "-javadoc", "-samples", "-tests", "-test-fixtures")
+
+    /**
+     * Whether [name] in a Gradle cache hash directory is [coord]'s primary artifact under a
+     * variant's own file name (`ui-text.aar` for `ui-text-android`): the recorded type or `.aar`,
+     * not the exact `<artifact>-<version>` name (searched first), and no classifier artifact, which
+     * is `<artifact>-<version>-<classifier>` (`-tests`, `-test-fixtures`) or a sources, javadoc or
+     * samples file.
+     */
+    internal fun isGradleVariantFileName(
+      coord: BundleReader.ClasspathEntry.Maven,
+      name: String,
+    ): Boolean {
+      val extension =
+        listOf(coord.type.ifBlank { "jar" }, "aar")
+          .distinct()
+          .map { ".$it" }
+          .firstOrNull { name.endsWith(it) } ?: return false
+      val stem = name.removeSuffix(extension)
+      return name !in candidateFileNames(coord) &&
+        !stem.startsWith("${coord.artifact}-${coord.version}-") &&
+        NON_BINARY_CLASSIFIERS.none { stem.endsWith(it) }
+    }
 
     /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
     public fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")

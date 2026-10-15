@@ -110,6 +110,38 @@ class CoordinateResolverTest {
       .map { it.toFile() }
 
   @Test
+  fun `a Gradle variant-named aar resolves, a classifier artifact does not`() {
+    val classes = byteArrayOf(3, 1, 4)
+    val versionDir = File(root, "com.example.foo/widgets/1.2.3")
+    File(versionDir, "1111/widgets.aar").apply {
+      parentFile.mkdirs()
+      writeBytes(makeAar(classes))
+    }
+    File(versionDir, "2222/widgets-1.2.3-tests.jar").apply {
+      parentFile.mkdirs()
+      writeBytes(byteArrayOf(9))
+    }
+    val out = resolve(maven(sha = sha256(classes)).copy(type = "aar"))
+    assertThat(out.single().readBytes().toList()).isEqualTo(classes.toList())
+    assertThat(
+        CoordinateResolver.isGradleVariantFileName(maven(), "widgets-1.2.3-test-fixtures.jar")
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `a symlinked jar resolves`() {
+    val bytes = byteArrayOf(7, 7)
+    val target = Files.createTempFile("viewer-real-", ".jar").toFile().apply { writeBytes(bytes) }
+    val link = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar")
+    link.parentFile.mkdirs()
+    Files.createSymbolicLink(link.toPath(), target.toPath())
+    assertThat(resolve(maven(sha = sha256(bytes))).single().readBytes().toList())
+      .isEqualTo(bytes.toList())
+    target.delete()
+  }
+
+  @Test
   fun `resolves and verifies a matching hash`() {
     val bytes = byteArrayOf(1, 2, 3, 4)
     val jar = writeMavenJar(bytes)
