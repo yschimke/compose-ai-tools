@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.62.0](https://github.com/yschimke/compose-ai-tools/compare/v2.61.2...v2.62.0) (2026-10-15)
+
+
+### Features
+
+* COMPOSE_PREVIEW_NO_NETWORK refuses every outbound path for closed-source repositories ([#6002](https://github.com/yschimke/compose-ai-tools/issues/6002)) ([20a80f5](https://github.com/yschimke/compose-ai-tools/commit/20a80f551dc9752ade26b5d8b69995551a7b7e47))
+* compose-preview provision pre-fetches offline render dependencies; Bazel Android renders on the target's compileSdk ([#6005](https://github.com/yschimke/compose-ai-tools/issues/6005)) ([673d09b](https://github.com/yschimke/compose-ai-tools/commit/673d09b3029462c29963a1b65a70d2c6e2fff07f))
+
+
+### Bug Fixes
+
+* close three gaps in COMPOSE_PREVIEW_NO_NETWORK ([#6004](https://github.com/yschimke/compose-ai-tools/issues/6004)) ([c221880](https://github.com/yschimke/compose-ai-tools/commit/c2218807bf9560bfdc2591a24b4a3b3a1dda5e54))
+* offline bundle resolution finds Gradle-cached aars under their variant file name ([#6008](https://github.com/yschimke/compose-ai-tools/issues/6008)) ([c90c762](https://github.com/yschimke/compose-ai-tools/commit/c90c762066364ec84a6d04dd7a3dab7fabe76446))
+* pin the Bazel Android launcher to the JVM its SDK was clamped for; reject an empty --android-sdk ([#6009](https://github.com/yschimke/compose-ai-tools/issues/6009)) ([2ee14ab](https://github.com/yschimke/compose-ai-tools/commit/2ee14abe42539585e7c796df820678c99154f9fc))
+* provision rejects every valueless --android-sdk, not only an all-empty set ([#6011](https://github.com/yschimke/compose-ai-tools/issues/6011)) ([fdc92c5](https://github.com/yschimke/compose-ai-tools/commit/fdc92c5d412059da9a6a6ab02b2f950e624a4381))
+* variant-named Gradle cache lookups skip classifier artifacts; the viewer's resolver gets both offline fixes ([#6010](https://github.com/yschimke/compose-ai-tools/issues/6010)) ([863949e](https://github.com/yschimke/compose-ai-tools/commit/863949e5ca107549a55ce66632b5b8db55d624a7))
+
 ## [2.61.2](https://github.com/yschimke/compose-ai-tools/compare/v2.61.1...v2.61.2) (2026-10-15)
 
 
