@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.63.0](https://github.com/yschimke/compose-ai-tools/compare/v2.62.0...v2.63.0) (2026-10-15)
+
+
+### Features
+
+* **bundle:** configurable dependency policy for Bazel bundles ([#6017](https://github.com/yschimke/compose-ai-tools/issues/6017)) ([9a2f011](https://github.com/yschimke/compose-ai-tools/commit/9a2f011c6ff1c3f992466596f5ea9f66d552367a))
+* pin the wall clock the app's own code reads in Android renders ([#6020](https://github.com/yschimke/compose-ai-tools/issues/6020)) ([7bbebec](https://github.com/yschimke/compose-ai-tools/commit/7bbebec0460f9f649f7131939195ce09057c928b))
+
+
+### Bug Fixes
+
+* a Bazel Android target's compileSdk comes from android.jar itself when nothing else names it ([#6014](https://github.com/yschimke/compose-ai-tools/issues/6014)) ([7db9de0](https://github.com/yschimke/compose-ai-tools/commit/7db9de01a20d9c889c779274b5f610a399df3ec6))
+* androidCompileSdk also applies to imported Bazel artifacts ([#6015](https://github.com/yschimke/compose-ai-tools/issues/6015)) ([becf36e](https://github.com/yschimke/compose-ai-tools/commit/becf36e04d5fa31483d7a3f4e38625ac32468b6f))
+* **bundle:** fall back to the other Maven repository instead of routing bare Android groups ([#6019](https://github.com/yschimke/compose-ai-tools/issues/6019)) ([9ec014e](https://github.com/yschimke/compose-ai-tools/commit/9ec014e5d4fcd9e2e49f5bde0c8eb89c7cf2919f))
+* **bundle:** keep snapshots out of closest-released and route bare Android groups to Google Maven ([#6018](https://github.com/yschimke/compose-ai-tools/issues/6018)) ([f4fd035](https://github.com/yschimke/compose-ai-tools/commit/f4fd03515749ebf25c3ba784e6627db5c1414e5c))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.35.0 ([#5825](https://github.com/yschimke/compose-ai-tools/issues/5825)) ([d8a09b4](https://github.com/yschimke/compose-ai-tools/commit/d8a09b4ef937f92dc05321c1a8f5e2fba2720c61))
+* **deps:** update dependency org.checkerframework:checker-qual to v4.3.1 ([#6021](https://github.com/yschimke/compose-ai-tools/issues/6021)) ([5c21817](https://github.com/yschimke/compose-ai-tools/commit/5c218173fff17524dc7841c759d77d44eecff509))
+* **plugin:** keep declared themes' catalog-token sidecars when pruning stale renders ([#6006](https://github.com/yschimke/compose-ai-tools/issues/6006)) ([292ad07](https://github.com/yschimke/compose-ai-tools/commit/292ad07fef53739abea842056e0bd2d2f9a4bb36))
+
 ## [2.62.0](https://github.com/yschimke/compose-ai-tools/compare/v2.61.2...v2.62.0) (2026-10-15)
 
 
