@@ -38,7 +38,9 @@ public class AndroidBundleLaunch(
   private val fontsCacheDir: String = composeAiCacheDir("fonts").absolutePath,
 ) {
 
-  /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
+  /**
+   * Clamped to the bundled Robolectric's supported `android-all` range — see [MIN_SDK] / [MAX_SDK].
+   */
   public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
   /** The daemon's JVM args for Robolectric on JDK 17+ (the `--add-opens` set, #1328). */
@@ -51,7 +53,13 @@ public class AndroidBundleLaunch(
    * daemon's own resolution.
    */
   public fun robolectricSystemProperties(): Map<String, String> =
-    RobolectricLaunch.systemProperties() + ("composeai.fonts.cacheDir" to fontsCacheDir)
+    RobolectricLaunch.systemProperties() +
+      linkedMapOf(
+        "composeai.fonts.cacheDir" to fontsCacheDir,
+        // The daemon's sandbox SDK; its test class is outside the packages [robolectricProperties]
+        // covers. Ignored by the one-shot renderer and by daemons older than 3.18.
+        "composeai.daemon.sandboxSdk" to sdkLevel.toString(),
+      )
 
   /**
    * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads

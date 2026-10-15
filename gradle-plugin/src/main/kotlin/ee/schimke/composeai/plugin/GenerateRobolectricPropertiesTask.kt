@@ -245,6 +245,20 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     else ""
 
   companion object {
+    /**
+     * The `sdk=` this task resolved, read back from its composable-lane file under [outputDir], or
+     * null before it has run. The daemon reads it as `composeai.daemon.sandboxSdk`: its sandbox
+     * class sits outside the packages these files cover, so the file alone never reaches it.
+     */
+    internal fun resolvedSdkIn(outputDir: java.io.File): String? =
+      outputDir
+        .resolve("ee/schimke/composeai/renderer/robolectric.properties")
+        .takeIf { it.isFile }
+        ?.readLines()
+        ?.firstOrNull { it.startsWith("sdk=") }
+        ?.substringAfter("sdk=")
+        ?.trim()
+
     /** Lowest API with an `android-all-instrumented` jar. */
     internal const val MIN_SUPPORTED_SDK: Int = 21
 

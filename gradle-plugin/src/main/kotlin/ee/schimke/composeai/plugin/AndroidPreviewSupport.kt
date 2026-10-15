@@ -2781,6 +2781,14 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.useConsumerApplication",
         extension.useConsumerApplication.map { it.toString() },
       )
+      // The SDK composePreviewRender boots, so the daemon's semantics/layout passes run on the same
+      // framework as the PNGs (an older daemon ignores the key).
+      this.systemProperties.put(
+        "composeai.daemon.sandboxSdk",
+        generateRobolectricPropertiesTask
+          .flatMap { it.outputDir }
+          .map { dir -> GenerateRobolectricPropertiesTask.resolvedSdkIn(dir.asFile).orEmpty() },
+      )
       this.systemProperties.put(
         "composeai.daemon.perfettoTrace",
         resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
