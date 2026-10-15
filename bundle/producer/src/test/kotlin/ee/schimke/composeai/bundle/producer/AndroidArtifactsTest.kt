@@ -107,6 +107,50 @@ class AndroidArtifactsTest {
   }
 
   @Test
+  fun `the android block must be present exactly for schema 2`() {
+    val root = Files.createTempDirectory("android-artifacts").toFile()
+    try {
+      for ((metadata, expected) in
+        listOf(
+          """{"schemaVersion":2}""" to "schemaVersion 2 artifacts need an android block",
+          """{"schemaVersion":2,"android":null}""" to
+            "schemaVersion 2 artifacts need an android block",
+          """{"schemaVersion":1,"android":{}}""" to
+            "schemaVersion 1 artifacts cannot carry an android block",
+        )) {
+        val file = root.resolve("artifacts.json").apply { writeText(metadata) }
+        val error =
+          assertFailsWith<IllegalArgumentException> {
+            BundleProducerCli.main(
+              arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+            )
+          }
+        assertTrue(expected in error.message.orEmpty(), error.message)
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a null android block on schema 1 counts as absent`() {
+    val root = Files.createTempDirectory("android-artifacts").toFile()
+    try {
+      val file =
+        root.resolve("artifacts.json").apply { writeText("""{"schemaVersion":1,"android":null}""") }
+      val error =
+        assertFailsWith<Exception> {
+          BundleProducerCli.main(
+            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+          )
+        }
+      assertTrue("android block" !in error.message.orEmpty(), error.message)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `an android bundle carries the resources and bakes the renderer's capture names`() {
     val root = Files.createTempDirectory("android-bundle").toFile()
     try {
