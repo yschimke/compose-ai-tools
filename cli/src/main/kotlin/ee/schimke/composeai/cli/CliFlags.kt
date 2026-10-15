@@ -34,6 +34,7 @@ internal object CliFlags {
       // `bundle render` (Android bundles)
       "--android-jar",
       "--clock-packages",
+      "--local-jars",
       // `guidelines`
       "--model",
       "--backend",

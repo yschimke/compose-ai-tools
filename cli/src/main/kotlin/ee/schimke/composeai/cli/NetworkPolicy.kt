@@ -176,9 +176,15 @@ internal fun resolveBundleCoordinates(
   resolver: CoordinateResolver,
   coords: List<BundleReader.ClasspathEntry.Maven>,
   disabled: Boolean = NetworkPolicy.disabled,
+  /**
+   * Coordinates the build already holds as local files (`--local-jars`, see [bundleLocalJars]),
+   * keyed by `group:artifact:version`: used as they are, in classpath order, never looked up.
+   */
+  local: Map<String, File> = emptyMap(),
 ): List<File> {
-  val resolutions = resolver.resolveAll(coords)
-  val missing = resolutions.filter { it.file == null }.map { it.coordinate }
+  val pending = coords.filter { it.gav() !in local }
+  val resolutions = resolver.resolveAll(pending).associateBy { it.coordinate }
+  val missing = pending.filter { resolutions[it]?.file == null }
   if (missing.isNotEmpty()) {
     NetworkPolicy.require(
       "Resolving ${missing.size} bundle dependenc${if (missing.size == 1) "y" else "ies"} " +
@@ -189,7 +195,7 @@ internal fun resolveBundleCoordinates(
       disabled = disabled,
     )
   }
-  return resolutions.mapNotNull { it.file }
+  return coords.mapNotNull { local[it.gav()] ?: resolutions[it]?.file }
 }
 
 /** The offline deployment guide, named in every refusal. */

@@ -373,6 +373,7 @@ what a bundle does not record, so a build that knows them renders without readin
 | `--android-sdk <n>` | The sandbox SDK, e.g. the target's `compileSdk`; clamped as above. Default: `-Dcomposeai.bundle.androidSdk`, else 35. |
 | `--android-jar <file>` | The `android.jar` to put on the classpath, instead of the SDK `ANDROID_HOME` or `local.properties` names. |
 | `--clock-packages <prefix,…>` | The app clock to pin, as `appClockPackages`; absent pins nothing, as before. |
+| `--local-jars <list>` | A file of the build's own jar paths, one per line. A Maven coordinate the bundle's `dependency-resolution.json` records for one of them, by its content hash (`builtSha256`), resolves to that file instead of a repository. So a stamped `processed_` jar, rules_kotlin's unversioned `kotlin-stdlib.jar` or a jar newer than the lockfile's pin renders as the exact bytes the producer identified, offline. |
 
 The producer (`compose-preview-producer --artifacts`) accepts schema-2 artifacts too and writes
 the same `backend="android"` bundle, which is how rules_compose_preview's `compose_preview` rule

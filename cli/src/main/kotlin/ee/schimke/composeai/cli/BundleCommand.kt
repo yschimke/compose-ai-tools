@@ -111,6 +111,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle externalize <bundle.png | URL> --res-out <dir> [-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>] [--knob k=v …] [--res <pool>] [--svg]  (re-render previews; --knob re-themes, --svg also exports vectors)
                                        Android bundles: [--android-sdk <n>] [--android-jar <file>] [--clock-packages <prefix,…>] (sandbox SDK, android.jar, pinned app clock)
+                                       [--local-jars <list>] (a build's own jars for the bundle's recorded Maven coordinates)
         compose-preview bundle repack  <bundle.png | URL> --renders <dir> -o <out.png>  (swap baked previews for re-rendered PNGs + figma.svg)
         compose-preview bundle merge   <base.png | URL> <shard.png | URL>… -o <out.png>  (union the previews of bundles packed from disjoint render selections)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
@@ -1067,7 +1068,7 @@ private class RenderSubcommand(private val args: List<String>) {
       System.err.println(
         "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
           "[--res <pool-dir>] [--svg] [--android-sdk <n>] [--android-jar <file>] " +
-          "[--clock-packages <prefix,…>]"
+          "[--clock-packages <prefix,…>] [--local-jars <list>]"
       )
       exitProcess(64)
     }
@@ -1135,6 +1136,7 @@ private class RenderSubcommand(private val args: List<String>) {
           },
         clockPackages = bundleRenderClockPackages(args.flagValue("--clock-packages")),
         androidJar = args.flagValue("--android-jar")?.let { File(it).absoluteFile },
+        localJars = args.flagValue("--local-jars")?.let { readLocalJarList(File(it)) }.orEmpty(),
       )
     val result =
       try {
