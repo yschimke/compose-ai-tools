@@ -121,7 +121,7 @@ internal object CoordinateResolver {
       val gradleVersionDir = root / "${coord.group}/${coord.artifact}/${coord.version}"
       val hashDirs =
         if (isDirectory(gradleVersionDir, fileSystem))
-          fileSystem.list(gradleVersionDir).filter { isDirectory(it, fileSystem) }
+          fileSystem.listOrNull(gradleVersionDir).orEmpty().filter { isDirectory(it, fileSystem) }
         else emptyList()
       // The recorded type first, then `.aar`; [materialize] turns an `.aar` into its classes.jar.
       for (fileName in candidateFileNames(coord)) {
@@ -134,7 +134,7 @@ internal object CoordinateResolver {
       // so an exact name is always preferred.
       found +=
         hashDirs
-          .flatMap { fileSystem.list(it) }
+          .flatMap { fileSystem.listOrNull(it).orEmpty() }
           .filter { isGradleVariantFileName(coord, it.name) && isRegularFile(it, fileSystem) }
           .sortedBy { it.toString() }
     }
