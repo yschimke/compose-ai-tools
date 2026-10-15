@@ -169,10 +169,19 @@ internal class BazelCommand(
         BazelBuild().collectAll(root, targets, config, timeout, skipWithoutMetadata = candidates)
       }
     // A selected set is one module (one page in `browse`, one daemon), unless it cannot share one.
-    val merged = selectionLabel?.let { mergeBazelArtifacts(it, built) }
+    val merged = selectionLabel?.let { label ->
+      mergeBazelArtifacts(label, built, config.mergeAndroid) { plan ->
+        val key = bazelTargetKey(label, built.first().metadata.configuration)
+        System.err.println(
+          "[bazel] linking ${built.size} Android targets' resources into one APK " +
+            "(${plan.compiledResources.size} archives, ${plan.extraPackages.size + 1} R packages)"
+        )
+        linkAndroidMerge(plan, root.resolve(".compose-preview/outputs/$key/android-link"), timeout)
+      }
+    }
     if (merged == null && built.size > 1) {
       System.err.println(
-        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built)}"
+        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built, config.mergeAndroid)}"
       )
     }
     val collected = merged?.let(::listOf) ?: built
@@ -187,13 +196,7 @@ internal class BazelCommand(
             "${artifacts.sourceFiles.size} sources, ${artifacts.dataFiles.size} runfiles"
         )
       }
-      val targetKey =
-        MessageDigest.getInstance("SHA-256")
-          .digest(
-            (artifacts.metadata.target + "\n" + artifacts.metadata.configuration).toByteArray()
-          )
-          .take(8)
-          .joinToString("") { "%02x".format(it) }
+      val targetKey = bazelTargetKey(artifacts.metadata.target, artifacts.metadata.configuration)
       val outputBase =
         args.flagValue("--out")?.let { resolve(root, it) }
           ?: root.resolve(".compose-preview/outputs/$targetKey")
@@ -620,6 +623,13 @@ internal fun prepareBazelPreviews(
     .writeText(bazelJson.encodeToString(artifacts.metadata))
   return PreparedBazelPreviews(outcome.manifest, file)
 }
+
+/** A module's output directory name: its target and configuration, hashed. */
+internal fun bazelTargetKey(target: String, configuration: String): String =
+  MessageDigest.getInstance("SHA-256")
+    .digest((target + "\n" + configuration).toByteArray())
+    .take(8)
+    .joinToString("") { "%02x".format(it) }
 
 /**
  * Identifies the runtime inputs a capture is rendered from by content, so a same-size,

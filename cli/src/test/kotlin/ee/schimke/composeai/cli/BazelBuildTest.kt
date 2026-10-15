@@ -467,7 +467,7 @@ class BazelBuildTest {
             ResolvedAndroidArtifacts("com.example", jar("res.apk"), jar("Manifest.xml"), null, 35)
         )
       assertNull(mergeBazelArtifacts("//app/...", listOf(android, model)))
-      assertTrue(bazelMergeBlocker(listOf(android, model))!!.contains("Android"))
+      assertTrue(bazelMergeBlocker(listOf(android, model))!!.contains("mix Android and JVM"))
     } finally {
       root.deleteRecursively()
     }
