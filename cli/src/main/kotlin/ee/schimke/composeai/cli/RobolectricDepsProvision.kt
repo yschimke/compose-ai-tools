@@ -223,7 +223,8 @@ internal object RobolectricDepsProvision {
 
   /**
    * Runs [block] up to [attempts] times: Maven Central rate-limits (HTTP 429) bursts of large
-   * downloads, and a retry after a pause is what it asks for. A 404 is final.
+   * downloads, and a retry after a pause is what it asks for. A 404, or the network switch, is
+   * final.
    */
   private fun retrying(attempts: Int, pause: (Int) -> Unit, block: () -> Unit) {
     var attempt = 1
@@ -231,7 +232,12 @@ internal object RobolectricDepsProvision {
       try {
         return block()
       } catch (e: Exception) {
-        if (attempt >= attempts || e.message?.contains("HTTP 404") == true) throw e
+        if (
+          attempt >= attempts ||
+            e is NetworkDisabledException ||
+            e.message?.contains("HTTP 404") == true
+        )
+          throw e
         pause(attempt)
         attempt++
       }
