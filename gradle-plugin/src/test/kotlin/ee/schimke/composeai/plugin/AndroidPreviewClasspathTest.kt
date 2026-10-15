@@ -250,6 +250,31 @@ class AndroidPreviewClasspathTest {
   }
 
   @Test
+  fun `buildSystemProperties forwards app clock packages only when pinAppClock is on`() {
+    // Off (the default) must leave the render JVM's property set exactly as it was.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+            manifestPath = "m.json",
+            rendersDir = "renders",
+            fontsCacheDir = "cache",
+            fontsOffline = "false",
+          )
+          .keys
+      )
+      .doesNotContain("composeai.render.clockPackages")
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          clockPackages = clockPackagesProperty(listOf("com.example.app.", "com.example.lib.")),
+        )
+      )
+      .containsEntry("composeai.render.clockPackages", "com.example.app.,com.example.lib.")
+  }
+
+  @Test
   fun `buildSystemProperties forwards the pinned preview clock into the render jvm`() {
     // `composeai.render.fixedTime` must reach the render JVM (#3239).
     assertThat(

@@ -320,46 +320,54 @@ internal object AndroidPreviewClasspath {
     linkBufferComposer: String = "false",
     rcPlayer: String = "androidx-embedded",
     rcDensity: String = "fixed",
+    clockPackages: String = "",
   ): Map<String, String> =
-    linkedMapOf(
-      // Redundant with `robolectric.properties` (see `RobolectricRenderTestBase`), kept as an
-      // independent channel.
-      "robolectric.graphicsMode" to "NATIVE",
-      "robolectric.looperMode" to "PAUSED",
-      // Conscrypt isn't needed and its native library is flaky on some Linux sandboxes.
-      "robolectric.conscryptMode" to "OFF",
-      // The only PixelCopy path that replays Compose's RenderNodes correctly.
-      "robolectric.pixelCopyRenderMode" to "hardware",
-      // Roborazzi defaults to compare mode; record writes fresh PNGs every run.
-      "roborazzi.test.record" to "true",
-      "composeai.render.manifest" to manifestPath,
-      "composeai.render.outputDir" to rendersDir,
-      // Shared GoogleFont cache ([composeAiFontsCacheDir]); the renderer no-ops without it.
-      "composeai.fonts.cacheDir" to fontsCacheDir,
-      // Skip network on cache miss and render the fallback font.
-      "composeai.fonts.offline" to fontsOffline,
-      // The following are read in the render / daemon JVM, so they must be forwarded from the
-      // Gradle invocation. Embed fonts in the figma-svg export (default on;
-      // `-Dcomposeai.svg.embedFonts=false` to opt out).
-      "composeai.svg.embedFonts" to svgEmbedFonts,
-      // Default figma-svg background mode: `none` (default), `device`, `content-shape`, or
-      // `full-bleed`; `true`/`false` alias `device`/`none`. A per-render override wins.
-      "composeai.svg.background" to svgBackground,
-      // Whether an unresolved downloadable font fails its preview (default) or only warns.
-      "composeai.fonts.failOnFallback" to fontsFailOnFallback,
-      // Host activity theme (e.g. `@style/Theme.Foo`), needed only by library modules. Forwarded
-      // even when blank.
-      "composeai.render.hostTheme" to hostTheme,
-      // Pinned wall clock (`10:10` when blank, or `off`) (#3239).
-      "composeai.render.fixedTime" to fixedTime,
-      // Link-buffer composer opt-in; must be a launch property set before the first composition.
-      "composeai.render.linkBufferComposer" to linkBufferComposer,
-      // Remote Compose replay player: `androidx-embedded` (default) or `androidx-view`.
-      "composeai.render.rcPlayer" to rcPlayer,
-      // Remote Compose capture density: `fixed` (default, constants) or `host` (player variables).
-      // Decides what is written, so no later request can change it.
-      "composeai.render.rcDensity" to rcDensity,
-    )
+    linkedMapOf<String, String>(
+        // Redundant with `robolectric.properties` (see `RobolectricRenderTestBase`), kept as an
+        // independent channel.
+        "robolectric.graphicsMode" to "NATIVE",
+        "robolectric.looperMode" to "PAUSED",
+        // Conscrypt isn't needed and its native library is flaky on some Linux sandboxes.
+        "robolectric.conscryptMode" to "OFF",
+        // The only PixelCopy path that replays Compose's RenderNodes correctly.
+        "robolectric.pixelCopyRenderMode" to "hardware",
+        // Roborazzi defaults to compare mode; record writes fresh PNGs every run.
+        "roborazzi.test.record" to "true",
+        "composeai.render.manifest" to manifestPath,
+        "composeai.render.outputDir" to rendersDir,
+        // Shared GoogleFont cache ([composeAiFontsCacheDir]); the renderer no-ops without it.
+        "composeai.fonts.cacheDir" to fontsCacheDir,
+        // Skip network on cache miss and render the fallback font.
+        "composeai.fonts.offline" to fontsOffline,
+        // The following are read in the render / daemon JVM, so they must be forwarded from the
+        // Gradle invocation. Embed fonts in the figma-svg export (default on;
+        // `-Dcomposeai.svg.embedFonts=false` to opt out).
+        "composeai.svg.embedFonts" to svgEmbedFonts,
+        // Default figma-svg background mode: `none` (default), `device`, `content-shape`, or
+        // `full-bleed`; `true`/`false` alias `device`/`none`. A per-render override wins.
+        "composeai.svg.background" to svgBackground,
+        // Whether an unresolved downloadable font fails its preview (default) or only warns.
+        "composeai.fonts.failOnFallback" to fontsFailOnFallback,
+        // Host activity theme (e.g. `@style/Theme.Foo`), needed only by library modules. Forwarded
+        // even when blank.
+        "composeai.render.hostTheme" to hostTheme,
+        // Pinned wall clock (`10:10` when blank, or `off`) (#3239).
+        "composeai.render.fixedTime" to fixedTime,
+        // Link-buffer composer opt-in; must be a launch property set before the first composition.
+        "composeai.render.linkBufferComposer" to linkBufferComposer,
+        // Remote Compose replay player: `androidx-embedded` (default) or `androidx-view`.
+        "composeai.render.rcPlayer" to rcPlayer,
+        // Remote Compose capture density: `fixed` (default, constants) or `host` (player
+        // variables).
+        // Decides what is written, so no later request can change it.
+        "composeai.render.rcDensity" to rcDensity,
+      )
+      .apply {
+        // Consumer clock prefixes (`composePreview.pinAppClock`, on by default); absent when off or
+        // empty, so `pinAppClock = false` keeps the pre-existing property set. Pairs with the
+        // `instrumentedPackages=` / shadow lines [GenerateRobolectricPropertiesTask] writes.
+        if (clockPackages.isNotEmpty()) put(CLOCK_PACKAGES_PROPERTY, clockPackages)
+      }
 }
 
 /**
@@ -520,6 +528,82 @@ internal fun composeAiFixedTime(
     .orElse(project.providers.gradleProperty("composePreview.fixedTime"))
     .let { if (extension != null) it.orElse(extension.fixedTime) else it }
     .orElse("")
+
+/**
+ * Whether [PreviewExtension.pinAppClock] is on: `-PcomposePreview.pinAppClock`, then the DSL value,
+ * else true (the default).
+ */
+internal fun composeAiPinAppClock(
+  project: Project,
+  extension: PreviewExtension,
+): org.gradle.api.provider.Provider<Boolean> =
+  project.providers
+    .gradleProperty("composePreview.pinAppClock")
+    .map { it.trim().toBoolean() }
+    .orElse(extension.pinAppClock)
+    .orElse(true)
+
+/**
+ * The consumer class-name prefixes whose `System.currentTimeMillis()` reads the pinned preview
+ * clock ([PreviewExtension.pinAppClock], on by default), already filtered by [clockPackagesOf].
+ * Empty when pinning is off or no prefix survives, which every consumer treats as "write nothing
+ * new".
+ */
+internal fun composeAiClockPackages(
+  project: Project,
+  extension: PreviewExtension,
+): org.gradle.api.provider.Provider<List<String>> =
+  composeAiPinAppClock(project, extension).zip(extension.appClockPackages.orElse(emptyList())) {
+    pin,
+    packages ->
+    if (pin) clockPackagesOf(packages) else emptyList()
+  }
+
+/**
+ * The value of the render-JVM property [CLOCK_PACKAGES_PROPERTY] for [packages]: comma-separated,
+ * or empty when there are none.
+ */
+internal fun clockPackagesProperty(packages: List<String>): String = packages.joinToString(",")
+
+/**
+ * The render/daemon JVM property naming the consumer's clock prefixes (`ConsumerClock.PROPERTY`).
+ */
+internal const val CLOCK_PACKAGES_PROPERTY: String = "composeai.render.clockPackages"
+
+/**
+ * [packages] trimmed, with blanks, duplicates, and any prefix overlapping a root the renderer's
+ * `ConsumerClock` refuses to instrument removed. Mirrors that list (and daemon-client's
+ * `RobolectricConfig.withClockPackages`), because this plugin writes `instrumentedPackages=` itself
+ * and instrumenting the JDK, Kotlin, Robolectric, the framework or the renderer is unsound.
+ */
+internal fun clockPackagesOf(packages: List<String>): List<String> =
+  packages
+    .map { it.trim() }
+    .filter { p ->
+      // A prefix with nothing but dots would match every class (or none); never instrument that.
+      p.trimEnd('.').isNotEmpty() &&
+        CLOCK_PROTECTED_ROOTS.none { r -> r.startsWith(p) || p.startsWith(r) }
+    }
+    .distinct()
+
+private val CLOCK_PROTECTED_ROOTS: List<String> =
+  listOf(
+    "java.",
+    "javax.",
+    "jdk.",
+    "sun.",
+    "com.sun.",
+    "kotlin.",
+    "kotlinx.",
+    "org.junit.",
+    "org.robolectric.",
+    "android.",
+    "com.android.internal.",
+    "dalvik.",
+    "libcore.",
+    "ee.schimke.composeai.renderer.",
+    "ee.schimke.composeai.daemon.",
+  )
 
 /**
  * Value for `composeai.render.rcPlayer`: which player replays a Remote Compose capture —

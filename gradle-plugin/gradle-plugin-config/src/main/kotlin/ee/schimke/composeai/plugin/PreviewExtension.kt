@@ -53,6 +53,40 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val fixedTime: Property<String> = objects.property(String::class.java)
 
   /**
+   * Pins the wall clock the module's **own** code reads, not just Wear's `TimeText`: classes under
+   * [appClockPackages] that call `System.currentTimeMillis()` get the [fixedTime] instant instead
+   * of the host's, so a screen that formats "now" itself (a status-bar clock, an "x minutes ago"
+   * label) renders the same PNG every run. Composes with [fixedTime]: it pins to the same instant,
+   * and `fixedTime = "off"` still gives the host clock with pinning on.
+   *
+   * `true` (default). Pinning has Robolectric **instrument the module's own classes** under
+   * [appClockPackages]; if a preview misbehaves under that, opt out with `pinAppClock = false` (or
+   * `-PcomposePreview.pinAppClock=false` for one run), which writes exactly the Robolectric config
+   * and JVM properties the plugin wrote before this existed. With no resolvable namespace nothing
+   * is pinned.
+   *
+   * **What it doesn't reach:** `java.time.*.now()`, `Calendar.getInstance()` and `Date()` read the
+   * clock inside the JDK, which Robolectric never instruments; only a consumer class's own
+   * `System.currentTimeMillis()` call site is redirected. Library code outside [appClockPackages]
+   * keeps the host clock too.
+   *
+   * **Android only**, like [fixedTime]: it works through Robolectric instrumentation, so it isn't
+   * forwarded to Desktop.
+   *
+   * Per-run override: `-PcomposePreview.pinAppClock=false|true`.
+   */
+  val pinAppClock: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Class-name prefixes [pinAppClock] treats as the module's own code, matched with `startsWith`
+   * exactly as Robolectric's `instrumentedPackages` is (so a trailing `.` is recommended). Defaults
+   * to the Android module's `namespace` plus `"."`. Add the packages of sibling modules whose code
+   * paints the time on this module's previews. Prefixes covering the JDK, Kotlin, Robolectric, the
+   * Android framework or the renderer itself are ignored. Has no effect when [pinAppClock] is off.
+   */
+  val appClockPackages: ListProperty<String> = objects.listProperty(String::class.java)
+
+  /**
    * Renders with the Compose runtime's rewritten "link buffer" `SlotTable` composer
    * (`ComposeRuntimeFlags.isLinkBufferComposerEnabled`). `false` (default) leaves the runtime's own
    * default. Rendering a catalog with and without it makes the PNG corpus a regression suite for

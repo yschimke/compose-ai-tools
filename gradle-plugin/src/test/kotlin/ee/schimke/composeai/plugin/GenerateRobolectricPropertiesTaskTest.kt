@@ -389,4 +389,180 @@ class GenerateRobolectricPropertiesTaskTest {
       task.outputDir.get().asFile.resolve("ee/schimke/composeai/renderer/robolectric.properties")
     return file.readText()
   }
+
+  @Test
+  fun `pinAppClock false writes byte-identical files in every lane`() {
+    // Pinned to the bytes this task wrote before `pinAppClock` existed: the opt-out
+    // (`pinAppClock = false`, which wires an empty list) must restore them exactly. `clockPackages`
+    // unset and explicitly empty both count as off.
+    listOf(null, emptyList<String>()).forEach { packages ->
+      val lanes = generateLanes(clockPackages = packages, name = "off-${packages != null}")
+      assertThat(lanes.getValue("renderer")).isEqualTo(PRE_CLOCK_RENDERER)
+      assertThat(lanes.getValue("apptour")).isEqualTo(PRE_CLOCK_APPTOUR)
+      assertThat(lanes.getValue("daemon")).isEqualTo(PRE_CLOCK_DAEMON)
+    }
+  }
+
+  @Test
+  fun `pinAppClock on instruments the prefixes and registers ShadowConsumerClock in both lanes`() {
+    val lanes =
+      generateLanes(clockPackages = listOf("com.example.app.", "com.example.lib."), name = "on")
+    listOf("renderer", "apptour").forEach { lane ->
+      val lines = lanes.getValue(lane).lines()
+      assertThat(lines)
+        .contains(
+          "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
+            "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl," +
+            "com.example.app.,com.example.lib."
+        )
+      assertThat(lines)
+        .contains(
+          "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
+            "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
+            "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
+            "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
+            "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager," +
+            "ee.schimke.composeai.renderer.ShadowConsumerClock"
+        )
+    }
+    // Everything else in those lanes is untouched.
+    assertThat(
+        lanes.getValue("renderer").lines().filterNot {
+          it.startsWith("instrumented") || it.startsWith("shadows=")
+        }
+      )
+      .isEqualTo(
+        PRE_CLOCK_RENDERER.lines().filterNot {
+          it.startsWith("instrumented") || it.startsWith("shadows=")
+        }
+      )
+    // The daemon configures its sandbox from `composeai.render.clockPackages` itself.
+    assertThat(lanes.getValue("daemon")).isEqualTo(PRE_CLOCK_DAEMON)
+  }
+
+  @Test
+  fun `clockPackagesOf drops blanks duplicates and protected roots`() {
+    assertThat(
+        clockPackagesOf(
+          listOf(
+            " com.example.app. ",
+            "",
+            "com.example.app.",
+            "android.",
+            "androidx.",
+            "java",
+            "kotlinx.coroutines.",
+            "ee.schimke.composeai.renderer.",
+            "ee.",
+            "com.example.lib",
+            ".",
+            "..",
+          )
+        )
+      )
+      .containsExactly("com.example.app.", "androidx.", "com.example.lib")
+      .inOrder()
+  }
+
+  @Test
+  fun `pinAppClock is on by default and the opt-out empties the prefixes`() {
+    fun packages(gradleProperties: String?, configure: PreviewExtension.() -> Unit): List<String> {
+      val dir = tmp.newFolder()
+      if (gradleProperties != null) dir.resolve("gradle.properties").writeText(gradleProperties)
+      val project = ProjectBuilder.builder().withProjectDir(dir).build()
+      val extension =
+        project.extensions.create("composePreview", PreviewExtension::class.java).apply(configure)
+      return composeAiClockPackages(project, extension).get()
+    }
+    val namespace: PreviewExtension.() -> Unit = {
+      appClockPackages.convention(listOf("com.example.app."))
+    }
+    assertThat(packages(null, namespace)).containsExactly("com.example.app.")
+    assertThat(
+        packages(null) {
+          namespace()
+          pinAppClock.set(false)
+        }
+      )
+      .isEmpty()
+    assertThat(packages("composePreview.pinAppClock=false\n", namespace)).isEmpty()
+    assertThat(
+        packages("composePreview.pinAppClock=true\n") {
+          namespace()
+          pinAppClock.set(false)
+        }
+      )
+      .containsExactly("com.example.app.")
+    // No namespace resolved: nothing is pinned, rather than an empty prefix matching every class.
+    assertThat(packages(null) {}).isEmpty()
+    assertThat(packages(null) { appClockPackages.set(listOf("", " ", ".")) }).isEmpty()
+  }
+
+  private fun generateLanes(clockPackages: List<String>?, name: String): Map<String, String> {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val task =
+      project.tasks
+        .register(
+          "composePreviewGenerateRobolectricProperties",
+          GenerateRobolectricPropertiesTask::class.java,
+        )
+        .get()
+    task.useConsumerApplication.set(false)
+    task.appTourUseConsumerApplication.set(true)
+    task.consumerCompileSdk.set(36)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.buildJavaMajor.set(21)
+    if (clockPackages != null) task.clockPackages.set(clockPackages)
+    task.outputDir.set(tmp.newFolder("lanes-$name"))
+    task.generate()
+    val root = task.outputDir.get().asFile.resolve("ee/schimke/composeai")
+    return listOf("renderer", "apptour", "daemon").associateWith {
+      root.resolve("$it/robolectric.properties").readText()
+    }
+  }
+
+  private companion object {
+    val PRE_CLOCK_SHADOWS =
+      "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
+        "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
+        "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
+        "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
+        "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager"
+    val PRE_CLOCK_INSTRUMENTED =
+      "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
+        "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl"
+
+    val PRE_CLOCK_RENDERER =
+      "# Generated by compose-ai-tools.\n" +
+        "# Override the consumer's Application to a Robolectric-safe stub so\n" +
+        "# preview rendering skips app-lifecycle side effects (DI, BridgingManager,\n" +
+        "# Firebase, WorkManager, …). Set composePreview.useConsumerApplication = true\n" +
+        "# to restore the manifest-declared Application.\n" +
+        "application=android.app.Application\n" +
+        "sdk=36\n" +
+        "graphicsMode=NATIVE\n" +
+        "$PRE_CLOCK_SHADOWS\n" +
+        "$PRE_CLOCK_INSTRUMENTED\n"
+
+    val PRE_CLOCK_APPTOUR =
+      "# Generated by compose-ai-tools — the kind=ACTIVITY / kind=APP_TOUR render lane.\n" +
+        "# Set composePreview.appTourUseConsumerApplication = false to render activities against\n" +
+        "# a stub Application instead (they then skip the app's own onCreate, and any that need\n" +
+        "# app-level DI will fail).\n" +
+        "# Application omitted — Robolectric falls back to the manifest-declared Application, " +
+        "which is what an Activity needs.\n" +
+        "sdk=36\n" +
+        "graphicsMode=NATIVE\n" +
+        "$PRE_CLOCK_SHADOWS\n" +
+        "$PRE_CLOCK_INSTRUMENTED\n"
+
+    val PRE_CLOCK_DAEMON =
+      "# Generated by compose-ai-tools.\n" +
+        "# Override the consumer's Application to a Robolectric-safe stub for daemon-driven preview\n" +
+        "# rendering, so app-lifecycle init (DI, Firebase, WorkManager, …) never runs and crashes\n" +
+        "# the render sandbox. sdk/graphicsMode are supplied by @Config/@GraphicsMode on the\n" +
+        "# daemon's SandboxRunner; only the Application override needs this file because Robolectric\n" +
+        "# 4.16 no longer merges the deprecated buildGlobalConfig override over the manifest.\n" +
+        "application=android.app.Application\n"
+  }
 }

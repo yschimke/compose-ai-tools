@@ -428,7 +428,11 @@ composeai-contracts = "3.35.0"
 # 3.17.1 boots the daemon sandbox at the consumer's SDK (compose-preview-daemon#283) from the
 # `composeai.daemon.sandboxSdk` this build's launchers pass (#5999), so semantics/layout passes run
 # on the same framework as the PNGs.
-composeai-preview-daemon = "3.17.1"
+# 3.18.0 pins the wall clock the consumer's own code reads (compose-preview-daemon#287:
+# `ShadowConsumerClock`, `composeai.render.clockPackages`), which `composePreview.pinAppClock` and
+# Bazel's `pinAppClock` turn on by default, so this pin is the floor for that default. It also runs
+# the app's own Compose when the user classpath carries a newer one (#288). Contracts 3.35.0.
+composeai-preview-daemon = "3.18.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

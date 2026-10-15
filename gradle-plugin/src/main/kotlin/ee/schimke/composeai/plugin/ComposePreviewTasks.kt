@@ -807,7 +807,8 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       // `composeai.render.fixedTime` isn't forwarded: it relies on Robolectric shadowing, which
-      // desktop doesn't have. See `PreviewExtension.fixedTime`.
+      // desktop doesn't have. See `PreviewExtension.fixedTime`. Neither is
+      // `composeai.render.clockPackages` (`PreviewExtension.pinAppClock`), for the same reason.
       systemProperties.put(
         "composeai.daemon.perfettoTrace",
         AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map {

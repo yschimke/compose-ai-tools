@@ -860,6 +860,15 @@ internal object AndroidPreviewSupport {
     // AGP-derived names go through [naming], since KMP-Android names configurations and tasks after
     // the target and host-test compilation. These locals are for names keyed by the variant in both
     // worlds.
+    // `composePreview.appClockPackages` defaults to the module's namespace (as a `.`-terminated
+    // prefix). No namespace means no prefix, never an empty one, which would instrument everything.
+    extension.appClockPackages.convention(
+      variant.namespace.map { ns -> if (ns.isBlank()) emptyList() else listOf("${ns.trim()}.") }
+    )
+    // Consumer clock prefixes for `pinAppClock` (on by default); empty when off. Feeds the
+    // generated
+    // `robolectric.properties`, the render JVM and the daemon launch descriptor alike.
+    val clockPackages = composeAiClockPackages(project, extension)
     val variantName = variant.name
     val capVariant = variantName.cap()
     // The host-test bucket; the elvis is unreachable on the Robolectric lane.
@@ -1769,6 +1778,7 @@ internal object AndroidPreviewSupport {
         useConsumerApplication.set(extension.useConsumerApplication)
         appTourUseConsumerApplication.set(extension.appTourUseConsumerApplication)
         wireSdkInputs(this, extension.sdkVersion, consumerCompileSdk)
+        this.clockPackages.set(clockPackages)
         outputDir.set(robolectricPropertiesDir)
       }
 
@@ -2092,6 +2102,7 @@ internal object AndroidPreviewSupport {
             linkBufferComposer = linkBufferComposer.get(),
             rcPlayer = rcPlayer.get(),
             rcDensity = rcDensity.get(),
+            clockPackages = clockPackagesProperty(clockPackages.get()),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -2757,6 +2768,14 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       this.systemProperties.put("composeai.render.rcPlayer", daemonRcPlayer)
       this.systemProperties.put("composeai.render.rcDensity", daemonRcDensity)
+      // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class loader
+      // itself, so the property is all it needs. Absent when off.
+      this.systemProperties.putAll(
+        clockPackages.map { packages ->
+          if (packages.isEmpty()) emptyMap()
+          else mapOf(CLOCK_PACKAGES_PROPERTY to clockPackagesProperty(packages))
+        }
+      )
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(
