@@ -264,7 +264,10 @@ jobs:
             # absent from a run that calls itself full. This is the branch every non-PR event
             # takes (push to main, the nightly cron) and the one a global-path PR resolves to,
             # so it is where the gap mattered most and was least visible.
-            ./gradlew test jvmTest desktopTest checkKotlinAbi --continue \
+            # `checkPomDependencyVersions` likewise runs wherever a project publishes to Maven
+            # Central: a POM naming a dependency without a version fails the whole release
+            # upload, which is otherwise the first thing to read it (2.59.0 and 2.60.0, #5981).
+            ./gradlew test jvmTest desktopTest checkKotlinAbi checkPomDependencyVersions --continue \
               -x :samples:android:test \
               -x :samples:android-alpha:test \
               -x :samples:android-library:test \

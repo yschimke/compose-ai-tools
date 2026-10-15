@@ -71,6 +71,9 @@ if (outPath != null) {
         // affected-tests resolver needs to know per project, because naming a task that a
         // project does not have fails the whole Gradle invocation rather than that one task.
         hasAbiCheck: p.tasks.findByName('checkKotlinAbi') != null,
+        // `checkPomDependencyVersions` exists only on projects that publish to Maven Central
+        // (`composeai.maven-publishing`); same per-project reason as `hasAbiCheck`.
+        hasPomCheck: p.tasks.findByName('checkPomDependencyVersions') != null,
         dependencies: deps.toList(),
       ])
     }

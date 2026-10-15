@@ -24,6 +24,12 @@ main in a single day that way (#4673, #4685, #4716), each one red for every bran
 that merged it afterwards. A gate wired into a task nobody invokes is the thing those
 comments were trying to prevent.
 
+`checkPomDependencyVersions` rides along the same way, for every affected project that
+publishes to Maven Central. It reads the POMs a release would upload and fails on a
+dependency with no version, which Central refuses — for the whole release, not just the
+module. #5953 added one to `bundle-producer`; nothing read its POM until the 2.59.0 upload,
+and neither 2.59.0 nor 2.60.0 reached Central.
+
 `checkKotlinAbi` is emitted per project rather than for all of them because naming a
 task a project does not have fails the entire invocation ("Cannot locate tasks that
 match ..."), not just that task — the same trap ci.yml documents for the iOS targets.
@@ -102,6 +108,7 @@ def resolve(files: list[str], config: dict, projects: list[dict], workspace: Pat
     tasks = sorted(
         [t for p in selected for t in test_tasks(p)]
         + [task(p["path"], "checkKotlinAbi") for p in selected if p.get("hasAbiCheck")]
+        + [task(p["path"], "checkPomDependencyVersions") for p in selected if p.get("hasPomCheck")]
     )
     return " ".join(tasks) if tasks else "none"
 
