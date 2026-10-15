@@ -141,6 +141,25 @@ class CoordinateResolverTest {
     real.deleteRecursively()
   }
 
+  @Test
+  fun `a Gradle cache aar stored under its variant file name resolves`() {
+    // Gradle module metadata names the file; AndroidX publishes ui-text-android's aar as
+    // ui-text.aar.
+    val classes = byteArrayOf(3, 1, 4)
+    val versionDir = File(root, "com.example.foo/widgets/1.2.3")
+    File(versionDir, "1111/widgets.aar").apply {
+      parentFile.mkdirs()
+      writeBytes(makeAar(classes))
+    }
+    File(versionDir, "2222/widgets-1.2.3-sources.jar").apply {
+      parentFile.mkdirs()
+      writeBytes(byteArrayOf(9))
+    }
+    val file =
+      assertNotNull(localCacheResolver.resolve(maven(sha256(classes)).copy(type = "aar")).file)
+    assertEquals(classes.toList(), file.readBytes().toList())
+  }
+
   private fun maven(sha: String? = null) =
     BundleReader.ClasspathEntry.Maven(
       group = "com.example.foo",

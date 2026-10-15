@@ -152,6 +152,11 @@ public class CoordinateResolver(
             fileName,
           )
       }
+      // Gradle stores a Gradle-module-metadata variant under the variant's own file name
+      // (`ui-text.aar` for androidx.compose.ui:ui-text-android), not `<artifact>-<version>`. Last,
+      // so an exact name is always preferred; [resolve]'s hash check still picks among them.
+      found +=
+        gradleVariantHits(coord, File(root, "${coord.group}/${coord.artifact}/${coord.version}"))
     }
     // The bundle's sha256 for an `.aar` is of its extracted `classes.jar`.
     return found.mapNotNull { materialize(it) }
@@ -181,6 +186,35 @@ public class CoordinateResolver(
       .map { it.toFile() }
       .filter { isDirectory(it) }
       .mapNotNull { dir -> File(dir, fileName).takeIf { isRegularFile(it) } }
+  }
+
+  /**
+   * Every `<versionDir>/<sha1>/<name>.<ext>` for the recorded type or `.aar` that is not
+   * `<artifact>-<version>.<ext>` (already searched) nor a sources, javadoc or samples artifact.
+   */
+  private fun gradleVariantHits(
+    coord: BundleReader.ClasspathEntry.Maven,
+    versionDir: File,
+  ): List<File> {
+    if (!isDirectory(versionDir)) return emptyList()
+    val extensions = listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map { ".$it" }
+    val exact = candidateFileNames(coord).toSet()
+    return fileSystem
+      .listOrNull(versionDir.path.toPath())
+      .orEmpty()
+      .map { it.toFile() }
+      .filter { isDirectory(it) }
+      .flatMap { dir -> fileSystem.listOrNull(dir.path.toPath()).orEmpty().map { it.toFile() } }
+      .filter { file ->
+        val name = file.name
+        extensions.any { name.endsWith(it) } &&
+          name !in exact &&
+          NON_BINARY_CLASSIFIERS.none {
+            name.endsWith("$it${name.substring(name.lastIndexOf('.'))}")
+          } &&
+          isRegularFile(file)
+      }
+      .sortedBy { it.path }
   }
 
   /**
@@ -415,6 +449,8 @@ public class CoordinateResolver(
       listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
         "${coord.artifact}-${coord.version}.$it"
       }
+
+    private val NON_BINARY_CLASSIFIERS = listOf("-sources", "-javadoc", "-samples")
 
     /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
     public fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
