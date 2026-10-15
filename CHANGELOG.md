@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.64.0](https://github.com/yschimke/compose-ai-tools/compare/v2.63.0...v2.64.0) (2026-10-15)
+
+
+### Features
+
+* render Android Bazel bundles offline for rules_compose_preview ([#6023](https://github.com/yschimke/compose-ai-tools/issues/6023)) ([399ed11](https://github.com/yschimke/compose-ai-tools/commit/399ed1139e9b64be674de79186b9576d9c62ce04))
+
+
+### Bug Fixes
+
+* refuse Bazel artifacts whose schema and android block disagree ([#6025](https://github.com/yschimke/compose-ai-tools/issues/6025)) ([aacfefe](https://github.com/yschimke/compose-ai-tools/commit/aacfefe28ed0f45fc26ff91e93fdcbad80f9d581))
+* resolve a Bazel bundle's coordinates from the build's own jars by content ([#6027](https://github.com/yschimke/compose-ai-tools/issues/6027)) ([8c67a12](https://github.com/yschimke/compose-ai-tools/commit/8c67a129ca8abbd1d666a1ceceb43a4711c23a24))
+
 ## [2.63.0](https://github.com/yschimke/compose-ai-tools/compare/v2.62.0...v2.63.0) (2026-10-15)
 
 
