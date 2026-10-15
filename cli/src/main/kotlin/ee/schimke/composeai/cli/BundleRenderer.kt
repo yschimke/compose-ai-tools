@@ -68,6 +68,11 @@ class BundleRenderer(
    * `android.jar` (`--android-jar`), in place of the SDK `ANDROID_HOME` / `local.properties` name.
    */
   private val androidJar: File? = null,
+  /**
+   * The build's own runtime jars (`--local-jars`): Maven coordinates the bundle records for one of
+   * them, by content hash, resolve to that file instead of a repository ([bundleLocalJars]).
+   */
+  private val localJars: List<File> = emptyList(),
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -95,6 +100,10 @@ class BundleRenderer(
     val (bundleJsonBytes, previewsJsonBytes, hasAppJar) =
       expandAppJarAndReadManifests(zipBytes, classesDir)
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
+    val local = bundleLocalJars(zipBytes, localJars)
+    if (verbose && local.isNotEmpty()) {
+      logSink("compose-preview: ${local.size} Maven coordinate(s) resolved from --local-jars")
+    }
 
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val selectedJson =
@@ -127,9 +136,18 @@ class BundleRenderer(
     }
 
     return when (manifest.backend) {
-      "desktop" -> renderDesktop(classesDir, libJars, manifest, previews)
+      "desktop" -> renderDesktop(classesDir, libJars, manifest, previews, local)
       "android" ->
-        renderAndroid(workDir, zipBytes, classesDir, libJars, manifest, previews, selectedJson)
+        renderAndroid(
+          workDir,
+          zipBytes,
+          classesDir,
+          libJars,
+          manifest,
+          previews,
+          selectedJson,
+          local,
+        )
       else ->
         throw UnsupportedOperationException(
           "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')"
@@ -142,6 +160,7 @@ class BundleRenderer(
     libJars: List<File>,
     manifest: BundleReader.Manifest,
     previews: PreviewManifest,
+    local: Map<String, File>,
   ): Result {
     // Fetched from the compose-preview-daemon release on first use;
     // `-Dcomposeai.cli.libRendererDir` or an installed `lib-renderer/` wins.
@@ -165,6 +184,7 @@ class BundleRenderer(
           networkEnabled = !NetworkPolicy.offline,
         ),
         mavenCoords,
+        local = local,
       )
     val classpathString =
       (listOf(classesDir, skikoNative) + libJars + resolvedJars + rendererJars).joinToString(
@@ -219,6 +239,7 @@ class BundleRenderer(
     manifest: BundleReader.Manifest,
     previews: PreviewManifest,
     previewsJsonRaw: String,
+    local: Map<String, File>,
   ): Result {
     // IR-backed previews are replayed by the Android daemon, not this renderer; split them out
     // first and report them as skipped. An all-IR bundle returns before requiring the sidecar or
@@ -286,6 +307,7 @@ class BundleRenderer(
           networkEnabled = !NetworkPolicy.offline,
         ),
         mavenCoords,
+        local = local,
       )
 
     // Hide IR previews from the batch renderer's manifest.
