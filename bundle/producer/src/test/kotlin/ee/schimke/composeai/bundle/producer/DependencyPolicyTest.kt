@@ -535,18 +535,51 @@ class DependencyPolicyTest {
       MavenMetadataVersions.MAVEN_CENTRAL,
       MavenMetadataVersions.repositoryFor("org.jetbrains.kotlin"),
     )
-    // The bare groups too: com.google.android:material lives on Google Maven.
-    for (group in listOf("com.google.android", "com.google.android.material", "com.android")) {
-      assertEquals(
-        MavenMetadataVersions.GOOGLE_MAVEN,
-        MavenMetadataVersions.repositoryFor(group),
-        group,
-      )
-    }
+    assertEquals(
+      MavenMetadataVersions.GOOGLE_MAVEN,
+      MavenMetadataVersions.repositoryFor("com.google.android.material"),
+    )
     assertEquals(
       MavenMetadataVersions.MAVEN_CENTRAL,
       MavenMetadataVersions.repositoryFor("com.google.androidx"),
     )
+    assertNull(offline.versions("../etc", "passwd"))
+  }
+
+  @Test
+  fun `maven metadata falls back to the other repository`() {
+    // The bare com.android group is split: zipflinger is on Google Maven, common on Central.
+    val hosted =
+      mapOf(
+        "https://dl.google.com/android/maven2/com/android/zipflinger/maven-metadata.xml" to
+          metadata,
+        "https://repo1.maven.org/maven2/com/android/common/maven-metadata.xml" to metadata,
+      )
+    val fetched = mutableListOf<String>()
+    val online =
+      MavenMetadataVersions(
+        root.resolve("cache"),
+        network = true,
+        fetch = {
+          fetched += it
+          hosted[it]
+        },
+      )
+    assertEquals(3, online.versions("com.android", "zipflinger")?.size)
+    assertEquals(3, online.versions("com.android", "common")?.size)
+    assertEquals(
+      listOf(
+        "https://repo1.maven.org/maven2/com/android/zipflinger/maven-metadata.xml",
+        "https://dl.google.com/android/maven2/com/android/zipflinger/maven-metadata.xml",
+        "https://repo1.maven.org/maven2/com/android/common/maven-metadata.xml",
+      ),
+      fetched,
+    )
+    assertNull(online.versions("com.android", "missing"))
+    // The fallback's answer is cached, so offline finds it too.
+    val offline =
+      MavenMetadataVersions(root.resolve("cache"), network = false, fetch = { error("offline") })
+    assertEquals(3, offline.versions("com.android", "zipflinger")?.size)
     assertNull(offline.versions("../etc", "passwd"))
   }
 
