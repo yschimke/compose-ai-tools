@@ -738,7 +738,9 @@ internal fun prepareBazelAndroidDaemon(
     ) {
       it.absolutePath
     }
-  val launch = AndroidBundleLaunch()
+  // The sandbox follows the target's compileSdk (`composeai.daemon.sandboxSdk`), as a Gradle
+  // module's does.
+  val launch = AndroidBundleLaunch(sdkLevel = bazelAndroidSdkLevel(android.compileSdk))
   val descriptor =
     DaemonLaunchBuilder.build(
       modulePath = artifacts.metadata.target,

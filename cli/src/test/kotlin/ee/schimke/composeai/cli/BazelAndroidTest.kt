@@ -181,6 +181,11 @@ class BazelAndroidTest {
         userClasses.split(File.pathSeparator),
       )
       assertTrue("robolectric.offline" !in descriptor.systemProperties)
+      // The sandbox follows the target's compileSdk (36), lowered only on a JVM that can't run it.
+      assertEquals(
+        bazelAndroidSdkLevel(36, log = {}).toString(),
+        descriptor.systemProperties["composeai.daemon.sandboxSdk"],
+      )
     }
 
   @Test
