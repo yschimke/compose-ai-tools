@@ -35,7 +35,7 @@ With it on:
 | `auth` agent access requests | Refused unless the server is loopback. |
 | Remote bundle sources (`bundle … https://…`) | Refused; `file://` and paths work. |
 | Bundle Maven coordinates (`bundle render`, `bundle daemon`) | Resolved from local repositories only; a miss refuses. |
-| Render daemon sidecars (`preview-daemon`) | Used from the cache or `-Dcomposeai.cli.lib…Dir`; otherwise refused. |
+| Render daemon sidecars (`preview-daemon`), including the Android renderer `bundle render` runs | Used from the cache or `-Dcomposeai.cli.lib…Dir`; otherwise refused. |
 | Preview server / MCP server distributions (`serve`, `browse`, `ui-builder`, `mcp serve`) | Used from the cache or `COMPOSE_PREVIEW_SERVER` / `COMPOSE_PREVIEW_MCP`; no newest-release lookup; otherwise refused. |
 | Skiko native jar | Used from the cache or `-Dcomposeai.cli.skikoDir`; otherwise refused. |
 | XR composite binary | Used from the cache; otherwise refused (it is no longer skipped). |

@@ -110,6 +110,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
         compose-preview bundle externalize <bundle.png | URL> --res-out <dir> [-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>] [--knob k=v …] [--res <pool>] [--svg]  (re-render previews; --knob re-themes, --svg also exports vectors)
+                                       Android bundles: [--android-sdk <n>] [--android-jar <file>] [--clock-packages <prefix,…>] (sandbox SDK, android.jar, pinned app clock)
         compose-preview bundle repack  <bundle.png | URL> --renders <dir> -o <out.png>  (swap baked previews for re-rendered PNGs + figma.svg)
         compose-preview bundle merge   <base.png | URL> <shard.png | URL>… -o <out.png>  (union the previews of bundles packed from disjoint render selections)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
@@ -1065,7 +1066,8 @@ private class RenderSubcommand(private val args: List<String>) {
     if (path == null) {
       System.err.println(
         "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
-          "[--res <pool-dir>] [--svg]"
+          "[--res <pool-dir>] [--svg] [--android-sdk <n>] [--android-jar <file>] " +
+          "[--clock-packages <prefix,…>]"
       )
       exitProcess(64)
     }
@@ -1127,6 +1129,12 @@ private class RenderSubcommand(private val args: List<String>) {
         verbose = verbose,
         resPoolDir = resPool,
         selectedIds = selectedIds,
+        androidSdk =
+          args.flagValue("--android-sdk")?.let {
+            requireNotNull(it.trim().toIntOrNull()) { "--android-sdk takes an API level: $it" }
+          },
+        clockPackages = bundleRenderClockPackages(args.flagValue("--clock-packages")),
+        androidJar = args.flagValue("--android-jar")?.let { File(it).absoluteFile },
       )
     val result =
       try {
@@ -1703,3 +1711,10 @@ internal fun copyBundleRenderOutput(source: File, destination: File) {
     return
   source.copyTo(destination, overwrite = true)
 }
+
+/**
+ * `--clock-packages a.b.,c.d.`: the class-name prefixes whose wall clock an Android `bundle render`
+ * pins (`pinAppClock`). Absent or blank pins nothing; blanks and duplicates drop out.
+ */
+internal fun bundleRenderClockPackages(value: String?): List<String> =
+  value.orEmpty().split(',').map { it.trim() }.filter { it.trimEnd('.').isNotEmpty() }.distinct()

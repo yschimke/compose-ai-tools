@@ -54,6 +54,20 @@ class BundleRenderer(
    */
   private val resPoolDir: File? = null,
   private val selectedIds: Set<String>? = null,
+  /**
+   * The Android sandbox SDK (`--android-sdk`), e.g. a Bazel target's `compileSdk`; clamped to what
+   * this JVM's Robolectric renders. Null keeps `-Dcomposeai.bundle.androidSdk` / the default.
+   */
+  private val androidSdk: Int? = null,
+  /**
+   * Class-name prefixes whose wall clock is pinned in an Android render (`--clock-packages`), the
+   * one-shot counterpart of `pinAppClock`. Empty pins nothing, as before.
+   */
+  private val clockPackages: List<String> = emptyList(),
+  /**
+   * `android.jar` (`--android-jar`), in place of the SDK `ANDROID_HOME` / `local.properties` name.
+   */
+  private val androidJar: File? = null,
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -194,8 +208,8 @@ class BundleRenderer(
    * Re-render a `backend="android"` bundle with the Robolectric renderer (`AndroidRendererMainKt`),
    * one subprocess for the whole `previews.json`. Launch assembly lives in [AndroidBundleLaunch].
    *
-   * The Android renderer sidecar isn't packaged in the CLI yet, so without
-   * `-Dcomposeai.cli.libRendererAndroidDir=<dir>` this reports an actionable diagnostic.
+   * The renderer comes from `-Dcomposeai.cli.libRendererAndroidDir=<dir>` when set, else from the
+   * Android daemon sidecar (`lib-daemon-android`), which carries the same renderer.
    */
   private fun renderAndroid(
     workDir: File,
@@ -225,24 +239,39 @@ class BundleRenderer(
       )
     }
 
-    val rendererJars = locateAndroidRendererClasspath()
+    // An explicit `lib-renderer-android` wins; otherwise the Android daemon sidecar, which carries
+    // the same one-shot renderer (`AndroidRendererMainKt`) and is provisioned like `bundle
+    // daemon`'s
+    // (`-Dcomposeai.cli.libDaemonAndroidDir`, the cache, or a fetch the network switch refuses).
+    val rendererJars =
+      locateAndroidRendererClasspath().ifEmpty {
+        DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID, log = logSink)
+        locateBundleSidecarJars("lib-daemon-android")
+      }
     if (rendererJars.isEmpty()) {
       throw IllegalStateException(
-        "bundle render: backend=android needs the Android renderer sidecar, which is not packaged " +
-          "in this CLI build yet (Phase 2). Point at a built one via " +
-          "`-Dcomposeai.cli.libRendererAndroidDir=<dir>`, or render a desktop bundle. Looked in " +
-          "`${androidRendererSearchDescription()}`."
+        "bundle render: backend=android needs the Android renderer: the Android daemon sidecar " +
+          "(`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`, fetched from the " +
+          "compose-preview-daemon release on first use) or `-Dcomposeai.cli.libRendererAndroidDir=" +
+          "<dir>`. Looked in `${androidRendererSearchDescription()}` and " +
+          "`${bundleSidecarSearchDescription("lib-daemon-android")}`."
       )
     }
     val androidJar =
-      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = findLocalProperties())
+      this.androidJar?.also {
+        require(it.isFile) { "bundle render: --android-jar is not a file: ${it.path}" }
+      }
+        ?: AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = findLocalProperties())
         ?: throw IllegalStateException(
           "bundle render: backend=android needs android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
-            "or run from a project whose local.properties has sdk.dir (no platforms/android-*/" +
-            "android.jar found)."
+            "pass --android-jar, or run from a project whose local.properties has sdk.dir (no " +
+            "platforms/android-*/android.jar found)."
         )
 
-    val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
+    val sdkLevel =
+      androidSdk?.let { bazelAndroidSdkLevel(it, log = logSink, source = "--android-sdk") }
+        ?: AndroidBundleLaunch.sdkLevelFromSystemProperty()
+    val launch = AndroidBundleLaunch(sdkLevel = sdkLevel).withClockPackages(clockPackages)
     // Under the network switch Robolectric needs pre-provisioned android-all; refuse before
     // spawning.
     val offlineProperties = robolectricOfflineProperties()
@@ -269,7 +298,8 @@ class BundleRenderer(
     // and deps, the renderer runtime, and android.jar last (a discovery stub; Robolectric supplies
     // the real framework).
     val classpath =
-      (listOf(configRoot) +
+      (listOf(androidRendererLauncher(workDir)) +
+          listOf(configRoot) +
           androidResourceCarriage(zipBytes, workDir, manifest) +
           listOf(classesDir) +
           libJars +
@@ -307,7 +337,7 @@ class BundleRenderer(
         .forEach { (k, v) -> add("-D$k=$v") }
       add("-cp")
       add(classpath)
-      add("ee.schimke.composeai.renderer.AndroidRendererMainKt")
+      add(ANDROID_RENDERER_LAUNCHER)
     }
     return runRenderProcess(ProcessBuilder(command), tailLines = 40)
   }
@@ -504,6 +534,29 @@ class BundleRenderer(
   }
 
   companion object {
+    /**
+     * The Android subprocess's main class: [ee.schimke.composeai.cli.androidrender] runs the
+     * renderer's `AndroidRendererMainKt` and then exits, which that main does not do on success.
+     */
+    internal const val ANDROID_RENDERER_LAUNCHER =
+      "ee.schimke.composeai.cli.androidrender.AndroidRendererLauncher"
+
+    /**
+     * A class directory under [workDir] holding only [ANDROID_RENDERER_LAUNCHER]'s class file,
+     * copied from this CLI's own classpath, to lead the renderer's classpath.
+     */
+    internal fun androidRendererLauncher(workDir: File): File {
+      val path = ANDROID_RENDERER_LAUNCHER.replace('.', '/') + ".class"
+      val bytes =
+        checkNotNull(BundleRenderer::class.java.classLoader.getResourceAsStream(path)) {
+            "bundle render: $path is missing from the CLI"
+          }
+          .use { it.readBytes() }
+      val root = workDir.resolve("android-renderer-launcher")
+      root.resolve(path).apply { parentFile.mkdirs() }.writeBytes(bytes)
+      return root
+    }
+
     /**
      * The `android/` payload (resource APK, manifest, final-ID R classes) as `-cp` entries, through
      * the same [AndroidBundleResources] wiring the daemon lane uses: the synthesized

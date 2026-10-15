@@ -7,11 +7,13 @@ public final class ee/schimke/composeai/bundle/AndroidBundleLaunch {
 	public fun <init> (IZLokio/FileSystem;Ljava/lang/String;)V
 	public synthetic fun <init> (IZLokio/FileSystem;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun appTourRobolectricPropertiesBody ()Ljava/lang/String;
+	public final fun getClockPackages ()Ljava/util/List;
 	public final fun getSdkLevel ()I
 	public final fun jvmArgs ()Ljava/util/List;
 	public final fun robolectricPropertiesBody ()Ljava/lang/String;
 	public final fun robolectricSystemProperties ()Ljava/util/Map;
 	public final fun systemProperties (Ljava/lang/String;Ljava/lang/String;)Ljava/util/Map;
+	public final fun withClockPackages (Ljava/util/List;)Lee/schimke/composeai/bundle/AndroidBundleLaunch;
 	public final fun writeRobolectricConfig (Ljava/io/File;)Ljava/io/File;
 }
 

@@ -55,9 +55,11 @@ public object BundleProducerCli {
     }
     val metadata =
       json.parseToJsonElement(File(flags.getValue("--artifacts")).readText()).jsonObject
-    require(metadata.getValue("schemaVersion").jsonPrimitive.content == "1") {
-      "Unsupported artifacts schema"
-    }
+    // Schema 2 is schema 1 plus the `android` block an Android aspect writes (the linked resource
+    // APK, the manifest it was linked against and the final-ID R classes); it makes the bundle an
+    // `backend="android"` one, exactly as `compose-preview bazel bundle` does.
+    val schema = metadata.getValue("schemaVersion").jsonPrimitive.content
+    require(schema == "1" || schema == "2") { "Unsupported artifacts schema $schema" }
     fun files(key: String): List<File> =
       metadata[key]
         ?.jsonArray
@@ -72,6 +74,7 @@ public object BundleProducerCli {
     }
     val module = metadata.getValue("target").jsonPrimitive.content
     val root = File(".").canonicalFile
+    val android = if (schema == "2") androidResources(metadata) else null
     val result =
       PreviewDiscovery.discover(
         PreviewDiscovery.Input(
@@ -137,10 +140,27 @@ public object BundleProducerCli {
       pairs.filter { it[0] == "--maven-install" }.map { File(it[1]) },
       File(flags.getValue("--output")),
       embedDeps = false,
-      android = null,
+      android = android,
       dependencies = dependencies,
     )
   }
+}
+
+/**
+ * The linked resources of a schema-2 artifacts file's `android` block, or null when it has none.
+ * Paths are execution-root relative, like every other path in the file, and must be materialized.
+ */
+internal fun androidResources(artifacts: JsonObject): BazelAndroidResources? {
+  val android = artifacts["android"] as? JsonObject ?: return null
+  fun string(key: String): String? = (android[key] as? JsonPrimitive)?.contentOrNull
+  fun file(key: String): File? =
+    string(key)?.let(::File)?.also { require(it.isFile) { "Unmaterialized android.$key: $it" } }
+  return BazelAndroidResources(
+    packageName = requireNotNull(string("packageName")) { "android.packageName missing" },
+    resourceApk = requireNotNull(file("resourceApk")) { "android.resourceApk missing" },
+    manifest = requireNotNull(file("manifest")) { "android.manifest missing" },
+    rJar = file("rJar"),
+  )
 }
 
 /**

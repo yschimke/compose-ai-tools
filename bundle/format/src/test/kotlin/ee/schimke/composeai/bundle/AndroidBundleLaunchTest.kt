@@ -73,6 +73,41 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `no clock packages leaves the config and properties as before`() {
+    val launch = AndroidBundleLaunch(sdkLevel = 35)
+    val pinned = launch.withClockPackages(listOf(" ", ""))
+    assertTrue(pinned.clockPackages.isEmpty())
+    assertEquals(launch.robolectricPropertiesBody(), pinned.robolectricPropertiesBody())
+    assertEquals(launch.robolectricSystemProperties(), pinned.robolectricSystemProperties())
+    assertTrue("composeai.render.clockPackages" !in launch.robolectricSystemProperties())
+    assertTrue("ShadowConsumerClock" !in launch.robolectricPropertiesBody())
+  }
+
+  @Test
+  fun `clock packages reach both lanes and the render jvm`() {
+    val launch =
+      AndroidBundleLaunch(sdkLevel = 35)
+        .withClockPackages(listOf("com.example.app.", "android.", "com.example.app."))
+    // The framework is never instrumented; duplicates collapse.
+    assertEquals(listOf("com.example.app."), launch.clockPackages)
+    assertEquals(35, launch.sdkLevel)
+    for (body in
+      listOf(launch.robolectricPropertiesBody(), launch.appTourRobolectricPropertiesBody())) {
+      assertTrue(
+        body.lines().any { it.startsWith("instrumentedPackages=") && "com.example.app." in it }
+      )
+      assertTrue("ShadowConsumerClock" in body, body)
+    }
+    assertEquals(
+      "com.example.app.",
+      launch.systemProperties("/m.json", "/out")["composeai.render.clockPackages"],
+    )
+    val root = launch.writeRobolectricConfig(tempDir())
+    val written = File(root, "ee/schimke/composeai/renderer/robolectric.properties").readText()
+    assertTrue("ShadowConsumerClock" in written)
+  }
+
+  @Test
   fun `font cache dir is injectable and forwarded to the renderer`() {
     val props =
       AndroidBundleLaunch(fontsCacheDir = "/cache/composeai/fonts").robolectricSystemProperties()
