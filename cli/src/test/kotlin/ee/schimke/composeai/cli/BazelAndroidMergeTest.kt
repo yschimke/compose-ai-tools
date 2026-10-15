@@ -252,4 +252,135 @@ class BazelAndroidMergeTest {
     assertNotNull(resolved.android)
     assertNull(resolved.android!!.link)
   }
+
+  @Test
+  fun `the merged manifest keeps every target's declarations, with absolute class names`() {
+    val ui =
+      file(
+        "ui/AndroidManifest.xml",
+        """
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.ui">
+          <uses-permission android:name="android.permission.INTERNET" />
+          <application android:theme="@style/UiTheme" android:name=".UiApp">
+            <activity android:name=".MainActivity" />
+            <activity android:name="com.example.shared.SharedActivity" />
+          </application>
+        </manifest>
+        """
+          .trimIndent(),
+      )
+    val feature =
+      file(
+        "feature/AndroidManifest.xml",
+        """
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.feature">
+          <uses-permission android:name="android.permission.INTERNET" />
+          <uses-feature android:name="android.hardware.type.watch" />
+          <application android:theme="@style/FeatureTheme">
+            <activity android:name="FeatureActivity" />
+            <activity-alias android:name=".Alias" android:targetActivity=".FeatureActivity" />
+            <activity android:name="com.example.shared.SharedActivity" />
+          </application>
+        </manifest>
+        """
+          .trimIndent(),
+      )
+    val broken = file("broken/AndroidManifest.xml", "<manifest")
+
+    val merged =
+      mergeAndroidManifests(
+        "com.example.ui",
+        listOf(
+          "com.example.ui" to ui,
+          "com.example.feature" to feature,
+          "com.example.broken" to broken,
+        ),
+      )
+
+    assertTrue("package=\"com.example.ui\"" in merged, merged)
+    for (name in
+      listOf(
+        "com.example.ui.MainActivity",
+        "com.example.feature.FeatureActivity",
+        "com.example.feature.Alias",
+        "android.hardware.type.watch",
+      )) {
+      assertTrue("\"$name\"" in merged, "$name in $merged")
+    }
+    assertTrue("android:targetActivity=\"com.example.feature.FeatureActivity\"" in merged, merged)
+    assertEquals(1, Regex("android.permission.INTERNET").findAll(merged).count(), merged)
+    assertEquals(1, Regex("SharedActivity").findAll(merged).count(), merged)
+    // The first target's application attributes win.
+    assertTrue("@style/UiTheme" in merged && "@style/FeatureTheme" !in merged, merged)
+    assertTrue("com.example.ui.UiApp" in merged, merged)
+  }
+
+  @Test
+  fun `an input replaced with different bytes at the same size and time relinks`() {
+    val calls = root.resolve("calls.txt")
+    val tools = link(listOf("com.example.ui"), listOf("ui.zip"), emptyList())
+    val script =
+      file(
+        "link.sh",
+        """
+        echo run >> "${calls.absolutePath}"
+        echo apk > "${'$'}3"
+        echo jar > "${'$'}4"
+        """
+          .trimIndent(),
+      )
+    val archive = file("ui.zip", "aaaa")
+    val plan =
+      AndroidMergePlan(
+        "com.example.ui",
+        emptyList(),
+        listOf(archive),
+        emptyList(),
+        35,
+        tools.copy(script = script),
+        emptySet(),
+      )
+    val out = root.resolve("out")
+    linkAndroidMerge(plan, out)
+    val time = archive.lastModified()
+
+    archive.writeText("bbbb")
+    archive.setLastModified(time)
+    linkAndroidMerge(plan, out)
+
+    assertEquals(2, calls.readLines().size)
+  }
+
+  @Test
+  fun `a link that outlives its timeout is stopped, children included`() {
+    val pidFile = root.resolve("child.pid")
+    val tools = link(listOf("com.example.ui"), listOf("ui.zip"), emptyList())
+    val script =
+      file(
+        "link.sh",
+        """
+        sleep 60 &
+        echo ${'$'}! > "${pidFile.absolutePath}"
+        wait
+        """
+          .trimIndent(),
+      )
+    val plan =
+      AndroidMergePlan(
+        "com.example.ui",
+        emptyList(),
+        listOf(file("ui.zip")),
+        emptyList(),
+        35,
+        tools.copy(script = script),
+        emptySet(),
+      )
+
+    val failure = kotlin.runCatching {
+      linkAndroidMerge(plan, root.resolve("out"), timeoutSeconds = 1)
+    }
+    assertTrue(failure.exceptionOrNull()?.message.orEmpty().contains("timed out"), "$failure")
+    val child = pidFile.readText().trim().toLong()
+    assertTrue(ProcessHandle.of(child).map { !it.isAlive }.orElse(true), "child $child still alive")
+  }
 }
