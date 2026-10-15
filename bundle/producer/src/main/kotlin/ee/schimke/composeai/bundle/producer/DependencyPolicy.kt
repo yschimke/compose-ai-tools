@@ -352,7 +352,8 @@ internal fun applyDependencyPolicy(
           fail("publication-unknown")
           continue
         }
-        if (coordinate.version in versions)
+        // A pinned snapshot is mutable, so even an exact match must be substituted by a release.
+        if (coordinate.version in versions && !isSnapshotVersion(coordinate.version))
           return PolicyOutcome(coordinate, ruleName, step.id, fallbacks)
         val best =
           versions

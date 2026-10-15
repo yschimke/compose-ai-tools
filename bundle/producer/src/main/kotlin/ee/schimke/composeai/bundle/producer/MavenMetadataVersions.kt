@@ -57,7 +57,9 @@ public class MavenMetadataVersions(
       if (
         group == "androidx" ||
           group.startsWith("androidx.") ||
+          group == "com.android" ||
           group.startsWith("com.android.") ||
+          group == "com.google.android" ||
           group.startsWith("com.google.android.")
       )
         GOOGLE_MAVEN
