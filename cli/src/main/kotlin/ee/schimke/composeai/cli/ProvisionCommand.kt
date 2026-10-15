@@ -208,10 +208,15 @@ internal class ProvisionCommand(
 
     /** `--android-sdk 35 --android-sdk 36` or `--android-sdk 35,36`; default the render default. */
     internal fun androidLevels(args: List<String>): List<Int> {
+      val given = args.any { it == "--android-sdk" || it.startsWith("--android-sdk=") }
       val raw = args.flagValuesAll("--android-sdk").flatMap { it.split(',') }.map { it.trim() }
-      if (raw.isEmpty()) return listOf(AndroidBundleLaunch.DEFAULT_SDK)
+      if (!given) return listOf(AndroidBundleLaunch.DEFAULT_SDK)
+      // A flag given without levels must not quietly provision none (or the default) and then
+      // report the offline set complete.
+      require(raw.isNotEmpty() && raw.none { it.isEmpty() }) {
+        "--android-sdk needs API levels, e.g. --android-sdk 35 or --android-sdk 35,36"
+      }
       return raw
-        .filter { it.isNotEmpty() }
         .map {
           val level =
             requireNotNull(it.toIntOrNull()) { "--android-sdk takes API levels, not '$it'" }

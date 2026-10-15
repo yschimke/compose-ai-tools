@@ -186,6 +186,9 @@ class BazelAndroidTest {
         bazelAndroidSdkLevel(36, log = {}).toString(),
         descriptor.systemProperties["composeai.daemon.sandboxSdk"],
       )
+      // That level was clamped against this JVM, so this JVM is the one that launches it.
+      assertEquals(currentJavaLauncher(), descriptor.javaLauncher)
+      assertTrue(descriptor.javaLauncher != null)
     }
 
   @Test
