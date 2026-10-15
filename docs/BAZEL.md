@@ -314,9 +314,18 @@ The Android daemon (`lib-daemon-android`) and `android.jar` (from `ANDROID_HOME`
 `ANDROID_SDK_ROOT` or `local.properties`) are resolved as for `bundle daemon`.
 Robolectric fetches `android-all-instrumented` from Maven Central on first render;
 set `COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR` to a directory holding those jars to
-run offline (`robolectric.offline`). For a closed network, `COMPOSE_PREVIEW_NO_NETWORK=1`
-makes every outbound path of the CLI refuse instead of fetching; [OFFLINE.md](OFFLINE.md)
-lists what to pre-provision, including which `android-all` jars. A first build on a cold cache compiles
+run offline (`robolectric.offline`); `compose-preview provision` fills one (below). For a closed
+network, `COMPOSE_PREVIEW_NO_NETWORK=1` makes every outbound path of the CLI refuse instead of
+fetching; [OFFLINE.md](OFFLINE.md) lists what to pre-provision, including which `android-all` jars.
+
+The Robolectric sandbox renders on the target's `compileSdk`, as a Gradle module
+does, clamped to the bundled Robolectric's range and to 35 when the CLI runs on a
+JDK older than 21 (SDK 36 needs JDK 21). The aspect writes `compileSdk` only when
+the target's `android.jar` path has an `android-<N>` segment, since rules_android's
+`AndroidSdkInfo` carries no API level; otherwise the CLI reads it from the SDK
+platform that jar belongs to (`AndroidVersion.ApiLevel` in the `source.properties`
+beside it, else `ro.build.version.sdk` in its `build.prop`, following a symlinked
+jar to its target). With neither, it renders on the default SDK (35). A first build on a cold cache compiles
 rules_android's own tools (protobuf included) and can run well past the default
 300-second `--timeout`; raise it for that run (the contrib proof uses
 `--timeout 2400`).
@@ -329,6 +338,41 @@ way. The R jar travels only there, not on the bundle's user classpath.
 The end-to-end proof is compose-ai-contrib's `bazel-android-render` job: it builds
 the rules_android Compose sample in `bazel-apk/` through this driver and renders a
 preview that reads string and colour resources on the Robolectric daemon.
+
+### Pre-fetching for an offline render
+
+`compose-preview provision` downloads, now, everything a render would otherwise
+fetch on first use, through the same provisioners the render uses:
+
+```sh
+compose-preview provision                    # --desktop --android
+compose-preview provision --android --android-sdk 35,36
+compose-preview provision --all --json       # + preview server, MCP server, XR compositor
+```
+
+| Part | What | Where (under `${XDG_CACHE_HOME:-~/.cache}/composeai/`) |
+| --- | --- | --- |
+| `--desktop` | desktop daemon sidecars, this host's Skiko native | `preview-daemon/<v>/`, `skiko/` |
+| `--android` | Android daemon sidecar, `android-all-instrumented` per `--android-sdk` level (default 35) | `preview-daemon/<v>/`, `robolectric-deps/` |
+| `--server`, `--mcp` | the preview server, the MCP server | `preview-server/<v>/`, `preview-mcp/<v>/` |
+| `--xr` | the XR compositor | `xr-composite/` |
+
+It prints the cache root, each provisioned path, and the environment that
+points a later run at them: `COMPOSE_PREVIEW_OFFLINE=1`,
+`COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR`, the daemon/server versions it fetched,
+and `XDG_CACHE_HOME` for a copy that lands somewhere else. It exits 1 when any
+part could not be fetched.
+
+Which `android-all-instrumented` jar a level needs is Robolectric's answer, not
+a table in the CLI: `provision` loads the Robolectric on the Android daemon
+sidecar in an isolated class loader and asks its `DefaultSdkProvider` for the
+level's artifact (for Robolectric 4.17 and SDK 35,
+`android-all-instrumented-15-robolectric-13954326-i7.jar`). It is downloaded
+from Maven Central under exactly that Maven file name, which is what
+Robolectric's offline resolver looks up, and verified against the `.sha512`,
+`.sha256` or `.sha1` Central publishes. Pass every level your targets render
+on: a Bazel target renders on its `compileSdk`, so a `compileSdk = 36` target
+on JDK 21 needs `--android-sdk 36`.
 
 ## Browsing (`browse`, `serve --discover`)
 

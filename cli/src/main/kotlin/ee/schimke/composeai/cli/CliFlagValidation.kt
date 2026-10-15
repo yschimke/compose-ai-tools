@@ -485,6 +485,19 @@ internal object CliFlagValidation {
           "-v",
         ),
       "update" to setOf("--dry-run", "--no-modify-path"),
+      "provision" to
+        setOf(
+          "--desktop",
+          "--android",
+          "--server",
+          "--mcp",
+          "--xr",
+          "--all",
+          "--android-sdk",
+          "--json",
+          "--help",
+          "-h",
+        ),
       "init-script" to setOf("--path", "--print"),
       "pin" to setOf("--cli", "--json", "--remove", "--unset"),
       "auth" to

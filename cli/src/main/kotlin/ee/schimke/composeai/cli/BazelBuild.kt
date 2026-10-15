@@ -116,6 +116,31 @@ internal fun BazelArtifacts.resolve(
     // Placed ahead of every library's non-final R classes by the launcher, whether or not the
     // producer also listed it in runtimeJars.
     val rJar = block.rJar?.let(::resolvePath)
+    // Only a merge uses these, so a missing one keeps this target on its own APK rather than
+    // failing it: a merge then reports that the link inputs are missing.
+    val link =
+      block.link?.let { link ->
+        runCatching {
+          ResolvedAndroidLink(
+            script = resolvePath(link.script),
+            aapt2 = resolvePath(link.aapt2),
+            javaHome = resolvePath(link.javaHome),
+            androidJar = resolvePath(link.androidJar),
+            packages = link.packages,
+            compiledResources = resolvePaths(link.compiledResources),
+            assets = link.assets.map { it.path to resolvePath(it.file) },
+          )
+        }
+          .onFailure { System.err.println("[bazel] $target: link inputs unusable: ${it.message}") }
+          .getOrNull()
+      }
+    // The aspect omits compileSdk when the target's android.jar path names no `android-<N>`; the
+    // SDK platform that jar belongs to still says which level it is.
+    val compileSdk =
+      block.compileSdk
+        ?: (link?.androidJar
+            ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() })
+          ?.let(AndroidPlatformLevel::of)
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -127,27 +152,8 @@ internal fun BazelArtifacts.resolve(
           require(it.isFile) { "android.manifest is not a file: $it" }
         },
       rJar = rJar,
-      compileSdk = block.compileSdk,
-      // Only a merge uses these, so a missing one keeps this target on its own APK rather than
-      // failing it: a merge then reports that the link inputs are missing.
-      link =
-        block.link?.let { link ->
-          runCatching {
-            ResolvedAndroidLink(
-              script = resolvePath(link.script),
-              aapt2 = resolvePath(link.aapt2),
-              javaHome = resolvePath(link.javaHome),
-              androidJar = resolvePath(link.androidJar),
-              packages = link.packages,
-              compiledResources = resolvePaths(link.compiledResources),
-              assets = link.assets.map { it.path to resolvePath(it.file) },
-            )
-          }
-            .onFailure {
-              System.err.println("[bazel] $target: link inputs unusable: ${it.message}")
-            }
-            .getOrNull()
-        },
+      compileSdk = compileSdk,
+      link = link,
     )
   }
   return ResolvedBazelArtifacts(

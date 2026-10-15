@@ -51,6 +51,11 @@ With it on:
 Run once online on a machine with the same CLI version (or unpack the release archives by hand),
 then copy the results to the offline machine.
 
+`compose-preview provision` does that run for you: it fetches the render daemons, Skiko's native
+library and the `android-all-instrumented` jars matching the daemon's own Robolectric
+(`--android-sdk <n>[,<n>]`, default 35), plus the server, MCP server and XR composite with
+`--server`, `--mcp`, `--xr` or `--all`, and prints the environment to set (`--json` for a script).
+
 ### One cache root
 
 Everything the CLI fetches at run time lives under one directory,
@@ -95,8 +100,9 @@ those jars; the CLI then launches the daemon with `robolectric.offline=true` and
 refused.
 
 - The jars must match **the Robolectric version inside the render daemon** you provisioned (the
-  `lib-daemon-android` jars), and the SDK levels you render at. The simplest way to get exactly
-  those is an online warm-up render: Robolectric leaves them in
+  `lib-daemon-android` jars), and the SDK levels you render at. `compose-preview provision
+  --android` asks that Robolectric which jars it needs and fetches them. The alternative is an
+  online warm-up render: Robolectric leaves them in
   `~/.m2/repository/org/robolectric/android-all-instrumented/`; copy the `.jar` files (flat) into
   the directory.
 - **Do not mix in a repository's own instrumented jars** built for a different Robolectric (for

@@ -76,6 +76,10 @@ actionable error when neither that override nor the cache contains the native. T
 outbound path of the CLI rather than only this fetch, use `COMPOSE_PREVIEW_NO_NETWORK=1`
 ([OFFLINE.md](OFFLINE.md)).
 
+`compose-preview provision` fetches the native ahead of time, together with the render daemons and
+Robolectric's `android-all-instrumented` jar, and prints the cache directory to copy and the
+environment for the offline run; see [BAZEL.md](BAZEL.md#pre-fetching-for-an-offline-render).
+
 ### 2a. View-only — universal, zero tooling
 
 Schema v2 bakes a PNG per preview. Reading them needs **none** of the classpath
