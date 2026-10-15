@@ -212,6 +212,12 @@ class DependencyPolicyTest {
     assertNull(published.substitutedFrom)
     assertEquals("1.13.0-beta01", published.coordinate?.version)
 
+    // A pinned snapshot is mutable: even an exact match is replaced by the nearest release.
+    val snapshot =
+      apply(maven("androidx.compose.ui:ui-android:1.14.0-SNAPSHOT"), chain, releases = versions)
+    assertEquals("1.13.0-beta01", snapshot.coordinate?.version)
+    assertEquals("1.14.0-SNAPSHOT", snapshot.substitutedFrom?.version)
+
     // Nothing earlier, or nothing known: the next step.
     assertEquals(
       listOf(PolicyFallback("closest-released", "no-earlier-release")),
@@ -528,6 +534,18 @@ class DependencyPolicyTest {
     assertEquals(
       MavenMetadataVersions.MAVEN_CENTRAL,
       MavenMetadataVersions.repositoryFor("org.jetbrains.kotlin"),
+    )
+    // The bare groups too: com.google.android:material lives on Google Maven.
+    for (group in listOf("com.google.android", "com.google.android.material", "com.android")) {
+      assertEquals(
+        MavenMetadataVersions.GOOGLE_MAVEN,
+        MavenMetadataVersions.repositoryFor(group),
+        group,
+      )
+    }
+    assertEquals(
+      MavenMetadataVersions.MAVEN_CENTRAL,
+      MavenMetadataVersions.repositoryFor("com.google.androidx"),
     )
     assertNull(offline.versions("../etc", "passwd"))
   }
