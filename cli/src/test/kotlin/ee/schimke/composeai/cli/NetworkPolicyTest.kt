@@ -282,6 +282,62 @@ class NetworkPolicyTest {
   }
 
   @Test
+  fun `only loopback literals count, never a name that looks like one`() {
+    assertTrue(NetworkPolicy.isLoopback("http://127.1.2.3:8"))
+    assertFalse(NetworkPolicy.isLoopback("https://127.attacker.example/x"))
+    assertFalse(NetworkPolicy.isLoopback("https://127.0.0.1.example.com"))
+    assertFalse(NetworkPolicy.isLoopback("http://0127.0.0.1"))
+    assertFalse(NetworkPolicy.isLoopback("http://128.0.0.1"))
+    assertFalse(NetworkPolicy.isLoopback("http://[2001:db8::1]"))
+  }
+
+  @Test
+  fun `a loopback bundle url that redirects off the machine is not followed`() {
+    java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { server ->
+      val answered = Thread {
+        server.accept().use { socket ->
+          socket.getInputStream().bufferedReader().let { reader ->
+            while (reader.readLine()?.isNotEmpty() == true) {}
+          }
+          socket
+            .getOutputStream()
+            .write(
+              ("HTTP/1.1 302 Found\r\nLocation: $unroutable/bundle.png\r\n" +
+                  "Content-Length: 0\r\nConnection: close\r\n\r\n")
+                .toByteArray()
+            )
+        }
+      }
+      answered.start()
+      NetworkPolicy.withOverride(true) {
+        val e =
+          assertFailsWith<IllegalArgumentException> {
+            BundleSource.resolveToFile("http://127.0.0.1:${server.localPort}/bundle.png")
+          }
+        assertTrue(e.message!!.contains("302"), e.message)
+      }
+      answered.join(5_000)
+    }
+    val client = OkHttpClient()
+    assertFalse(NetworkPolicy.noRedirects(client, disabled = true).followRedirects)
+    assertTrue(NetworkPolicy.noRedirects(client, disabled = false).followRedirects)
+  }
+
+  @Test
+  fun `the switch keeps fonts offline over an explicit false`() {
+    val previous = System.getProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY)
+    System.setProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY, "false")
+    try {
+      val props =
+        NetworkPolicy.withOverride(true) { BundleDaemonCommand(emptyList()).desktopFontSysProps() }
+      assertTrue("-D${NetworkPolicy.FONTS_OFFLINE_PROPERTY}=true" in props, props.toString())
+    } finally {
+      if (previous == null) System.clearProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY)
+      else System.setProperty(NetworkPolicy.FONTS_OFFLINE_PROPERTY, previous)
+    }
+  }
+
+  @Test
   fun `agent access refuses a remote host and allows loopback`() {
     NetworkPolicy.withOverride(true) {
       assertRefusal(assertFailsWith<NetworkDisabledException> { AgentAccessClient(unroutable) })

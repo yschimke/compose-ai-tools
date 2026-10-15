@@ -558,9 +558,13 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     return OpenAiCompatibleClient(
       url,
       resolved?.key,
-      OpenRouterClient.httpClient(
-        requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-          ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+      // A loopback --base-url passes the network switch; a redirect must not then leave the
+      // machine.
+      NetworkPolicy.noRedirects(
+        OpenRouterClient.httpClient(
+          requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
+            ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+        )
       ),
     )
   }
