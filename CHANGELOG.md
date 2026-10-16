@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.67.0](https://github.com/yschimke/compose-ai-tools/compare/v2.66.0...v2.67.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** render Buck2 android_library previews ([#6061](https://github.com/yschimke/compose-ai-tools/issues/6061)) ([b7beaaa](https://github.com/yschimke/compose-ai-tools/commit/b7beaaa03b1f8bfc554018dd21764a777934260e))
+* **ui-builder:** frame.previews in the catalog policy schema ([#6049](https://github.com/yschimke/compose-ai-tools/issues/6049)) ([80676a3](https://github.com/yschimke/compose-ai-tools/commit/80676a31f76ea64e2ca03067d3f50d785f40f9dc))
+
+
+### Bug Fixes
+
+* **deps:** update dependency @design-parity/export-driver to v1.16.0 ([#6059](https://github.com/yschimke/compose-ai-tools/issues/6059)) ([a42b7ad](https://github.com/yschimke/compose-ai-tools/commit/a42b7add547c29c736312947f4c6b49d770501ea))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.13.1 ([#6057](https://github.com/yschimke/compose-ai-tools/issues/6057)) ([48b892e](https://github.com/yschimke/compose-ai-tools/commit/48b892e0f0e265d9832cd5eca0a16302262a967d))
+
 ## [2.66.0](https://github.com/yschimke/compose-ai-tools/compare/v2.65.0...v2.66.0) (2026-10-16)
 
 
