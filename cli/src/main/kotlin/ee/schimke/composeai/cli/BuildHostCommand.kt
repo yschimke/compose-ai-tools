@@ -24,15 +24,22 @@ import java.io.Writer
 class BuildHostCommand(args: List<String>) : Command(args) {
 
   /**
-   * Set when this host's project routes to Bazel (the same rule `render` and `list` use): the
-   * Gradle-shaped requests are then answered from the Bazel driver ([BazelBuildHost]).
+   * Set when this host's project routes to Bazel or Buck2 (the same rule `render` and `list` use):
+   * the Gradle-shaped requests are then answered from the Bazel-family driver ([BazelBuildHost]).
    */
   internal var bazel: BazelBuildHost? = runCatching {
     previewBuildRoute(args)
   }
     .getOrNull()
-    ?.takeIf { it.kind == ProjectBuildKind.BAZEL }
-    ?.let { BazelBuildHost(it.root, args) }
+    ?.takeIf { it.kind == ProjectBuildKind.BAZEL || it.kind == ProjectBuildKind.BUCK }
+    ?.let { route ->
+      BazelBuildHost(
+        route.root,
+        if (route.kind == ProjectBuildKind.BUCK)
+          removeFlag(args, "--build-system") + listOf("--build-system", "buck")
+        else args,
+      )
+    }
 
   override fun run() {
     if ("--help" in args || "-h" in args) {

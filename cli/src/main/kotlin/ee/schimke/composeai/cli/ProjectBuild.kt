@@ -5,11 +5,15 @@ import java.io.File
 internal enum class ProjectBuildKind {
   GRADLE,
   BAZEL,
+  BUCK,
 }
 
 internal data class ProjectBuild(val kind: ProjectBuildKind, val root: File)
 
-/** Prefer Gradle within a workspace; don't escape a nested Bazel workspace into an outer build. */
+/**
+ * Prefer Gradle within a workspace; don't escape a nested Bazel workspace or Buck2 project into an
+ * outer build.
+ */
 internal fun detectProjectBuild(start: File): ProjectBuild? {
   var directory: File? = start.canonicalFile
   var buildFileRoot: File? = null
@@ -18,6 +22,11 @@ internal fun detectProjectBuild(start: File): ProjectBuild? {
     val dir = directory
     if (hasSettingsFile(dir)) return ProjectBuild(ProjectBuildKind.GRADLE, dir)
     if (wrapperRoot == null && dir.resolve("gradlew").isFile) wrapperRoot = dir
+    if (isBuckProjectMarker(dir)) {
+      val root = detectBuckRoot(dir) ?: dir
+      return if (wrapperRoot == root) ProjectBuild(ProjectBuildKind.GRADLE, root)
+      else ProjectBuild(ProjectBuildKind.BUCK, root)
+    }
     if (
       listOf("MODULE.bazel", "WORKSPACE.bazel", "WORKSPACE", ".blazerc").any {
         dir.resolve(it).isFile
@@ -51,7 +60,11 @@ internal fun previewBuildRoute(args: List<String>, start: File = File(".")): Pro
     "blaze" ->
       detectBazelRoot(directory)?.let { ProjectBuild(ProjectBuildKind.BAZEL, it) }
         ?: error("No Bazel/Blaze workspace or BUILD file found at $directory")
-    else -> error("Unknown --build-system '$requested'; expected auto, gradle, bazel or blaze")
+    "buck" ->
+      detectBuckRoot(directory)?.let { ProjectBuild(ProjectBuildKind.BUCK, it) }
+        ?: error("No Buck2 project (.buckconfig or .buckroot) found at $directory")
+    else ->
+      error("Unknown --build-system '$requested'; expected auto, gradle, bazel, blaze or buck")
   }
 }
 
@@ -84,9 +97,9 @@ internal fun runProjectPreviewCommand(command: String, args: List<String>) {
       System.err.println("compose-preview: ${e.message}")
       kotlin.system.exitProcess(2)
     }
-  if (route?.kind == ProjectBuildKind.BAZEL) {
+  if (route?.kind == ProjectBuildKind.BAZEL || route?.kind == ProjectBuildKind.BUCK) {
     val invocationDirectory = args.flagValue("--project")?.let(::File) ?: File(".")
-    val routed = removeProjectFlag(args) + listOf("--project", route.root.absolutePath)
+    val routed = routedBuildArgs(route, args)
     BazelCommand(
         listOf(command) + routed,
         normalSurface = true,
@@ -103,13 +116,24 @@ internal fun runProjectPreviewCommand(command: String, args: List<String>) {
   }
 }
 
-private fun removeProjectFlag(args: List<String>): List<String> = buildList {
+/**
+ * [args] for the shared Bazel-family driver at [route]'s root. A Buck2 project, auto-detected or
+ * not, is named `--build-system buck`: the driver reads that to collect through BXL.
+ */
+internal fun routedBuildArgs(route: ProjectBuild, args: List<String>): List<String> {
+  val rooted = removeFlag(args, "--project") + listOf("--project", route.root.absolutePath)
+  return if (route.kind == ProjectBuildKind.BUCK)
+    removeFlag(rooted, "--build-system") + listOf("--build-system", "buck")
+  else rooted
+}
+
+internal fun removeFlag(args: List<String>, flag: String): List<String> = buildList {
   var index = 0
   while (index < args.size) {
     val arg = args[index]
     when {
-      arg == "--project" -> index += 2
-      arg.startsWith("--project=") -> index++
+      arg == flag -> index += 2
+      arg.startsWith("$flag=") -> index++
       else -> {
         add(arg)
         index++

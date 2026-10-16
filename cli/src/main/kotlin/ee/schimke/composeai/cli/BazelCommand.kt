@@ -67,25 +67,45 @@ internal class BazelCommand(
     require(format == null || format == "png") {
       "Bazel rendering currently supports --format png; '$format' needs an additional export capability"
     }
+    // Buck2 shares everything after collection: a BXL script prints the same artifacts documents.
+    val buck = args.flagValue("--build-system") == "buck"
     val requestedDirectory = File(args.flagValue("--project") ?: ".").canonicalFile
     val root =
-      if (args.flagValue("--artifacts") == null)
-        detectBazelRoot(requestedDirectory) ?: requestedDirectory
-      else requestedDirectory
+      if (args.flagValue("--artifacts") != null) requestedDirectory
+      else if (buck) detectBuckRoot(requestedDirectory) ?: requestedDirectory
+      else detectBazelRoot(requestedDirectory) ?: requestedDirectory
     require(root.isDirectory) { "Project directory missing: $root" }
     val timeout =
       args.flagValue("--timeout")?.let {
         it.toLongOrNull() ?: error("--timeout must be a positive number of seconds")
       } ?: 300L
     require(timeout > 0) { "--timeout must be positive" }
+    require(!buck || args.flagValue("--aspect") == null) {
+      "--aspect is Bazel-only; set bxl in .compose-preview/buck.json for another BXL script"
+    }
+    if (operation == "init" && buck) {
+      installBuckBxl(root)
+      println("Installed $DEFAULT_BUCK_BXL")
+      return emptyList()
+    }
     if (operation == "init") {
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
+      if ("--android" in args) {
+        val providers =
+          root
+            .resolve(".compose-preview/bazel.json")
+            .takeIf { it.isFile }
+            ?.let { bazelJson.decodeFromString<BazelBuildConfig>(it.readText()).providers }
+            .orEmpty()
+        installBazelAndroidAspect(root, providers, strict = true)
+        println("Installed $DEFAULT_BAZEL_ANDROID_ASPECT")
+      }
       return emptyList()
     }
     val configFile =
       args.flagValue("--config")?.let { resolve(root, it) }
-        ?: root.resolve(".compose-preview/bazel.json")
+        ?: root.resolve(".compose-preview/${if (buck) "buck" else "bazel"}.json")
     require(args.flagValue("--config") == null || configFile.isFile) {
       "Config missing: $configFile"
     }
@@ -103,6 +123,11 @@ internal class BazelCommand(
         configText != null &&
           "buildCommand" in (bazelJson.parseToJsonElement(configText) as JsonObject) ->
           "buildCommand in $configFile"
+        buck -> {
+          val override = System.getenv(BUILD_COMMAND_ENV)?.takeIf { it.isNotBlank() }
+          config = config.copy(buildCommand = listOf(override ?: "buck2"))
+          if (override != null) "\$$BUILD_COMMAND_ENV" else "default buck2"
+        }
         args.flagValue("--build-system") == "blaze" -> {
           config = config.copy(buildCommand = listOf("blaze"))
           "--build-system blaze"
@@ -114,7 +139,10 @@ internal class BazelCommand(
         }
       }
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
-    config = config.copy(buildArgs = config.buildArgs + args.flagValuesAll("--bazel-arg"))
+    config =
+      config.copy(
+        buildArgs = config.buildArgs + args.flagValuesAll(if (buck) "--buck-arg" else "--bazel-arg")
+      )
     val imported = args.flagValue("--artifacts")
     // A pattern's or a package's matches are candidates: one without previews is left out. An
     // explicitly named target is a requirement and fails as before.
@@ -140,6 +168,35 @@ internal class BazelCommand(
             bazelRuntimeJarOwners(metadataText),
           )
         )
+      } else if (buck) {
+        if ("--verbose" in args || "-v" in args) {
+          System.err.println("[buck] build command ${config.buildCommand} ($commandSource)")
+        }
+        val requested = requestedTargets()
+        val selection =
+          if (requested.isNotEmpty()) BazelTargetSelection(requested.joinToString(" "), requested)
+          else BuckBuild().selectTargets(root, invocationDirectory ?: requestedDirectory, config)
+        selectionLabel = selection.label
+        candidates = selection.targets.size > 1 || selection.targets.any(::isBuckTargetPattern)
+        // A configured (non-default) BXL label is used as-is; nothing is written to the tree.
+        if (
+          config.bxl == DEFAULT_BUCK_BXL &&
+            !root.resolve(".compose-preview/buck/compose_preview.bxl").isFile
+        ) {
+          require(config.installAspect) {
+            "installAspect is false and $DEFAULT_BUCK_BXL is missing; configure bxl"
+          }
+          installBuckBxl(root)
+        }
+        BuckBuild()
+          .collectAll(root, selection.targets, config, timeout, skipWithoutMetadata = candidates)
+          .also { built ->
+            if (candidates) {
+              System.err.println(
+                "[buck] ${built.size} JVM target(s): ${built.joinToString(" ") { it.metadata.target }}"
+              )
+            }
+          }
       } else {
         // Report before target selection, which may already run the chosen tool.
         if ("--verbose" in args || "-v" in args || commandSource.startsWith("detected")) {
@@ -161,6 +218,13 @@ internal class BazelCommand(
           targets.size > 1 || selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
         if (candidates) {
           System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
+        }
+        // The bundled Android aspect is kept current: a missing or CLI-written file is
+        // (re)installed, one edited by hand is left alone.
+        if (config.aspect == DEFAULT_BAZEL_ANDROID_ASPECT && config.installAspect) {
+          installBazelAndroidAspect(root, config.providers).forEach {
+            System.err.println("[bazel] keeping locally edited $it")
+          }
         }
         // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
         if (
@@ -215,7 +279,8 @@ internal class BazelCommand(
       } else BazelSelection(artifacts, prepared, output)
     }
     check(selections.isNotEmpty()) {
-      "No previews in ${collected.joinToString(" ") { it.metadata.target }}"
+      "No previews in " +
+        collected.joinToString(" ") { it.metadata.target }.ifEmpty { selectionLabel.orEmpty() }
     }
     when (operation) {
       "list" -> {
@@ -532,7 +597,7 @@ internal class BazelCommand(
       compose-preview bazel — discover/render an existing Compose Multiplatform JVM target
 
       Usage:
-        compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>]
+        compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>] [--android]
         compose-preview list [--target //app:ui] [--json]
         compose-preview list --target //app/... [--target -//app/legacy/...] [--json]
         compose-preview bazel list [--target //app:ui] [--json]
@@ -556,7 +621,16 @@ internal class BazelCommand(
                                   ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
                                   (bazelisk), then bazel/bazelisk/blaze on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
-      --aspect <label.bzl%name>   Override the aspect entry point.
+      --aspect <label.bzl%name>   Override the aspect entry point. For Android targets without
+                                  @rules_compose_preview, set aspect to
+                                  $DEFAULT_BAZEL_ANDROID_ASPECT:
+                                  the CLI installs that package (init --android does it up front);
+                                  "providers" in bazel.json points its shims at internal rules.
+      --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
+                                  the JVM providers instead of an aspect; .compose-preview/buck.json
+                                  configures it. --target takes //app:lib, //pkg: and //dir/...;
+                                  without one the current package (//pkg:) is selected.
+      --buck-arg=<argument>       Repeatable buck2 bxl flags, e.g. --buck-arg=@mode/desktop.
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
       --reuse-renders             Reuse captures rendered from the same imported artifacts; else render.

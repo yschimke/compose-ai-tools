@@ -373,16 +373,19 @@ class BundleRenderer(
     offlineProperties: Map<String, String>,
   ): Pair<Int, String> {
     val javaBin = locateJava()
-    val command = buildList {
-      add(javaBin)
-      addAll(launch.jvmArgs())
-      (launch.systemProperties(previewsJsonFile.absolutePath, outDir.absolutePath) +
-          offlineProperties)
-        .forEach { (k, v) -> add("-D$k=$v") }
-      add("-cp")
-      add(classpath)
-      add(ANDROID_RENDERER_LAUNCHER)
-    }
+    val command =
+      fitJavaCommand(
+        buildList {
+          add(javaBin)
+          addAll(launch.jvmArgs())
+          (launch.systemProperties(previewsJsonFile.absolutePath, outDir.absolutePath) +
+              offlineProperties)
+            .forEach { (k, v) -> add("-D$k=$v") }
+          add("-cp")
+          add(classpath)
+          add(ANDROID_RENDERER_LAUNCHER)
+        }
+      )
     return runRenderProcess(ProcessBuilder(command), tailLines = 40)
   }
 
@@ -493,8 +496,9 @@ class BundleRenderer(
   ): Pair<Int, String> {
     val args = buildRendererArgs(preview, outFile)
     val javaBin = locateJava()
-    val pb =
-      ProcessBuilder(
+    val launch =
+      fitJavaCommand(
+        listOf(
           javaBin,
           "--enable-native-access=ALL-UNNAMED",
           // macOS: run as a background agent (no Dock icon or focus steal); must be set before AWT
@@ -505,10 +509,8 @@ class BundleRenderer(
           classpath,
           "ee.schimke.composeai.renderer.DesktopRendererMainKt",
         )
-        .command()
-        .toMutableList()
-        .apply { addAll(args) }
-        .let { ProcessBuilder(it) }
+      )
+    val pb = ProcessBuilder(launch + args)
     return runRenderProcess(pb, tailLines = 20)
   }
 

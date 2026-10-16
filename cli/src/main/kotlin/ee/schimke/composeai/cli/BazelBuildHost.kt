@@ -29,6 +29,9 @@ internal class BazelBuildHost(
       .execute()
   },
 ) {
+  /** A Buck2 project: every operation runs the driver with `--build-system buck`. */
+  private val buck = args.flagValue("--build-system") == "buck"
+
   private val labelsByModule = linkedMapOf<String, String>()
   private val outputBases = linkedMapOf<String, File>()
 
@@ -120,6 +123,10 @@ internal class BazelBuildHost(
     add(name)
     add("--project")
     add(root.absolutePath)
+    if (buck) {
+      add("--build-system")
+      add("buck")
+    }
     targets.forEach {
       add("--target")
       add(it)
@@ -172,6 +179,8 @@ internal class BazelBuildHost(
             .replace("/...", ".all")
             .replace("...", "all")
             .replace('/', '.')
+            // Buck2's package pattern `//app:` reads as Bazel's `//app:all`.
+            .let { if (it.endsWith(":")) "${it}all" else it }
             .removePrefix(":")
             .ifEmpty { "root" }
         val named = if (repository.isEmpty()) path else "$repository~$path"
