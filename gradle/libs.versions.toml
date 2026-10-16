@@ -438,7 +438,7 @@ composeai-contracts = "3.35.0"
 # the plugin already applies, so `bundle render` and Bazel render at API 37.
 # 3.18.3 answers the legacy `android/support/` classes AndroidX jars ship from the app's jars under
 # `runs=app` (compose-preview-daemon#296), so the daemon lane finds `SupportActivity`.
-composeai-preview-daemon = "3.18.3"
+composeai-preview-daemon = "3.18.4"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
