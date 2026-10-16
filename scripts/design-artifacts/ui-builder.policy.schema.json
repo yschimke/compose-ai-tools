@@ -93,6 +93,49 @@
           "type": "string",
           "description": "Which device a new design in this catalog opens on, as a device-preset reference (`id:pixel_6`, `id:wearos_small_round`). Defaults to the device of the first entry in catalog.spec.json's `breakpoints`."
         },
+        "previews": {
+          "type": "array",
+          "description": "The preview strip the builder shows beside each of this catalog's designs, in order — hand-written, unlike `geometry`. A catalog whose designs render in several hosts (a dashboard card that is also a Wear widget and a launcher widget) lists each, so an author sees the design wherever it lands. Omitted keeps the builder's defaults; an entry a builder cannot read is skipped, never an error; a widget design keeps its own host panes.",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "description": "The pane's label; defaults to one the builder derives." }
+            },
+            "oneOf": [
+              {
+                "description": "The design in a Wear widget host: the size's content box inside the shape's container.",
+                "additionalProperties": false,
+                "required": ["kind", "size", "shape"],
+                "properties": {
+                  "kind": { "const": "wear-widget" },
+                  "size": { "enum": ["small", "large"] },
+                  "shape": { "enum": ["round", "squircle", "rectangular"], "description": "`round` is Samsung's host, `squircle` Pixel Watch's." },
+                  "label": { "type": "string" }
+                }
+              },
+              {
+                "description": "The design as a launcher widget, resized across the home-screen grid a cell at a time.",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "launcher-resizable" },
+                  "label": { "type": "string" }
+                }
+              },
+              {
+                "description": "The design at a fixed app width, and at heightDp or its own height.",
+                "additionalProperties": false,
+                "required": ["kind", "widthDp"],
+                "properties": {
+                  "kind": { "const": "frame" },
+                  "widthDp": { "type": "integer", "minimum": 1 },
+                  "heightDp": { "type": "integer", "minimum": 1 },
+                  "label": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
         "geometry": {
           "type": "object",
           "description": "Measured frame geometry — WRITTEN BY A TEST, NEVER BY HAND. The Robolectric probe that measures the numbers asserts the committed file equals its measurement, so a library bump changes the number where the number is measured rather than where somebody copied it. A hand-edited block is a failing test, which is the entire point of putting it here.",

@@ -132,13 +132,19 @@ schema one because those values are typed. The shape, in brief:
   "platformLabel": "Wear",
   "previewSurfaces": { "wasm": {…}, "native": {…} },
   "frame": { "adapter": "frame/round-screen", "seedDevice": "id:wearos_small_round",
-             "geometry": { … } },      // written by a test, never by hand
+             "geometry": { … },        // written by a test, never by hand
+             "previews": [ { "kind": "wear-widget", "size": "small", "shape": "round" }, … ] },
   "builtins": { "wear-m3/screen-scaffold": { "role": "screen-root", "slots": {…} } },
   "menu": { "groupOrder": ["Screens", "Layout", …] },
   "code": { "strategy": "templates", "imports": […], "templates": { "screen-root": "…", … } },
   "templates": ["ui-builder/designs/wear-list.json"]
 }
 ```
+
+`frame.previews` is optional and hand-written. It lists the preview strip the builder shows beside each
+design: `wear-widget` (`size`, `shape`), `launcher-resizable`, and `frame` (`widthDp`, optional
+`heightDp`), each with an optional `label`. A catalog whose designs render in several hosts lists
+each one; a builder skips an entry it cannot read.
 
 Two rules the schema enforces and this document explains:
 
