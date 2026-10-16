@@ -1,23 +1,142 @@
 # Installed by compose-preview. A copy that differs is kept, never overwritten.
 #
 # Prints compose-preview's build-artifacts documents (compose-preview-contracts'
-# `build-artifacts-protocol`, schema 1: a JVM/Desktop target) for every
-# selected JVM library, after building and materializing the jars they name:
+# `build-artifacts-protocol`) for every selected library, after building and
+# materializing the files they name:
 #
 #   buck2 bxl //.compose-preview/buck/compose_preview.bxl:artifacts -- \
 #     --target //app:app --target //lib/...
 #
+# A JVM library is schema 1. An Android library is schema 2: its resources are
+# linked into a standalone resource APK and final-ID R classes by
+# rules_compose_preview's `link.sh` (shared with the Bazel aspect), run as a BXL
+# action over the library's resource closure. `link_sh.bxl` beside this file
+# carries that script's bytes: a source file outside any package cannot be an
+# action input.
+#
 # Output is {"targets": [document, ...]} on stdout. Paths are relative to the
 # project root, the execution root the CLI resolves them against.
 
+load("@prelude//android:android_providers.bzl", "AndroidLibraryIntellijInfo", "AndroidPackageableInfo", "RESOURCE_PRIORITY_LOW")
+load("@prelude//android:android_toolchain.bzl", "AndroidToolchainInfo")
 load("@prelude//java:java_providers.bzl", "JavaLibraryInfo", "JavaPackagingInfo")
+load(":link_sh.bxl", "LINK_SH")
+
+# Joins the R packages of every resource in the closure, which the prelude only exposes as files,
+# into link.sh's colon-separated EXTRA_PACKAGES. Libraries resolve their own R classes (an AAR's
+# `androidx.lifecycle.runtime.R`) through these, so every package in the closure gets one.
+_LINK_WRAPPER = """#!/bin/sh
+set -eu
+link="$1"; packages="$2"; aapt2="$3"; jdk="$4"; apk="$5"; rjar="$6"; manifest="$7"
+android_jar="$8"; assets="$9"
+shift 9
+extra="$(while IFS= read -r f; do cat "$f"; echo; done < "$packages" | tr -d ' \\r' | grep . | LC_ALL=C sort -u | paste -sd: -)"
+exec sh "$link" "$aapt2" "$jdk" "$apk" "$rjar" "$manifest" "$android_jar" "$extra" "$assets" "$@"
+"""
 
 def _label(label) -> str:
     return str(label.raw_target())
 
+def _compile_sdk() -> int | None:
+    # The level the prelude's system Android toolchain compiles against, `android-<N>`.
+    version = read_root_config("android", "compile_sdk_version", "")
+    level = version.removeprefix("android-")
+    return int(level) if level and level.isdigit() else None
+
+def _android(ctx: bxl.Context, actions, shared: dict[str, typing.Any], node, providers) -> dict[str, typing.Any] | None:
+    """The schema 2 `android` block, None for a target that is not an Android library, or a
+    `skip` reason for one that cannot be linked."""
+    if AndroidPackageableInfo not in providers or not node.has_attr("_android_toolchain"):
+        return None
+    attrs = node.resolved_attrs_eager(ctx)
+    toolchain = attrs._android_toolchain[AndroidToolchainInfo]
+    java_home = ctx.cli_args.java_home or read_root_config("java", "java_home", "")
+    if not java_home:
+        fail("{}: linking Android resources needs a JDK: set [java] java_home or pass --java-home".format(_label(node.label)))
+
+    resource_deps = providers[AndroidLibraryIntellijInfo].android_resource_deps if AndroidLibraryIntellijInfo in providers else []
+    package = None
+    for resource in resource_deps or []:
+        if resource.specified_r_dot_java_package:
+            package = resource.specified_r_dot_java_package
+            break
+
+    # One BXL invocation links every selected library: keep their files apart.
+    prefix = _label(node.label).replace("//", "/").replace(":", "/") + "/"
+    manifest = getattr(attrs, "manifest", None)
+    if manifest == None:
+        for resource in resource_deps or []:
+            if resource.manifest_file:
+                manifest = resource.manifest_file
+                break
+    if manifest == None:
+        if package == None:
+            # Not a JVM target either: reporting it as schema 1 would render Android bytecode on
+            # the desktop daemon.
+            return {"skip": "no manifest, and no android_resource dep naming a package"}
+        manifest = actions.write(
+            prefix + "AndroidManifest.xml",
+            '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{}" />\n'.format(package),
+        )
+
+    # Dependencies before dependents, low priority (prebuilt AARs) before the rest: the order the
+    # prelude links an android_binary's resources in, and the overlay order link.sh expects.
+    infos = []
+    for info in reversed(list(providers[AndroidPackageableInfo].resource_infos.traverse(ordering = "topological")) if providers[AndroidPackageableInfo].resource_infos else []):
+        if info not in infos:
+            infos.append(info)
+    infos = [i for i in infos if i.res_priority == RESOURCE_PRIORITY_LOW] + [i for i in infos if i.res_priority != RESOURCE_PRIORITY_LOW]
+    archives = [i.aapt2_compile_output for i in infos if i.aapt2_compile_output]
+    package_files = [i.r_dot_java_package for i in infos if i.r_dot_java_package]
+    asset_dirs = [asset for i in infos for asset in i.assets]
+
+    packages = actions.write(prefix + "r_packages.txt", package_files)
+    assets = actions.write(prefix + "assets.tsv", [cmd_args(asset, format = "{}\t") for asset in asset_dirs])
+    if not shared:
+        shared["wrapper"] = actions.write("link_wrapper.sh", _LINK_WRAPPER, is_executable = True)
+        shared["link"] = actions.write("link.sh", LINK_SH, is_executable = True)
+    apk = actions.declare_output(prefix + "resources.ap_")
+    rjar = actions.declare_output(prefix + "r-final.jar")
+    actions.run(
+        cmd_args(
+            "sh",
+            shared["wrapper"],
+            shared["link"],
+            packages,
+            toolchain.aapt2,
+            java_home,
+            apk.as_output(),
+            rjar.as_output(),
+            manifest,
+            toolchain.android_jar,
+            assets,
+            archives,
+            hidden = package_files + asset_dirs,
+        ),
+        category = "compose_preview_link",
+        identifier = _label(node.label),
+        local_only = True,
+    )
+    ensured = ctx.output.ensure_multiple([apk, rjar])
+    block = {
+        # Empty when no resource dependency names one: the CLI reads the manifest's then.
+        "packageName": package or "",
+        "manifest": get_path_without_materialization(manifest, ctx) if manifest.is_source else ctx.output.ensure(manifest),
+        "resourceApk": ensured[0],
+        "rJar": ensured[1],
+    }
+    compile_sdk = _compile_sdk()
+    if compile_sdk != None:
+        block["compileSdk"] = compile_sdk
+    return block
+
 def _artifacts(ctx: bxl.Context):
     kinds = regex(ctx.cli_args.kinds)
     documents = []
+
+    # BXL allows one action registry per invocation; every Android library's link shares it.
+    actions = ctx.bxl_actions().actions
+    shared = {}
     for node in ctx.configured_targets(ctx.cli_args.target):
         # `prelude//rules.bzl:kotlin_library` -> `kotlin_library`
         if not kinds.match(node.rule_type.split(":")[-1]):
@@ -39,7 +158,7 @@ def _artifacts(ctx: bxl.Context):
             runtime.append(dep.jar)
             owners[dep.jar] = _label(dep.label)
         ensured = ctx.output.ensure_multiple(runtime)
-        documents.append({
+        document = {
             "schemaVersion": 1,
             "target": _label(node.label),
             "configuration": str(node.label.config()),
@@ -55,14 +174,27 @@ def _artifacts(ctx: bxl.Context):
                 for index, jar in enumerate(runtime)
                 if jar in owners
             },
-        })
+        }
+        android = _android(ctx, actions, shared, node, providers)
+        if android != None and "skip" in android:
+            # Skipped, not fatal: one such library must not fail a whole //... selection.
+            print("compose-preview: skipping {}: {}".format(_label(node.label), android["skip"]))
+            continue
+        if android != None:
+            document["schemaVersion"] = 2
+            document["android"] = android
+        documents.append(document)
     ctx.output.print_json({"targets": documents})
 
 artifacts = bxl_main(
     impl = _artifacts,
     cli_args = {
+        "java_home": cli_args.string(
+            default = "",
+            doc = "JDK that compiles an Android library's R classes. Defaults to [java] java_home.",
+        ),
         "kinds": cli_args.string(
-            default = "^(kotlin_library|java_library)$",
+            default = "^(kotlin_library|java_library|android_library)$",
             doc = "Regex over rule names. A target of another rule is skipped.",
         ),
         "target": cli_args.list(

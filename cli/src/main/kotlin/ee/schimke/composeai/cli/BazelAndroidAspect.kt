@@ -141,9 +141,31 @@ internal fun installBazelAndroidAspect(
   root: File,
   providers: Map<String, String> = emptyMap(),
   strict: Boolean = false,
+): List<File> =
+  installCliOwnedFiles(
+    root.resolve(BAZEL_ANDROID_ASPECT_DIR),
+    bazelAndroidAspectContents(providers),
+    strict,
+    regenerable = { it.startsWith(GENERATED_SHIM_HEADER) },
+  ) { kept ->
+    "Existing Android aspect files differ: ${kept.joinToString()}. Keep them and configure " +
+      "aspect, or move them before reinitializing."
+  }
+
+/**
+ * Writes [contents] (file name to text) into [directory], recording each file's hash in
+ * `installed.json`. A file is written when it is missing, still what a CLI wrote there (the record,
+ * or [previous] hashes of files earlier releases wrote before keeping one), or [regenerable]; one
+ * edited by hand is kept, or with [strict] fails with [conflict]'s message. Returns the files kept.
+ */
+internal fun installCliOwnedFiles(
+  directory: File,
+  contents: Map<String, String>,
+  strict: Boolean,
+  previous: Map<String, Set<String>> = emptyMap(),
+  regenerable: (String) -> Boolean = { false },
+  conflict: (List<File>) -> String,
 ): List<File> {
-  val directory = root.resolve(BAZEL_ANDROID_ASPECT_DIR)
-  val contents = bazelAndroidAspectContents(providers)
   val record = directory.resolve(INSTALLED_RECORD)
   val installed = runCatching {
     bazelJson.parseToJsonElement(record.readText()) as JsonObject
@@ -156,15 +178,12 @@ internal fun installBazelAndroidAspect(
     val current = file.takeIf { it.isFile }?.readText()
     when {
       current == null || current == text -> null
-      current.startsWith(GENERATED_SHIM_HEADER) -> null
-      installed[name] == sha256(current) -> null
+      regenerable(current) -> null
+      sha256(current).let { installed[name] == it || it in previous[name].orEmpty() } -> null
       else -> file
     }
   }
-  require(!strict || kept.isEmpty()) {
-    "Existing Android aspect files differ: ${kept.joinToString()}. Keep them and configure " +
-      "aspect, or move them before reinitializing."
-  }
+  require(!strict || kept.isEmpty()) { conflict(kept) }
   directory.mkdirs()
   contents.forEach { (name, text) ->
     val file = directory.resolve(name)

@@ -51,10 +51,12 @@ mkdir "$work/classes"
 find "$work/gen" -name '*.java' | LC_ALL=C sort | sed 's/[\\"]/\\&/g; s/.*/"&"/' > "$work/sources"
 # Batched, with room to spare: one javac over hundreds of large R.java files exhausts the default
 # heap. Each R class stands alone, so the batches compile independently into one directory.
+# --release 11: the R classes load in the render JVM, which can be older than the JDK compiling
+# them (Buck2's [java] java_home is 21 while the daemon runs on 17).
 if [ -s "$work/sources" ]; then
   split -l 100 "$work/sources" "$work/batch."
   for batch in "$work"/batch.*; do
-    "$jdk/bin/javac" -J-Xmx2g -nowarn -encoding UTF-8 -d "$work/classes" "@$batch"
+    "$jdk/bin/javac" -J-Xmx2g --release 11 -nowarn -encoding UTF-8 -d "$work/classes" "@$batch"
   done
 fi
 "$jdk/bin/jar" -J-Xmx1g --create --file "$rjar" --date=1980-01-01T00:00:02Z -C "$work/classes" .
