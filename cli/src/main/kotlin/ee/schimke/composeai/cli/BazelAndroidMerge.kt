@@ -126,6 +126,7 @@ internal fun linkAndroidMerge(
       rJar,
       plan.compileSdk,
       compileSdkSource = plan.compileSdk?.let { "the highest of the merged targets" },
+      androidJar = plan.tools.androidJar,
     )
   val fingerprint = androidMergeFingerprint(plan)
   if (

@@ -194,14 +194,16 @@ internal fun BazelArtifacts.resolve(
     // The aspect omits compileSdk when the target's android.jar path names no `android-<N>`; the
     // SDK platform that jar belongs to, or failing that the jar itself, still says which level it
     // is. A configured level overrides all three.
+    // Resolved on its own, so the jar survives a link block whose other inputs are unusable.
+    val androidJar =
+      link?.androidJar
+        ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() }
     val detected =
       compileSdkOverride?.let {
         AndroidPlatformLevel.Detected(it, "androidCompileSdk in bazel.json")
       }
         ?: block.compileSdk?.let { AndroidPlatformLevel.Detected(it, "the aspect") }
-        ?: (link?.androidJar
-            ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() })
-          ?.let(AndroidPlatformLevel::detect)
+        ?: androidJar?.let(AndroidPlatformLevel::detect)
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -216,6 +218,7 @@ internal fun BazelArtifacts.resolve(
       compileSdk = detected?.level,
       compileSdkSource = detected?.source,
       link = link,
+      androidJar = androidJar,
     )
   }
   return ResolvedBazelArtifacts(
@@ -260,6 +263,11 @@ internal data class ResolvedAndroidArtifacts(
   val link: ResolvedAndroidLink? = null,
   /** What [compileSdk] was read from, for the log line naming the SDK a render uses. */
   val compileSdkSource: String? = null,
+  /**
+   * The android.jar the target linked against, when the aspect reported it. Kept apart from [link],
+   * which a merged target drops and an unusable link input discards whole.
+   */
+  val androidJar: File? = null,
 )
 
 internal data class ResolvedBazelArtifacts(

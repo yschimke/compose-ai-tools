@@ -802,7 +802,7 @@ internal fun prepareBazelAndroidDaemon(
   // The android.jar the target linked against, when the aspect reported it: the host SDK's newest
   // platform may be one Robolectric or the target does not match.
   val androidJar =
-    android.link?.androidJar?.takeIf { it.isFile }
+    android.androidJar?.takeIf { it.isFile }
       ?: checkNotNull(
         AndroidBundleLaunch.resolveAndroidJar(
           localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile }

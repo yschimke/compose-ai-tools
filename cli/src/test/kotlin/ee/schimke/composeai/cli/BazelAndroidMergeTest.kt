@@ -214,6 +214,8 @@ class BazelAndroidMergeTest {
 
     assertTrue(linked.resourceApk.isFile && linked.rJar!!.isFile)
     assertEquals("com.example.ui", linked.packageName)
+    // The merged APK carries no link block, but still renders against the linked android.jar.
+    assertEquals(withScript.androidJar, linked.androidJar)
     assertTrue(linked.manifest.readText().contains("package=\"com.example.ui\""))
     val args = calls.readLines().single().split(" ")
     assertEquals("com.example.theme:com.example.feature", args[6])

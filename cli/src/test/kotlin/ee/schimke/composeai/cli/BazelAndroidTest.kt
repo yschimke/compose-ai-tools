@@ -200,22 +200,8 @@ class BazelAndroidTest {
     val hostJar = root.file("sdk/platforms/android-37.0/android.jar")
     root.file("local.properties", "sdk.dir=${root.resolve("sdk").absolutePath}\n")
     val linkedJar = root.file("execroot/external/androidsdk/platforms/android-36/android.jar")
-    val artifacts =
-      resolved.copy(
-        android =
-          resolved.android!!.copy(
-            link =
-              ResolvedAndroidLink(
-                script = root.file("link.sh"),
-                aapt2 = root.file("aapt2"),
-                javaHome = root.resolve("jdk"),
-                androidJar = linkedJar,
-                packages = listOf("com.example.ui"),
-                compiledResources = emptyList(),
-                assets = emptyList(),
-              )
-          )
-      )
+    // No link block: a merged target carries none, yet still knows its android.jar.
+    val artifacts = resolved.copy(android = resolved.android!!.copy(androidJar = linkedJar))
     val sidecar = root.resolve("lib-daemon-android").apply { mkdirs() }
     sidecar.file("daemon-android.jar")
     val output = root.resolve("out").apply { mkdirs() }
