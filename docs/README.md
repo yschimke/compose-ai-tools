@@ -120,6 +120,7 @@ not as separate docs — read them next to the code.
 - [Optional UID design audit CI](UID_DESIGN_AUDIT_CI.md): shared, default-branch OpenRouter audit of bounded preview artifacts.
 
 - [Bazel CLI and configurable artifact producers](BAZEL.md) — aspect setup, discovery/rendering, and internal build-system configuration.
+- [Buck2](BUCK.md) — the same driver over a BXL script: detection, target selection and `buck.json`.
 
 - [Offline deployment](OFFLINE.md) — `COMPOSE_PREVIEW_NO_NETWORK`, the one switch that refuses every outbound path of the CLI, which directories to pre-provision, and how to verify nothing is fetched.
 

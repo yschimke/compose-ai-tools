@@ -37,6 +37,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "design" to { a -> DesignCommand(a).run() },
     "a2ui" to { a -> A2uiCommand(a).run() },
     "bazel" to { a -> BazelCommand(a).run() },
+    "buck" to { a -> BazelCommand(a + listOf("--build-system", "buck")).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -151,11 +152,11 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
-      setup     update · provision · init-script · pin · auth · bazel
+      setup     update · provision · init-script · pin · auth · bazel · buck
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
-    Project builds: Gradle settings/wrapper first, otherwise Bazel/Blaze workspace or BUILD files.
-      list/render/show accept --target <label> and --build-system auto|gradle|bazel|blaze.
+    Project builds: Gradle settings/wrapper first, then a Buck2 project or Bazel/Blaze workspace.
+      list/render/show accept --target <label> and --build-system auto|gradle|bazel|blaze|buck.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
       --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
@@ -304,6 +305,7 @@ private fun printFullUsage() {
                        [--server] [--mcp] [--xr] [--all] [--android-sdk <n>] [--json]`
       bazel            init | list | prepare | render for an existing Compose JVM target.
                        Run `compose-preview bazel --help` for setup and build configuration.
+      buck             The same for a Buck2 JVM library, collected through a BXL script.
       init-script      Materialise the bundled auto-inject init script and print the path
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses

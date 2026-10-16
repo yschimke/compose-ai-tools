@@ -42,7 +42,7 @@ internal object CliRouter {
       // the same server binary: `build-host` is the Gradle half `serve` spawns, `ui-builder`
       // launches its `ui` command, and `design` / `a2ui` are clients of a running server.
       "share" to listOf("serve", "ui-builder", "design", "a2ui", "build-host", "share-preview"),
-      "setup" to listOf("update", "provision", "init-script", "pin", "auth", "bazel"),
+      "setup" to listOf("update", "provision", "init-script", "pin", "auth", "bazel", "buck"),
     )
 
   /** Pseudo-commands that aren't backed by a `Command` class but are valid flat verbs. */

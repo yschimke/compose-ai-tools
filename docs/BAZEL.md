@@ -16,6 +16,9 @@ compose-preview show --filter Greeting --json
 compose-preview render --filter Greeting --output greeting.png
 ```
 
+A Buck2 project (`.buckroot` / `.buckconfig`) uses the same driver through a BXL
+script; see [BUCK.md](BUCK.md).
+
 Gradle settings (`settings.gradle.kts` / `settings.gradle`) win within a workspace,
 with the existing wrapper fallback. Otherwise `MODULE.bazel`, `WORKSPACE[.bazel]`,
 `.blazerc`, or BUILD files select the Bazel-family driver. Nested workspaces and
