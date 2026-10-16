@@ -313,6 +313,46 @@ which links an `android_library`'s resources itself:
 }
 ```
 
+### Without `@rules_compose_preview`
+
+A workspace that does not fetch the rules module uses the copy the CLI bundles instead:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "//app:ui",
+  "aspect": "//.compose-preview/bazel/android:android.bzl%compose_preview_android_aspect"
+}
+```
+
+The CLI installs that package (`android.bzl`, `android_providers.bzl`, `java_info.bzl`,
+`runtime.bzl`, `link.sh`) on first use, or up front with `compose-preview bazel init --android`.
+The files are copied byte for byte from one rules release (`provenance.json` beside them names it;
+`scripts/sync-bazel-android-aspect.py <tag>` refreshes them). It is a package of its own, so the JVM
+aspect in `.compose-preview/bazel/` is unchanged. `installed.json` records what the CLI wrote: a
+newer CLI upgrades those files, and a file edited by hand is kept (`bazel init --android` fails on
+one instead).
+
+Where the Java or Android rules live elsewhere, `providers` points the two shims at them, and the
+CLI generates `java_info.bzl` and `android_providers.bzl` from it. A provider names the `.bzl` that
+exports it, with `%Name` when its name there differs; `JDK_RUNTIME` and
+`ANDROID_SDK_TOOLCHAIN_TYPE` name labels. Unset entries keep the rules' defaults:
+
+```json
+{
+  "schemaVersion": 1,
+  "aspect": "//.compose-preview/bazel/android:android.bzl%compose_preview_android_aspect",
+  "providers": {
+    "JavaInfo": "//tools/build_defs/java:providers.bzl%JavaInfo",
+    "JavaRuntimeInfo": "//tools/build_defs/java:providers.bzl",
+    "JDK_RUNTIME": "//tools/jdk:jdk17",
+    "AndroidIdeInfo": "//tools/build_defs/android:providers.bzl",
+    "StarlarkAndroidResourcesInfo": "//tools/build_defs/android:providers.bzl",
+    "ANDROID_SDK_TOOLCHAIN_TYPE": "//tools/android:sdk_toolchain_type"
+  }
+}
+```
+
 The Android daemon (`lib-daemon-android`) and `android.jar` (from `ANDROID_HOME`,
 `ANDROID_SDK_ROOT` or `local.properties`) are resolved as for `bundle daemon`.
 Robolectric fetches `android-all-instrumented` from Maven Central on first render;

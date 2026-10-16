@@ -116,35 +116,40 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       }
 
     val javaBin = locateJava()
-    val command = buildList {
-      add(javaBin)
-      addAll(launch.jvmArgs)
-      // PROTOCOL.md § 3a: the client does the `initialize` round-trip on stdin.
-      add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
-      add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
-      // IR replay inputs (Piece B); present only for a bundle that carries IR.
-      irDir?.let { add("-D${IR_DIR_PROP}=${it.absolutePath}") }
-      bundleManifestFile?.let { add("-D${BUNDLE_MANIFEST_PATH_PROP}=${it.absolutePath}") }
-      // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
-      add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
-      // Viewer-only: a missing app resource renders a placeholder instead of throwing. The
-      // pack-time daemon leaves this off so published stickers fail loudly.
-      add("-Dcomposeai.render.placeholderMissingResources=true")
-      for (prop in launch.sysProps) add(prop)
-      add("-cp")
-      add(
-        composeDaemonClasspath(
-          // The resource carriage must reach every android bundle's `-cp`, not only IR ones, so it
-          // goes into the base classpath outside the `hasIr` gate.
-          base =
-            (listOf(launch.classpath) + androidReplayClasspath.map { it.absolutePath })
-              .joinToString(File.pathSeparator),
-          carriedDeps = libJars + resolvedJars,
-          hasIr = hasIr,
-        )
+    // A large bundle's classpath and class dirs outgrow one execve argument; see fitJavaCommand.
+    val command =
+      fitJavaCommand(
+        buildList {
+          add(javaBin)
+          addAll(launch.jvmArgs)
+          // PROTOCOL.md § 3a: the client does the `initialize` round-trip on stdin.
+          add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
+          add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
+          // IR replay inputs (Piece B); present only for a bundle that carries IR.
+          irDir?.let { add("-D${IR_DIR_PROP}=${it.absolutePath}") }
+          bundleManifestFile?.let { add("-D${BUNDLE_MANIFEST_PATH_PROP}=${it.absolutePath}") }
+          // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
+          add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
+          // Viewer-only: a missing app resource renders a placeholder instead of throwing. The
+          // pack-time daemon leaves this off so published stickers fail loudly.
+          add("-Dcomposeai.render.placeholderMissingResources=true")
+          for (prop in launch.sysProps) add(prop)
+          add("-cp")
+          add(
+            composeDaemonClasspath(
+              // The resource carriage must reach every android bundle's `-cp`, not only IR ones, so
+              // it
+              // goes into the base classpath outside the `hasIr` gate.
+              base =
+                (listOf(launch.classpath) + androidReplayClasspath.map { it.absolutePath })
+                  .joinToString(File.pathSeparator),
+              carriedDeps = libJars + resolvedJars,
+              hasIr = hasIr,
+            )
+          )
+          add("ee.schimke.composeai.daemon.DaemonMain")
+        }
       )
-      add("ee.schimke.composeai.daemon.DaemonMain")
-    }
 
     if (verbose) {
       System.err.println("[bundle-daemon] working dir: ${workDir.absolutePath}")

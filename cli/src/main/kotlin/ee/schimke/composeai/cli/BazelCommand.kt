@@ -91,6 +91,16 @@ internal class BazelCommand(
     if (operation == "init") {
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
+      if ("--android" in args) {
+        val providers =
+          root
+            .resolve(".compose-preview/bazel.json")
+            .takeIf { it.isFile }
+            ?.let { bazelJson.decodeFromString<BazelBuildConfig>(it.readText()).providers }
+            .orEmpty()
+        installBazelAndroidAspect(root, providers, strict = true)
+        println("Installed $DEFAULT_BAZEL_ANDROID_ASPECT")
+      }
       return emptyList()
     }
     val configFile =
@@ -208,6 +218,13 @@ internal class BazelCommand(
           targets.size > 1 || selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
         if (candidates) {
           System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
+        }
+        // The bundled Android aspect is kept current: a missing or CLI-written file is
+        // (re)installed, one edited by hand is left alone.
+        if (config.aspect == DEFAULT_BAZEL_ANDROID_ASPECT && config.installAspect) {
+          installBazelAndroidAspect(root, config.providers).forEach {
+            System.err.println("[bazel] keeping locally edited $it")
+          }
         }
         // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
         if (
@@ -580,7 +597,7 @@ internal class BazelCommand(
       compose-preview bazel — discover/render an existing Compose Multiplatform JVM target
 
       Usage:
-        compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>]
+        compose-preview bazel init [--project <workspace>] [--java-info-load <provider.bzl>] [--android]
         compose-preview list [--target //app:ui] [--json]
         compose-preview list --target //app/... [--target -//app/legacy/...] [--json]
         compose-preview bazel list [--target //app:ui] [--json]
@@ -604,7 +621,11 @@ internal class BazelCommand(
                                   ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
                                   (bazelisk), then bazel/bazelisk/blaze on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
-      --aspect <label.bzl%name>   Override the aspect entry point.
+      --aspect <label.bzl%name>   Override the aspect entry point. For Android targets without
+                                  @rules_compose_preview, set aspect to
+                                  $DEFAULT_BAZEL_ANDROID_ASPECT:
+                                  the CLI installs that package (init --android does it up front);
+                                  "providers" in bazel.json points its shims at internal rules.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
                                   the JVM providers instead of an aspect; .compose-preview/buck.json
                                   configures it. --target takes //app:lib, //pkg: and //dir/...;
