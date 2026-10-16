@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.66.0](https://github.com/yschimke/compose-ai-tools/compare/v2.65.0...v2.66.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** bundle the Android Bazel aspect and fit long java commands ([#6054](https://github.com/yschimke/compose-ai-tools/issues/6054)) ([c6a4f3f](https://github.com/yschimke/compose-ai-tools/commit/c6a4f3f82d5b7cb7ec6ae91767b7122137e1cc23))
+
+
+### Bug Fixes
+
+* **cli:** bundle the rc.13 Android aspect and consume daemon 3.18.5 ([#6056](https://github.com/yschimke/compose-ai-tools/issues/6056)) ([15b0625](https://github.com/yschimke/compose-ai-tools/commit/15b0625b1f29d7d0cdbd79663c11c7db7eb7532c))
+
 ## [2.65.0](https://github.com/yschimke/compose-ai-tools/compare/v2.64.5...v2.65.0) (2026-10-16)
 
 
