@@ -27,6 +27,7 @@ internal data class BazelBuildConfig(
   /**
    * The `kind()` regex a pattern's matches are filtered by: rules the configured aspect can read.
    * Defaults to JVM rules, or Android library rules for an Android aspect ([defaultTargetKinds]).
+   * Buck2: a regex over rule names, default [DEFAULT_BUCK_TARGET_KINDS].
    */
   val targetKinds: String? = null,
   val buildCommand: List<String> = listOf("bazel"),
@@ -34,9 +35,11 @@ internal data class BazelBuildConfig(
   /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
   val buildArgs: List<String> = emptyList(),
   val aspect: String = DEFAULT_BAZEL_ASPECT,
+  /** Buck2 only: the BXL entry point that prints the artifacts documents ([DEFAULT_BUCK_BXL]). */
+  val bxl: String = DEFAULT_BUCK_BXL,
   /**
-   * When false, the default aspect is never copied into the source tree; a missing package fails
-   * and asks for a configured `aspect` label instead.
+   * When false, the default aspect (Buck2: the default BXL script) is never copied into the source
+   * tree; a missing one fails and asks for a configured `aspect` (`bxl`) label instead.
    */
   val installAspect: Boolean = true,
   /**

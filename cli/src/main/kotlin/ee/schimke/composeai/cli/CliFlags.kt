@@ -23,6 +23,7 @@ internal object CliFlags {
       "--config",
       "--build-command",
       "--bazel-arg",
+      "--buck-arg",
       "--aspect",
       "--artifacts",
       "--execution-root",

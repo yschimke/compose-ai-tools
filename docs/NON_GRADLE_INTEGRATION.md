@@ -11,6 +11,8 @@ For an already-building Compose Desktop target, start with
 [`compose-preview bazel`](BAZEL.md): it attaches a small runtime aspect, builds the
 selected target, discovers previews and prepares/renders through these contracts.
 It also accepts artifact JSON from other build systems without running Bazel.
+A Buck2 project is detected the same way and collected through a BXL script
+instead of an aspect ([BUCK.md](BUCK.md)).
 
 The two contracts you implement against:
 
