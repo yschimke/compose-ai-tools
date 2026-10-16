@@ -305,7 +305,7 @@ private fun printFullUsage() {
                        [--server] [--mcp] [--xr] [--all] [--android-sdk <n>] [--json]`
       bazel            init | list | prepare | render for an existing Compose JVM target.
                        Run `compose-preview bazel --help` for setup and build configuration.
-      buck             The same for a Buck2 JVM library, collected through a BXL script.
+      buck             The same for a Buck2 JVM or Android library, collected through BXL.
       init-script      Materialise the bundled auto-inject init script and print the path
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses

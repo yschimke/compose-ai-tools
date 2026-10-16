@@ -8,6 +8,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * The Buck2 driver up to the shared artifacts resolution: detection, routing, target selection, the
@@ -205,13 +207,66 @@ class BuckBuildTest {
     }
 
   @Test
-  fun `the bundled BXL script is installed once and a local copy is kept`() = project { root ->
-    installBuckBxl(root)
-    val file = root.resolve(".compose-preview/buck/compose_preview.bxl")
-    assertTrue("bxl_main" in file.readText())
-    installBuckBxl(root)
-    file.appendText("# local\n")
-    assertFailsWith<IllegalArgumentException> { installBuckBxl(root) }
+  fun `the bundled BXL files are installed, upgraded, and a local edit is kept`() =
+    project { root ->
+      val bxl = root.resolve(".compose-preview/buck/compose_preview.bxl")
+      val link = root.resolve(".compose-preview/buck/link_sh.bxl")
+      assertEquals(emptyList(), installBuckBxl(root, strict = true))
+      assertTrue("bxl_main" in bxl.readText())
+      assertTrue("load(\":link_sh.bxl\", \"LINK_SH\")" in bxl.readText())
+      // The bundled link.sh, byte for byte, as the raw string the script writes out.
+      val linkSh =
+        requireNotNull(BazelCommand::class.java.getResourceAsStream("bazel/android/link.sh"))
+          .reader()
+          .use { it.readText() }
+      assertEquals("${LINK_SH_BXL_HEADER}LINK_SH = r\"\"\"$linkSh\"\"\"\n", link.readText())
+      val bundled = bxl.readText()
+
+      // A copy this CLI wrote is its own: a later install overwrites it.
+      bxl.writeText("# from an older CLI\n")
+      root.resolve(".compose-preview/buck/installed.json").let {
+        it.writeText(it.readText().replace(sha256Hex(bundled), sha256Hex(bxl.readText())))
+      }
+      assertEquals(emptyList(), installBuckBxl(root))
+      assertEquals(bundled, bxl.readText())
+
+      // An edit nobody recorded is kept, and fails an explicit init.
+      bxl.appendText("# local\n")
+      assertEquals(listOf(bxl), installBuckBxl(root))
+      assertTrue(bxl.readText().endsWith("# local\n"))
+      assertFailsWith<IllegalArgumentException> { installBuckBxl(root, strict = true) }
+    }
+
+  @Test
+  fun `the JVM-only script 2_65 and 2_66 installed is upgraded without a record`() =
+    project { root ->
+      val dir = root.resolve(".compose-preview/buck").apply { mkdirs() }
+      val shipped =
+        requireNotNull(javaClass.getResourceAsStream("/buck/compose_preview-2.65.bxl"))
+          .reader()
+          .use { it.readText() }
+      dir.resolve("compose_preview.bxl").writeText(shipped)
+      assertEquals(emptyList(), installBuckBxl(root))
+      assertTrue("android_library" in dir.resolve("compose_preview.bxl").readText())
+    }
+
+  @Test
+  fun `an Android document without a package takes its manifest's`() = project { root ->
+    root.resolve("app").mkdirs()
+    root.resolve("app/AndroidManifest.xml").writeText("<manifest package=\"com.example.app\"/>")
+    val document =
+      """{"target":"root//app:app","android":{"packageName":"","manifest":"app/AndroidManifest.xml"}}"""
+    fun packageOf(text: String) =
+      (((bazelJson.parseToJsonElement(text) as JsonObject)["android"] as JsonObject)["packageName"]
+          as JsonPrimitive)
+        .content
+    assertEquals("com.example.app", packageOf(withManifestPackage(document, root)))
+    val named = document.replace("\"packageName\":\"\"", "\"packageName\":\"com.example.res\"")
+    assertEquals(named, withManifestPackage(named, root))
+    val jvm = """{"target":"root//app:lib"}"""
+    assertEquals(jvm, withManifestPackage(jvm, root))
+    root.resolve("app/AndroidManifest.xml").writeText("<manifest/>")
+    assertFailsWith<IllegalArgumentException> { withManifestPackage(document, root) }
   }
 
   @Test
@@ -236,4 +291,9 @@ class BuckBuildTest {
     host.discoverAndBuild()
     assertEquals("buck", calls.single().flagValue("--build-system"))
   }
+
+  private fun sha256Hex(text: String): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") {
+      "%02x".format(it)
+    }
 }

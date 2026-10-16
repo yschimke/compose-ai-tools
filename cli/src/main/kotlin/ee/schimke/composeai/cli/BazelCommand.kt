@@ -84,7 +84,7 @@ internal class BazelCommand(
       "--aspect is Bazel-only; set bxl in .compose-preview/buck.json for another BXL script"
     }
     if (operation == "init" && buck) {
-      installBuckBxl(root)
+      installBuckBxl(root, strict = true)
       println("Installed $DEFAULT_BUCK_BXL")
       return emptyList()
     }
@@ -178,22 +178,24 @@ internal class BazelCommand(
           else BuckBuild().selectTargets(root, invocationDirectory ?: requestedDirectory, config)
         selectionLabel = selection.label
         candidates = selection.targets.size > 1 || selection.targets.any(::isBuckTargetPattern)
-        // A configured (non-default) BXL label is used as-is; nothing is written to the tree.
-        if (
-          config.bxl == DEFAULT_BUCK_BXL &&
-            !root.resolve(".compose-preview/buck/compose_preview.bxl").isFile
-        ) {
-          require(config.installAspect) {
-            "installAspect is false and $DEFAULT_BUCK_BXL is missing; configure bxl"
+        // A configured (non-default) BXL label is used as-is; nothing is written to the tree. The
+        // bundled files are kept current: a missing or CLI-written one is (re)installed, one
+        // edited by hand is left alone.
+        if (config.bxl == DEFAULT_BUCK_BXL) {
+          if (config.installAspect) {
+            installBuckBxl(root).forEach { System.err.println("[buck] keeping locally edited $it") }
+          } else {
+            require(root.resolve("$BUCK_BXL_DIR/compose_preview.bxl").isFile) {
+              "installAspect is false and $DEFAULT_BUCK_BXL is missing; configure bxl"
+            }
           }
-          installBuckBxl(root)
         }
         BuckBuild()
           .collectAll(root, selection.targets, config, timeout, skipWithoutMetadata = candidates)
           .also { built ->
             if (candidates) {
               System.err.println(
-                "[buck] ${built.size} JVM target(s): ${built.joinToString(" ") { it.metadata.target }}"
+                "[buck] ${built.size} target(s): ${built.joinToString(" ") { it.metadata.target }}"
               )
             }
           }
@@ -627,7 +629,8 @@ internal class BazelCommand(
                                   the CLI installs that package (init --android does it up front);
                                   "providers" in bazel.json points its shims at internal rules.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
-                                  the JVM providers instead of an aspect; .compose-preview/buck.json
+                                  the JVM and Android providers instead of an aspect, linking an
+                                  android_library's resources; .compose-preview/buck.json
                                   configures it. --target takes //app:lib, //pkg: and //dir/...;
                                   without one the current package (//pkg:) is selected.
       --buck-arg=<argument>       Repeatable buck2 bxl flags, e.g. --buck-arg=@mode/desktop.
