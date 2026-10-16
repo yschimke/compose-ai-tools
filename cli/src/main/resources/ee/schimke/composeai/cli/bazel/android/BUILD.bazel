@@ -1,0 +1,9 @@
+# Installed by compose-preview from rules_compose_preview's Android aspect (provenance.json names the
+# release). The aspect's own default labels (:link.sh) resolve in this package.
+exports_files([
+    "android.bzl",
+    "android_providers.bzl",
+    "java_info.bzl",
+    "link.sh",
+    "runtime.bzl",
+])

@@ -203,6 +203,7 @@ internal object CliFlagValidation {
       "--artifacts",
       "--execution-root",
       "--java-info-load",
+      "--android",
       "--out",
       "--output",
       "--id",

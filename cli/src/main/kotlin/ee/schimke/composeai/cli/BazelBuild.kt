@@ -35,6 +35,14 @@ internal data class BazelBuildConfig(
   /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
   val buildArgs: List<String> = emptyList(),
   val aspect: String = DEFAULT_BAZEL_ASPECT,
+  /**
+   * Where the installed Android aspect's shims load their providers from, for a deployment whose
+   * Java or Android rules live elsewhere: `JavaInfo`, `JavaRuntimeInfo`, `AndroidIdeInfo`,
+   * `StarlarkAndroidResourcesInfo` name a `.bzl` (or `file.bzl%ExportedName`); `JDK_RUNTIME` and
+   * `ANDROID_SDK_TOOLCHAIN_TYPE` name a label. Unset ones keep the rules' defaults
+   * ([bazelProviderShim]).
+   */
+  val providers: Map<String, String> = emptyMap(),
   /** Buck2 only: the BXL entry point that prints the artifacts documents ([DEFAULT_BUCK_BXL]). */
   val bxl: String = DEFAULT_BUCK_BXL,
   /**
