@@ -214,6 +214,109 @@ class AndroidArtifactsTest {
   }
 
   @Test
+  fun `aar pins in a rules_jvm_external lockfile are known coordinates`() {
+    val root = Files.createTempDirectory("aar-pins").toFile()
+    try {
+      val lock =
+        root.resolve("maven_install.json").apply {
+          writeText(
+            """
+            |{"artifacts":{
+            |"androidx.activity:activity-compose:aar":{"shasums":{"jar":"${"a".repeat(64)}"},"version":"1.10.1"},
+            |"org.jetbrains.kotlin:kotlin-stdlib":{"shasums":{"jar":"${"b".repeat(64)}"},"version":"2.0.0"},
+            |"com.example:natives:jar:linux-x86_64":{"shasums":{"jar":"${"c".repeat(64)}"},"version":"1.0"},
+            |"com.example:parent:pom":{"shasums":{"jar":null},"version":"1.0"}}}
+            """
+              .trimMargin()
+          )
+        }
+      assertEquals(
+        setOf(
+          "androidx.activity:activity-compose:1.10.1:aar",
+          "org.jetbrains.kotlin:kotlin-stdlib:2.0.0:jar",
+        ),
+        bazelMavenCoordinates(listOf(lock))
+          .map { "${it.group}:${it.artifact}:${it.version}:${it.type}" }
+          .toSet(),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `an android bundle references aar_import jars by coordinate`() {
+    val root = Files.createTempDirectory("aar-bundle").toFile()
+    try {
+      val app = jar(root.resolve("app.jar"), "com/example/ui/GreetingKt.class" to "compiled")
+      // rules_android unpacks an AAR under the aar_import target's own name, not a Maven layout,
+      // and the merged classes jar's bytes are not the published `.aar`'s.
+      val unpacked = root.resolve("bazel-out/k8-fastbuild/bin/external/maven/_aar")
+      val classes =
+        jar(
+          unpacked.resolve("androidx_activity_activity_compose/classes_and_libs_merged.jar"),
+          "androidx/activity/compose/ComponentActivityKt.class" to "activity",
+        )
+      val aarR =
+        jar(
+          unpacked.resolve("androidx_activity_activity_compose/R.jar"),
+          "androidx/activity/compose/R.class" to "r",
+        )
+      val owner = "@@rules_jvm_external++maven+maven//:androidx_activity_activity_compose"
+      val lock =
+        root.resolve("maven_install.json").apply {
+          writeText(
+            """
+            |{"artifacts":{"androidx.activity:activity-compose:aar":
+            |{"shasums":{"jar":"${"a".repeat(64)}"},"version":"1.10.1"}}}
+            """
+              .trimMargin()
+          )
+        }
+      val preview =
+        PreviewInfo("com.example.ui.GreetingKt.Greeting", "Greeting", "com.example.ui.GreetingKt")
+      fun write(android: BazelAndroidResources?): BundleReader.Manifest =
+        writeBazelBundle(
+          "//app:ui",
+          listOf(app),
+          listOf(app, classes, aarR),
+          PreviewManifest(
+            "//app:ui",
+            if (android != null) "android" else "desktop",
+            listOf(preview),
+          ),
+          null,
+          setOf(preview.id),
+          listOf(lock),
+          root.resolve("bundle.png"),
+          embedDeps = false,
+          android = android,
+          dependencies =
+            DependencyResolutionOptions.Builder()
+              .apply { runtimeJarOwners = mapOf(classes to owner, aarR to owner) }
+              .build(),
+        )
+
+      val apk = root.resolve("resources.ap_").apply { writeText("apk") }
+      val manifest = root.resolve("AndroidManifest.xml").apply { writeText("<manifest/>") }
+      val android = write(BazelAndroidResources("com.example.ui", apk, manifest, null))
+      val maven = android.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+      assertEquals(
+        listOf("androidx.activity:activity-compose:1.10.1:aar"),
+        maven.map { "${it.group}:${it.artifact}:${it.version}:${it.type}" },
+      )
+      // The target's second jar names the same coordinate; resolving it twice would lose its bytes.
+      assertEquals(1, android.classpath.count { it is BundleReader.ClasspathEntry.Embedded })
+
+      // A Desktop bundle keeps its pre-policy identification: owner labels only under a policy.
+      val desktop = write(null)
+      assertTrue(desktop.classpath.none { it is BundleReader.ClasspathEntry.Maven })
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `render output leaves ignore unsafe names`() {
     val json =
       """
