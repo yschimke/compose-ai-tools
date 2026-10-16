@@ -23,8 +23,12 @@ public fun bazelMavenCoordinates(lockFiles: List<File>): List<BundleReader.Class
       (bazelJson.parseToJsonElement(file.readText()) as? JsonObject)?.get("artifacts")
         as? JsonObject ?: error("Expected rules_jvm_external artifacts in $file")
     artifacts.forEach artifactLoop@{ (coordinate, value) ->
+      // `group:artifact` for a jar; rules_jvm_external keys any other packaging as
+      // `group:artifact:packaging`, and an Android library is `…:aar`. Classifiers are skipped.
       val parts = coordinate.split(':')
-      if (parts.size != 2 || parts.any { it.isBlank() }) return@artifactLoop
+      if (parts.size !in 2..3 || parts.any { it.isBlank() }) return@artifactLoop
+      val type = parts.getOrNull(2) ?: "jar"
+      if (type != "jar" && type != "aar") return@artifactLoop
       val artifact = value as? JsonObject ?: return@artifactLoop
       val version = artifact["version"]?.jsonPrimitive?.contentOrNull ?: return@artifactLoop
       val sha =
@@ -34,7 +38,7 @@ public fun bazelMavenCoordinates(lockFiles: List<File>): List<BundleReader.Class
           ?.contentOrNull
           ?.lowercase()
           ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
-      entries.add(BundleReader.ClasspathEntry.Maven(parts[0], parts[1], version, "jar", sha))
+      entries.add(BundleReader.ClasspathEntry.Maven(parts[0], parts[1], version, type, sha))
     }
   }
   return entries.toList()
@@ -380,8 +384,9 @@ public fun writeBazelBundle(
 /**
  * [writeBazelBundle] under a `dependencyPolicy` (#6016): [dependencies] decides, per runtime jar,
  * whether it travels as a coordinate (possibly a substituted, approximate one) or embedded.
- * [embedDeps] still embeds everything. With [DependencyResolutionOptions.DEFAULT] the bundle is
- * byte-for-byte what it was before policies existed.
+ * [embedDeps] still embeds everything. With [DependencyResolutionOptions.DEFAULT] a Desktop bundle
+ * is byte-for-byte what it was before policies existed; an Android one also reads owner labels and
+ * version stamps, which is how its `aar_import` jars are identified.
  */
 public fun writeBazelBundle(
   modulePath: String,
@@ -398,6 +403,17 @@ public fun writeBazelBundle(
 ): BundleReader.Manifest {
   val policy = dependencies.policy
   val owners = dependencies.runtimeJarOwners.mapKeys { it.key.absoluteFile.normalize() }
+  // An Android library's dependencies are mostly `aar_import` jars, whose path names the Bazel
+  // target rather than the Maven layout and whose bytes are not the published `.aar`'s; their owner
+  // label and androidx version stamp are what identifies them. Android bundles have no pre-policy
+  // bytes to preserve, so they read both by default; a Desktop bundle still reads them only under a
+  // configured policy.
+  val ownerLabels = policy.ownerLabels || android != null
+  val versionStamps = policy.versionStamps || android != null
+  // An `aar_import` target can own more than one runtime jar (its classes and its own R classes),
+  // and both carry its label. Only the first may travel as the coordinate; a later jar named the
+  // same is embedded, since resolving the coordinate again would silently drop its bytes.
+  val claimed = mutableSetOf<String>()
   var substituted = false
   val previews = discovery.previews.filter { it.id in selectedIds }.sortedBy { it.id }
   require(previews.isNotEmpty()) { "No previews selected for bundle" }
@@ -427,11 +443,12 @@ public fun writeBazelBundle(
       val sha = bazelBundleSha(jar)
       val match =
         matchBazelMaven(
-          jar,
-          known,
-          versionStamps = policy.versionStamps,
-          ownerLabel = if (policy.ownerLabels) owners[jar.absoluteFile.normalize()] else null,
-        )
+            jar,
+            known,
+            versionStamps = versionStamps,
+            ownerLabel = if (ownerLabels) owners[jar.absoluteFile.normalize()] else null,
+          )
+          ?.takeUnless { android != null && !claimed.add(it.coordinate.gav()) }
       val outcome =
         applyDependencyPolicy(match, sha, known, policy, dependencies.releasedVersions, embedDeps)
       // The record keeps naming what the jar was identified as; a substitution names both.
