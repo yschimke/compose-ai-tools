@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.65.0](https://github.com/yschimke/compose-ai-tools/compare/v2.64.5...v2.65.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** render previews from Buck2 projects through a BXL script ([#6050](https://github.com/yschimke/compose-ai-tools/issues/6050)) ([c4968e4](https://github.com/yschimke/compose-ai-tools/commit/c4968e43373d9e281b6fef43f9f8b4fd6b112b63))
+
 ## [2.64.5](https://github.com/yschimke/compose-ai-tools/compare/v2.64.4...v2.64.5) (2026-10-16)
 
 
