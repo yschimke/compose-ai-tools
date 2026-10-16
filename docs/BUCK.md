@@ -89,7 +89,8 @@ rules_compose_preview, run as a BXL action:
   toolchain; the JDK that compiles the R classes is `[java] java_home`, or
   `--java-home` to the script.
 - **Package:** the `package` of the library's `android_resource` deps, else its
-  manifest's.
+  manifest's. A library with neither a manifest nor such a dep is skipped with a
+  warning: it is not a JVM target either.
 - **SDK level:** `[android] compile_sdk_version` (`android-<N>`), clamped to
   what Robolectric renders on the daemon's JDK.
 

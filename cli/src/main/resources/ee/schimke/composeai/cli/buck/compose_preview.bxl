@@ -44,7 +44,8 @@ def _compile_sdk() -> int | None:
     return int(level) if level and level.isdigit() else None
 
 def _android(ctx: bxl.Context, actions, shared: dict[str, typing.Any], node, providers) -> dict[str, typing.Any] | None:
-    """The schema 2 `android` block, or None for a target that is not an Android library."""
+    """The schema 2 `android` block, None for a target that is not an Android library, or a
+    `skip` reason for one that cannot be linked."""
     if AndroidPackageableInfo not in providers or not node.has_attr("_android_toolchain"):
         return None
     attrs = node.resolved_attrs_eager(ctx)
@@ -70,7 +71,9 @@ def _android(ctx: bxl.Context, actions, shared: dict[str, typing.Any], node, pro
                 break
     if manifest == None:
         if package == None:
-            return None
+            # Not a JVM target either: reporting it as schema 1 would render Android bytecode on
+            # the desktop daemon.
+            return {"skip": "no manifest, and no android_resource dep naming a package"}
         manifest = actions.write(
             prefix + "AndroidManifest.xml",
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{}" />\n'.format(package),
@@ -173,6 +176,10 @@ def _artifacts(ctx: bxl.Context):
             },
         }
         android = _android(ctx, actions, shared, node, providers)
+        if android != None and "skip" in android:
+            # Skipped, not fatal: one such library must not fail a whole //... selection.
+            print("compose-preview: skipping {}: {}".format(_label(node.label), android["skip"]))
+            continue
         if android != None:
             document["schemaVersion"] = 2
             document["android"] = android
