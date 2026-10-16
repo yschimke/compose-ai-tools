@@ -78,22 +78,31 @@ internal data class BazelBuildConfig(
 /**
  * The prefixes `composeai.render.clockPackages` names for [android] under [config]'s
  * [BazelBuildConfig.pinAppClock]: the configured [BazelBuildConfig.appClockPackages], else the
- * target's `packageName` with a trailing `.`. Empty when pinning is off (`"pinAppClock": false`),
- * for a JVM target, or when no package is known. The daemon drops any prefix overlapping the JDK,
- * Kotlin, Robolectric, the framework or itself.
+ * target's `packageName` with a trailing `.` plus [WEAR_COMPOSE_CLOCK_PACKAGE]. Empty when pinning
+ * is off (`"pinAppClock": false`) or for a JVM target. The daemon drops any prefix overlapping the
+ * JDK, Kotlin, Robolectric, the framework or itself.
  */
 internal fun bazelClockPackages(
   config: BazelBuildConfig,
   android: ResolvedAndroidArtifacts?,
 ): List<String> {
   if (!config.pinAppClock || android == null) return emptyList()
-  val default = android.packageName.trim().let { if (it.isEmpty()) emptyList() else listOf("$it.") }
+  val default =
+    android.packageName.trim().let { if (it.isEmpty()) emptyList() else listOf("$it.") } +
+      WEAR_COMPOSE_CLOCK_PACKAGE
   // Never an empty (or dots-only) prefix: it would instrument every class.
   return (config.appClockPackages ?: default)
     .map { it.trim() }
     .filter { it.trimEnd('.').isNotEmpty() }
     .distinct()
 }
+
+/**
+ * Pinned by default alongside the target's own package: Wear Compose's `TimeText` reads the clock
+ * inside `androidx.wear.compose` (`materialcore.ResourcesKt.currentTimeMillis`), never in the app's
+ * package, so a Wear preview otherwise renders the host's wall-clock time.
+ */
+internal const val WEAR_COMPOSE_CLOCK_PACKAGE = "androidx.wear.compose."
 
 internal const val DEFAULT_BAZEL_ASPECT =
   "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect"

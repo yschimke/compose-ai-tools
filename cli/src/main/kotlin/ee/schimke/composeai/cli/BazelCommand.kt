@@ -799,14 +799,17 @@ internal fun prepareBazelAndroidDaemon(
   check(daemonJars.isNotEmpty()) {
     "Android daemon sidecar missing; looked in ${bundleSidecarSearchDescription("lib-daemon-android")}"
   }
+  // The android.jar the target linked against, when the aspect reported it: the host SDK's newest
+  // platform may be one Robolectric or the target does not match.
   val androidJar =
-    checkNotNull(
-      AndroidBundleLaunch.resolveAndroidJar(
-        localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile }
-      )
-    ) {
-      "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
-    }
+    android.link?.androidJar?.takeIf { it.isFile }
+      ?: checkNotNull(
+        AndroidBundleLaunch.resolveAndroidJar(
+          localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile }
+        )
+      ) {
+        "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
+      }
   val output = prepared.manifestFile.parentFile
   val resources =
     AndroidBundleResources.daemonClasspath(
