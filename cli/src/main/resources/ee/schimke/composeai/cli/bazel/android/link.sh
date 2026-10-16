@@ -13,7 +13,10 @@
 set -eu
 aapt2="$1"; jdk="$2"; apk="$3"; rjar="$4"; manifest="$5"; android_jar="$6"; extra="$7"; assets="$8"
 shift 8
-work="$(mktemp -d)"
+# Scratch beside the output, never in /tmp: remote executors often mount a small tmpfs there, and a
+# link over a few hundred resource packages generates tens of megabytes of R sources.
+# A unique name, so a caller's own file beside the output is never touched.
+work="$(mktemp -d "$(dirname "$apk")/.compose-preview-link.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 overlays=""
 for zip in "$@"; do overlays="$overlays -R $zip"; done
@@ -44,6 +47,14 @@ fi
 "$aapt2" link -o "$apk" --manifest "$manifest" -I "$android_jar" --auto-add-overlay \
   --no-version-vectors --java "$work/gen" $extra_flag $assets_flag $overlays
 mkdir "$work/classes"
-find "$work/gen" -name '*.java' > "$work/sources"
-"$jdk/bin/javac" -nowarn -encoding UTF-8 -d "$work/classes" "@$work/sources"
-"$jdk/bin/jar" --create --file "$rjar" --date=1980-01-01T00:00:02Z -C "$work/classes" .
+# Quoted for javac's argfile syntax: the scratch directory inherits the output path, spaces included.
+find "$work/gen" -name '*.java' | LC_ALL=C sort | sed 's/[\\"]/\\&/g; s/.*/"&"/' > "$work/sources"
+# Batched, with room to spare: one javac over hundreds of large R.java files exhausts the default
+# heap. Each R class stands alone, so the batches compile independently into one directory.
+if [ -s "$work/sources" ]; then
+  split -l 100 "$work/sources" "$work/batch."
+  for batch in "$work"/batch.*; do
+    "$jdk/bin/javac" -J-Xmx2g -nowarn -encoding UTF-8 -d "$work/classes" "@$batch"
+  done
+fi
+"$jdk/bin/jar" -J-Xmx1g --create --file "$rjar" --date=1980-01-01T00:00:02Z -C "$work/classes" .
