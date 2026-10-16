@@ -432,7 +432,9 @@ composeai-contracts = "3.35.0"
 # `ShadowConsumerClock`, `composeai.render.clockPackages`), which `composePreview.pinAppClock` and
 # Bazel's `pinAppClock` turn on by default, so this pin is the floor for that default. It also runs
 # the app's own Compose when the user classpath carries a newer one (#288). Contracts 3.35.0.
-composeai-preview-daemon = "3.18.0"
+# 3.18.1 makes the one-shot `AndroidRendererMain` exit after a successful render
+# (compose-preview-daemon#292); `AndroidRendererLauncher` stays for older or overridden renderers.
+composeai-preview-daemon = "3.18.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

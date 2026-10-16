@@ -11,7 +11,9 @@ import kotlin.system.exitProcess
  * That main returns without exiting when every preview rendered, and Robolectric's sandbox main
  * thread (`SDK <n> Main Thread`) is not a daemon thread, so the JVM would idle until
  * [ee.schimke.composeai.cli.BundleRenderer]'s timeout and every preview would be reported failed.
- * The renderer's own non-zero `exitProcess` on a failure still wins.
+ * The renderer's own non-zero `exitProcess` on a failure still wins. Daemon 3.18.1 exits on its own
+ * (compose-preview-daemon#292); this stays for older renderers, including a
+ * `-Dcomposeai.cli.libRendererAndroidDir` override.
  *
  * Runs on the renderer's classpath, not the CLI's: [ee.schimke.composeai.cli.BundleRenderer] copies
  * this one class file into the subprocess's classpath. So it may use only the JDK and the Kotlin
