@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.64.3](https://github.com/yschimke/compose-ai-tools/compare/v2.64.2...v2.64.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* reference an Android Bazel bundle's AAR dependencies by coordinate instead of embedding them ([#6037](https://github.com/yschimke/compose-ai-tools/issues/6037)) ([8c90c5d](https://github.com/yschimke/compose-ai-tools/commit/8c90c5d452ddf229291fa13b3f91e3072bf0f1b6))
+
 ## [2.64.2](https://github.com/yschimke/compose-ai-tools/compare/v2.64.1...v2.64.2) (2026-10-16)
 
 
