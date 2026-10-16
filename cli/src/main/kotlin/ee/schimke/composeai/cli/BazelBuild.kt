@@ -78,22 +78,31 @@ internal data class BazelBuildConfig(
 /**
  * The prefixes `composeai.render.clockPackages` names for [android] under [config]'s
  * [BazelBuildConfig.pinAppClock]: the configured [BazelBuildConfig.appClockPackages], else the
- * target's `packageName` with a trailing `.`. Empty when pinning is off (`"pinAppClock": false`),
- * for a JVM target, or when no package is known. The daemon drops any prefix overlapping the JDK,
- * Kotlin, Robolectric, the framework or itself.
+ * target's `packageName` with a trailing `.` plus [WEAR_COMPOSE_CLOCK_PACKAGE]. Empty when pinning
+ * is off (`"pinAppClock": false`) or for a JVM target. The daemon drops any prefix overlapping the
+ * JDK, Kotlin, Robolectric, the framework or itself.
  */
 internal fun bazelClockPackages(
   config: BazelBuildConfig,
   android: ResolvedAndroidArtifacts?,
 ): List<String> {
   if (!config.pinAppClock || android == null) return emptyList()
-  val default = android.packageName.trim().let { if (it.isEmpty()) emptyList() else listOf("$it.") }
+  val default =
+    android.packageName.trim().let { if (it.isEmpty()) emptyList() else listOf("$it.") } +
+      WEAR_COMPOSE_CLOCK_PACKAGE
   // Never an empty (or dots-only) prefix: it would instrument every class.
   return (config.appClockPackages ?: default)
     .map { it.trim() }
     .filter { it.trimEnd('.').isNotEmpty() }
     .distinct()
 }
+
+/**
+ * Pinned by default alongside the target's own package: Wear Compose's `TimeText` reads the clock
+ * inside `androidx.wear.compose` (`materialcore.ResourcesKt.currentTimeMillis`), never in the app's
+ * package, so a Wear preview otherwise renders the host's wall-clock time.
+ */
+internal const val WEAR_COMPOSE_CLOCK_PACKAGE = "androidx.wear.compose."
 
 internal const val DEFAULT_BAZEL_ASPECT =
   "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect"
@@ -185,14 +194,16 @@ internal fun BazelArtifacts.resolve(
     // The aspect omits compileSdk when the target's android.jar path names no `android-<N>`; the
     // SDK platform that jar belongs to, or failing that the jar itself, still says which level it
     // is. A configured level overrides all three.
+    // Resolved on its own, so the jar survives a link block whose other inputs are unusable.
+    val androidJar =
+      link?.androidJar
+        ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() }
     val detected =
       compileSdkOverride?.let {
         AndroidPlatformLevel.Detected(it, "androidCompileSdk in bazel.json")
       }
         ?: block.compileSdk?.let { AndroidPlatformLevel.Detected(it, "the aspect") }
-        ?: (link?.androidJar
-            ?: block.link?.androidJar?.let { runCatching { resolvePath(it) }.getOrNull() })
-          ?.let(AndroidPlatformLevel::detect)
+        ?: androidJar?.let(AndroidPlatformLevel::detect)
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -207,6 +218,7 @@ internal fun BazelArtifacts.resolve(
       compileSdk = detected?.level,
       compileSdkSource = detected?.source,
       link = link,
+      androidJar = androidJar,
     )
   }
   return ResolvedBazelArtifacts(
@@ -251,6 +263,11 @@ internal data class ResolvedAndroidArtifacts(
   val link: ResolvedAndroidLink? = null,
   /** What [compileSdk] was read from, for the log line naming the SDK a render uses. */
   val compileSdkSource: String? = null,
+  /**
+   * The android.jar the target linked against, when the aspect reported it. Kept apart from [link],
+   * which a merged target drops and an unusable link input discards whole.
+   */
+  val androidJar: File? = null,
 )
 
 internal data class ResolvedBazelArtifacts(

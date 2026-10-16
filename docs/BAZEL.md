@@ -336,7 +336,8 @@ uses and where the level came from, so a default is never silent.
 
 Renders pin the wall clock to `10:10` (the daemon's `composeai.render.fixedTime`), and that
 includes a target's own `System.currentTimeMillis()` calls: classes under `appClockPackages` —
-class-name prefixes matched with `startsWith`, defaulting to the target's `packageName` plus `.` —
+class-name prefixes matched with `startsWith`, defaulting to the target's `packageName` plus `.`
+and `androidx.wear.compose.` (where Wear's `TimeText` reads the clock) —
 read the pinned instant, as a Gradle module's do under `composePreview.pinAppClock`. Pinning has
 Robolectric instrument the target's own classes; if a preview misbehaves under that, turn it off
 in `.compose-preview/bazel.json`:

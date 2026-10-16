@@ -194,17 +194,60 @@ class BazelAndroidTest {
     }
 
   @Test
+  fun `android launch prefers the android jar the target linked against`() = fixture { root ->
+    val resolved = androidArtifacts(root).resolve(root)
+    // The host SDK's newest platform is not the one the target was built for.
+    val hostJar = root.file("sdk/platforms/android-37.0/android.jar")
+    root.file("local.properties", "sdk.dir=${root.resolve("sdk").absolutePath}\n")
+    val linkedJar = root.file("execroot/external/androidsdk/platforms/android-36/android.jar")
+    // No link block: a merged target carries none, yet still knows its android.jar.
+    val artifacts = resolved.copy(android = resolved.android!!.copy(androidJar = linkedJar))
+    val sidecar = root.resolve("lib-daemon-android").apply { mkdirs() }
+    sidecar.file("daemon-android.jar")
+    val output = root.resolve("out").apply { mkdirs() }
+    val manifestFile =
+      output.resolve("previews.json").apply {
+        writeText(bazelJson.encodeToString(PreviewManifest("//ui", "bin", emptyList())))
+      }
+    val property = DaemonSidecarProvision.sidecarProperty("lib-daemon-android")
+    val previous = System.getProperty(property)
+    System.setProperty(property, sidecar.absolutePath)
+    val descriptor =
+      try {
+        DaemonLaunchBuilder.decode(
+          prepareBazelDaemon(
+              artifacts,
+              PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
+              root,
+            )
+            .readText()
+        )
+      } finally {
+        if (previous == null) System.clearProperty(property)
+        else System.setProperty(property, previous)
+      }
+    assertTrue(linkedJar.absolutePath in descriptor.classpath)
+    assertTrue(hostJar.absolutePath !in descriptor.classpath)
+  }
+
+  @Test
   fun `pinAppClock is on by default and opts out from bazel json`() = fixture { root ->
     val android = androidArtifacts(root).resolve(root).android
-    // Absent keys pin the target's own package.
+    // Absent keys pin the target's own package and Wear Compose's TimeText clock.
     val defaults = bazelJson.decodeFromString<BazelBuildConfig>("""{"schemaVersion": 1}""")
     assertEquals(true, defaults.pinAppClock)
     assertNull(defaults.appClockPackages)
-    assertEquals(listOf("com.example.ui."), bazelClockPackages(defaults, android))
+    assertEquals(
+      listOf("com.example.ui.", "androidx.wear.compose."),
+      bazelClockPackages(defaults, android),
+    )
     // A JVM target has nothing to instrument.
     assertEquals(emptyList(), bazelClockPackages(defaults, null))
-    // No package known: nothing, never an empty prefix that would match every class.
-    assertEquals(emptyList(), bazelClockPackages(defaults, android!!.copy(packageName = " ")))
+    // No package known: never an empty prefix that would match every class.
+    assertEquals(
+      listOf("androidx.wear.compose."),
+      bazelClockPackages(defaults, android!!.copy(packageName = " ")),
+    )
 
     val optedOut =
       bazelJson.decodeFromString<BazelBuildConfig>("""{"schemaVersion": 1, "pinAppClock": false}""")
@@ -257,7 +300,7 @@ class BazelAndroidTest {
           else System.setProperty(property, previous)
         }
       assertEquals(
-        "com.example.ui.",
+        "com.example.ui.,androidx.wear.compose.",
         descriptor.systemProperties["composeai.render.clockPackages"],
       )
     }
