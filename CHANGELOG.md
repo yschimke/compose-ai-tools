@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.64.1](https://github.com/yschimke/compose-ai-tools/compare/v2.64.0...v2.64.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* apply a forced --app-compose mode when the renderer has no selection class ([#6031](https://github.com/yschimke/compose-ai-tools/issues/6031)) ([65f9274](https://github.com/yschimke/compose-ai-tools/commit/65f9274508f9c96a73d22659ad4b870a33f9bff0))
+* render offline Android previews on a provisioned SDK and report why a render failed ([#6028](https://github.com/yschimke/compose-ai-tools/issues/6028)) ([c6d7e45](https://github.com/yschimke/compose-ai-tools/commit/c6d7e4528e8e74680d0a797f5a1420988105c044))
+* run the renderer's Compose in a one-shot Android render unless the app's is newer ([#6030](https://github.com/yschimke/compose-ai-tools/issues/6030)) ([fef3c43](https://github.com/yschimke/compose-ai-tools/commit/fef3c4333c7c3e7ed8e9e79acdae05e335e8162f))
+
 ## [2.64.0](https://github.com/yschimke/compose-ai-tools/compare/v2.63.0...v2.64.0) (2026-10-15)
 
 
