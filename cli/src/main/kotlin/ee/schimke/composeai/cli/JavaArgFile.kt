@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import java.io.File
 import java.nio.charset.Charset
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Linux refuses any single `execve` argument over `MAX_ARG_STRLEN` (32 pages, 128 KiB) with `E2BIG`
@@ -13,18 +14,41 @@ private const val MAX_INLINE_ARG = 32 * 1024
 private const val MAX_INLINE_ARGS = 96 * 1024
 
 /**
- * [command] — `java`, its options, then the main class — as launched: unchanged while every option
- * fits on the command line, else `java @argfile <main>` with the options moved into one argfile the
- * launcher expands. Written in the platform encoding the launcher decodes argfiles with.
+ * Windows passes one command line to `CreateProcess`, at most 32,767 characters in all, so there
+ * the whole command counts; the margin leaves room for quoting and arguments after the main class.
+ */
+private const val MAX_WINDOWS_COMMAND_LINE = 24 * 1024
+
+private val isWindows = System.getProperty("os.name").orEmpty().startsWith("Windows")
+
+/**
+ * One argfile per distinct option list: a catalog renders every preview with the same classpath,
+ * and a file per launch would pile up in the temp directory until the CLI exits.
+ */
+private val argFiles = ConcurrentHashMap<Pair<List<String>, File?>, File>()
+
+/**
+ * [command] — `java`, its options, then the main class — as launched: unchanged while it fits the
+ * platform's command-line limits, else `java @argfile <main>` with the options moved into one
+ * argfile the launcher expands. Written in the platform encoding the launcher decodes argfiles
+ * with.
  */
 internal fun fitJavaCommand(command: List<String>, directory: File? = null): List<String> {
   require(command.size >= 2) { "A java command needs the launcher and a main class" }
-  val options = command.subList(1, command.size - 1)
-  if (
-    options.none { it.length > MAX_INLINE_ARG } && options.sumOf { it.length } <= MAX_INLINE_ARGS
-  ) {
-    return command
-  }
+  val options = command.subList(1, command.size - 1).toList()
+  val fits =
+    if (isWindows) command.sumOf { it.length + 1 } <= MAX_WINDOWS_COMMAND_LINE
+    else
+      options.none { it.length > MAX_INLINE_ARG } && options.sumOf { it.length } <= MAX_INLINE_ARGS
+  if (fits) return command
+  val file =
+    argFiles.compute(options to directory) { _, existing ->
+      existing?.takeIf { it.isFile } ?: writeArgFile(options, directory)
+    }!!
+  return listOf(command.first(), "@${file.absolutePath}", command.last())
+}
+
+private fun writeArgFile(options: List<String>, directory: File?): File {
   val file = File.createTempFile("composeai-java", ".args", directory)
   file.deleteOnExit()
   val charset = runCatching {
@@ -32,7 +56,7 @@ internal fun fitJavaCommand(command: List<String>, directory: File? = null): Lis
   }
     .getOrDefault(Charset.defaultCharset())
   file.writeText(options.joinToString("\n", postfix = "\n") { quoteJavaArgFileToken(it) }, charset)
-  return listOf(command.first(), "@${file.absolutePath}", command.last())
+  return file
 }
 
 /** One argfile token: quoted, with `\` and `"` escaped as the launcher un-escapes them. */

@@ -28,6 +28,13 @@ class JavaArgFileTest {
       )
 
     assertEquals(3, command.size)
+    // Every preview of a catalog launches with the same options: one argfile serves them all.
+    assertEquals(
+      command,
+      fitJavaCommand(
+        listOf(java, "-Dcomposeai.test=a \"quoted\" \\ value", "-cp", classpath, "-version")
+      ),
+    )
     assertTrue(command[1].startsWith("@"))
     // `-version` stands in for the main class: the launcher reads every option from the argfile.
     val probe =
