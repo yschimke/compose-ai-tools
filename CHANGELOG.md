@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.64.4](https://github.com/yschimke/compose-ai-tools/compare/v2.64.3...v2.64.4) (2026-10-16)
+
+
+### Bug Fixes
+
+* **bazel:** pin Wear Compose's clock by default and render against the target's android.jar ([#6044](https://github.com/yschimke/compose-ai-tools/issues/6044)) ([05afd9e](https://github.com/yschimke/compose-ai-tools/commit/05afd9e9555b56ff25a93973b9b1be7ab28c00ff))
+* **deps:** consume compose-preview-daemon 3.18.2 ([#6041](https://github.com/yschimke/compose-ai-tools/issues/6041)) ([53c169b](https://github.com/yschimke/compose-ai-tools/commit/53c169b6c4dfddc162f49c0a2d49e3296b2a5842))
+* **deps:** consume compose-preview-daemon 3.18.3 ([#6045](https://github.com/yschimke/compose-ai-tools/issues/6045)) ([c208848](https://github.com/yschimke/compose-ai-tools/commit/c208848cda4fdf2f16155313e1b640b7629fe3cf))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.13.0 ([#6042](https://github.com/yschimke/compose-ai-tools/issues/6042)) ([9e021e2](https://github.com/yschimke/compose-ai-tools/commit/9e021e20ebeadd12e8d5dc8e3142d3c84f02eb33))
+
 ## [2.64.3](https://github.com/yschimke/compose-ai-tools/compare/v2.64.2...v2.64.3) (2026-10-16)
 
 
