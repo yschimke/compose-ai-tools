@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.68.2](https://github.com/yschimke/compose-ai-tools/compare/v2.68.1...v2.68.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **bazel:** install BUILD and an executable link.sh, and report build progress ([#6068](https://github.com/yschimke/compose-ai-tools/issues/6068)) ([66ef8bd](https://github.com/yschimke/compose-ai-tools/commit/66ef8bd84549f498b87b8ac9532747c8f7f1fbfa))
+* **bazel:** treat a hand-edited BUILD.bazel as a conflict, not a silent leftover ([#6071](https://github.com/yschimke/compose-ai-tools/issues/6071)) ([7545d6a](https://github.com/yschimke/compose-ai-tools/commit/7545d6ab3e03d3f9d4e5d36c03a58c2103bdc83c))
+* **deps:** update compose-preview-daemon to 3.18.6 ([#6072](https://github.com/yschimke/compose-ai-tools/issues/6072)) ([e533992](https://github.com/yschimke/compose-ai-tools/commit/e5339921791c72756e783edf4a14e45c3acc4e07))
+
 ## [2.68.1](https://github.com/yschimke/compose-ai-tools/compare/v2.68.0...v2.68.1) (2026-10-17)
 
 
