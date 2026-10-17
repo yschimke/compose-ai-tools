@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.1](https://github.com/yschimke/compose-ai-tools/compare/v2.68.0...v2.68.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **bazel:** keep unconfigured selections JVM-only without a loadable Android aspect ([#6065](https://github.com/yschimke/compose-ai-tools/issues/6065)) ([0d7d0cd](https://github.com/yschimke/compose-ai-tools/commit/0d7d0cd9b90df4ed7f3d970ac85400bbac82b078))
+
 ## [2.68.0](https://github.com/yschimke/compose-ai-tools/compare/v2.67.0...v2.68.0) (2026-10-17)
 
 
