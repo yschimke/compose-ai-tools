@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.68.5](https://github.com/yschimke/compose-ai-tools/compare/v2.68.4...v2.68.5) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.36.0 ([#6082](https://github.com/yschimke/compose-ai-tools/issues/6082)) ([a839fc3](https://github.com/yschimke/compose-ai-tools/commit/a839fc309f29edeba0945d36bb7e303f57953811))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.14.0 ([#6075](https://github.com/yschimke/compose-ai-tools/issues/6075)) ([f942a0c](https://github.com/yschimke/compose-ai-tools/commit/f942a0cac22788feb309f82ce581bad2353ac21b))
+
 ## [2.68.4](https://github.com/yschimke/compose-ai-tools/compare/v2.68.3...v2.68.4) (2026-10-17)
 
 
