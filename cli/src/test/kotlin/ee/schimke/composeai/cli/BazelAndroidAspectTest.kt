@@ -109,10 +109,11 @@ class BazelAndroidAspectTest {
         bazelJson.parseToJsonElement(dir.resolve("installed.json").readText()) as JsonObject
       assertTrue("BUILD.bazel" !in after && "BUILD" in after, after.toString())
 
-      // A BUILD.bazel someone edited is not the CLI's to remove.
+      // A BUILD.bazel someone edited is not the CLI's to remove: it is kept, and init refuses it.
       dir.resolve("BUILD.bazel").writeText("# mine\n")
-      installBazelAndroidAspect(root)
+      assertEquals(listOf(dir.resolve("BUILD.bazel")), installBazelAndroidAspect(root))
       assertTrue(dir.resolve("BUILD.bazel").isFile)
+      assertFailsWith<IllegalArgumentException> { installBazelAndroidAspect(root, strict = true) }
     }
 
   @Test

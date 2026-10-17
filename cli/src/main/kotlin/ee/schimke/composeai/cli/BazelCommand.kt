@@ -728,6 +728,11 @@ internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
         } else text
     }
   // Never overwrite a locally adapted provider or aspect. Repeated identical init is harmless.
+  // An edited BUILD.bazel left by an earlier CLI would shadow the BUILD written here.
+  val legacy = directory.resolve("BUILD.bazel")
+  require(!legacy.exists()) {
+    "Existing aspect differs: $legacy. Keep it and configure --aspect, or move it before reinitializing."
+  }
   contents.forEach { (name, text) ->
     val file = directory.resolve(name)
     require(!file.exists() || (file.isFile && file.readText() == text)) {

@@ -186,16 +186,22 @@ internal fun installCliOwnedFiles(
     .getOrNull()
     .orEmpty()
     .mapValues { (_, hash) -> (hash as? JsonPrimitive)?.contentOrNull }
-  val kept = contents.mapNotNull { (name, text) ->
-    val file = directory.resolve(name)
-    val current = file.takeIf { it.isFile }?.readText()
-    when {
-      current == null || current == text -> null
-      regenerable(current) -> null
-      sha256(current).let { installed[name] == it || it in previous[name].orEmpty() } -> null
-      else -> file
-    }
-  }
+  val kept =
+    contents.mapNotNull { (name, text) ->
+      val file = directory.resolve(name)
+      val current = file.takeIf { it.isFile }?.readText()
+      when {
+        current == null || current == text -> null
+        regenerable(current) -> null
+        sha256(current).let { installed[name] == it || it in previous[name].orEmpty() } -> null
+        else -> file
+      }
+    } +
+      // A retired file nobody but an earlier CLI wrote goes; one edited by hand stays and is kept,
+      // since it may still shadow its replacement (Bazel reads BUILD.bazel over BUILD).
+      retired.map(directory::resolve).filter {
+        it.isFile && installed[it.name] != sha256(it.readText())
+      }
   require(!strict || kept.isEmpty()) { conflict(kept) }
   directory.mkdirs()
   contents.forEach { (name, text) ->

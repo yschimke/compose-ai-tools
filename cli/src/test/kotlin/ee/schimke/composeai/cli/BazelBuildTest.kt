@@ -651,6 +651,9 @@ class BazelBuildTest {
       migrateBazelAspectBuildFile(root)
       assertTrue(dir.resolve("BUILD.bazel").isFile)
       assertTrue(!dir.resolve("BUILD").exists())
+      // init refuses rather than write a BUILD it would shadow.
+      assertFailsWith<IllegalArgumentException> { installBazelAspect(root) }
+      assertTrue(!dir.resolve("BUILD").exists())
     } finally {
       root.deleteRecursively()
     }
