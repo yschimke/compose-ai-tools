@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.4](https://github.com/yschimke/compose-ai-tools/compare/v2.68.3...v2.68.4) (2026-10-17)
+
+
+### Performance Improvements
+
+* **bazel:** leave empty and superseded R jars off the render classpath ([#6077](https://github.com/yschimke/compose-ai-tools/issues/6077)) ([24b09bf](https://github.com/yschimke/compose-ai-tools/commit/24b09bf1091660bdde94c215e8b893368140348f))
+
 ## [2.68.3](https://github.com/yschimke/compose-ai-tools/compare/v2.68.2...v2.68.3) (2026-10-17)
 
 
