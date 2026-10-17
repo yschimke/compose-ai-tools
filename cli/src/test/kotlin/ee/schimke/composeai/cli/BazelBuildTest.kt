@@ -630,6 +630,33 @@ class BazelBuildTest {
   }
 
   @Test
+  fun `the JVM aspect package file is BUILD, and an earlier CLI's BUILD_bazel moves to it`() {
+    val root = Files.createTempDirectory("bazel-build-file").toFile()
+    try {
+      val dir = root.resolve(".compose-preview/bazel")
+      installBazelAspect(root)
+      assertTrue(dir.resolve("BUILD").isFile)
+      assertTrue(!dir.resolve("BUILD.bazel").exists())
+
+      // What 2.67 and earlier installed: BUILD.bazel, which some Blaze deployments do not read.
+      val bundled = dir.resolve("BUILD").readText()
+      dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
+      migrateBazelAspectBuildFile(root)
+      assertEquals(bundled, dir.resolve("BUILD").readText())
+      assertTrue(!dir.resolve("BUILD.bazel").exists())
+
+      // A hand-edited one stays.
+      dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
+      dir.resolve("BUILD.bazel").appendText("# local\n")
+      migrateBazelAspectBuildFile(root)
+      assertTrue(dir.resolve("BUILD.bazel").isFile)
+      assertTrue(!dir.resolve("BUILD").exists())
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `help values are valid and abbreviated labels match expanded events`() {
     assertTrue(!bazelHelpRequested(listOf("render", "--filter", "help")))
     assertTrue(!bazelHelpRequested(listOf("list", "--config", "help")))

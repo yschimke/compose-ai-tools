@@ -201,8 +201,16 @@ internal class BazelCommand(
             }
           }
         }
-        BuckBuild()
-          .collectAll(root, selection.targets, config, timeout, skipWithoutMetadata = candidates)
+        reportBuild("buck", selection.targets) {
+            BuckBuild()
+              .collectAll(
+                root,
+                selection.targets,
+                config,
+                timeout,
+                skipWithoutMetadata = candidates,
+              )
+          }
           .also { built ->
             if (candidates) {
               System.err.println(
@@ -271,8 +279,13 @@ internal class BazelCommand(
             }
             installBazelAspect(root)
           }
-          BazelBuild()
-            .collectAll(root, targets, groupConfig, timeout, skipWithoutMetadata = candidates)
+          if (groupConfig.aspect == DEFAULT_BAZEL_ASPECT && groupConfig.installAspect) {
+            migrateBazelAspectBuildFile(root)
+          }
+          reportBuild("bazel", targets) {
+            BazelBuild()
+              .collectAll(root, targets, groupConfig, timeout, skipWithoutMetadata = candidates)
+          }
         }
       }
     // A selected set is one module (one page in `browse`, one daemon), unless it cannot share one.
@@ -696,19 +709,23 @@ internal class BazelCommand(
   }
 }
 
+private fun bundledBazelAspectFile(name: String): String =
+  requireNotNull(BazelCommand::class.java.getResourceAsStream("bazel/$name")) {
+      "Missing bundled aspect $name"
+    }
+    .bufferedReader()
+    .use { it.readText() }
+
 internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
   val directory = root.resolve(".compose-preview/bazel")
+  migrateBazelAspectBuildFile(root)
   val contents =
-    listOf("BUILD.bazel", "runtime.bzl", "java_info.bzl").associateWith { name ->
-      val text =
-        requireNotNull(BazelCommand::class.java.getResourceAsStream("bazel/$name")) {
-            "Missing bundled aspect $name"
-          }
-          .bufferedReader()
-          .use { it.readText() }
-      if (name == "java_info.bzl" && javaInfoLoad != null) {
-        "load(${bazelJson.encodeToString(javaInfoLoad)}, _JavaInfo = \"JavaInfo\")\n\nJavaInfo = _JavaInfo\n"
-      } else text
+    listOf("BUILD.bazel", "runtime.bzl", "java_info.bzl").associate { name ->
+      val text = bundledBazelAspectFile(name)
+      installedBazelFileName(name) to
+        if (name == "java_info.bzl" && javaInfoLoad != null) {
+          "load(${bazelJson.encodeToString(javaInfoLoad)}, _JavaInfo = \"JavaInfo\")\n\nJavaInfo = _JavaInfo\n"
+        } else text
     }
   // Never overwrite a locally adapted provider or aspect. Repeated identical init is harmless.
   contents.forEach { (name, text) ->
@@ -719,6 +736,36 @@ internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
   }
   directory.mkdirs()
   contents.forEach { (name, text) -> directory.resolve(name).writeText(text) }
+}
+
+/**
+ * Runs [build] between a start and an end line on stderr: a cold aspect or BXL build can take a
+ * minute with the build tool's own output going to a log, and a CLI that prints nothing meanwhile
+ * looks hung.
+ */
+internal fun <T> reportBuild(tool: String, targets: List<String>, build: () -> T): T {
+  val shown = targets.take(3).joinToString(" ") + if (targets.size > 3) " …" else ""
+  System.err.println("[$tool] Building $shown")
+  val started = System.nanoTime()
+  return build().also {
+    val seconds = (System.nanoTime() - started) / 1_000_000_000.0
+    System.err.println("[$tool] Build complete (${"%.1f".format(seconds)}s)")
+  }
+}
+
+/**
+ * Renames the JVM aspect package file an earlier CLI wrote as `BUILD.bazel` to `BUILD`, which Blaze
+ * deployments that read no `BUILD.bazel` also see. One edited by hand is left alone.
+ */
+internal fun migrateBazelAspectBuildFile(root: File) {
+  val directory = root.resolve(".compose-preview/bazel")
+  val legacy = directory.resolve("BUILD.bazel")
+  val build = directory.resolve("BUILD")
+  if (
+    !build.exists() && legacy.isFile && legacy.readText() == bundledBazelAspectFile("BUILD.bazel")
+  ) {
+    check(legacy.renameTo(build)) { "Could not rename $legacy to $build" }
+  }
 }
 
 internal data class PreparedBazelPreviews(val manifest: DiscoveryManifest, val manifestFile: File)
