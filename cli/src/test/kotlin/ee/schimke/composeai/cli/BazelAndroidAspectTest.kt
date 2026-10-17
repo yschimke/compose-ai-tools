@@ -59,7 +59,15 @@ class BazelAndroidAspectTest {
         "runtime.bzl",
         "link.sh",
       )
-      .forEach { assertEquals(resource(it).decodeToString(), dir.resolve(it).readText(), it) }
+      .forEach {
+        val installed = dir.resolve(installedBazelFileName(it))
+        assertEquals(resource(it).decodeToString(), installed.readText(), it)
+      }
+    // BUILD, not BUILD.bazel, so Blaze deployments that read only BUILD see the package.
+    assertTrue(dir.resolve("BUILD").isFile)
+    assertTrue(!dir.resolve("BUILD.bazel").exists())
+    // A Bazel tool must be executable.
+    assertTrue(dir.resolve("link.sh").canExecute())
     val record =
       bazelJson.parseToJsonElement(dir.resolve("installed.json").readText()) as JsonObject
     assertEquals(
@@ -67,6 +75,45 @@ class BazelAndroidAspectTest {
       record.getValue("android.bzl").jsonPrimitive.content,
     )
   }
+
+  @Test
+  fun `an earlier CLI's BUILD_bazel is retired and its link_sh made executable`() =
+    workspace { root ->
+      installBazelAndroidAspect(root)
+      val dir = root.resolve(BAZEL_ANDROID_ASPECT_DIR)
+      // What 2.66 and 2.67 installed: BUILD.bazel recorded in installed.json, link.sh not
+      // executable.
+      val build = resource("BUILD.bazel").decodeToString()
+      dir.resolve("BUILD").delete()
+      dir.resolve("BUILD.bazel").writeText(build)
+      val record =
+        bazelJson.parseToJsonElement(dir.resolve("installed.json").readText()) as JsonObject
+      dir
+        .resolve("installed.json")
+        .writeText(
+          JsonObject(
+              record.filterKeys { it != "BUILD" } +
+                ("BUILD.bazel" to
+                  kotlinx.serialization.json.JsonPrimitive(sha256(build.toByteArray())))
+            )
+            .toString()
+        )
+      dir.resolve("link.sh").setExecutable(false)
+
+      assertEquals(emptyList(), installBazelAndroidAspect(root))
+
+      assertTrue(dir.resolve("BUILD").isFile)
+      assertTrue(!dir.resolve("BUILD.bazel").exists())
+      assertTrue(dir.resolve("link.sh").canExecute())
+      val after =
+        bazelJson.parseToJsonElement(dir.resolve("installed.json").readText()) as JsonObject
+      assertTrue("BUILD.bazel" !in after && "BUILD" in after, after.toString())
+
+      // A BUILD.bazel someone edited is not the CLI's to remove.
+      dir.resolve("BUILD.bazel").writeText("# mine\n")
+      installBazelAndroidAspect(root)
+      assertTrue(dir.resolve("BUILD.bazel").isFile)
+    }
 
   @Test
   fun `a copy an earlier CLI wrote is upgraded, a hand edit is kept`() = workspace { root ->

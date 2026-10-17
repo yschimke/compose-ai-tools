@@ -115,12 +115,20 @@ internal fun bazelAndroidAspectContents(providers: Map<String, String>): Map<Str
   require(unknown.isEmpty()) {
     "Unknown providers ${unknown.joinToString()}; expected ${BAZEL_PROVIDER_SYMBOLS.joinToString()}"
   }
-  return ANDROID_ASPECT_FILES.associateWith { name ->
+  return ANDROID_ASPECT_FILES.associate { name ->
     val shim = SHIMS[name]
-    if (shim != null && shim.any { it.name in providers }) bazelProviderShim(name, providers)
-    else bundledAndroidAspectFile(name)
+    installedBazelFileName(name) to
+      if (shim != null && shim.any { it.name in providers }) bazelProviderShim(name, providers)
+      else bundledAndroidAspectFile(name)
   }
 }
+
+/**
+ * The name a bundled file is installed under. The package file is `BUILD`, which Bazel and Blaze
+ * both read (some Blaze deployments read no `BUILD.bazel`); the resource keeps its own name.
+ */
+internal fun installedBazelFileName(resource: String): String =
+  if (resource == "BUILD.bazel") "BUILD" else resource
 
 /** Records what the CLI wrote, so a later CLI can tell its own copies from a user's edits. */
 private const val INSTALLED_RECORD = "installed.json"
@@ -147,6 +155,8 @@ internal fun installBazelAndroidAspect(
     bazelAndroidAspectContents(providers),
     strict,
     regenerable = { it.startsWith(GENERATED_SHIM_HEADER) },
+    // Releases before BUILD wrote the package file as BUILD.bazel, which Bazel prefers over BUILD.
+    retired = setOf("BUILD.bazel"),
   ) { kept ->
     "Existing Android aspect files differ: ${kept.joinToString()}. Keep them and configure " +
       "aspect, or move them before reinitializing."
@@ -156,7 +166,9 @@ internal fun installBazelAndroidAspect(
  * Writes [contents] (file name to text) into [directory], recording each file's hash in
  * `installed.json`. A file is written when it is missing, still what a CLI wrote there (the record,
  * or [previous] hashes of files earlier releases wrote before keeping one), or [regenerable]; one
- * edited by hand is kept, or with [strict] fails with [conflict]'s message. Returns the files kept.
+ * edited by hand is kept, or with [strict] fails with [conflict]'s message. A `.sh` file is made
+ * executable, as a Bazel tool must be. A [retired] file an earlier CLI wrote, and nobody edited, is
+ * removed. Returns the files kept.
  */
 internal fun installCliOwnedFiles(
   directory: File,
@@ -164,6 +176,7 @@ internal fun installCliOwnedFiles(
   strict: Boolean,
   previous: Map<String, Set<String>> = emptyMap(),
   regenerable: (String) -> Boolean = { false },
+  retired: Set<String> = emptySet(),
   conflict: (List<File>) -> String,
 ): List<File> {
   val record = directory.resolve(INSTALLED_RECORD)
@@ -188,6 +201,11 @@ internal fun installCliOwnedFiles(
   contents.forEach { (name, text) ->
     val file = directory.resolve(name)
     if (file !in kept && (!file.isFile || file.readText() != text)) file.writeText(text)
+    if (name.endsWith(".sh") && file.isFile) file.setExecutable(true)
+  }
+  val removed = retired.filter { name ->
+    val file = directory.resolve(name)
+    file.isFile && installed[name] == sha256(file.readText()) && file.delete()
   }
   val written =
     contents.filterKeys { name -> directory.resolve(name) !in kept }.mapValues { sha256(it.value) }
@@ -195,8 +213,10 @@ internal fun installCliOwnedFiles(
     bazelJson.encodeToString(
       JsonObject.serializer(),
       JsonObject(
-        (installed.filterValues { it != null }.mapValues { JsonPrimitive(it.value) }) +
-          written.mapValues { JsonPrimitive(it.value) }
+        (installed
+          .filterKeys { it !in removed }
+          .filterValues { it != null }
+          .mapValues { JsonPrimitive(it.value) }) + written.mapValues { JsonPrimitive(it.value) }
       ),
     ) + "\n"
   )
