@@ -578,6 +578,38 @@ internal class BazelBuild(
     return targets
   }
 
+  /**
+   * [targets] as (JVM, Android) for an unconfigured aspect, so each kind is built by the aspect
+   * that reads it. A target an Android library `exports` is part of that library and left out:
+   * rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` JVM library and
+   * `_base` resources it compiles to.
+   */
+  fun splitAndroid(
+    root: File,
+    targets: List<String>,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+  ): Pair<List<String>, List<String>> {
+    fun query(expression: String): Set<String> =
+      execute(
+          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
+          root,
+          timeoutSeconds,
+        )
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.startsWith("//") || it.startsWith("@") }
+        .map(::normalizeBazelLabel)
+        .toSet()
+    val all = targets.joinToString(" ", prefix = "set(", postfix = ")") { "\"$it\"" }
+    val android = query("kind('$ANDROID_TARGET_KINDS', $all)")
+    if (android.isEmpty()) return targets to emptyList()
+    val exporters = android.joinToString(" ", prefix = "set(", postfix = ")") { "\"$it\"" }
+    val exported = query("$all intersect labels(exports, $exporters)")
+    val kept = targets.filterNot { normalizeBazelLabel(it) in exported }
+    return kept.partition { normalizeBazelLabel(it) !in android }
+  }
+
   fun collect(
     root: File,
     target: String,
@@ -830,11 +862,39 @@ internal fun isBazelTargetPattern(target: String): Boolean =
 private const val JVM_TARGET_KINDS = "(kt_jvm_library|kt_jvm_binary|java_library|java_binary)"
 private const val ANDROID_TARGET_KINDS = "(kt_android_library|android_library)"
 
+/**
+ * Both: what an unconfigured selection reads, before [BazelBuild.splitAndroid] gives each kind its
+ * aspect.
+ */
+internal const val AUTO_TARGET_KINDS =
+  "(kt_jvm_library|kt_jvm_binary|java_library|java_binary|kt_android_library|android_library)"
+
 /** JVM library and binary rules, or Android library rules when [aspect] is an Android one. */
 internal fun defaultTargetKinds(aspect: String): String =
   if ("android" in aspect.substringAfterLast('%') || aspect.contains("android.bzl"))
     ANDROID_TARGET_KINDS
   else JVM_TARGET_KINDS
+
+/** rules_compose_preview's own Android aspect, for a module that already depends on it. */
+internal const val RULES_ANDROID_ASPECT =
+  "@rules_compose_preview//:android.bzl%compose_preview_android_aspect"
+
+/**
+ * The Android aspect for an unconfigured workspace: [RULES_ANDROID_ASPECT] when `MODULE.bazel`
+ * declares `rules_compose_preview`, else the copy the CLI installs
+ * ([DEFAULT_BAZEL_ANDROID_ASPECT]). Configured [providers] are read only by that copy's shims, so
+ * they select it.
+ */
+internal fun detectAndroidAspect(
+  root: File,
+  providers: Map<String, String> = emptyMap(),
+): String {
+  if (providers.isNotEmpty()) return DEFAULT_BAZEL_ANDROID_ASPECT
+  val module = root.resolve("MODULE.bazel").takeIf { it.isFile }?.readText().orEmpty()
+  val declared =
+    Regex("""bazel_dep\(\s*name\s*=\s*"rules_compose_preview"""").containsMatchIn(module)
+  return if (declared) RULES_ANDROID_ASPECT else DEFAULT_BAZEL_ANDROID_ASPECT
+}
 
 /** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */
 internal fun normalizeBazelLabel(label: String): String {
