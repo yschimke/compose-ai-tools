@@ -72,6 +72,14 @@ classpath, since its IDs belong to its own APK. The link is cached under the mod
 directory until an input changes. Where two sibling libraries define the same resource, the later
 one in the selection wins, as it would in an `android_binary` that depends on both.
 
+The CLI leaves two kinds of runtime jar off the render classpath, for Bazel and Buck2 alike:
+jars with no class or resource in them (KMP stub jars, and the wrapper of a resource-only AAR),
+and a library's own R jar when the target's final-ID R jar defines every class in it. The final
+R jar comes first on the classpath, so those classes would never load from the library's jar,
+whose non-final IDs name nothing in the linked APK anyway. A Bazel Android target carries one of
+each per AAR: on compose-ai-contrib's `bazel-apk`, 115 of 175 runtime jars. The project's own
+jars, and any jar the CLI cannot read, always stay.
+
 These cases stay separate modules, with a note: Android targets without `mergeAndroid`; Android
 and JVM targets together, which render on different runtimes; Android targets from an aspect that
 does not report `android.link` (a rules_compose_preview older than the merge); and targets built

@@ -238,10 +238,33 @@ internal fun BazelArtifacts.resolve(
       androidJar = androidJar,
     )
   }
+  val pruned = pruneRuntimeClasspath(runtime, project.toSet(), resolvedAndroid?.rJar)
+  if (pruned.empty.isNotEmpty() || pruned.supersededRJars.isNotEmpty()) {
+    System.err.println(
+      "[bazel] $target: ${pruned.jars.size} of ${runtime.size} runtime jars on the classpath " +
+        "(${pruned.empty.size} empty, ${pruned.supersededRJars.size} R jars the final-ID R jar " +
+        "covers)"
+    )
+  }
+  // The metadata lists the same jars, so a merge can still pair each file with its path.
+  val kept = pruned.jars.toSet()
+  val metadata =
+    if (pruned.jars.size == runtime.size) this
+    else
+      newBuilder()
+        .apply {
+          runtimeJars =
+            this@resolve.runtimeJars
+              .distinct()
+              .zip(runtime)
+              .filter { it.second in kept }
+              .map { it.first }
+        }
+        .build()
   return ResolvedBazelArtifacts(
-    this,
+    metadata,
     project,
-    runtime,
+    pruned.jars,
     resolvePaths(sourceFiles).mapIndexed { index, file ->
       val path = sourceFiles.distinct()[index]
       val local = workspaceRoot?.resolve(path)
@@ -263,7 +286,7 @@ internal fun BazelArtifacts.resolve(
           // Owners only identify jars; one that names no listed runtime jar is ignored.
           val file =
             File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
-          file.takeIf { it in runtime }?.let { it to label }
+          file.takeIf { it in pruned.jars }?.let { it to label }
         }
         .toMap(),
   )
