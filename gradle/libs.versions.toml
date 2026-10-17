@@ -361,7 +361,7 @@ coil3 = "3.5.0"
 # published `statusSemantics.newDesign`.
 # 3.32.0 adds `build-artifacts-protocol`, the artifacts file the Bazel aspects write (schema 2
 # carries Android resources).
-composeai-contracts = "3.35.0"
+composeai-contracts = "3.36.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
