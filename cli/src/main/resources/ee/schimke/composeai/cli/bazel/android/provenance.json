@@ -1,11 +1,11 @@
 {
   "repository": "yschimke/compose-preview-bazel",
-  "tag": "v0.1.0-rc.14",
+  "tag": "v0.1.0-rc.15",
   "sha256": {
-    "android.bzl": "917173362164e46bb3fdd78642fc16171d091b969dba5c929aea2c254ce74355",
+    "android.bzl": "e3d8f66f3ee7cc6b668e690f9b3f8c86900246ad479f4d2ce4b00bf2f2b7ce20",
     "android_providers.bzl": "4fca6da841586929ae4aef0c37256c44a0556ccbed19dae24852e4df17b72d9a",
     "java_info.bzl": "bf9679a0b794aa0dd079c0cbfe1137074f8088d75f2711e7a6ecbbaa18c8ea4c",
     "runtime.bzl": "6627a096c8e51593d3354713aa0b307ebb05484a9c42f452393842ce700ab091",
-    "link.sh": "215ee678d6e621264f4d92f1b25318a3a1e346f3db0d7c2a636111fa1b0ae270"
+    "link.sh": "88207a5e5ebe037c95329549577bf80fe3ae5097d723bfb02cc26f73b9c2a395"
   }
 }
