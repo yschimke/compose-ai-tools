@@ -886,27 +886,36 @@ internal const val RULES_ANDROID_ASPECT =
   "@rules_compose_preview//:android.bzl%compose_preview_android_aspect"
 
 /**
- * The Android aspect for an unconfigured workspace: [RULES_ANDROID_ASPECT] when `MODULE.bazel`
- * declares `rules_compose_preview` (under its `repo_name`, when it sets one), else the copy the CLI
- * installs ([DEFAULT_BAZEL_ANDROID_ASPECT]). Configured [providers] are read only by that copy's
- * shims, so they select it.
+ * The Android aspect for an unconfigured workspace, or null when it has none it can load, so an
+ * unconfigured selection stays JVM-only as before (a Blaze workspace, which has no `MODULE.bazel`):
+ *
+ * - [RULES_ANDROID_ASPECT] when `MODULE.bazel` declares `rules_compose_preview` (under its
+ *   `repo_name`, when it sets one);
+ * - else the copy the CLI installs ([DEFAULT_BAZEL_ANDROID_ASPECT]) when configured [providers]
+ *   point its shims somewhere, or when `MODULE.bazel` declares the `rules_android` and `rules_java`
+ *   its shims load by default under their own names.
  */
 internal fun detectAndroidAspect(
   root: File,
   providers: Map<String, String> = emptyMap(),
-): String {
+): String? {
   if (providers.isNotEmpty()) return DEFAULT_BAZEL_ANDROID_ASPECT
   val module = root.resolve("MODULE.bazel").takeIf { it.isFile }?.readText().orEmpty()
   fun attribute(call: String, name: String) =
     Regex("""\b$name\s*=\s*"([^"]+)"""").find(call)?.groupValues?.get(1)
-  val dep =
+  // The repository a root-module bazel_dep is visible as, or null when it is not declared.
+  fun declared(name: String): String? =
     Regex("""bazel_dep\(([^)]*)\)""")
       .findAll(module)
       .map { it.groupValues[1] }
-      .firstOrNull { attribute(it, "name") == "rules_compose_preview" }
-      ?: return DEFAULT_BAZEL_ANDROID_ASPECT
-  val repository = attribute(dep, "repo_name") ?: "rules_compose_preview"
-  return RULES_ANDROID_ASPECT.replaceFirst("@rules_compose_preview//", "@$repository//")
+      .firstOrNull { attribute(it, "name") == name }
+      ?.let { attribute(it, "repo_name") ?: name }
+  declared("rules_compose_preview")?.let { repository ->
+    return RULES_ANDROID_ASPECT.replaceFirst("@rules_compose_preview//", "@$repository//")
+  }
+  val loadable =
+    declared("rules_android") == "rules_android" && declared("rules_java") == "rules_java"
+  return if (loadable) DEFAULT_BAZEL_ANDROID_ASPECT else null
 }
 
 /** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */

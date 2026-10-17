@@ -138,12 +138,17 @@ internal class BazelCommand(
           "detected: ${choice.reason}; commit buildCommand in .compose-preview/bazel.json to pin it"
         }
       }
-    // Unconfigured: the selection takes JVM and Android rules alike, and each kind gets its aspect.
-    val autoAspect =
-      !buck &&
-        args.flagValue("--aspect") == null &&
-        (configText == null ||
-          "aspect" !in (bazelJson.parseToJsonElement(configText) as JsonObject))
+    // Unconfigured, in a workspace that can load an Android aspect: the selection takes JVM and
+    // Android rules alike, and each kind gets its aspect. Otherwise (Blaze, say) it stays JVM-only.
+    val autoAndroidAspect =
+      if (
+        !buck &&
+          args.flagValue("--aspect") == null &&
+          (configText == null ||
+            "aspect" !in (bazelJson.parseToJsonElement(configText) as JsonObject))
+      )
+        detectAndroidAspect(root, config.providers)
+      else null
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config =
       config.copy(
@@ -212,7 +217,8 @@ internal class BazelCommand(
         }
         val requested = requestedTargets()
         val selectionConfig =
-          if (autoAspect) config.copy(targetKinds = config.targetKinds ?: AUTO_TARGET_KINDS)
+          if (autoAndroidAspect != null)
+            config.copy(targetKinds = config.targetKinds ?: AUTO_TARGET_KINDS)
           else config
         val selection =
           if (requested.isNotEmpty())
@@ -234,9 +240,9 @@ internal class BazelCommand(
             selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
         // Each aspect builds the targets it reads: (aspect config, targets) pairs.
         val groups =
-          if (autoAspect) {
+          if (autoAndroidAspect != null) {
             val (jvm, android) = BazelBuild().splitAndroid(root, selection.targets, config, timeout)
-            val androidConfig = config.copy(aspect = detectAndroidAspect(root, config.providers))
+            val androidConfig = config.copy(aspect = autoAndroidAspect)
             if (android.isNotEmpty() && ("--verbose" in args || "-v" in args)) {
               System.err.println("[bazel] Android targets use ${androidConfig.aspect}")
             }
@@ -655,8 +661,10 @@ internal class BazelCommand(
                                   aspect and android_library targets an Android one:
                                   @rules_compose_preview's when MODULE.bazel declares it, else
                                   $DEFAULT_BAZEL_ANDROID_ASPECT,
-                                  which the CLI installs (init --android does it up front);
+                                  which the CLI installs (init --android does it up front), when
+                                  MODULE.bazel declares rules_android and rules_java or
                                   "providers" in bazel.json points its shims at internal rules.
+                                  Neither (Blaze): unconfigured selections stay JVM-only.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
                                   the JVM and Android providers instead of an aspect, linking an
                                   android_library's resources; .compose-preview/buck.json

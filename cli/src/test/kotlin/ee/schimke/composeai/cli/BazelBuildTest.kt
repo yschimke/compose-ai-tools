@@ -398,10 +398,25 @@ class BazelBuildTest {
   fun `the Android aspect is rules_compose_preview's when the module declares it`() {
     val root = Files.createTempDirectory("bazel-android-aspect").toFile()
     try {
-      assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
+      // No MODULE.bazel (a Blaze workspace): no aspect it can load, so the selection stays JVM.
+      assertNull(detectAndroidAspect(root))
+      // The bundled copy needs both repositories its shims load, under their own names.
       root
         .resolve("MODULE.bazel")
         .writeText("bazel_dep(name = \"rules_android\", version = \"0.7.2\")\n")
+      assertNull(detectAndroidAspect(root))
+      root
+        .resolve("MODULE.bazel")
+        .appendText(
+          "bazel_dep(name = \"rules_java\", version = \"9.3.0\", repo_name = \"java_rules\")\n"
+        )
+      assertNull(detectAndroidAspect(root))
+      root
+        .resolve("MODULE.bazel")
+        .writeText(
+          "bazel_dep(name = \"rules_android\", version = \"0.7.2\")\n" +
+            "bazel_dep(name = \"rules_java\", version = \"9.3.0\")\n"
+        )
       assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
       root
         .resolve("MODULE.bazel")
@@ -418,7 +433,8 @@ class BazelBuildTest {
         "@preview_rules//:android.bzl%compose_preview_android_aspect",
         detectAndroidAspect(root),
       )
-      // providers are read by the bundled copy's shims only.
+      // providers are read by the bundled copy's shims only, and make it loadable anywhere.
+      root.resolve("MODULE.bazel").delete()
       assertEquals(
         DEFAULT_BAZEL_ANDROID_ASPECT,
         detectAndroidAspect(root, mapOf("JavaInfo" to "//tools:providers.bzl")),
