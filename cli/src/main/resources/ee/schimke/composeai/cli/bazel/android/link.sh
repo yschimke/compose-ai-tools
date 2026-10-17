@@ -6,7 +6,9 @@
 # same arguments, which the aspect also records in its metadata, so the two cannot drift.
 #
 # Usage: link.sh AAPT2 JAVA_HOME OUT_APK OUT_R_JAR MANIFEST ANDROID_JAR EXTRA_PACKAGES ASSETS ARCHIVE...
-#   EXTRA_PACKAGES  colon-separated R packages besides the manifest's own (may be empty)
+#   EXTRA_PACKAGES  colon-separated R packages besides the manifest's own (may be empty); an entry
+#                   that is a path (with a slash, or an existing file ending .xml) is a library
+#                   manifest, standing for the package it declares
 #   ASSETS          a file of "<source>\t<path under assets/>" lines (may be empty); a source that
 #                   is a directory merges its contents at that path; later lines win
 #   ARCHIVE...      compiled resource archives in overlay order, every dependency first
@@ -17,9 +19,38 @@ shift 8
 # link over a few hundred resource packages generates tens of megabytes of R sources.
 # A unique name, so a caller's own file beside the output is never touched.
 work="$(mktemp -d "$(dirname "$apk")/.compose-preview-link.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+# Staged assets keep the read-only modes of Bazel's outputs, which rm cannot remove.
+trap 'chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"' EXIT
 overlays=""
 for zip in "$@"; do overlays="$overlays -R $zip"; done
+# The package a manifest declares; empty when it declares none.
+manifest_package() {
+  tr '\n\r\t' '   ' < "$1" |
+    sed -n -E "s/.*<manifest[^>]*[[:space:]]package=[\"']([^\"']*)[\"'].*/\\1/p"
+}
+own="$(manifest_package "$manifest")"
+packages=""
+set -f
+old_ifs="$IFS"
+IFS=":"
+for entry in $extra; do
+  # A bare name ending .xml is a manifest only when it is a file: com.example.xml is a package.
+  case "$entry" in
+    */* | *.xml)
+      if [ -f "$entry" ]; then
+        entry="$(manifest_package "$entry")"
+      elif [ "${entry#*/}" != "$entry" ]; then
+        echo "link.sh: no manifest at $entry; skipping its R package" >&2
+        entry=""
+      fi
+      ;;
+  esac
+  if [ -n "$entry" ] && [ "$entry" != "$own" ]; then packages="$packages $entry"; fi
+done
+IFS="$old_ifs"
+set +f
+# shellcheck disable=SC2086
+extra="$(printf '%s\n' $packages | LC_ALL=C sort -u | paste -s -d: -)"
 extra_flag=""
 if [ -n "$extra" ]; then extra_flag="--extra-packages $extra"; fi
 assets_flag=""

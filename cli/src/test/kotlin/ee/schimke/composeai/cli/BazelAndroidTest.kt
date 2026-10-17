@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.buildartifacts.protocol.AndroidBuildArtifacts
+import ee.schimke.composeai.buildartifacts.protocol.AndroidLinkInputs
 import ee.schimke.composeai.bundle.AndroidBundleResources
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
@@ -94,6 +95,49 @@ class BazelAndroidTest {
           .contains("not materialized")
       )
     }
+
+  @Test
+  fun `a manifest among the link packages resolves against the execution root`() = fixture { root ->
+    // rules_android reports no package for an aar_import, so the aspect passes its manifest.
+    listOf("link.sh", "aapt2", "jdk/bin/javac", "android.jar").forEach { root.file(it) }
+    root.file("external/widget/AndroidManifest.xml", "<manifest package=\"com.example.widget\"/>")
+    root.file("root.xml", "<manifest package=\"com.example.root\"/>")
+    val artifacts = androidArtifacts(root)
+    val link =
+      AndroidLinkInputs.Builder(
+          "link.sh",
+          "aapt2",
+          "jdk",
+          "android.jar",
+          listOf(
+            "com.example.ui",
+            "com.example.theme",
+            "external/widget/AndroidManifest.xml",
+            // A root package's manifest, and a package name that merely ends in .xml.
+            "root.xml",
+            "com.example.xml",
+          ),
+          emptyList(),
+        )
+        .build()
+    val withLink =
+      artifacts
+        .newBuilder()
+        .apply {
+          android = checkNotNull(artifacts.android).newBuilder().apply { this.link = link }.build()
+        }
+        .build()
+    assertEquals(
+      listOf(
+        "com.example.ui",
+        "com.example.theme",
+        root.resolve("external/widget/AndroidManifest.xml").absolutePath,
+        root.resolve("root.xml").absolutePath,
+        "com.example.xml",
+      ),
+      checkNotNull(withLink.resolve(root).android?.link).packages,
+    )
+  }
 
   @Test
   fun `schema 1 artifacts carrying an android block are refused`() = fixture { root ->

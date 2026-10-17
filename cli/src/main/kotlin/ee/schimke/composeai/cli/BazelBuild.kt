@@ -194,7 +194,13 @@ internal fun BazelArtifacts.resolve(
             aapt2 = resolvePath(link.aapt2),
             javaHome = resolvePath(link.javaHome),
             androidJar = resolvePath(link.androidJar),
-            packages = link.packages,
+            // A path is a library manifest standing for the package it declares (an AAR's,
+            // which rules_android does not report); link.sh reads it, from any directory.
+            packages =
+              link.packages.map {
+                val rootManifest = it.endsWith(".xml") && File(executionRoot, it).isFile
+                if ('/' in it || rootManifest) resolvePath(it).path else it
+              },
             compiledResources = resolvePaths(link.compiledResources),
             assets = link.assets.map { it.path to resolvePath(it.file) },
           )

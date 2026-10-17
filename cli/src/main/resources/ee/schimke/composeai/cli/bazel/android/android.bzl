@@ -174,6 +174,20 @@ def _link(ctx, target, resources, order):
     # their R.txt under None; they need no R class of their own.
     packages = sorted([p for p in resources.packages_to_r_txts.keys() if p and p != resources.package])
 
+    # rules_android files every aar_import's R.txt under None too: an AAR's package is only in its
+    # manifest, an action output. So every library's manifest goes to link.sh as well, which reads
+    # its package, and each AAR gets R classes with this APK's IDs rather than only its own
+    # non-final ones (whose IDs name nothing in this APK).
+    nodes = resources.direct_resources_nodes.to_list()
+    transitive_nodes = getattr(resources, "transitive_resources_nodes", None)
+    if transitive_nodes:
+        nodes = transitive_nodes.to_list() + nodes
+    library_manifests = {}
+    for node in nodes:
+        if getattr(node, "manifest", None) and node.label != target.label:
+            library_manifests[node.manifest.path] = node.manifest
+    manifests = [library_manifests[path] for path in sorted(library_manifests.keys())]
+
     args = ctx.actions.args()
     args.add(sdk.aapt2.executable)
     args.add(java_runtime.java_home)
@@ -181,7 +195,7 @@ def _link(ctx, target, resources, order):
     args.add(r_jar)
     args.add(manifest)
     args.add(sdk.android_jar)
-    args.add(":".join(packages))
+    args.add(":".join(packages + [f.path for f in manifests]))
     args.add(assets)
     args.add_all(compiled)
 
@@ -190,7 +204,7 @@ def _link(ctx, target, resources, order):
         # groups place the action (--incompatible_auto_exec_groups).
         toolchain = ANDROID_SDK_TOOLCHAIN_TYPE,
         inputs = depset(
-            [manifest, sdk.android_jar, assets, ctx.file._link] + compiled + staged.values(),
+            [manifest, sdk.android_jar, assets, ctx.file._link] + compiled + staged.values() + manifests,
             transitive = [java_runtime.files],
         ),
         tools = [sdk.aapt2],
@@ -210,7 +224,9 @@ def _link(ctx, target, resources, order):
         inputs = struct(
             compiled = compiled,
             assets = staged,
-            packages = [resources.package] + packages,
+            # A manifest path names the package it declares (link.sh's EXTRA_PACKAGES).
+            packages = [resources.package] + packages + [f.path for f in manifests],
+            manifests = manifests,
             aapt2 = sdk.aapt2.executable,
             aapt2_binary = _aapt2_binary(sdk),
             java_home = java_runtime.java_home,
@@ -330,7 +346,7 @@ def _impl(target, ctx):
             compose_preview_metadata = depset([metadata]),
             compose_preview_runtime = depset(
                 found.sources + [linked.apk, linked.manifest, ctx.file._link, link_inputs.android_jar] +
-                link_inputs.compiled + link_inputs.assets.values(),
+                link_inputs.compiled + link_inputs.assets.values() + link_inputs.manifests,
                 transitive = [found.runtime, found.runfiles, link_inputs.java_files],
             ),
         ),
