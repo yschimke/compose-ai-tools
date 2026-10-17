@@ -138,6 +138,12 @@ internal class BazelCommand(
           "detected: ${choice.reason}; commit buildCommand in .compose-preview/bazel.json to pin it"
         }
       }
+    // Unconfigured: the selection takes JVM and Android rules alike, and each kind gets its aspect.
+    val autoAspect =
+      !buck &&
+        args.flagValue("--aspect") == null &&
+        (configText == null ||
+          "aspect" !in (bazelJson.parseToJsonElement(configText) as JsonObject))
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config =
       config.copy(
@@ -205,41 +211,63 @@ internal class BazelCommand(
           System.err.println("[bazel] build command ${config.buildCommand} ($commandSource)")
         }
         val requested = requestedTargets()
+        val selectionConfig =
+          if (autoAspect) config.copy(targetKinds = config.targetKinds ?: AUTO_TARGET_KINDS)
+          else config
         val selection =
           if (requested.isNotEmpty())
             BazelTargetSelection(
               requested.joinToString(" "),
-              BazelBuild().expandTargets(root, requested, config, timeout),
+              BazelBuild().expandTargets(root, requested, selectionConfig, timeout),
             )
           else
             BazelBuild()
-              .selectTargets(root, invocationDirectory ?: requestedDirectory, config, timeout)
+              .selectTargets(
+                root,
+                invocationDirectory ?: requestedDirectory,
+                selectionConfig,
+                timeout,
+              )
         selectionLabel = selection.label
-        val targets = selection.targets
         candidates =
-          targets.size > 1 || selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
+          selection.targets.size > 1 ||
+            selection.label.split(Regex("\\s+")).any(::isBazelTargetPattern)
+        // Each aspect builds the targets it reads: (aspect config, targets) pairs.
+        val groups =
+          if (autoAspect) {
+            val (jvm, android) = BazelBuild().splitAndroid(root, selection.targets, config, timeout)
+            val androidConfig = config.copy(aspect = detectAndroidAspect(root, config.providers))
+            if (android.isNotEmpty() && ("--verbose" in args || "-v" in args)) {
+              System.err.println("[bazel] Android targets use ${androidConfig.aspect}")
+            }
+            listOf(config to jvm, androidConfig to android).filter { it.second.isNotEmpty() }
+          } else listOf(config to selection.targets)
         if (candidates) {
+          val targets = groups.flatMap { it.second }
           System.err.println("[bazel] ${targets.size} target(s): ${targets.joinToString(" ")}")
         }
-        // The bundled Android aspect is kept current: a missing or CLI-written file is
-        // (re)installed, one edited by hand is left alone.
-        if (config.aspect == DEFAULT_BAZEL_ANDROID_ASPECT && config.installAspect) {
-          installBazelAndroidAspect(root, config.providers).forEach {
-            System.err.println("[bazel] keeping locally edited $it")
+        groups.flatMap { (groupConfig, targets) ->
+          // The bundled Android aspect is kept current: a missing or CLI-written file is
+          // (re)installed, one edited by hand is left alone.
+          if (groupConfig.aspect == DEFAULT_BAZEL_ANDROID_ASPECT && groupConfig.installAspect) {
+            installBazelAndroidAspect(root, groupConfig.providers).forEach {
+              System.err.println("[bazel] keeping locally edited $it")
+            }
           }
-        }
-        // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
-        if (
-          config.aspect == DEFAULT_BAZEL_ASPECT &&
-            !root.resolve(".compose-preview/bazel/runtime.bzl").isFile
-        ) {
-          require(config.installAspect) {
-            "installAspect is false and $DEFAULT_BAZEL_ASPECT is missing; configure aspect, " +
-              "e.g. @rules_compose_preview//:runtime.bzl%compose_preview_aspect"
+          // A configured (non-default) aspect label is used as-is; nothing is written to the tree.
+          if (
+            groupConfig.aspect == DEFAULT_BAZEL_ASPECT &&
+              !root.resolve(".compose-preview/bazel/runtime.bzl").isFile
+          ) {
+            require(groupConfig.installAspect) {
+              "installAspect is false and $DEFAULT_BAZEL_ASPECT is missing; configure aspect, " +
+                "e.g. @rules_compose_preview//:runtime.bzl%compose_preview_aspect"
+            }
+            installBazelAspect(root)
           }
-          installBazelAspect(root)
+          BazelBuild()
+            .collectAll(root, targets, groupConfig, timeout, skipWithoutMetadata = candidates)
         }
-        BazelBuild().collectAll(root, targets, config, timeout, skipWithoutMetadata = candidates)
       }
     // A selected set is one module (one page in `browse`, one daemon), unless it cannot share one.
     val merged = selectionLabel?.let { label ->
@@ -623,10 +651,11 @@ internal class BazelCommand(
                                   ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
                                   (bazelisk), then bazel/bazelisk/blaze on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
-      --aspect <label.bzl%name>   Override the aspect entry point. For Android targets without
-                                  @rules_compose_preview, set aspect to
-                                  $DEFAULT_BAZEL_ANDROID_ASPECT:
-                                  the CLI installs that package (init --android does it up front);
+      --aspect <label.bzl%name>   Pin one aspect entry point. Unset, JVM targets use the JVM
+                                  aspect and android_library targets an Android one:
+                                  @rules_compose_preview's when MODULE.bazel declares it, else
+                                  $DEFAULT_BAZEL_ANDROID_ASPECT,
+                                  which the CLI installs (init --android does it up front);
                                   "providers" in bazel.json points its shims at internal rules.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
                                   the JVM and Android providers instead of an aspect, linking an

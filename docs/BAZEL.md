@@ -46,9 +46,11 @@ Targets are selected the way `bazel build` reads them. In order, the first that 
 4. Outside any package, such as a workspace root whose BUILD files are all below it, everything
    below the current directory, as `//dir/...`.
 
-Patterns are expanded with `query`, filtered by `kind()` to the rules the aspect can read. That
-means JVM library and binary rules for the default aspect, and `android_library` /
-`kt_android_library` for the Android aspect. Set `targetKinds` (a `kind()` regex) for other rules,
+Patterns are expanded with `query`, filtered by `kind()` to the rules the aspect can read. With no
+`aspect` configured, that means JVM library and binary rules and `android_library` /
+`kt_android_library` together: each kind is then built by its own aspect (see
+[Android targets](#android-targets-experimental)). A configured aspect reads only its own kinds.
+Set `targetKinds` (a `kind()` regex) for other rules,
 such as an internal macro's rule class. The filter matters: a `...` pattern also matches genrules
 and tests, and the aspect fails on a rule without `JavaInfo`.
 
@@ -301,9 +303,18 @@ through the existing non-Gradle RenderSession API.
 Schema-2 artifacts render on the Robolectric daemon instead of the desktop one.
 The linked APK, manifest and package reach Robolectric through a synthesized
 `test_config.properties`, as in the bundle lanes, and previews run on
-`android.app.Application` rather than the app's own. Point the driver at the
-Android aspect from [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel),
-which links an `android_library`'s resources itself:
+`android.app.Application` rather than the app's own.
+
+No configuration is needed. With no `aspect` in `.compose-preview/bazel.json`, the CLI builds the
+selected `android_library` / `kt_android_library` targets with the Android aspect from
+[compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel), which links an
+`android_library`'s resources itself, and any JVM targets with the JVM aspect. It uses
+`@rules_compose_preview` when `MODULE.bazel` declares it, and otherwise the copy it bundles (below).
+A target an Android library `exports` belongs to that library and is not built on its own:
+rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` and `_base`
+libraries it compiles to. Pass `--verbose` to see which aspect was chosen.
+
+To pin the aspect instead, set it; the CLI then builds only the rules that aspect reads:
 
 ```json
 {
@@ -315,7 +326,7 @@ which links an `android_library`'s resources itself:
 
 ### Without `@rules_compose_preview`
 
-A workspace that does not fetch the rules module uses the copy the CLI bundles instead:
+A workspace that does not fetch the rules module gets the copy the CLI bundles. Pinned, that is:
 
 ```json
 {
