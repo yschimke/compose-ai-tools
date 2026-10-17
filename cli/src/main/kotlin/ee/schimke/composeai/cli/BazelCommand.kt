@@ -760,17 +760,17 @@ internal fun <T> reportBuild(tool: String, targets: List<String>, build: () -> T
 
 /**
  * Renames the JVM aspect package file an earlier CLI wrote as `BUILD.bazel` to `BUILD`, which Blaze
- * deployments that read no `BUILD.bazel` also see. One edited by hand is left alone.
+ * deployments that read no `BUILD.bazel` also see, or removes it when a `BUILD` is already there.
+ * One edited by hand is left alone.
  */
 internal fun migrateBazelAspectBuildFile(root: File) {
   val directory = root.resolve(".compose-preview/bazel")
   val legacy = directory.resolve("BUILD.bazel")
   val build = directory.resolve("BUILD")
-  if (
-    !build.exists() && legacy.isFile && legacy.readText() == bundledBazelAspectFile("BUILD.bazel")
-  ) {
-    check(legacy.renameTo(build)) { "Could not rename $legacy to $build" }
-  }
+  if (!legacy.isFile || legacy.readText() != bundledBazelAspectFile("BUILD.bazel")) return
+  // Already beside a BUILD (an older CLI run after a newer one): the CLI's copy simply goes.
+  if (build.exists()) check(legacy.delete()) { "Could not remove $legacy" }
+  else check(legacy.renameTo(build)) { "Could not rename $legacy to $build" }
 }
 
 internal data class PreparedBazelPreviews(val manifest: DiscoveryManifest, val manifestFile: File)
