@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.0](https://github.com/yschimke/compose-ai-tools/compare/v2.67.0...v2.68.0) (2026-10-17)
+
+
+### Features
+
+* **bazel:** pick the Android aspect for android_library targets ([#6063](https://github.com/yschimke/compose-ai-tools/issues/6063)) ([160d0cf](https://github.com/yschimke/compose-ai-tools/commit/160d0cfbf5d28d438770b3f3df1fc66551aed550))
+
 ## [2.67.0](https://github.com/yschimke/compose-ai-tools/compare/v2.66.0...v2.67.0) (2026-10-16)
 
 
