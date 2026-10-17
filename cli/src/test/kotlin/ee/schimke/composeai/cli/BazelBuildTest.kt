@@ -645,11 +645,20 @@ class BazelBuildTest {
       assertEquals(bundled, dir.resolve("BUILD").readText())
       assertTrue(!dir.resolve("BUILD.bazel").exists())
 
+      // An unedited copy beside the current BUILD (an older CLI run after a newer one) just goes.
+      dir.resolve("BUILD.bazel").writeText(bundled)
+      migrateBazelAspectBuildFile(root)
+      assertTrue(!dir.resolve("BUILD.bazel").exists())
+      installBazelAspect(root)
+
       // A hand-edited one stays.
       dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
       dir.resolve("BUILD.bazel").appendText("# local\n")
       migrateBazelAspectBuildFile(root)
       assertTrue(dir.resolve("BUILD.bazel").isFile)
+      assertTrue(!dir.resolve("BUILD").exists())
+      // init refuses rather than write a BUILD it would shadow.
+      assertFailsWith<IllegalArgumentException> { installBazelAspect(root) }
       assertTrue(!dir.resolve("BUILD").exists())
     } finally {
       root.deleteRecursively()
