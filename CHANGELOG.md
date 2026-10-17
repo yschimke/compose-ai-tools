@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.3](https://github.com/yschimke/compose-ai-tools/compare/v2.68.2...v2.68.3) (2026-10-17)
+
+
+### Bug Fixes
+
+* **bazel:** link every AAR's package with final IDs ([#6073](https://github.com/yschimke/compose-ai-tools/issues/6073)) ([d7c3649](https://github.com/yschimke/compose-ai-tools/commit/d7c3649bac4ef27e0b5e4f47e82ec1dec69594bd))
+
 ## [2.68.2](https://github.com/yschimke/compose-ai-tools/compare/v2.68.1...v2.68.2) (2026-10-17)
 
 
