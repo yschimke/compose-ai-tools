@@ -582,7 +582,7 @@ internal class BazelBuild(
    * [targets] as (JVM, Android) for an unconfigured aspect, so each kind is built by the aspect
    * that reads it. A target an Android library `exports` is part of that library and left out:
    * rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` JVM library and
-   * `_base` resources it compiles to.
+   * `_base` resources it compiles to. An `alias` is classified by its `actual` target.
    */
   fun splitAndroid(
     root: File,
@@ -601,11 +601,17 @@ internal class BazelBuild(
         .filter { it.startsWith("//") || it.startsWith("@") }
         .map(::normalizeBazelLabel)
         .toSet()
-    val all = targets.joinToString(" ", prefix = "set(", postfix = ")") { "\"$it\"" }
-    val android = query("kind('$ANDROID_TARGET_KINDS', $all)")
+    fun set(labels: Collection<String>) =
+      labels.joinToString(" ", prefix = "set(", postfix = ")") { "\"$it\"" }
+    val all = set(targets)
+    // Only a label named explicitly can be an alias: a pattern's matches are kind-filtered.
+    val aliasedAndroid =
+      query("kind('^alias rule$', $all)").filter {
+        query("kind('$ANDROID_TARGET_KINDS', labels(actual, \"$it\"))").isNotEmpty()
+      }
+    val android = query("kind('$ANDROID_TARGET_KINDS', $all)") + aliasedAndroid
     if (android.isEmpty()) return targets to emptyList()
-    val exporters = android.joinToString(" ", prefix = "set(", postfix = ")") { "\"$it\"" }
-    val exported = query("$all intersect labels(exports, $exporters)")
+    val exported = query("$all intersect labels(exports, ${set(android)})")
     val kept = targets.filterNot { normalizeBazelLabel(it) in exported }
     return kept.partition { normalizeBazelLabel(it) !in android }
   }
@@ -881,9 +887,9 @@ internal const val RULES_ANDROID_ASPECT =
 
 /**
  * The Android aspect for an unconfigured workspace: [RULES_ANDROID_ASPECT] when `MODULE.bazel`
- * declares `rules_compose_preview`, else the copy the CLI installs
- * ([DEFAULT_BAZEL_ANDROID_ASPECT]). Configured [providers] are read only by that copy's shims, so
- * they select it.
+ * declares `rules_compose_preview` (under its `repo_name`, when it sets one), else the copy the CLI
+ * installs ([DEFAULT_BAZEL_ANDROID_ASPECT]). Configured [providers] are read only by that copy's
+ * shims, so they select it.
  */
 internal fun detectAndroidAspect(
   root: File,
@@ -891,9 +897,16 @@ internal fun detectAndroidAspect(
 ): String {
   if (providers.isNotEmpty()) return DEFAULT_BAZEL_ANDROID_ASPECT
   val module = root.resolve("MODULE.bazel").takeIf { it.isFile }?.readText().orEmpty()
-  val declared =
-    Regex("""bazel_dep\(\s*name\s*=\s*"rules_compose_preview"""").containsMatchIn(module)
-  return if (declared) RULES_ANDROID_ASPECT else DEFAULT_BAZEL_ANDROID_ASPECT
+  fun attribute(call: String, name: String) =
+    Regex("""\b$name\s*=\s*"([^"]+)"""").find(call)?.groupValues?.get(1)
+  val dep =
+    Regex("""bazel_dep\(([^)]*)\)""")
+      .findAll(module)
+      .map { it.groupValues[1] }
+      .firstOrNull { attribute(it, "name") == "rules_compose_preview" }
+      ?: return DEFAULT_BAZEL_ANDROID_ASPECT
+  val repository = attribute(dep, "repo_name") ?: "rules_compose_preview"
+  return RULES_ANDROID_ASPECT.replaceFirst("@rules_compose_preview//", "@$repository//")
 }
 
 /** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */

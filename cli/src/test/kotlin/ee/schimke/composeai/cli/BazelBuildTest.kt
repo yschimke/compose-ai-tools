@@ -350,31 +350,40 @@ class BazelBuildTest {
     try {
       val queries = mutableListOf<String>()
       // kt_android_library: //app:lib (android_library) exports //app:lib_kt and //app:lib_base.
+      // //app:ui is an alias for //app:lib, and //desktop:ui an alias for a JVM library.
       val build = BazelBuild { argv, _, _ ->
         val expression = argv[argv.indexOf("query") + 1]
         queries += expression
-        if (expression.startsWith("kind(")) "//app:lib\n//app:lib_base\n"
-        else "//app:lib_kt\n//app:lib_base\n"
+        when {
+          expression.startsWith("kind('^alias rule\$'") -> "//app:ui\n//desktop:ui\n"
+          expression.contains("labels(actual, \"//app:ui\")") -> "//app:lib\n"
+          expression.contains("labels(actual, ") -> ""
+          expression.startsWith("kind(") -> "//app:lib\n//app:lib_base\n"
+          else -> "//app:lib_kt\n//app:lib_base\n"
+        }
       }
       val (jvm, android) =
         build.splitAndroid(
           root,
-          listOf("//app:lib", "//app:lib_base", "//app:lib_kt", "//desktop:ui"),
+          listOf("//app:lib", "//app:lib_base", "//app:lib_kt", "//app:ui", "//desktop:ui"),
           BazelBuildConfig(),
           9,
         )
       assertEquals(listOf("//desktop:ui"), jvm)
-      assertEquals(listOf("//app:lib"), android)
-      assertEquals(
-        "kind('(kt_android_library|android_library)', " +
-          "set(\"//app:lib\" \"//app:lib_base\" \"//app:lib_kt\" \"//desktop:ui\"))",
-        queries[0],
+      assertEquals(listOf("//app:lib", "//app:ui"), android)
+      assertTrue(
+        queries.contains(
+          "kind('(kt_android_library|android_library)', set(\"//app:lib\" \"//app:lib_base\" " +
+            "\"//app:lib_kt\" \"//app:ui\" \"//desktop:ui\"))"
+        )
       )
       assertTrue(
-        queries[1].endsWith("intersect labels(exports, set(\"//app:lib\" \"//app:lib_base\"))")
+        queries
+          .last()
+          .endsWith("intersect labels(exports, set(\"//app:lib\" \"//app:lib_base\" \"//app:ui\"))")
       )
 
-      // No Android target: one query, and the JVM selection is unchanged.
+      // No Android target: the JVM selection is unchanged.
       val jvmOnly = BazelBuild { _, _, _ -> "" }
       assertEquals(
         listOf("//a:b", "//c:d") to emptyList<String>(),
@@ -398,6 +407,17 @@ class BazelBuildTest {
         .resolve("MODULE.bazel")
         .appendText("bazel_dep(name = \"rules_compose_preview\", version = \"0.1.0-rc.14\")\n")
       assertEquals(RULES_ANDROID_ASPECT, detectAndroidAspect(root))
+      // repo_name renames the repository the aspect loads from.
+      root
+        .resolve("MODULE.bazel")
+        .writeText(
+          "bazel_dep(\n    name = \"rules_compose_preview\",\n    version = \"0.1.0\",\n" +
+            "    repo_name = \"preview_rules\",\n)\n"
+        )
+      assertEquals(
+        "@preview_rules//:android.bzl%compose_preview_android_aspect",
+        detectAndroidAspect(root),
+      )
       // providers are read by the bundled copy's shims only.
       assertEquals(
         DEFAULT_BAZEL_ANDROID_ASPECT,
