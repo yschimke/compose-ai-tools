@@ -309,7 +309,11 @@ No configuration is needed. With no `aspect` in `.compose-preview/bazel.json`, t
 selected `android_library` / `kt_android_library` targets with the Android aspect from
 [compose-preview-bazel](https://github.com/yschimke/compose-preview-bazel), which links an
 `android_library`'s resources itself, and any JVM targets with the JVM aspect. It uses
-`@rules_compose_preview` when `MODULE.bazel` declares it, and otherwise the copy it bundles (below).
+`@rules_compose_preview` when `MODULE.bazel` declares it (under its `repo_name`, if set), and
+otherwise the copy it bundles (below) when the `rules_android` and `rules_java` that copy loads are
+visible under those names (declared in `MODULE.bazel`, or defined in `WORKSPACE`), or `providers`
+points it elsewhere. A workspace with neither, such as a Blaze one, keeps the JVM-only selection:
+set `aspect` (or `providers`) to render its Android targets.
 A target an Android library `exports` belongs to that library and is not built on its own:
 rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` and `_base`
 libraries it compiles to. Pass `--verbose` to see which aspect was chosen.
