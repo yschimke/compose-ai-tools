@@ -489,7 +489,7 @@ composeai-preview-daemon = "3.18.6"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.13.1"
+rcplayers = "2.15.0"
 
 [libraries]
 
