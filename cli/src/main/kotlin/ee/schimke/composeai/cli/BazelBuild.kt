@@ -892,8 +892,9 @@ internal const val RULES_ANDROID_ASPECT =
  * - [RULES_ANDROID_ASPECT] when `MODULE.bazel` declares `rules_compose_preview` (under its
  *   `repo_name`, when it sets one);
  * - else the copy the CLI installs ([DEFAULT_BAZEL_ANDROID_ASPECT]) when configured [providers]
- *   point its shims somewhere, or when `MODULE.bazel` declares the `rules_android` and `rules_java`
- *   its shims load by default under their own names.
+ *   point its shims somewhere, or when the `rules_android` and `rules_java` its shims load by
+ *   default are visible under their own names: declared in `MODULE.bazel`, or defined in a
+ *   `WORKSPACE` (`WORKSPACE.bazel`).
  */
 internal fun detectAndroidAspect(
   root: File,
@@ -913,9 +914,16 @@ internal fun detectAndroidAspect(
   declared("rules_compose_preview")?.let { repository ->
     return RULES_ANDROID_ASPECT.replaceFirst("@rules_compose_preview//", "@$repository//")
   }
-  val loadable =
-    declared("rules_android") == "rules_android" && declared("rules_java") == "rules_java"
-  return if (loadable) DEFAULT_BAZEL_ANDROID_ASPECT else null
+  // A WORKSPACE-based project defines repositories by name (http_archive, local_repository, ...).
+  val workspace =
+    listOf("WORKSPACE.bazel", "WORKSPACE")
+      .map(root::resolve)
+      .filter { it.isFile }
+      .joinToString("\n") { it.readText() }
+  fun visible(name: String) =
+    declared(name) == name || Regex("""\bname\s*=\s*"$name"""").containsMatchIn(workspace)
+  return if (visible("rules_android") && visible("rules_java")) DEFAULT_BAZEL_ANDROID_ASPECT
+  else null
 }
 
 /** Expand package shorthand and normalize the equivalent main/canonical repository spellings. */

@@ -418,6 +418,21 @@ class BazelBuildTest {
             "bazel_dep(name = \"rules_java\", version = \"9.3.0\")\n"
         )
       assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
+      // A WORKSPACE project defines the repositories instead.
+      root.resolve("MODULE.bazel").renameTo(root.resolve("MODULE.bazel.off"))
+      root
+        .resolve("WORKSPACE.bazel")
+        .writeText(
+          "http_archive(\n    name = \"rules_android\",\n    urls = [\"https://example\"],\n)\n" +
+            "local_repository(name = \"rules_java\", path = \"third_party/rules_java\")\n"
+        )
+      assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
+      root
+        .resolve("WORKSPACE.bazel")
+        .writeText("local_repository(name = \"rules_java\", path = \"x\")\n")
+      assertNull(detectAndroidAspect(root))
+      root.resolve("WORKSPACE.bazel").delete()
+      root.resolve("MODULE.bazel.off").renameTo(root.resolve("MODULE.bazel"))
       root
         .resolve("MODULE.bazel")
         .appendText("bazel_dep(name = \"rules_compose_preview\", version = \"0.1.0-rc.14\")\n")

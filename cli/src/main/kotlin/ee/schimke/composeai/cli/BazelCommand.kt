@@ -662,7 +662,8 @@ internal class BazelCommand(
                                   @rules_compose_preview's when MODULE.bazel declares it, else
                                   $DEFAULT_BAZEL_ANDROID_ASPECT,
                                   which the CLI installs (init --android does it up front), when
-                                  MODULE.bazel declares rules_android and rules_java or
+                                  rules_android and rules_java are visible (MODULE.bazel or
+                                  WORKSPACE) or
                                   "providers" in bazel.json points its shims at internal rules.
                                   Neither (Blaze): unconfigured selections stay JVM-only.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
