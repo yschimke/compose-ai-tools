@@ -19,7 +19,10 @@ internal data class ResolvedAndroidLink(
   val aapt2: File,
   val javaHome: File,
   val androidJar: File,
-  /** Every R package of the target's APK, its own first. */
+  /**
+   * Every R package of the target's APK, its own first. An absolute path is a library manifest,
+   * standing for the package it declares.
+   */
   val packages: List<String>,
   /** Compiled resource archives in overlay order: every dependency before its dependents. */
   val compiledResources: List<File>,
@@ -200,7 +203,7 @@ private fun androidMergeFingerprint(plan: AndroidMergePlan): String {
     }
   }
   add(plan.packageName)
-  plan.extraPackages.forEach(::add)
+  plan.extraPackages.forEach { if ('/' in it) add(File(it)) else add(it) }
   plan.compileSdk?.let { add(it.toString()) }
   listOf(plan.tools.script, plan.tools.aapt2, plan.tools.androidJar).forEach(::add)
   add(plan.tools.javaHome.absolutePath)
