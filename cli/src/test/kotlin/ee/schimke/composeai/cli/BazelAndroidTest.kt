@@ -101,6 +101,7 @@ class BazelAndroidTest {
     // rules_android reports no package for an aar_import, so the aspect passes its manifest.
     listOf("link.sh", "aapt2", "jdk/bin/javac", "android.jar").forEach { root.file(it) }
     root.file("external/widget/AndroidManifest.xml", "<manifest package=\"com.example.widget\"/>")
+    root.file("root.xml", "<manifest package=\"com.example.root\"/>")
     val artifacts = androidArtifacts(root)
     val link =
       AndroidLinkInputs.Builder(
@@ -108,7 +109,14 @@ class BazelAndroidTest {
           "aapt2",
           "jdk",
           "android.jar",
-          listOf("com.example.ui", "com.example.theme", "external/widget/AndroidManifest.xml"),
+          listOf(
+            "com.example.ui",
+            "com.example.theme",
+            "external/widget/AndroidManifest.xml",
+            // A root package's manifest, and a package name that merely ends in .xml.
+            "root.xml",
+            "com.example.xml",
+          ),
           emptyList(),
         )
         .build()
@@ -124,6 +132,8 @@ class BazelAndroidTest {
         "com.example.ui",
         "com.example.theme",
         root.resolve("external/widget/AndroidManifest.xml").absolutePath,
+        root.resolve("root.xml").absolutePath,
+        "com.example.xml",
       ),
       checkNotNull(withLink.resolve(root).android?.link).packages,
     )

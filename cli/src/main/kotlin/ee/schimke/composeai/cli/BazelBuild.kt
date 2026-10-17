@@ -198,7 +198,8 @@ internal fun BazelArtifacts.resolve(
             // which rules_android does not report); link.sh reads it, from any directory.
             packages =
               link.packages.map {
-                if ('/' in it || it.endsWith(".xml")) resolvePath(it).path else it
+                val rootManifest = it.endsWith(".xml") && File(executionRoot, it).isFile
+                if ('/' in it || rootManifest) resolvePath(it).path else it
               },
             compiledResources = resolvePaths(link.compiledResources),
             assets = link.assets.map { it.path to resolvePath(it.file) },
