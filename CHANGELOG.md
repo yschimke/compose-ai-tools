@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.6](https://github.com/yschimke/compose-ai-tools/compare/v2.68.5...v2.68.6) (2026-10-18)
+
+
+### Bug Fixes
+
+* read pinAppClock prefixes lazily in composePreviewRender ([#6093](https://github.com/yschimke/compose-ai-tools/issues/6093)) ([3aa8bdc](https://github.com/yschimke/compose-ai-tools/commit/3aa8bdc8bb519d304a3fa2f8338f5fb3518349fe))
+
 ## [2.68.5](https://github.com/yschimke/compose-ai-tools/compare/v2.68.4...v2.68.5) (2026-10-18)
 
 
