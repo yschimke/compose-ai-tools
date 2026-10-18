@@ -161,18 +161,19 @@ internal fun BazelArtifacts.resolve(
     "Missing target/configuration identity"
   }
   require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
+  /**
+   * [path] in the execution root, or, for a file the CLI itself installed under `.compose-preview/`
+   * (the Android aspect's link.sh), in the workspace: an execution root holds a source file only
+   * when the build planted its package there (compose-ai-tools#5945). Nothing else falls back, so a
+   * stale checkout file cannot stand in for a build output that was not materialized.
+   */
   fun resolvePath(path: String): File {
     require(path.isNotBlank()) { "Empty artifact path" }
     val inRoot =
       File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
-    // A source file of the main repository, such as the Android aspect's link.sh under
-    // .compose-preview/, is only in the execution root when the build planted its package there;
-    // it is always in the workspace (compose-ai-tools#5945).
     val file =
-      inRoot.takeIf { it.exists() || File(path).isAbsolute }
-        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf {
-          it.exists() && !path.startsWith("bazel-out/") && !path.startsWith("external/")
-        }
+      inRoot.takeIf { it.exists() || !path.startsWith(".compose-preview/") }
+        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf { it.exists() }
         ?: inRoot
     require(file.exists()) {
       "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."

@@ -170,6 +170,15 @@ class BazelAndroidTest {
     )
     // Without a workspace to fall back on, the link block is dropped, as before.
     assertNull(withLink.resolve(root).android?.link)
+    // A build output never resolves from the workspace: a stale checkout file must not stand in
+    // for a jar the build did not materialize.
+    workspace.file("bin/stale.jar")
+    val stale = artifacts.newBuilder().apply { runtimeJars = runtimeJars + "bin/stale.jar" }.build()
+    assertTrue(
+      assertFailsWith<IllegalArgumentException> { stale.resolve(root, workspace) }
+        .message!!
+        .contains("not materialized")
+    )
   }
 
   @Test
