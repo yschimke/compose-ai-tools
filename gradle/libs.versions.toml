@@ -444,7 +444,7 @@ composeai-contracts = "3.36.0"
 # ~1,500-jar Bazel target's `userClassDirs` no longer fails the spawn with E2BIG (#5945).
 # 3.18.6 does the same for the sandbox workers it forks, and exits on a failed start instead of
 # hanging (compose-preview-daemon#306, #5945).
-composeai-preview-daemon = "3.18.6"
+composeai-preview-daemon = "3.18.7"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
