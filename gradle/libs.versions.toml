@@ -444,7 +444,9 @@ composeai-contracts = "3.36.0"
 # ~1,500-jar Bazel target's `userClassDirs` no longer fails the spawn with E2BIG (#5945).
 # 3.18.6 does the same for the sandbox workers it forks, and exits on a failed start instead of
 # hanging (compose-preview-daemon#306, #5945).
-composeai-preview-daemon = "3.18.7"
+# 3.18.8 hides the host action bar synchronously, so a targetSdk >= 35 library's edge-to-edge
+# window no longer captures it over the preview (compose-preview-daemon#315, #5945).
+composeai-preview-daemon = "3.18.8"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
