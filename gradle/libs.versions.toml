@@ -320,7 +320,7 @@ okhttp = "5.5.0"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
-jmdns = "3.6.3"
+jmdns = "3.6.4"
 # Coil — image loading. `compileOnly` in `:renderer-android` (see `CoilPreviewSupport`), which
 # swaps the singleton `ImageLoader` for an inline-dispatcher one so `AsyncImage` resolves before a
 # preview is captured (issue #2952). Both majors are pinned because they are separate,
