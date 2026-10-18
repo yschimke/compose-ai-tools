@@ -162,21 +162,18 @@ internal fun BazelArtifacts.resolve(
   }
   require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
   /**
-   * [path] in the execution root. With [workspaceSource] (a field that names a main-repository
-   * source file, such as the Android aspect's link.sh under `.compose-preview/`), a path the
-   * execution root lacks resolves from the workspace: an execution root holds a source file only
-   * when the build planted its package there (compose-ai-tools#5945). Never for build outputs, so a
-   * stale checkout file cannot stand in for one that was not materialized.
+   * [path] in the execution root, or, for a file the CLI itself installed under `.compose-preview/`
+   * (the Android aspect's link.sh), in the workspace: an execution root holds a source file only
+   * when the build planted its package there (compose-ai-tools#5945). Nothing else falls back, so a
+   * stale checkout file cannot stand in for a build output that was not materialized.
    */
-  fun resolvePath(path: String, workspaceSource: Boolean = false): File {
+  fun resolvePath(path: String): File {
     require(path.isNotBlank()) { "Empty artifact path" }
     val inRoot =
       File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
     val file =
-      inRoot.takeIf { it.exists() || File(path).isAbsolute || !workspaceSource }
-        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf {
-          it.exists() && !path.startsWith("bazel-out/") && !path.startsWith("external/")
-        }
+      inRoot.takeIf { it.exists() || !path.startsWith(".compose-preview/") }
+        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf { it.exists() }
         ?: inRoot
     require(file.exists()) {
       "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."
@@ -204,7 +201,7 @@ internal fun BazelArtifacts.resolve(
       block.link?.let { link ->
         runCatching {
           ResolvedAndroidLink(
-            script = resolvePath(link.script, workspaceSource = true),
+            script = resolvePath(link.script),
             aapt2 = resolvePath(link.aapt2),
             javaHome = resolvePath(link.javaHome),
             androidJar = resolvePath(link.androidJar),
@@ -213,7 +210,7 @@ internal fun BazelArtifacts.resolve(
             packages =
               link.packages.map {
                 val rootManifest = it.endsWith(".xml") && File(executionRoot, it).isFile
-                if ('/' in it || rootManifest) resolvePath(it, workspaceSource = true).path else it
+                if ('/' in it || rootManifest) resolvePath(it).path else it
               },
             compiledResources = resolvePaths(link.compiledResources),
             assets = link.assets.map { it.path to resolvePath(it.file) },
