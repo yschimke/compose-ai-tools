@@ -465,6 +465,29 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the render JVM's clock prefixes resolve only at execution time`() {
+    // #6039: an eager read during task configuration hit AGP's "configuration of project has not
+    // completed yet" on the namespace the default derives from.
+    var resolved = false
+    val project = ProjectBuilder.builder().withProjectDir(tmp.newFolder()).build()
+    val provider =
+      AndroidPreviewSupport.ClockPackagesSystemPropProvider(
+        project.provider {
+          resolved = true
+          listOf("com.example.app.", "com.example.lib.")
+        }
+      )
+    assertThat(resolved).isFalse()
+    assertThat(provider.asArguments())
+      .containsExactly("-D$CLOCK_PACKAGES_PROPERTY=com.example.app.,com.example.lib.")
+    assertThat(
+        AndroidPreviewSupport.ClockPackagesSystemPropProvider(project.provider { emptyList() })
+          .asArguments()
+      )
+      .isEmpty()
+  }
+
+  @Test
   fun `pinAppClock is on by default and the opt-out empties the prefixes`() {
     fun packages(gradleProperties: String?, configure: PreviewExtension.() -> Unit): List<String> {
       val dir = tmp.newFolder()
