@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.68.5](https://github.com/yschimke/compose-ai-tools/compare/v2.68.4...v2.68.5) (2026-10-18)
+
+
+### Bug Fixes
+
+* **bazel:** limit the workspace fallback to source-file fields ([#6090](https://github.com/yschimke/compose-ai-tools/issues/6090)) ([cf09282](https://github.com/yschimke/compose-ai-tools/commit/cf0928243247b4854c065ca6cd4caa54a7dd5ee7))
+* **bazel:** resolve the link script from the workspace when the execution root lacks it ([#6088](https://github.com/yschimke/compose-ai-tools/issues/6088)) ([f951325](https://github.com/yschimke/compose-ai-tools/commit/f9513254e8a5c325cda135ea0200abe0021b4990))
+* **deps:** update compose-preview-daemon to 3.18.8 ([#6091](https://github.com/yschimke/compose-ai-tools/issues/6091)) ([9407ad0](https://github.com/yschimke/compose-ai-tools/commit/9407ad04af446d46a660545a3f4570b8bcf74a31))
+* **deps:** update dependency @design-parity/export-driver to v1.16.1 ([#6086](https://github.com/yschimke/compose-ai-tools/issues/6086)) ([e0c36e4](https://github.com/yschimke/compose-ai-tools/commit/e0c36e419fdc583337d1068003408b4a405bd15e))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.36.0 ([#6082](https://github.com/yschimke/compose-ai-tools/issues/6082)) ([a839fc3](https://github.com/yschimke/compose-ai-tools/commit/a839fc309f29edeba0945d36bb7e303f57953811))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.18.7 ([#6022](https://github.com/yschimke/compose-ai-tools/issues/6022)) ([d9c513b](https://github.com/yschimke/compose-ai-tools/commit/d9c513b9562bed3ec753e6edbd2f7962d61de420))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.14.0 ([#6075](https://github.com/yschimke/compose-ai-tools/issues/6075)) ([f942a0c](https://github.com/yschimke/compose-ai-tools/commit/f942a0cac22788feb309f82ce581bad2353ac21b))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.16.0 ([#6087](https://github.com/yschimke/compose-ai-tools/issues/6087)) ([c38abc4](https://github.com/yschimke/compose-ai-tools/commit/c38abc433abced79b7fd646133922758eb34cc12))
+* **deps:** update dependency org.jmdns:jmdns to v3.6.4 ([#6083](https://github.com/yschimke/compose-ai-tools/issues/6083)) ([4a6e841](https://github.com/yschimke/compose-ai-tools/commit/4a6e84123228298756f2c421acca70ae4a0e0d54))
+* **render-host:** preserve dimensions and settle desktop playground stills ([#6084](https://github.com/yschimke/compose-ai-tools/issues/6084)) ([4add234](https://github.com/yschimke/compose-ai-tools/commit/4add2341a62ef22fc40e56f8bbc7cd6aeaf4ab0c))
+
+
+### Performance Improvements
+
+* **bazel:** boot only as many sandboxes as a one-shot render needs ([#6089](https://github.com/yschimke/compose-ai-tools/issues/6089)) ([458f4cf](https://github.com/yschimke/compose-ai-tools/commit/458f4cf88c7277db7b0955da4a45d32a5158e720))
+
 ## [2.68.4](https://github.com/yschimke/compose-ai-tools/compare/v2.68.3...v2.68.4) (2026-10-17)
 
 
