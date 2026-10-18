@@ -2102,9 +2102,11 @@ internal object AndroidPreviewSupport {
             linkBufferComposer = linkBufferComposer.get(),
             rcPlayer = rcPlayer.get(),
             rcDensity = rcDensity.get(),
-            clockPackages = clockPackagesProperty(clockPackages.get()),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
+        // Lazy: the default derives from the variant's namespace, which AGP refuses to read while
+        // the project is still configuring, and a plugin can realize this task that early (#6039).
+        jvmArgumentProviders.add(ClockPackagesSystemPropProvider(clockPackages))
 
         // No a11y providers: the daemon is the only a11y producer. Display filters use a lazy input
         // so toggling them doesn't invalidate the configuration cache.
@@ -2974,6 +2976,20 @@ internal object AndroidPreviewSupport {
       .gradleProperty("composePreview.tier")
       .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
       .orElse("full")
+
+  /**
+   * Forwards `pinAppClock`'s prefixes as [CLOCK_PACKAGES_PROPERTY], resolved at execution time; an
+   * empty list emits nothing.
+   */
+  internal class ClockPackagesSystemPropProvider(
+    @get:org.gradle.api.tasks.Input val packages: org.gradle.api.provider.Provider<List<String>>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+      val p = packages.get()
+      return if (p.isEmpty()) emptyList()
+      else listOf("-D$CLOCK_PACKAGES_PROPERTY=${clockPackagesProperty(p)}")
+    }
+  }
 
   /** Lazy render-tier system property for `composePreviewRender`. */
   internal class TierSystemPropProvider(
