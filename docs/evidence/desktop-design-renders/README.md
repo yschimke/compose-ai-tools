@@ -54,7 +54,8 @@ bug discarded `@SettledPreview` entirely, and generated entries have no such
 annotation. Ordinary CMP playground stills now request auto settle bounded at
 1000 ms. Explicit settle timestamps retain precedence and discovery's clamps.
 Motion, interaction, scrolling and Roborazzi timeline annotations do not acquire a
-default settle. Android defaults, daemon recording and interactive paths are unchanged.
+default settle. Focused GIF previews (`@FocusedPreview(gif = true)`) also retain
+their timeline; focused stills with `gif = false` or the default value still settle. Android defaults, daemon recording and interactive paths are unchanged.
 This does not add playground motion fan-out support.
 
 ## Verification and dependency ordering

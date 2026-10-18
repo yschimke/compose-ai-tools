@@ -217,6 +217,12 @@ class PlaygroundPreviewsTest {
           @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
           public @interface AnimatedPreview {}
         """,
+            "FocusedPreview.java" to
+              """
+          package ee.schimke.composeai.preview;
+          @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+          public @interface FocusedPreview { boolean gif() default false; }
+        """,
             "RoboComposePreviewOptions.java" to
               """
           package com.github.takahirom.roborazzi.annotations;
@@ -231,6 +237,9 @@ class PlaygroundPreviewsTest {
             @Preview public static void Still() {}
             @Preview @ee.schimke.composeai.preview.AnimatedPreview public static void Motion() {}
             @Preview @com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions public static void Timed() {}
+            @Preview @ee.schimke.composeai.preview.FocusedPreview(gif=true) public static void FocusGif() {}
+            @Preview @ee.schimke.composeai.preview.FocusedPreview(gif=false) public static void FocusStill() {}
+            @Preview @ee.schimke.composeai.preview.FocusedPreview public static void FocusDefault() {}
           }
         """,
           )
@@ -249,7 +258,12 @@ class PlaygroundPreviewsTest {
             *sources.map { it.path }.toTypedArray(),
           ),
       )
-      val ids = listOf("sample.Snippet.Still", "sample.Snippet.Motion", "sample.Snippet.Timed")
+      // Production annotation definitions normally live outside the snippet's compiled output.
+      directory.resolve("ee/schimke/composeai/preview/FocusedPreview.class").delete()
+      val ids =
+        listOf("Still", "Motion", "Timed", "FocusGif", "FocusStill", "FocusDefault").map {
+          "sample.Snippet.$it"
+        }
       fun manifest(mode: PlaygroundMode) =
         json.decodeFromString<PreviewManifest>(
           PlaygroundPreviews.previewManifestJson(
@@ -274,6 +288,35 @@ class PlaygroundPreviewsTest {
       )
       assertNull(desktop.previews[1].captures.single().settle)
       assertNull(desktop.previews[2].captures.single().settle)
+      assertNull(
+        desktop.previews[3].captures.single().settle,
+        "a focused GIF must retain its timeline",
+      )
+      for (index in listOf(4, 5)) {
+        assertEquals(
+          0,
+          desktop.previews[index]
+            .captures
+            .single()
+            .settle
+            ?.jsonObject
+            ?.get("afterMs")
+            ?.jsonPrimitive
+            ?.int,
+          "a focused still should settle",
+        )
+        assertEquals(
+          1000,
+          desktop.previews[index]
+            .captures
+            .single()
+            .settle
+            ?.jsonObject
+            ?.get("maxMs")
+            ?.jsonPrimitive
+            ?.int,
+        )
+      }
       manifest(PlaygroundMode.ANDROID).previews.forEach { assertNull(it.captures.single().settle) }
     } finally {
       directory.deleteRecursively()

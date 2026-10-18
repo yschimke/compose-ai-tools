@@ -104,11 +104,14 @@ public object PlaygroundPreviews {
               // @Preview dimensions, so two wall-clock frames otherwise capture dialog entrances.
               // Explicit motion/timeline annotations keep their existing capture path; an explicit
               // @SettledPreview coordinate above always wins over this bounded auto policy.
+              val hasTimeline =
+                method.annotationInfo.any {
+                  it.name in TIMELINE_ANNOTATIONS ||
+                    (it.name == "ee.schimke.composeai.preview.FocusedPreview" &&
+                      it.parameterValues.getValue("gif") == true)
+                }
               val defaultSettle =
-                if (
-                  snippet.mode == PlaygroundMode.CMP &&
-                    method.annotationInfo.none { it.name in TIMELINE_ANNOTATIONS }
-                )
+                if (snippet.mode == PlaygroundMode.CMP && !hasTimeline)
                   buildJsonObject {
                     put("afterMs", 0)
                     put("maxMs", 1000)
