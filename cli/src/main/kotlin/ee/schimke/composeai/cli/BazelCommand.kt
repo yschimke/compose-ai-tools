@@ -399,6 +399,7 @@ internal class BazelCommand(
                 prepared,
                 root,
                 bazelClockPackages(config, artifacts.android),
+                sandboxCount = oneShotSandboxCount(previews.size),
               )
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
@@ -871,9 +872,24 @@ internal fun prepareBazelDaemon(
   root: File,
   /** [bazelClockPackages]; Android only, since pinning works through Robolectric. */
   clockPackages: List<String> = emptyList(),
+  /** [oneShotSandboxCount] for a one-shot render; null keeps the daemon's own pool size. */
+  sandboxCount: Int? = null,
 ): File =
-  if (artifacts.android != null) prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages)
+  if (artifacts.android != null)
+    prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages, sandboxCount)
   else prepareBazelDesktopDaemon(artifacts, prepared, root)
+
+/**
+ * Robolectric sandboxes for a one-shot render of [previews] previews: one per preview, up to the
+ * daemon's warm-spare pool of five. The daemon boots and warm-renders every sandbox before it
+ * serves the first render, so a pool larger than the work costs about five seconds per idle worker
+ * JVM; a single preview paid ~20 s for four (compose-ai-tools#5945). A long-lived daemon
+ * (`prepare`, for browse and MCP) keeps the pool, which held interactive sessions need.
+ */
+internal fun oneShotSandboxCount(previews: Int): Int = previews.coerceIn(1, 5)
+
+/** The daemon's sandbox pool size (`DaemonProperties.Names.SANDBOX_COUNT`). */
+internal const val BAZEL_SANDBOX_COUNT_PROPERTY = "composeai.daemon.sandboxCount"
 
 /** The daemon's consumer-clock property (`ConsumerClock.PROPERTY` in the renderer). */
 internal const val BAZEL_CLOCK_PACKAGES_PROPERTY = "composeai.render.clockPackages"
@@ -956,6 +972,7 @@ internal fun prepareBazelAndroidDaemon(
   prepared: PreparedBazelPreviews,
   root: File,
   clockPackages: List<String> = emptyList(),
+  sandboxCount: Int? = null,
 ): File {
   val android = requireNotNull(artifacts.android) { "Not an Android target" }
   // First: under the network switch a missing android-all directory refuses before any sidecar is
@@ -1032,7 +1049,9 @@ internal fun prepareBazelAndroidDaemon(
           // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class
           // loader from this one property. Absent when off, so the descriptor is unchanged.
           (if (clockPackages.isEmpty()) emptyMap()
-          else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))),
+          else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))) +
+          // Explicit, so it wins over the warm-spare default the daemon would otherwise boot.
+          (sandboxCount?.let { mapOf(BAZEL_SANDBOX_COUNT_PROPERTY to it.toString()) }.orEmpty()),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
       javaLauncher = currentJavaLauncher(),
