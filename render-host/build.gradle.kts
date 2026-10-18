@@ -43,6 +43,10 @@ dependencies {
   implementation(libs.classgraph)
 
   testImplementation(kotlin("test"))
+  // Exercise synthesized playground manifests against the released desktop daemon.
+  testImplementation(libs.composeai.daemon.desktop)
+  testImplementation(libs.jetbrains.compose.foundation)
+  testRuntimeOnly(libs.jetbrains.compose.material3)
   // In-memory FileSystem for store tests; okio itself comes via `common-io`.
   testImplementation(libs.okio.fakefilesystem)
 

@@ -2,11 +2,16 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.previewdata.PreviewManifest
 import java.nio.file.Files
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import javax.tools.ToolProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okio.Path.Companion.toPath
 
 /**
@@ -32,6 +37,17 @@ class PlaygroundPreviewsTest {
               .trimIndent()
           )
         }
+      val settledAnnotation =
+        directory.resolve("SettledPreview.java").apply {
+          writeText(
+            """
+            package ee.schimke.composeai.preview;
+            @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+            public @interface SettledPreview { int afterMs() default 0; int maxMs() default 1000; }
+            """
+              .trimIndent()
+          )
+        }
       val source =
         directory.resolve("Snippet.java").apply {
           writeText(
@@ -40,6 +56,7 @@ class PlaygroundPreviewsTest {
             import androidx.compose.ui.tooling.preview.Preview;
             public class Snippet {
               static { if (true) throw new AssertionError("Do not execute preview code during discovery"); }
+              @ee.schimke.composeai.preview.SettledPreview(afterMs=350, maxMs=900)
               @Preview(widthDp=360, heightDp=216) public static void Fixed() {}
               @Preview(widthDp=120) public static void WidthOnly() {}
               @Preview public static void Wrapped() {}
@@ -59,6 +76,7 @@ class PlaygroundPreviewsTest {
             "-d",
             directory.path,
             annotation.path,
+            settledAnnotation.path,
             source.path,
           ),
       )
@@ -72,12 +90,191 @@ class PlaygroundPreviewsTest {
           )
         )
       assertEquals(3, manifest.previews.size)
+      assertEquals(
+        350,
+        manifest.previews[0]
+          .captures
+          .single()
+          .settle
+          ?.jsonObject
+          ?.get("afterMs")
+          ?.jsonPrimitive
+          ?.int,
+      )
+      assertEquals(
+        900,
+        manifest.previews[0].captures.single().settle?.jsonObject?.get("maxMs")?.jsonPrimitive?.int,
+      )
+      assertEquals(
+        0,
+        manifest.previews[1]
+          .captures
+          .single()
+          .settle
+          ?.jsonObject
+          ?.get("afterMs")
+          ?.jsonPrimitive
+          ?.int,
+      )
+      assertEquals(
+        1000,
+        manifest.previews[1].captures.single().settle?.jsonObject?.get("maxMs")?.jsonPrimitive?.int,
+      )
       assertEquals(360, manifest.previews[0].params.widthDp)
       assertEquals(216, manifest.previews[0].params.heightDp)
       assertEquals(120, manifest.previews[1].params.widthDp)
       assertNull(manifest.previews[1].params.heightDp)
       assertNull(manifest.previews[2].params.widthDp)
       assertNull(manifest.previews[2].params.heightDp)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `phone and tablet metadata survives a jar with external annotation definitions`() {
+    val directory = Files.createTempDirectory("playground-jar-dimensions").toFile()
+    try {
+      val annotation =
+        directory.resolve("Preview.java").apply {
+          writeText(
+            """
+            package org.jetbrains.compose.ui.tooling.preview;
+            @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+            public @interface Preview { int widthDp() default -1; int heightDp() default -1; }
+            """
+              .trimIndent()
+          )
+        }
+      val source =
+        directory.resolve("GeneratedKt.java").apply {
+          writeText(
+            """
+            package generated;
+            import org.jetbrains.compose.ui.tooling.preview.Preview;
+            public class GeneratedKt {
+              static { if (true) throw new AssertionError("Do not execute discovery"); }
+              @Preview(widthDp=412, heightDp=915) public static void Phone() {}
+              @Preview(widthDp=1280, heightDp=800) public static void Tablet() {}
+            }
+            """
+              .trimIndent()
+          )
+        }
+      val classes = directory.resolve("classes").apply { mkdirs() }
+      assertEquals(
+        0,
+        ToolProvider.getSystemJavaCompiler()
+          .run(null, null, null, "-d", classes.path, annotation.path, source.path),
+      )
+      // Production compilation emits only snippet classes; annotation definitions live in catalog
+      // jars.
+      classes.resolve("org").deleteRecursively()
+      val ids = listOf("generated.GeneratedKt.Phone", "generated.GeneratedKt.Tablet")
+      fun dimensions(path: java.io.File) =
+        json
+          .decodeFromString<PreviewManifest>(
+            PlaygroundPreviews.previewManifestJson(
+              snippet(ids).copy(classesDir = path.path.toPath())
+            )
+          )
+          .previews
+          .map { it.params.widthDp to it.params.heightDp }
+      val expected = listOf(412 to 915, 1280 to 800)
+      assertEquals(expected, dimensions(classes))
+      val jar = directory.resolve("snippet.jar")
+      JarOutputStream(jar.outputStream()).use { output ->
+        classes
+          .walkTopDown()
+          .filter { it.isFile }
+          .forEach { file ->
+            output.putNextEntry(JarEntry(file.relativeTo(classes).invariantSeparatorsPath))
+            file.inputStream().use { it.copyTo(output) }
+            output.closeEntry()
+          }
+      }
+      assertEquals(expected, dimensions(jar))
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `desktop stills settle but explicit timeline annotations and Android keep their capture policy`() {
+    val directory = Files.createTempDirectory("playground-capture-policy").toFile()
+    try {
+      val sources =
+        mapOf(
+            "Preview.java" to
+              """
+          package androidx.compose.desktop.ui.tooling.preview;
+          @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+          public @interface Preview {}
+        """,
+            "AnimatedPreview.java" to
+              """
+          package ee.schimke.composeai.preview;
+          @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+          public @interface AnimatedPreview {}
+        """,
+            "RoboComposePreviewOptions.java" to
+              """
+          package com.github.takahirom.roborazzi.annotations;
+          @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+          public @interface RoboComposePreviewOptions {}
+        """,
+            "Snippet.java" to
+              """
+          package sample;
+          import androidx.compose.desktop.ui.tooling.preview.Preview;
+          public class Snippet {
+            @Preview public static void Still() {}
+            @Preview @ee.schimke.composeai.preview.AnimatedPreview public static void Motion() {}
+            @Preview @com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions public static void Timed() {}
+          }
+        """,
+          )
+          .map { (name, source) ->
+            directory.resolve(name).apply { writeText(source.trimIndent()) }
+          }
+      assertEquals(
+        0,
+        ToolProvider.getSystemJavaCompiler()
+          .run(
+            null,
+            null,
+            null,
+            "-d",
+            directory.path,
+            *sources.map { it.path }.toTypedArray(),
+          ),
+      )
+      val ids = listOf("sample.Snippet.Still", "sample.Snippet.Motion", "sample.Snippet.Timed")
+      fun manifest(mode: PlaygroundMode) =
+        json.decodeFromString<PreviewManifest>(
+          PlaygroundPreviews.previewManifestJson(
+            snippet(ids).copy(mode = mode, classesDir = directory.path.toPath())
+          )
+        )
+      val desktop = manifest(PlaygroundMode.CMP)
+      assertEquals(
+        0,
+        desktop.previews[0]
+          .captures
+          .single()
+          .settle
+          ?.jsonObject
+          ?.get("afterMs")
+          ?.jsonPrimitive
+          ?.int,
+      )
+      assertEquals(
+        1000,
+        desktop.previews[0].captures.single().settle?.jsonObject?.get("maxMs")?.jsonPrimitive?.int,
+      )
+      assertNull(desktop.previews[1].captures.single().settle)
+      assertNull(desktop.previews[2].captures.single().settle)
+      manifest(PlaygroundMode.ANDROID).previews.forEach { assertNull(it.captures.single().settle) }
     } finally {
       directory.deleteRecursively()
     }
