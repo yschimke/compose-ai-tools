@@ -314,8 +314,16 @@ abstract class BundlePreviewTask : DefaultTask() {
         addAll(REMOTECOMPOSE_REPLAY_ENTRY_FQNS)
     }
 
-    val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds
-    val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
+    // A builder catalog also compiles new calls to its published components. Baked IR only
+    // replaces preview replay; it cannot replace those callable owners. Keep their closures even
+    // when every sticker has IR, while ordinary replay-only bundles retain the smaller pack set.
+    val authoringEntrySeeds =
+      if (authoredPair() != null) {
+        selected.flatMap { it.targets + it.componentTargets }.map { it.className }.toSet()
+      } else emptySet()
+    val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds + authoringEntrySeeds
+    val packSeedFqns =
+      selected.filter { it.id !in irByPreview }.map { it.className }.toSet() + authoringEntrySeeds
 
     // Union `moduleClassDirs` with AGP's scoped project classes so the packed set matches
     // discovery's (#1924, #1926). Scoped jars are module classes, not dependency coordinates.
