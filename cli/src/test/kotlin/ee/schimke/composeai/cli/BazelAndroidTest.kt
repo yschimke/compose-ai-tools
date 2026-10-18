@@ -361,26 +361,41 @@ class BazelAndroidTest {
       val property = DaemonSidecarProvision.sidecarProperty("lib-daemon-android")
       val previous = System.getProperty(property)
       System.setProperty(property, sidecar.absolutePath)
-      val descriptor =
+      fun descriptor(sandboxCount: Int?) =
+        DaemonLaunchBuilder.decode(
+          prepareBazelDaemon(
+              artifacts,
+              PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
+              root,
+              bazelClockPackages(BazelBuildConfig(), artifacts.android),
+              sandboxCount,
+            )
+            .readText()
+        )
+      val (prepared, oneShot) =
         try {
-          DaemonLaunchBuilder.decode(
-            prepareBazelDaemon(
-                artifacts,
-                PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
-                root,
-                bazelClockPackages(BazelBuildConfig(), artifacts.android),
-              )
-              .readText()
-          )
+          descriptor(null) to descriptor(oneShotSandboxCount(1))
         } finally {
           if (previous == null) System.clearProperty(property)
           else System.setProperty(property, previous)
         }
       assertEquals(
         "com.example.ui.,androidx.wear.compose.",
-        descriptor.systemProperties["composeai.render.clockPackages"],
+        prepared.systemProperties["composeai.render.clockPackages"],
       )
+      // A long-lived daemon keeps the daemon's own pool; a one-shot render of one preview boots
+      // one sandbox rather than five (compose-ai-tools#5945).
+      assertNull(prepared.systemProperties["composeai.daemon.sandboxCount"])
+      assertEquals("1", oneShot.systemProperties["composeai.daemon.sandboxCount"])
     }
+
+  @Test
+  fun `a one-shot render boots a sandbox per preview, up to the warm-spare pool`() {
+    assertEquals(1, oneShotSandboxCount(0))
+    assertEquals(1, oneShotSandboxCount(1))
+    assertEquals(3, oneShotSandboxCount(3))
+    assertEquals(5, oneShotSandboxCount(40))
+  }
 
   @Test
   fun `android bundles carry the linked resources where the bundle replay reads them`() =
