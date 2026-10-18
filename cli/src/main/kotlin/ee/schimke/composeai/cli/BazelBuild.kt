@@ -163,7 +163,17 @@ internal fun BazelArtifacts.resolve(
   require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
   fun resolvePath(path: String): File {
     require(path.isNotBlank()) { "Empty artifact path" }
-    val file = File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+    val inRoot =
+      File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+    // A source file of the main repository, such as the Android aspect's link.sh under
+    // .compose-preview/, is only in the execution root when the build planted its package there;
+    // it is always in the workspace (compose-ai-tools#5945).
+    val file =
+      inRoot.takeIf { it.exists() || File(path).isAbsolute }
+        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf {
+          it.exists() && !path.startsWith("bazel-out/") && !path.startsWith("external/")
+        }
+        ?: inRoot
     require(file.exists()) {
       "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."
     }

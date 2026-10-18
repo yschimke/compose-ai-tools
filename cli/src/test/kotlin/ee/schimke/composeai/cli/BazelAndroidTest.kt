@@ -140,6 +140,39 @@ class BazelAndroidTest {
   }
 
   @Test
+  fun `a link script the execution root lacks resolves from the workspace`() = fixture { root ->
+    // The CLI-installed aspect's link.sh is a workspace source file under .compose-preview/;
+    // some execution roots plant only the packages a build used (compose-ai-tools#5945).
+    listOf("aapt2", "jdk/bin/javac", "android.jar").forEach { root.file(it) }
+    val workspace = root.resolve("workspace").apply { mkdirs() }
+    workspace.file(".compose-preview/bazel/android/link.sh", "#!/bin/sh\n")
+    val artifacts = androidArtifacts(root)
+    val link =
+      AndroidLinkInputs.Builder(
+          ".compose-preview/bazel/android/link.sh",
+          "aapt2",
+          "jdk",
+          "android.jar",
+          listOf("com.example.ui"),
+          emptyList(),
+        )
+        .build()
+    val withLink =
+      artifacts
+        .newBuilder()
+        .apply {
+          android = checkNotNull(artifacts.android).newBuilder().apply { this.link = link }.build()
+        }
+        .build()
+    assertEquals(
+      workspace.resolve(".compose-preview/bazel/android/link.sh").absoluteFile,
+      checkNotNull(withLink.resolve(root, workspace).android?.link).script,
+    )
+    // Without a workspace to fall back on, the link block is dropped, as before.
+    assertNull(withLink.resolve(root).android?.link)
+  }
+
+  @Test
   fun `schema 1 artifacts carrying an android block are refused`() = fixture { root ->
     val encoded = bazelJson.encodeToString(androidArtifacts(root))
     assertFailsWith<IllegalArgumentException> {
