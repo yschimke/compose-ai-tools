@@ -449,7 +449,9 @@ composeai-contracts = "3.36.0"
 # 3.18.9 never gives the host window a title bar at all, so a launch-time draw can't leave one in
 # the capture, and keeps Roborazzi's result JSON out of the working directory
 # (compose-preview-daemon#320, #5945).
-composeai-preview-daemon = "3.18.9"
+# 3.19.0 can serve successive clients over a Unix socket and ships `SocketDaemonClientFactory`,
+# which `bazel render --keep-daemon` uses to keep one warm (compose-preview-daemon#324, #6104).
+composeai-preview-daemon = "3.19.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
