@@ -104,6 +104,25 @@ class BazelKeepDaemonTest {
     assertEquals("ui.jar", shared.systemProperties["composeai.daemon.userClassDirs"])
   }
 
+  @Test
+  fun `stopping waits for the daemon to close its socket`() {
+    val socket = root.resolve("d.sock")
+    val server =
+      java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX).apply {
+        bind(java.net.UnixDomainSocketAddress.of(socket.toPath()))
+      }
+    val accepting = Thread { runCatching { while (true) server.accept().close() } }
+    accepting.start()
+    assertFalse(BazelKeepDaemon.awaitGone(socket, timeoutMs = 200), "still listening")
+    Thread {
+      Thread.sleep(300)
+      server.close()
+    }
+      .start()
+    assertTrue(BazelKeepDaemon.awaitGone(socket), "gone once the listener closes")
+    accepting.join(5_000)
+  }
+
   private fun prepare(idleTimeoutSeconds: Int): BazelKeepDaemon.Prepared {
     val descriptor =
       root.resolve("daemon-launch.json").apply {
