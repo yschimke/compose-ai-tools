@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.69.1](https://github.com/yschimke/compose-ai-tools/compare/v2.69.0...v2.69.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **android:** widen the app's R classes with the renderer's fields ([#6125](https://github.com/yschimke/compose-ai-tools/issues/6125)) ([481ff7f](https://github.com/yschimke/compose-ai-tools/commit/481ff7fa57b560d2c09da5e9696ba990e6658f50))
+* bazel --output names every preview once across targets, and --function selects everywhere ([#6124](https://github.com/yschimke/compose-ai-tools/issues/6124)) ([ed51386](https://github.com/yschimke/compose-ai-tools/commit/ed51386d998f379a655bcab1087689bc470b9794))
+* bazel CLI output placement, --function, --help and race-free aspect install ([#6121](https://github.com/yschimke/compose-ai-tools/issues/6121)) ([752e8e5](https://github.com/yschimke/compose-ai-tools/commit/752e8e587348531512b91b009669e1c615b1afdd))
+* Bazel daemon descriptors name protocol 2 and boot a pool in the background ([#6122](https://github.com/yschimke/compose-ai-tools/issues/6122)) ([7b8d63e](https://github.com/yschimke/compose-ai-tools/commit/7b8d63e49c8b25ee8fd887fc8c793134dc0f8e4b))
+* bazel daemon stop returns once the daemon has gone ([#6123](https://github.com/yschimke/compose-ai-tools/issues/6123)) ([499a069](https://github.com/yschimke/compose-ai-tools/commit/499a069ccf30b76fe5a8ba60b74d58103b54cc5e))
+* bundle the rules_compose_preview 0.1.0-rc.16 Android aspect ([#6127](https://github.com/yschimke/compose-ai-tools/issues/6127)) ([5884a9b](https://github.com/yschimke/compose-ai-tools/commit/5884a9b4354e13680343e22f45193d008a96f3fb))
+* render with compose-preview-daemon 3.20.0 ([#6126](https://github.com/yschimke/compose-ai-tools/issues/6126)) ([8ccb29e](https://github.com/yschimke/compose-ai-tools/commit/8ccb29e552e76b68f08ebe4ade1e6d9c981d49ad))
+
+
+### Performance Improvements
+
+* scan runtime jars in parallel and stop at the first deciding entry ([#6118](https://github.com/yschimke/compose-ai-tools/issues/6118)) ([9d0b081](https://github.com/yschimke/compose-ai-tools/commit/9d0b0814286e6d6787122f62bcdddb19f9a025ff))
+
 ## [2.69.0](https://github.com/yschimke/compose-ai-tools/compare/v2.68.8...v2.69.0) (2026-10-19)
 
 
