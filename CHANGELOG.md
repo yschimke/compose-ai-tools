@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.69.0](https://github.com/yschimke/compose-ai-tools/compare/v2.68.8...v2.69.0) (2026-10-19)
+
+
+### Features
+
+* keep a warm Bazel render daemon across runs with --keep-daemon ([#6108](https://github.com/yschimke/compose-ai-tools/issues/6108)) ([84eb8d8](https://github.com/yschimke/compose-ai-tools/commit/84eb8d852e0a194bd39359f1d12182c705a704d2))
+
 ## [2.68.8](https://github.com/yschimke/compose-ai-tools/compare/v2.68.7...v2.68.8) (2026-10-19)
 
 
