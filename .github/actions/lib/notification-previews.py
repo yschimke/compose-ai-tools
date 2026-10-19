@@ -61,6 +61,8 @@ from pathlib import Path
 # `NotificationVariantPreviewsKt.*` / `NotificationStyleGalleryKt.*` `@Preview`
 # helper output. See `notification-previews.yml` for the matching shell glob.
 _PNG_GLOB = "*Notification*.png"
+# The same match applied to a manifest preview id rather than a file name.
+_PNG_GLOB_STEM = "*Notification*"
 
 
 def _sha256(path: Path) -> str:
@@ -129,6 +131,13 @@ def _declared_notification_ids(build_dir: Path) -> tuple[set[str], set[str]]:
     fanout_bases: set[str] = set()
     for preview in manifest.get("previews", []):
         has_provider = bool((preview.get("params") or {}).get("previewParameterProviderClassName"))
+        # The id is what [_manifest_notification_renders] stages a render
+        # under, so it counts as declared too.
+        preview_id = preview.get("id") or ""
+        if fnmatch(preview_id, _PNG_GLOB_STEM):
+            declared.add(preview_id)
+            if has_provider:
+                fanout_bases.add(preview_id)
         for capture in preview.get("captures", []):
             name = Path(capture.get("renderOutput") or "").name
             if fnmatch(name, _PNG_GLOB):
@@ -137,6 +146,47 @@ def _declared_notification_ids(build_dir: Path) -> tuple[set[str], set[str]]:
                 if has_provider:
                     fanout_bases.add(stem)
     return declared, fanout_bases
+
+
+def _manifest_notification_renders(build_dir: Path) -> list[tuple[str, Path]]:
+    """``(previewId, png)`` for each notification preview's declared render on disk.
+
+    Matches on the manifest preview *id*, the way the staging glob matched the
+    daemon's ``renders/<previewId>.png`` file. Since compose-preview-daemon
+    3.20.1 the daemon writes a render to its declared ``renderOutput``
+    (compose-ai-tools#6114) and no longer leaves that id-named copy, and a
+    normalised ``renderOutput`` (``ActionsPreview_Actions-5426f9c9.png``) need
+    not contain ``Notification`` at all. Staging these under the id keeps the
+    baseline's previewIds. A ``@PreviewParameter`` preview contributes each
+    rendered ``<stem>_<label>.png`` as ``<previewId>_<label>``.
+    """
+    previews_json = build_dir / "previews.json"
+    if not previews_json.exists():
+        return []
+    try:
+        manifest = json.loads(previews_json.read_text())
+    except json.JSONDecodeError:
+        return []
+    found: list[tuple[str, Path]] = []
+    for preview in manifest.get("previews", []):
+        preview_id = preview.get("id") or ""
+        if not fnmatch(preview_id, _PNG_GLOB_STEM):
+            continue
+        has_provider = bool((preview.get("params") or {}).get("previewParameterProviderClassName"))
+        for capture in preview.get("captures", []):
+            output = capture.get("renderOutput") or ""
+            if not output.lower().endswith(".png"):
+                continue
+            declared = build_dir / output
+            if has_provider:
+                variants = sorted(declared.parent.glob(f"{declared.stem}_*.png"))
+                found += [
+                    (f"{preview_id}{png.stem[len(declared.stem):]}", png) for png in variants
+                ]
+            elif declared.is_file():
+                found.append((preview_id, declared))
+            break
+    return found
 
 
 def cmd_stage(args: argparse.Namespace) -> int:
@@ -179,8 +229,19 @@ def cmd_stage(args: argparse.Namespace) -> int:
         declared_ids |= module_declared
         fanout_bases |= module_fanout
 
-        pngs = sorted(renders_dir.glob(_PNG_GLOB))
-        if not pngs:
+        # (previewId, png, staged basename). The id-named renders first, then
+        # any notification preview the manifest declares whose id-named copy
+        # is absent (see [_manifest_notification_renders]).
+        renders = [(_preview_id_from_png(png), png, png.name) for png in sorted(renders_dir.glob(_PNG_GLOB))]
+        staged_ids = {preview_id for preview_id, _, _ in renders}
+        for preview_id, png in _manifest_notification_renders(build_dir):
+            if preview_id not in staged_ids:
+                staged_ids.add(preview_id)
+                # Named as the daemon named its copy, `<previewId>.png`, with
+                # only path separators replaced, so it matches the baseline.
+                basename = preview_id.replace("/", "_").replace("\\", "_") + ".png"
+                renders.append((preview_id, png, basename))
+        if not renders:
             # No-match in a single build dir is informational, not fatal:
             # when ``compose-preview a11y`` and the notifications Gradle task
             # both run across every module, plenty of modules will have
@@ -206,9 +267,7 @@ def cmd_stage(args: argparse.Namespace) -> int:
             module_label = build_dir.parent.parent.name if build_dir.parent.parent else ""
         modules_seen.append(module_label or str(build_dir))
 
-        for png in pngs:
-            preview_id = _preview_id_from_png(png)
-            png_basename = png.name
+        for preview_id, png, png_basename in renders:
             # Collisions across modules would silently clobber the flat
             # `renders/` dir. Fail loud — the renderer ships FQN-derived
             # previewIds so this should never trip; if it does, the modules
