@@ -446,7 +446,10 @@ composeai-contracts = "3.36.0"
 # hanging (compose-preview-daemon#306, #5945).
 # 3.18.8 hides the host action bar synchronously, so a targetSdk >= 35 library's edge-to-edge
 # window no longer captures it over the preview (compose-preview-daemon#315, #5945).
-composeai-preview-daemon = "3.18.8"
+# 3.18.9 never gives the host window a title bar at all, so a launch-time draw can't leave one in
+# the capture, and keeps Roborazzi's result JSON out of the working directory
+# (compose-preview-daemon#320, #5945).
+composeai-preview-daemon = "3.18.9"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
