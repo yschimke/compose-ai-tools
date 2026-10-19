@@ -698,10 +698,13 @@ public object ServeOverrides {
       append("focus=").append(o.focus).append('|')
       append("gestures=").append(o.gestures).append('|')
       append("clearbg=").append(o.clearBackground).append('|')
-      // Named overrides sorted by key; value classes have stable toString.
+      // Sort by key and frame both fields by length: string values may contain the separators
+      // and data-class text that would otherwise impersonate additional entries.
       append("named=")
       o.namedOverrides?.toSortedMap()?.forEach { (k, v) ->
-        append(k).append('=').append(v).append(';')
+        val value = v.toString()
+        append(k.length).append(':').append(k)
+        append(value.length).append(':').append(value)
       }
       // Remote Compose seeds and profile must re-render too. acceptedHostActions is never set from
       // serve queries, so it is omitted.
@@ -714,7 +717,9 @@ public object ServeOverrides {
       append("|rcDoc=").append(o.remoteCompose?.documentBase64)
       append("|rc=")
       o.remoteCompose?.namedValues?.toSortedMap()?.forEach { (k, v) ->
-        append(k).append('=').append(v).append(';')
+        val value = v.toString()
+        append(k.length).append(':').append(k)
+        append(value.length).append(':').append(value)
       }
     }
     return MessageDigest.getInstance("SHA-256")
