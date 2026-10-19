@@ -149,6 +149,12 @@ abstract class Command(
   val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
 
   /**
+   * `--function <name>`: previews whose function is exactly `name`, so `FooPreview` does not also
+   * select `FooPreview_Disabled` as `--filter` would. Intersects with the other selectors.
+   */
+  val functionSelector: String? = args.flagValue("--function")?.takeIf { it.isNotBlank() }
+
+  /**
    * `--id-file <path>`: an exact set of declared preview ids, one per line, e.g. the previews a PR
    * changed. Intersects with the other selectors and narrows the Gradle render
    * ([PreviewRenderScope]); `bundle pack` reads the same format. A missing, unreadable or empty
@@ -170,7 +176,12 @@ abstract class Command(
 
   /** Whether any preview selector was passed. */
   internal val hasPreviewRequest: Boolean
-    get() = exactId != null || filter != null || previewRef != null || idFileIds != null
+    get() =
+      exactId != null ||
+        filter != null ||
+        previewRef != null ||
+        functionSelector != null ||
+        idFileIds != null
 
   /**
    * Whether this command can expand a `@PreviewParameter` fan-out into row ids after rendering and
@@ -559,6 +570,7 @@ abstract class Command(
         exactId != null -> "--id"
         filter != null -> "--filter"
         previewRef != null -> "--preview"
+        functionSelector != null -> "--function"
         else -> "--id-file"
       }
     if (!discoverySucceeded) {
@@ -575,6 +587,7 @@ abstract class Command(
         exactId = exactId,
         filter = filter,
         previewRef = previewRef,
+        function = functionSelector,
         permutations = permutations,
         rowAware = rowAwareSelection,
         ids = idFileIds,
@@ -778,6 +791,7 @@ abstract class Command(
       filter = filter,
       previewRef = previewRef,
       ids = idFileIds,
+      function = functionSelector,
     )
 
   /**
@@ -833,6 +847,7 @@ abstract class Command(
       className = preview.className,
       functionName = preview.functionName,
       ids = idFileIds,
+      function = functionSelector,
     )
 
   /**
@@ -877,6 +892,7 @@ abstract class Command(
       discoverySucceeded = discoverySucceeded,
       rowAware = rowAwareSelection,
       ids = idFileIds,
+      function = functionSelector,
     )
 
   private fun stateFile(module: PreviewModule): File =
@@ -1146,6 +1162,8 @@ internal fun readIdFile(file: File): Set<String> {
  * - `--filter <substring>` — a case-insensitive substring of the id.
  * - `--preview <ref>` — a loose preview reference; see [previewMatchesReference].
  * - `--id-file <path>` ([ids]) — the id is one of a set (not supported by `serve`).
+ * - `--function <name>` ([function]) — [functionName] is exactly `name` (CLI only, not `serve`);
+ *   never matches without [functionName].
  *
  * Without [className] / [functionName], `--preview` falls back to its id-only forms.
  *
@@ -1161,7 +1179,9 @@ internal fun previewIdMatchesRequest(
   className: String? = null,
   functionName: String? = null,
   ids: Set<String>? = null,
+  function: String? = null,
 ): Boolean {
+  if (function != null && functionName != function) return false
   if (ids != null && id !in ids) return false
   if (exactId != null && id != exactId) return false
   if (filter != null && !id.contains(filter, ignoreCase = true)) return false
@@ -1217,7 +1237,18 @@ internal fun selectRequestedResults(
   filter: String?,
   previewRef: String? = null,
   ids: Set<String>? = null,
+  /** `--function`: rows belong to their preview's function, so it narrows before the row lane. */
+  function: String? = null,
 ): List<PreviewResult> {
+  if (function != null) {
+    return selectRequestedResults(
+      results.filter { it.functionName == function },
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      ids = ids,
+    )
+  }
   if (exactId == null && filter == null && previewRef == null && ids == null) return results
   val exactIdExists = resultsDeclareExactId(results, exactId)
   return results.mapNotNull { result ->
@@ -1280,7 +1311,10 @@ internal fun previewMatchesRequestIncludingRows(
   exactIdExists: Boolean,
   rowAware: Boolean = true,
   ids: Set<String>? = null,
+  /** `--function`: a preview's rows share its function, so a mismatch rules them out too. */
+  function: String? = null,
 ): Boolean {
+  if (function != null && preview.functionName != function) return false
   if (
     previewIdMatchesRequest(
       preview.id,
@@ -1356,10 +1390,12 @@ internal fun modulesMatchingPreviewRequest(
   discoverySucceeded: Boolean = true,
   rowAware: Boolean = true,
   ids: Set<String>? = null,
+  function: String? = null,
 ): List<PreviewModule> {
   // Discovery failed: don't let stale manifests suppress the render's own discovery retry.
   if (!discoverySucceeded) return modules
-  if (exactId == null && filter == null && previewRef == null && ids == null) return modules
+  if (exactId == null && filter == null && previewRef == null && ids == null && function == null)
+    return modules
   // Row-aware: a module whose only match is a row id must survive. Resolved across all manifests
   // first so an `--id` naming a real preview never drags in hypothetical row owners.
   val exactIdExists = manifestsDeclareExactId(manifests, exactId)
@@ -1375,6 +1411,7 @@ internal fun modulesMatchingPreviewRequest(
             exactIdExists = exactIdExists,
             rowAware = rowAware,
             ids = ids,
+            function = function,
           )
         }
       }
@@ -1759,6 +1796,7 @@ class RenderCommand(args: List<String>) : Command(args) {
             previewRef = previewRef,
             discoverySucceeded = discoverySucceeded,
             rowAware = rowAwareSelection,
+            function = functionSelector,
           )
       if (modules.isEmpty()) {
         System.err.println("No previews matched.")

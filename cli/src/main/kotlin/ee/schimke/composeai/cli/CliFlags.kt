@@ -31,6 +31,7 @@ internal object CliFlags {
       "--module",
       "--filter",
       "--sandbox-count",
+      "--function",
       // `provision`, `bundle render`
       "--android-sdk",
       // `bundle render` (Android bundles)

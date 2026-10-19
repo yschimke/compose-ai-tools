@@ -171,9 +171,27 @@ internal object BazelKeepDaemon {
       }
       "stop" -> {
         val stopped = sockets.count { SocketDaemonClientFactory.stop(it.toPath()) }
+        // The daemon replies before it closes its listener; return once each one has gone, so a
+        // render started right after `stop` never reaches the daemon being stopped.
+        val lingering = sockets.filterNot { awaitGone(it) }
+        check(lingering.isEmpty()) {
+          "Shared daemon still accepting connections after stop: " +
+            lingering.joinToString { it.parentFile.resolve("daemon.log").path }
+        }
         println("Stopped $stopped shared daemon${if (stopped == 1) "" else "s"}")
       }
       else -> error("Expected bazel daemon status or bazel daemon stop")
+    }
+  }
+
+  /** Waits up to [timeoutMs] for the daemon on [socket] to stop accepting connections. */
+  internal fun awaitGone(socket: File, timeoutMs: Long = 10_000): Boolean {
+    val deadline = System.nanoTime() + timeoutMs * 1_000_000
+    while (true) {
+      val client = SocketDaemonClientFactory.connect(socket.toPath()) ?: return true
+      client.close()
+      if (System.nanoTime() > deadline) return false
+      Thread.sleep(50)
     }
   }
 

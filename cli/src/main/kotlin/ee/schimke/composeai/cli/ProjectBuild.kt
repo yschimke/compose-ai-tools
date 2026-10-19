@@ -90,6 +90,11 @@ internal fun detectBazelRoot(start: File): File? {
 }
 
 internal fun runProjectPreviewCommand(command: String, args: List<String>) {
+  // Before routing: on a configured Bazel workspace, routing would build the default target.
+  if ("--help" in args || "-h" in args) {
+    println(projectPreviewCommandHelp(command))
+    return
+  }
   val route =
     try {
       previewBuildRoute(args)
@@ -175,3 +180,27 @@ internal fun selectBazelBuildCommand(
     BazelBuildCommandChoice(it, "first of bazel, bazelisk, blaze on PATH")
   } ?: BazelBuildCommandChoice("bazel", "no candidate on PATH")
 }
+
+/** `compose-preview list|render|show --help` (#6115). */
+internal fun projectPreviewCommandHelp(command: String): String =
+  """
+  compose-preview $command — ${
+    when (command) {
+      "list" -> "list the previews a Gradle module or Bazel/Buck target declares"
+      "render" -> "render previews to PNG"
+      else -> "render previews and show where their PNGs are"
+    }
+  }
+
+  Usage: compose-preview $command [--module <:gradle:path> | --target <//bazel:label>] [options]
+
+  Selection:  --id <exact id> | --function <exact function name> | --filter <substring>
+              | --preview <reference>
+  Output:     --json${if (command == "render") ", --output <file.png | dir/>" else ""}
+  Build:      --project <dir>, --build-system gradle|bazel|buck, --config <bazel.json>
+
+  Gradle projects run the Gradle plugin; Bazel and Buck workspaces run the same driver as
+  `compose-preview bazel $command` (see `compose-preview bazel --help`).
+  Run `compose-preview help --all` for every option.
+  """
+    .trimIndent()

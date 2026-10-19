@@ -10,6 +10,9 @@ internal object CliFlagValidation {
     setOf(
       "--module",
       "--filter",
+      "--function",
+      "--help",
+      "-h",
       "--id",
       "--preview",
       "--verbose",
@@ -184,6 +187,7 @@ internal object CliFlagValidation {
     setOf(
       "--keep-daemon",
       "--sandbox-count",
+      "--function",
       "--no-render",
       "--reuse-renders",
       "--bundle",

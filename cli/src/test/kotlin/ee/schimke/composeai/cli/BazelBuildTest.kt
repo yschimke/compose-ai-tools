@@ -630,7 +630,7 @@ class BazelBuildTest {
   }
 
   @Test
-  fun `the JVM aspect package file is BUILD, and an earlier CLI's BUILD_bazel moves to it`() {
+  fun `the JVM aspect package file is BUILD, and an earlier CLI's BUILD_bazel stays beside it`() {
     val root = Files.createTempDirectory("bazel-build-file").toFile()
     try {
       val dir = root.resolve(".compose-preview/bazel")
@@ -638,21 +638,21 @@ class BazelBuildTest {
       assertTrue(dir.resolve("BUILD").isFile)
       assertTrue(!dir.resolve("BUILD.bazel").exists())
 
-      // What 2.67 and earlier installed: BUILD.bazel, which some Blaze deployments do not read.
+      // What 2.67 and earlier installed: BUILD.bazel, which some Blaze deployments do not read. It
+      // gains a BUILD and is never removed: a concurrent build may be reading it (#6115).
       val bundled = dir.resolve("BUILD").readText()
       dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
       migrateBazelAspectBuildFile(root)
       assertEquals(bundled, dir.resolve("BUILD").readText())
-      assertTrue(!dir.resolve("BUILD.bazel").exists())
-
-      // An unedited copy beside the current BUILD (an older CLI run after a newer one) just goes.
-      dir.resolve("BUILD.bazel").writeText(bundled)
-      migrateBazelAspectBuildFile(root)
-      assertTrue(!dir.resolve("BUILD.bazel").exists())
+      assertEquals(bundled, dir.resolve("BUILD.bazel").readText())
+      // And installing beside it is fine and leaves both untouched.
+      val stamp = dir.resolve("BUILD").lastModified()
       installBazelAspect(root)
+      assertTrue(dir.resolve("BUILD.bazel").isFile)
+      assertEquals(stamp, dir.resolve("BUILD").lastModified())
 
       // A hand-edited one stays.
-      dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
+      dir.resolve("BUILD").delete()
       dir.resolve("BUILD.bazel").appendText("# local\n")
       migrateBazelAspectBuildFile(root)
       assertTrue(dir.resolve("BUILD.bazel").isFile)
