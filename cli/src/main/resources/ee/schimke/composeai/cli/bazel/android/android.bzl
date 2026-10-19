@@ -27,8 +27,11 @@ load(":java_info.bzl", "JDK_RUNTIME", "JavaInfo", "JavaRuntimeInfo")
 load(":runtime.bzl", "compose_preview_metadata_args")
 
 _OwnJarsInfo = provider(
-    doc = "A target's own compiled jars, including those of targets it exports.",
-    fields = {"jars": "depset of File"},
+    doc = "A target's own compiled jars and sources, including those of targets it exports.",
+    fields = {
+        "jars": "depset of File",
+        "sources": "depset of File: the .kt and .java sources the jars were compiled from",
+    },
 )
 
 _ResourceOrderInfo = provider(
@@ -79,13 +82,19 @@ def _resource_order(target, ctx):
     )
 
 def _own_jars(target, ctx):
+    # A wrapper that only re-exports its implementation (kt_android_library, a macro's umbrella
+    # target) has no srcs of its own: its sources, like its jars, are those of what it exports.
     exported = [
-        dep[_OwnJarsInfo].jars
+        dep[_OwnJarsInfo]
         for dep in getattr(ctx.rule.attr, "exports", [])
         if _OwnJarsInfo in dep
     ]
     direct = target[JavaInfo].runtime_output_jars if JavaInfo in target else []
-    return depset(direct, transitive = exported)
+    sources = [f for f in getattr(ctx.rule.files, "srcs", []) if f.extension in ["kt", "java"]]
+    return _OwnJarsInfo(
+        jars = depset(direct, transitive = [e.jars for e in exported]),
+        sources = depset(sources, transitive = [e.sources for e in exported]),
+    )
 
 def _compile_sdk(android_jar):
     # A heuristic, like _aapt2_binary below: both read the SDK's directory layout, which no
@@ -236,7 +245,7 @@ def _link(ctx, target, resources, order):
     )
 
 def _collect_impl(target, ctx):
-    return [_OwnJarsInfo(jars = _own_jars(target, ctx)), _resource_order(target, ctx)]
+    return [_own_jars(target, ctx), _resource_order(target, ctx)]
 
 # Propagates along `exports`, so a kt_android_library (an android_library
 # exporting the Kotlin classes) reports the Kotlin jars as its own, and along
@@ -255,7 +264,7 @@ attribute; the same values the CLI's aspect writes as artifacts schema 2.""",
     fields = {
         "project_jars": "list of the target's own runtime jars (an exported library's included)",
         "runtime": "depset of every runtime jar, the final-ID R jar first",
-        "sources": "list of the target's own .kt/.java sources",
+        "sources": "list of the target's own .kt/.java sources (an exported library's included)",
         "data_files": "list of the runfiles that are not runtime jars",
         "android": "dict: the artifacts' `android` block (packageName, resourceApk, manifest, rJar, compileSdk)",
         "package": "the target's resource package; its app clock prefix",
@@ -285,7 +294,7 @@ def _linked(target, ctx):
         transitive = [java.transitive_runtime_jars],
         order = "preorder",
     )
-    sources = [f for f in getattr(ctx.rule.files, "srcs", []) if f.extension in ["kt", "java"]]
+    sources = target[_OwnJarsInfo].sources.to_list()
     runfiles = target[DefaultInfo].default_runfiles.files
 
     # dataFiles is the runfiles less the runtime jars, a set difference that Args cannot express
