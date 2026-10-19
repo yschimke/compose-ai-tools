@@ -400,6 +400,8 @@ internal class BazelCommand(
                 root,
                 bazelClockPackages(config, artifacts.android),
                 sandboxCount = oneShotSandboxCount(previews.size),
+                // `render` and `show` read only the PNG; a bundle may pack sidecars.
+                pngOnly = !bundling,
               )
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
@@ -874,10 +876,28 @@ internal fun prepareBazelDaemon(
   clockPackages: List<String> = emptyList(),
   /** [oneShotSandboxCount] for a one-shot render; null keeps the daemon's own pool size. */
   sandboxCount: Int? = null,
+  /** Skip every post-capture data product ([pngOnlySystemProperties]); the caller reads the PNG. */
+  pngOnly: Boolean = false,
 ): File =
   if (artifacts.android != null)
-    prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages, sandboxCount)
-  else prepareBazelDesktopDaemon(artifacts, prepared, root)
+    prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages, sandboxCount, pngOnly)
+  else prepareBazelDesktopDaemon(artifacts, prepared, root, pngOnly)
+
+/**
+ * The daemon's post-capture allowlist (`DaemonProperties.Names.POST_CAPTURE_KINDS`) set to a kind
+ * no processor writes, so a render runs none of them: the layout inspector, semantics, wireframe,
+ * fonts, navigation, strings and resources extractors cost about 500 ms after each capture (#6104),
+ * and a one-shot `render` reads only the PNG. A kind a request asks for still runs.
+ */
+internal fun pngOnlySystemProperties(pngOnly: Boolean): Map<String, String> =
+  if (pngOnly) mapOf(BAZEL_POST_CAPTURE_KINDS_PROPERTY to BAZEL_NO_POST_CAPTURE_KIND)
+  else emptyMap()
+
+/** The daemon's post-capture allowlist (`DaemonProperties.Names.POST_CAPTURE_KINDS`). */
+internal const val BAZEL_POST_CAPTURE_KINDS_PROPERTY = "composeai.daemon.postCaptureKinds"
+
+/** A data-product kind no post-capture processor writes; an empty allowlist would mean "unset". */
+internal const val BAZEL_NO_POST_CAPTURE_KIND = "none"
 
 /**
  * Robolectric sandboxes for a one-shot render of [previews] previews: one per preview, up to the
@@ -973,6 +993,7 @@ internal fun prepareBazelAndroidDaemon(
   root: File,
   clockPackages: List<String> = emptyList(),
   sandboxCount: Int? = null,
+  pngOnly: Boolean = false,
 ): File {
   val android = requireNotNull(artifacts.android) { "Not an Android target" }
   // First: under the network switch a missing android-all directory refuses before any sidecar is
@@ -1051,7 +1072,8 @@ internal fun prepareBazelAndroidDaemon(
           (if (clockPackages.isEmpty()) emptyMap()
           else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))) +
           // Explicit, so it wins over the warm-spare default the daemon would otherwise boot.
-          (sandboxCount?.let { mapOf(BAZEL_SANDBOX_COUNT_PROPERTY to it.toString()) }.orEmpty()),
+          (sandboxCount?.let { mapOf(BAZEL_SANDBOX_COUNT_PROPERTY to it.toString()) }.orEmpty()) +
+          pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
       javaLauncher = currentJavaLauncher(),
@@ -1074,6 +1096,7 @@ internal fun prepareBazelDesktopDaemon(
   artifacts: ResolvedBazelArtifacts,
   prepared: PreparedBazelPreviews,
   root: File,
+  pngOnly: Boolean = false,
 ): File {
   DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
   val sidecars =
@@ -1107,7 +1130,7 @@ internal fun prepareBazelDesktopDaemon(
           // DesktopHost derives its cache/preview root here rather than from Gradle conventions.
           "composeai.daemon.userClassDirs" to userClasspath,
           "composeai.daemon.idleTimeoutMs" to "5000",
-        ) + NetworkPolicy.daemonSystemProperties(),
+        ) + NetworkPolicy.daemonSystemProperties() + pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
     )
