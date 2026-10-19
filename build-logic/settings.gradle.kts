@@ -1,7 +1,16 @@
 pluginManagement {
   repositories {
+    // Google Maven first, scoped to its own groups, so AGP and androidx never reach the plugin
+    // portal or Central: under load those answer a miss with HTTP 429, which fails the build,
+    // instead of the 404 that would have moved on to Google.
+    google {
+      mavenContent {
+        includeGroupAndSubgroups("androidx")
+        includeGroupAndSubgroups("com.android")
+        includeGroupAndSubgroups("com.google")
+      }
+    }
     gradlePluginPortal()
-    google()
     mavenCentral()
   }
 }
