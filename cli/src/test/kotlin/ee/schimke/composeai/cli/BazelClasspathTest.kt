@@ -73,6 +73,28 @@ class BazelClasspathTest {
   }
 
   @Test
+  fun `many jars scanned at once keep the classpath order`() = fixture { root ->
+    val rFinal = root.jar("r-final.jar", "lib0/R.class")
+    // More jars than scan threads, interleaving every kind, so ordering can't come from luck.
+    val runtime =
+      (0 until 200).map { i ->
+        when (i % 4) {
+          0 -> root.jar("lib$i.jar", "lib$i/Lib.class", "lib$i/R.class")
+          1 -> root.jar("empty$i.jar", "META-INF/MANIFEST.MF")
+          2 -> root.jar("r$i.jar", "lib0/R.class")
+          else -> root.jar("res$i.jar", "lib$i/strings.xml")
+        }
+      }
+    val pruned = pruneRuntimeClasspath(listOf(rFinal) + runtime, keep = emptySet(), rJar = rFinal)
+    assertEquals(
+      listOf(rFinal) + runtime.filterIndexed { i, _ -> i % 4 == 0 || i % 4 == 3 },
+      pruned.jars,
+    )
+    assertEquals(runtime.filterIndexed { i, _ -> i % 4 == 1 }, pruned.empty)
+    assertEquals(runtime.filterIndexed { i, _ -> i % 4 == 2 }, pruned.supersededRJars)
+  }
+
+  @Test
   fun `without a final R jar no R jar is dropped`() = fixture { root ->
     val app = root.jar("app.jar", "com/example/App.class")
     val uiR = root.jar("ui_resources.jar", "androidx/compose/ui/R\$string.class")
