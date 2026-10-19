@@ -186,6 +186,79 @@ class StageTest(unittest.TestCase):
         # The base also lands in declaredPreviewIds (it's a notification stem).
         self.assertIn("ParamNotification", findings["declaredPreviewIds"])
 
+    def _manifest_module(self, previews: list[dict], pngs: list[str]) -> Path:
+        build = self.tmp / "samples" / "android" / "build" / "compose-previews"
+        (build / "renders").mkdir(parents=True)
+        for name in pngs:
+            (build / "renders" / name).write_bytes(f"png-{name}".encode())
+        (build / "previews.json").write_text(
+            json.dumps({"module": "samples:android", "previews": previews})
+        )
+        return build
+
+    def _stage(self, build: Path) -> dict:
+        out = self.tmp / "out"
+        rc = np.cmd_stage(argparse.Namespace(build_dir=str(build), output_dir=str(out)))
+        self.assertEqual(rc, 0)
+        return json.loads((out / "findings.json").read_text())
+
+    def test_declared_render_without_id_named_copy_is_staged_under_the_id(self):
+        # compose-preview-daemon 3.20.1 writes only the declared renderOutput,
+        # whose normalised name need not say `Notification`. It is still
+        # staged, under the manifest id the baseline knows it by.
+        pid = "com.example.NotificationStyleGalleryKt.ActionsPreview_Actions"
+        build = self._manifest_module(
+            [{"id": pid, "captures": [{"renderOutput": "renders/ActionsPreview_Actions-5426f9c9.png"}]}],
+            ["ActionsPreview_Actions-5426f9c9.png"],
+        )
+        findings = self._stage(build)
+        self.assertEqual([e["previewId"] for e in findings["entries"]], [pid])
+        self.assertEqual(findings["entries"][0]["pngBasename"], f"{pid}.png")
+        self.assertIn(pid, findings["declaredPreviewIds"])
+        self.assertTrue((self.tmp / "out" / "renders" / f"{pid}.png").is_file())
+
+    def test_id_named_copy_wins_over_the_declared_render(self):
+        # An older daemon leaves `renders/<id>.png` as well; that file is the
+        # one staged, once.
+        pid = "com.example.NotificationPreviewsKt.simpleNotificationPreview"
+        build = self._manifest_module(
+            [{"id": pid, "captures": [{"renderOutput": "renders/simpleNotificationPreview-b6d7cbbe.png"}]}],
+            [f"{pid}.png", "simpleNotificationPreview-b6d7cbbe.png"],
+        )
+        findings = self._stage(build)
+        self.assertEqual(
+            sorted(e["previewId"] for e in findings["entries"]),
+            sorted([pid, "simpleNotificationPreview-b6d7cbbe"]),
+        )
+
+    def test_declared_fanout_renders_are_staged_per_variant(self):
+        pid = "com.example.NotificationParamsKt.ParamPreview"
+        build = self._manifest_module(
+            [{
+                "id": pid,
+                "params": {"previewParameterProviderClassName": "test.FakeProvider"},
+                "captures": [{"renderOutput": "renders/ParamPreview-1a2b3c4d.png"}],
+            }],
+            ["ParamPreview-1a2b3c4d_Dark.png", "ParamPreview-1a2b3c4d_Light.png"],
+        )
+        findings = self._stage(build)
+        self.assertEqual(
+            [e["previewId"] for e in findings["entries"]],
+            [f"{pid}_Dark", f"{pid}_Light"],
+        )
+        self.assertIn(pid, findings["declaredFanoutBases"])
+
+    def test_non_notification_preview_is_not_staged(self):
+        build = self._manifest_module(
+            [
+                {"id": "com.example.HomeKt.HomePreview", "captures": [{"renderOutput": "renders/HomePreview-0.png"}]},
+                {"id": "com.example.NotificationKt.N", "captures": [{"renderOutput": "renders/N-1.png"}]},
+            ],
+            ["HomePreview-0.png", "N-1.png"],
+        )
+        findings = self._stage(build)
+        self.assertEqual([e["previewId"] for e in findings["entries"]], ["com.example.NotificationKt.N"])
+
 
 class CommentTest(unittest.TestCase):
     def setUp(self):
