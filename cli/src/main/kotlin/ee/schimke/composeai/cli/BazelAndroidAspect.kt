@@ -206,7 +206,7 @@ internal fun installCliOwnedFiles(
   directory.mkdirs()
   contents.forEach { (name, text) ->
     val file = directory.resolve(name)
-    if (file !in kept && (!file.isFile || file.readText() != text)) file.writeText(text)
+    if (file !in kept) writeIfChanged(file, text)
     if (name.endsWith(".sh") && file.isFile) file.setExecutable(true)
   }
   val removed = retired.filter { name ->

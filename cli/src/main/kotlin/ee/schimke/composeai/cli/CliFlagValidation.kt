@@ -10,6 +10,9 @@ internal object CliFlagValidation {
     setOf(
       "--module",
       "--filter",
+      "--function",
+      "--help",
+      "-h",
       "--id",
       "--preview",
       "--verbose",
@@ -183,6 +186,7 @@ internal object CliFlagValidation {
   private val bazelFlags =
     setOf(
       "--keep-daemon",
+      "--function",
       "--no-render",
       "--reuse-renders",
       "--bundle",
