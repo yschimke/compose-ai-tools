@@ -186,6 +186,7 @@ internal object CliFlagValidation {
   private val bazelFlags =
     setOf(
       "--keep-daemon",
+      "--sandbox-count",
       "--function",
       "--no-render",
       "--reuse-renders",

@@ -361,6 +361,13 @@ internal class BazelCommand(
                 prepared,
                 root,
                 bazelClockPackages(config, artifacts.android),
+                // A long-lived (IDE) daemon's pool; unset keeps the daemon's own default (#6114).
+                sandboxCount =
+                  args.flagValue("--sandbox-count")?.let {
+                    requireNotNull(it.toIntOrNull()?.takeIf { n -> n > 0 }) {
+                      "--sandbox-count must be a positive number"
+                    }
+                  },
               )
               .absolutePath
           )
@@ -700,6 +707,8 @@ internal class BazelCommand(
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
       --reuse-renders             Reuse captures rendered from the same imported artifacts; else render.
+      --sandbox-count <n>         prepare: the daemon's sandbox pool (default the daemon's own). One
+                                  boots fastest; held interactive sessions need two.
       --function <name>           Select previews by exact function name (--filter is a substring).
       --output <png | dir/>       One preview: that file. Several: one file each, <name>_<variant>.png,
                                   or under a directory (an existing one, or a path ending in /).
@@ -953,6 +962,12 @@ internal fun oneShotSandboxCount(previews: Int): Int = previews.coerceIn(1, 5)
 /** The daemon's sandbox pool size (`DaemonProperties.Names.SANDBOX_COUNT`). */
 internal const val BAZEL_SANDBOX_COUNT_PROPERTY = "composeai.daemon.sandboxCount"
 
+/** `DaemonProperties.Names.BACKGROUND_SANDBOX_BOOT`. */
+internal const val BAZEL_BACKGROUND_SANDBOX_BOOT_PROPERTY = "composeai.daemon.backgroundSandboxBoot"
+
+/** The daemon's JSON-RPC protocol version (`JsonRpcServer.PROTOCOL_VERSION`). */
+internal const val BAZEL_DAEMON_PROTOCOL_VERSION = "2"
+
 /** The daemon's consumer-clock property (`ConsumerClock.PROPERTY` in the renderer). */
 internal const val BAZEL_CLOCK_PACKAGES_PROPERTY = "composeai.render.clockPackages"
 
@@ -1102,7 +1117,8 @@ internal fun prepareBazelAndroidDaemon(
         launch.robolectricSystemProperties() +
           offlineProperties +
           mapOf(
-            "composeai.daemon.protocolVersion" to "1",
+            // The JSON-RPC protocol version, which `initialize` must send (#6114).
+            "composeai.daemon.protocolVersion" to BAZEL_DAEMON_PROTOCOL_VERSION,
             "composeai.daemon.modulePath" to artifacts.metadata.target,
             "composeai.daemon.moduleId" to artifacts.metadata.target,
             "composeai.daemon.moduleProjectDir" to root.absolutePath,
@@ -1120,6 +1136,9 @@ internal fun prepareBazelAndroidDaemon(
           else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))) +
           // Explicit, so it wins over the warm-spare default the daemon would otherwise boot.
           (sandboxCount?.let { mapOf(BAZEL_SANDBOX_COUNT_PROPERTY to it.toString()) }.orEmpty()) +
+          // Answer `initialize` once slot 0 is ready and boot the rest of a pool behind it, as
+          // Gradle's descriptors do: a 2-sandbox pool otherwise held `initialize` ~16 s (#6114).
+          mapOf(BAZEL_BACKGROUND_SANDBOX_BOOT_PROPERTY to "true") +
           pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
@@ -1166,7 +1185,7 @@ internal fun prepareBazelDesktopDaemon(
           "java.awt.headless" to "true",
           "skiko.data.path" to composeAiCacheDir("skiko-extracted").absolutePath,
           "composeai.fonts.cacheDir" to composeAiCacheDir("fonts").absolutePath,
-          "composeai.daemon.protocolVersion" to "1",
+          "composeai.daemon.protocolVersion" to BAZEL_DAEMON_PROTOCOL_VERSION,
           "composeai.daemon.modulePath" to artifacts.metadata.target,
           "composeai.daemon.moduleId" to artifacts.metadata.target,
           "composeai.daemon.moduleProjectDir" to root.absolutePath,
