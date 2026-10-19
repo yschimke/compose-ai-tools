@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.69.3](https://github.com/yschimke/compose-ai-tools/compare/v2.69.2...v2.69.3) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.37.0 ([#6134](https://github.com/yschimke/compose-ai-tools/issues/6134)) ([6a9a756](https://github.com/yschimke/compose-ai-tools/commit/6a9a756b937564a8327e378a31bc9706bafbfc10))
+* render with compose-preview-daemon 3.20.1 ([#6132](https://github.com/yschimke/compose-ai-tools/issues/6132)) ([763be93](https://github.com/yschimke/compose-ai-tools/commit/763be936e9d92c32b9a0358b570b6d669d4f5194))
+
 ## [2.69.2](https://github.com/yschimke/compose-ai-tools/compare/v2.69.1...v2.69.2) (2026-10-19)
 
 
