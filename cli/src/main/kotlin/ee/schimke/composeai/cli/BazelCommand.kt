@@ -421,6 +421,7 @@ internal class BazelCommand(
                       .orEmpty(),
                   previewsManifest = prepared.manifestFile,
                   idleTimeoutSeconds = config.daemonIdleTimeoutSeconds,
+                  projectJars = artifacts.projectJars,
                 )
               else null
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))

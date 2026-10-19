@@ -51,17 +51,24 @@ internal object BazelKeepDaemon {
 
   /**
    * Rewrites [descriptor] for a shared daemon keyed on it, [launchInputs] (files the daemon reads
-   * only at launch, such as linked resources) and [previewsManifest].
+   * only at launch, such as linked resources), [previewsManifest] and [idleTimeoutSeconds], which
+   * the daemon also reads only at launch. [projectJars], the jars an edit rebuilds, are compared by
+   * content rather than size and mtime when deciding whether to reload.
    */
   fun prepare(
     descriptor: File,
     launchInputs: List<File>,
     previewsManifest: File,
     idleTimeoutSeconds: Int,
+    projectJars: Collection<File> = emptyList(),
     cacheRoot: File = composeAiCacheDir("daemons"),
   ): Prepared {
     val launch = DaemonLaunchBuilder.decode(descriptor.readText())
-    val dir = cacheRoot.resolve(key(descriptor.readText(), launchInputs, previewsManifest))
+    val idleMs = idleTimeoutSeconds.coerceAtLeast(1) * 1000L
+    val dir =
+      cacheRoot.resolve(
+        key(descriptor.readText() + "\n$KEEP_ALIVE_IDLE_MS=$idleMs", launchInputs, previewsManifest)
+      )
     dir.mkdirs()
     val shared =
       launch.copy(
@@ -69,7 +76,7 @@ internal object BazelKeepDaemon {
           launch.systemProperties +
             mapOf(
               SOCKET_PATH to dir.resolve("d.sock").absolutePath,
-              KEEP_ALIVE_IDLE_MS to (idleTimeoutSeconds.coerceAtLeast(1) * 1000L).toString(),
+              KEEP_ALIVE_IDLE_MS to idleMs.toString(),
             )
       )
     val sharedDescriptor =
@@ -81,7 +88,8 @@ internal object BazelKeepDaemon {
         ?.split(File.pathSeparator)
         ?.filter { it.isNotBlank() }
         .orEmpty()
-    return Prepared(sharedDescriptor, dir, recordJars(dir, jars))
+    val hashed = projectJars.mapTo(HashSet()) { it.absolutePath }
+    return Prepared(sharedDescriptor, dir, recordJars(dir, jars, hashed))
   }
 
   /**
@@ -120,19 +128,26 @@ internal object BazelKeepDaemon {
   private val LINE_KEYS = setOf("bodyLine", "line", "sourceLine")
 
   /**
-   * Records [jars]' size and mtime in [dir] and returns one that changed since the last record, or
-   * null on the first run or when none did. Size and mtime, not content: Bazel rewrites an output
-   * it rebuilt and leaves the rest alone, and hashing ~300 jars per render would cost more than the
-   * reload it decides.
+   * Records [jars]' stamps in [dir] and returns one that changed since the last record, or null on
+   * the first run or when none did. A jar in [contentHashed] (the project's own, which an edit
+   * rebuilds) is stamped by content, since a cache restore can replace one keeping its size and
+   * mtime; the rest, ~300 dependency jars, by size and mtime, as hashing them per render would cost
+   * more than the reload it decides.
    */
-  internal fun recordJars(dir: File, jars: List<String>): String? {
+  internal fun recordJars(
+    dir: File,
+    jars: List<String>,
+    contentHashed: Set<String> = emptySet(),
+  ): String? {
     val file = dir.resolve(JARS_FILE)
     val previous = runCatching {
       json.decodeFromString<Map<String, String>>(file.readText())
     }
       .getOrNull()
-    val current = jars.associateWith {
-      File(it).let { jar -> "${jar.length()}:${jar.lastModified()}" }
+    val current = jars.associateWith { path ->
+      val jar = File(path)
+      if (File(path).absolutePath in contentHashed && jar.isFile) "sha256:${sha256(jar)}"
+      else "${jar.length()}:${jar.lastModified()}"
     }
     file.writeText(json.encodeToString(current))
     if (previous == null) return null
@@ -160,6 +175,12 @@ internal object BazelKeepDaemon {
       }
       else -> error("Expected bazel daemon status or bazel daemon stop")
     }
+  }
+
+  private fun sha256(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { it.copyTo(DigestSink(digest)) }
+    return digest.digest().joinToString("") { "%02x".format(it) }
   }
 
   private class DigestSink(private val digest: MessageDigest) : java.io.OutputStream() {

@@ -74,7 +74,37 @@ class BazelKeepDaemonTest {
   }
 
   @Test
+  fun `a project jar replaced with the same size and mtime is still reported`() {
+    val dir = root.resolve("daemon").apply { mkdirs() }
+    val jar = root.resolve("ui.jar").apply { writeText("aaaa") }
+    val stamp = jar.lastModified()
+    val jars = listOf(jar.path)
+    val project = setOf(jar.absolutePath)
+    assertNull(BazelKeepDaemon.recordJars(dir, jars, project))
+    jar.writeText("bbbb")
+    jar.setLastModified(stamp)
+    assertEquals(jar.path, BazelKeepDaemon.recordJars(dir, jars, project))
+  }
+
+  @Test
+  fun `a different idle timeout is a different daemon`() {
+    fun dirFor(idle: Int) = prepare(idle).dir
+    assertNotEquals(dirFor(60), dirFor(3600))
+  }
+
+  @Test
   fun `the shared descriptor names a socket and an idle timeout`() {
+    val prepared = prepare(120)
+    val shared = DaemonLaunchBuilder.decode(prepared.descriptor.readText())
+    assertEquals(
+      prepared.dir.resolve("d.sock").absolutePath,
+      shared.systemProperties["composeai.daemon.socketPath"],
+    )
+    assertEquals("120000", shared.systemProperties["composeai.daemon.keepAliveIdleMs"])
+    assertEquals("ui.jar", shared.systemProperties["composeai.daemon.userClassDirs"])
+  }
+
+  private fun prepare(idleTimeoutSeconds: Int): BazelKeepDaemon.Prepared {
     val descriptor =
       root.resolve("daemon-launch.json").apply {
         writeText(
@@ -92,20 +122,12 @@ class BazelKeepDaemonTest {
           )
         )
       }
-    val prepared =
-      BazelKeepDaemon.prepare(
-        descriptor,
-        launchInputs = emptyList(),
-        previewsManifest = root.resolve("previews.json"),
-        idleTimeoutSeconds = 120,
-        cacheRoot = root.resolve("daemons"),
-      )
-    val shared = DaemonLaunchBuilder.decode(prepared.descriptor.readText())
-    assertEquals(
-      prepared.dir.resolve("d.sock").absolutePath,
-      shared.systemProperties["composeai.daemon.socketPath"],
+    return BazelKeepDaemon.prepare(
+      descriptor,
+      launchInputs = emptyList(),
+      previewsManifest = root.resolve("previews.json"),
+      idleTimeoutSeconds = idleTimeoutSeconds,
+      cacheRoot = root.resolve("daemons"),
     )
-    assertEquals("120000", shared.systemProperties["composeai.daemon.keepAliveIdleMs"])
-    assertEquals("ui.jar", shared.systemProperties["composeai.daemon.userClassDirs"])
   }
 }
