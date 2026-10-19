@@ -540,7 +540,15 @@ class BazelComposeIntegrationTest {
       }
       val coldMs = render(output.resolve("cold.png"))
       val warmMs = render(output.resolve("warm.png"))
-      println("keep-daemon: cold render ${coldMs}ms, warm render ${warmMs}ms")
+      val timings = "keep-daemon: cold render ${coldMs}ms, warm render ${warmMs}ms"
+      println(timings)
+      // Beside the render evidence the CI job uploads, so the numbers survive the run.
+      System.getenv("COMPOSE_PREVIEW_BAZEL_EVIDENCE")?.let { evidence ->
+        File(evidence).resolveSibling("keep-daemon-timings.txt").apply {
+          parentFile.mkdirs()
+          writeText(timings + "\n")
+        }
+      }
       val shared =
         output.resolve("out").walkTopDown().single { it.name == "daemon-launch-shared.json" }
       val socket =
