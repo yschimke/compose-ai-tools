@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.69.2](https://github.com/yschimke/compose-ai-tools/compare/v2.69.1...v2.69.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* serve's bundle daemon widens the app's R classes with the daemon's fields ([#6128](https://github.com/yschimke/compose-ai-tools/issues/6128)) ([d303ff2](https://github.com/yschimke/compose-ai-tools/commit/d303ff2065264e004565dd57515bbf12ffa59452))
+
 ## [2.69.1](https://github.com/yschimke/compose-ai-tools/compare/v2.69.0...v2.69.1) (2026-10-19)
 
 
