@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.70.0](https://github.com/yschimke/compose-ai-tools/compare/v2.69.3...v2.70.0) (2026-10-19)
+
+
+### Features
+
+* report the daemon's sandbox boot while initialize waits on it ([#6137](https://github.com/yschimke/compose-ai-tools/issues/6137)) ([e177c08](https://github.com/yschimke/compose-ai-tools/commit/e177c0823b935760463e7fd2686bd64c2ff71831))
+
 ## [2.69.3](https://github.com/yschimke/compose-ai-tools/compare/v2.69.2...v2.69.3) (2026-10-19)
 
 
