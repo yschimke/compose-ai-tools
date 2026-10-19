@@ -379,19 +379,29 @@ internal class BazelCommand(
         }
         val noRender = operation == "bundle" && "--no-render" in args
         require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
-        // The selection flags apply across targets; --output places every selected preview
-        // ([bazelOutputFiles]).
+        // The selection flags apply across targets; --output places every selected preview,
+        // naming each once across all of them ([bazelOutputPlan]).
         val selected = selections.associateWith { selectedPreviews(it.prepared) }
         require(selected.values.any { it.isNotEmpty() }) { "No previews match the selection" }
+        val outputPlan =
+          bazelOutputPlan(
+            selected.flatMap { (selection, previews) ->
+              previews.map { selection.artifacts.metadata.target to it }
+            },
+            if (operation != "bundle") args.flagValue("--output")?.let { resolve(root, it) }
+            else null,
+            args.flagValue("--output"),
+          )
         selected.forEach { (selection, previews) ->
           val (artifacts, prepared, output) = selection
           if (previews.isEmpty() && !bundling) return@forEach
+          val outputs =
+            outputPlan
+              .filterKeys { it.first == artifacts.metadata.target }
+              .mapKeys { it.key.second }
           if (noRender) {
             // Discovery and packaging require no renderer provisioning.
-          } else if (
-            reuse &&
-              reuseBazelCaptures(prepared, artifacts, root, copyOutput = operation != "bundle")
-          ) {
+          } else if (reuse && reuseBazelCaptures(prepared, artifacts, outputs)) {
             // Every selected capture was rendered from these exact artifacts.
           } else {
             // A kept daemon serves every later render, so its pool is sized once, not per call.
@@ -425,7 +435,7 @@ internal class BazelCommand(
               shared?.descriptor ?: descriptor,
               root,
               timeout,
-              copyOutput = operation != "bundle",
+              outputs,
               shared = shared,
             )
           }
@@ -511,17 +521,11 @@ internal class BazelCommand(
   private fun reuseBazelCaptures(
     prepared: PreparedBazelPreviews,
     artifacts: ResolvedBazelArtifacts,
-    root: File,
-    copyOutput: Boolean,
+    /** Where `--output` puts each selected preview, by id ([bazelOutputPlan]). */
+    outputs: Map<String, File>,
   ): Boolean {
     val selected = selectedPreviews(prepared)
     require(selected.isNotEmpty()) { "No previews match the selection" }
-    val outputs =
-      bazelOutputFiles(
-        selected,
-        if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null,
-        args.flagValue("--output"),
-      )
     if (!bazelCapturesMatch(prepared, bazelArtifactsFingerprint(artifacts))) {
       System.err.println("Captures were not rendered from the imported artifacts; rendering")
       return false
@@ -553,18 +557,13 @@ internal class BazelCommand(
     descriptor: File,
     root: File,
     timeout: Long,
-    copyOutput: Boolean = true,
+    /** Where `--output` puts each selected preview, by id ([bazelOutputPlan]). */
+    outputs: Map<String, File>,
     /** A kept daemon ([BazelKeepDaemon]) to connect to, starting it if none is running. */
     shared: BazelKeepDaemon.Prepared? = null,
   ) {
     val previews = selectedPreviews(prepared)
     require(previews.isNotEmpty()) { "No previews match the selection" }
-    val outputs =
-      bazelOutputFiles(
-        previews,
-        if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null,
-        args.flagValue("--output"),
-      )
     val finished = ConcurrentHashMap<String, JsonObject>()
     val latch = CountDownLatch(previews.size)
     val ids = previews.map { it.id }.toSet()

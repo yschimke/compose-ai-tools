@@ -149,6 +149,12 @@ abstract class Command(
   val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
 
   /**
+   * `--function <name>`: previews whose function is exactly `name`, so `FooPreview` does not also
+   * select `FooPreview_Disabled` as `--filter` would. Intersects with the other selectors.
+   */
+  val functionSelector: String? = args.flagValue("--function")?.takeIf { it.isNotBlank() }
+
+  /**
    * `--id-file <path>`: an exact set of declared preview ids, one per line, e.g. the previews a PR
    * changed. Intersects with the other selectors and narrows the Gradle render
    * ([PreviewRenderScope]); `bundle pack` reads the same format. A missing, unreadable or empty
@@ -773,12 +779,13 @@ abstract class Command(
    */
   protected fun selectRequested(all: List<PreviewResult>): List<PreviewResult> =
     selectRequestedResults(
-      all,
-      exactId = exactId,
-      filter = filter,
-      previewRef = previewRef,
-      ids = idFileIds,
-    )
+        all,
+        exactId = exactId,
+        filter = filter,
+        previewRef = previewRef,
+        ids = idFileIds,
+      )
+      .filter { functionSelector == null || it.functionName == functionSelector }
 
   /**
    * @param results rows to emit (after `--id`/`--filter`/`--changed-only`)

@@ -63,6 +63,27 @@ class BazelCliFlagsTest {
   }
 
   @Test
+  fun `a positional name never takes one a variant already claimed`() {
+    val two = preview("Foo", "2")
+    val plain = preview("Foo")
+    val outputs = bazelOutputFiles(listOf(two, plain), root.resolve("foo.png"))
+    assertEquals(root.resolve("foo_2.png"), outputs[two.id])
+    assertEquals(root.resolve("foo_3.png"), outputs[plain.id])
+  }
+
+  @Test
+  fun `previews of several targets never share an output`() {
+    val a = preview("Foo", output = "renders/Foo.png")
+    val b = preview("Foo", output = "renders/Foo.png")
+    val file = bazelOutputPlan(listOf("//a" to a, "//b" to b), root.resolve("foo.png"))
+    assertEquals(2, file.values.toSet().size, "$file")
+    val dir = root.resolve("out").apply { mkdirs() }
+    val inDir = bazelOutputPlan(listOf("//a" to a, "//b" to b), dir)
+    assertEquals(dir.resolve("Foo.png"), inDir["//a" to a.id])
+    assertEquals(dir.resolve("Foo_2.png"), inDir["//b" to b.id])
+  }
+
+  @Test
   fun `target labels survive the equals form`() {
     val workspace = root.resolve("ws").apply { mkdirs() }
     workspace.resolve("MODULE.bazel").writeText("")
