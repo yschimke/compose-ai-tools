@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.68.7](https://github.com/yschimke/compose-ai-tools/compare/v2.68.6...v2.68.7) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to 3.18.9 ([#6103](https://github.com/yschimke/compose-ai-tools/issues/6103)) ([8cbd1e9](https://github.com/yschimke/compose-ai-tools/commit/8cbd1e9b6121bd4c8f541f9cdc87ccf1bf55eb24))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.16.1 ([#6097](https://github.com/yschimke/compose-ai-tools/issues/6097)) ([d6d6e78](https://github.com/yschimke/compose-ai-tools/commit/d6d6e78926f2007d6e7def098f7b6de842776235))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.198 ([#6099](https://github.com/yschimke/compose-ai-tools/issues/6099)) ([26d702a](https://github.com/yschimke/compose-ai-tools/commit/26d702a49dda0c58d44cd06a8f325e52828842e7))
+* frame named override cache keys unambiguously ([#6102](https://github.com/yschimke/compose-ai-tools/issues/6102)) ([aabfb07](https://github.com/yschimke/compose-ai-tools/commit/aabfb07047e6f30f9c0f33ab38814b0b968df3a3))
+
 ## [2.68.6](https://github.com/yschimke/compose-ai-tools/compare/v2.68.5...v2.68.6) (2026-10-18)
 
 
