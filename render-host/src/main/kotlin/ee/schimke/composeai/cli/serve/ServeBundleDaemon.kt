@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.AndroidRClassUnion
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
@@ -221,13 +222,17 @@ public object ServeBundleDaemon {
       }
     // Android app resources: extract the bundle's `android/` payload and synthesize Robolectric's
     // `test_config.properties` so `stringResource(R.string.…)` resolves. Empty for desktop or older
-    // bundles.
+    // bundles. The carried R jar is widened with the daemon's own R fields, which its Compose needs
+    // when it is newer than the app's ([AndroidRClassUnion], #6125).
     val androidResourceClasspath =
       if (backend == "android")
-        AndroidBundleResources.daemonClasspath(
-            zipBytes,
-            destDir,
-            manifest.androidResources?.applicationPackage,
+        AndroidRClassUnion.widen(
+            AndroidBundleResources.daemonClasspath(
+              zipBytes,
+              destDir,
+              manifest.androidResources?.applicationPackage,
+            ),
+            backendLaunch.daemonClasspath.map(::File),
           )
           .map { it.absolutePath }
           .also {
