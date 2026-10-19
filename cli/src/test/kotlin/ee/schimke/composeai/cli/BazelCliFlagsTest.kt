@@ -7,6 +7,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** #6115: `--target=`, `--output` placement, `--help` on the normal commands. */
@@ -60,6 +61,52 @@ class BazelCliFlagsTest {
       root.resolve("fresh/A-1234.png"),
       bazelOutputFiles(listOf(a), File(typed), typed)[a.id],
     )
+  }
+
+  @Test
+  fun `a positional name never takes one a variant already claimed`() {
+    val two = preview("Foo", "2")
+    val plain = preview("Foo")
+    val outputs = bazelOutputFiles(listOf(two, plain), root.resolve("foo.png"))
+    assertEquals(root.resolve("foo_2.png"), outputs[two.id])
+    assertEquals(root.resolve("foo_3.png"), outputs[plain.id])
+  }
+
+  @Test
+  fun `names that differ only in case are still distinct files`() {
+    val dark = preview("Foo", "Dark")
+    val lower = preview("Foo", "dark")
+    val outputs = bazelOutputFiles(listOf(dark, lower), root.resolve("foo.png"))
+    assertEquals(root.resolve("foo_Dark.png"), outputs[dark.id])
+    assertEquals(root.resolve("foo_2.png"), outputs[lower.id])
+  }
+
+  @Test
+  fun `--function matches that exact function only`() {
+    val foo = preview("Foo")
+    val fooDisabled = preview("FooPreview_Disabled")
+    assertTrue(previewIdMatchesRequest(foo.id, null, null, functionName = "Foo", function = "Foo"))
+    assertFalse(
+      previewIdMatchesRequest(
+        fooDisabled.id,
+        null,
+        null,
+        functionName = "FooPreview_Disabled",
+        function = "Foo",
+      )
+    )
+  }
+
+  @Test
+  fun `previews of several targets never share an output`() {
+    val a = preview("Foo", output = "renders/Foo.png")
+    val b = preview("Foo", output = "renders/Foo.png")
+    val file = bazelOutputPlan(listOf("//a" to a, "//b" to b), root.resolve("foo.png"))
+    assertEquals(2, file.values.toSet().size, "$file")
+    val dir = root.resolve("out").apply { mkdirs() }
+    val inDir = bazelOutputPlan(listOf("//a" to a, "//b" to b), dir)
+    assertEquals(dir.resolve("Foo.png"), inDir["//a" to a.id])
+    assertEquals(dir.resolve("Foo_2.png"), inDir["//b" to b.id])
   }
 
   @Test
