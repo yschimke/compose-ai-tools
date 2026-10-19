@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.AndroidRClassUnion
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
@@ -1057,11 +1058,16 @@ internal fun prepareBazelAndroidDaemon(
         "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
       }
   val output = prepared.manifestFile.parentFile
+  // The R jar leads the daemon's classpath, so it is widened with the daemon's own R fields, which
+  // the daemon's Compose links against when it runs (AndroidRClassUnion).
   val resources =
-    AndroidBundleResources.daemonClasspath(
-      AndroidBundleResources.Extracted(android.resourceApk, android.manifest, android.rJar),
-      output.resolve("android-resources"),
-      android.packageName,
+    AndroidRClassUnion.widen(
+      AndroidBundleResources.daemonClasspath(
+        AndroidBundleResources.Extracted(android.resourceApk, android.manifest, android.rJar),
+        output.resolve("android-resources"),
+        android.packageName,
+      ),
+      daemonJars,
     )
   val userClasspath =
     (listOfNotNull(android.rJar) + artifacts.runtimeJars).distinct().joinToString(
