@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.68.8](https://github.com/yschimke/compose-ai-tools/compare/v2.68.7...v2.68.8) (2026-10-19)
+
+
+### Performance Improvements
+
+* skip post-capture data products for a one-shot Bazel render ([#6105](https://github.com/yschimke/compose-ai-tools/issues/6105)) ([249d058](https://github.com/yschimke/compose-ai-tools/commit/249d058e024753d7b24a3bcbac8b94b9a4c58198))
+
 ## [2.68.7](https://github.com/yschimke/compose-ai-tools/compare/v2.68.6...v2.68.7) (2026-10-19)
 
 
