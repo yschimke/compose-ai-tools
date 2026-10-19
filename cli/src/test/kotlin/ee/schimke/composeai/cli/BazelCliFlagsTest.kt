@@ -7,6 +7,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** #6115: `--target=`, `--output` placement, `--help` on the normal commands. */
@@ -69,6 +70,40 @@ class BazelCliFlagsTest {
     val outputs = bazelOutputFiles(listOf(two, plain), root.resolve("foo.png"))
     assertEquals(root.resolve("foo_2.png"), outputs[two.id])
     assertEquals(root.resolve("foo_3.png"), outputs[plain.id])
+  }
+
+  @Test
+  fun `names that differ only in case are still distinct files`() {
+    val dark = preview("Foo", "Dark")
+    val lower = preview("Foo", "dark")
+    val outputs = bazelOutputFiles(listOf(dark, lower), root.resolve("foo.png"))
+    assertEquals(root.resolve("foo_Dark.png"), outputs[dark.id])
+    assertEquals(root.resolve("foo_2.png"), outputs[lower.id])
+  }
+
+  @Test
+  fun `--function narrows results and render scope to that exact function`() {
+    val foo = preview("Foo")
+    val fooDisabled = preview("FooPreview_Disabled")
+    assertTrue(previewIdMatchesRequest(foo.id, null, null, functionName = "Foo", function = "Foo"))
+    assertFalse(
+      previewIdMatchesRequest(
+        fooDisabled.id,
+        null,
+        null,
+        functionName = "FooPreview_Disabled",
+        function = "Foo",
+      )
+    )
+    assertFalse(
+      previewMatchesRequestIncludingRows(
+        fooDisabled,
+        exactId = null,
+        filter = null,
+        exactIdExists = false,
+        function = "Foo",
+      )
+    )
   }
 
   @Test

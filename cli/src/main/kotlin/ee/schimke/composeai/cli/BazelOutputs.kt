@@ -35,11 +35,12 @@ internal fun bazelOutputPlan(
   typed: String? = output?.path,
 ): Map<Pair<String, String>, File> {
   if (output == null || previews.isEmpty()) return emptyMap()
+  // Lower-cased: on a case-insensitive filesystem (macOS, Windows) `Foo.png` and `foo.png` are one.
   val used = HashSet<String>()
   fun claim(preferred: String?, positional: (Int) -> String, from: Int): String {
-    if (!preferred.isNullOrEmpty() && used.add(preferred)) return preferred
+    if (!preferred.isNullOrEmpty() && used.add(preferred.lowercase())) return preferred
     var position = from
-    while (true) positional(position++).let { if (used.add(it)) return it }
+    while (true) positional(position++).let { if (used.add(it.lowercase())) return it }
   }
   val namesDirectory = typed != null && (typed.endsWith("/") || typed.endsWith(File.separator))
   if (output.isDirectory || namesDirectory) {
