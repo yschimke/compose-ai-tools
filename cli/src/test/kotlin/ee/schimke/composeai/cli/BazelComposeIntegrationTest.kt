@@ -480,4 +480,91 @@ class BazelComposeIntegrationTest {
       output.deleteRecursively()
     }
   }
+
+  /**
+   * `--keep-daemon` (#6104): the second render reaches the daemon the first started, rather than
+   * booting another, and `bazel daemon stop` ends it.
+   */
+  @Test
+  fun `a kept daemon serves the next render warm`() {
+    val root = File(requireNotNull(System.getenv("COMPOSE_PREVIEW_BAZEL_FIXTURE"))).canonicalFile
+    installBazelAspect(root)
+    val config =
+      BazelBuildConfig(
+        buildCommand = listOf(System.getenv("COMPOSE_PREVIEW_BAZEL_COMMAND") ?: "bazel"),
+        startupArgs =
+          System.getenv("COMPOSE_PREVIEW_BAZEL_OUTPUT_ROOT")
+            ?.let { listOf("--output_user_root=$it") }
+            .orEmpty(),
+        buildArgs = listOf("--remote_download_outputs=all", "--jobs=4"),
+      )
+    val artifacts = BazelBuild().collect(root, "//:aspect_app", config, 300)
+    val output = Files.createTempDirectory("bazel-keep-daemon").toFile()
+    try {
+      val metadata =
+        output.resolve("artifacts.json").apply {
+          writeText(bazelJson.encodeToString(artifacts.metadata))
+        }
+      val executionRoot =
+        BazelProcess.run(
+            config.buildCommand + config.startupArgs + listOf("info", "execution_root"),
+            root,
+            60,
+          )
+          .trim()
+      fun render(png: File): Long {
+        val start = System.nanoTime()
+        BazelCommand(
+            listOf(
+              "render",
+              "--keep-daemon",
+              "--project",
+              root.path,
+              "--artifacts",
+              metadata.path,
+              "--execution-root",
+              executionRoot,
+              "--out",
+              output.resolve("out").path,
+              "--filter",
+              "RuntimeGreeting",
+              "--output",
+              png.path,
+              "--timeout",
+              "120",
+            )
+          )
+          .execute()
+        assertTrue(png.length() > 0, "$png was not written")
+        return (System.nanoTime() - start) / 1_000_000
+      }
+      val coldMs = render(output.resolve("cold.png"))
+      val warmMs = render(output.resolve("warm.png"))
+      println("keep-daemon: cold render ${coldMs}ms, warm render ${warmMs}ms")
+      val shared =
+        output.resolve("out").walkTopDown().single { it.name == "daemon-launch-shared.json" }
+      val socket =
+        File(
+          requireNotNull(
+            ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder.decode(shared.readText())
+              .systemProperties["composeai.daemon.socketPath"]
+          )
+        )
+      val launches =
+        socket.resolveSibling("daemon.log").readLines().count { "serving clients on" in it }
+      assertEquals(1, launches, "the second render must reuse the first render's daemon")
+      assertEquals(
+        bazelBundleSha(output.resolve("cold.png")),
+        bazelBundleSha(output.resolve("warm.png")),
+      )
+      BazelCommand(listOf("daemon", "stop")).execute()
+      assertTrue(
+        ee.schimke.composeai.daemon.client.SocketDaemonClientFactory.connect(socket.toPath()) ==
+          null,
+        "bazel daemon stop must end it",
+      )
+    } finally {
+      output.deleteRecursively()
+    }
+  }
 }

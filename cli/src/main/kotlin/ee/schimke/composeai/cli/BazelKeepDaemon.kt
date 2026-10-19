@@ -13,8 +13,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * The opt-in reusable daemon for `compose-preview bazel render` / `show` (#6104).
  *
- * A one-shot render boots a fresh daemon JVM, about 11 s for Robolectric, and stops it on exit. With
- * [requested], the render instead connects to a daemon serving clients over a Unix socket
+ * A one-shot render boots a fresh daemon JVM, about 11 s for Robolectric, and stops it on exit.
+ * With [requested], the render instead connects to a daemon serving clients over a Unix socket
  * (compose-preview-daemon's `DaemonSocketFrontEnd`), starting one in the background when none is
  * running. It stays warm for [BazelBuildConfig.daemonIdleTimeoutSeconds] after the last render, so
  * an edit, `bazel build` and render cycle pays for the render alone.
@@ -41,9 +41,7 @@ internal object BazelKeepDaemon {
     config: BazelBuildConfig,
     env: (String) -> String? = System::getenv,
   ): Boolean =
-    FLAG in args ||
-      env(ENV)?.trim()?.lowercase() in setOf("1", "true", "yes") ||
-      config.keepDaemon
+    FLAG in args || env(ENV)?.trim()?.lowercase() in setOf("1", "true", "yes") || config.keepDaemon
 
   /**
    * [descriptor] rewritten to share a daemon, with [changedJar] naming a user jar rebuilt since
@@ -90,7 +88,11 @@ internal object BazelKeepDaemon {
    * The daemon directory name: a hash of what the daemon reads only at launch. The preview set is
    * hashed without source line numbers, so editing a preview's body above another keeps the key.
    */
-  internal fun key(descriptorText: String, launchInputs: List<File>, previewsManifest: File): String {
+  internal fun key(
+    descriptorText: String,
+    launchInputs: List<File>,
+    previewsManifest: File,
+  ): String {
     val digest = MessageDigest.getInstance("SHA-256")
     digest.update(descriptorText.toByteArray())
     launchInputs.forEach { file ->
@@ -125,9 +127,13 @@ internal object BazelKeepDaemon {
    */
   internal fun recordJars(dir: File, jars: List<String>): String? {
     val file = dir.resolve(JARS_FILE)
-    val previous =
-      runCatching { json.decodeFromString<Map<String, String>>(file.readText()) }.getOrNull()
-    val current = jars.associateWith { File(it).let { jar -> "${jar.length()}:${jar.lastModified()}" } }
+    val previous = runCatching {
+      json.decodeFromString<Map<String, String>>(file.readText())
+    }
+      .getOrNull()
+    val current = jars.associateWith {
+      File(it).let { jar -> "${jar.length()}:${jar.lastModified()}" }
+    }
     file.writeText(json.encodeToString(current))
     if (previous == null) return null
     return current.entries.firstOrNull { (path, stamp) -> previous[path] != stamp }?.key
@@ -140,9 +146,13 @@ internal object BazelKeepDaemon {
     when (action) {
       "status",
       null -> {
-        val live = sockets.filter { SocketDaemonClientFactory.connect(it.toPath())?.also { c -> c.close() } != null }
+        val live = sockets.filter {
+          SocketDaemonClientFactory.connect(it.toPath())?.also { c -> c.close() } != null
+        }
         if (live.isEmpty()) println("No shared daemons running")
-        live.forEach { println("running  ${it.parentFile.name}  ${it.parentFile.resolve("daemon.log")}") }
+        live.forEach {
+          println("running  ${it.parentFile.name}  ${it.parentFile.resolve("daemon.log")}")
+        }
       }
       "stop" -> {
         val stopped = sockets.count { SocketDaemonClientFactory.stop(it.toPath()) }

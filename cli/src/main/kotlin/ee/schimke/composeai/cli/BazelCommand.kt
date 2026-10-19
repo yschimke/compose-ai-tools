@@ -5,6 +5,7 @@ import ee.schimke.composeai.bundle.AndroidBundleResources
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
+import ee.schimke.composeai.daemon.client.SocketDaemonClientFactory
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
@@ -14,7 +15,6 @@ import ee.schimke.composeai.previewdata.PreviewManifest as ResultManifest
 import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
-import ee.schimke.composeai.daemon.client.SocketDaemonClientFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
