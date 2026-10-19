@@ -82,6 +82,14 @@ internal data class BazelBuildConfig(
    * .DependencyPolicy.parse`'s shape. Null keeps the original behaviour exactly.
    */
   val dependencyPolicy: JsonObject? = null,
+  /**
+   * Keep the render daemon warm between `render` / `show` runs ([BazelKeepDaemon], #6104), as
+   * `--keep-daemon` or `COMPOSE_PREVIEW_KEEP_DAEMON=1` do. Off by default: a CI run should leave
+   * nothing behind.
+   */
+  val keepDaemon: Boolean = false,
+  /** How long a kept daemon waits after its last render before it exits. */
+  val daemonIdleTimeoutSeconds: Int = 300,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )

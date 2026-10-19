@@ -14,6 +14,7 @@ import ee.schimke.composeai.previewdata.PreviewManifest as ResultManifest
 import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import ee.schimke.composeai.daemon.client.SocketDaemonClientFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -54,8 +55,13 @@ internal class BazelCommand(
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
+    if (operation == "daemon") {
+      // No build: the shared daemons are found by their sockets.
+      BazelKeepDaemon.manage(args.getOrNull(args.indexOf("daemon") + 1))
+      return emptyList()
+    }
     require(operation in setOf("init", "prepare", "list", "render", "show", "bundle")) {
-      "Expected init, prepare, list, render, show or bundle"
+      "Expected init, prepare, list, render, show, bundle or daemon"
     }
     require("--reuse-renders" !in args || operation in setOf("render", "show", "bundle")) {
       "--reuse-renders requires imported artifacts and render, show or bundle"
@@ -393,23 +399,38 @@ internal class BazelCommand(
           ) {
             // Every selected capture was rendered from these exact artifacts.
           } else {
+            // A kept daemon serves every later render, so its pool is sized once, not per call.
+            val keep = !bundling && BazelKeepDaemon.requested(args, config)
             val descriptor =
               prepareBazelDaemon(
                 artifacts,
                 prepared,
                 root,
                 bazelClockPackages(config, artifacts.android),
-                sandboxCount = oneShotSandboxCount(previews.size),
+                sandboxCount = if (keep) 1 else oneShotSandboxCount(previews.size),
                 // `render` and `show` read only the PNG; a bundle may pack sidecars.
                 pngOnly = !bundling,
               )
+            val shared =
+              if (keep)
+                BazelKeepDaemon.prepare(
+                  descriptor,
+                  launchInputs =
+                    artifacts.android
+                      ?.let { listOfNotNull(it.resourceApk, it.manifest, it.rJar) }
+                      .orEmpty(),
+                  previewsManifest = prepared.manifestFile,
+                  idleTimeoutSeconds = config.daemonIdleTimeoutSeconds,
+                )
+              else null
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
               prepared,
-              descriptor,
+              shared?.descriptor ?: descriptor,
               root,
               timeout,
               copyOutput = operation != "bundle",
+              shared = shared,
             )
           }
           if (bundling) {
@@ -541,6 +562,8 @@ internal class BazelCommand(
     root: File,
     timeout: Long,
     copyOutput: Boolean = true,
+    /** A kept daemon ([BazelKeepDaemon]) to connect to, starting it if none is running. */
+    shared: BazelKeepDaemon.Prepared? = null,
   ) {
     val exactId = args.flagValue("--id")
     val filter = args.flagValue("--filter")
@@ -564,15 +587,18 @@ internal class BazelCommand(
     val finished = ConcurrentHashMap<String, JsonObject>()
     val latch = CountDownLatch(previews.size)
     val ids = previews.map { it.id }.toSet()
-    SubprocessRenderSessions.open(
-        RenderSessionConfig(
-          descriptorPath = descriptor,
-          workspaceRoot = root,
-          initializeTimeout = timeout.seconds,
-          maxRenderTime = timeout.seconds,
-        )
+    val sessionConfig =
+      RenderSessionConfig(
+        descriptorPath = descriptor,
+        workspaceRoot = root,
+        initializeTimeout = timeout.seconds,
+        maxRenderTime = timeout.seconds,
       )
+    (if (shared == null) SubprocessRenderSessions.open(sessionConfig)
+      else SubprocessRenderSessions.open(sessionConfig, factory = SocketDaemonClientFactory()))
       .use { session ->
+        // Rebuilt user jars: the kept daemon swaps its user class loader and keeps its sandbox.
+        shared?.changedJar?.let { session.fileChanged(it) }
         session
           .onNotification { method, params ->
             val id = params?.get("id")?.jsonPrimitive?.contentOrNull
@@ -656,6 +682,7 @@ internal class BazelCommand(
         compose-preview bazel prepare --target //app:ui
         compose-preview bazel bundle --target //app:ui --maven-install maven_install.json --output bundle.png
         compose-preview bazel render --target //app:ui [--id <id> | --filter <text>] [--output <png>]
+        compose-preview bazel daemon status|stop
 
       Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
       The default aspect package is installed on first use; application BUILD files are untouched.
@@ -691,6 +718,11 @@ internal class BazelCommand(
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
       --reuse-renders             Reuse captures rendered from the same imported artifacts; else render.
+      --keep-daemon               render/show: reuse a warm daemon across runs (also
+                                  ${'$'}COMPOSE_PREVIEW_KEEP_DAEMON=1 or keepDaemon in bazel.json). It
+                                  exits after daemonIdleTimeoutSeconds (default 300) idle, or on
+                                  bazel daemon stop. Rebuilt jars reload without a restart; a
+                                  changed preview set, resources or settings start a fresh one.
       --bundle                   render: additionally pack the portable PNG/ZIP bundle.
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
       --no-render                bundle: prepare a runnable bundle with a stub cover, offline.
