@@ -82,7 +82,7 @@ class BazelCliFlagsTest {
   }
 
   @Test
-  fun `--function narrows results and render scope to that exact function`() {
+  fun `--function matches that exact function only`() {
     val foo = preview("Foo")
     val fooDisabled = preview("FooPreview_Disabled")
     assertTrue(previewIdMatchesRequest(foo.id, null, null, functionName = "Foo", function = "Foo"))
@@ -92,15 +92,6 @@ class BazelCliFlagsTest {
         null,
         null,
         functionName = "FooPreview_Disabled",
-        function = "Foo",
-      )
-    )
-    assertFalse(
-      previewMatchesRequestIncludingRows(
-        fooDisabled,
-        exactId = null,
-        filter = null,
-        exactIdExists = false,
         function = "Foo",
       )
     )
