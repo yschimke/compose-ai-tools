@@ -451,7 +451,10 @@ composeai-contracts = "3.36.0"
 # (compose-preview-daemon#320, #5945).
 # 3.19.0 can serve successive clients over a Unix socket and ships `SocketDaemonClientFactory`,
 # which `bazel render --keep-daemon` uses to keep one warm (compose-preview-daemon#324, #6104).
-composeai-preview-daemon = "3.19.0"
+# 3.20.0 serves the nearest cached Google font weight when offline and only warns on a fallback
+# there (#6113), fails a sandbox boot at once when its runner throws (#6114), and routes a custom
+# `@PreviewWrapper`'s `RemoteContentPreview` through the Remote Compose connector (#6116).
+composeai-preview-daemon = "3.20.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
