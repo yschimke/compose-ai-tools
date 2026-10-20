@@ -465,7 +465,9 @@ composeai-contracts = "3.37.0"
 # 3.21.2 runs Remote Compose previews whose libraries arrive only through `userClassDirs` (the
 # Bazel lane): the shadow, `.rc` capture and a view-player fallback (compose-preview-daemon#341,
 # #6150), and renders `@Preview` functions declared inside an `object` or class (#343).
-composeai-preview-daemon = "3.21.2"
+# 3.21.3 loads prebuilt classes whose LocalVariableTable repeats a row, which HotSpot's verifier
+# otherwise rejects with ClassFormatError (compose-preview-daemon#347, #6161).
+composeai-preview-daemon = "3.21.3"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
