@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.70.6](https://github.com/yschimke/compose-ai-tools/compare/v2.70.5...v2.70.6) (2026-10-20)
+
+
+### Performance Improvements
+
+* build a Bazel target's own jars first and skip one with no Preview ([#6167](https://github.com/yschimke/compose-ai-tools/issues/6167)) ([c7fca0f](https://github.com/yschimke/compose-ai-tools/commit/c7fca0f4260464e49e3c0135bf784ea4044fb055))
+
 ## [2.70.5](https://github.com/yschimke/compose-ai-tools/compare/v2.70.4...v2.70.5) (2026-10-20)
 
 
