@@ -295,6 +295,14 @@ metadata and descriptor live under `.compose-preview/outputs/<target-config-hash
 or `--out <dir>`. Prepared files use a `build/compose-previews/` subdirectory
 so the existing result/state consumers work unchanged. Each run rebuilds/discovers; there is no independent stale cache.
 
+A `prepare --out <dir>` also records how it was run in `<dir>/.compose-preview/prepare-origin.json`:
+the workspace, targets, config and flags. A later `bazel prepare --project <dir>` with no target or
+config of its own, which is how `compose-preview-mcp` refreshes a registered directory after a source
+edit, repeats that invocation in the original workspace and writes to the same `<dir>`. It does not
+treat the staged directory as a workspace of its own. One target's directory under a multi-target
+`--out` finds the record one level up. A prepare from `--artifacts` builds nothing and records
+nothing.
+
 ### Host cache, and content-addressed output trees
 
 Between runs the CLI keeps host-side memos under `${XDG_CACHE_HOME:-~/.cache}/composeai/bazel-host/`:
