@@ -23,11 +23,21 @@ internal object AndroidPlatformLevel {
 
   /**
    * The platform metadata beside [androidJar] ([of]), else the jar's own contents ([fromContents]):
-   * a jar generated into the build's output tree has no platform directory beside it.
+   * a jar generated into the build's output tree has no platform directory beside it. Reading the
+   * contents opens a 50 MB+ jar, so with [cache] it happens once per version of that jar.
    */
-  fun detect(androidJar: File): Detected? =
+  fun detect(androidJar: File, cache: BazelHostCache? = null): Detected? =
     of(androidJar)?.let { Detected(it, "platform metadata beside android.jar") }
-      ?: fromContents(androidJar)?.let { Detected(it, "android.jar contents") }
+      ?: fromContents(androidJar, cache)?.let { Detected(it, "android.jar contents") }
+
+  /** [fromContents], memoised in [cache] by the jar's [FileStamp]. */
+  fun fromContents(androidJar: File, cache: BazelHostCache?): Int? {
+    if (cache == null) return fromContents(androidJar)
+    val level =
+      cache.androidJarLevel.get(androidJar) { fromContents(it)?.toString() ?: BazelHostCache.NONE }
+    cache.androidJarLevel.save()
+    return level?.toIntOrNull()
+  }
 
   /**
    * The level, or null when neither file is there or neither names one. A symlinked jar (Bazel's

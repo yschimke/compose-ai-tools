@@ -41,19 +41,42 @@ private enum class JarKind {
  * Listing every entry of each of thousands of jars is what made pruning slow (#6111). A jar that
  * cannot be read is kept.
  */
-private fun classify(jar: File, finalRClasses: Set<String>): JarKind = runCatching {
+private fun classify(jar: File, finalRClasses: Set<String>, cache: BazelHostCache?): JarKind {
+  val contents =
+    (if (cache != null) cache.jarContents.get(jar, ::classifyRuntimeJar)
+    else classifyRuntimeJar(jar)) ?: return JarKind.KEEP
+  return when {
+    contents == JAR_EMPTY -> JarKind.EMPTY
+    contents == JAR_HAS_CONTENT -> JarKind.KEEP
+    contents.removePrefix(JAR_R_ONLY).lineSequence().all { it in finalRClasses } ->
+      JarKind.SUPERSEDED
+    else -> JarKind.KEEP
+  }
+}
+
+private const val JAR_EMPTY = "empty"
+private const val JAR_HAS_CONTENT = "content"
+private const val JAR_R_ONLY = "r:"
+
+/**
+ * What [jar] holds, independently of any final-ID R jar, so it can be memoised by
+ * [BazelHostCache.jarContents]: [JAR_EMPTY] (nothing a class loader reads), [JAR_HAS_CONTENT]
+ * (stopping at the first class or resource that is not an R class, which no R jar can cover), or
+ * [JAR_R_ONLY] and its R class entries, one per line. Null when it cannot be read as a jar.
+ */
+internal fun classifyRuntimeJar(jar: File): String? = runCatching {
   ZipFile(jar).use { zip ->
-    var sawContent = false
+    val rClasses = mutableListOf<String>()
     for (entry in zip.entries()) {
       val name = entry.name
       if (isInertEntry(name)) continue
-      if (name !in finalRClasses) return@use JarKind.KEEP
-      sawContent = true
+      if (!R_CLASS.containsMatchIn(name)) return@use JAR_HAS_CONTENT
+      rClasses += name
     }
-    if (sawContent) JarKind.SUPERSEDED else JarKind.EMPTY
+    if (rClasses.isEmpty()) JAR_EMPTY else JAR_R_ONLY + rClasses.joinToString("\n")
   }
 }
-  .getOrDefault(JarKind.KEEP)
+  .getOrNull()
 
 /** Jars read at once: enough to overlap a remote or lazily-fetched filesystem's latency. */
 private const val SCAN_THREADS = 32
@@ -70,11 +93,15 @@ private const val SCAN_THREADS = 32
  * [runtime]'s order.
  *
  * [keep] (the project's own jars and [rJar]) is never dropped, nor is any jar that cannot be read.
+ *
+ * With [cache], what each jar holds is read once per version of that jar ([BazelHostCache]): a warm
+ * render of 1,440 runtime jars otherwise reopens every one of them (#6104).
  */
 internal fun pruneRuntimeClasspath(
   runtime: List<File>,
   keep: Set<File>,
   rJar: File?,
+  cache: BazelHostCache? = null,
 ): PrunedClasspath {
   val finalRClasses =
     rJar?.let(::entryNames)?.filterTo(HashSet()) { R_CLASS.containsMatchIn(it) }.orEmpty()
@@ -87,11 +114,12 @@ internal fun pruneRuntimeClasspath(
       }
     try {
       toScan
-        .map { jar -> jar to pool.submit<JarKind> { classify(jar, finalRClasses) } }
+        .map { jar -> jar to pool.submit<JarKind> { classify(jar, finalRClasses, cache) } }
         .forEach { (jar, kind) -> kinds[jar] = kind.get() }
     } finally {
       pool.shutdownNow()
     }
+    cache?.jarContents?.save()
   }
   val jars = mutableListOf<File>()
   val empty = mutableListOf<File>()
