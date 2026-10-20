@@ -54,6 +54,15 @@ Set `targetKinds` (a `kind()` regex) for other rules,
 such as an internal macro's rule class. The filter matters: a `...` pattern also matches genrules
 and tests, and the aspect fails on a rule without `JavaInfo`.
 
+A pattern's matches are then narrowed to packages that could declare a preview: a match whose
+package has no `.kt` / `.java` source mentioning `Preview` is skipped, and the skipped packages are
+named on stderr. In a workspace split into many small libraries this keeps `//app/...` from building
+the data, view-model and app-wiring libraries, and their whole transitive graphs, just to find no
+previews. A package is its directory down to the next `BUILD` file; external-repository targets and
+labels named explicitly are never skipped, and a pattern whose every match would be skipped builds
+them all. When a target turns out to hold no previews, the error names the packages below it whose
+sources do mention `Preview`.
+
 Every selected target builds in one invocation, so Bazel analyses the graph once. The selection
 is then **one module**, named by what you asked for (`//app/...`, or `//pkg:all` for a package).
 Each target's own previews are discovered, and one daemon renders them all on the union of the
