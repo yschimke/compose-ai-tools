@@ -156,6 +156,10 @@ internal fun BazelArtifacts.resolve(
   compileSdkOverride: Int? = null,
   /** The raw `runtimeJarOwners` ([bazelRuntimeJarOwners]); empty when the aspect predates it. */
   runtimeJarOwners: Map<String, String> = emptyMap(),
+  /**
+   * Memoises pruning's per-jar reads and android.jar's level across runs; null reads every time.
+   */
+  hostCache: BazelHostCache? = BazelHostCache.shared(),
 ): ResolvedBazelArtifacts {
   when (schemaVersion) {
     BuildArtifacts.SCHEMA_VERSION_JVM ->
@@ -239,7 +243,7 @@ internal fun BazelArtifacts.resolve(
         AndroidPlatformLevel.Detected(it, "androidCompileSdk in bazel.json")
       }
         ?: block.compileSdk?.let { AndroidPlatformLevel.Detected(it, "the aspect") }
-        ?: androidJar?.let(AndroidPlatformLevel::detect)
+        ?: androidJar?.let { AndroidPlatformLevel.detect(it, hostCache) }
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -257,7 +261,7 @@ internal fun BazelArtifacts.resolve(
       androidJar = androidJar,
     )
   }
-  val pruned = pruneRuntimeClasspath(runtime, project.toSet(), resolvedAndroid?.rJar)
+  val pruned = pruneRuntimeClasspath(runtime, project.toSet(), resolvedAndroid?.rJar, hostCache)
   if (pruned.empty.isNotEmpty() || pruned.supersededRJars.isNotEmpty()) {
     System.err.println(
       "[bazel] $target: ${pruned.jars.size} of ${runtime.size} runtime jars on the classpath " +
@@ -408,6 +412,25 @@ internal object BazelProcess {
     }
   }
 }
+
+/**
+ * The execution root a build's event stream reports (`workspaceInfo.localExecRoot`, Bazel's
+ * `WorkspaceConfig` event), or null when it reports none or names a missing directory: Blaze or an
+ * older Bazel, for which the caller asks `info execution_root` instead.
+ */
+internal fun bazelEventExecutionRoot(events: Sequence<String>): String? =
+  events
+    .filter { "\"workspaceInfo\"" in it }
+    .firstNotNullOfOrNull { line ->
+      runCatching {
+        ((bazelJson.parseToJsonElement(line) as JsonObject)["workspaceInfo"] as? JsonObject)
+          ?.get("localExecRoot")
+          ?.jsonPrimitive
+          ?.contentOrNull
+      }
+        .getOrNull()
+    }
+    ?.takeIf { it.isNotBlank() && File(it).isDirectory }
 
 /**
  * Resolve only the selected target's metadata output group, including forward-referenced sets.
@@ -744,8 +767,11 @@ internal class BazelBuild(
         root,
         timeoutSeconds,
       )
+      // The build's own event stream names its execution root; only a tool that does not report
+      // it pays for a second client call (#6104).
       val executionRoot =
-        execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
+        bep.bufferedReader().use { bazelEventExecutionRoot(it.lineSequence()) }
+          ?: execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
       check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
         "Build tool returned an invalid execution_root: $executionRoot"
       }

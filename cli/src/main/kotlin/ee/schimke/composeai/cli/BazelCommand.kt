@@ -25,6 +25,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -733,6 +734,8 @@ internal class BazelCommand(
       set $ROBOLECTRIC_DEPS_DIR_ENV to pre-provisioned android-all jars to stay offline.
       iOS/Wasm are separate.
       Build arguments/startup flags and output-group names can be configured for internal systems.
+      Classpath pruning, jar hashes and discovery are reused across runs while their inputs are
+      unchanged (under the composeai cache dir); ${'$'}${BazelHostCache.DISABLE_ENV}=0 turns that off.
       """
         .trimIndent()
     )
@@ -835,37 +838,112 @@ internal fun prepareBazelPreviews(
   output: File,
   /** False for a pattern's candidate targets, which may hold no previews and are then skipped. */
   failOnEmpty: Boolean = true,
+  /** Reuses the last discovery of these exact inputs ([bazelDiscoveryKey]); null always scans. */
+  cache: BazelHostCache? = BazelHostCache.shared(),
 ): PreparedBazelPreviews {
-  val outcome =
-    PreviewDiscovery.discover(
-      PreviewDiscovery.Input(
-        classDirs = emptyList(),
-        projectClassJars = artifacts.projectJars,
-        dependencyJars = artifacts.runtimeJars.filter { it !in artifacts.projectJars },
-        sourceFiles = artifacts.sourceFiles,
-        moduleName = artifacts.metadata.target,
-        variantName = artifacts.metadata.configuration,
-        projectDirectory = root,
-        failOnEmpty = failOnEmpty,
-        catalogRenderSupported = false,
-        animatedPreviewApngSupported = true,
-        // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.
-        mergedManifest = artifacts.android?.manifest,
-      )
+  val input =
+    PreviewDiscovery.Input(
+      classDirs = emptyList(),
+      projectClassJars = artifacts.projectJars,
+      dependencyJars = artifacts.runtimeJars.filter { it !in artifacts.projectJars },
+      sourceFiles = artifacts.sourceFiles,
+      moduleName = artifacts.metadata.target,
+      variantName = artifacts.metadata.configuration,
+      projectDirectory = root,
+      failOnEmpty = failOnEmpty,
+      catalogRenderSupported = false,
+      animatedPreviewApngSupported = true,
+      // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.
+      mergedManifest = artifacts.android?.manifest,
     )
-  check(outcome is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $outcome" }
-  outcome.warnings.forEach { System.err.println("WARN: $it") }
-  outcome.infoMessages.forEach { System.err.println(it) }
+  val discovered =
+    if (cache == null) discoverBazelPreviews(input)
+    else {
+      val key = bazelDiscoveryKey(input, cache)
+      val entryFile =
+        cache.discoveryFile(
+          bazelTargetKey(
+            root.absolutePath + "\n" + artifacts.metadata.target,
+            artifacts.metadata.configuration,
+          )
+        )
+      runCatching { bazelJson.decodeFromString<BazelDiscoveryEntry>(entryFile.readText()) }
+        .getOrNull()
+        ?.takeIf { it.key == key }
+        ?: discoverBazelPreviews(input).also {
+          writeAtomically(entryFile, bazelJson.encodeToString(it.copy(key = key)))
+        }
+    }
+  discovered.warnings.forEach { System.err.println("WARN: $it") }
+  discovered.infoMessages.forEach { System.err.println(it) }
+  val manifest = discovered.manifest
   output.mkdirs()
   val file = output.resolve("previews.json")
-  file.writeText(bazelJson.encodeToString(outcome.manifest))
+  file.writeText(bazelJson.encodeToString(manifest))
   file
     .resolveSibling("components.json")
-    .writeText(bazelJson.encodeToString(ComponentRecords.from(outcome.manifest)))
+    .writeText(bazelJson.encodeToString(ComponentRecords.from(manifest)))
   file
     .resolveSibling("build-artifacts.json")
     .writeText(bazelJson.encodeToString(artifacts.metadata))
-  return PreparedBazelPreviews(outcome.manifest, file)
+  return PreparedBazelPreviews(manifest, file)
+}
+
+/**
+ * A discovery result as [prepareBazelPreviews] keeps it, under the [bazelDiscoveryKey] it is for.
+ */
+@Serializable
+internal data class BazelDiscoveryEntry(
+  val key: String = "",
+  val manifest: DiscoveryManifest,
+  val warnings: List<String> = emptyList(),
+  val infoMessages: List<String> = emptyList(),
+)
+
+private fun discoverBazelPreviews(input: PreviewDiscovery.Input): BazelDiscoveryEntry {
+  val outcome = PreviewDiscovery.discover(input)
+  check(outcome is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $outcome" }
+  return BazelDiscoveryEntry(
+    manifest = outcome.manifest,
+    warnings = outcome.warnings,
+    infoMessages = outcome.infoMessages,
+  )
+}
+
+/**
+ * Everything a Bazel target's discovery result depends on: this CLI's version, every option, and
+ * every file it reads, in order, by content. The project's jars, sources and manifest, which an
+ * edit changes, are hashed each time; dependency jars through [cache]'s per-file memo. Any change
+ * at all re-runs discovery in full: an edit to the project's own code still pays for the scan.
+ */
+internal fun bazelDiscoveryKey(input: PreviewDiscovery.Input, cache: BazelHostCache): String {
+  fun content(file: File): String =
+    if (file.isFile) bazelBundleSha(file) else if (file.exists()) "not a file" else "missing"
+  cache.prefetchSha256(input.dependencyJars)
+  return cacheKey(
+      listOf(
+        "bazel-discovery-v1",
+        runCatching { BUNDLE_VERSION }.getOrDefault("unknown"),
+        input.moduleName,
+        input.variantName,
+        input.projectDirectory.absolutePath,
+        "failOnEmpty=${input.failOnEmpty}",
+        "catalogRenderSupported=${input.catalogRenderSupported}",
+        "animatedPreviewApngSupported=${input.animatedPreviewApngSupported}",
+        "isWear=${input.isWear} retargetWear=${input.retargetWearPreviews}",
+        "componentLibraryPrefixes=${input.componentLibraryPrefixes}",
+        "classDirs=${input.classDirs.map { it.absolutePath }}",
+        "resourceDirs=${input.resourceDirs.map { it.absolutePath }}",
+        "tours=${input.tourSpecFiles.map { it.absolutePath + "=" + content(it) }}",
+        "manifest=${input.mergedManifest?.let { it.absolutePath + "=" + content(it) }}",
+      ) +
+        input.projectClassJars.map { "project\t${it.absolutePath}\t${content(it)}" } +
+        input.dependencyJars.map {
+          "dependency\t${it.absolutePath}\t${if (it.isFile) cache.sha256(it) else content(it)}"
+        } +
+        input.sourceFiles.map { "source\t${it.absolutePath}\t${content(it)}" }
+    )
+    .also { cache.sha256.save() }
 }
 
 /** A module's output directory name: its target and configuration, hashed. */
@@ -879,8 +957,19 @@ internal fun bazelTargetKey(target: String, configuration: String): String =
  * Identifies the runtime inputs a capture is rendered from by content, so a same-size,
  * timestamp-preserving replacement (cache restore, copy) still invalidates reuse. Classpath order
  * is kept because it decides which class or resource wins; hashing is far cheaper than rendering.
+ *
+ * The project's own jars, which an edit rebuilds, are hashed every time. Every other file's hash
+ * comes from [cache] while its [FileStamp] holds, which a timestamp-preserving replacement still
+ * breaks through the inode-change time: about 280 dependency jars cost two seconds to hash (#6104).
  */
-internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): String {
+internal fun bazelArtifactsFingerprint(
+  artifacts: ResolvedBazelArtifacts,
+  cache: BazelHostCache? = BazelHostCache.shared(),
+): String {
+  val project = artifacts.projectJars.mapTo(HashSet()) { it.absoluteFile }
+  fun sha(file: File): String =
+    if (cache == null || file.absoluteFile in project) bazelBundleSha(file) else cache.sha256(file)
+  cache?.prefetchSha256(artifacts.runtimeJars.filter { it.absoluteFile !in project })
   val digest = MessageDigest.getInstance("SHA-256")
   (artifacts.runtimeJars +
       artifacts.dataFiles +
@@ -892,7 +981,8 @@ internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): Strin
     .flatMap {
       if (it.isDirectory) it.walkTopDown().filter(File::isFile).sorted().toList() else listOf(it)
     }
-    .forEach { digest.update("${it.absolutePath}\t${bazelBundleSha(it)}\n".toByteArray()) }
+    .forEach { digest.update("${it.absolutePath}\t${sha(it)}\n".toByteArray()) }
+  cache?.sha256?.save()
   return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
@@ -1016,18 +1106,48 @@ internal fun provisionedSdkLevel(
   robolectricJars: List<File>,
   offlineProperties: Map<String, String>,
   log: (String) -> Unit = { System.err.println(it) },
+  /**
+   * Memoises the answer, which otherwise loads Robolectric from [robolectricJars] on every render,
+   * keyed on the level, those jars' [FileStamp]s and the names in the provisioned directory.
+   */
+  cache: BazelHostCache? = null,
 ): Int {
   val directory = offlineProperties["robolectric.dependency.dir"]?.let(::File) ?: return level
+  fun compute(): Int? = runCatching {
+    RobolectricDepsProvision.highestProvisionedLevel(
+      robolectricJars,
+      directory,
+      requested = level,
+      floor = AndroidBundleLaunch.MIN_SDK,
+    )
+  }
+    .getOrNull()
   val provisioned =
-    runCatching {
-      RobolectricDepsProvision.highestProvisionedLevel(
-        robolectricJars,
-        directory,
-        requested = level,
-        floor = AndroidBundleLaunch.MIN_SDK,
-      )
+    if (cache == null) compute() ?: return level
+    else {
+      val stamps = robolectricJars.map { jar ->
+        FileStamp.of(jar)?.let { "${jar.absolutePath}\t${it.text}" }
+      }
+      val key =
+        cacheKey(
+          listOf(
+            "provisionedSdkLevel",
+            "$level",
+            "${AndroidBundleLaunch.MIN_SDK}",
+            directory.absolutePath,
+          ) +
+            directory.listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted() +
+            stamps.map { it ?: "" }
+        )
+      // A jar with no stamp (missing) leaves the answer to a fresh computation each time.
+      val cached = if (stamps.all { it != null }) cache.keyed[key] else null
+      val value = cached ?: (compute()?.toString() ?: BazelHostCache.NONE)
+      if (cached == null && stamps.all { it != null }) {
+        cache.keyed[key] = value
+        cache.keyed.save()
+      }
+      value.toIntOrNull() ?: return level
     }
-      .getOrNull() ?: return level
   if (provisioned != level) {
     log(
       "[android] no android-all for SDK $level in $ROBOLECTRIC_DEPS_DIR_ENV ($directory); " +
@@ -1104,6 +1224,7 @@ internal fun prepareBazelAndroidDaemon(
           ),
           daemonJars,
           offlineProperties,
+          cache = BazelHostCache.shared(),
         )
     )
   val descriptor =
