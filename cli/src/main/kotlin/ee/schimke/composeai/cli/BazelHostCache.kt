@@ -4,8 +4,8 @@ import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -92,10 +92,11 @@ internal class BazelHostCache(
 }
 
 /**
- * What identifies one version of a file without reading it: size, modification time and, where the
- * filesystem has them, the inode-change time and inode. Size and mtime alone are not enough: a
- * cache restore or `cp -p` replaces a file keeping both, but cannot keep its ctime, which only the
- * kernel sets. Null for a file that is not a regular file, which is then never memoised.
+ * What identifies one version of a file without reading it: size, modification time, inode-change
+ * time and inode. Size and mtime alone are not enough: a cache restore or `cp -p` replaces a file
+ * keeping both, but cannot keep its ctime, which only the kernel sets. Null for a file that is not
+ * a regular file, or on a filesystem without a `unix` attribute view (Windows), where no attribute
+ * changes with an in-place rewrite: such a file is never memoised.
  *
  * Bazel rewrites outputs in place, and on a filesystem with coarse timestamps (one or two seconds)
  * two writes in the same tick of the same size are indistinguishable. As git does for its index, a
@@ -109,32 +110,28 @@ internal data class FileStamp(val text: String, val changedAtMs: Long) {
     /** Longer than the coarsest timestamp granularity in use (FAT's two seconds). */
     const val RACY_WINDOW_MS = 3_000L
 
-    fun of(file: File): FileStamp? = runCatching {
+    /** The `unix` view's attributes, or null where the filesystem has none (Windows). */
+    private fun unixAttributes(path: Path): Map<String, Any?>? = runCatching {
+      Files.readAttributes(path, "unix:size,lastModifiedTime,ctime,ino")
+    }
+      .getOrNull()
+
+    fun of(
+      file: File,
+      readUnix: (Path) -> Map<String, Any?>? = ::unixAttributes,
+    ): FileStamp? = runCatching {
       val path = file.toPath()
-      val unix = runCatching {
-        Files.readAttributes(path, "unix:size,lastModifiedTime,ctime,ino")
-      }
-        .getOrNull()
-      if (unix != null) {
-        if (!Files.isRegularFile(path)) return@runCatching null
-        val mtime = unix["lastModifiedTime"] as FileTime
-        val ctime = unix["ctime"] as FileTime
-        FileStamp(
-          "${unix["size"]}:${mtime.to(TimeUnit.NANOSECONDS)}:" +
-            "${ctime.to(TimeUnit.NANOSECONDS)}:${unix["ino"]}",
-          maxOf(mtime.toMillis(), ctime.toMillis()),
-        )
-      } else {
-        val basic = Files.readAttributes(path, BasicFileAttributes::class.java)
-        if (!basic.isRegularFile) return@runCatching null
-        val mtime = basic.lastModifiedTime()
-        val created = basic.creationTime()
-        FileStamp(
-          "${basic.size()}:${mtime.to(TimeUnit.NANOSECONDS)}:" +
-            "${created.to(TimeUnit.NANOSECONDS)}:${basic.fileKey()}",
-          maxOf(mtime.toMillis(), created.toMillis()),
-        )
-      }
+      val unix = readUnix(path)
+      // Without an inode-change time (Windows, FAT) nothing identifies an in-place rewrite that
+      // keeps size and mtime, so such a file is never memoised.
+      if (unix == null || !Files.isRegularFile(path)) return@runCatching null
+      val mtime = unix["lastModifiedTime"] as FileTime
+      val ctime = unix["ctime"] as FileTime
+      FileStamp(
+        "${unix["size"]}:${mtime.to(TimeUnit.NANOSECONDS)}:" +
+          "${ctime.to(TimeUnit.NANOSECONDS)}:${unix["ino"]}",
+        maxOf(mtime.toMillis(), ctime.toMillis()),
+      )
     }
       .getOrNull()
   }
@@ -155,6 +152,7 @@ private val cacheJson = Json {
 internal class StampedFileMemo(
   private val file: File,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val stampOf: (File) -> FileStamp? = { FileStamp.of(it) },
 ) {
   private val entries: ConcurrentHashMap<String, StampedEntry> by lazy {
     ConcurrentHashMap(
@@ -173,14 +171,14 @@ internal class StampedFileMemo(
   fun get(target: File, compute: (File) -> String?): String? {
     val key = target.absolutePath
     val recordedAt = clock()
-    val stamp = FileStamp.of(target) ?: return compute(target)
+    val stamp = stampOf(target) ?: return compute(target)
     entries[key]
       ?.takeIf { it.stamp == stamp.text && stamp.settledBefore(it.recordedAt) }
       ?.let {
         return it.value
       }
     val value = compute(target) ?: return null
-    if (FileStamp.of(target)?.text == stamp.text) {
+    if (stampOf(target)?.text == stamp.text) {
       entries[key] = StampedEntry(stamp.text, recordedAt, value)
       dirty.set(true)
     }

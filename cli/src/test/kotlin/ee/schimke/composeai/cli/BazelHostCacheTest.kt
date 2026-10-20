@@ -85,6 +85,26 @@ class BazelHostCacheTest {
   }
 
   @Test
+  fun `a filesystem without an inode-change time is never memoised`() = fixture { root ->
+    // Windows and FAT: creation time and file key survive an in-place rewrite that keeps size and
+    // mtime, so nothing could tell the old bytes from the new.
+    val file = root.resolve("lib.jar").apply { writeText("first build") }
+    assertNull(FileStamp.of(file) { null })
+    var computed = 0
+    val memo =
+      StampedFileMemo(root.resolve("memo.json"), settled, stampOf = { FileStamp.of(it) { null } })
+    repeat(3) {
+      memo.get(file) {
+        computed++
+        it.readText()
+      }
+    }
+    assertEquals(3, computed, "every read recomputes")
+    memo.save()
+    assertEquals(false, root.resolve("memo.json").exists(), "nothing was recorded")
+  }
+
+  @Test
   fun `a corrupt or missing cache file is an empty cache`() = fixture { root ->
     val file = root.resolve("lib.jar").apply { writeText("content") }
     val store = root.resolve("memo.json").apply { writeText("{not json") }
