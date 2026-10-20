@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.70.2](https://github.com/yschimke/compose-ai-tools/compare/v2.70.1...v2.70.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.0 ([#6145](https://github.com/yschimke/compose-ai-tools/issues/6145)) ([3fc8893](https://github.com/yschimke/compose-ai-tools/commit/3fc88934fda4e9c1765768276908ab6bb0eec7d1))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.199 ([#6143](https://github.com/yschimke/compose-ai-tools/issues/6143)) ([af2e9a3](https://github.com/yschimke/compose-ai-tools/commit/af2e9a370612dffbc4c4f4e1d4455ec86506be4a))
+* render with compose-preview-daemon 3.21.1 ([#6148](https://github.com/yschimke/compose-ai-tools/issues/6148)) ([124a1d7](https://github.com/yschimke/compose-ai-tools/commit/124a1d74710c2f533961fdb0771fd8507a4ac36c))
+
 ## [2.70.1](https://github.com/yschimke/compose-ai-tools/compare/v2.70.0...v2.70.1) (2026-10-20)
 
 
