@@ -87,6 +87,45 @@ class BazelKeepDaemonTest {
   }
 
   @Test
+  fun `a dependency jar with an unchanged content digest is not reported after a remount`() {
+    val dir = root.resolve("daemon").apply { mkdirs() }
+    val lib = root.resolve("lib.jar").apply { writeText("lib") }
+    val jars = listOf(lib.path)
+    var digest = byteArrayOf(1, 2, 3)
+    val stamper = FileStamper("digest", readDigest = { digest })
+    assertNull(BazelKeepDaemon.recordJars(dir, jars, stamp = stamper::stamp))
+    // A FUSE remount rotates mtimes on unchanged outputs; the digest attribute stays put.
+    lib.setLastModified(lib.lastModified() - 60_000)
+    assertNull(BazelKeepDaemon.recordJars(dir, jars, stamp = stamper::stamp))
+    digest = byteArrayOf(4, 5, 6)
+    assertEquals(lib.path, BazelKeepDaemon.recordJars(dir, jars, stamp = stamper::stamp))
+  }
+
+  @Test
+  fun `a dependency jar without a content digest is still stamped by size and mtime`() {
+    val dir = root.resolve("daemon").apply { mkdirs() }
+    val lib = root.resolve("lib.jar").apply { writeText("lib") }
+    val jars = listOf(lib.path)
+    val stamper = FileStamper(null)
+    assertNull(BazelKeepDaemon.recordJars(dir, jars, stamp = stamper::stamp))
+    lib.setLastModified(lib.lastModified() - 60_000)
+    assertEquals(lib.path, BazelKeepDaemon.recordJars(dir, jars, stamp = stamper::stamp))
+  }
+
+  @Test
+  fun `project jars are hashed through the supplied memo`() {
+    val dir = root.resolve("daemon").apply { mkdirs() }
+    val jar = root.resolve("ui.jar").apply { writeText("aaaa") }
+    val hashed = mutableListOf<File>()
+    val hash = { file: File ->
+      hashed += file
+      "memo"
+    }
+    BazelKeepDaemon.recordJars(dir, listOf(jar.path), setOf(jar.absolutePath), hash = hash)
+    assertEquals(listOf(jar), hashed)
+  }
+
+  @Test
   fun `a different idle timeout is a different daemon`() {
     fun dirFor(idle: Int) = prepare(idle).dir
     assertNotEquals(dirFor(60), dirFor(3600))

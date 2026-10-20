@@ -444,6 +444,7 @@ internal class BazelCommand(
                   previewsManifest = prepared.manifestFile,
                   idleTimeoutSeconds = config.daemonIdleTimeoutSeconds,
                   projectJars = artifacts.projectJars,
+                  hostCache = BazelHostCache.shared(),
                 )
               else null
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
