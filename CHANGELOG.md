@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.70.4](https://github.com/yschimke/compose-ai-tools/compare/v2.70.3...v2.70.4) (2026-10-20)
+
+
+### Performance Improvements
+
+* compare kept-daemon dependency jars by FUSE content digest ([#6155](https://github.com/yschimke/compose-ai-tools/issues/6155)) ([b14f5e5](https://github.com/yschimke/compose-ai-tools/commit/b14f5e51b0501be5a2d34a0edd8494e8e07a2c04))
+
 ## [2.70.3](https://github.com/yschimke/compose-ai-tools/compare/v2.70.2...v2.70.3) (2026-10-20)
 
 
