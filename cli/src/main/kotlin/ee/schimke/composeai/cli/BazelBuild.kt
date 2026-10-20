@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toOkioPath
 
 /** Local CLI configuration, not a JVM plugin or a dependency on an IDE's aspect SDK. */
 @Serializable
@@ -653,7 +654,11 @@ internal class BazelBuild(
       "No targets of kind $kinds match ${patterns.joinToString(" ")}; set targetKinds in " +
         ".compose-preview/bazel.json for other rules"
     }
-    return targets
+    // A pattern's matches whose package sources never mention Preview are not built (#6162);
+    // labels named explicitly are kept whatever they hold.
+    return BazelPreviewSources(root.toOkioPath()).filter(targets, labels.toSet()) {
+      System.err.println(it)
+    }
   }
 
   /**

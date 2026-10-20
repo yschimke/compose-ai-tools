@@ -29,6 +29,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toOkioPath
 
 /** Explicit Bazel-family entry point; opening a repository never runs its build configuration. */
 internal class BazelCommand(
@@ -345,8 +346,20 @@ internal class BazelCommand(
       } else BazelSelection(artifacts, prepared, output)
     }
     check(selections.isNotEmpty()) {
+      val searched = collected.map { it.metadata.target }
+      // Previews usually live in leaf UI libraries below the wiring target asked for (#6162).
+      val below =
+        BazelPreviewSources(root.toOkioPath())
+          .let { sources -> searched.flatMap { sources.previewPackagesBelow(it) } }
+          .distinct()
       "No previews in " +
-        collected.joinToString(" ") { it.metadata.target }.ifEmpty { selectionLabel.orEmpty() }
+        searched.joinToString(" ").ifEmpty { selectionLabel.orEmpty() } +
+        (if (below.isEmpty()) ""
+        else
+          ". Sources mentioning Preview are under " +
+            below.joinToString(", ") { "//$it" } +
+            "; try --target " +
+            below.joinToString(" --target ") { "//$it:all" })
     }
     when (operation) {
       "list" -> {
