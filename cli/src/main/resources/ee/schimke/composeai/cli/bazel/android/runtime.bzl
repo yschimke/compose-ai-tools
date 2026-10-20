@@ -104,6 +104,8 @@ def _impl(target, ctx):
     ))
     return [OutputGroupInfo(
         compose_preview_metadata = depset([metadata]),
+        # The target's own jars alone, to look for previews before building the runtime.
+        compose_preview_project = depset(project_jars),
         # Request this group to build/materialize runtime-only/generated inputs too.
         compose_preview_runtime = depset(sources, transitive = [runtime, runfiles]),
     )]

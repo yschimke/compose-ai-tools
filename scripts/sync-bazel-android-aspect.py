@@ -6,7 +6,7 @@ fetch `@rules_compose_preview` can still apply the Android aspect (compose-ai-to
 copied byte for byte from one release tag and never edited here; `provenance.json` records the tag
 and each file's SHA-256, which `BazelAndroidAspectTest` checks.
 
-Usage: scripts/sync-bazel-android-aspect.py v0.1.0-rc.13
+Usage: scripts/sync-bazel-android-aspect.py v1.0.0
 """
 import hashlib
 import json

@@ -353,6 +353,11 @@ def _impl(target, ctx):
     return [
         OutputGroupInfo(
             compose_preview_metadata = depset([metadata]),
+            # Only the target's own jars: enough for a caller to look for previews before asking
+            # for the runtime group, so a target without any never links resources or fetches
+            # its runtime closure. The metadata file is written without inputs, so neither group
+            # runs the link.
+            compose_preview_project = depset(found.project_jars),
             compose_preview_runtime = depset(
                 found.sources + [linked.apk, linked.manifest, ctx.file._link, link_inputs.android_jar] +
                 link_inputs.compiled + link_inputs.assets.values() + link_inputs.manifests,
