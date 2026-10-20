@@ -29,6 +29,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toOkioPath
 
 /** Explicit Bazel-family entry point; opening a repository never runs its build configuration. */
 internal class BazelCommand(
@@ -78,6 +79,19 @@ internal class BazelCommand(
     // Buck2 shares everything after collection: a BXL script prints the same artifacts documents.
     val buck = args.flagValue("--build-system") == "buck"
     val requestedDirectory = File(args.flagValue("--project") ?: ".").canonicalFile
+    // A staged `--out` directory, prepared again by a tool that knows only its path (#6160).
+    if (operation == "prepare") {
+      StagedPrepareOrigin.replayFor(args, requestedDirectory.toOkioPath())
+        // Never back into itself: an `--out` that is the workspace is not a staged copy of it.
+        ?.takeIf { File(it.workspace).canonicalFile != requestedDirectory }
+        ?.let { origin ->
+          System.err.println(
+            "[bazel] ${requestedDirectory.path} was staged by `bazel prepare` in ${origin.workspace}; " +
+              "preparing it again from there"
+          )
+          return BazelCommand(origin.args, normalSurface, invocationDirectory).execute()
+        }
+    }
     val root =
       if (args.flagValue("--artifacts") != null) requestedDirectory
       else if (buck) detectBuckRoot(requestedDirectory) ?: requestedDirectory
@@ -363,6 +377,10 @@ internal class BazelCommand(
             .forEach { println("${it.id}\t${it.className}.${it.functionName}") }
       }
       "prepare" -> {
+        args.flagValue("--out")?.let { out ->
+          StagedPrepareOrigin.of(args, root) { resolve(root, it) }
+            ?.let { StagedPrepareOrigin.write(resolve(root, out).toOkioPath(), it) }
+        }
         selections.forEach { (artifacts, prepared) ->
           println(
             prepareBazelDaemon(

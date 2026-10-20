@@ -1,0 +1,100 @@
+package ee.schimke.composeai.cli
+
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
+
+/** Preparing a staged `bazel prepare --out` directory again from its origin (#6160). */
+class StagedPrepareOriginTest {
+  private val workspace = File("/ws")
+  private val resolve = { path: String ->
+    File(path).let { if (it.isAbsolute) it else File(workspace, path) }
+  }
+
+  @Test
+  fun `a build-backed prepare records its invocation with absolute paths`() {
+    val origin =
+      StagedPrepareOrigin.of(
+        listOf(
+          "prepare",
+          "--project",
+          "/elsewhere/../ws",
+          "--target",
+          "//pkg:my_target",
+          "--config=conf/bazel.json",
+          "--out",
+          "/tmp/staged/my_target",
+          "--bazel-arg=--config=ci",
+        ),
+        workspace,
+        resolve,
+      )!!
+    assertEquals("/ws", origin.workspace)
+    assertEquals(
+      listOf(
+        "prepare",
+        "--target",
+        "//pkg:my_target",
+        "--config",
+        "/ws/conf/bazel.json",
+        "--out",
+        "/tmp/staged/my_target",
+        "--bazel-arg=--config=ci",
+        "--project",
+        "/ws",
+      ),
+      origin.args,
+    )
+  }
+
+  @Test
+  fun `nothing is recorded without --out, or from imported artifacts`() {
+    assertNull(StagedPrepareOrigin.of(listOf("prepare", "--target", "//a:b"), workspace, resolve))
+    assertNull(
+      StagedPrepareOrigin.of(
+        listOf("prepare", "--artifacts", "m.json", "--out", "/tmp/o"),
+        workspace,
+        resolve,
+      )
+    )
+  }
+
+  @Test
+  fun `a bare re-prepare of the staged directory replays it, keeping this run's timeout`() {
+    val fs = FakeFileSystem()
+    val staged = "/tmp/staged/my_target".toPath()
+    val origin =
+      StagedPrepareOrigin(
+        "/ws",
+        listOf("prepare", "--target", "//pkg:t", "--timeout", "300", "--project", "/ws"),
+      )
+    StagedPrepareOrigin.write(staged, origin, fs)
+
+    val replay =
+      StagedPrepareOrigin.replayFor(
+        listOf("prepare", "--project", staged.toString(), "--timeout", "1800"),
+        staged,
+        fs,
+      )!!
+    assertEquals(
+      listOf("prepare", "--target", "//pkg:t", "--project", "/ws", "--timeout", "1800"),
+      replay.args,
+    )
+    // One target of a multi-target --out sits a level below the recorded directory.
+    assertEquals(origin, StagedPrepareOrigin.replayFor(listOf("prepare"), staged / "pkg_t", fs))
+  }
+
+  @Test
+  fun `an explicit selection is not redirected`() {
+    val fs = FakeFileSystem()
+    val staged = "/tmp/staged".toPath()
+    StagedPrepareOrigin.write(staged, StagedPrepareOrigin("/ws", listOf("prepare")), fs)
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//x:y"), staged, fs))
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target=//x:y"), staged, fs))
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--config", "c.json"), staged, fs))
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare"), "/tmp/other".toPath(), fs))
+  }
+}
