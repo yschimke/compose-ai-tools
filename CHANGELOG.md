@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.70.3](https://github.com/yschimke/compose-ai-tools/compare/v2.70.2...v2.70.3) (2026-10-20)
+
+
+### Performance Improvements
+
+* key bazel host-cache stamps on a FUSE content-digest xattr ([#6151](https://github.com/yschimke/compose-ai-tools/issues/6151)) ([cbfb22f](https://github.com/yschimke/compose-ai-tools/commit/cbfb22fff12e6d9606143f938c02abe839d76e27))
+
 ## [2.70.2](https://github.com/yschimke/compose-ai-tools/compare/v2.70.1...v2.70.2) (2026-10-20)
 
 
