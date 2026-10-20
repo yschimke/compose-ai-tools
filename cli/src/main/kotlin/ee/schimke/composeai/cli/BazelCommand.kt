@@ -378,8 +378,11 @@ internal class BazelCommand(
       }
       "prepare" -> {
         args.flagValue("--out")?.let { out ->
+          val staged = resolve(root, out).toOkioPath()
+          // A prepare with nothing to replay (`--artifacts`) clears an earlier record, so a refresh
+          // never rebuilds what this staging no longer came from.
           StagedPrepareOrigin.of(args, root) { resolve(root, it) }
-            ?.let { StagedPrepareOrigin.write(resolve(root, out).toOkioPath(), it) }
+            ?.let { StagedPrepareOrigin.write(staged, it) } ?: StagedPrepareOrigin.clear(staged)
         }
         selections.forEach { (artifacts, prepared) ->
           println(

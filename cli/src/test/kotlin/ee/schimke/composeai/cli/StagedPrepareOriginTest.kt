@@ -51,6 +51,48 @@ class StagedPrepareOriginTest {
   }
 
   @Test
+  fun `a spaced pass-through value is copied verbatim, not read as a path flag`() {
+    val origin =
+      StagedPrepareOrigin.of(
+        listOf(
+          "prepare",
+          "--bazel-arg",
+          "--config=ci",
+          "--buck-arg",
+          "--out",
+          "--out",
+          "staged",
+        ),
+        workspace,
+        resolve,
+      )!!
+    assertEquals(
+      listOf(
+        "prepare",
+        "--bazel-arg",
+        "--config=ci",
+        "--buck-arg",
+        "--out",
+        "--out",
+        "/ws/staged",
+        "--project",
+        "/ws",
+      ),
+      origin.args,
+    )
+  }
+
+  @Test
+  fun `clearing removes an earlier record`() {
+    val fs = FakeFileSystem()
+    val staged = "/tmp/staged".toPath()
+    StagedPrepareOrigin.write(staged, StagedPrepareOrigin("/ws", listOf("prepare")), fs)
+    StagedPrepareOrigin.clear(staged, fs)
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare"), staged, fs))
+    StagedPrepareOrigin.clear(staged, fs) // nothing there: still fine
+  }
+
+  @Test
   fun `nothing is recorded without --out, or from imported artifacts`() {
     assertNull(StagedPrepareOrigin.of(listOf("prepare", "--target", "//a:b"), workspace, resolve))
     assertNull(

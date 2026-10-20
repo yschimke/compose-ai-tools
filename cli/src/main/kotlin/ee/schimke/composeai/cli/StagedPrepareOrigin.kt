@@ -35,6 +35,24 @@ internal data class StagedPrepareOrigin(
     private val PATH_FLAGS = setOf("--config", "--out")
 
     /**
+     * Other flags that take the next token as their value, copied with it verbatim. A pass-through
+     * such as `--bazel-arg --config=ci` must not have its value read as this CLI's own `--config`.
+     */
+    private val VALUE_FLAGS =
+      setOf(
+        "--target",
+        "--build-system",
+        "--build-command",
+        "--bazel-arg",
+        "--buck-arg",
+        "--aspect",
+        "--execution-root",
+        "--java-info-load",
+        "--sandbox-count",
+        "--timeout",
+      )
+
+    /**
      * The invocation to record for a `prepare` that ran with [args] in [root], or null when it
      * staged nothing to come back to: no `--out`, or `--artifacts`.
      */
@@ -53,6 +71,11 @@ internal data class StagedPrepareOrigin(
           when {
             arg == "--project" -> index += 2
             arg.startsWith("--project=") -> index++
+            arg in VALUE_FLAGS && value != null -> {
+              add(arg)
+              add(value)
+              index += 2
+            }
             equalsFlag != null -> {
               add(equalsFlag)
               add(resolve(arg.substringAfter("=")).absolutePath)
@@ -82,6 +105,11 @@ internal data class StagedPrepareOrigin(
         fileSystem.createDirectories(file.parent!!)
         fileSystem.write(file) { writeUtf8(bazelJson.encodeToString(serializer(), origin)) }
       }
+    }
+
+    /** Removes any record from the staged [out] directory. */
+    fun clear(out: Path, fileSystem: FileSystem = SystemFileSystem) {
+      runCatching { fileSystem.delete(out / FILE, mustExist = false) }
     }
 
     /**
