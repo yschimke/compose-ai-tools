@@ -462,7 +462,10 @@ composeai-contracts = "3.37.0"
 # the boot as `bootProgress` until it can render (compose-preview-daemon#332, #6114).
 # 3.21.1 reads a jar Bazel rewrote in place afresh on reload, instead of the JDK's cached JarFile
 # (compose-preview-daemon#337, #6140).
-composeai-preview-daemon = "3.21.1"
+# 3.21.2 runs Remote Compose previews whose libraries arrive only through `userClassDirs` (the
+# Bazel lane): the shadow, `.rc` capture and a view-player fallback (compose-preview-daemon#341,
+# #6150), and renders `@Preview` functions declared inside an `object` or class (#343).
+composeai-preview-daemon = "3.21.2"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
