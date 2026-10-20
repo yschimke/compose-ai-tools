@@ -286,6 +286,40 @@ metadata and descriptor live under `.compose-preview/outputs/<target-config-hash
 or `--out <dir>`. Prepared files use a `build/compose-previews/` subdirectory
 so the existing result/state consumers work unchanged. Each run rebuilds/discovers; there is no independent stale cache.
 
+### Host cache, and content-addressed output trees
+
+Between runs the CLI keeps host-side memos under `${XDG_CACHE_HOME:-~/.cache}/composeai/bazel-host/`:
+which runtime jars classpath pruning drops, each dependency jar's SHA-256, the level an
+`android.jar` declares, and a target's discovery result. Each per-file value is keyed on a stamp of
+the file (size, mtime, ctime and inode), and a value recorded within 3 s of the file's last change is
+not trusted, as git does for its index. `COMPOSE_PREVIEW_BAZEL_HOST_CACHE=0` turns the cache off.
+`--keep-daemon` (`COMPOSE_PREVIEW_KEEP_DAEMON=1`, `"keepDaemon": true`) additionally keeps the
+render daemon warm for `daemonIdleTimeoutSeconds` (default 300).
+
+A content-addressed output tree, such as a CAS-backed FUSE `bazel-out` that remounts
+`bazel-out/<config>/bin` on every build, gives every file a fresh mtime, ctime and inode although its
+bytes did not change, so every jar misses and is scanned and hashed again. If that filesystem
+publishes each file's content digest as an extended attribute, name it:
+
+```json
+{ "digestXattr": "user.checksum.sha256" }
+```
+
+or `COMPOSE_PREVIEW_BAZEL_DIGEST_XATTR=user.checksum.sha256` (the leading `user.` is optional). The
+variable wins over `bazel.json`, since the mount is a property of the machine rather than the
+workspace; set it empty to turn a committed `digestXattr` off. A file whose attribute reads back is
+then stamped by its size and the attribute's bytes, which are treated as opaque (ASCII or binary,
+any hash) and never as the file's SHA-256, which is still computed once per stamp. A digest stamp is
+trusted at once: it names the content, so the 3 s window, which exists for coarse timestamps, does
+not apply. It also memoises where the unix stamp cannot (Windows). A file without the attribute
+(workspace and external jars outside the mounted subtree) keeps the unix stamp. `--verbose` names
+the attribute in use and, at exit, how many stamps were digest-keyed and how many memo lookups hit.
+
+Name only an attribute the filesystem derives from the file's content, normally the one passed to
+Bazel's `--unix_digest_hash_attribute_name`. An unrelated attribute that does not change with the
+bytes would serve stale classpath and fingerprint results, which is why the CLI never probes for
+common names on its own.
+
 The aspect requests metadata and runtime output groups. JavaInfo supplies the
 transitive closure, including `runtime_deps`, without traversing every rule and
 emitting unrelated previews. BEP identifies/materializes the output; BEP alone

@@ -90,6 +90,13 @@ internal data class BazelBuildConfig(
   val keepDaemon: Boolean = false,
   /** How long a kept daemon waits after its last render before it exits. */
   val daemonIdleTimeoutSeconds: Int = 300,
+  /**
+   * The extended attribute (`user.` optional) a content-addressed output filesystem publishes each
+   * file's content digest under, keying the host cache's per-jar memos on it rather than on mtime,
+   * ctime and inode, which such a filesystem reassigns on every build (#6104; [FileStamper]).
+   * `$COMPOSE_PREVIEW_BAZEL_DIGEST_XATTR` overrides it. Null (the default) never reads one.
+   */
+  val digestXattr: String? = null,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
 )
