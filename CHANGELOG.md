@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.70.5](https://github.com/yschimke/compose-ai-tools/compare/v2.70.4...v2.70.5) (2026-10-20)
+
+
+### Bug Fixes
+
+* prepare a staged bazel --out directory again from its origin ([#6166](https://github.com/yschimke/compose-ai-tools/issues/6166)) ([92cad8e](https://github.com/yschimke/compose-ai-tools/commit/92cad8e1fed5868c31d43a2dca7ac3fcc35b9189))
+* render with compose-preview-daemon 3.21.3 ([#6163](https://github.com/yschimke/compose-ai-tools/issues/6163)) ([e0cc130](https://github.com/yschimke/compose-ai-tools/commit/e0cc130d577cdda6c55dd5238599ac5161300049))
+
+
+### Performance Improvements
+
+* skip Bazel pattern matches whose package holds no preview ([#6164](https://github.com/yschimke/compose-ai-tools/issues/6164)) ([e1fa979](https://github.com/yschimke/compose-ai-tools/commit/e1fa9798407faa283296541d65c657aedcef6418))
+
 ## [2.70.4](https://github.com/yschimke/compose-ai-tools/compare/v2.70.3...v2.70.4) (2026-10-20)
 
 
