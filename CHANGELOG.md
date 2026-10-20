@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.70.1](https://github.com/yschimke/compose-ai-tools/compare/v2.70.0...v2.70.1) (2026-10-20)
+
+
+### Performance Improvements
+
+* reuse classpath pruning, jar hashes and discovery across warm bazel renders ([#6141](https://github.com/yschimke/compose-ai-tools/issues/6141)) ([30f544b](https://github.com/yschimke/compose-ai-tools/commit/30f544b850d1844253690b1f9fe941e48b313768))
+
 ## [2.70.0](https://github.com/yschimke/compose-ai-tools/compare/v2.69.3...v2.70.0) (2026-10-19)
 
 
