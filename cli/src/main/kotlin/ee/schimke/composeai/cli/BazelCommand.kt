@@ -121,6 +121,14 @@ internal class BazelCommand(
     var config =
       if (configText != null) bazelJson.decodeFromString<BazelBuildConfig>(configText)
       else BazelBuildConfig()
+    BazelHostCache.configure(config)?.let { digest ->
+      if ("--verbose" in args || "-v" in args) {
+        System.err.println(
+          "[bazel] host cache stamps by xattr user.${digest.attribute} (${digest.source})"
+        )
+        reportHostCacheStamps(BazelHostCache.sharedFileStamper)
+      }
+    }
     // Precedence: --build-command, a committed buildCommand, --build-system blaze, then detection.
     val commandSource =
       when {
@@ -736,10 +744,31 @@ internal class BazelCommand(
       Build arguments/startup flags and output-group names can be configured for internal systems.
       Classpath pruning, jar hashes and discovery are reused across runs while their inputs are
       unchanged (under the composeai cache dir); ${'$'}${BazelHostCache.DISABLE_ENV}=0 turns that off.
+      On a content-addressed (CAS/FUSE) output tree that reassigns mtime, ctime and inode on every
+      build, ${'$'}${BazelHostCache.DIGEST_XATTR_ENV}=<attr> (or digestXattr in bazel.json; the
+      variable wins, empty turns it off) keys that reuse on the per-file content digest the
+      filesystem publishes as that xattr, the one Bazel's --unix_digest_hash_attribute_name reads.
+      Name only an attribute derived from file content; files without it fall back to timestamps.
       """
         .trimIndent()
     )
   }
+}
+
+/** At exit, how many stamps [stamper] keyed by digest, and the shared memos' hits and misses. */
+private fun reportHostCacheStamps(stamper: FileStamper) {
+  Runtime.getRuntime()
+    .addShutdownHook(
+      Thread {
+        val cache = BazelHostCache.shared() ?: return@Thread
+        val memos = listOf(cache.jarContents, cache.sha256, cache.androidJarLevel)
+        System.err.println(
+          "[bazel] host cache: ${stamper.digestStamps.get()} digest stamps, " +
+            "${stamper.unixStamps.get()} unix fallbacks; ${memos.sumOf { it.hits.get() }} hits, " +
+            "${memos.sumOf { it.misses.get() }} misses"
+        )
+      }
+    )
 }
 
 private fun bundledBazelAspectFile(name: String): String =
@@ -1126,7 +1155,7 @@ internal fun provisionedSdkLevel(
     if (cache == null) compute() ?: return level
     else {
       val stamps = robolectricJars.map { jar ->
-        FileStamp.of(jar)?.let { "${jar.absolutePath}\t${it.text}" }
+        cache.stamp(jar)?.let { "${jar.absolutePath}\t${it.text}" }
       }
       val key =
         cacheKey(
