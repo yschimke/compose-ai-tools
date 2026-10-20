@@ -63,6 +63,16 @@ labels named explicitly are never skipped, and a pattern whose every match would
 them all. When a target turns out to hold no previews, the error names the packages below it whose
 sources do mention `Preview`.
 
+The selected targets are then built twice, and the second build is the expensive one. The first
+asks only for each target's own jars (the aspect's `compose_preview_project` group). A target whose
+jars reference no Preview annotation is dropped there, named on stderr, before its resources are
+linked or its runtime closure built. A top-level wiring library then costs its own compilation,
+not the link and hundreds of runtime jars. The check reads class bytes for `Preview`, which a
+`@Preview` and the usual multi-preview annotations (`@PreviewLightDark`, `@WearPreviewDevices`)
+put there. It misses a target whose only previews use a multi-preview annotation declared in
+another target and named without `Preview`. An aspect that predates the group reports no jars, so
+every target is kept and built as before. `"projectOutputGroup": null` skips the first build.
+
 Every selected target builds in one invocation, so Bazel analyses the graph once. The selection
 is then **one module**, named by what you asked for (`//app/...`, or `//pkg:all` for a package).
 Each target's own previews are discovered, and one daemon renders them all on the union of the
@@ -174,7 +184,8 @@ or a file selected explicitly with `--config <file>`:
   "aspect": "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect",
   "installAspect": true,
   "metadataOutputGroup": "compose_preview_metadata",
-  "runtimeOutputGroup": "compose_preview_runtime"
+  "runtimeOutputGroup": "compose_preview_runtime",
+  "projectOutputGroup": "compose_preview_project"
 }
 ```
 
