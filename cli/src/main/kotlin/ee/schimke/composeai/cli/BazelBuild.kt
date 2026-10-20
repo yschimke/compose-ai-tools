@@ -100,6 +100,13 @@ internal data class BazelBuildConfig(
   val digestXattr: String? = null,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
+  /**
+   * The aspect's group holding a target's own jars alone (#6162). Built first, so a selected target
+   * whose jars reference no Preview annotation ([BazelPreviewJars]) is dropped before its resources
+   * are linked or its runtime closure built. An aspect without it (rules before the group) leaves
+   * every target in; null or blank skips that first build.
+   */
+  val projectOutputGroup: String? = "compose_preview_project",
 )
 
 /**
@@ -764,30 +771,24 @@ internal class BazelBuild(
         target to canonical.single()
       } else target to normalizeBazelLabel(target)
     }
+    val candidates =
+      config.projectOutputGroup
+        ?.takeIf { it.isNotBlank() }
+        ?.let { group -> previewCandidates(root, selectedTargets, config, group, timeoutSeconds) }
+        ?: selectedTargets
+    if (candidates.isEmpty()) return emptyList()
     val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
     try {
-      execute(
-        invocation +
-          listOf("build") +
-          config.buildArgs +
-          listOf(
-            "--aspects=${config.aspect}",
-            "--output_groups=${config.metadataOutputGroup},${config.runtimeOutputGroup}",
-            "--build_event_json_file=${bep.absolutePath}",
-          ) +
-          selectedTargets.map { it.second },
-        root,
-        timeoutSeconds,
-      )
-      // The build's own event stream names its execution root; only a tool that does not report
-      // it pays for a second client call (#6104).
       val executionRoot =
-        bep.bufferedReader().use { bazelEventExecutionRoot(it.lineSequence()) }
-          ?: execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
-      check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
-        "Build tool returned an invalid execution_root: $executionRoot"
-      }
-      return selectedTargets.mapNotNull { (target, selectedTarget) ->
+        build(
+          root,
+          config,
+          listOf(config.metadataOutputGroup, config.runtimeOutputGroup),
+          candidates.map { it.second },
+          bep,
+          timeoutSeconds,
+        )
+      return candidates.mapNotNull { (target, selectedTarget) ->
         val metadata =
           if (skipWithoutMetadata) {
             val files =
@@ -796,7 +797,7 @@ internal class BazelBuild(
                   it.lineSequence(),
                   selectedTarget,
                   config.metadataOutputGroup,
-                  File(executionRoot),
+                  executionRoot,
                 )
               }
             if (files.isEmpty()) {
@@ -814,7 +815,7 @@ internal class BazelBuild(
                 it.lineSequence(),
                 selectedTarget,
                 config.metadataOutputGroup,
-                File(executionRoot),
+                executionRoot,
               )
             }
         val artifactsText = metadata.readText()
@@ -824,12 +825,92 @@ internal class BazelBuild(
           "Metadata target ${artifacts.target} does not match $target"
         }
         artifacts.resolve(
-          File(executionRoot),
+          executionRoot,
           root,
           config.androidCompileSdk,
           bazelRuntimeJarOwners(artifactsText),
         )
       }
+    } finally {
+      bep.delete()
+    }
+  }
+
+  /**
+   * Builds [groups] of the configured aspect over [labels], writing the event stream to [bep], and
+   * returns the execution root.
+   */
+  private fun build(
+    root: File,
+    config: BazelBuildConfig,
+    groups: List<String>,
+    labels: List<String>,
+    bep: File,
+    timeoutSeconds: Long,
+  ): File {
+    val invocation = config.buildCommand + config.startupArgs
+    execute(
+      invocation +
+        listOf("build") +
+        config.buildArgs +
+        listOf(
+          "--aspects=${config.aspect}",
+          "--output_groups=${groups.joinToString(",")}",
+          "--build_event_json_file=${bep.absolutePath}",
+        ) +
+        labels,
+      root,
+      timeoutSeconds,
+    )
+    // The build's own event stream names its execution root; only a tool that does not report
+    // it pays for a second client call (#6104).
+    val executionRoot =
+      bep.bufferedReader().use { bazelEventExecutionRoot(it.lineSequence()) }
+        ?: execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
+    check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
+      "Build tool returned an invalid execution_root: $executionRoot"
+    }
+    return File(executionRoot)
+  }
+
+  /**
+   * [selected] less the targets whose own jars reference no Preview annotation, read from a build
+   * of [projectGroup] alone (#6162): such a target costs its own compilation, not a resource link
+   * and its whole runtime closure. A target is kept on any doubt: the aspect reported no jars for
+   * it (rules that predate the group, or a target the aspect does not read), they are not on disk
+   * (a remote build that did not download them), or one cannot be read.
+   */
+  private fun previewCandidates(
+    root: File,
+    selected: List<Pair<String, String>>,
+    config: BazelBuildConfig,
+    projectGroup: String,
+    timeoutSeconds: Long,
+  ): List<Pair<String, String>> {
+    val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
+    try {
+      val executionRoot =
+        build(root, config, listOf(projectGroup), selected.map { it.second }, bep, timeoutSeconds)
+      val skipped = mutableListOf<String>()
+      val kept = selected.filter { (_, label) ->
+        val jars = runCatching {
+          bep.bufferedReader().use {
+            bazelMetadataFiles(it.lineSequence(), label, projectGroup, executionRoot)
+          }
+        }
+          .getOrNull()
+          .orEmpty()
+        val keep = jars.isEmpty() || BazelPreviewJars.mayHoldPreviews(jars)
+        if (!keep) skipped += label
+        keep
+      }
+      if (skipped.isNotEmpty()) {
+        System.err.println(
+          "[bazel] no Preview annotation in the jars of ${skipped.joinToString(" ")}; " +
+            "skipped before linking resources or building the runtime"
+        )
+      }
+      return kept
     } finally {
       bep.delete()
     }

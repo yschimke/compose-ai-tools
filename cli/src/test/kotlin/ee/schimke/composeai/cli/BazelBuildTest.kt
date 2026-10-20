@@ -241,17 +241,25 @@ class BazelBuildTest {
           aspect = "//tools:preview.bzl%preview",
           metadataOutputGroup = "internal_metadata",
           runtimeOutputGroup = "render_jars",
+          projectOutputGroup = "internal_project",
         )
       assertEquals("//:app", build.collect(root, "//:app", config, 19).metadata.target)
+      // The target's own jars first (#6162); the aspect reports none, so the target stays in.
       assertEquals(
         listOf("blaze-wrapper", "literal argument", "--server=internal", "build"),
         calls[0].take(4),
       )
-      assertTrue("--output_groups=internal_metadata,render_jars" in calls[0])
+      assertTrue("--output_groups=internal_project" in calls[0])
       assertEquals(
         listOf("blaze-wrapper", "literal argument", "--server=internal", "info", "execution_root"),
         calls[1],
       )
+      assertEquals(
+        listOf("blaze-wrapper", "literal argument", "--server=internal", "build"),
+        calls[2].take(4),
+      )
+      assertTrue("--output_groups=internal_metadata,render_jars" in calls[2])
+      assertTrue("--config=desktop" in calls[2])
     } finally {
       root.deleteRecursively()
     }
@@ -497,9 +505,11 @@ class BazelBuildTest {
         build.collectAll(root, targets, BazelBuildConfig(), 9, skipWithoutMetadata = true)
 
       assertEquals(listOf("//app:ui", "//app:model"), collected.map { it.metadata.target })
+      // One invocation for every target's own jars (#6162), one for the runtime of those kept:
+      // the aspect reported no project jars here, so all of them.
       val builds = calls.filter { "build" in it }
-      assertEquals(1, builds.size)
-      assertEquals(targets, builds.single().takeLast(3))
+      assertEquals(2, builds.size)
+      builds.forEach { assertEquals(targets, it.takeLast(3)) }
       // Named explicitly, the same target is a requirement.
       assertFailsWith<IllegalStateException> {
         build.collectAll(root, targets, BazelBuildConfig(), 9)
@@ -507,6 +517,146 @@ class BazelBuildTest {
       assertFailsWith<IllegalArgumentException> {
         build.collectAll(root, listOf("//app/..."), BazelBuildConfig(), 9)
       }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  /** A jar holding one class file whose bytes are [classBytes]. */
+  private fun jar(file: File, classBytes: String): File = file.apply {
+    java.util.zip.ZipOutputStream(outputStream()).use { zip ->
+      zip.putNextEntry(java.util.zip.ZipEntry("com/example/Screen.class"))
+      zip.write(classBytes.toByteArray())
+      zip.closeEntry()
+    }
+  }
+
+  @Test
+  fun `a target whose own jars reference no Preview is dropped before its runtime is built`() {
+    val root = Files.createTempDirectory("bazel-project-group").toFile()
+    try {
+      jar(root.resolve("ui.jar"), "Landroidx/compose/ui/tooling/preview/Preview;")
+      jar(root.resolve("wiring.jar"), "Lcom/example/MainActivity;")
+      fun metadata(target: String, jar: String) =
+        root.resolve("$jar.json").apply {
+          writeText(
+            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar)))
+          )
+        }
+      val builds = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("build" in argv) {
+          builds += argv
+          val project = "--output_groups=compose_preview_project" in argv
+          File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+            .writeText(
+              (if (project)
+                  listOf(
+                    completed("//app:ui", "ui", "compose_preview_project"),
+                    eventSet("ui", listOf(root.resolve("ui.jar"))),
+                    completed("//app:wiring", "wiring", "compose_preview_project"),
+                    eventSet("wiring", listOf(root.resolve("wiring.jar"))),
+                  )
+                else
+                  listOf(
+                    completed("//app:ui", "meta"),
+                    eventSet("meta", listOf(metadata("//app:ui", "ui.jar"))),
+                  ))
+                .joinToString("\n")
+            )
+          ""
+        } else root.absolutePath + "\n"
+      }
+
+      val collected =
+        build.collectAll(
+          root,
+          listOf("//app:ui", "//app:wiring"),
+          BazelBuildConfig(),
+          9,
+          skipWithoutMetadata = true,
+        )
+
+      assertEquals(listOf("//app:ui"), collected.map { it.metadata.target })
+      assertEquals(2, builds.size)
+      assertEquals(listOf("//app:ui", "//app:wiring"), builds[0].takeLast(2))
+      // Only the target that can hold a preview is linked and has its runtime built.
+      assertTrue(
+        "--output_groups=compose_preview_metadata,compose_preview_runtime" in builds[1],
+        builds[1].toString(),
+      )
+      assertEquals("//app:ui", builds[1].last())
+
+      // Named alone, a target with none builds nothing more: the caller reports no previews.
+      builds.clear()
+      assertEquals(
+        emptyList(),
+        build.collectAll(root, listOf("//app:wiring"), BazelBuildConfig(), 9),
+      )
+      assertEquals(1, builds.size)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `an aspect without the project group, or the group switched off, keeps every target`() {
+    val root = Files.createTempDirectory("bazel-project-group-absent").toFile()
+    try {
+      // Would be dropped if the group had reported it.
+      jar(root.resolve("wiring.jar"), "Lcom/example/MainActivity;")
+      val metadata =
+        root.resolve("wiring.json").apply {
+          writeText(
+            bazelJson.encodeToString(
+              BazelArtifacts("//app:wiring", "config", listOf("wiring.jar"), listOf("wiring.jar"))
+            )
+          )
+        }
+      val builds = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("build" in argv) {
+          builds += argv
+          // An older aspect: the project group is unknown, so it reports nothing for it.
+          File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+            .writeText(
+              listOf(completed("//app:wiring", "meta"), eventSet("meta", listOf(metadata)))
+                .joinToString("\n")
+            )
+          ""
+        } else root.absolutePath + "\n"
+      }
+      assertEquals(
+        listOf("//app:wiring"),
+        build.collectAll(root, listOf("//app:wiring"), BazelBuildConfig(), 9).map {
+          it.metadata.target
+        },
+      )
+      assertEquals(2, builds.size)
+
+      builds.clear()
+      build.collectAll(
+        root,
+        listOf("//app:wiring"),
+        BazelBuildConfig(projectOutputGroup = null),
+        9,
+      )
+      assertEquals(1, builds.size)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a jar is read for Preview by its class bytes, and kept when unreadable`() {
+    val root = Files.createTempDirectory("bazel-preview-jars").toFile()
+    try {
+      val preview = jar(root.resolve("a.jar"), "Lcom/google/android/horologist/WearPreviewDevices;")
+      val none = jar(root.resolve("b.jar"), "Lcom/example/Main;")
+      val broken = root.resolve("c.jar").apply { writeText("not a zip") }
+      assertTrue(BazelPreviewJars.mayHoldPreviews(listOf(none, preview)))
+      assertTrue(!BazelPreviewJars.mayHoldPreviews(listOf(none)))
+      assertTrue(BazelPreviewJars.mayHoldPreviews(listOf(none, broken)))
     } finally {
       root.deleteRecursively()
     }
@@ -764,7 +914,10 @@ class BazelBuildTest {
         "@@canonical+//app:app",
         build.collect(root, "@alias//app", BazelBuildConfig(), 10).metadata.target,
       )
-      assertTrue("@@canonical+//app:app" in calls.single { "build" in it })
+      // The project-jar build first (#6162), then the runtime build: both on the canonical label.
+      val builds = calls.filter { "build" in it }
+      assertEquals(2, builds.size)
+      assertTrue(builds.all { "@@canonical+//app:app" in it }, builds.toString())
     } finally {
       root.deleteRecursively()
     }
