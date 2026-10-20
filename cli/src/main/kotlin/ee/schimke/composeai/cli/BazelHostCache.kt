@@ -1,15 +1,16 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -17,6 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 
 /**
  * Host-side memos that let a warm `compose-preview bazel render` skip work whose inputs did not
@@ -34,23 +37,27 @@ import kotlinx.serialization.json.Json
  *
  * [stamp] is how a file's version is identified: [FileStamper]'s unix tuple, or, where the build's
  * output tree publishes one ([DIGEST_XATTR_ENV], `digestXattr`), its content digest.
+ *
+ * The cache's own files under [root] go through [fileSystem]. The files it stamps stay
+ * `java.io.File`s: a stamp reads the `unix` and `user` attribute views, which Okio does not expose.
  */
 internal class BazelHostCache(
-  val root: File,
+  val root: okio.Path,
   clock: () -> Long = System::currentTimeMillis,
   val stamp: (File) -> FileStamp? = FileStamper.UNIX::stamp,
+  val fileSystem: FileSystem = SystemFileSystem,
 ) {
   /** [classifyRuntimeJar] per jar: what pruning needs to know about it. */
-  val jarContents = StampedFileMemo(root.resolve("jar-contents.json"), clock, stamp)
+  val jarContents = StampedFileMemo(root / "jar-contents.json", clock, stamp, fileSystem)
 
   /** [bazelBundleSha] per file: the flat SHA-256, whichever kind of [FileStamp] keys it. */
-  val sha256 = StampedFileMemo(root.resolve("sha256.json"), clock, stamp)
+  val sha256 = StampedFileMemo(root / "sha256.json", clock, stamp, fileSystem)
 
   /** [AndroidPlatformLevel.fromContents] per `android.jar`; [NONE] when it names no level. */
-  val androidJarLevel = StampedFileMemo(root.resolve("android-jar-level.json"), clock, stamp)
+  val androidJarLevel = StampedFileMemo(root / "android-jar-level.json", clock, stamp, fileSystem)
 
   /** Values keyed by a digest of everything they depend on ([provisionedSdkLevel]). */
-  val keyed = KeyedMemo(root.resolve("keyed.json"))
+  val keyed = KeyedMemo(root / "keyed.json", fileSystem)
 
   /** [file]'s SHA-256, read again only when its [FileStamp] moved. */
   fun sha256(file: File): String = sha256.get(file) { bazelBundleSha(it) } ?: bazelBundleSha(file)
@@ -76,7 +83,16 @@ internal class BazelHostCache(
   }
 
   /** Where a target's discovery result is kept: one file per target, replaced on each miss. */
-  fun discoveryFile(targetKey: String): File = root.resolve("discovery/$targetKey.json")
+  fun discoveryFile(targetKey: String): okio.Path = root / "discovery" / "$targetKey.json"
+
+  /** [file]'s text, or null when it is missing or unreadable. */
+  fun readText(file: okio.Path): String? = runCatching {
+    fileSystem.read(file) { readUtf8() }
+  }
+    .getOrNull()
+
+  /** Replaces [file] with [text] atomically ([writeAtomically]). */
+  fun writeText(file: okio.Path, text: String) = writeAtomically(file, text, fileSystem)
 
   /** Writes whichever memos changed. A failure only loses the entries; it never fails a render. */
   fun save() {
@@ -100,7 +116,10 @@ internal class BazelHostCache(
     @Volatile private var sharedStamper: FileStamper = FileStamper.UNIX
 
     private val instance by lazy {
-      BazelHostCache(composeAiCacheDir("bazel-host")) { sharedStamper.stamp(it) }
+      BazelHostCache(
+        composeAiCacheDir("bazel-host").toOkioPath(),
+        stamp = { sharedStamper.stamp(it) },
+      )
     }
 
     /** The process-wide cache under `composeAiCacheDir("bazel-host")`, or null when disabled. */
@@ -304,14 +323,17 @@ private val cacheJson = Json {
  * had settled when the value was recorded. Safe across threads; [save] writes it atomically.
  */
 internal class StampedFileMemo(
-  private val file: File,
+  private val file: okio.Path,
   private val clock: () -> Long = System::currentTimeMillis,
   private val stampOf: (File) -> FileStamp? = { FileStamp.of(it) },
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
   private val entries: ConcurrentHashMap<String, StampedEntry> by lazy {
     ConcurrentHashMap(
       runCatching {
-          cacheJson.decodeFromString<Map<String, StampedEntry>>(file.readText(Charsets.UTF_8))
+          cacheJson.decodeFromString<Map<String, StampedEntry>>(
+            fileSystem.read(file) { readUtf8() }
+          )
         }
         .getOrDefault(emptyMap())
     )
@@ -359,7 +381,7 @@ internal class StampedFileMemo(
         .sortedByDescending { it.value.recordedAt }
         .take(MAX_ENTRIES)
         .associate { it.key to it.value }
-    writeAtomically(file, cacheJson.encodeToString(kept))
+    writeAtomically(file, cacheJson.encodeToString(kept), fileSystem)
   }
 
   companion object {
@@ -368,10 +390,15 @@ internal class StampedFileMemo(
 }
 
 /** Values keyed by a caller's digest of their inputs, kept atomically like [StampedFileMemo]. */
-internal class KeyedMemo(private val file: File) {
+internal class KeyedMemo(
+  private val file: okio.Path,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) {
   private val entries: ConcurrentHashMap<String, String> by lazy {
     ConcurrentHashMap(
-      runCatching { cacheJson.decodeFromString<Map<String, String>>(file.readText(Charsets.UTF_8)) }
+      runCatching {
+          cacheJson.decodeFromString<Map<String, String>>(fileSystem.read(file) { readUtf8() })
+        }
         .getOrDefault(emptyMap())
     )
   }
@@ -390,6 +417,7 @@ internal class KeyedMemo(private val file: File) {
       cacheJson.encodeToString(
         entries.entries.toList().takeLast(1_000).associate { it.key to it.value }
       ),
+      fileSystem,
     )
   }
 }
@@ -406,23 +434,20 @@ internal fun cacheKey(parts: List<String>): String {
  * old contents or the new, never a torn write. Failures are swallowed: a cache that cannot be
  * written is only a cache that misses.
  */
-internal fun writeAtomically(file: File, text: String) {
+internal fun writeAtomically(
+  file: okio.Path,
+  text: String,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
   runCatching {
-    file.parentFile?.mkdirs()
-    val temp = Files.createTempFile(file.parentFile.toPath(), file.name, ".tmp")
+    val parent = file.parent
+    if (parent != null) fileSystem.createDirectories(parent)
+    val temp = (parent ?: file).resolve("${file.name}.${UUID.randomUUID()}.tmp")
     try {
-      Files.writeString(temp, text)
-      runCatching {
-        Files.move(
-          temp,
-          file.toPath(),
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE,
-        )
-      }
-        .getOrElse { Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING) }
+      fileSystem.write(temp) { writeUtf8(text) }
+      fileSystem.atomicMove(temp, file)
     } finally {
-      Files.deleteIfExists(temp)
+      fileSystem.delete(temp, mustExist = false)
     }
   }
 }
