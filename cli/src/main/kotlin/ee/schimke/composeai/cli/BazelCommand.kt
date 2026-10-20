@@ -897,11 +897,12 @@ internal fun prepareBazelPreviews(
             artifacts.metadata.configuration,
           )
         )
-      runCatching { bazelJson.decodeFromString<BazelDiscoveryEntry>(entryFile.readText()) }
-        .getOrNull()
+      cache
+        .readText(entryFile)
+        ?.let { runCatching { bazelJson.decodeFromString<BazelDiscoveryEntry>(it) }.getOrNull() }
         ?.takeIf { it.key == key }
         ?: discoverBazelPreviews(input).also {
-          writeAtomically(entryFile, bazelJson.encodeToString(it.copy(key = key)))
+          cache.writeText(entryFile, bazelJson.encodeToString(it.copy(key = key)))
         }
     }
   discovered.warnings.forEach { System.err.println("WARN: $it") }

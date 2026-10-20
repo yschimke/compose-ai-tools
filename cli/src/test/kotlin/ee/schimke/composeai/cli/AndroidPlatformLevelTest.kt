@@ -9,6 +9,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 
 class AndroidPlatformLevelTest {
   private fun fixture(block: (File) -> Unit) {
@@ -69,6 +71,20 @@ class AndroidPlatformLevelTest {
     link.parentFile.mkdirs()
     Files.createSymbolicLink(link.toPath(), real.toPath())
     assertEquals(35, AndroidPlatformLevel.of(link))
+  }
+
+  @Test
+  fun `platform metadata is read through the injected file system`() {
+    val fs = FakeFileSystem().apply { allowSymlinks = true }
+    val platform = "/sdk/platforms/p".toPath()
+    fs.createDirectories(platform)
+    fs.write(platform / "source.properties") { writeUtf8("AndroidVersion.ApiLevel=35\n") }
+    fs.write(platform / "android.jar") {}
+    val link = "/execroot/external/androidsdk/android.jar".toPath()
+    fs.createDirectories(link.parent!!)
+    fs.createSymlink(link, platform / "android.jar")
+    assertEquals(35, AndroidPlatformLevel.of(File(link.toString()), fs))
+    assertNull(AndroidPlatformLevel.of(File("/elsewhere/android.jar"), fs))
   }
 
   private fun artifacts(root: File, compileSdk: Int?): BazelArtifacts {

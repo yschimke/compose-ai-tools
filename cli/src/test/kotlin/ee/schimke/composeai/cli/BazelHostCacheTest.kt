@@ -16,6 +16,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import okio.Path.Companion.toOkioPath
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 /** The memos a warm `bazel render` reuses (#6104): each must miss on any change to its inputs. */
@@ -52,12 +55,12 @@ class BazelHostCacheTest {
         computed++
         f.readText()
       }
-      val memo = StampedFileMemo(store, settled)
+      val memo = StampedFileMemo(store.toOkioPath(), settled)
       assertEquals("first build", memo.get(file, compute))
       assertEquals("first build", memo.get(file, compute))
       assertEquals(1, computed, "unchanged file is a hit")
       memo.save()
-      assertEquals("first build", StampedFileMemo(store, settled).get(file, compute))
+      assertEquals("first build", StampedFileMemo(store.toOkioPath(), settled).get(file, compute))
       assertEquals(1, computed, "a saved memo survives the process")
 
       // Same size, same mtime, different bytes: a cache restore or `cp -p` can do this, the
@@ -81,7 +84,7 @@ class BazelHostCacheTest {
     // size leaves the stamp as it was, so a just-written file is read again until it settles.
     val file = root.resolve("lib.jar").apply { writeText("x") }
     var computed = 0
-    val memo = StampedFileMemo(root.resolve("memo.json"))
+    val memo = StampedFileMemo(root.resolve("memo.json").toOkioPath())
     repeat(2) {
       memo.get(file) {
         computed++
@@ -99,7 +102,11 @@ class BazelHostCacheTest {
     assertNull(FileStamp.of(file) { null })
     var computed = 0
     val memo =
-      StampedFileMemo(root.resolve("memo.json"), settled, stampOf = { FileStamp.of(it) { null } })
+      StampedFileMemo(
+        root.resolve("memo.json").toOkioPath(),
+        settled,
+        stampOf = { FileStamp.of(it) { null } },
+      )
     repeat(3) {
       memo.get(file) {
         computed++
@@ -116,7 +123,7 @@ class BazelHostCacheTest {
     val file = root.resolve("lib.jar").apply { writeText("content") }
     val store = root.resolve("memo.json").apply { writeText("{not json") }
     var computed = 0
-    val memo = StampedFileMemo(store, settled)
+    val memo = StampedFileMemo(store.toOkioPath(), settled)
     assertEquals(
       "content",
       memo.get(file) {
@@ -129,18 +136,42 @@ class BazelHostCacheTest {
     // Rewritten whole, so the next process reads it.
     assertEquals(
       "content",
-      StampedFileMemo(store, settled).get(file) { error("should be a hit") },
+      StampedFileMemo(store.toOkioPath(), settled).get(file) { error("should be a hit") },
     )
 
     val keyedFile = root.resolve("keyed.json").apply { writeText("[1,") }
-    val keyed = KeyedMemo(keyedFile)
+    val keyed = KeyedMemo(keyedFile.toOkioPath())
     assertNull(keyed["k"])
     keyed["k"] = "v"
     keyed.save()
-    assertEquals("v", KeyedMemo(keyedFile)["k"])
+    assertEquals("v", KeyedMemo(keyedFile.toOkioPath())["k"])
 
     // A missing file is never memoised.
     assertNull(memo.get(root.resolve("absent.jar")) { null })
+  }
+
+  @Test
+  fun `the cache's own files go through the injected file system`() = fixture { root ->
+    val jar = root.resolve("lib.jar").apply { writeText("content") }
+    val fs = FakeFileSystem()
+    val cacheRoot = "/cache".toPath()
+    val cache = BazelHostCache(cacheRoot, settled, fileSystem = fs)
+    assertEquals(bazelBundleSha(jar), cache.sha256(jar))
+    cache.keyed["k"] = "v"
+    val discovery = cache.discoveryFile("target")
+    cache.writeText(discovery, "{}")
+    cache.save()
+
+    assertEquals(
+      listOf("discovery", "keyed.json", "sha256.json"),
+      fs.list(cacheRoot).map { it.name },
+      "written atomically, leaving no temporary file behind",
+    )
+    assertEquals("{}", cache.readText(discovery))
+    val reopened = BazelHostCache(cacheRoot, settled, fileSystem = fs)
+    assertEquals("v", reopened.keyed["k"])
+    assertEquals(bazelBundleSha(jar), reopened.sha256.get(jar) { error("should be a hit") })
+    assertNull(cache.readText(cacheRoot / "absent.json"))
   }
 
   @Test
@@ -152,7 +183,7 @@ class BazelHostCacheTest {
       val stub = root.jar("stub.jar", "META-INF/MANIFEST.MF")
       val ui = root.jar("ui.jar", "androidx/compose/ui/Modifier.class")
       val runtime = listOf(app, libR, stub, ui)
-      val cache = BazelHostCache(root.resolve("cache"), settled)
+      val cache = BazelHostCache(root.resolve("cache").toOkioPath(), settled)
 
       val cold = pruneRuntimeClasspath(runtime, setOf(app), rFinal)
       val first = pruneRuntimeClasspath(runtime, setOf(app), rFinal, cache)
@@ -179,7 +210,7 @@ class BazelHostCacheTest {
 
   @Test
   fun `the discovery key moves with every input and only then`() = fixture { root ->
-    val cache = BazelHostCache(root.resolve("cache"), settled)
+    val cache = BazelHostCache(root.resolve("cache").toOkioPath(), settled)
     val app = root.resolve("app.jar").apply { writeText("app v1") }
     val a = root.resolve("a.jar").apply { writeText("a") }
     val b = root.resolve("b.jar").apply { writeText("b") }
@@ -218,7 +249,7 @@ class BazelHostCacheTest {
 
   @Test
   fun `previews json is reused only while the discovery inputs are unchanged`() = fixture { root ->
-    val cache = BazelHostCache(root.resolve("cache"), settled)
+    val cache = BazelHostCache(root.resolve("cache").toOkioPath(), settled)
     val app = root.jar("app.jar", "META-INF/MANIFEST.MF")
     val source = root.resolve("Greeting.kt").apply { writeText("fun Greeting() {}") }
     val artifacts =
@@ -235,7 +266,7 @@ class BazelHostCacheTest {
     assertEquals(emptyList(), first.manifest.previews)
 
     // Swap the kept result for a marker: a hit returns it, a miss replaces it.
-    val entryFile = cache.root.resolve("discovery").listFiles()!!.single()
+    val entryFile = cache.root.toFile().resolve("discovery").listFiles()!!.single()
     val entry = bazelJson.decodeFromString<BazelDiscoveryEntry>(entryFile.readText())
     val marker = PreviewManifest("//:marker", "desktop", emptyList())
     entryFile.writeText(bazelJson.encodeToString(entry.copy(manifest = marker)))
@@ -263,7 +294,7 @@ class BazelHostCacheTest {
 
   @Test
   fun `android jar level is read once per version of the jar`() = fixture { root ->
-    val cache = BazelHostCache(root.resolve("cache"), settled)
+    val cache = BazelHostCache(root.resolve("cache").toOkioPath(), settled)
     val jar = root.jar("android.jar", "android/app/Activity.class")
     assertNull(AndroidPlatformLevel.fromContents(jar, cache))
     assertEquals(
@@ -327,7 +358,7 @@ class BazelHostCacheTest {
     val unixBefore = FileStamp.of(file)!!
     val store = root.resolve("cache/memo.json")
     // No settled clock: a digest stamp is trusted as soon as it is recorded.
-    val memo = StampedFileMemo(store, stampOf = stamper::stamp)
+    val memo = StampedFileMemo(store.toOkioPath(), stampOf = stamper::stamp)
     assertEquals("dependency" to true, counting(memo, file))
     memo.save()
 
@@ -339,7 +370,7 @@ class BazelHostCacheTest {
     assertNotEquals(unixBefore.text, FileStamp.of(file)!!.text, "every unix attribute moved")
     assertEquals(
       "dependency" to false,
-      counting(StampedFileMemo(store, stampOf = stamper::stamp), file),
+      counting(StampedFileMemo(store.toOkioPath(), stampOf = stamper::stamp), file),
     )
     assertTrue(stamper.digestStamps.get() > 0)
     assertEquals(0, stamper.unixStamps.get())
@@ -352,7 +383,7 @@ class BazelHostCacheTest {
     val file = root.resolve("lib.jar").apply { writeText("v1") }
     val path = file.toPath().toAbsolutePath()
     fake.digests[path] = byteArrayOf(1, 2, 3)
-    val memo = StampedFileMemo(root.resolve("memo.json"), settled, stamper::stamp)
+    val memo = StampedFileMemo(root.resolve("memo.json").toOkioPath(), settled, stamper::stamp)
     assertEquals("v1" to true, counting(memo, file))
     assertEquals("v1" to false, counting(memo, file))
     val mtime = file.lastModified()
@@ -383,7 +414,10 @@ class BazelHostCacheTest {
       assertEquals(1, stamper.unixStamps.get())
       // The racy rule still applies to it.
       val memo =
-        StampedFileMemo(root.resolve("memo-${reader.hashCode()}.json"), stampOf = stamper::stamp)
+        StampedFileMemo(
+          root.resolve("memo-${reader.hashCode()}.json").toOkioPath(),
+          stampOf = stamper::stamp,
+        )
       assertEquals("external" to true, counting(memo, file))
       assertEquals("external" to true, counting(memo, file), "just written: not yet trusted")
     }
@@ -399,18 +433,18 @@ class BazelHostCacheTest {
     val fake = FakeDigests()
     val file = root.resolve("lib.jar").apply { writeText("same bytes") }
     val store = root.resolve("memo.json")
-    val unixMemo = StampedFileMemo(store, settled, FileStamper.UNIX::stamp)
+    val unixMemo = StampedFileMemo(store.toOkioPath(), settled, FileStamper.UNIX::stamp)
     assertEquals("same bytes" to true, counting(unixMemo, file))
     unixMemo.save()
 
     fake.digests[file.toPath().toAbsolutePath()] = "cafe".toByteArray()
     val digestStamper = FileStamper("checksum", fake::read)
-    val digestMemo = StampedFileMemo(store, settled, digestStamper::stamp)
+    val digestMemo = StampedFileMemo(store.toOkioPath(), settled, digestStamper::stamp)
     assertEquals("same bytes" to true, counting(digestMemo, file), "a unix entry is a digest miss")
     digestMemo.save()
     assertEquals(
       "same bytes" to true,
-      counting(StampedFileMemo(store, settled, FileStamper.UNIX::stamp), file),
+      counting(StampedFileMemo(store.toOkioPath(), settled, FileStamper.UNIX::stamp), file),
       "a digest entry is a unix miss",
     )
     // Nor do two attributes' digests of the same bytes.
@@ -426,7 +460,7 @@ class BazelHostCacheTest {
     val stamper = FileStamper("checksum", fake::read)
     val jar = root.jar("lib.jar", "com/example/A.class")
     fake.digests[jar.toPath().toAbsolutePath()] = ByteArray(36) { it.toByte() }
-    val cache = BazelHostCache(root.resolve("cache"), stamp = stamper::stamp)
+    val cache = BazelHostCache(root.resolve("cache").toOkioPath(), stamp = stamper::stamp)
     val flat = bazelBundleSha(jar)
     assertEquals(flat, cache.sha256(jar))
     cache.save()
