@@ -460,7 +460,9 @@ composeai-contracts = "3.37.0"
 # plain still, so `compose-preview bazel render` no longer copies it there (#6114).
 # 3.21.0 answers `initialize` before the sandbox is ready for a client that opts in, and reports
 # the boot as `bootProgress` until it can render (compose-preview-daemon#332, #6114).
-composeai-preview-daemon = "3.21.0"
+# 3.21.1 reads a jar Bazel rewrote in place afresh on reload, instead of the JDK's cached JarFile
+# (compose-preview-daemon#337, #6140).
+composeai-preview-daemon = "3.21.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
