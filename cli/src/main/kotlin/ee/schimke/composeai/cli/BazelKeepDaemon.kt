@@ -53,7 +53,9 @@ internal object BazelKeepDaemon {
    * Rewrites [descriptor] for a shared daemon keyed on it, [launchInputs] (files the daemon reads
    * only at launch, such as linked resources), [previewsManifest] and [idleTimeoutSeconds], which
    * the daemon also reads only at launch. [projectJars], the jars an edit rebuilds, are compared by
-   * content rather than size and mtime when deciding whether to reload.
+   * content rather than size and mtime when deciding whether to reload. [hostCache], the
+   * [BazelHostCache] when enabled, memoises those hashes and stamps every jar by the content digest
+   * a FUSE output tree publishes (`digestXattr`), so a remount that rotates mtimes is no reload.
    */
   fun prepare(
     descriptor: File,
@@ -62,6 +64,7 @@ internal object BazelKeepDaemon {
     idleTimeoutSeconds: Int,
     projectJars: Collection<File> = emptyList(),
     cacheRoot: File = composeAiCacheDir("daemons"),
+    hostCache: BazelHostCache? = null,
   ): Prepared {
     val launch = DaemonLaunchBuilder.decode(descriptor.readText())
     val idleMs = idleTimeoutSeconds.coerceAtLeast(1) * 1000L
@@ -89,7 +92,10 @@ internal object BazelKeepDaemon {
         ?.filter { it.isNotBlank() }
         .orEmpty()
     val hashed = projectJars.mapTo(HashSet()) { it.absolutePath }
-    return Prepared(sharedDescriptor, dir, recordJars(dir, jars, hashed))
+    val changed =
+      if (hostCache == null) recordJars(dir, jars, hashed)
+      else recordJars(dir, jars, hashed, hostCache.stamp, hostCache::sha256)
+    return Prepared(sharedDescriptor, dir, changed)
   }
 
   /**
@@ -130,14 +136,18 @@ internal object BazelKeepDaemon {
   /**
    * Records [jars]' stamps in [dir] and returns one that changed since the last record, or null on
    * the first run or when none did. A jar in [contentHashed] (the project's own, which an edit
-   * rebuilds) is stamped by content, since a cache restore can replace one keeping its size and
-   * mtime; the rest, ~300 dependency jars, by size and mtime, as hashing them per render would cost
-   * more than the reload it decides.
+   * rebuilds) is stamped by content via [hash], since a cache restore can replace one keeping its
+   * size and mtime. The rest, ~300 dependency jars, are stamped by [stamp] when it is content
+   * addressed (a FUSE digest attribute, free to read, unmoved by a remount that rotates mtimes),
+   * and otherwise by size and mtime, as hashing them per render would cost more than the reload it
+   * decides.
    */
   internal fun recordJars(
     dir: File,
     jars: List<String>,
     contentHashed: Set<String> = emptySet(),
+    stamp: (File) -> FileStamp? = { null },
+    hash: (File) -> String = ::sha256,
   ): String? {
     val file = dir.resolve(JARS_FILE)
     val previous = runCatching {
@@ -146,8 +156,13 @@ internal object BazelKeepDaemon {
       .getOrNull()
     val current = jars.associateWith { path ->
       val jar = File(path)
-      if (File(path).absolutePath in contentHashed && jar.isFile) "sha256:${sha256(jar)}"
-      else "${jar.length()}:${jar.lastModified()}"
+      when {
+        !jar.isFile -> "${jar.length()}:${jar.lastModified()}"
+        jar.absolutePath in contentHashed -> "sha256:${hash(jar)}"
+        else ->
+          stamp(jar)?.takeIf { it.contentAddressed }?.text
+            ?: "${jar.length()}:${jar.lastModified()}"
+      }
     }
     file.writeText(json.encodeToString(current))
     if (previous == null) return null
