@@ -51,18 +51,30 @@ scope = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(scope)
 
 
-def resolve(files: list[str], config: dict, projects: list[dict], workspace: Path) -> str:
+def resolve(
+    files: list[str],
+    config: dict,
+    projects: list[dict],
+    workspace: Path,
+    why: list[str] | None = None,
+) -> str:
+    """`why`, when given, collects one line per decision so the job summary can say why
+    a test did or did not run without anyone re-deriving it from this script."""
+    note = why.append if why is not None else (lambda _line: None)
     ignored = [scope.glob_to_regex(str(p)) for p in config.get("ignorePaths", [])]
     global_paths = [scope.glob_to_regex(str(p)) for p in config.get("globalPaths", [])]
     if not files:
+        note("No changed files could be listed: running the full suite.")
         return "full"
     relevant = []
     for path in files:
         if any(pattern.match(path) for pattern in global_paths):
+            note(f"`{path}` is a global build input: running the full suite.")
             return "full"
         if not any(pattern.match(path) for pattern in ignored):
             relevant.append(path)
     if not relevant:
+        note(f"All {len(files)} changed file(s) match `ignorePaths`: no module tests.")
         return "none"
 
     ws = workspace.resolve()
@@ -82,11 +94,19 @@ def resolve(files: list[str], config: dict, projects: list[dict], workspace: Pat
             None,
         )
         if owner is None:
+            note(f"`{path}` belongs to no Gradle project: running the full suite.")
             return "full"
         changed.add(owner)
 
     affected = scope.reverse_closure(changed, projects)
     excluded = set(config.get("excludeProjects", []))
+    note(f"Changed projects: {', '.join(f'`{p}`' for p in sorted(changed))}.")
+    dependents = sorted(affected - changed - excluded)
+    if dependents:
+        note(f"Their dependents: {', '.join(f'`{p}`' for p in dependents)}.")
+    skipped = sorted(affected & excluded)
+    if skipped:
+        note(f"Excluded by `excludeProjects`: {', '.join(f'`{p}`' for p in skipped)}.")
     selected = [
         project
         for project in projects
@@ -125,11 +145,30 @@ def main() -> int:
             workspace / ".github/actions/apply/scope-project-graph.init.gradle",
             300,
         )
-        print(resolve(files, config, projects, workspace))
+        why: list[str] = []
+        result = resolve(files, config, projects, workspace, why)
     except Exception as error:  # noqa: BLE001 - fail-open is the contract
         print(f"affected-gradle-tests: {error}; running full suite", file=sys.stderr)
-        print("full")
+        why = [f"The resolver failed (`{error}`): running the full suite."]
+        result = "full"
+    write_summary(result, why)
+    print(result)
     return 0
+
+
+def write_summary(result: str, why: list[str]) -> None:
+    """Best-effort: a summary that cannot be written must never change the task list."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    lines = ["### Module Unit Tests scope", ""] + [f"- {line}" for line in why]
+    if result not in ("full", "none"):
+        lines += ["", "Tasks:", ""] + [f"- `{t}`" for t in result.split()]
+    try:
+        with open(path, "a", encoding="utf-8") as summary:
+            summary.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
