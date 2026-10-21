@@ -663,6 +663,110 @@ class BazelBuildTest {
   }
 
   @Test
+  fun `query gets the Starlark language flags of buildArgs, and only those`() {
+    assertEquals(
+      listOf(
+        "--nocheck_bzl_visibility",
+        "--incompatible_disallow_empty_glob=false",
+        "--experimental_google_legacy_api",
+        "--noenable_workspace",
+        "--experimental_builtins_bzl_path",
+        "%bundled%",
+        "--experimental_builtins_injection_override",
+        "-foo",
+      ),
+      bazelQueryLanguageArgs(
+        listOf(
+          "--config=desktop",
+          "--nocheck_bzl_visibility",
+          "--remote_download_outputs=toplevel",
+          "--incompatible_disallow_empty_glob=false",
+          "--experimental_google_legacy_api",
+          "--noenable_workspace",
+          "--jobs",
+          "8",
+          "--experimental_builtins_bzl_path",
+          "%bundled%",
+          "--experimental_builtins_injection_override",
+          "-foo",
+          "--keep_going",
+        )
+      ),
+    )
+  }
+
+  @Test
+  fun `every query runs with the build's language flags, or the configured queryArgs`() {
+    val root = Files.createTempDirectory("bazel-query-args").toFile()
+    try {
+      root.resolve("app").mkdirs()
+      root.resolve("app/BUILD.bazel").writeText("")
+      val queries = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("query" in argv) {
+          queries += argv
+          "//app:ui\n"
+        } else ""
+      }
+      val config = BazelBuildConfig(buildArgs = listOf("--nocheck_bzl_visibility", "--jobs=8"))
+      build.expandTargets(root, listOf("//app/..."), config, 9)
+      build.selectTargets(root, root.resolve("app"), config, 9)
+      build.splitAndroid(root, listOf("//app:ui"), config, 9)
+      assertTrue(queries.size >= 3, queries.toString())
+      queries.forEach {
+        assertEquals(listOf("bazel", "query", "--nocheck_bzl_visibility"), it.take(3))
+        assertTrue("--jobs=8" !in it, it.toString())
+      }
+
+      queries.clear()
+      build.expandTargets(
+        root,
+        listOf("//app/..."),
+        config.copy(queryArgs = listOf("--check_bzl_visibility=false")),
+        9,
+      )
+      assertEquals(
+        listOf("bazel", "query", "--check_bzl_visibility=false"),
+        queries.single().take(3),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a forwarded flag query rejects is dropped and the query run again`() {
+    val root = Files.createTempDirectory("bazel-query-retry").toFile()
+    try {
+      val queries = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        queries += argv
+        if ("--incompatible_build_only" in argv) {
+          throw BazelCommandFailed(BAZEL_COMMAND_LINE_ERROR, "Unrecognized option")
+        }
+        "//app:ui\n"
+      }
+      val config = BazelBuildConfig(buildArgs = listOf("--incompatible_build_only"))
+      assertEquals(listOf("//app:ui"), build.expandTargets(root, listOf("//app/..."), config, 9))
+      assertEquals(2, queries.size)
+      assertEquals(listOf("bazel", "query"), queries.last().take(2))
+      assertTrue("--incompatible_build_only" !in queries.last())
+
+      // A configured queryArgs is the user's choice: its failure is reported, not retried.
+      assertFailsWith<BazelCommandFailed> {
+        build.expandTargets(
+          root,
+          listOf("//app/..."),
+          BazelBuildConfig(queryArgs = listOf("--incompatible_build_only")),
+          9,
+        )
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `outside any package the selection is everything below the directory`() {
     val root = Files.createTempDirectory("bazel-nopkg").toFile()
     try {

@@ -35,6 +35,13 @@ internal data class BazelBuildConfig(
   val startupArgs: List<String> = emptyList(),
   /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
   val buildArgs: List<String> = emptyList(),
+  /**
+   * Arguments `bazel query` gets, after `query`, when a pattern or a directory is expanded. Null
+   * forwards the Starlark language flags in [buildArgs] ([bazelQueryLanguageArgs]): a `query` run
+   * without them changes Bazel's `BuildLanguageOptions`, and Bazel discards its analysis cache once
+   * for the query and again for the build that follows (#6175).
+   */
+  val queryArgs: List<String>? = null,
   val aspect: String = DEFAULT_BAZEL_ASPECT,
   /**
    * Where the installed Android aspect's shims load their providers from, for a deployment whose
@@ -410,8 +417,11 @@ internal object BazelProcess {
         check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
           "Build command timed out after ${timeoutSeconds}s"
         }
-        check(process.exitValue() == 0) {
-          "Build command exited ${process.exitValue()}: ${output.readText().takeLast(8000)}"
+        if (process.exitValue() != 0) {
+          throw BazelCommandFailed(
+            process.exitValue(),
+            "Build command exited ${process.exitValue()}: ${output.readText().takeLast(8000)}",
+          )
         }
         return output.readText()
       } catch (e: InterruptedException) {
@@ -426,6 +436,51 @@ internal object BazelProcess {
       output.delete()
     }
   }
+}
+
+/** A build-tool command that ran and exited [exitCode], not zero. */
+internal class BazelCommandFailed(val exitCode: Int, message: String) :
+  IllegalStateException(message)
+
+/** Bazel's exit code for a command line it rejects: an unknown option, for one. */
+internal const val BAZEL_COMMAND_LINE_ERROR: Int = 2
+
+/**
+ * The flags in [buildArgs] that set Bazel's `BuildLanguageOptions` — Starlark semantics, which
+ * `query` and `build` must agree on or Bazel discards its analysis cache between them (#6175):
+ * `--[no]check_bzl_visibility`, `--[no]incompatible_*`, `--[no]experimental_*` and
+ * `--[no]enable_bzlmod` / `--[no]enable_workspace`, in the `=value` form or followed by a value
+ * (which may start with `-`; the next token starting `--` is another option). Some `incompatible_`
+ * and `experimental_` flags are build-only; [BazelBuild] runs the query again without these when
+ * `query` rejects its command line.
+ */
+internal fun bazelQueryLanguageArgs(buildArgs: List<String>): List<String> {
+  fun languageFlag(arg: String): Boolean {
+    if (!arg.startsWith("--")) return false
+    val name = arg.removePrefix("--").substringBefore('=').removePrefix("no")
+    return name == "check_bzl_visibility" ||
+      name == "enable_bzlmod" ||
+      name == "enable_workspace" ||
+      name.startsWith("incompatible_") ||
+      name.startsWith("experimental_")
+  }
+  val out = mutableListOf<String>()
+  var i = 0
+  while (i < buildArgs.size) {
+    val arg = buildArgs[i]
+    if (languageFlag(arg)) {
+      out += arg
+      val value = buildArgs.getOrNull(i + 1)
+      // A value may itself start with `-` (`--experimental_builtins_injection_override -foo`);
+      // the next option starts with `--`, as every flag in buildArgs does.
+      if ('=' !in arg && value != null && !value.startsWith("--")) {
+        out += value
+        i++
+      }
+    }
+    i++
+  }
+  return out
 }
 
 /**
@@ -549,6 +604,35 @@ internal class BazelBuild(
   private val execute: (List<String>, File, Long) -> String = BazelProcess::run
 ) {
   /**
+   * `bazel query [expression] --output=label`, with [BazelBuildConfig.queryArgs], or else the
+   * language flags of [BazelBuildConfig.buildArgs] ([bazelQueryLanguageArgs]). Forwarded flags that
+   * `query` rejects as a command line are dropped and the query run once more without them.
+   */
+  private fun query(
+    root: File,
+    expression: String,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+  ): String {
+    val invocation = config.buildCommand + config.startupArgs + listOf("query")
+    val explicit = config.queryArgs
+    val args = explicit ?: bazelQueryLanguageArgs(config.buildArgs)
+    fun run(args: List<String>) =
+      execute(invocation + args + listOf(expression, "--output=label"), root, timeoutSeconds)
+    return try {
+      run(args)
+    } catch (e: BazelCommandFailed) {
+      if (explicit != null || args.isEmpty() || e.exitCode != BAZEL_COMMAND_LINE_ERROR) throw e
+      System.err.println(
+        "[bazel] query rejected the language flags from buildArgs (${args.joinToString(" ")}); " +
+          "querying without them, which costs Bazel its analysis cache. Set queryArgs in " +
+          ".compose-preview/bazel.json to the ones query accepts."
+      )
+      run(emptyList())
+    }
+  }
+
+  /**
    * The targets of the nearest package at or above [directory], like `//pkg:all`: every rule there
    * of the aspect's kinds ([BazelBuildConfig.targetKinds]); outside any package, everything below
    * [directory] (`//dir/...`). A configured `target`, then `targets`, wins.
@@ -575,13 +659,7 @@ internal class BazelBuild(
         val path = pkg.relativeTo(root).invariantSeparatorsPath
         val kinds = config.targetKinds ?: defaultTargetKinds(config.aspect)
         val targets =
-          execute(
-              config.buildCommand +
-                config.startupArgs +
-                listOf("query", "kind('$kinds', //$path:*)", "--output=label"),
-              root,
-              timeoutSeconds,
-            )
+          query(root, "kind('$kinds', //$path:*)", config, timeoutSeconds)
             .lineSequence()
             .map { it.trim() }
             .filter { it.startsWith("//") || it.startsWith("@") }
@@ -646,11 +724,7 @@ internal class BazelBuild(
     val expression =
       "(${selected.joinToString(" + ")})" + excluded.joinToString("") { " - \"$it\"" }
     val targets =
-      execute(
-          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
-          root,
-          timeoutSeconds,
-        )
+      query(root, expression, config, timeoutSeconds)
         .lineSequence()
         .map { it.trim() }
         .filter { it.startsWith("//") || it.startsWith("@") }
@@ -681,11 +755,7 @@ internal class BazelBuild(
     timeoutSeconds: Long,
   ): Pair<List<String>, List<String>> {
     fun query(expression: String): Set<String> =
-      execute(
-          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
-          root,
-          timeoutSeconds,
-        )
+      query(root, expression, config, timeoutSeconds)
         .lineSequence()
         .map { it.trim() }
         .filter { it.startsWith("//") || it.startsWith("@") }
