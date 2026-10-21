@@ -672,6 +672,8 @@ class BazelBuildTest {
         "--noenable_workspace",
         "--experimental_builtins_bzl_path",
         "%bundled%",
+        "--experimental_builtins_injection_override",
+        "-foo",
       ),
       bazelQueryLanguageArgs(
         listOf(
@@ -685,6 +687,9 @@ class BazelBuildTest {
           "8",
           "--experimental_builtins_bzl_path",
           "%bundled%",
+          "--experimental_builtins_injection_override",
+          "-foo",
+          "--keep_going",
         )
       ),
     )

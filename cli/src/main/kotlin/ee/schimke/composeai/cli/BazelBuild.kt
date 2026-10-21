@@ -449,9 +449,10 @@ internal const val BAZEL_COMMAND_LINE_ERROR: Int = 2
  * The flags in [buildArgs] that set Bazel's `BuildLanguageOptions` — Starlark semantics, which
  * `query` and `build` must agree on or Bazel discards its analysis cache between them (#6175):
  * `--[no]check_bzl_visibility`, `--[no]incompatible_*`, `--[no]experimental_*` and
- * `--[no]enable_bzlmod` / `--[no]enable_workspace`, in the `=value` form or followed by a value.
- * Some `incompatible_` and `experimental_` flags are build-only; [BazelBuild] runs the query again
- * without these when `query` rejects its command line.
+ * `--[no]enable_bzlmod` / `--[no]enable_workspace`, in the `=value` form or followed by a value
+ * (which may start with `-`; the next token starting `--` is another option). Some `incompatible_`
+ * and `experimental_` flags are build-only; [BazelBuild] runs the query again without these when
+ * `query` rejects its command line.
  */
 internal fun bazelQueryLanguageArgs(buildArgs: List<String>): List<String> {
   fun languageFlag(arg: String): Boolean {
@@ -470,7 +471,9 @@ internal fun bazelQueryLanguageArgs(buildArgs: List<String>): List<String> {
     if (languageFlag(arg)) {
       out += arg
       val value = buildArgs.getOrNull(i + 1)
-      if ('=' !in arg && value != null && !value.startsWith("-")) {
+      // A value may itself start with `-` (`--experimental_builtins_injection_override -foo`);
+      // the next option starts with `--`, as every flag in buildArgs does.
+      if ('=' !in arg && value != null && !value.startsWith("--")) {
         out += value
         i++
       }
