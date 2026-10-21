@@ -467,7 +467,9 @@ composeai-contracts = "3.37.0"
 # #6150), and renders `@Preview` functions declared inside an `object` or class (#343).
 # 3.21.3 loads prebuilt classes whose LocalVariableTable repeats a row, which HotSpot's verifier
 # otherwise rejects with ClassFormatError (compose-preview-daemon#347, #6161).
-composeai-preview-daemon = "3.21.3"
+# 3.21.4 also removes the duplicate rows Robolectric's constructor instrumentation writes, which the
+# sandbox defines directly — Wear Compose Material's `Shapes` (compose-preview-daemon#350, #6161).
+composeai-preview-daemon = "3.21.4"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
