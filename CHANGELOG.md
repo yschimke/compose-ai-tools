@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.70.7](https://github.com/yschimke/compose-ai-tools/compare/v2.70.6...v2.70.7) (2026-10-21)
+
+
+### Bug Fixes
+
+* refuse certificates from the CVE-2026-111943 CAs ([#6171](https://github.com/yschimke/compose-ai-tools/issues/6171)) ([94c6711](https://github.com/yschimke/compose-ai-tools/commit/94c6711c458579bfb8bf2e83f99875f2a5eb5f9b))
+* render with compose-preview-daemon 3.21.4 ([#6177](https://github.com/yschimke/compose-ai-tools/issues/6177)) ([0cbfe73](https://github.com/yschimke/compose-ai-tools/commit/0cbfe73d051a0534479c90af153931a42c9fb402))
+
+
+### Performance Improvements
+
+* pass buildArgs' Starlark language flags to bazel query ([#6176](https://github.com/yschimke/compose-ai-tools/issues/6176)) ([8f2ee82](https://github.com/yschimke/compose-ai-tools/commit/8f2ee829b70070cd87d557e4ecef9c745fa0776f))
+
 ## [2.70.6](https://github.com/yschimke/compose-ai-tools/compare/v2.70.5...v2.70.6) (2026-10-20)
 
 
