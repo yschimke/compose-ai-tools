@@ -207,6 +207,16 @@ version or wrapper might reject. Flags worth configuring:
 | `--norun_validations` | Validation actions say nothing about renderability; skipping them shortens the build. |
 | `--tool_tag=compose-preview` | Attributes these invocations in build-event and remote-execution logs. |
 
+Expanding a pattern (`//app/...`) or a directory runs `bazel query` before the
+build. It gets the Starlark language flags from `buildArgs` —
+`--[no]check_bzl_visibility`, `--[no]incompatible_*`, `--[no]experimental_*`,
+`--[no]enable_bzlmod` and `--[no]enable_workspace` — because a `query` and a
+`build` that disagree on them make Bazel discard its analysis cache, once for
+each, on every run. A forwarded flag that `query` rejects (some `incompatible_`
+and `experimental_` flags are build-only) is dropped with a warning and the
+query run again. To choose exactly what `query` gets, set `queryArgs`, which is
+then passed verbatim and never retried.
+
 BEP outputs reported with a non-`file` URI (for example `bytestream://` from a
 remote cache) are resolved through their `pathPrefix` and `name` against
 `info execution_root`; only an output that is absent there fails.
