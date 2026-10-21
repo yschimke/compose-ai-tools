@@ -478,6 +478,7 @@ public class OpenRouterClient(
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(requestTimeout)
         .callTimeout(requestTimeout)
+        .hostnameVerifier(ForbiddenCertificatesHostnameVerifier())
         .build()
 
     private val DEFAULT_HTTP: OkHttpClient by lazy { httpClient() }

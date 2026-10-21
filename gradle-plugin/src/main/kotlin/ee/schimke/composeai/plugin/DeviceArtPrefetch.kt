@@ -61,6 +61,7 @@ object DeviceArtPrefetch {
         .readTimeout(timeout)
         .callTimeout(timeout)
         .retryOnConnectionFailure(true)
+        .hostnameVerifier(ForbiddenCertificatesHostnameVerifier())
         .build()
     for (artId in needed) {
       for (resource in FRAMES.getValue(artId)) {

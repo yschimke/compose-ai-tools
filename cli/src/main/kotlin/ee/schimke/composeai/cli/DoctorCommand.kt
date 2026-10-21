@@ -5,7 +5,6 @@ import ee.schimke.composeai.plugin.tooling.ModuleInfo
 import ee.schimke.composeai.previewdriver.GradleAccessFailure
 import ee.schimke.composeai.previewdriver.GradleConnection
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.head
 import io.ktor.client.request.header
@@ -1515,21 +1514,20 @@ class DoctorCommand(
     }
 
   /** Client for doctor's one-shot HEAD probes: 3s timeouts, one client per probe. */
-  private fun httpProbeClient(followRedirects: Boolean = true): HttpClient =
-    HttpClient(OkHttp) {
-      // Off for reachability probes, on for the version check; set on both Ktor config and engine.
-      this.followRedirects = followRedirects
-      engine {
-        config {
-          followRedirects(followRedirects)
-          followSslRedirects(followRedirects)
-        }
-      }
-      install(HttpTimeout) {
-        connectTimeoutMillis = 3_000
-        requestTimeoutMillis = 3_000
+  private fun httpProbeClient(followRedirects: Boolean = true): HttpClient = ktorOkHttpClient {
+    // Off for reachability probes, on for the version check; set on both Ktor config and engine.
+    this.followRedirects = followRedirects
+    engine {
+      config {
+        followRedirects(followRedirects)
+        followSslRedirects(followRedirects)
       }
     }
+    install(HttpTimeout) {
+      connectTimeoutMillis = 3_000
+      requestTimeoutMillis = 3_000
+    }
+  }
 
   /** Module path without the leading `:` (`:samples:wear` → `samples:wear`) for check ids. */
   private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }

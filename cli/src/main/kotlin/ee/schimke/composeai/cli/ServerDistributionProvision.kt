@@ -1,8 +1,6 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.composeAiCacheDir
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
@@ -85,7 +83,7 @@ internal object ServerDistributionProvision {
   private val defaultFetcher = Fetcher { url, dest ->
     // A backstop: every caller refuses earlier, with a remedy specific to what it fetches.
     NetworkPolicy.require("Downloading $url", "Pre-provision the file it names.")
-    HttpClient(OkHttp).use { client ->
+    ktorOkHttpClient().use { client ->
       runBlocking {
         client.prepareGet(url).execute { response ->
           if (!response.status.isSuccess()) error("HTTP ${response.status.value}")
