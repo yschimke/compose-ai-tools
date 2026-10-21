@@ -1514,20 +1514,14 @@ class DoctorCommand(
     }
 
   /** Client for doctor's one-shot HEAD probes: 3s timeouts, one client per probe. */
-  private fun httpProbeClient(followRedirects: Boolean = true): HttpClient = ktorOkHttpClient {
-    // Off for reachability probes, on for the version check; set on both Ktor config and engine.
-    this.followRedirects = followRedirects
-    engine {
-      config {
-        followRedirects(followRedirects)
-        followSslRedirects(followRedirects)
+  private fun httpProbeClient(followRedirects: Boolean = true): HttpClient =
+    // Redirects off for reachability probes, on for the version check.
+    ktorOkHttpClient(followRedirects) {
+      install(HttpTimeout) {
+        connectTimeoutMillis = 3_000
+        requestTimeoutMillis = 3_000
       }
     }
-    install(HttpTimeout) {
-      connectTimeoutMillis = 3_000
-      requestTimeoutMillis = 3_000
-    }
-  }
 
   /** Module path without the leading `:` (`:samples:wear` → `samples:wear`) for check ids. */
   private fun idSafe(modulePath: String): String = modulePath.removePrefix(":").ifEmpty { "root" }

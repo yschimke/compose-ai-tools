@@ -1,16 +1,13 @@
 package ee.schimke.composeai.bundle.coordinates
 
 import io.ktor.client.HttpClient
-import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.engine.okhttp.OkHttpConfig
-import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 
 /**
- * This module's one [OkHttpClient]. Callers needing other timeouts or redirect rules derive a
- * variant with [OkHttpClient.newBuilder], which shares its connection pool rather than opening its
- * own. Carries [ForbiddenCertificatesHostnameVerifier].
+ * This module's one [OkHttpClient], and the one Ktor engine over it. Carries
+ * [ForbiddenCertificatesHostnameVerifier].
  */
 internal object SharedOkHttpClient {
   val client: OkHttpClient by lazy {
@@ -18,16 +15,12 @@ internal object SharedOkHttpClient {
   }
 
   /**
-   * [client] for a Ktor engine's `preconfigured`, with a dispatcher of its own: closing a Ktor
-   * client shuts down its engine's dispatcher, which would otherwise stop [client] for every other
-   * caller.
+   * Never closed: closing an OkHttp engine shuts down its client's dispatcher and evicts its
+   * connection pool, which here are [client]'s. An [HttpClient] built on an engine instance doesn't
+   * own it, so closing that client is safe.
    */
-  fun forKtor(): OkHttpClient = client.newBuilder().dispatcher(Dispatcher()).build()
+  val ktorEngine: HttpClientEngine by lazy { OkHttp.create { preconfigured = client } }
 }
 
-/** A Ktor client on [SharedOkHttpClient]. */
-internal fun ktorOkHttpClient(block: HttpClientConfig<OkHttpConfig>.() -> Unit = {}): HttpClient =
-  HttpClient(OkHttp) {
-    engine { preconfigured = SharedOkHttpClient.forKtor() }
-    block()
-  }
+/** A Ktor client on [SharedOkHttpClient]; closing it leaves the shared engine running. */
+internal fun ktorOkHttpClient(): HttpClient = HttpClient(SharedOkHttpClient.ktorEngine)
