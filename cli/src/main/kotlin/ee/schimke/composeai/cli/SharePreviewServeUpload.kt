@@ -33,11 +33,7 @@ internal class ServeImageUploader(
   /** The host's own browse token (`--token`), for a serve box that isn't `--public`. */
   private val hostToken: String? = null,
   private val client: OkHttpClient =
-    OkHttpClient.Builder()
-      .followRedirects(false)
-      .followSslRedirects(false)
-      .hostnameVerifier(ForbiddenCertificatesHostnameVerifier())
-      .build(),
+    SharedOkHttpClient.client.newBuilder().followRedirects(false).followSslRedirects(false).build(),
 ) {
 
   private val base = baseUrl.trimEnd('/')

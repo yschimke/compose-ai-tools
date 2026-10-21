@@ -14,8 +14,8 @@ import okio.ByteString.Companion.decodeHex
  *
  * For when the platform's trusted roots still chain to certificates later found untrustworthy, as
  * with CVE-2026-111943: an intermediate CA's keys leaked, and JDK trust stores won't drop it until
- * the JDK in use is updated. Every OkHttp client here installs it; drop it once OkHttp ships its
- * own denylist. Copied per module rather than shared so it stays off every published API.
+ * the JDK in use is updated. [SharedOkHttpClient] installs it; drop it once OkHttp ships its own
+ * denylist. Copied per module rather than shared so it stays off every published API.
  *
  * From https://gist.github.com/swankjesse/de8828e357a4d3fc8ebe1ca14ec2bc9f.
  */

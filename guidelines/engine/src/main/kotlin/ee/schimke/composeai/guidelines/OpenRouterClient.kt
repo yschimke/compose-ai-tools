@@ -474,11 +474,11 @@ public class OpenRouterClient(
      * call can be bounded.
      */
     public fun httpClient(requestTimeout: Duration = DEFAULT_REQUEST_TIMEOUT): OkHttpClient =
-      OkHttpClient.Builder()
+      SharedOkHttpClient.client
+        .newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(requestTimeout)
         .callTimeout(requestTimeout)
-        .hostnameVerifier(ForbiddenCertificatesHostnameVerifier())
         .build()
 
     private val DEFAULT_HTTP: OkHttpClient by lazy { httpClient() }
