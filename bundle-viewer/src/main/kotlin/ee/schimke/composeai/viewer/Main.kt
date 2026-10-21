@@ -32,8 +32,6 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
@@ -267,7 +265,7 @@ private fun resolveBundleArg(arg: String): Path? {
     temp.toFile().deleteOnExit()
     runBlocking {
       val ok =
-        HttpClient(OkHttp).use { client ->
+        ktorOkHttpClient().use { client ->
           client.prepareGet(uri.toString()).execute { response ->
             if (response.status.isSuccess()) {
               SystemFileSystem.sink(temp).buffer().use { sink ->

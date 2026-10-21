@@ -3,8 +3,6 @@ package ee.schimke.composeai.bundle.coordinates
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
@@ -254,7 +252,7 @@ public class CoordinateResolver(
   /** GET [url] as text, or null on a non-2xx / transport error. */
   private fun fetchText(url: String): String? =
     try {
-      HttpClient(OkHttp).use { client ->
+      ktorOkHttpClient().use { client ->
         runBlocking {
           client.prepareGet(url).execute { response ->
             if (response.status.isSuccess()) response.bodyAsText() else null
@@ -319,7 +317,7 @@ public class CoordinateResolver(
     return try {
       dest.parentFile?.mkdirs()
       val failure =
-        HttpClient(OkHttp).use { client ->
+        ktorOkHttpClient().use { client ->
           runBlocking {
             client.prepareGet(url).execute { response ->
               if (response.status.isSuccess()) {

@@ -25,6 +25,7 @@ internal class AgentAccessClient(
       .followRedirects(false)
       .followSslRedirects(false)
       .callTimeout(30, TimeUnit.SECONDS)
+      .hostnameVerifier(ForbiddenCertificatesHostnameVerifier())
       .build(),
 ) {
 
