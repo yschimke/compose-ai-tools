@@ -984,8 +984,8 @@ internal object ComposePreviewTasks {
   /**
    * Stage-2 BTA wiring for the desktop daemon-start task; [setupBtaConfigurations] must run first.
    *
-   * The Kotlin version comes from `libs.versions.toml`; other consumers get a fallback. TODO: use
-   * KGP's `KotlinPluginWrapper.kotlinPluginVersion` once we take a compile-time KGP dependency.
+   * The Kotlin version is the consumer's applied Kotlin Gradle plugin's; see
+   * [resolveConsumerKotlinVersion].
    */
   private fun wireDesktopBtaInputs(
     project: Project,
@@ -1113,21 +1113,43 @@ internal object ComposePreviewTasks {
       .any { name -> project.configurations.getByName(name).dependencies.isNotEmpty() }
 
   /**
-   * The consumer's Kotlin version from `libs.versions.toml`. The BTA impl must exactly match the
-   * compiler version. Falls back to [KOTLIN_VERSION_FALLBACK] (our bundled Kotlin), which is wrong
-   * for arbitrary consumers; follow-up: use KGP's `kotlinPluginVersion`.
+   * The consumer's Kotlin compiler version, which the BTA impl must match exactly. The applied
+   * Kotlin Gradle plugin is the authority; the `libs` catalog's `kotlin` version and then
+   * [KOTLIN_VERSION_FALLBACK] cover a build where it can't be read.
    */
-  private fun resolveConsumerKotlinVersion(project: Project): String {
+  private fun resolveConsumerKotlinVersion(project: Project): String =
+    kotlinPluginVersion(project) ?: catalogKotlinVersion(project) ?: KOTLIN_VERSION_FALLBACK
+
+  /**
+   * KGP's `getKotlinPluginVersion`, loaded through an applied Kotlin plugin's own class loader: KGP
+   * applied from a buildscript this plugin's class loader can't see is still found. No compile
+   * dependency on KGP.
+   */
+  private fun kotlinPluginVersion(project: Project): String? =
+    project.plugins
+      .map { it.javaClass.classLoader }
+      .filter { it != null }
+      .distinct()
+      .firstNotNullOfOrNull { loader ->
+        runCatching {
+          Class.forName("org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt", false, loader)
+            .getMethod("getKotlinPluginVersion", Project::class.java)
+            .invoke(null, project) as? String
+        }
+          .getOrNull()
+          ?.takeIf { it.isNotBlank() }
+      }
+
+  private fun catalogKotlinVersion(project: Project): String? {
     val catalogs =
       project.extensions.findByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java)
-        ?: return KOTLIN_VERSION_FALLBACK
-    val catalog =
-      runCatching { catalogs.named("libs") }.getOrNull() ?: return KOTLIN_VERSION_FALLBACK
-    return catalog.findVersion("kotlin").orElse(null)?.requiredVersion ?: KOTLIN_VERSION_FALLBACK
+        ?: return null
+    val catalog = runCatching { catalogs.named("libs") }.getOrNull() ?: return null
+    return catalog.findVersion("kotlin").orElse(null)?.requiredVersion
   }
 
   /** See [resolveConsumerKotlinVersion]. Bumped in lockstep with the plugin's own KGP. */
-  private const val KOTLIN_VERSION_FALLBACK = "2.3.21"
+  private const val KOTLIN_VERSION_FALLBACK = "2.4.21"
 
   /**
    * `composePreview.tier`: `"fast"` (case-insensitive) skips captures above [HEAVY_COST_THRESHOLD];
