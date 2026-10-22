@@ -85,11 +85,11 @@ class HostFramedWearWidgetDocumentTest {
     }
     assertThat(HostFramedWearWidgetDocument.HostFrame.valuesOf(round))
       .containsExactly(
-        "wear.widget.horizontalPaddingDp",
+        "wear.container.horizontal_padding",
         round.horizontalPaddingDp,
-        "wear.widget.verticalPaddingDp",
+        "wear.container.vertical_padding",
         round.verticalPaddingDp,
-        "wear.widget.cornerRadiusDp",
+        "wear.container.corner_radius",
         round.cornerRadiusDp,
       )
   }

@@ -87,12 +87,14 @@ class HostFramedWearWidgetDocument(
 
   /**
    * The host frame values a [HostFramedWearWidgetDocument] declares, in dp, each a `USER` float
-   * named [valueName] (`USER:<valueName>` in the document).
+   * named [valueName] (`USER:<valueName>` in the document). The names are the ones
+   * homeassistant-remotecompose's `WearWidgetTemplate` writes a watch's `WearWidgetParams` into, so
+   * its `instantiate` plays a document exported with this one unchanged.
    */
   enum class HostFrame(val valueName: String) {
-    HorizontalPadding("wear.widget.horizontalPaddingDp"),
-    VerticalPadding("wear.widget.verticalPaddingDp"),
-    CornerRadius("wear.widget.cornerRadiusDp");
+    HorizontalPadding("wear.container.horizontal_padding"),
+    VerticalPadding("wear.container.vertical_padding"),
+    CornerRadius("wear.container.corner_radius");
 
     /** This value in [params]: what a device writes in for its own host. */
     fun of(params: WearWidgetParams): Float =
