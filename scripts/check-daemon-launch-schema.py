@@ -213,8 +213,13 @@ KT_SERIAL_NAME = re.compile(r'@SerialName\s*\(\s*"([^"]*)"\s*\)')
 # written at all. Rather than adding a rule per annotation as each is thought of, nothing is
 # allowed on these properties unless it is listed here — so the next one has to be considered
 # rather than slipping through.
+#
+# `@OptIn` only silences a compiler warning. `@EncodeDefault` does change the wire, which is why it
+# is allowed only alongside `wire_annotations`: its text, mode included, is folded into the field's
+# token in the fingerprint, so flipping `NEVER` to `ALWAYS` is a shape change like any other.
 KT_PROPERTY_ANNOTATION = re.compile(r"@(\w+)")
-ALLOWED_DTO_ANNOTATIONS: frozenset[str] = frozenset()
+KT_WIRE_ANNOTATION = re.compile(r"@(EncodeDefault)\b\s*(\([^)]*\))?")
+ALLOWED_DTO_ANNOTATIONS: frozenset[str] = frozenset({"OptIn", "EncodeDefault"})
 
 
 def split_params(body: str) -> list[str]:
@@ -323,6 +328,25 @@ def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
         for annotation in KT_PROPERTY_ANNOTATION.findall(param):
             if annotation not in ALLOWED_DTO_ANNOTATIONS:
                 found.append((field.group(1), annotation))
+    return found
+
+
+def wire_annotations(rel: str, name: str) -> dict[str, str]:
+    """`{field: "@EncodeDefault(...)"}` for the annotations of `name` that change what is emitted."""
+    text = stripped(rel)
+    m = data_class_header(text, name)
+    if not m:
+        return {}
+    found = {}
+    for param in split_params(balanced(text, m.end() - 1, "(", ")")):
+        field = KT_FIELD.search(param)
+        if not field:
+            continue
+        tokens = [
+            "@" + a + re.sub(r"\s+", "", args or "") for a, args in KT_WIRE_ANNOTATION.findall(param)
+        ]
+        if tokens:
+            found[field.group(1)] = "".join(tokens)
     return found
 
 
@@ -541,7 +565,7 @@ def check_raw_key_readers(
             )
 
 
-NESTED_DTOS = ("BtaCompileConfig",)
+NESTED_DTOS = ("BtaCompileConfig", "SourceWatch")
 
 
 def emitted_shape(writer: dict[str, tuple[str, bool]], allowlist: dict) -> dict:
@@ -568,23 +592,16 @@ def wire_shape(writer: dict[str, tuple[str, bool]]) -> str:
     the digest held steady, and the field-for-field check passed too because both languages had been
     edited together. The nested shapes are part of the format, so they are part of its identity.
     """
-    parts = [
-        ";".join(
-            f"{name}:{type_}{'?' if has_default else ''}"
-            for name, (type_, has_default) in writer.items()
+    def fields(shape: dict[str, tuple[str, bool]], annotations: dict[str, str]) -> str:
+        return ";".join(
+            f"{name}:{type_}{'?' if has_default else ''}{annotations.get(name, '')}"
+            for name, (type_, has_default) in shape.items()
         )
-    ]
+
+    parts = [fields(writer, wire_annotations(WRITER, "DaemonClasspathDescriptor"))]
     for dto in NESTED_DTOS:
         nested = kotlin_data_class(WRITER, dto)
-        parts.append(
-            dto
-            + "{"
-            + ";".join(
-                f"{name}:{type_}{'?' if has_default else ''}"
-                for name, (type_, has_default) in nested.items()
-            )
-            + "}"
-        )
+        parts.append(dto + "{" + fields(nested, wire_annotations(WRITER, dto)) + "}")
     return "|".join(parts)
 
 

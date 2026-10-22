@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemonlaunch
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -57,8 +59,12 @@ public data class DaemonClasspathDescriptor(
   /**
    * Where the module's sources, resources and build files are, so a tool that notices edits on its
    * own (the MCP server's source scan) looks where the build actually reads; see [SourceWatch].
-   * Optional, and ignored by readers that predate it, so it needs no [schemaVersion] bump.
+   * Added to schema 2 without a bump. Released readers ignore unknown keys, except older copies of
+   * [DaemonLaunchBuilder.decode]; those never see the key from a build that sets no source dirs,
+   * because a null value is left out rather than written as `null`.
    */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
   public val sourceWatch: SourceWatch? = null,
 )
 

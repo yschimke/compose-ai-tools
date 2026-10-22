@@ -2706,6 +2706,15 @@ internal object AndroidPreviewSupport {
           layers.map { all -> all.flatten().map { it.asFile.absolutePath } }
         )
       }
+      variant.sources.resources?.all?.let { dirs ->
+        this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      // Lottie assets render from these too; listed even when absent, so creating one is noticed.
+      this.watchResourceDirs.addAll(
+        androidLottieResourceDirs(project).elements.map { all ->
+          all.map { it.asFile.absolutePath }
+        }
+      )
       this.watchBuildFiles.set(
         ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project)
       )
