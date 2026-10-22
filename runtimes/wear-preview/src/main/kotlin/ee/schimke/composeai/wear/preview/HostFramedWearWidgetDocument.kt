@@ -3,9 +3,6 @@
 package ee.schimke.composeai.wear.preview
 
 import android.content.Context
-import android.os.Bundle
-import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocument
-import androidx.compose.remote.creation.compose.capture.createCreationDisplayInfo
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.compose.layout.RemoteOffset
@@ -20,11 +17,10 @@ import androidx.compose.remote.creation.compose.state.RemoteState
 import androidx.compose.remote.creation.compose.state.asRemoteDp
 import androidx.compose.remote.creation.compose.state.rc
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.glance.wear.GlanceWearProfiles
 import androidx.glance.wear.WearWidgetBrush
 import androidx.glance.wear.WearWidgetData
+import androidx.glance.wear.WearWidgetDocument
 import androidx.glance.wear.color
 import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.core.WearWidgetRawContent
@@ -44,46 +40,27 @@ import androidx.glance.wear.isEmpty
  *
  * Everything else is upstream's: the background brush chain drawn into the rounded rect (default
  * `surfaceContainerLow` when [background] is empty), the content inset by the padding, and the
- * `WEAR_WIDGETS` capture profile for [params]' renderer version.
+ * capture itself — upstream's `WearWidgetDocument`, with a frame of zero padding and corners.
  */
 class HostFramedWearWidgetDocument(
   private val background: WearWidgetBrush,
   private val content: @RemoteComposable @Composable () -> Unit,
 ) : WearWidgetData {
 
+  /**
+   * Upstream's own capture, for the canvas, profile and extras of whichever Glance Wear is
+   * installed (its profile API differs between alphas), but with no frame of its own: a transparent
+   * fill and no padding or corners, so the named container inside is the widget's.
+   */
   override suspend fun captureRawContent(
     context: Context,
     params: WearWidgetParams,
     isInspectionMode: Boolean,
-  ): WearWidgetRawContent {
-    val density = context.resources.displayMetrics.density
-    val document =
-      captureSingleRemoteDocument(
-        context = context,
-        creationDisplayInfo =
-          createCreationDisplayInfo(
-            context = context,
-            size =
-              Size(
-                width = (params.widthDp * density).toInt().toFloat(),
-                height = (params.heightDp * density).toInt().toFloat(),
-              ),
-            isInspectionMode = isInspectionMode,
-          ),
-        profile = GlanceWearProfiles.wearWidgets(params.rendererVersion.supportedOperations),
-      ) {
+  ): WearWidgetRawContent =
+    WearWidgetDocument(UNFRAMED_BACKGROUND) {
         HostFramedWearWidgetContainer(params, background, content)
       }
-    // Upstream's extras: the layout's pending intents, by key.
-    val pendingIntents =
-      Bundle().apply {
-        document.pendingIntents.forEach { key, intent -> putParcelable("$key", intent) }
-      }
-    return WearWidgetRawContent(
-      rcDocument = document.bytes,
-      extras = Bundle().apply { putParcelable(PENDING_INTENT_KEY, pendingIntents) },
-    )
-  }
+      .captureRawContent(context, params.withoutFrame(), isInspectionMode)
 
   /**
    * The host frame values a [HostFramedWearWidgetDocument] declares, in dp, each a `USER` float
@@ -113,10 +90,23 @@ class HostFramedWearWidgetDocument(
   }
 
   private companion object {
-    /** Upstream's `WearWidgetCapture.PENDING_INTENT_KEY`, which the host reads the intents from. */
-    const val PENDING_INTENT_KEY = "pending_intents"
+    /** A fill that draws nothing, so upstream's container adds no background of its own. */
+    val UNFRAMED_BACKGROUND: WearWidgetBrush = WearWidgetBrush.color(Color.Transparent.rc)
   }
 }
+
+/** [this] with no host frame: what upstream's container is captured with around the named one. */
+private fun WearWidgetParams.withoutFrame(): WearWidgetParams =
+  WearWidgetParams(
+    instanceId = instanceId,
+    containerType = containerType,
+    widthDp = widthDp,
+    heightDp = heightDp,
+    horizontalPaddingDp = 0f,
+    verticalPaddingDp = 0f,
+    cornerRadiusDp = 0f,
+    rendererVersion = rendererVersion,
+  )
 
 // Forked from androidx.wear.compose.material3.ColorScheme.surfaceContainerLow, as upstream does.
 private val surfaceContainerLowColor: RemoteColor = Color(red = 39, green = 36, blue = 48).rc

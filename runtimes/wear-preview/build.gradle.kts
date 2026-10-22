@@ -60,8 +60,6 @@ dependencies {
   compileOnly(libs.glance.wear.core)
   compileOnly(libs.glance.wear.tooling.preview)
   compileOnly(libs.compose.remote.creation.compose)
-  // `HostFramedWearWidgetDocument` passes Glance Wear's capture profile, a `remote-creation` type.
-  compileOnly(libs.compose.remote.creation)
 
   // Players for replaying the captured document; the embedded Compose player is the default (see
   // `WearWidgetPreviewPlayer`). `compileOnly`: `embeddedWearWidgetPlayerAvailable` falls back to
@@ -88,7 +86,6 @@ dependencies {
   testImplementation(libs.glance.wear.core)
   testImplementation(libs.glance.wear.tooling.preview)
   testImplementation(libs.compose.remote.creation.compose)
-  testImplementation(libs.compose.remote.creation)
   testImplementation(libs.compose.remote.player.core)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   // `debugImplementation`, not `testImplementation`: `createComposeRule` launches a
