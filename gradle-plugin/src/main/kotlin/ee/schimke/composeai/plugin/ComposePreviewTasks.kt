@@ -755,6 +755,10 @@ internal object ComposePreviewTasks {
         task = this,
         userRuntimeConfig = project.configurations.findByName(dependencyConfigName()),
       )
+      // What the daemon's compilation is built from, for the descriptor's `sourceWatch`.
+      ee.schimke.composeai.plugin.daemon.SourceWatchInputs.desktop(this, project) {
+        dependencyConfigName()
+      }
       // Shares its FQN with `:daemon:android`'s; the desktop jar is first on the classpath.
       mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Daemon classes first so [mainClass] resolves. A lazy artifact view keeps the classpath

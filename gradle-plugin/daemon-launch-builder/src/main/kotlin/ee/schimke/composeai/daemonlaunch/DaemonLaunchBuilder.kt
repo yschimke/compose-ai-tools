@@ -34,6 +34,7 @@ public object DaemonLaunchBuilder {
     manifestPath: String,
     enabled: Boolean = true,
     javaLauncher: String? = null,
+    sourceWatch: SourceWatch? = null,
   ): DaemonClasspathDescriptor =
     DaemonClasspathDescriptor(
       schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
@@ -47,13 +48,19 @@ public object DaemonLaunchBuilder {
       systemProperties = systemProperties,
       workingDirectory = workingDirectory,
       manifestPath = manifestPath,
+      sourceWatch = sourceWatch,
     )
 
   /** Serializes [descriptor] using the canonical [json] encoder. */
   public fun encode(descriptor: DaemonClasspathDescriptor): String =
     json.encodeToString(DaemonClasspathDescriptor.serializer(), descriptor)
 
-  /** Deserializes a `daemon-launch.json` payload back to a [DaemonClasspathDescriptor]. */
+  /**
+   * Deserializes a `daemon-launch.json` payload back to a [DaemonClasspathDescriptor]. Tolerates
+   * unknown keys, as every other reader does, so a newer builder's optional fields don't break it.
+   */
   public fun decode(payload: String): DaemonClasspathDescriptor =
-    json.decodeFromString(DaemonClasspathDescriptor.serializer(), payload)
+    lenient.decodeFromString(DaemonClasspathDescriptor.serializer(), payload)
+
+  private val lenient: Json = Json(json) { ignoreUnknownKeys = true }
 }

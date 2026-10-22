@@ -102,7 +102,14 @@
       }
     }
   },
-  "writerOnlyFields": {},
+  "writerOnlyFields": {
+    "sourceWatch": {
+      "invisibleTo": [
+        "jvm"
+      ],
+      "why": "Optional and additive (compose-ai-tools#6184). The pinned contracts reader predates it and ignores it through `ignoreUnknownKeys`; remove `jvm` here once the contracts pin includes compose-preview-contracts#200, which declares it. Left out of the JSON when null (`@EncodeDefault(NEVER)`), so a descriptor built without source dirs is byte-identical to one from before the field existed."
+    }
+  },
   "constantRegistries": {},
   "mirroredConstants": {},
   "versionStampAliases": {
@@ -124,9 +131,19 @@
   },
   "wireFingerprint": {
     "history": {
-      "2": "61a2ff3d4f32b16b"
+      "2": "cb3d94dae18ffd6b"
     },
-    "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one."
+    "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one. An amendment made anyway, because a bump would be the more breaking change, is recorded under `amendments` with the old and new digest and the reasoning.",
+    "amendments": {
+      "2": [
+        {
+          "from": "61a2ff3d4f32b16b",
+          "to": "cb3d94dae18ffd6b",
+          "pr": "compose-ai-tools#6184",
+          "why": "Added the optional `sourceWatch` block (and its `SourceWatch` DTO) without a version bump, deliberately. Every released v2 reader ignores unknown keys: VS Code's daemonProcess.ts, the contracts DaemonLaunchDescriptor, doctor, render sessions. The one strict reader, DaemonLaunchBuilder.decode (the CLI's Bazel keep-daemon path), never sees the key from an older-shaped build because a null `sourceWatch` is omitted, and is made tolerant in the same PR. A v3 bump instead would make every released VS Code extension, which accepts only v2, reject every descriptor."
+        }
+      ]
+    }
   },
   "writerEncoders": {
     "declaredBy": {

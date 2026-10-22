@@ -19,11 +19,15 @@ import kotlin.system.exitProcess
  *   [--system-property <key>=<value>]... \
  *   --working-directory <dir> \
  *   --manifest-path <previews.json> \
+ *   [--source-dir <dir>]... [--resource-dir <dir>]... [--build-file <file>]... \
  *   --out <daemon-launch.json>
  * ```
  *
  * `--classpath` takes `File.pathSeparator`-separated values and may repeat (concatenated in order);
- * `--jvm-arg` / `--system-property` take one value per occurrence.
+ * `--jvm-arg` / `--system-property` take one value per occurrence. `--source-dir`, `--resource-dir`
+ * and `--build-file` take one path each and fill the descriptor's `sourceWatch`: what the module is
+ * built from (for Bazel or Buck2, the target's `srcs`, `resources` and BUILD files), so the MCP
+ * server notices edits there.
  *
  * Exit codes: `0` success, `2` bad arguments.
  */
@@ -52,6 +56,7 @@ public object DaemonLaunchBuilderCli {
         manifestPath = parsed.manifestPath,
         enabled = parsed.enabled,
         javaLauncher = parsed.javaLauncher,
+        sourceWatch = parsed.sourceWatch,
       )
 
     parsed.outFile.parentFile?.mkdirs()
@@ -71,6 +76,7 @@ public object DaemonLaunchBuilderCli {
     val enabled: Boolean,
     val javaLauncher: String?,
     val outFile: File,
+    val sourceWatch: SourceWatch? = null,
   )
 
   internal class ArgError(message: String) : RuntimeException(message)
@@ -87,6 +93,9 @@ public object DaemonLaunchBuilderCli {
     var enabled = true
     var javaLauncher: String? = null
     var outFile: File? = null
+    val sourceDirs = mutableListOf<String>()
+    val resourceDirs = mutableListOf<String>()
+    val buildFiles = mutableListOf<String>()
 
     var i = 0
     while (i < args.size) {
@@ -115,6 +124,9 @@ public object DaemonLaunchBuilderCli {
         }
         "--java-launcher" -> javaLauncher = requireValue(args, i)
         "--out" -> outFile = File(requireValue(args, i))
+        "--source-dir" -> sourceDirs += requireValue(args, i)
+        "--resource-dir" -> resourceDirs += requireValue(args, i)
+        "--build-file" -> buildFiles += requireValue(args, i)
         "-h",
         "--help" -> {
           printUsage(System.out)
@@ -137,6 +149,9 @@ public object DaemonLaunchBuilderCli {
       enabled = enabled,
       javaLauncher = javaLauncher,
       outFile = outFile ?: throw ArgError("--out is required"),
+      sourceWatch =
+        if (sourceDirs.isEmpty() && resourceDirs.isEmpty() && buildFiles.isEmpty()) null
+        else SourceWatch(sourceDirs, resourceDirs, buildFiles),
     )
   }
 
@@ -170,6 +185,9 @@ public object DaemonLaunchBuilderCli {
         --classpath <jar>[:<jar>...]   Daemon classpath in load order; repeat to concatenate.
         --jvm-arg <arg>                JVM flag (-Xmx, --add-opens, ...); repeat per arg.
         --system-property <key>=<val>  -D system property; repeat per key.
+        --source-dir <dir>             Source directory the module is built from; repeat per dir.
+        --resource-dir <dir>           Resource directory compiled into previews; repeat per dir.
+        --build-file <file>            File whose edits change the classpath; repeat per file.
 
       Flags:
         --help, -h                     Print this message.

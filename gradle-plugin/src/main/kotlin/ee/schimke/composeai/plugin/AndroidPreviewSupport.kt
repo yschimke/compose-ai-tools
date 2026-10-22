@@ -2694,6 +2694,30 @@ internal object AndroidPreviewSupport {
           },
         ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
       )
+      // What the variant is built from, for the descriptor's `sourceWatch`.
+      variant.sources.java?.all?.let { dirs ->
+        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      variant.sources.kotlin?.all?.let { dirs ->
+        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      variant.sources.res?.all?.let { layers ->
+        this.watchResourceDirs.addAll(
+          layers.map { all -> all.flatten().map { it.asFile.absolutePath } }
+        )
+      }
+      variant.sources.resources?.all?.let { dirs ->
+        this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      // Lottie assets render from these too; listed even when absent, so creating one is noticed.
+      this.watchResourceDirs.addAll(
+        androidLottieResourceDirs(project).elements.map { all ->
+          all.map { it.asFile.absolutePath }
+        }
+      )
+      this.watchBuildFiles.set(
+        ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project)
+      )
       // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks. Load-bearing:
