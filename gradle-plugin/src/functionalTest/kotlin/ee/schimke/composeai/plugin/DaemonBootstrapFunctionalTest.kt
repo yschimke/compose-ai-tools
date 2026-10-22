@@ -65,6 +65,25 @@ class DaemonBootstrapFunctionalTest {
       ?.groupValues
       ?.get(1)
 
+  /**
+   * The in-process compiler must be the consumer's own Kotlin compiler. This fixture applies Kotlin
+   * 2.2.21 with no version catalog, which used to fall back to the plugin's bundled Kotlin.
+   */
+  @Test
+  fun `the descriptor's BTA compiler matches the applied Kotlin plugin without a version catalog`() {
+    val projectDir = createCmpTestProject()
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDaemonStart", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+    val buildToolsImpl = Regex("kotlin-build-tools-impl-([^/\\\\\"]+)\\.jar").findAll(descriptor)
+    assertThat(buildToolsImpl.map { it.groupValues[1] }.toSet()).containsExactly("2.2.21")
+  }
+
   @Test
   fun `composePreviewDaemonStart is cached after source edit`() {
     val projectDir = createCmpTestProject()
