@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.71.0](https://github.com/yschimke/compose-ai-tools/compare/v2.70.7...v2.71.0) (2026-10-22)
+
+
+### Features
+
+* publish each module's source dirs in the daemon descriptor ([#6184](https://github.com/yschimke/compose-ai-tools/issues/6184)) ([dae5d15](https://github.com/yschimke/compose-ai-tools/commit/dae5d15e474dcf0d14a455ea81b250eb72f52aa4))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.22.0 ([#6092](https://github.com/yschimke/compose-ai-tools/issues/6092)) ([c827256](https://github.com/yschimke/compose-ai-tools/commit/c8272565aefdaa8686f539d8afc8d3823ebb4e19))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.1 ([#6179](https://github.com/yschimke/compose-ai-tools/issues/6179)) ([3efcc8e](https://github.com/yschimke/compose-ai-tools/commit/3efcc8e3bf3082709e129d02ac55c5d87bbf201a))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.2 ([#6181](https://github.com/yschimke/compose-ai-tools/issues/6181)) ([0d48c08](https://github.com/yschimke/compose-ai-tools/commit/0d48c0870f94c1b4a6b1c5d0c571d63c4254c8b6))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.3 ([#6183](https://github.com/yschimke/compose-ai-tools/issues/6183)) ([754c17f](https://github.com/yschimke/compose-ai-tools/commit/754c17f73a18d85bc41da2534cf1544ae2e6e667))
+* give the in-process compiler the consumer's Kotlin version ([#6182](https://github.com/yschimke/compose-ai-tools/issues/6182)) ([abd49e8](https://github.com/yschimke/compose-ai-tools/commit/abd49e89531cc8b3db6f8e32ce3ea6fe9dc68af6))
+
 ## [2.70.7](https://github.com/yschimke/compose-ai-tools/compare/v2.70.6...v2.70.7) (2026-10-21)
 
 
