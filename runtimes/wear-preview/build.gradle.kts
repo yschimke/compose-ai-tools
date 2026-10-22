@@ -9,6 +9,9 @@
 // `CapturingWearWidgetPreview` renders a Glance Wear widget and also emits its RemoteCompose
 // document as the `.rc` sidecar (upstream's `WearWidgetPreview` keeps the bytes to itself).
 //
+// `HostFramedWearWidgetDocument` is upstream's `WearWidgetDocument` with the host frame (padding,
+// corner radius) left as named values a device writes in, so one capture fits every host shape.
+//
 // Wear/Glance/Remote Compose deps are `compileOnly` so consumers' own alpha versions aren't pinned.
 
 plugins {
@@ -57,6 +60,8 @@ dependencies {
   compileOnly(libs.glance.wear.core)
   compileOnly(libs.glance.wear.tooling.preview)
   compileOnly(libs.compose.remote.creation.compose)
+  // `HostFramedWearWidgetDocument` passes Glance Wear's capture profile, a `remote-creation` type.
+  compileOnly(libs.compose.remote.creation)
 
   // Players for replaying the captured document; the embedded Compose player is the default (see
   // `WearWidgetPreviewPlayer`). `compileOnly`: `embeddedWearWidgetPlayerAvailable` falls back to
@@ -70,6 +75,8 @@ dependencies {
   testImplementation(platform(libs.compose.bom.stable))
   testImplementation(platform(libs.rcplayers.bom))
   testImplementation(libs.compose.runtime)
+  // `HostFramedWearWidgetDocumentTest` sizes the played widget in a foundation `Box`.
+  testImplementation(libs.compose.foundation)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(libs.rcplayer.embedded.android)
@@ -81,6 +88,7 @@ dependencies {
   testImplementation(libs.glance.wear.core)
   testImplementation(libs.glance.wear.tooling.preview)
   testImplementation(libs.compose.remote.creation.compose)
+  testImplementation(libs.compose.remote.creation)
   testImplementation(libs.compose.remote.player.core)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   // `debugImplementation`, not `testImplementation`: `createComposeRule` launches a
