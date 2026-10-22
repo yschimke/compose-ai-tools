@@ -2,6 +2,9 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import java.io.File
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Rule
@@ -82,6 +85,48 @@ class DaemonBootstrapFunctionalTest {
     val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
     val buildToolsImpl = Regex("kotlin-build-tools-impl-([^/\\\\\"]+)\\.jar").findAll(descriptor)
     assertThat(buildToolsImpl.map { it.groupValues[1] }.toSet()).containsExactly("2.2.21")
+  }
+
+  /**
+   * The descriptor's `sourceWatch` names where the build reads sources, so a tool that notices
+   * edits on its own looks there too: here a custom `srcDir` no source-layout convention would
+   * find.
+   */
+  @Test
+  fun `the descriptor's sourceWatch lists the compilation's real source dirs and build files`() {
+    val projectDir =
+      createCmpTestProject(
+        extraBuildScript =
+          """
+          kotlin { sourceSets.named("main") { kotlin.srcDir("extra/kotlin") } }
+          """
+            .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDaemonStart", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val descriptor =
+      kotlinx.serialization.json.Json.parseToJsonElement(
+          File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+        )
+        .jsonObject
+    val watch = descriptor["sourceWatch"]!!.jsonObject
+    fun paths(key: String) = watch[key]!!.jsonArray.map { it.jsonPrimitive.content }
+    val root = projectDir.canonicalFile
+    assertThat(paths("sourceDirs"))
+      .containsAtLeast(
+        File(root, "src/main/kotlin").path,
+        File(root, "extra/kotlin").path,
+        File(root, "src/main/java").path,
+      )
+    assertThat(paths("sourceDirs").none { "test" in it.lowercase() }).isTrue()
+    assertThat(paths("resourceDirs")).contains(File(root, "src/main/resources").path)
+    assertThat(paths("buildFiles"))
+      .containsAtLeast(File(root, "build.gradle.kts").path, File(root, "settings.gradle.kts").path)
   }
 
   @Test

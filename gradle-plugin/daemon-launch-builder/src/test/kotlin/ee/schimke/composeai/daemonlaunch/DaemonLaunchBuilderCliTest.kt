@@ -62,6 +62,49 @@ class DaemonLaunchBuilderCliTest {
   }
 
   @Test
+  fun `source, resource and build file flags fill sourceWatch, and none leaves it null`() {
+    assertThat(DaemonLaunchBuilderCli.parse(baseArgs()).sourceWatch).isNull()
+
+    val parsed =
+      DaemonLaunchBuilderCli.parse(
+        baseArgs() +
+          arrayOf(
+            "--source-dir",
+            "/w/app/src",
+            "--source-dir",
+            "/w/bazel-bin/app/generated",
+            "--resource-dir",
+            "/w/app/res",
+            "--build-file",
+            "/w/app/BUILD.bazel",
+          )
+      )
+    assertThat(parsed.sourceWatch)
+      .isEqualTo(
+        SourceWatch(
+          sourceDirs = listOf("/w/app/src", "/w/bazel-bin/app/generated"),
+          resourceDirs = listOf("/w/app/res"),
+          buildFiles = listOf("/w/app/BUILD.bazel"),
+        )
+      )
+    val encoded =
+      DaemonLaunchBuilder.encode(
+        DaemonLaunchBuilder.build(
+          modulePath = "//app",
+          variant = "desktop",
+          mainClass = "M",
+          classpath = emptyList(),
+          jvmArgs = emptyList(),
+          systemProperties = emptyMap(),
+          workingDirectory = "/w",
+          manifestPath = "/w/previews.json",
+          sourceWatch = parsed.sourceWatch,
+        )
+      )
+    assertThat(DaemonLaunchBuilder.decode(encoded).sourceWatch).isEqualTo(parsed.sourceWatch)
+  }
+
+  @Test
   fun `--enabled false flips the descriptor enabled flag`() {
     val parsed = DaemonLaunchBuilderCli.parse(baseArgs() + arrayOf("--enabled", "false"))
     assertThat(parsed.enabled).isFalse()

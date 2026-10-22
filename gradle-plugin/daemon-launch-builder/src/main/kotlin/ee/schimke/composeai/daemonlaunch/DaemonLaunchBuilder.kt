@@ -34,6 +34,7 @@ public object DaemonLaunchBuilder {
     manifestPath: String,
     enabled: Boolean = true,
     javaLauncher: String? = null,
+    sourceWatch: SourceWatch? = null,
   ): DaemonClasspathDescriptor =
     DaemonClasspathDescriptor(
       schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
@@ -47,6 +48,7 @@ public object DaemonLaunchBuilder {
       systemProperties = systemProperties,
       workingDirectory = workingDirectory,
       manifestPath = manifestPath,
+      sourceWatch = sourceWatch,
     )
 
   /** Serializes [descriptor] using the canonical [json] encoder. */
