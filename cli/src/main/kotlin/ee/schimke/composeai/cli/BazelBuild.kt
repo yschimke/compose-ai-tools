@@ -364,6 +364,11 @@ internal data class ResolvedBazelArtifacts(
   val android: ResolvedAndroidArtifacts? = null,
   /** Runtime jar → producing target label, from the artifacts' optional `runtimeJarOwners`. */
   val runtimeJarOwners: Map<File, String> = emptyMap(),
+  /**
+   * The labels of the targets merged into these artifacts, whose `metadata.target` is then the
+   * selection's label; empty for a single target.
+   */
+  val memberTargets: List<String> = emptyList(),
 )
 
 /**
@@ -1066,6 +1071,8 @@ internal fun mergeBazelArtifacts(
     dataFiles = data.first,
     android = android,
     runtimeJarOwners = artifacts.fold(emptyMap()) { owners, it -> it.runtimeJarOwners + owners },
+    memberTargets =
+      artifacts.flatMap { it.memberTargets.ifEmpty { listOf(it.metadata.target) } }.distinct(),
   )
 }
 

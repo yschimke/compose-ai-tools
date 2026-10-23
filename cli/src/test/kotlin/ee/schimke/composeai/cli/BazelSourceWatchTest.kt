@@ -144,4 +144,24 @@ class BazelSourceWatchTest {
       root.deleteRecursively()
     }
   }
+
+  /** #6197 review: merged wrappers keep their own packages, which the selection label hides. */
+  @Test
+  fun `merged export-only targets keep each member's package`() {
+    val root = Files.createTempDirectory("bazel-source-watch-merged-wrappers").toFile()
+    try {
+      val lib = root.resolve("lib/Lib.kt").touch()
+      val libBuild = root.resolve("lib/BUILD").touch()
+      val aBuild = root.resolve("a/BUILD").touch()
+      val bBuild = root.resolve("b/BUILD").touch()
+      val merged =
+        artifacts("//a:a //b:b", listOf(lib)).copy(memberTargets = listOf("//a:a", "//b:b"))
+
+      val watch = bazelSourceWatch(merged, root)!!
+
+      assertEquals(listOf(aBuild.path, bBuild.path, libBuild.path), watch.buildFiles)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
 }

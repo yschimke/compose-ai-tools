@@ -1352,9 +1352,9 @@ internal fun prepareBazelAndroidDaemon(
  * - each package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
  *   whichever exist: an edit to one changes what the target builds.
  *
- * The packages come from the sources, plus the label's own package when it names one target: a
- * merged selection's label (`//a:a //b:b`, `//pkg/...`) names no single package, and a wrapper
- * target with no sources of its own still has a build file and resources.
+ * The packages come from the sources and from each target's own label: a merged selection's label
+ * (`//a:a //b:b`, `//pkg/...`) names no single package, so its members' labels are used, and a
+ * wrapper target with no sources of its own still has a build file and resources.
  *
  * Null when none of the three finds anything.
  */
@@ -1372,15 +1372,17 @@ internal fun bazelSourceWatch(artifacts: ResolvedBazelArtifacts, root: File): So
       .takeWhile { it.startsWith(workspace) }
       .firstOrNull(::isPackage)
   val sourcePackages = sources.mapNotNull(::packageOf)
-  // A single plain label's own package as well: a wrapper that only re-exports another package's
-  // library still has its own build file and res/.
-  val labelPackage =
-    artifacts.metadata.target
-      .takeUnless { it.any(Char::isWhitespace) || "..." in it }
-      ?.let(::bazelLabelPackage)
-      ?.let { if (it.isEmpty()) workspace else workspace.resolve(it) }
-      ?.takeIf(::isPackage)
-  val packages = listOfNotNull(labelPackage) + sourcePackages
+  // Each target's own package as well: a wrapper that only re-exports another package's library
+  // still has its own build file and res/. A merged selection's label names no one package, so its
+  // members' labels are read instead.
+  val labelPackages =
+    artifacts.memberTargets
+      .ifEmpty { listOf(artifacts.metadata.target) }
+      .filterNot { it.any(Char::isWhitespace) || "..." in it }
+      .mapNotNull(::bazelLabelPackage)
+      .map { if (it.isEmpty()) workspace else workspace.resolve(it) }
+      .filter(::isPackage)
+  val packages = labelPackages + sourcePackages
   val sourceDirs =
     sources
       .map { source -> packageOf(source)?.takeIf { it != workspace } ?: source.parentFile }
