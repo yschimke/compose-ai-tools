@@ -476,7 +476,10 @@ composeai-contracts = "3.39.0"
 # 3.24.0 warms the in-process compiler when a client asks (#367), and lets an app tour pass over a
 # system screen the app opens, such as the runtime-permission dialog (#370,
 # homeassistant-remotecompose#635).
-composeai-preview-daemon = "3.24.0"
+# 3.24.1 gives a large module's warm-up its full JIT budget after the class-path state is built
+# (#375), lets `compileSources` answer without waiting for renders queued on a sandbox worker (#376),
+# and stops reporting previews loaded from previews.json as changed on the first rescan (#377).
+composeai-preview-daemon = "3.24.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
