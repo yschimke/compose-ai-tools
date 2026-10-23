@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJson
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJsonException
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -18,16 +19,18 @@ import okio.Path.Companion.toPath
 import okio.buffer
 
 /**
- * `compose-preview rc <compile|dump|header>` — the Remote Compose JSON codec at the command line,
- * for inspecting the otherwise opaque `.rc` documents previews capture to `renders/<stem>.rc`.
+ * `compose-preview rc <compile|dump|header|upload>` — the Remote Compose JSON codec at the command
+ * line, for inspecting the otherwise opaque `.rc` documents previews capture to
+ * `renders/<stem>.rc`, plus a way to hand one to someone else.
  *
  * - compile — authoring JSON (AndroidX `remote_compose_schema.json`) → `.rc`, or the JSON path the
  *   parser gave up on.
  * - dump — `.rc` → document JSON: the ordered operation stream, diffable and `jq`-able.
  * - header — `.rc` → declared size, content description, profile mask and version, cheaply.
+ * - upload — `.rc` → an expiring permalink on a `serve --accept-docs` host ([ServeDocUploader]).
  *
- * The two JSON dialects are not inverses (see `RemoteComposeJson`). Fully offline: no daemon,
- * Gradle or project.
+ * The two JSON dialects are not inverses (see `RemoteComposeJson`). Everything but `upload` is
+ * fully offline: no daemon, Gradle or project.
  */
 internal class RcCommand(
   private val args: List<String>,
@@ -36,6 +39,9 @@ internal class RcCommand(
   private val stderr: (String) -> Unit = System.err::println,
   /** Injectable so the non-zero exit paths are testable (as in `HistoryManifestCommand`). */
   private val exit: (Int) -> Nothing = { exitProcess(it) },
+  private val env: (String) -> String? = System::getenv,
+  /** Where `upload` looks for `composePreview.serveUrl`; null outside a project. */
+  private val projectRoot: () -> File? = { findGradleProjectRoot() },
 ) {
 
   fun run() {
@@ -55,6 +61,7 @@ internal class RcCommand(
       "compile" -> compile(subArgs)
       "dump" -> dump(subArgs)
       "header" -> header(subArgs)
+      "upload" -> upload(subArgs)
       null,
       "help" -> usage()
       else -> {
@@ -487,6 +494,64 @@ internal class RcCommand(
   }
 
   /**
+   * Upload one document to a `serve --accept-docs` host and print its permalink. The host is
+   * resolved and confirmed exactly as for `share-preview --mechanism serve`: a host named only by
+   * the checkout's `gradle.properties` must be confirmed first, since any pull request can edit it.
+   */
+  private fun upload(args: List<String>) {
+    val input = args.singleInput("rc upload", "a .rc file")
+    val path = input.toPath()
+    val bytes = readBytesOrFail(path, "rc upload")
+    // Sniff locally too: the host refuses a non-document, but only after it has crossed the
+    // network.
+    val header = guard { RemoteComposeJson.header(bytes) }
+    val name = args.flagValue("--name")?.trim()?.takeIf { it.isNotEmpty() } ?: path.name
+
+    val root = projectRoot()
+    val resolved =
+      resolveProjectServeUrl(root, args, env)
+        ?: fail(
+          "rc upload: needs a host — pass --serve-url https://… (or set \$$SERVE_URL_ENV, or " +
+            "$SERVE_URL_PROPERTY in gradle.properties). The host must run `serve --accept-docs`."
+        )
+    val trust =
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = gitOriginRepo(root),
+        env = env,
+      )
+    if (trust is ServeUrlTrust.NeedsConfirmation) fail(trust.how)
+    val url = resolved.url
+    val token =
+      (args.flagValue("--serve-token") ?: env("COMPOSE_PREVIEW_SERVE_TOKEN"))?.trim()?.takeIf {
+        it.isNotEmpty()
+      }
+    ServeDocUploader.rejectUnsafeUrl(url, withToken = token != null)?.let { fail("rc upload: $it") }
+
+    when (val result = ServeDocUploader(url, token).upload(bytes, name)) {
+      is ServeDocUploader.Result.Failed -> fail("rc upload: ${result.reason}")
+      is ServeDocUploader.Result.Ok -> {
+        if ("--json" in args) {
+          stdout(
+            PRETTY.encodeToString(
+              ServeDocUploader.DocAccepted.serializer(),
+              result.response.copy(url = result.url),
+            )
+          )
+        } else {
+          stdout(result.url)
+        }
+        val expiry = result.response.expiresIn?.let { ", expires in $it" } ?: ""
+        stderr(
+          "compose-preview: uploaded $name (${header.byteLength} bytes) to " +
+            "${ServeDocUploader.redactedUrl(url)}$expiry — anyone with the link can open it"
+        )
+      }
+    }
+  }
+
+  /**
    * Name the two profile masks seen in practice; a player silently draws nothing for an unsupported
    * profile, so a bare number isn't enough.
    */
@@ -557,6 +622,9 @@ internal class RcCommand(
       |  rc dump <doc.rc> [--compact] [-o f] binary document -> document JSON
       |  rc dump <dir> [--compact]           every .rc under <dir> -> <stem>.rc.json beside it
       |  rc header <doc.rc> [--json]         the document's declared header only
+      |  rc upload <doc.rc> [--serve-url URL] [--serve-token T] [--name LABEL] [--json]
+      |                                      share it via a `serve --accept-docs` host; prints
+      |                                      an expiring permalink that plays it in a browser
       |
       |The two JSON dialects are NOT inverses. `compile` reads the AUTHORING dialect —
       |AndroidX's remote_compose_schema.json, with named resources, infix expressions and
@@ -576,6 +644,7 @@ internal class RcCommand(
         "compile" to setOf("--output", "-o"),
         "dump" to setOf("--output", "-o", "--compact"),
         "header" to setOf("--json"),
+        "upload" to setOf("--serve-url", "--serve-token", "--name", "--json"),
       )
 
     val HELP = setOf("--help", "-h")
