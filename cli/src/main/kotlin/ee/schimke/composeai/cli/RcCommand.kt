@@ -533,12 +533,7 @@ internal class RcCommand(
       is ServeDocUploader.Result.Failed -> fail("rc upload: ${result.reason}")
       is ServeDocUploader.Result.Ok -> {
         if ("--json" in args) {
-          stdout(
-            PRETTY.encodeToString(
-              ServeDocUploader.DocAccepted.serializer(),
-              result.response.copy(url = result.url),
-            )
-          )
+          stdout(PRETTY.encodeToString(JsonObject.serializer(), result.envelope))
         } else {
           stdout(result.url)
         }

@@ -43,11 +43,16 @@ class RcUploadTest {
   @AfterTest fun stop() = server?.stop(0) ?: Unit
 
   /** Start a host answering `POST /docs` with [status] and [body]; returns its base URL. */
-  private fun host(status: Int = 201, body: String = ACCEPTED): String {
+  private fun host(
+    status: Int = 201,
+    body: String = ACCEPTED,
+    headers: Map<String, String> = emptyMap(),
+  ): String {
     val s = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     s.createContext("/docs") { exchange ->
       received += (exchange.requestURI.rawQuery ?: "") to exchange.requestBody.readBytes()
       val bytes = body.toByteArray()
+      headers.forEach { (k, v) -> exchange.responseHeaders.add(k, v) }
       exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
       if (bytes.isNotEmpty()) exchange.responseBody.use { it.write(bytes) }
       exchange.close()
@@ -122,6 +127,28 @@ class RcUploadTest {
     val json = out.single()
     assertContains(json, "\"url\": \"$base/d/abc123\"")
     assertContains(json, "\"format\": \"Remote Compose\"")
+    // The host's whole envelope survives, not just the fields the client models.
+    assertContains(json, "\"schema\": \"compose-preview-serve/doc/v1\"")
+    assertContains(json, "\"formatId\": \"rc\"")
+  }
+
+  @Test
+  fun `a redirect is refused without echoing the token it carried`() {
+    fs.createDirectories(doc.parent!!)
+    fs.write(doc) { write(document) }
+    val base =
+      host(
+        status = 307,
+        body = "",
+        headers = mapOf("Location" to "https://elsewhere.example/docs?name=card.rc&token=s3cret"),
+      )
+
+    assertEquals(
+      1,
+      runExpectingExit("upload", doc.toString(), "--serve-url", base, "--serve-token", "s3cret"),
+    )
+    assertContains(err.last(), "https://elsewhere.example/docs")
+    assertTrue(err.none { "s3cret" in it }, err.toString())
   }
 
   @Test
