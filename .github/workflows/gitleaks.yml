@@ -6,7 +6,7 @@ name: gitleaks
 # gitleaks-action license-validation path, which is noisy under installation
 # rate limits.
 #
-# Particularly important for this repo because the release/snapshot workflows
+# Particularly important for this repo because the release workflow
 # handle GPG signing keys and Maven Central tokens — a stray paste into a
 # commit message or source file would be exactly the kind of incident this
 # catches on the default branch scan.
