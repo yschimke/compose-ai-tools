@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.72.0](https://github.com/yschimke/compose-ai-tools/compare/v2.71.0...v2.72.0) (2026-10-23)
+
+
+### Features
+
+* **wear-preview:** HostFramedWearWidgetDocument leaves the host frame to the device ([#6187](https://github.com/yschimke/compose-ai-tools/issues/6187)) ([3f7e9f2](https://github.com/yschimke/compose-ai-tools/commit/3f7e9f26500b4515cc4c7b2912ce90874262bbc9))
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to 3.24.0 and contracts to 3.38.0 ([#6191](https://github.com/yschimke/compose-ai-tools/issues/6191)) ([b128d11](https://github.com/yschimke/compose-ai-tools/commit/b128d11249bba959c53e6ffe5ef091880eb11afb))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.38.0 ([#6186](https://github.com/yschimke/compose-ai-tools/issues/6186)) ([9f895cc](https://github.com/yschimke/compose-ai-tools/commit/9f895cc9d97a77f201328403354a6be487d0c1d1))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.4 ([#6188](https://github.com/yschimke/compose-ai-tools/issues/6188)) ([d89073e](https://github.com/yschimke/compose-ai-tools/commit/d89073e8c49aa2f777bbc40acc7985a57b98331e))
+* **deps:** update tapmoc to v0.5.0 ([#6159](https://github.com/yschimke/compose-ai-tools/issues/6159)) ([4ee9889](https://github.com/yschimke/compose-ai-tools/commit/4ee98893ca9c484207e21b0dd611abff40c7dddf))
+
 ## [2.71.0](https://github.com/yschimke/compose-ai-tools/compare/v2.70.7...v2.71.0) (2026-10-22)
 
 
