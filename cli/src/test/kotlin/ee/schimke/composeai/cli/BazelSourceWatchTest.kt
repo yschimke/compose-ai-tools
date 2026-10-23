@@ -49,7 +49,8 @@ class BazelSourceWatchTest {
           root,
         )!!
 
-      assertEquals(listOf(shared.parentFile.path, screen.parentFile.path), watch.sourceDirs)
+      // The package, not each source's directory: a Kotlin package added beside these is watched.
+      assertEquals(listOf(build.parentFile.path), watch.sourceDirs)
       assertEquals(listOf(res.path), watch.resourceDirs)
       assertEquals(listOf(build.path, config.path), watch.buildFiles)
       // A desktop target has no Android res/.
@@ -80,5 +81,45 @@ class BazelSourceWatchTest {
     assertEquals("a/b", bazelLabelPackage("root//a/b:c"))
     assertEquals("", bazelLabelPackage("//:app"))
     assertNull(bazelLabelPackage("@maven//:lib"))
+  }
+
+  /** #6194 review: a merged selection's label names no one package; its sources do. */
+  @Test
+  fun `a merged selection watches every package its sources come from`() {
+    val root = Files.createTempDirectory("bazel-source-watch-merged").toFile()
+    try {
+      val a = root.resolve("a/src/A.kt").touch()
+      val b = root.resolve("b/B.kt").touch()
+      val buildA = root.resolve("a/BUILD.bazel").touch()
+      val buildB = root.resolve("b/BUILD").touch()
+      val resB = root.resolve("b/res").apply { mkdirs() }
+      val android =
+        ResolvedAndroidArtifacts("a", root.resolve("r.apk"), root.resolve("m.xml"), null, 35)
+
+      val watch = bazelSourceWatch(artifacts("//a:a //b:b", listOf(a, b), android), root)!!
+
+      assertEquals(listOf(buildA.parentFile.path, buildB.parentFile.path), watch.sourceDirs)
+      assertEquals(listOf(resB.path), watch.resourceDirs)
+      assertEquals(listOf(buildA.path, buildB.path), watch.buildFiles)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  /** A package at the workspace root would watch the output-tree symlinks, so its dirs are used. */
+  @Test
+  fun `a root package watches its sources' directories`() {
+    val root = Files.createTempDirectory("bazel-source-watch-root").toFile()
+    try {
+      val app = root.resolve("src/App.kt").touch()
+      val build = root.resolve("BUILD.bazel").touch()
+
+      val watch = bazelSourceWatch(artifacts("//:app", listOf(app)), root)!!
+
+      assertEquals(listOf(app.parentFile.path), watch.sourceDirs)
+      assertEquals(listOf(build.path), watch.buildFiles)
+    } finally {
+      root.deleteRecursively()
+    }
   }
 }
