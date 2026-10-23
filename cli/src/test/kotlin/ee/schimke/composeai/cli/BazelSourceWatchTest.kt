@@ -122,4 +122,26 @@ class BazelSourceWatchTest {
       root.deleteRecursively()
     }
   }
+
+  /** #6197 review: a wrapper that only re-exports another package's library keeps its own. */
+  @Test
+  fun `an export-only target keeps its own package`() {
+    val root = Files.createTempDirectory("bazel-source-watch-wrapper").toFile()
+    try {
+      val lib = root.resolve("lib/Lib.kt").touch()
+      val libBuild = root.resolve("lib/BUILD").touch()
+      val appBuild = root.resolve("app/BUILD.bazel").touch()
+      val appRes = root.resolve("app/res").apply { mkdirs() }
+      val android =
+        ResolvedAndroidArtifacts("app", root.resolve("r.apk"), root.resolve("m.xml"), null, 35)
+
+      val watch = bazelSourceWatch(artifacts("//app:app", listOf(lib), android), root)!!
+
+      assertEquals(listOf(libBuild.parentFile.path), watch.sourceDirs)
+      assertEquals(listOf(appRes.path), watch.resourceDirs)
+      assertEquals(listOf(appBuild.path, libBuild.path), watch.buildFiles)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
 }

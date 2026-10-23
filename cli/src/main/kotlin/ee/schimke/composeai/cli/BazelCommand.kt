@@ -1352,9 +1352,9 @@ internal fun prepareBazelAndroidDaemon(
  * - each package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
  *   whichever exist: an edit to one changes what the target builds.
  *
- * The packages come from the sources rather than the label, which names a whole selection (`//a:a
- * //b:b`, `//pkg/...`) once several targets are merged. A target with no workspace source falls
- * back to its label's package.
+ * The packages come from the sources, plus the label's own package when it names one target: a
+ * merged selection's label (`//a:a //b:b`, `//pkg/...`) names no single package, and a wrapper
+ * target with no sources of its own still has a build file and resources.
  *
  * Null when none of the three finds anything.
  */
@@ -1372,15 +1372,15 @@ internal fun bazelSourceWatch(artifacts: ResolvedBazelArtifacts, root: File): So
       .takeWhile { it.startsWith(workspace) }
       .firstOrNull(::isPackage)
   val sourcePackages = sources.mapNotNull(::packageOf)
-  val packages = sourcePackages.ifEmpty {
-    listOfNotNull(
-      artifacts.metadata.target
-        .takeUnless { it.any(Char::isWhitespace) || "..." in it }
-        ?.let(::bazelLabelPackage)
-        ?.let { if (it.isEmpty()) workspace else workspace.resolve(it) }
-        ?.takeIf(::isPackage)
-    )
-  }
+  // A single plain label's own package as well: a wrapper that only re-exports another package's
+  // library still has its own build file and res/.
+  val labelPackage =
+    artifacts.metadata.target
+      .takeUnless { it.any(Char::isWhitespace) || "..." in it }
+      ?.let(::bazelLabelPackage)
+      ?.let { if (it.isEmpty()) workspace else workspace.resolve(it) }
+      ?.takeIf(::isPackage)
+  val packages = listOfNotNull(labelPackage) + sourcePackages
   val sourceDirs =
     sources
       .map { source -> packageOf(source)?.takeIf { it != workspace } ?: source.parentFile }
