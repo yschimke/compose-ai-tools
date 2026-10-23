@@ -1341,13 +1341,20 @@ internal fun prepareBazelAndroidDaemon(
  * MCP server's source tree watches a build that has no `build.gradle` + `src/` to find by
  * convention:
  *
- * - the directories of the target's workspace sources, a directory under another one dropped (a
+ * - the package of each of the target's workspace sources: the nearest directory above it with a
+ *   build file, so a Kotlin package added beside the existing ones is watched too. A package at the
+ *   workspace root, or a source with no package above it, is watched by its own directory instead,
+ *   since the root holds the output-tree symlinks. A directory under another one is dropped (a
  *   watch is recursive). Output-tree and external-repository sources are left out: nobody edits
  *   them, and the build regenerates them;
- * - an Android target's `res/` (or `src/main/res/`) beside its package's build file. The artifacts
- *   carry only compiled resources, so this is the convention, not the build's own list; and
- * - the package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
+ * - an Android target's `res/` (or `src/main/res/`) in each of those packages. The artifacts carry
+ *   only compiled resources, so this is the convention, not the build's own list; and
+ * - each package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
  *   whichever exist: an edit to one changes what the target builds.
+ *
+ * The packages come from the sources and from each target's own label: a merged selection's label
+ * (`//a:a //b:b`, `//pkg/...`) names no single package, so its members' labels are used, and a
+ * wrapper target with no sources of its own still has a build file and resources.
  *
  * Null when none of the three finds anything.
  */
@@ -1358,26 +1365,42 @@ internal fun bazelSourceWatch(artifacts: ResolvedBazelArtifacts, root: File): So
     val first = file.relativeTo(workspace).invariantSeparatorsPath.substringBefore('/')
     return !first.startsWith("bazel-") && first != "buck-out" && !first.startsWith(".")
   }
+  fun isPackage(dir: File): Boolean = BAZEL_PACKAGE_FILES.any { dir.resolve(it).isFile }
+  val sources = artifacts.sourceFiles.map { it.absoluteFile.normalize() }.filter(::editable)
+  fun packageOf(source: File): File? =
+    generateSequence(source.parentFile) { it.parentFile }
+      .takeWhile { it.startsWith(workspace) }
+      .firstOrNull(::isPackage)
+  val sourcePackages = sources.mapNotNull(::packageOf)
+  // Each target's own package as well: a wrapper that only re-exports another package's library
+  // still has its own build file and res/. A merged selection's label names no one package, so its
+  // members' labels are read instead.
+  val labelPackages =
+    artifacts.memberTargets
+      .ifEmpty { listOf(artifacts.metadata.target) }
+      .filterNot { it.any(Char::isWhitespace) || "..." in it }
+      .mapNotNull(::bazelLabelPackage)
+      .map { if (it.isEmpty()) workspace else workspace.resolve(it) }
+      .filter(::isPackage)
+  val packages = labelPackages + sourcePackages
   val sourceDirs =
-    artifacts.sourceFiles
-      .map { it.absoluteFile.normalize() }
-      .filter(::editable)
-      .mapNotNull { it.parentFile }
+    sources
+      .map { source -> packageOf(source)?.takeIf { it != workspace } ?: source.parentFile }
       .distinct()
       .sortedBy { it.path.length }
       .fold(mutableListOf<File>()) { kept, dir ->
         if (kept.none { dir.startsWith(it) }) kept += dir
         kept
       }
-  val packageDir =
-    bazelLabelPackage(artifacts.metadata.target)?.let {
-      if (it.isEmpty()) workspace else workspace.resolve(it)
-    }
+  val packageDirs = packages.distinct()
   val resourceDirs =
-    if (artifacts.android == null || packageDir == null) emptyList()
-    else listOf("res", "src/main/res").map(packageDir::resolve).filter(File::isDirectory)
+    if (artifacts.android == null) emptyList()
+    else
+      packageDirs.flatMap { dir ->
+        listOf("res", "src/main/res").map(dir::resolve).filter(File::isDirectory)
+      }
   val buildFiles =
-    (packageDir?.let { dir -> BAZEL_PACKAGE_FILES.map(dir::resolve) }.orEmpty() +
+    (packageDirs.flatMap { dir -> BAZEL_PACKAGE_FILES.map(dir::resolve) } +
         listOf("bazel.json", "buck.json").map { workspace.resolve(".compose-preview/$it") })
       .filter(File::isFile)
   if (sourceDirs.isEmpty() && resourceDirs.isEmpty() && buildFiles.isEmpty()) return null

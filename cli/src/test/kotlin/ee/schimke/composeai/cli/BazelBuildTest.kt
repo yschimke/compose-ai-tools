@@ -819,6 +819,7 @@ class BazelBuildTest {
       val merged = assertNotNull(mergeBazelArtifacts("//app/...", listOf(ui, model)))
 
       assertEquals("//app/...", merged.metadata.target)
+      assertEquals(listOf("//app:ui", "//app:model"), merged.memberTargets)
       assertEquals(listOf("ui.jar", "model.jar"), merged.projectJars.map { it.name })
       assertEquals(
         listOf("ui.jar", "compose.jar", "shared.jar", "model.jar", "json.jar"),
