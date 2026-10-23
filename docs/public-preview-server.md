@@ -3092,6 +3092,15 @@ curl -sS --data-binary @loading.json 'https://preview.coo.ee/docs?name=loading.j
 #  "expiresIn":"1h", …}
 ```
 
+For a Remote Compose document the CLI does the `curl` for you, resolving the host the way
+`share-preview` does (`--serve-url`, `$COMPOSE_PREVIEW_SERVE_URL`, or a confirmed
+`composePreview.serveUrl`) and printing the absolute link:
+
+```bash
+compose-preview rc upload build/compose-previews/renders/Card.rc --serve-url https://preview.coo.ee
+# https://preview.coo.ee/d/0YFhq8Kb…
+```
+
 **Known formats** ([`ServeDocFormats`](../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDocFormats.kt)) —
 adding one is a registry entry plus its player bundle, not a new route:
 

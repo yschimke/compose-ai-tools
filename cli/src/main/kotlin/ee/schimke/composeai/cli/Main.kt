@@ -259,11 +259,15 @@ private fun printFullUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
-      rc               Remote Compose JSON codec, offline (no daemon, no Gradle, no project):
+      rc               Remote Compose JSON codec, offline (no daemon, no Gradle, no project),
+                       plus `upload` to share a document:
                          rc compile <doc.json> -o <doc.rc>   authoring JSON -> binary document
                          rc dump <doc.rc> [--compact] [-o f] binary document -> document JSON
                          rc dump <dir> [--compact]           every .rc under <dir>, in place
                          rc header <doc.rc> [--json]         declared header only, no inflate
+                         rc upload <doc.rc> [--serve-url URL] [--name LABEL] [--json]
+                                                             expiring permalink on a serve
+                                                             --accept-docs host
                        The two JSON dialects are NOT inverses: `compile` reads AndroidX's
                        AUTHORING dialect (remote_compose_schema.json — named resources, infix
                        expressions, modifier shorthands); `dump` writes the DOCUMENT dialect,

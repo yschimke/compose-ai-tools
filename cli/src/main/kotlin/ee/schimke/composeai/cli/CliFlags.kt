@@ -85,6 +85,8 @@ internal object CliFlags {
       "--raw-base",
       "--serve-url",
       "--serve-token",
+      // `rc upload`'s display label for the shared document.
+      "--name",
       "--github-token-file",
       "--github-token",
       "--with-extension",
