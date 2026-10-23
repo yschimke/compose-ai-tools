@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.73.0](https://github.com/yschimke/compose-ai-tools/compare/v2.72.1...v2.73.0) (2026-10-23)
+
+
+### Features
+
+* **cli:** add `rc upload` to share a Remote Compose document ([#6198](https://github.com/yschimke/compose-ai-tools/issues/6198)) ([231c72a](https://github.com/yschimke/compose-ai-tools/commit/231c72a2657928558771b91e25ac195e67dbf6dd))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.5 ([#6205](https://github.com/yschimke/compose-ai-tools/issues/6205)) ([94a0cdc](https://github.com/yschimke/compose-ai-tools/commit/94a0cdc9cc44f4ecb81f7f39836fd3ac9c3850cf))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.1 ([#6204](https://github.com/yschimke/compose-ai-tools/issues/6204)) ([325cc2f](https://github.com/yschimke/compose-ai-tools/commit/325cc2f4cf415a9a7ef94dc2a461e20b39b5ee91))
+
 ## [2.72.1](https://github.com/yschimke/compose-ai-tools/compare/v2.72.0...v2.72.1) (2026-10-23)
 
 
