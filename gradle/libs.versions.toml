@@ -363,7 +363,9 @@ coil3 = "3.5.0"
 # carries Android resources).
 # 3.37.0 adds the early `initialize` — `ClientCapabilities.bootProgress`, `InitializeResult.booting`
 # and the `bootProgress` notification (compose-preview-contracts#195, #6114).
-composeai-contracts = "3.37.0"
+# 3.38.0 declares the launch descriptor's `sourceWatch` (compose-preview-contracts#200), so its JVM
+# reader is no longer a writer-only exemption in scripts/daemon-launch-schema-allowlist.json.
+composeai-contracts = "3.38.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -469,7 +471,12 @@ composeai-contracts = "3.37.0"
 # otherwise rejects with ClassFormatError (compose-preview-daemon#347, #6161).
 # 3.21.4 also removes the duplicate rows Robolectric's constructor instrumentation writes, which the
 # sandbox defines directly — Wear Compose Material's `Shapes` (compose-preview-daemon#350, #6161).
-composeai-preview-daemon = "3.22.0"
+# 3.23.0 bundles the warm compiler by Kotlin minor version (compose-preview-daemon#368) and moves to
+# contracts 3.38.0, whose launch descriptor declares `sourceWatch`.
+# 3.24.0 warms the in-process compiler when a client asks (#367), and lets an app tour pass over a
+# system screen the app opens, such as the runtime-permission dialog (#370,
+# homeassistant-remotecompose#635).
+composeai-preview-daemon = "3.24.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

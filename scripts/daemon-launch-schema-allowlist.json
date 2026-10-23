@@ -102,14 +102,7 @@
       }
     }
   },
-  "writerOnlyFields": {
-    "sourceWatch": {
-      "invisibleTo": [
-        "jvm"
-      ],
-      "why": "Optional and additive (compose-ai-tools#6184). The pinned contracts reader predates it and ignores it through `ignoreUnknownKeys`; remove `jvm` here once the contracts pin includes compose-preview-contracts#200, which declares it. Left out of the JSON when null (`@EncodeDefault(NEVER)`), so a descriptor built without source dirs is byte-identical to one from before the field existed."
-    }
-  },
+  "writerOnlyFields": {},
   "constantRegistries": {},
   "mirroredConstants": {},
   "versionStampAliases": {
