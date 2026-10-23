@@ -365,7 +365,7 @@ coil3 = "3.5.0"
 # and the `bootProgress` notification (compose-preview-contracts#195, #6114).
 # 3.38.0 declares the launch descriptor's `sourceWatch` (compose-preview-contracts#200), so its JVM
 # reader is no longer a writer-only exemption in scripts/daemon-launch-schema-allowlist.json.
-composeai-contracts = "3.38.0"
+composeai-contracts = "3.39.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
