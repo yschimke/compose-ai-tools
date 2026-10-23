@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.72.1](https://github.com/yschimke/compose-ai-tools/compare/v2.72.0...v2.72.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* publish sourceWatch from Bazel and Buck2 prepare ([#6194](https://github.com/yschimke/compose-ai-tools/issues/6194)) ([1528b4a](https://github.com/yschimke/compose-ai-tools/commit/1528b4af0dfe06393608e665ee0215708748ca86))
+* watch each Bazel source's package, not its directory ([#6197](https://github.com/yschimke/compose-ai-tools/issues/6197)) ([efd7ace](https://github.com/yschimke/compose-ai-tools/commit/efd7ace3e973c720bac3812a39b0372f33f52fdd))
+
 ## [2.72.0](https://github.com/yschimke/compose-ai-tools/compare/v2.71.0...v2.72.0) (2026-10-23)
 
 
