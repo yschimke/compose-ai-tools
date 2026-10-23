@@ -8,6 +8,7 @@ import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
 import ee.schimke.composeai.daemon.client.SocketDaemonClientFactory
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
+import ee.schimke.composeai.daemonlaunch.SourceWatch
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
 import ee.schimke.composeai.discovery.PreviewManifest as DiscoveryManifest
@@ -1327,11 +1328,78 @@ internal fun prepareBazelAndroidDaemon(
           pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
+      sourceWatch = bazelSourceWatch(artifacts, root),
       javaLauncher = currentJavaLauncher(),
     )
   return output.resolve("daemon-launch.json").also {
     it.writeText(DaemonLaunchBuilder.encode(descriptor))
   }
+}
+
+/**
+ * Where a Bazel or Buck2 target is built from, for the descriptor's `sourceWatch` (#6193), so an
+ * MCP server's source tree watches a build that has no `build.gradle` + `src/` to find by
+ * convention:
+ *
+ * - the directories of the target's workspace sources, a directory under another one dropped (a
+ *   watch is recursive). Output-tree and external-repository sources are left out: nobody edits
+ *   them, and the build regenerates them;
+ * - an Android target's `res/` (or `src/main/res/`) beside its package's build file. The artifacts
+ *   carry only compiled resources, so this is the convention, not the build's own list; and
+ * - the package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
+ *   whichever exist: an edit to one changes what the target builds.
+ *
+ * Null when none of the three finds anything.
+ */
+internal fun bazelSourceWatch(artifacts: ResolvedBazelArtifacts, root: File): SourceWatch? {
+  val workspace = root.absoluteFile.normalize()
+  fun editable(file: File): Boolean {
+    if (!file.startsWith(workspace)) return false
+    val first = file.relativeTo(workspace).invariantSeparatorsPath.substringBefore('/')
+    return !first.startsWith("bazel-") && first != "buck-out" && !first.startsWith(".")
+  }
+  val sourceDirs =
+    artifacts.sourceFiles
+      .map { it.absoluteFile.normalize() }
+      .filter(::editable)
+      .mapNotNull { it.parentFile }
+      .distinct()
+      .sortedBy { it.path.length }
+      .fold(mutableListOf<File>()) { kept, dir ->
+        if (kept.none { dir.startsWith(it) }) kept += dir
+        kept
+      }
+  val packageDir =
+    bazelLabelPackage(artifacts.metadata.target)?.let {
+      if (it.isEmpty()) workspace else workspace.resolve(it)
+    }
+  val resourceDirs =
+    if (artifacts.android == null || packageDir == null) emptyList()
+    else listOf("res", "src/main/res").map(packageDir::resolve).filter(File::isDirectory)
+  val buildFiles =
+    (packageDir?.let { dir -> BAZEL_PACKAGE_FILES.map(dir::resolve) }.orEmpty() +
+        listOf("bazel.json", "buck.json").map { workspace.resolve(".compose-preview/$it") })
+      .filter(File::isFile)
+  if (sourceDirs.isEmpty() && resourceDirs.isEmpty() && buildFiles.isEmpty()) return null
+  return SourceWatch(
+    sourceDirs.map { it.path },
+    resourceDirs.map { it.path },
+    buildFiles.map { it.path },
+  )
+}
+
+/** Every file a Bazel or Buck2 package's rules are declared in. */
+private val BAZEL_PACKAGE_FILES =
+  listOf("BUILD.bazel", "BUILD", "BUCK", "BUCK.v2", "TARGETS", "TARGETS.v2")
+
+/**
+ * The package of a main-repository label, relative to the workspace: `//a/b:c` and Buck2's
+ * `root//a/b:c` are `a/b`, `//:c` is empty. Null for an external repository's label.
+ */
+internal fun bazelLabelPackage(label: String): String? {
+  if (label.startsWith("@") && !label.startsWith("@//") && !label.startsWith("@@//")) return null
+  if ("//" !in label) return null
+  return label.substringAfter("//").substringBefore(':')
 }
 
 /** The `java` executable this CLI runs on, or null when it cannot be found. */
@@ -1384,6 +1452,7 @@ internal fun prepareBazelDesktopDaemon(
         ) + NetworkPolicy.daemonSystemProperties() + pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
+      sourceWatch = bazelSourceWatch(artifacts, root),
     )
   return output.resolve("daemon-launch.json").also {
     it.writeText(DaemonLaunchBuilder.encode(descriptor))
