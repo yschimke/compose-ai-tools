@@ -150,9 +150,9 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
           set -uo pipefail
-          # See the comment in snapshot.yml's publish step: root-level abbreviation fans out
-          # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
-          # includeBuild and needs an explicit address.
+          # Root-level `publishToMavenCentral` (no `:` prefix) fans out to every subproject
+          # applying `composeai.maven-publishing`; `:gradle-plugin` is an includeBuild and needs
+          # an explicit address.
           #
           # Name the tasks explicitly. A bare `./gradlew` is not a no-op that fails loudly —
           # there is no `defaultTasks` in this build, so it runs `help` and exits 0, and the
