@@ -1,0 +1,84 @@
+package ee.schimke.composeai.cli
+
+import java.io.File
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+/** #6193: a Bazel or Buck2 descriptor says where its target is built from. */
+class BazelSourceWatchTest {
+  private fun File.touch(text: String = ""): File = apply {
+    parentFile.mkdirs()
+    writeText(text)
+  }
+
+  private fun artifacts(
+    target: String,
+    sources: List<File>,
+    android: ResolvedAndroidArtifacts? = null,
+  ) =
+    ResolvedBazelArtifacts(
+      metadata = BazelArtifacts(target, "config", emptyList(), emptyList()),
+      projectJars = emptyList(),
+      runtimeJars = emptyList(),
+      sourceFiles = sources,
+      dataFiles = emptyList(),
+      android = android,
+    )
+
+  @Test
+  fun `workspace source dirs, the package's res and its build files are watched`() {
+    val root = Files.createTempDirectory("bazel-source-watch").toFile()
+    try {
+      val screen = root.resolve("feature/ui/src/main/kotlin/ui/Screen.kt").touch()
+      val theme = root.resolve("feature/ui/src/main/kotlin/ui/theme/Theme.kt").touch()
+      val shared = root.resolve("feature/ui/shared/Shared.kt").touch()
+      // Generated and external sources: nobody edits them.
+      val generated = root.resolve("bazel-out/k8-fastbuild/bin/feature/ui/Gen.kt").touch()
+      val external = Files.createTempDirectory("bazel-external").toFile().resolve("Ext.kt").touch()
+      val build = root.resolve("feature/ui/BUILD.bazel").touch()
+      val res = root.resolve("feature/ui/res").apply { mkdirs() }
+      val config = root.resolve(".compose-preview/bazel.json").touch("{}")
+      val android =
+        ResolvedAndroidArtifacts("ui", root.resolve("r.apk"), root.resolve("m.xml"), null, 35)
+
+      val watch =
+        bazelSourceWatch(
+          artifacts("//feature/ui:ui", listOf(screen, theme, shared, generated, external), android),
+          root,
+        )!!
+
+      assertEquals(listOf(shared.parentFile.path, screen.parentFile.path), watch.sourceDirs)
+      assertEquals(listOf(res.path), watch.resourceDirs)
+      assertEquals(listOf(build.path, config.path), watch.buildFiles)
+      // A desktop target has no Android res/.
+      assertEquals(
+        emptyList(),
+        bazelSourceWatch(artifacts("//feature/ui:ui", listOf(screen)), root)!!.resourceDirs,
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a target with nothing in the workspace publishes no watch`() {
+    val root = Files.createTempDirectory("bazel-source-watch-none").toFile()
+    try {
+      val generated = root.resolve("bazel-out/bin/Gen.kt").touch()
+      assertNull(bazelSourceWatch(artifacts("@maven//:lib", listOf(generated)), root))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a label's package is read for Bazel and Buck2 alike`() {
+    assertEquals("a/b", bazelLabelPackage("//a/b:c"))
+    assertEquals("a/b", bazelLabelPackage("@//a/b:c"))
+    assertEquals("a/b", bazelLabelPackage("root//a/b:c"))
+    assertEquals("", bazelLabelPackage("//:app"))
+    assertNull(bazelLabelPackage("@maven//:lib"))
+  }
+}
