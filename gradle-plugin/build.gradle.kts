@@ -77,11 +77,38 @@ val functionalTestRuntimeOnly =
     extendsFrom(configurations.testRuntimeOnly.get())
   }
 
+// AGP and the Compose compiler plugin, for Android TestKit fixtures that apply AGP beside the
+// plugin under test. AGP is `compileOnly` above, so `withPluginClasspath()` alone can't see it; a
+// fixture appends these jars to the injected classpath so both load in one classloader, as in a
+// real build.
+val functionalTestAndroidPluginClasspath =
+  configurations.create("functionalTestAndroidPluginClasspath") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+  }
+
+dependencies {
+  functionalTestAndroidPluginClasspath("com.android.tools.build:gradle:${libs.versions.agp.get()}")
+  functionalTestAndroidPluginClasspath(
+    "org.jetbrains.kotlin:compose-compiler-gradle-plugin:${libs.versions.kotlin.get()}"
+  )
+}
+
 val functionalTestTask =
   tasks.register<Test>("functionalTest") {
     testClassesDirs = functionalTest.output.classesDirs
     classpath = functionalTest.runtimeClasspath
     useJUnit()
+
+    val androidPluginClasspath = files(functionalTestAndroidPluginClasspath)
+    inputs.files(androidPluginClasspath).withNormalizer(ClasspathNormalizer::class.java)
+    jvmArgumentProviders.add(
+      CommandLineArgumentProvider {
+        listOf(
+          "-Dee.schimke.composeai.functionalTest.androidPluginClasspath=${androidPluginClasspath.asPath}"
+        )
+      }
+    )
 
     // Print full failure messages: these E2Es carry their diagnostics in the message.
     testLogging {
