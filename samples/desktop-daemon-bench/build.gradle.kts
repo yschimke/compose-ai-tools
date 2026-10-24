@@ -659,8 +659,8 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         cmd += "-Dcomposeai.bench.sources=$sources"
         cmd += "-Dcomposeai.bench.editFile=${previewFile.absolutePath}"
         cmd += "-Dcomposeai.bench.runs=$runs"
-        cmd += listOf("-cp", cp, "ee.schimke.composeai.daemon.bta.BtaBenchMain")
-        logger.lifecycle("bench> java … ee.schimke.composeai.daemon.bta.BtaBenchMain")
+        cmd += listOf("-cp", cp, "ee.schimke.composeai.daemon.compile.BtaBenchMain")
+        logger.lifecycle("bench> java … ee.schimke.composeai.daemon.compile.BtaBenchMain")
         val proc =
           ProcessBuilder(cmd)
             .directory(rootDir)

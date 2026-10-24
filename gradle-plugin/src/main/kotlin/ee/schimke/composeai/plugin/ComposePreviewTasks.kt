@@ -1027,8 +1027,8 @@ internal object ComposePreviewTasks {
    * and mirrors them into daemon system properties for `DefaultBtaCompileService.fromSysprops()`.
    * [setupBtaConfigurations] must run first.
    *
-   * The property names duplicate `:daemon:core`'s `DefaultBtaCompileService.SYSPROP_*` (separate
-   * builds); keep in sync.
+   * The property names duplicate `DefaultBtaCompileService.SYSPROP_*` in compose-preview-daemon's
+   * `daemon-compile` (separate builds); keep in sync.
    */
   internal fun wireBtaInputs(
     project: Project,
