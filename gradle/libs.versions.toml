@@ -484,7 +484,11 @@ composeai-contracts = "3.39.0"
 # 3.24.3 renders the focused preview first, then visible ones, at a capped concurrency (#384),
 # bundles a Kotlin 2.3 warm compiler (#382), and warms the Build Tools API on compileWarmUp
 # when no warm compiler can run (#383).
-composeai-preview-daemon = "3.24.3"
+# 3.24.4 holds background sandbox boots while an in-process compile runs (#386). 3.25.0 moves the
+# in-process compile out of compose-preview-contracts' `daemon-bta` into the daemon as
+# `daemon-compile`, package `ee.schimke.composeai.daemon.compile` (#388), carrying memoized
+# class-path hashes; the `composeai.daemon.bta.*` system properties keep their names.
+composeai-preview-daemon = "3.25.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
@@ -543,7 +547,6 @@ rcplayers = "2.17.5"
 composeai-contracts-bom = { module = "ee.schimke.composeai:compose-preview-contracts-bom", version.ref = "composeai-contracts" }
 composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol" }
 composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices" }
-composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol" }
 composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
 composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }

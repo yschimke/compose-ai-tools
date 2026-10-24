@@ -57,6 +57,7 @@ val checkProducerRuntime by tasks.registering {
         it.name.startsWith("daemon-client-") ||
           it.name.startsWith("daemon-core-") ||
           it.name.startsWith("daemon-bta-") ||
+          it.name.startsWith("daemon-compile-") ||
           it.name.startsWith("kotlin-build-tools-api-") ||
           it.name.startsWith("compose-preview-") ||
           it.name.startsWith("render-host-") ||
