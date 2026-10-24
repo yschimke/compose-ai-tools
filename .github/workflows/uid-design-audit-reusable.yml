@@ -83,11 +83,11 @@ jobs:
           python _uid_tools/scripts/uid/evidence.py
           --plan "$PILOT_DIR/references.json" --root _uid_evidence
           --stage _uid_audit
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
-      - uses: yschimke/compose-ai-tools/.github/actions/install@77e7f8ba122a79a0829006e3574ea6ae32767046 # v2.45.0
+      - uses: yschimke/compose-ai-tools/.github/actions/install@c9d477ed1164edad54ead0affada332d6930f64a # v2.70.6
         with:
           version: '2.45.0'
           plugin-readiness-timeout: '0'
