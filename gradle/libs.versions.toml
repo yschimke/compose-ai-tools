@@ -479,7 +479,9 @@ composeai-contracts = "3.39.0"
 # 3.24.1 gives a large module's warm-up its full JIT budget after the class-path state is built
 # (#375), lets `compileSources` answer without waiting for renders queued on a sandbox worker (#376),
 # and stops reporting previews loaded from previews.json as changed on the first rescan (#377).
-composeai-preview-daemon = "3.24.1"
+# 3.24.2 collapses repeated plain renderNows for a preview already rendering into one render after
+# it, so a burst of saves no longer queues a render per save (#380).
+composeai-preview-daemon = "3.24.2"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
