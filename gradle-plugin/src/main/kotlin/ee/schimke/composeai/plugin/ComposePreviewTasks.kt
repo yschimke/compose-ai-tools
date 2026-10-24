@@ -526,15 +526,20 @@ internal object ComposePreviewTasks {
     // `build/processedResources/<sourceSet>/main`), so bundles carry classpath resources; missing
     // means none.
     val moduleResourcesDirProvider: Provider<Directory> =
-      project.providers.provider {
-        val candidates =
-          listOf(
-            project.layout.buildDirectory.dir("resources/main").orNull,
-            project.layout.buildDirectory.dir("processedResources/jvm/main").orNull,
-            project.layout.buildDirectory.dir("processedResources/desktop/main").orNull,
-          )
-        candidates.firstOrNull { it != null && it.asFile.isDirectory }
-      }
+      project.layout.dir(
+        FirstExistingPathValueSource.of(
+          project,
+          project.layout.buildDirectory.map { build ->
+            listOf(
+                "resources/main",
+                "processedResources/jvm/main",
+                "processedResources/desktop/main",
+              )
+              .map { build.dir(it).asFile }
+          },
+          directory = true,
+        )
+      )
 
     return project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
       // Skip non-renderable pure KMP-Android modules: they discover 0 previews and the bundle task
@@ -839,15 +844,14 @@ internal object ComposePreviewTasks {
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
-      // See `DaemonBootstrapTask.previewsManifest`; a null provider leaves the `@Optional` input
-      // unset.
+      // See `DaemonBootstrapTask.previewsManifest`; an absent value leaves the `@Optional` input
+      // unset, checked at execution rather than as a configuration-cache input.
       previewsManifest.fileProvider(
-        previewOutputDir.flatMap { dir ->
-          project.providers.provider {
-            val f = dir.file("previews.json").asFile
-            if (f.isFile) f else null
-          }
-        }
+        FirstExistingPathValueSource.of(
+          project,
+          previewOutputDir.map { listOf(it.file("previews.json").asFile) },
+          directory = false,
+        )
       )
       // Ordering only, as on Android: the provider carries no dependency, and `dependsOn` would
       // prevent warming before discovery.
