@@ -204,12 +204,14 @@ class DaemonBootstrapFunctionalTest {
    * cache on, but an Android module wires AGP's `test<Variant>UnitTest` classpath into the
    * descriptor task, which only an AGP fixture exercises. Storing the entry resolves every file
    * collection the task holds, so a classpath the cache can't write fails here, before execution.
+   * Later identical runs must then reuse the entry: a configuration-phase read of `previews.json`
+   * made every discovery invalidate it.
    */
   @Test
   fun `composePreviewDaemonStart on an Android application is configuration-cache compatible`() {
     val projectDir = createAndroidTestProject()
 
-    val result =
+    val runner =
       GradleRunner.create()
         .withProjectDir(projectDir)
         .withArguments(
@@ -219,10 +221,38 @@ class DaemonBootstrapFunctionalTest {
           "--stacktrace",
         )
         .withPluginClasspath(androidPluginClasspath())
-        .build()
+
+    val result = runner.build()
 
     assertThat(result.output).contains("Configuration cache entry stored")
     assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    // The first run wrote `previews.json`. Nothing the configuration phase reads may depend on it,
+    // or every discovery would invalidate the entry it just stored.
+    val second = runner.build()
+    assertThat(second.output).contains("Reusing configuration cache.")
+    assertThat(second.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+
+    // A new preview makes discovery rewrite `previews.json`. The entry still holds, and the
+    // descriptor re-emits because the manifest is its task input.
+    File(projectDir, "src/main/kotlin/ee/schimke/composeai/functionaltest/Previews.kt")
+      .appendText(
+        """
+
+        @Preview
+        @Composable
+        fun BlueBoxPreview() {
+            Box(modifier = Modifier.size(100.dp).background(Color.Blue))
+        }
+        """
+          .trimIndent()
+      )
+    val third = runner.build()
+    assertThat(third.output).contains("Reusing configuration cache.")
+    assertThat(third.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(third.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(File(projectDir, "build/compose-previews/previews.json").readText())
+      .contains("BlueBoxPreview")
 
     val descriptor =
       kotlinx.serialization.json.Json.parseToJsonElement(

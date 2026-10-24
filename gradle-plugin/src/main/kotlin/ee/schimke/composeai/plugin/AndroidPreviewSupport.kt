@@ -1905,7 +1905,11 @@ internal object AndroidPreviewSupport {
     // ATF / hierarchy data products come only from the daemon, so no a11y outputs are declared.
 
     val shardCount =
-      resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
+      resolveShardCount(
+        project,
+        extension,
+        previewOutputDir.map { it.file("previews.json").asFile },
+      )
     val shardsEnabled = shardCount > 1
 
     // When sharded, generate N subclasses of RobolectricRenderTestBase, each loading one manifest
@@ -2869,15 +2873,15 @@ internal object AndroidPreviewSupport {
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       // Invalidates the descriptor (triggering VS Code's respawn) when the manifest appears or
-      // changes. A null-returning provider leaves the property unset when the file is absent, which
-      // is what `@Optional` needs.
+      // changes. An absent value leaves the property unset when the file is missing, which is what
+      // `@Optional` needs; the value source checks at execution, so the check is no
+      // configuration-cache input (see [FirstExistingPathValueSource]).
       this.previewsManifest.fileProvider(
-        previewOutputDir.flatMap { dir ->
-          project.providers.provider {
-            val f = dir.file("previews.json").asFile
-            if (f.isFile) f else null
-          }
-        }
+        FirstExistingPathValueSource.of(
+          project,
+          previewOutputDir.map { listOf(it.file("previews.json").asFile) },
+          directory = false,
+        )
       )
       // The provider carries no build dependency, which strict validation rejects. `mustRunAfter`
       // rather than `dependsOn`: the daemon must be warmable before any discovery.
@@ -3134,45 +3138,20 @@ internal object AndroidPreviewSupport {
 
   /**
    * Effective shard count: `≥1` as-is; `0` (auto) feeds a previous `previews.json` to
-   * [ShardTuning.autoShards], or falls back to 1 when absent.
+   * [ShardTuning.autoShards], or falls back to 1 when absent. Auto is read through
+   * [AutoShardCountValueSource] so the configuration cache keys on the count rather than on the
+   * manifest discovery rewrites.
    */
   private fun resolveShardCount(
     project: Project,
     extension: PreviewExtension,
-    previewsJson: java.io.File,
+    previewsJson: Provider<java.io.File>,
   ): Int {
     val requested = extension.shards.get()
     if (requested > 0) return requested
-    if (!previewsJson.exists()) {
-      project.logger.info(
-        "compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run"
-      )
-      return 1
-    }
-    // Size by preview row: the renderer keeps a row's captures on one fork, so counting captures
-    // would pick idle extra forks. [ShardTuning.perPreviewRowCosts] mirrors the renderer's per-row
-    // cost.
-    val text = previewsJson.readText()
-    val rowCosts = ShardTuning.perPreviewRowCosts(text)
-    val rowCount = rowCosts.size
-    val totalCost = rowCosts.sum()
-    val maxIndividualCost = rowCosts.maxOrNull() ?: 0.0
-    val hostMemoryMb = ShardTuning.hostMemoryMb()
-    val resolved =
-      ShardTuning.autoShards(
-        totalCost = totalCost,
-        maxIndividualCost = maxIndividualCost,
-        shardableRows = rowCount,
-        availableMemoryMb = hostMemoryMb,
-      )
-    val memTag = if (hostMemoryMb == Long.MAX_VALUE) "unknown" else "${hostMemoryMb}MB"
-    project.logger.lifecycle(
-      "compose-ai-tools: shards=auto → $resolved " +
-        "(rows=$rowCount, totalCost=${"%.1f".format(totalCost)}, " +
-        "maxRowCost=${"%.1f".format(maxIndividualCost)}, " +
-        "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)"
-    )
-    return resolved
+    return project.providers
+      .of(AutoShardCountValueSource::class.java) { parameters.previewsJson.set(previewsJson) }
+      .get()
   }
 
   private fun String.cap(): String = replaceFirstChar {
