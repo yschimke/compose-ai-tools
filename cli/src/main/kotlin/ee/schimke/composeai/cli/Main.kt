@@ -155,8 +155,8 @@ private fun printUsage(full: Boolean = false) {
       setup     update · provision · init-script · pin · auth · bazel · buck
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
-    Project builds: Gradle settings/wrapper first, then a Buck2 project or Bazel/Blaze workspace.
-      list/render/show accept --target <label> and --build-system auto|gradle|bazel|blaze|buck.
+    Project builds: Gradle settings/wrapper first, then a Buck2 project or Bazel workspace.
+      list/render/show accept --target <label> and --build-system auto|gradle|bazel|buck.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
       --preview <ref>, --json, --output <path>, --verbose/-v. Full list under

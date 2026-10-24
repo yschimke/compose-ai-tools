@@ -490,8 +490,8 @@ internal fun bazelQueryLanguageArgs(buildArgs: List<String>): List<String> {
 
 /**
  * The execution root a build's event stream reports (`workspaceInfo.localExecRoot`, Bazel's
- * `WorkspaceConfig` event), or null when it reports none or names a missing directory: Blaze or an
- * older Bazel, for which the caller asks `info execution_root` instead.
+ * `WorkspaceConfig` event), or null when it reports none or names a missing directory: an older or
+ * custom Bazel distribution, for which the caller asks `info execution_root` instead.
  */
 internal fun bazelEventExecutionRoot(events: Sequence<String>): String? =
   events
@@ -1131,7 +1131,8 @@ internal const val RULES_ANDROID_ASPECT =
 
 /**
  * The Android aspect for an unconfigured workspace, or null when it has none it can load, so an
- * unconfigured selection stays JVM-only as before (a Blaze workspace, which has no `MODULE.bazel`):
+ * unconfigured selection stays JVM-only as before (a `WORKSPACE`-only project without
+ * `MODULE.bazel`):
  *
  * - [RULES_ANDROID_ASPECT] when `MODULE.bazel` declares `rules_compose_preview` (under its
  *   `repo_name`, when it sets one);

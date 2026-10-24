@@ -21,9 +21,9 @@ script; see [BUCK.md](BUCK.md).
 
 Gradle settings (`settings.gradle.kts` / `settings.gradle`) win within a workspace,
 with the existing wrapper fallback. Otherwise `MODULE.bazel`, `WORKSPACE[.bazel]`,
-`.blazerc`, or BUILD files select the Bazel-family driver. Nested workspaces and
+or BUILD files select the Bazel-family driver. Nested workspaces and
 repository boundaries prevent selecting an unrelated outer build. Use
-`--build-system gradle|bazel|blaze` to override a mixed checkout and `--project`
+`--build-system gradle|bazel|buck` to override a mixed checkout and `--project`
 to select a workspace from elsewhere. `list`/`show --json` use the same versioned
 CLI response on both paths, including capture paths, hashes and changed state.
 
@@ -116,7 +116,7 @@ repeating labels:
 {
   "schemaVersion": 1,
   "target": "//app:ui",
-  "buildCommand": ["blaze"],
+  "buildCommand": ["bazelisk"],
   "buildArgs": ["--config=desktop"]
 }
 ```
@@ -130,18 +130,40 @@ or, for every UI library under `//app` except the legacy tree:
 }
 ```
 
+### Distribution defaults
+
+A repackaged CLI, or a wrapper distribution, can supply defaults for every key of
+`bazel.json` without patching source. The configuration is merged at the JSON level,
+key by key, lowest precedence first:
+
+1. the classpath resource `/ee/schimke/composeai/cli/bazel-defaults.json` (upstream
+   releases bundle none);
+2. the file the `COMPOSE_PREVIEW_BAZEL_CONFIG` environment variable names (a missing
+   file is an error);
+3. the workspace's `.compose-preview/bazel.json`, or the `--config` file;
+4. CLI flags: `--build-command`, `--aspect`, `--bazel-arg` (appended to `buildArgs`).
+
+A later layer's key replaces the earlier value whole — a list or object is not
+appended to or merged into. So a workspace `bazel.json` of `{"target": "//app:ui"}`
+inherits a distribution's `buildCommand`, `buildArgs`, `queryArgs`, `providers` and
+`digestXattr`, and `bazel init --android` sees bundled `providers` before
+`bazel.json` exists. Buck2's `buck.json` reads no defaults layer.
+
+### The build command
+
 The executable is chosen in this order, and the first match wins:
 
 1. `--build-command`;
-2. `buildCommand` in `.compose-preview/bazel.json` — commit it to make the choice
-   predictable for everyone;
-3. `--build-system blaze`;
-4. the `COMPOSE_PREVIEW_BUILD_COMMAND` environment variable;
-5. `.blazerc` in the workspace root selects `blaze`;
-6. `.bazelversion` with `bazelisk` on PATH selects `bazelisk`, which honours the pin;
-7. the first of `bazel`, `bazelisk`, `blaze` on PATH.
+2. `buildCommand` in `.compose-preview/bazel.json` (or `--config`) — commit it to
+   make the choice predictable for everyone;
+3. the `COMPOSE_PREVIEW_BUILD_COMMAND` environment variable;
+4. `buildCommand` from a defaults layer (`COMPOSE_PREVIEW_BAZEL_CONFIG`, then the
+   bundled `bazel-defaults.json`);
+5. `.bazelversion` with `bazelisk` on PATH selects `bazelisk`, which honours the pin;
+6. the first of `bazel`, `bazelisk` on PATH.
 
-A detected choice (steps 4–7) is reported on stderr with its reason, as is every
+A custom Bazel wrapper or distribution is named by one of the first four; no
+workspace marker selects one. A detected choice (steps 3, 5 and 6) is reported on stderr with its reason, as is every
 choice under `--verbose`. The driver never runs a candidate merely to detect it.
 
 Ignore generated `.compose-preview/bazel/` and `.compose-preview/outputs/`, but
@@ -237,10 +259,11 @@ package is unwelcome (large monorepos, repository policy), either:
 Setting `"installAspect": false` makes this a hard rule: if the default package is
 missing the driver fails instead of creating it.
 
-For Blaze testing, change `buildCommand` to the approved executable/wrapper and
-select the supported provider load/aspect. The direct adapter expects
+For a custom Bazel wrapper or distribution, change `buildCommand` to the approved
+executable/wrapper (or bundle it in `bazel-defaults.json`) and select the supported
+provider load/aspect. The direct adapter expects
 `build`, `info execution_root`, JSON BEP with named sets/output groups, and
-command-line aspects. **Public Bazel is tested; Blaze compatibility needs internal
+command-line aspects. **Public Bazel is tested; a custom distribution needs its own
 validation.** An IDE installation is unnecessary. Historical IntelliJ
 `render_jars` output is a candidate input, but it still needs a small wrapper to
 produce the metadata below; changing the output-group name alone cannot recover
@@ -392,7 +415,8 @@ selected `android_library` / `kt_android_library` targets with the Android aspec
 `@rules_compose_preview` when `MODULE.bazel` declares it (under its `repo_name`, if set), and
 otherwise the copy it bundles (below) when the `rules_android` and `rules_java` that copy loads are
 visible under those names (declared in `MODULE.bazel`, or defined in `WORKSPACE`), or `providers`
-points it elsewhere. A workspace with neither, such as a Blaze one, keeps the JVM-only selection:
+points it elsewhere. A workspace with neither, such as a `WORKSPACE`-only one without those
+repositories, keeps the JVM-only selection:
 set `aspect` (or `providers`) to render its Android targets.
 A target an Android library `exports` belongs to that library and is not built on its own:
 rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` and `_base`
@@ -605,7 +629,7 @@ Build the CLI branch once in `compose-ai-tools`:
 scripts/agent-gradle.sh :cli:installDist
 cli/build/install/compose-preview/bin/compose-preview bazel init --project /path/to/workspace
 cli/build/install/compose-preview/bin/compose-preview bazel render \
-  --project /path/to/workspace --target //app:ui --build-command blaze
+  --project /path/to/workspace --target //app:ui --build-command bazelisk
 ```
 
 Run init with the approved `--java-info-load` when the default rules_java load is
