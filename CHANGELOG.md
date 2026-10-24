@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.73.2](https://github.com/yschimke/compose-ai-tools/compare/v2.73.1...v2.73.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **plugin:** reuse the configuration cache across discoveries ([#6212](https://github.com/yschimke/compose-ai-tools/issues/6212)) ([51c94a7](https://github.com/yschimke/compose-ai-tools/commit/51c94a79f8b410ca2d4b7fdcf71a2c148a439e40))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.3 ([#6214](https://github.com/yschimke/compose-ai-tools/issues/6214)) ([690966e](https://github.com/yschimke/compose-ai-tools/commit/690966eb035ba83170849a2b9c396b5ebd48ccbd))
+
 ## [2.73.1](https://github.com/yschimke/compose-ai-tools/compare/v2.73.0...v2.73.1) (2026-10-24)
 
 
