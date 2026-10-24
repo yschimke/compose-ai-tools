@@ -50,7 +50,10 @@ public enum class RcPlayerBackend(
    * Column ids are frozen (they key published assets) and differ from wire ids: `embedded` is
    * [ANDROIDX_EMBEDDED]; the `androidx-embedded` column is an androidx.dev build no backend maps
    * to. [ANDROIDX_VIEW] maps to nothing (the `baked` column is an embedded capture, so serving it
-   * would be the wrong player's pixels). [CMP_ANDROID] has no column yet.
+   * would be the wrong player's pixels). [CMP_ANDROID] keeps its own `cmp-android` column rather
+   * than sharing [CMP_JVM]'s: the same player on a different text and canvas stack, rendered by
+   * `RcCmpAndroidRenderHarness` in yschimke/rc-players, so a divergence between those two columns
+   * is the host rather than the interpreter.
    */
   public val rcCompareLane: String?,
 ) {
@@ -92,7 +95,7 @@ public enum class RcPlayerBackend(
     playerKind = null,
     daemonPlayerId = "cmp-android",
     clientSide = false,
-    rcCompareLane = null,
+    rcCompareLane = "cmp-android",
   ),
   CMP_JVM(
     "cmp-jvm",
