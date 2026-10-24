@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -196,6 +197,168 @@ class DaemonBootstrapFunctionalTest {
 
     assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(result.task(":composePreviewDiscover")).isNull()
+  }
+
+  /**
+   * The Android path under the configuration cache (#6207). The CMP fixtures above all run with the
+   * cache on, but an Android module wires AGP's `test<Variant>UnitTest` classpath into the
+   * descriptor task, which only an AGP fixture exercises. Storing the entry resolves every file
+   * collection the task holds, so a classpath the cache can't write fails here, before execution.
+   */
+  @Test
+  fun `composePreviewDaemonStart on an Android application is configuration-cache compatible`() {
+    val projectDir = createAndroidTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewDiscover",
+          "composePreviewDaemonStart",
+          "--configuration-cache",
+          "--stacktrace",
+        )
+        .withPluginClasspath(androidPluginClasspath())
+        .build()
+
+    assertThat(result.output).contains("Configuration cache entry stored")
+    assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val descriptor =
+      kotlinx.serialization.json.Json.parseToJsonElement(
+          File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+        )
+        .jsonObject
+    assertThat(descriptor["mainClass"]?.jsonPrimitive?.content)
+      .isEqualTo("ee.schimke.composeai.daemon.DaemonMain")
+    assertThat(descriptor["classpath"]!!.jsonArray).isNotEmpty()
+  }
+
+  /**
+   * The plugin under test plus AGP and the Compose compiler plugin, in one injected classloader:
+   * AGP is `compileOnly` for the plugin, so a versioned `id("com.android.application")` would load
+   * it in a classloader the plugin can't see.
+   */
+  private fun androidPluginClasspath(): List<File> {
+    val metadata = java.util.Properties()
+    javaClass.classLoader.getResourceAsStream("plugin-under-test-metadata.properties")!!.use {
+      metadata.load(it)
+    }
+    val plugin = metadata.getProperty("implementation-classpath").split(File.pathSeparator)
+    val android =
+      System.getProperty("ee.schimke.composeai.functionalTest.androidPluginClasspath", "")
+        .split(File.pathSeparator)
+        .filter { it.isNotBlank() }
+    return (plugin + android).map(::File)
+  }
+
+  private fun createAndroidTestProject(): File {
+    val androidSdkDir = System.getProperty("ee.schimke.composeai.functionalTest.androidSdkDir", "")
+    assumeTrue(
+      "Skipping: no Android SDK reachable via ANDROID_HOME / local.properties",
+      androidSdkDir.isNotBlank() && File(androidSdkDir).isDirectory,
+    )
+    val projectDir = tempDir.root
+
+    File(projectDir, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            repositories {
+                google()
+                gradlePluginPortal()
+                mavenCentral()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "daemon-bootstrap-android-test"
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "local.properties").writeText("sdk.dir=$androidSdkDir\n")
+
+    File(projectDir, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            id("com.android.application")
+            id("org.jetbrains.kotlin.plugin.compose")
+            id("ee.schimke.composeai.preview")
+        }
+
+        android {
+            namespace = "ee.schimke.composeai.functionaltest.daemonbootstrap"
+            compileSdk = 36
+            defaultConfig { minSdk = 24 }
+            buildFeatures { compose = true }
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+            testOptions { unitTests.isIncludeAndroidResources = true }
+        }
+
+        kotlin { jvmToolchain(17) }
+
+        dependencies {
+            implementation(platform("androidx.compose:compose-bom:2026.04.01"))
+            implementation("androidx.compose.ui:ui")
+            implementation("androidx.compose.ui:ui-tooling-preview")
+            implementation("androidx.compose.foundation:foundation")
+            debugImplementation("androidx.compose.ui:ui-tooling")
+            testImplementation("junit:junit:4.13.2")
+        }
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "gradle.properties")
+      .writeText(
+        """
+        org.gradle.configuration-cache=true
+        org.gradle.configuration-cache.problems=fail
+        org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+        android.useAndroidX=true
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main").mkdirs()
+    File(projectDir, "src/main/AndroidManifest.xml").writeText("<manifest />\n")
+
+    val srcDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/functionaltest")
+    srcDir.mkdirs()
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.functionaltest
+
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+
+        @Preview
+        @Composable
+        fun RedBoxPreview() {
+            Box(modifier = Modifier.size(100.dp).background(Color.Red))
+        }
+        """
+          .trimIndent()
+      )
+
+    return projectDir
   }
 
   private fun createCmpTestProject(extraBuildScript: String = ""): File {
