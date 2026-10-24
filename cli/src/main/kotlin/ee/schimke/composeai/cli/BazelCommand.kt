@@ -115,12 +115,9 @@ internal class BazelCommand(
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
       if ("--android" in args) {
+        // Bundled or $COMPOSE_PREVIEW_BAZEL_CONFIG providers apply before bazel.json exists.
         val providers =
-          root
-            .resolve(".compose-preview/bazel.json")
-            .takeIf { it.isFile }
-            ?.let { bazelJson.decodeFromString<BazelBuildConfig>(it.readText()).providers }
-            .orEmpty()
+          loadBazelConfigLayers(root.resolve(".compose-preview/bazel.json")).config.providers
         installBazelAndroidAspect(root, providers, strict = true)
         println("Installed $DEFAULT_BAZEL_ANDROID_ASPECT")
       }
@@ -132,10 +129,12 @@ internal class BazelCommand(
     require(args.flagValue("--config") == null || configFile.isFile) {
       "Config missing: $configFile"
     }
-    val configText = configFile.takeIf { it.isFile }?.readText()
-    var config =
-      if (configText != null) bazelJson.decodeFromString<BazelBuildConfig>(configText)
-      else BazelBuildConfig()
+    // Bazel: classpath bazel-defaults.json, then $COMPOSE_PREVIEW_BAZEL_CONFIG, then configFile,
+    // merged key by key; the flags below apply over the result. Buck2 reads buck.json alone.
+    val layers =
+      if (buck) loadBazelConfigLayers(configFile, envConfig = null, classpathDefaults = null)
+      else loadBazelConfigLayers(configFile)
+    var config = layers.config
     BazelHostCache.configure(config)?.let { digest ->
       if ("--verbose" in args || "-v" in args) {
         System.err.println(
@@ -144,25 +143,24 @@ internal class BazelCommand(
         reportHostCacheStamps(BazelHostCache.sharedFileStamper)
       }
     }
-    // Precedence: --build-command, a committed buildCommand, --build-system blaze, then detection.
+    // Precedence: --build-command, a committed buildCommand, $COMPOSE_PREVIEW_BUILD_COMMAND, a
+    // defaults layer's buildCommand, then detection.
     val commandSource =
       when {
         args.flagValue("--build-command") != null -> {
           config = config.copy(buildCommand = listOf(args.flagValue("--build-command")!!))
           "--build-command"
         }
-        configText != null &&
-          "buildCommand" in (bazelJson.parseToJsonElement(configText) as JsonObject) ->
-          "buildCommand in $configFile"
+        layers.setByWorkspace("buildCommand") ->
+          "buildCommand in ${layers.sourceOf("buildCommand")!!.source}"
         buck -> {
           val override = System.getenv(BUILD_COMMAND_ENV)?.takeIf { it.isNotBlank() }
           config = config.copy(buildCommand = listOf(override ?: "buck2"))
           if (override != null) "\$$BUILD_COMMAND_ENV" else "default buck2"
         }
-        args.flagValue("--build-system") == "blaze" -> {
-          config = config.copy(buildCommand = listOf("blaze"))
-          "--build-system blaze"
-        }
+        System.getenv(BUILD_COMMAND_ENV).isNullOrBlank() &&
+          layers.sourceOf("buildCommand") != null ->
+          "buildCommand in ${layers.sourceOf("buildCommand")!!.source}"
         else -> {
           val choice = selectBazelBuildCommand(root)
           config = config.copy(buildCommand = listOf(choice.command))
@@ -170,14 +168,10 @@ internal class BazelCommand(
         }
       }
     // Unconfigured, in a workspace that can load an Android aspect: the selection takes JVM and
-    // Android rules alike, and each kind gets its aspect. Otherwise (Blaze, say) it stays JVM-only.
+    // Android rules alike, and each kind gets its aspect. Otherwise (a WORKSPACE-only build with no
+    // MODULE.bazel, say) it stays JVM-only.
     val autoAndroidAspect =
-      if (
-        !buck &&
-          args.flagValue("--aspect") == null &&
-          (configText == null ||
-            "aspect" !in (bazelJson.parseToJsonElement(configText) as JsonObject))
-      )
+      if (!buck && args.flagValue("--aspect") == null && layers.sourceOf("aspect") == null)
         detectAndroidAspect(root, config.providers)
       else null
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
@@ -717,7 +711,7 @@ internal class BazelCommand(
         compose-preview bazel render --target //app:ui [--id <id> | --filter <text>] [--output <png>]
         compose-preview bazel daemon status|stop
 
-      Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
+      Normal list/render/show prefer Gradle settings; otherwise they use Bazel workspace indicators.
       The default aspect package is installed on first use; application BUILD files are untouched.
       --target is repeatable and takes labels or patterns, as bazel build does: //app/...,
       //app:all, //app:*, and -//pattern exclusions. A pattern is expanded with query and filtered
@@ -727,11 +721,13 @@ internal class BazelCommand(
       or outside any package everything below the directory (//dir/...), is selected.
       Default provider: @rules_java//java/common:java_info.bzl (requires visible rules_java).
       Configure .compose-preview/bazel.json for a different build command/provider deployment.
+      It is merged key by key over defaults: a bundled $BAZEL_DEFAULTS_RESOURCE,
+      then the file ${'$'}$BAZEL_CONFIG_ENV names; flags apply last.
       --config <file>             Read explicit JSON config (paths relative to --project).
-      --build-command <path>      Use bazelisk, blaze or an executable wrapper; no shell parsing.
-                                  Otherwise: configured buildCommand, then
-                                  ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
-                                  (bazelisk), then bazel/bazelisk/blaze on PATH.
+      --build-command <path>      Use bazelisk or an executable wrapper; no shell parsing.
+                                  Otherwise: buildCommand in bazel.json, then
+                                  ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, a defaults buildCommand,
+                                  .bazelversion (bazelisk), then bazel/bazelisk on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
       --aspect <label.bzl%name>   Pin one aspect entry point. Unset, JVM targets use the JVM
                                   aspect and android_library targets an Android one:
@@ -741,7 +737,7 @@ internal class BazelCommand(
                                   rules_android and rules_java are visible (MODULE.bazel or
                                   WORKSPACE) or
                                   "providers" in bazel.json points its shims at internal rules.
-                                  Neither (Blaze): unconfigured selections stay JVM-only.
+                                  Neither: unconfigured selections stay JVM-only.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
                                   the JVM and Android providers instead of an aspect, linking an
                                   android_library's resources; .compose-preview/buck.json
@@ -880,10 +876,10 @@ internal fun <T> reportBuild(tool: String, targets: List<String>, build: () -> T
 }
 
 /**
- * Gives an earlier CLI's JVM aspect package file, `BUILD.bazel`, the `BUILD` beside it that Blaze
- * deployments reading no `BUILD.bazel` need. The unedited `BUILD.bazel` stays: it says what `BUILD`
- * says, and removing it raced a concurrent `bazel build` reading the package, and churned
- * workspaces whose snapshots restore it (#6115). One edited by hand is left alone.
+ * Gives an earlier CLI's JVM aspect package file, `BUILD.bazel`, the `BUILD` beside it that older
+ * or custom Bazel distributions reading no `BUILD.bazel` need. The unedited `BUILD.bazel` stays: it
+ * says what `BUILD` says, and removing it raced a concurrent `bazel build` reading the package, and
+ * churned workspaces whose snapshots restore it (#6115). One edited by hand is left alone.
  */
 internal fun migrateBazelAspectBuildFile(root: File) {
   val directory = root.resolve(".compose-preview/bazel")

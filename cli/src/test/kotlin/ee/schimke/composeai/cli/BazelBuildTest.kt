@@ -235,7 +235,7 @@ class BazelBuildTest {
       }
       val config =
         BazelBuildConfig(
-          buildCommand = listOf("blaze-wrapper", "literal argument"),
+          buildCommand = listOf("bazel-wrapper", "literal argument"),
           startupArgs = listOf("--server=internal"),
           buildArgs = listOf("--config=desktop"),
           aspect = "//tools:preview.bzl%preview",
@@ -246,16 +246,16 @@ class BazelBuildTest {
       assertEquals("//:app", build.collect(root, "//:app", config, 19).metadata.target)
       // The target's own jars first (#6162); the aspect reports none, so the target stays in.
       assertEquals(
-        listOf("blaze-wrapper", "literal argument", "--server=internal", "build"),
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "build"),
         calls[0].take(4),
       )
       assertTrue("--output_groups=internal_project" in calls[0])
       assertEquals(
-        listOf("blaze-wrapper", "literal argument", "--server=internal", "info", "execution_root"),
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "info", "execution_root"),
         calls[1],
       )
       assertEquals(
-        listOf("blaze-wrapper", "literal argument", "--server=internal", "build"),
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "build"),
         calls[2].take(4),
       )
       assertTrue("--output_groups=internal_metadata,render_jars" in calls[2])
@@ -286,13 +286,13 @@ class BazelBuildTest {
         build.expandTargets(
           root,
           listOf("//app/...", "//lib:all", "-//app/legacy/..."),
-          BazelBuildConfig(buildCommand = listOf("blaze")),
+          BazelBuildConfig(buildCommand = listOf("bazel-wrapper")),
           9,
         ),
       )
       assertEquals(
         listOf(
-          "blaze",
+          "bazel-wrapper",
           "query",
           "(kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', " +
             "\"//app/...\" + \"//lib:all\")) - \"//app/legacy/...\"",
@@ -406,7 +406,8 @@ class BazelBuildTest {
   fun `the Android aspect is rules_compose_preview's when the module declares it`() {
     val root = Files.createTempDirectory("bazel-android-aspect").toFile()
     try {
-      // No MODULE.bazel (a Blaze workspace): no aspect it can load, so the selection stays JVM.
+      // No MODULE.bazel (a WORKSPACE-only project): no aspect it can load, so the selection stays
+      // JVM.
       assertNull(detectAndroidAspect(root))
       // The bundled copy needs both repositories its shims load, under their own names.
       root
@@ -893,7 +894,8 @@ class BazelBuildTest {
       assertTrue(dir.resolve("BUILD").isFile)
       assertTrue(!dir.resolve("BUILD.bazel").exists())
 
-      // What 2.67 and earlier installed: BUILD.bazel, which some Blaze deployments do not read. It
+      // What 2.67 and earlier installed: BUILD.bazel, which some custom Bazel distributions do not
+      // read. It
       // gains a BUILD and is never removed: a concurrent build may be reading it (#6115).
       val bundled = dir.resolve("BUILD").readText()
       dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
