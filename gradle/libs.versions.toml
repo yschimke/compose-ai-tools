@@ -488,7 +488,11 @@ composeai-contracts = "3.39.0"
 # in-process compile out of compose-preview-contracts' `daemon-bta` into the daemon as
 # `daemon-compile`, package `ee.schimke.composeai.daemon.compile` (#388), carrying memoized
 # class-path hashes; the `composeai.daemon.bta.*` system properties keep their names.
-composeai-preview-daemon = "3.25.0"
+# 3.25.1 re-renders a skipped on-demand data fetch at the preview's latest render overrides
+# (compose-preview-daemon#391), so render-host's SVG export gets the document it was asked for
+# rather than the preview's defaults; it also resolves `google:` font families on the cmp-android
+# Remote Compose lane (#389).
+composeai-preview-daemon = "3.25.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
