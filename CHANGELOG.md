@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.74.0](https://github.com/yschimke/compose-ai-tools/compare/v2.73.2...v2.74.0) (2026-10-24)
+
+
+### Features
+
+* add the cmp-android lane to the rc-compare parity wall ([#6223](https://github.com/yschimke/compose-ai-tools/issues/6223)) ([8541aa9](https://github.com/yschimke/compose-ai-tools/commit/8541aa93ee270f910e43b6af656edba3520a7f18))
+* **bazel:** treat build integration purely as Bazel and add bazel-defaults.json layer ([#6216](https://github.com/yschimke/compose-ai-tools/issues/6216)) ([8100ccb](https://github.com/yschimke/compose-ai-tools/commit/8100ccbf38c7de9f0e12bedbc9f26d5e639e0117))
+
+
+### Bug Fixes
+
+* adopt compose-preview-daemon 3.25.1 ([#6222](https://github.com/yschimke/compose-ai-tools/issues/6222)) ([da96ddc](https://github.com/yschimke/compose-ai-tools/commit/da96ddc7832b8322395c4976d2a49ff7199de1a1))
+* **deps:** update dependency org.ow2.asm:asm to v9.11.1 ([#6220](https://github.com/yschimke/compose-ai-tools/issues/6220)) ([e0ab12f](https://github.com/yschimke/compose-ai-tools/commit/e0ab12fda0074adafc992bd3168e2f1f9cc4cd36))
+* **deps:** update dependency org.ow2.asm:asm-commons to v9.11.1 ([#6221](https://github.com/yschimke/compose-ai-tools/issues/6221)) ([d5452b7](https://github.com/yschimke/compose-ai-tools/commit/d5452b75c225cd759cae1f4e7f722aff5e0ca1d8))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.25.0 ([#6218](https://github.com/yschimke/compose-ai-tools/issues/6218)) ([a1903aa](https://github.com/yschimke/compose-ai-tools/commit/a1903aae1fb4a3e33d7a67e376ee92d94741ba87))
+
 ## [2.73.2](https://github.com/yschimke/compose-ai-tools/compare/v2.73.1...v2.73.2) (2026-10-24)
 
 
