@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.73.1](https://github.com/yschimke/compose-ai-tools/compare/v2.73.0...v2.73.1) (2026-10-24)
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.2 ([#6208](https://github.com/yschimke/compose-ai-tools/issues/6208)) ([18a00cc](https://github.com/yschimke/compose-ai-tools/commit/18a00ccb0e13f476812310c2ddd9080415dbe52f))
+
 ## [2.73.0](https://github.com/yschimke/compose-ai-tools/compare/v2.72.1...v2.73.0) (2026-10-23)
 
 
