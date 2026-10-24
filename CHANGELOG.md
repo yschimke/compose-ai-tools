@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.74.0](https://github.com/yschimke/compose-ai-tools/compare/v2.73.2...v2.74.0) (2026-10-24)
+
+
+### Features
+
+* **bazel:** treat build integration purely as Bazel and add bazel-defaults.json layer ([#6216](https://github.com/yschimke/compose-ai-tools/issues/6216)) ([8100ccb](https://github.com/yschimke/compose-ai-tools/commit/8100ccbf38c7de9f0e12bedbc9f26d5e639e0117))
+
 ## [2.73.2](https://github.com/yschimke/compose-ai-tools/compare/v2.73.1...v2.73.2) (2026-10-24)
 
 
