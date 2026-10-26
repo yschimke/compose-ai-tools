@@ -67,6 +67,13 @@ dependencies {
   compileOnly(libs.compose.remote.player.core)
   compileOnly(libs.rcplayer.embedded.android)
 
+  // The Remote Compose connector's named-value seed (`renderNow.overrides.remoteCompose
+  // .namedValues`, #401), applied on the embedded lane. `compileOnly`, and only reached behind
+  // `remoteComposeConnectorAvailable`: the connector is on a render's classpath only when the
+  // consumer or the daemon puts it there, and a widget preview must not drag it into an app.
+  compileOnly(libs.composeai.data.remotecompose.connector)
+  compileOnly(libs.composeai.data.remotecompose.core)
+
   // `EmbeddedWearWidgetPlayerTest` checks the pinned entry point against the real player, so it's a
   // real test dependency. The Compose BOM + runtime are for the Compose compiler plugin, which also
   // runs over test sources.
@@ -78,6 +85,9 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(libs.rcplayer.embedded.android)
+  // `SeededWearWidgetPreviewTest` seeds through the real connector controller.
+  testImplementation(libs.composeai.data.remotecompose.connector)
+  testImplementation(libs.composeai.data.remotecompose.core)
 
   // The `compileOnly` artifacts at the same pins, so a Glance Wear bump that changes the upstream
   // `WearWidgetPreview` signature fails here with `NoSuchMethodError` rather than in consumers.

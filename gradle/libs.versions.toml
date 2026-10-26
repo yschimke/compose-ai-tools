@@ -492,7 +492,13 @@ composeai-contracts = "3.39.0"
 # (compose-preview-daemon#391), so render-host's SVG export gets the document it was asked for
 # rather than the preview's defaults; it also resolves `google:` font families on the cmp-android
 # Remote Compose lane (#389).
-composeai-preview-daemon = "3.25.1"
+# 3.26.0 ships `DedupingParameterizedRobolectricTestRunner`, which the generated render shards now
+# run under so a repeated LocalVariableTable row no longer fails a class load (#407, #6230); keeps
+# FrameInfo vsync monotonic across tests on SDK 37 so later previews in a shard draw (#411, #6229);
+# applies or warns on unconsumed `overrides.remoteCompose.namedValues` (#406, #401); renders a Wear
+# widget preview in its carousel slot (#405, #402); exposes `preview/rows` on the clients (#404);
+# and honours scripted rotary distance and swipe timing (#409).
+composeai-preview-daemon = "3.26.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
