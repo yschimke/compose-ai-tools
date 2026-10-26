@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.74.1](https://github.com/yschimke/compose-ai-tools/compare/v2.74.0...v2.74.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* adopt compose-preview-daemon 3.26.0 ([#6234](https://github.com/yschimke/compose-ai-tools/issues/6234)) ([5a025db](https://github.com/yschimke/compose-ai-tools/commit/5a025db5cc501b390f016a790dd339875d95ef80))
+* **bazel:** replay a staged prepare for a matching --target and quote stderr on failure ([#6232](https://github.com/yschimke/compose-ai-tools/issues/6232)) ([f250d32](https://github.com/yschimke/compose-ai-tools/commit/f250d3276214f95c3fed2a03060bdc7f45d78376))
+* **deps:** update dependency @design-parity/export-driver to v1.17.0 ([#6227](https://github.com/yschimke/compose-ai-tools/issues/6227)) ([2bfa1d8](https://github.com/yschimke/compose-ai-tools/commit/2bfa1d87de43a864a284257e5162118b037cbf0c))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.8.2 ([#6233](https://github.com/yschimke/compose-ai-tools/issues/6233)) ([f105783](https://github.com/yschimke/compose-ai-tools/commit/f1057830de653c25e62e7e373b8bc4f93bbb3f89))
+* **deps:** update dependency org.jetbrains.kotlinx:kotlinx-serialization-json to v1.12.0 ([#6235](https://github.com/yschimke/compose-ai-tools/issues/6235)) ([c6ec66b](https://github.com/yschimke/compose-ai-tools/commit/c6ec66b234fa0cce2a3394963e82639f64f2dd28))
+
 ## [2.74.0](https://github.com/yschimke/compose-ai-tools/compare/v2.73.2...v2.74.0) (2026-10-24)
 
 
