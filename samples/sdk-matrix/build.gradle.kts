@@ -44,10 +44,16 @@ val matrixMaxSupportedSdk: Int? =
 val matrixJvmToolchain: Int =
   providers.gradleProperty("composeai.matrix.jvmToolchain").orNull?.toIntOrNull() ?: 17
 
+// Render shard count (unset = the plugin's auto choice, which is one shard for a module this
+// small). A cell sets 2 to run the generated `RobolectricRenderTest_ShardN` classes, which carry
+// their own runner (#6230), with more than one preview per shard (#6229).
+val matrixShards: Int? = providers.gradleProperty("composeai.matrix.shards").orNull?.toIntOrNull()
+
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
   // workflow when a cell is documenting the override branch.
   matrixSdkOverride?.let { sdkVersion.set(it) }
+  matrixShards?.let { shards.set(it) }
 }
 
 if (matrixRobolectricVersion != null) {

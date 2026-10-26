@@ -107,7 +107,15 @@ internal fun CapturingWearWidgetPreviewOnLane(
       player == WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED &&
       embeddedWearWidgetPlayerAvailable
   ) {
-    CmpWearWidgetPlayer(bytes = captured, params = params)
+    // A daemon render's `overrides.remoteCompose.namedValues`, when the connector carries any
+    // (#401). Only the embedded lane can seed them; upstream's View player takes no seed, so there
+    // the connector is left to report them unapplied.
+    val namedValues = if (remoteComposeConnectorAvailable) connectorNamedValues() else emptyMap()
+    if (namedValues.isNotEmpty() && seededEmbeddedPlayerAvailable) {
+      SeededCmpWearWidgetPlayer(bytes = captured, params = params, namedValues = namedValues)
+    } else {
+      CmpWearWidgetPlayer(bytes = captured, params = params)
+    }
   } else {
     WearWidgetPreview(
       params = params,

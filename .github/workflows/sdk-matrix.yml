@@ -74,6 +74,9 @@ jobs:
           # input path, so auto-detect picks sdk=37 with no clamp. minSdk=36 parses too.
           - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
           - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
+          # The same SDK 37 render split over two generated shard classes, two previews each, so the
+          # pixel check covers consecutive previews under the shards' own runner (#6229, #6230).
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / shards=2", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", shards: "2", expect: pass }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,6 +114,10 @@ jobs:
           if [ -n "${{ matrix.maxSupportedSdk }}" ]; then
             max_supported_arg="-Pcomposeai.matrix.maxSupportedSdk=${{ matrix.maxSupportedSdk }}"
           fi
+          shards_arg=""
+          if [ -n "${{ matrix.shards }}" ]; then
+            shards_arg="-Pcomposeai.matrix.shards=${{ matrix.shards }}"
+          fi
           ./gradlew :samples:sdk-matrix:composePreviewRenderAll \
             -Pcomposeai.matrix.compileSdk=${{ matrix.compileSdk }} \
             -Pcomposeai.matrix.targetSdk=${{ matrix.targetSdk }} \
@@ -119,8 +126,16 @@ jobs:
             $sdk_version_arg \
             $robolectric_arg \
             $max_supported_arg \
+            $shards_arg \
             --stacktrace 2>&1 | tee build.log
           exit_code=${PIPESTATUS[0]}
+          # A green render is not enough: on SDK 37 every preview after the first once came back a
+          # uniform #FAFAFA frame with no error (#6229). Read the batch previews back and fail the
+          # cell unless each drew its own colour.
+          if [ "$exit_code" -eq 0 ]; then
+            python3 scripts/sdk_matrix_pixel_check.py samples/sdk-matrix/build/compose-previews/renders 2>&1 | tee -a build.log
+            exit_code=${PIPESTATUS[0]}
+          fi
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           if [ "$exit_code" -eq 0 ]; then
             echo "outcome=pass" >> "$GITHUB_OUTPUT"
@@ -137,7 +152,7 @@ jobs:
             # incomplete InputManager shadow so expected-reason gates capture the actual upstream
             # limitation instead of falling through to Gradle's generic failure summary.
             reason=$(grep -m1 -E \
-              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|UnknownSdk|InputManager\.getInstance|composeai.matrix" \
+              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|UnknownSdk|InputManager\.getInstance|composeai.matrix|sdk-matrix pixel check" \
               build.log | head -c 400 || true)
             if [ -z "$reason" ]; then
               reason=$(grep -m1 -E "^.*[Ff]ailed|FAILURE: " build.log | head -c 400 || true)

@@ -22,8 +22,8 @@ enum class WearWidgetPreviewPlayer(
   companion object {
     /**
      * System property naming the player: the same build-wide property every Remote Compose preview
-     * reads (`RemoteComposePlayerSelection.PROPERTY`). Spelled twice because this runtime can't
-     * depend on the connector; a test pins each side.
+     * reads (`RemoteComposePlayerSelection.PROPERTY`). Spelled twice because this runtime cannot
+     * require the connector at runtime; a test pins each side.
      */
     const val PROPERTY: String = "composeai.render.rcPlayer"
 
