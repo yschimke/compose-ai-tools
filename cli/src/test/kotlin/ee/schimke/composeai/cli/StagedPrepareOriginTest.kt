@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 
@@ -130,11 +131,91 @@ class StagedPrepareOriginTest {
   }
 
   @Test
+  fun `a --target the record selected still replays the whole recorded set`() {
+    val fs = FakeFileSystem()
+    val staged = "/tmp/staged".toPath()
+    val origin =
+      StagedPrepareOrigin(
+        "/ws",
+        listOf(
+          "prepare",
+          "--target",
+          "//a:lib //b:lib",
+          "--config",
+          "/ws/conf/bazel.json",
+          "--out",
+          "/tmp/staged",
+          "--project",
+          "/ws",
+        ),
+      )
+    StagedPrepareOrigin.write(staged, origin, fs)
+    // As compose-preview-mcp re-prepares one module of a multi-target --out (#6231).
+    val replay =
+      StagedPrepareOrigin.replayFor(
+        listOf(
+          "prepare",
+          "--project",
+          (staged / "a_lib").toString(),
+          "--timeout",
+          "1800",
+          "--target",
+          "//a:lib",
+        ),
+        staged / "a_lib",
+        fs,
+      )!!
+    assertEquals("/ws", replay.workspace)
+    assertEquals(origin.args + listOf("--timeout", "1800"), replay.args)
+    assertEquals(
+      origin,
+      StagedPrepareOrigin.replayFor(listOf("prepare", "--target=//b:lib"), staged, fs),
+    )
+    // `//a` is `//a:a`, which the record never built.
+    assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//a"), staged, fs))
+  }
+
+  @Test
+  fun `a --target inside a recorded pattern replays`() {
+    val fs = FakeFileSystem()
+    val staged = "/tmp/staged".toPath()
+    fun replays(recorded: String, requested: String): Boolean {
+      StagedPrepareOrigin.write(
+        staged,
+        StagedPrepareOrigin("/ws", listOf("prepare", "--target", recorded)),
+        fs,
+      )
+      return StagedPrepareOrigin.replayFor(listOf("prepare", "--target", requested), staged, fs) !=
+        null
+    }
+    assertTrue(replays("//app/...", "//app/ui:lib"))
+    assertTrue(replays("//app/...", "//app:app"))
+    assertTrue(replays("//...", "//x/y:z"))
+    assertTrue(replays("//app/ui:all", "//app/ui:lib"))
+    assertTrue(replays("//app/ui:*", "//app/ui:lib"))
+    assertTrue(replays("//app/ui", "//app/ui:ui"))
+    assertTrue(!replays("//app/...", "//application:lib"))
+    assertTrue(!replays("//app/ui:all", "//app/ui/sub:lib"))
+    assertTrue(!replays("-//app/...", "//app:lib"))
+    // An excluded target is not one the record built, though an inclusion covers it.
+    assertTrue(!replays("//app/... -//app/legacy/...", "//app/legacy:lib"))
+    assertTrue(replays("//app/... -//app/legacy/...", "//app/ui:lib"))
+  }
+
+  @Test
   fun `an explicit selection is not redirected`() {
     val fs = FakeFileSystem()
     val staged = "/tmp/staged".toPath()
-    StagedPrepareOrigin.write(staged, StagedPrepareOrigin("/ws", listOf("prepare")), fs)
+    StagedPrepareOrigin.write(
+      staged,
+      StagedPrepareOrigin("/ws", listOf("prepare", "--target", "//a:lib")),
+      fs,
+    )
+    // A target the record did not select is this run's own choice.
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//x:y"), staged, fs))
+    assertNull(
+      StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//a:lib //x:y"), staged, fs)
+    )
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target=//x:y"), staged, fs))
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--config", "c.json"), staged, fs))
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare"), "/tmp/other".toPath(), fs))
