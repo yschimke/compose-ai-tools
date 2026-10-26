@@ -14,6 +14,9 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
 import kotlin.system.exitProcess
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okio.Path.Companion.toPath
@@ -166,7 +169,12 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       }
       val encoded =
         try {
-          live.recordingEncode(started.recordingId, format = format)
+          live.recordingEncode(
+            started.recordingId,
+            format = format,
+            timeout =
+              encodeTimeout(stopped.frameCount, stopped.frameWidthPx, stopped.frameHeightPx),
+          )
         } catch (e: RenderSessionException) {
           fail(encodeFailureMessage(format, e))
         }
@@ -388,4 +396,15 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     System.err.println("compose-preview record: $message")
     exitProcess(1)
   }
+}
+
+/**
+ * How long to wait for a stopped recording to encode: a minute, plus two seconds for every million
+ * pixels across its frames, up to half an hour. Encoding is pure-JVM for gif and apng and its cost
+ * is the frames times their size, so a long scripted recording at full scale (331 frames of
+ * 945x787, about 246 million pixels) outgrows the minute a short one fits in and needs about nine.
+ */
+internal fun encodeTimeout(frameCount: Int, widthPx: Int, heightPx: Int): Duration {
+  val megapixels = frameCount.toLong() * widthPx * heightPx / 1_000_000.0
+  return (60.seconds + (megapixels * 2).seconds).coerceAtMost(30.minutes)
 }
