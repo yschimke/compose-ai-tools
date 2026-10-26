@@ -393,22 +393,54 @@ internal val bazelJson = Json {
 
 /**
  * Files avoid pipe-buffer deadlocks. A deadline or parent shutdown also tears down child processes.
+ *
+ * Stderr still streams to this process's stderr, and its tail is kept for the failure message:
+ * Bazel prints its `ERROR:` / `FAILED:` diagnostics there and often nothing on stdout, which left a
+ * bare "Build command exited 1:" (#6231).
  */
 internal object BazelProcess {
-  fun run(argv: List<String>, directory: File, timeoutSeconds: Long): String {
+  /** Stderr lines kept for a failure message. */
+  private const val STDERR_TAIL_LINES = 40
+
+  fun run(
+    argv: List<String>,
+    directory: File,
+    timeoutSeconds: Long,
+    stderr: java.io.PrintStream = System.err,
+  ): String {
     require(argv.isNotEmpty() && argv.first().isNotBlank()) {
       "buildCommand must be a nonempty argv array"
     }
     require(timeoutSeconds > 0) { "--timeout must be positive" }
     val output = Files.createTempFile("compose-preview-build-", ".log").toFile()
     try {
-      val process =
-        ProcessBuilder(argv)
-          .directory(directory)
-          .redirectOutput(output)
-          .redirectError(ProcessBuilder.Redirect.INHERIT)
-          .start()
+      val process = ProcessBuilder(argv).directory(directory).redirectOutput(output).start()
       process.outputStream.close()
+      val tail = ArrayDeque<String>()
+      val diagnostics = ArrayDeque<String>()
+      // Drained on its own thread so a chatty stderr never blocks the build on a full pipe.
+      val pump = Thread {
+        runCatching {
+          process.errorStream.bufferedReader().useLines { lines ->
+            lines.forEach { line ->
+              stderr.println(line)
+              synchronized(tail) {
+                tail.addLast(line)
+                if (tail.size > STDERR_TAIL_LINES) tail.removeFirst()
+                if (isBuildDiagnostic(line)) {
+                  diagnostics.addLast(line)
+                  if (diagnostics.size > STDERR_TAIL_LINES) diagnostics.removeFirst()
+                }
+              }
+            }
+          }
+        }
+      }
+        .apply {
+          isDaemon = true
+          name = "compose-preview-build-stderr"
+          start()
+        }
       fun stop() {
         val descendants = process.descendants().use { it.toList() }
         descendants.reversed().forEach { it.destroy() }
@@ -422,10 +454,17 @@ internal object BazelProcess {
         check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
           "Build command timed out after ${timeoutSeconds}s"
         }
+        // A descendant that outlived the build can hold the pipe open; never wait on it long.
+        pump.join(2_000)
         if (process.exitValue() != 0) {
+          val stderrTail = synchronized(tail) { failureLines(tail.toList(), diagnostics.toList()) }
+          val stdout = output.readText().takeLast(8000).trim()
           throw BazelCommandFailed(
             process.exitValue(),
-            "Build command exited ${process.exitValue()}: ${output.readText().takeLast(8000)}",
+            "Build command exited ${process.exitValue()}:" +
+              listOf(stdout, stderrTail)
+                .filter { it.isNotBlank() }
+                .joinToString("\n", prefix = " "),
           )
         }
         return output.readText()
@@ -442,6 +481,19 @@ internal object BazelProcess {
     }
   }
 }
+
+/** A Bazel or Buck2 line that names what failed. */
+private fun isBuildDiagnostic(line: String): Boolean =
+  line.trimStart().let {
+    it.startsWith("ERROR:") || it.startsWith("FAILED:") || it.startsWith("Error:")
+  }
+
+/**
+ * The stderr to quote for a failed command: its last [tail] lines, after any earlier `ERROR:` /
+ * `FAILED:` [diagnostics] the tail no longer holds, so the cause survives a long trailer.
+ */
+internal fun failureLines(tail: List<String>, diagnostics: List<String>): String =
+  (diagnostics.filter { it !in tail } + tail).joinToString("\n").trim()
 
 /** A build-tool command that ran and exited [exitCode], not zero. */
 internal class BazelCommandFailed(val exitCode: Int, message: String) :

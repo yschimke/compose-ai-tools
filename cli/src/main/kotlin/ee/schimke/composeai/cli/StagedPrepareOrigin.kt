@@ -114,16 +114,19 @@ internal data class StagedPrepareOrigin(
 
     /**
      * The recorded invocation for a `prepare` pointed at a staged directory ([project] or its
-     * parent), with this run's own `--timeout` kept; null when [args] select their own target or
-     * config, or nothing staged is there.
+     * parent), with this run's own `--timeout` kept; null when [args] select their own config, a
+     * target the recorded invocation did not select, or nothing staged is there.
+     *
+     * A `--target` the record already covers is still a re-prepare of this directory:
+     * `compose-preview-mcp` names the module's label on every re-prepare (#6231). The replay keeps
+     * the recorded target set rather than narrowing to it, so the other targets of a multi-target
+     * `--out` stay in place.
      */
     fun replayFor(
       args: List<String>,
       project: Path,
       fileSystem: FileSystem = SystemFileSystem,
     ): StagedPrepareOrigin? {
-      // An explicit selection says what to build here; only a bare re-prepare is redirected.
-      if (args.any { it == "--target" || it.startsWith("--target=") }) return null
       if (args.flagValue("--config") != null || args.flagValue("--artifacts") != null) return null
       val file =
         listOfNotNull(project, project.parent)
@@ -134,8 +137,44 @@ internal data class StagedPrepareOrigin(
           bazelJson.decodeFromString(serializer(), fileSystem.read(file) { readUtf8() })
         }
           .getOrNull() ?: return null
+      // An explicit selection outside the record says what to build here; it is not redirected.
+      val requested = targetsOf(args)
+      if (requested.isNotEmpty()) {
+        val recorded = targetsOf(origin.args)
+        if (!requested.all { target -> recorded.any { covers(it, target) } }) return null
+      }
       val timeout = args.flagValue("--timeout") ?: return origin
       return origin.copy(args = removeFlag(origin.args, "--timeout") + listOf("--timeout", timeout))
     }
+
+    /** Every label or pattern `--target` selects in [args], space-separated values split. */
+    private fun targetsOf(args: List<String>): List<String> =
+      args.flagValuesAll("--target").flatMap { it.split(Regex("\\s+")) }.filter { it.isNotBlank() }
+
+    /**
+     * Whether the recorded [selection] (a label, or a `//pkg:all`, `//pkg:*`, `//pkg:` or
+     * `//dir/...` pattern) includes [target]. An exclusion (`-//...`) includes nothing.
+     */
+    private fun covers(selection: String, target: String): Boolean {
+      if (selection.startsWith("-")) return false
+      val label = normalizeBazelLabel(target)
+      if (normalizeBazelLabel(selection) == label) return true
+      val pkg = packageOf(label.substringBeforeLast(':'))
+      if (selection.endsWith("...")) {
+        val base =
+          if (selection.endsWith("//...")) selection.removeSuffix("...")
+          else selection.removeSuffix("/...")
+        val prefix = packageOf(base)
+        return pkg == prefix || pkg.startsWith(prefix.trimEnd('/') + "/")
+      }
+      if (':' !in selection) return false
+      val name = selection.substringAfterLast(':')
+      return (name == "all" || name == "*" || name.isEmpty()) &&
+        packageOf(selection.substringBeforeLast(':')) == pkg
+    }
+
+    /** The normalised package of a `//pkg` (or `@repo//pkg`) prefix. */
+    private fun packageOf(pkg: String): String =
+      normalizeBazelLabel("$pkg:x").substringBeforeLast(':')
   }
 }
