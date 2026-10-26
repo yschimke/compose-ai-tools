@@ -197,6 +197,9 @@ class StagedPrepareOriginTest {
     assertTrue(!replays("//app/...", "//application:lib"))
     assertTrue(!replays("//app/ui:all", "//app/ui/sub:lib"))
     assertTrue(!replays("-//app/...", "//app:lib"))
+    // An excluded target is not one the record built, though an inclusion covers it.
+    assertTrue(!replays("//app/... -//app/legacy/...", "//app/legacy:lib"))
+    assertTrue(replays("//app/... -//app/legacy/...", "//app/ui:lib"))
   }
 
   @Test

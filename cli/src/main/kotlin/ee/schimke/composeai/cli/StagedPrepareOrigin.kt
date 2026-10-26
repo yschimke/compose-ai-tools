@@ -141,7 +141,13 @@ internal data class StagedPrepareOrigin(
       val requested = targetsOf(args)
       if (requested.isNotEmpty()) {
         val recorded = targetsOf(origin.args)
-        if (!requested.all { target -> recorded.any { covers(it, target) } }) return null
+        val (exclusions, inclusions) = recorded.partition { it.startsWith("-") }
+        // Selected as Bazel would: some inclusion covers it and no exclusion does.
+        val selected = { target: String ->
+          inclusions.any { covers(it, target) } &&
+            exclusions.none { covers(it.removePrefix("-"), target) }
+        }
+        if (!requested.all(selected)) return null
       }
       val timeout = args.flagValue("--timeout") ?: return origin
       return origin.copy(args = removeFlag(origin.args, "--timeout") + listOf("--timeout", timeout))
