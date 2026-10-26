@@ -23,7 +23,7 @@ dependencies {
 
   // Gradle Tooling API for the cross-process build drive. The version here mirrors what
   // `:cli` used to declare — bumping is a published-API concern, not a CLI one.
-  api("org.gradle:gradle-tooling-api:9.8.1")
+  api("org.gradle:gradle-tooling-api:9.8.2")
 
   // SLF4J no-op so the Tooling API doesn't warn about a missing impl. Pinned to the `slf4j-api`
   // version `gradle-tooling-api` strictly requires.
