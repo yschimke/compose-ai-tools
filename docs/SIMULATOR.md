@@ -209,6 +209,10 @@ What does not, or not yet:
   instance rather than bringing the task forward; `HOME` does nothing.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
+- **Runtime permissions** are granted when the app asks, as a user tapping "Allow" would, and
+  reported as a `permissions` event; there is no dialog and no way yet to deny.
+- **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
+  share sheet, settings screens) reaches no activity and is reported as an `error` event.
 - **Network.** Reported as connected Wi-Fi; requests go out through the host JVM, its proxy and
   its trust store.
 - **Split APKs and App Bundles** need merging into one APK first; protected APKs are out.
