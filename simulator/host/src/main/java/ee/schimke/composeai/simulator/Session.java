@@ -90,11 +90,10 @@ final class Session {
   }
 
   void start() {
-    if (!Boolean.getBoolean("composeai.simulator.skipProviders")) {
-      JSONArray providers = navigator.installProviders();
-      if (providers.length() > 0) {
-        protocol.event("providers", new Protocol.Json().put("providers", providers).object());
-      }
+    // Created before Application.onCreate(); reported now that the channel is open.
+    JSONArray providers = Providers.installed();
+    if (providers.length() > 0) {
+      protocol.event("providers", new Protocol.Json().put("providers", providers).object());
     }
     if (!protocol.enabled()) return;
     Thread reader =
@@ -120,6 +119,7 @@ final class Session {
   /** One simulator cycle, on the main thread. */
   void cycle() {
     navigator.pump();
+    Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());

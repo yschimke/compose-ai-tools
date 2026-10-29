@@ -3,6 +3,13 @@ package ee.schimke.composeai.simulator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import com.googlecode.dex2jar.ir.IrMethod;
+import com.googlecode.dex2jar.ir.expr.Exprs;
+import com.googlecode.dex2jar.ir.expr.Local;
+import com.googlecode.dex2jar.ir.expr.Value;
+import com.googlecode.dex2jar.ir.stmt.LabelStmt;
+import com.googlecode.dex2jar.ir.stmt.Stmt;
+import com.googlecode.dex2jar.ir.stmt.Stmts;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.lang.reflect.Method;
@@ -106,6 +113,53 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void zeroOnTheLeftIsMirroredBeforeCodeGeneration() {
+    Local x = Exprs.nLocal(0);
+    LabelStmt target = Stmts.nLabel();
+    IrMethod method = new IrMethod();
+    method.stmts.add(Stmts.nIf(Exprs.nLe(Exprs.nInt(0), x, "I"), target)); // 0 <= x
+    method.stmts.add(Stmts.nIf(Exprs.nGt(Exprs.nInt(0), x, "I"), target)); // 0 > x
+    method.stmts.add(Stmts.nIf(Exprs.nEq(Exprs.nInt(0), x, "I"), target)); // symmetric
+    method.stmts.add(Stmts.nIf(Exprs.nLt(x, Exprs.nInt(0), "I"), target)); // already x OP 0
+    method.stmts.add(target);
+
+    assertEquals(2, ApkClassConverter.normalizeZeroLeftJumps(method));
+
+    List<String> conditions = new java.util.ArrayList<>();
+    for (Stmt stmt : method.stmts) {
+      if (stmt.st != Stmt.ST.IF) continue;
+      Value condition = stmt.getOp();
+      boolean xFirst = condition.getOp1() == x || condition.vt == Value.VT.EQ;
+      assertTrue(condition + " compares x first", xFirst);
+      conditions.add(condition.vt.name());
+    }
+    assertEquals(List.of("GE", "LT", "EQ", "LT"), conditions);
+  }
+
+  @Test
+  public void protectedMembersBecomePublic() throws Exception {
+    ClassWriter writer = new ClassWriter(0);
+    writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Base", null, "java/lang/Object", null);
+    writer.visitField(Opcodes.ACC_PROTECTED, "count", "I", null, null).visitEnd();
+    MethodVisitor mv =
+        writer.visitMethod(Opcodes.ACC_PROTECTED | Opcodes.ACC_STATIC, "make", "()I", null, null);
+    mv.visitCode();
+    mv.visitInsn(Opcodes.ICONST_0);
+    mv.visitInsn(Opcodes.IRETURN);
+    mv.visitMaxs(1, 0);
+    mv.visitEnd();
+    writer.visitEnd();
+    byte[] base = writer.toByteArray();
+
+    ClassNode node = new ClassNode();
+    byte[] rewritten =
+        ApkClassConverter.rewrite(base, hierarchy(base), new ApkClassConverter.Summary());
+    new ClassReader(rewritten).accept(node, 0);
+    assertEquals(Opcodes.ACC_PUBLIC, node.fields.get(0).access);
+    assertEquals(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, method(node, "make").access);
+  }
+
+  @Test
   public void unknownSupertypesResolveToObject() throws Exception {
     ApkClassConverter.ClassHierarchy hierarchy = hierarchy();
     assertEquals(
@@ -122,7 +176,7 @@ public class ApkClassConverterTest {
     summary.failures.add("a \"quoted\"\nline\\");
     assertEquals(
         "{\"classes\":0,\"interfaceCallsFixed\":0,\"failedMethods\":0,\"unframedClasses\":0,"
-            + "\"failures\":[\"a \\\"quoted\\\"\\nline\\\\\"]}",
+            + "\"withoutDebugInfo\":0,\"failures\":[\"a \\\"quoted\\\"\\nline\\\\\"]}",
         summary.toJson());
   }
 
@@ -184,6 +238,10 @@ public class ApkClassConverterTest {
   private static MethodNode method(byte[] bytes, String name) {
     ClassNode node = new ClassNode();
     new ClassReader(bytes).accept(node, 0);
+    return method(node, name);
+  }
+
+  private static MethodNode method(ClassNode node, String name) {
     return node.methods.stream().filter(m -> m.name.equals(name)).findFirst().orElseThrow();
   }
 

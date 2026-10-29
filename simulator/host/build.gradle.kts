@@ -65,6 +65,7 @@ dependencies {
     compileOnly(slice) { isTransitive = false }
   }
   compileOnly(libs.javax.annotation.api)
+  compileOnly(libs.javax.inject)
   compileOnly(libs.guava.android)
   compileOnly(files(androidJar))
 

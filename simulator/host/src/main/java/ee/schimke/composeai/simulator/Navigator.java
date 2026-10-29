@@ -6,13 +6,10 @@ import android.app.Notification;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
-import android.content.ContentProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -46,7 +43,8 @@ import org.robolectric.shadows.ShadowService;
  * and stopping the one below, delivering {@code setResult} to a {@code startActivityForResult}
  * caller when one finishes), and creates, starts and destroys services. The same entry points serve
  * the control channel's {@code startActivity}, {@code startService}, {@code bindService} and {@code
- * broadcast} commands, so a command and the app's own call behave alike.
+ * broadcast} commands, so a command and the app's own call behave alike. Content providers are
+ * created earlier, before {@code Application.onCreate()}, by {@link Providers}.
  *
  * <p>All of it runs on the main thread, inside the sandbox.
  */
@@ -81,6 +79,8 @@ final class Navigator {
   /** A running service and how it is held. */
   static final class Running {
     final ServiceController<? extends Service> controller;
+    /** What {@code onBind} returned, once something bound it. */
+    IBinder binder;
     boolean started;
     int bindings;
     int lastStartId;
@@ -96,10 +96,17 @@ final class Navigator {
   private final Deque<Entry> stack = new ArrayDeque<>();
   private final Map<ComponentName, Running> services = new LinkedHashMap<>();
 
+  /** Intents the app bound through a {@link LazyBinder}, which Robolectric also logs as starts. */
+  private final Set<Intent.FilterComparison> boundByApp = new HashSet<>();
+
+  /** The session's navigator, which {@link LazyBinder}s bound during startup resolve to. */
+  private static volatile Navigator current;
+
   Navigator(Application app, Protocol protocol) {
     this.app = app;
     this.shadowApp = Shadow.extract(app);
     this.protocol = protocol;
+    current = this;
   }
 
   Entry top() {
@@ -128,6 +135,11 @@ final class Navigator {
       }
     }
     while ((intent = shadowApp.getNextStartedService()) != null) {
+      // Robolectric logs a bindService as a start too; a bind is not a start.
+      // Package-qualified or not, as both are registered for binding.
+      if (boundByApp.remove(new Intent.FilterComparison(new Intent(intent).setPackage(null)))) {
+        continue;
+      }
       try {
         startService(intent);
       } catch (RuntimeException e) {
@@ -363,6 +375,112 @@ final class Navigator {
     return describe(component, running, "bound");
   }
 
+  /**
+   * Makes the app's own {@code bindService} connect. Robolectric answers a bind with whatever
+   * binder was registered for that exact intent, else null, and Firebase Sessions among others
+   * fails on the null. Every service the manifest declares is registered under its explicit
+   * component intent — how apps bind their own services — with a {@link LazyBinder} that creates
+   * and binds the real service when the app first uses it.
+   *
+   * <p>Runs before the application's {@code onCreate()}, since apps bind there (Firebase Sessions
+   * does), before the session and its navigator exist; a binder resolves the navigator when the
+   * app first calls it.
+   */
+  static void registerBindableServices(Application app) {
+    ShadowApplication shadowApp = Shadow.extract(app);
+    android.content.pm.PackageInfo info;
+    try {
+      info =
+          app.getPackageManager()
+              .getPackageInfo(app.getPackageName(), PackageManager.GET_SERVICES);
+    } catch (PackageManager.NameNotFoundException e) {
+      return;
+    }
+    if (info.services == null) return;
+    for (ServiceInfo service : info.services) {
+      ComponentName component = new ComponentName(service.packageName, service.name);
+      LazyBinder binder = new LazyBinder(component);
+      // Robolectric matches the whole intent, so the package-qualified form is registered too.
+      shadowApp.setComponentNameAndServiceForBindServiceForIntent(
+          new Intent().setComponent(component), component, binder);
+      shadowApp.setComponentNameAndServiceForBindServiceForIntent(
+          new Intent().setComponent(component).setPackage(service.packageName), component, binder);
+    }
+  }
+
+  /** Binds [component] for the app: creates the service if needed and returns its binder. */
+  private IBinder bindForApp(ComponentName component) {
+    Intent intent = new Intent().setComponent(component);
+    boundByApp.add(new Intent.FilterComparison(intent));
+    Running running = runningOrCreate(component, intent);
+    if (running.binder == null) running.binder = running.controller.get().onBind(intent);
+    running.bindings++;
+    protocol.event("service", describe(component, running, "bound"));
+    return running.binder;
+  }
+
+  /**
+   * The binder the app's {@code onServiceConnected} receives: the real service's, created on first
+   * use, which a device would have created before connecting.
+   */
+  private static final class LazyBinder implements IBinder {
+    private final ComponentName component;
+    private IBinder real;
+
+    LazyBinder(ComponentName component) {
+      this.component = component;
+    }
+
+    private IBinder real() {
+      Navigator navigator = current;
+      if (real == null && navigator != null) real = navigator.bindForApp(component);
+      return real;
+    }
+
+    @Override
+    public android.os.IInterface queryLocalInterface(String descriptor) {
+      IBinder binder = real();
+      return binder == null ? null : binder.queryLocalInterface(descriptor);
+    }
+
+    @Override
+    public String getInterfaceDescriptor() throws android.os.RemoteException {
+      IBinder binder = real();
+      return binder == null ? null : binder.getInterfaceDescriptor();
+    }
+
+    @Override
+    public boolean transact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
+        throws android.os.RemoteException {
+      IBinder binder = real();
+      return binder != null && binder.transact(code, data, reply, flags);
+    }
+
+    @Override
+    public boolean pingBinder() {
+      return true;
+    }
+
+    @Override
+    public boolean isBinderAlive() {
+      return true;
+    }
+
+    @Override
+    public void linkToDeath(DeathRecipient recipient, int flags) {}
+
+    @Override
+    public boolean unlinkToDeath(DeathRecipient recipient, int flags) {
+      return true;
+    }
+
+    @Override
+    public void dump(java.io.FileDescriptor fd, String[] args) {}
+
+    @Override
+    public void dumpAsync(java.io.FileDescriptor fd, String[] args) {}
+  }
+
   JSONObject bindService(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = runningOrCreate(component, intent);
@@ -525,42 +643,6 @@ final class Navigator {
     } else {
       app.registerReceiver(receiver, Intents.filterMatching(intent));
     }
-  }
-
-  // ---------------------------------------------------------------------------------------------
-  // Content providers
-
-  /**
-   * Creates every provider the manifest declares and registers it for its authorities, as the
-   * system does at process start. Robolectric skips this when the manifest comes from an APK, which
-   * leaves {@code androidx.startup} initializers unrun and every content URI unresolvable. Runs
-   * after {@code Application.onCreate} (the simulator creates the application before plugins
-   * connect), so the order differs from a device.
-   */
-  JSONArray installProviders() {
-    JSONArray installed = new JSONArray();
-    PackageInfo info;
-    try {
-      info =
-          app.getPackageManager()
-              .getPackageInfo(app.getPackageName(), PackageManager.GET_PROVIDERS);
-    } catch (PackageManager.NameNotFoundException e) {
-      return installed;
-    }
-    if (info.providers == null) return installed;
-    for (ProviderInfo provider : info.providers) {
-      Protocol.Json row = new Protocol.Json().put("provider", provider.name);
-      row.put("authority", provider.authority);
-      try {
-        Class<? extends ContentProvider> type = loadClass(provider.name, ContentProvider.class);
-        Robolectric.buildContentProvider(type).create(provider);
-        row.put("installed", true);
-      } catch (Throwable t) {
-        row.put("installed", false).put("error", String.valueOf(t));
-      }
-      installed.put(row.object());
-    }
-    return installed;
   }
 
   // ---------------------------------------------------------------------------------------------

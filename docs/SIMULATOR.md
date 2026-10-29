@@ -57,7 +57,16 @@ compose-preview launch app.apk
 ```
 
 **Converting dex.** `ApkClassConverter` runs [dex2jar](https://github.com/ThexXTURBOXx/dex2jar)
-over every `classes*.dex`, then an ASM pass that makes the output acceptable to a *verifying* JVM:
+over every `classes*.dex`, with two repairs of its own:
+
+- an integer comparison with the zero on the left (`if-le 0, x`) is mirrored before code
+  generation, which dex2jar gets backwards: it loads `x` and keeps the operator, so `0 <= x`
+  became `x <= 0`. Compose's `MutableVector.contains` has that shape, and Now in Android's UI froze
+  on the `ArrayIndexOutOfBoundsException` that followed;
+- a class dex2jar cannot translate with debug info is translated again without it (Now in
+  Android has one).
+
+Then an ASM pass makes the output acceptable to a *verifying* JVM:
 
 - static and private interface calls become interface method references (dex does not record the
   owner's kind, so dex2jar writes class `Methodref`s, which fail every Kotlin `$default` call with
@@ -65,7 +74,10 @@ over every `classes*.dex`, then an ASM pass that makes the output acceptable to 
 - stack-map frames and `max_stack` are computed from scratch, resolving supertypes from the APK,
   then `android.jar`, then the JDK. dex2jar writes no frames and undercounts `max_stack` around
   exception handlers; with verification simply switched off, the first GC that builds an oop map
-  for such a frame crashes the JVM.
+  for such a frame crashes the JVM;
+- protected members become public. The JVM lets another package's subclass reach a protected
+  member only through its own type, ART does not check, and shrunk code (Play Services') relies
+  on it.
 
 On the sample app that is 21,870 classes, 1,818 interface calls fixed, 0 failed methods, in about
 40 seconds; ASM's `BasicVerifier` passes every one of its 142,691 methods.
@@ -81,7 +93,25 @@ and stopped, so its window is neither drawn nor touchable), `setResult` reaches 
 `startActivityForResult` caller, `CLEAR_TOP` / `SINGLE_TOP` / `CLEAR_TASK` are honored, a finished
 activity resumes the one below, and services are created, started, bound and destroyed through
 `ServiceController` (including `stopSelf`). The launcher activity takes the same path, so the stack
-has one owner. Manifest content providers are created at startup.
+has one owner.
+
+**Startup** follows a device's order, through a Robolectric test environment of our own: the
+manifest's content providers are created after `attachBaseContext()` and before
+`Application.onCreate()`, so `androidx.startup` (WorkManager, OkHttp's platform) is ready when
+`onCreate()` uses it. Before that, three things a device has and Robolectric does not are filled in:
+
+- the process name, which WorkManager compares with its own to decide it is in the main process
+  and may run work at all;
+- a validated Wi-Fi network: the active network gets internet capabilities and each registered
+  `NetworkCallback` is told it is available, so offline banners clear and `CONNECTED` work runs;
+- a binder for every manifest service, so the app's own `bindService` connects; the service is
+  created and bound when the app first calls the binder.
+
+**Classes** come from the APK first, except Guava, which Robolectric's own code links against: an
+app's older copy is not served to it (Now in Android's lacks `toImmutableList`). A platform class
+the simulated SDK lacks comes from the SDK's `android.jar` stub, the newest platform installed:
+apps reference newer platform classes behind `SDK_INT` checks, which ART leaves unresolved and the
+JVM's verifier does not.
 
 ## The control channel
 
@@ -150,17 +180,27 @@ What runs: apps whose UI is Compose or Views over the framework Robolectric shad
 real `Application.onCreate()`. The sample app's Compose screens, `androidx.startup`, WorkManager
 and its Room database start as they would on a device.
 
+Two real apps, from their debug APKs: [Now in Android](https://github.com/android/nowinandroid)'s
+demo flavor runs its Hilt graph, WorkManager sync and Room database, and every tab and Settings
+work; [Confetti](https://github.com/joreilly/Confetti) starts with Firebase, Koin and Compose
+Multiplatform resources on `--sdk 36` (its OkHttp needs API 36's classes) and runs its onboarding.
+Renders are in [`design/evidence/simulator-launch/`](design/evidence/simulator-launch/).
+
 What does not, or not yet:
 
 - **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
-- **Google Play services, Firebase, Maps, billing, DRM** — not present in Robolectric's framework.
+- **Google Play services, Maps, billing, DRM** — not present in Robolectric's framework; their
+  APIs report `SERVICE_INVALID`. Firebase starts, and its backends answer as they would any
+  unregistered client.
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
-- **App-initiated `bindService`.** The binding is recorded but not connected; `bindService` from
-  the control channel works.
+- **Bindings across processes.** An app's binding to its own service connects; one to another
+  package's (Play services) does not.
 - **Process and task model.** One process, one task; `launch` while running pushes a new launcher
   instance rather than bringing the task forward; `HOME` does nothing.
-- **Content providers start after `Application.onCreate()`**, not before it as on a device
-  (`--no-providers` skips them).
+- **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
+  skips them.
+- **Network.** Reported as connected Wi-Fi; requests go out through the host JVM, its proxy and
+  its trust store.
 - **Split APKs and App Bundles** need merging into one APK first; protected APKs are out.
 - **Fidelity.** Robolectric's native graphics, not a device's GPU: close, not pixel-identical. The
   window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default; it does

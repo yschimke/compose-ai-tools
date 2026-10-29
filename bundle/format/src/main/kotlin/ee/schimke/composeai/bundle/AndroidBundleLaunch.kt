@@ -210,11 +210,20 @@ public class AndroidBundleLaunch(
         .orEmpty()
         .mapNotNull { dir ->
           val jar = File(dir, "android.jar").takeIf { it.isFile } ?: return@mapNotNull null
-          val level = dir.name.removePrefix("android-").toIntOrNull() ?: return@mapNotNull null
+          val level = platformLevel(dir.name) ?: return@mapNotNull null
           level to jar
         }
-        .maxByOrNull { it.first }
+        .maxWithOrNull(compareBy({ it.first.first }, { it.first.second }))
         ?.second
+    }
+
+    /**
+     * `android-36` → (36, 0), and the minor-versioned directories newer SDK platforms install
+     * under, `android-37.0` → (37, 0) and `android-36.1` → (36, 1); else null.
+     */
+    private fun platformLevel(name: String): Pair<Int, Int>? {
+      val match = Regex("""android-(\d+)(?:\.(\d+))?""").matchEntire(name) ?: return null
+      return match.groupValues[1].toInt() to (match.groupValues[2].toIntOrNull() ?: 0)
     }
   }
 }

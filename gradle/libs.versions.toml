@@ -682,6 +682,7 @@ robolectricSandbox = { module = "org.robolectric:sandbox", version.ref = "robole
 # Maintained dex2jar fork: turns an APK's `classes*.dex` into a jar the simulator can load.
 dex2jar-tools = { module = "de.femtopedia.dex2jar:dex-tools", version = "2.4.38" }
 javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
+javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 # Compile-only for `:simulator-host`, which sees Robolectric's Guava types; the runtime copy is the
 # Android daemon sidecar's.
 guava-android = { module = "com.google.guava:guava", version = "33.7.2-jre" }
