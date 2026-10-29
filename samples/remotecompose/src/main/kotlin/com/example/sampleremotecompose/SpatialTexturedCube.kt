@@ -17,8 +17,10 @@ import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.clickable
 import androidx.compose.remote.creation.compose.modifier.clip
+import androidx.compose.remote.creation.compose.modifier.contentDescription
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.creation.compose.modifier.padding
+import androidx.compose.remote.creation.compose.modifier.semantics
 import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
@@ -34,6 +36,7 @@ import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.remotePath
 import androidx.compose.remote.creation.compose.state.remoteTween
 import androidx.compose.remote.creation.compose.state.rf
+import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.state.sin
 import androidx.compose.remote.creation.compose.state.sqrt
 import androidx.compose.runtime.Composable
@@ -109,7 +112,9 @@ fun RemoteTexturedCube(
     )
   RemoteBox(modifier = modifier, contentAlignment = RemoteAlignment.BottomEnd) {
     RemoteCanvas(
-      RemoteModifier.fillMaxSize().clickable(valueChange(turns, (turns + 1f).createReference()))
+      RemoteModifier.fillMaxSize()
+        .clickable(valueChange(turns, (turns + 1f).createReference()))
+        .semantics { contentDescription = "Turn the cube".rs }
     ) {
       drawTexturedCube(yaw, pitch) { face ->
         drawConditionally(textureIndex.isLessThan(0.5f.rf)) { face(bricks) }
@@ -123,6 +128,7 @@ fun RemoteTexturedCube(
           .clip(RemoteRoundedCornerShape(10.rdp))
           .background(RemoteColor(Color(0xFF2B3A55)))
           .clickable(valueChange(textureIndex, ((textureIndex + 1f) % 2f).createReference()))
+          .semantics { contentDescription = "Swap the texture".rs }
     ) {}
   }
 }
