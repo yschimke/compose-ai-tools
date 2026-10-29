@@ -558,9 +558,17 @@ runs:
         # write-scoped commenter at an unrelated PR with attacker-authored
         # content. Bind it back to the run that produced the artifact: the
         # named PR must be the one whose head is this workflow_run's head.
-        if [ -n "${PR_NUMBER:-}" ] && [ -n "${RUN_HEAD_REPO:-}" ]; then
-          if ! printf '%s' "$PR_NUMBER" | grep -qE '^[0-9]+$'; then
+        # Fail closed: GitHub reports no head repository once the fork is
+        # deleted, and skipping the binding then would let the staged number
+        # aim the commenter anywhere.
+        if [ -n "${PR_NUMBER:-}" ]; then
+          # A bash match, not `grep`, which passes "5\nx" line by line.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]{1,9}$ ]]; then
             echo "::error::pr-number must be numeric (got '$PR_NUMBER')."
+            exit 1
+          fi
+          if [ -z "${RUN_HEAD_REPO:-}" ] || [ -z "${RUN_HEAD_BRANCH:-}" ]; then
+            echo "::error::The triggering run has no head repository or branch to bind pr-number $PR_NUMBER to. Refusing to comment."
             exit 1
           fi
           pr_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name' 2>/dev/null || true)

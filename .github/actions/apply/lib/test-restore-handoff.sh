@@ -79,6 +79,20 @@ for plant in plant_git_dir plant_nested_git_dir plant_gitfile; do
     failed=1
   fi
 done
+# A staged pr-number with no head repository to bind it to (a deleted fork) is refused, as is
+# one that only passes a line-by-line numeric check.
+for bad in "1:" $'5\nx:local/fork'; do
+  number="${bad%%:*}"; head_repo="${bad#*:}"
+  ws="$ROOT/unbound-$RANDOM"; mkdir -p "$ws/_handoff"
+  if ( cd "$ws" && env -u AB_CONFIG GITHUB_WORKSPACE="$ws" HANDOFF_DIR="$ws/_handoff" \
+      PR_NUMBER="$number" RUN_HEAD_REPO="$head_repo" RUN_HEAD_BRANCH=feature GH_TOKEN=none \
+      REPO=local/test bash "$ROOT/restore.sh" ) > "$ws.log" 2>&1; then
+    echo "FAIL: restore accepted pr-number '$number' with head repository '$head_repo'" >&2
+    failed=1
+  fi
+  grep -q 'pr-number' "$ws.log" || { cat "$ws.log" >&2; echo "FAIL: refused for another reason" >&2; failed=1; }
+done
+
 # push-branch.sh refuses a planted `.git` on its own, for callers that never pass through restore.
 for plant in plant_git_dir plant_nested_git_dir plant_gitfile; do
   rm -f "$marker"
