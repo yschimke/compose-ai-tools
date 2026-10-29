@@ -28,3 +28,19 @@ captured from the Xvfb screen (not the agent's screenshots, which never contain 
 Re-collect: build the APK, `./gradlew :cli:installDist`, then drive
 `cli/build/install/compose-preview/bin/compose-preview launch <apk> --java <jdk21+> --control
 stdio` with the commands above.
+
+## Real apps
+
+Debug APKs built from each project's `main`, run headless (`--control stdio --headless`) on JDK 21;
+screenshots are the control channel's `screenshot`.
+
+**Now in Android** (`app-demo-debug.apk`), after a 10 s wait, then `tap "Interests"`, `tap
+"Saved"`, `tap` the Settings action. The topics come from the demo flavor's sync, run by
+WorkManager once the network reads as connected:
+
+![Now in Android: For you, Interests, Saved, Settings](nowinandroid-tour.png)
+
+**Confetti** (`androidApp-debug.apk`, `--sdk 36`), its onboarding after startup. Past `Skip` the
+conference list stays empty here: this sandbox's network refuses `confetti-app.dev`.
+
+![Confetti onboarding](confetti-onboarding.png)

@@ -2,8 +2,20 @@ package ee.schimke.composeai.simulator;
 
 import com.googlecode.d2j.Method;
 import com.googlecode.d2j.dex.BaseDexExceptionHandler;
-import com.googlecode.d2j.dex.Dex2jar;
+import com.googlecode.d2j.converter.IR2JConverter;
+import com.googlecode.d2j.dex.ClassVisitorFactory;
+import com.googlecode.d2j.dex.ExDex2Asm;
+import com.googlecode.d2j.dex.LambadaNameSafeClassAdapter;
+import com.googlecode.d2j.node.DexFileNode;
 import com.googlecode.d2j.node.DexMethodNode;
+import com.googlecode.d2j.reader.DexFileReader;
+import com.googlecode.d2j.reader.MultiDexFileReader;
+import com.googlecode.dex2jar.ir.IrMethod;
+import com.googlecode.dex2jar.ir.expr.BinopExpr;
+import com.googlecode.dex2jar.ir.expr.Constant;
+import com.googlecode.dex2jar.ir.expr.Exprs;
+import com.googlecode.dex2jar.ir.expr.Value;
+import com.googlecode.dex2jar.ir.stmt.Stmt;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,6 +35,7 @@ import java.util.zip.ZipOutputStream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -31,8 +44,11 @@ import org.objectweb.asm.Opcodes;
  * classpath entry, in two passes:
  *
  * <ol>
- *   <li>dex2jar translates every dex in the APK, keeping line numbers. A method it cannot
- *       translate becomes a stub that throws, and is counted rather than failing the whole APK.
+ *   <li>dex2jar translates every dex in the APK, keeping line numbers. A class with a method it
+ *       cannot translate is taken from a second translation without debug info when that one
+ *       manages; a method neither can becomes a stub that throws, and is counted rather than
+ *       failing the whole APK. Integer comparisons against a zero on the left are mirrored
+ *       before code generation, which dex2jar gets backwards ({@link #normalizeZeroLeftJumps}).
  *   <li>An ASM pass makes the output loadable by a verifying JVM:
  *       <ul>
  *         <li>calls to static and private interface methods become interface method references.
@@ -45,12 +61,14 @@ import org.objectweb.asm.Opcodes;
  *             sample app's 140k methods) — enough, with verification off, for the GC to crash the
  *             JVM building an oop map for one of those frames. Supertypes come from the APK
  *             itself, then the platform `android.jar`, then the JDK, read from class headers.
+ *         <li>protected fields and methods become public, as ART does not enforce the JVM's
+ *             protected-receiver rule and shrunk code depends on that.
  *       </ul>
  * </ol>
  *
  * <p>Runs in its own JVM, with `lib-dex2jar/` on the classpath, and prints one JSON summary line on
  * stdout: `{"classes":n,"interfaceCallsFixed":n,"failedMethods":n,"unframedClasses":n,
- * "failures":[...]}`.
+ * "withoutDebugInfo":n,"failures":[...]}`.
  */
 public final class ApkClassConverter {
 
@@ -72,6 +90,8 @@ public final class ApkClassConverter {
     public int interfaceCallsFixed;
     public int failedMethods;
     public int unframedClasses;
+    /** Classes taken from the translation without debug info, because the first one failed them. */
+    public int withoutDebugInfo;
     public final List<String> failures = new ArrayList<>();
 
     String toJson() {
@@ -80,6 +100,7 @@ public final class ApkClassConverter {
       json.append(",\"interfaceCallsFixed\":").append(interfaceCallsFixed);
       json.append(",\"failedMethods\":").append(failedMethods);
       json.append(",\"unframedClasses\":").append(unframedClasses);
+      json.append(",\"withoutDebugInfo\":").append(withoutDebugInfo);
       json.append(",\"failures\":[");
       for (int i = 0; i < failures.size(); i++) {
         if (i > 0) json.append(',');
@@ -92,34 +113,181 @@ public final class ApkClassConverter {
   public static Summary convert(Path apk, Path out, Path platformJar) throws IOException {
     Summary summary = new Summary();
     Path translated = Files.createTempFile(out.toAbsolutePath().getParent(), "dex2jar-", ".jar");
+    // Line numbers and local names first, so an app crash names its source line. dex2jar's type
+    // inference sometimes trips on a method's debug local types; those classes are taken from a
+    // second translation without debug info, where they usually translate.
+    Path withoutDebug = null;
     try {
-      Dex2jar.from(apk.toFile())
-          .withExceptionHandler(
-              new BaseDexExceptionHandler() {
-                @Override
-                public void handleMethodTranslateException(
-                    Method method, DexMethodNode node, MethodVisitor mv, Exception e) {
-                  summary.failedMethods++;
-                  if (summary.failures.size() < REPORTED_FAILURES) {
-                    summary.failures.add(
-                        method.getOwner() + "." + method.getName() + method.getDesc() + ": " + e);
-                  }
-                  super.handleMethodTranslateException(method, node, mv, e);
-                }
-              })
-          .reUseReg(false)
-          .topoLogicalSort()
-          // Line numbers and local names, so an app crash in the simulator names its source line.
-          .skipDebug(false)
-          .to(translated);
-      fixInterfaceCalls(translated, out, platformJar, summary);
+      Map<String, List<String>> failed = translate(apk, translated, false);
+      Map<String, byte[]> fallback = new HashMap<>();
+      if (!failed.isEmpty()) {
+        withoutDebug = Files.createTempFile(out.toAbsolutePath().getParent(), "dex2jar-", ".jar");
+        Map<String, List<String>> failedAgain = translate(apk, withoutDebug, true);
+        try (ZipFile jar = new ZipFile(withoutDebug.toFile())) {
+          for (String owner : failed.keySet()) {
+            ZipEntry entry = jar.getEntry(owner + ".class");
+            if (failedAgain.containsKey(owner) || entry == null) continue;
+            try (InputStream stream = jar.getInputStream(entry)) {
+              fallback.put(entry.getName(), stream.readAllBytes());
+            }
+          }
+        }
+      }
+      for (Map.Entry<String, List<String>> e : failed.entrySet()) {
+        if (fallback.containsKey(e.getKey() + ".class")) continue;
+        for (String failure : e.getValue()) {
+          summary.failedMethods++;
+          if (summary.failures.size() < REPORTED_FAILURES) summary.failures.add(failure);
+        }
+      }
+      summary.withoutDebugInfo = fallback.size();
+      fixInterfaceCalls(translated, fallback, out, platformJar, summary);
     } finally {
       Files.deleteIfExists(translated);
+      if (withoutDebug != null) Files.deleteIfExists(withoutDebug);
     }
     return summary;
   }
 
-  private static void fixInterfaceCalls(Path in, Path out, Path platformJar, Summary summary)
+  /**
+   * One dex2jar pass over every dex in [apk] into [out]. A method it cannot translate becomes a
+   * stub that throws; returns them by owner (internal name), each as {@code owner.name(desc): e}.
+   *
+   * <p>This is {@code Dex2jar.to}, driven from dex2jar's public pieces so {@link
+   * #normalizeZeroLeftJumps} runs between its IR passes and code generation.
+   */
+  private static Map<String, List<String>> translate(Path apk, Path out, boolean skipDebug)
+      throws IOException {
+    Map<String, List<String>> failed = new HashMap<>();
+    BaseDexExceptionHandler handler =
+        new BaseDexExceptionHandler() {
+          @Override
+          public void handleMethodTranslateException(
+              Method method, DexMethodNode node, MethodVisitor mv, Exception e) {
+            String owner = method.getOwner();
+            if (owner.startsWith("L") && owner.endsWith(";")) {
+              owner = owner.substring(1, owner.length() - 1);
+            }
+            failed
+                .computeIfAbsent(owner, k -> new ArrayList<>())
+                .add(method.getOwner() + "." + method.getName() + method.getDesc() + ": " + e);
+            super.handleMethodTranslateException(method, node, mv, e);
+          }
+        };
+    DexFileNode fileNode = new DexFileNode();
+    int config = DexFileReader.IGNORE_READ_EXCEPTION | (skipDebug ? DexFileReader.SKIP_DEBUG : 0);
+    try {
+      MultiDexFileReader.open(Files.readAllBytes(apk)).accept(fileNode, config);
+    } catch (Exception e) {
+      handler.handleFileException(e);
+    }
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(out))) {
+      ClassVisitorFactory classes =
+          name -> {
+            // Maxima only: the ASM pass computes frames, with the whole hierarchy to hand.
+            ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            LambadaNameSafeClassAdapter names = new LambadaNameSafeClassAdapter(writer, false);
+            return new ClassVisitor(Opcodes.ASM9, names) {
+              @Override
+              public void visitEnd() {
+                super.visitEnd();
+                try {
+                  byte[] bytes = writer.toByteArray();
+                  zip.putNextEntry(new ZipEntry(names.getClassName() + ".class"));
+                  zip.write(bytes);
+                  zip.closeEntry();
+                } catch (Exception e) {
+                  handler.handleFileException(e);
+                }
+              }
+            };
+          };
+      new ExDex2Asm(handler) {
+        // Dex2jar's own pass order, which differs from Dex2Asm's default in its last two steps.
+        @Override
+        public void optimize(IrMethod irMethod) {
+          T_CLEAN_LABEL.transform(irMethod);
+          T_DEAD_CODE.transform(irMethod);
+          T_REMOVE_LOCAL.transform(irMethod);
+          T_REMOVE_CONST.transform(irMethod);
+          T_ZERO.transform(irMethod);
+          if (T_NPE.transformReportChanged(irMethod)) {
+            T_DEAD_CODE.transform(irMethod);
+            T_REMOVE_LOCAL.transform(irMethod);
+            T_REMOVE_CONST.transform(irMethod);
+          }
+          T_NEW.transform(irMethod);
+          T_FILL_ARRAY.transform(irMethod);
+          T_AGG.transform(irMethod);
+          T_MULTI_ARRAY.transform(irMethod);
+          T_VOID_INVOKE.transform(irMethod);
+          T_DEAD_CODE.transform(irMethod);
+          T_REMOVE_LOCAL.transform(irMethod);
+          T_REMOVE_CONST.transform(irMethod);
+          T_TYPE.transform(irMethod);
+          T_UNSSA.transform(irMethod);
+          T_IR_2_J_REG_ASSIGN.transform(irMethod);
+          T_TRIM_EX.transform(irMethod);
+        }
+
+        @Override
+        public void ir2j(IrMethod irMethod, MethodVisitor mv, ClzCtx clzCtx) {
+          normalizeZeroLeftJumps(irMethod);
+          new IR2JConverter().clzCtx(clzCtx).ir(irMethod).asm(mv).convert();
+        }
+      }.convertDex(fileNode, classes);
+    }
+    return failed;
+  }
+
+  /**
+   * Rewrites each integer {@code if (0 OP x)} as {@code if (x OP' 0)}, mirroring the comparison.
+   *
+   * <p>dex2jar's code generator turns a comparison against zero into a single-operand jump by
+   * loading the other operand, but keeps the operator when the zero is on the left, so {@code
+   * if-le 0, x} (from {@code if (0 <= x)}) is emitted as {@code ifle x}: true only for {@code x <=
+   * 0}. Compose's {@code MutableVector.contains} has exactly that shape, and failed every lookup.
+   * With the zero on the right the generator's mapping is correct.
+   */
+  static int normalizeZeroLeftJumps(IrMethod irMethod) {
+    int rewritten = 0;
+    for (Stmt stmt : irMethod.stmts) {
+      if (stmt.st != Stmt.ST.IF) continue;
+      Value condition = stmt.getOp();
+      Value left = condition.getOp1();
+      Value right = condition.getOp2();
+      if (!isIntZero(left) || isIntZero(right)) continue;
+      String type = ((BinopExpr) condition).type;
+      Value mirrored;
+      switch (condition.vt) {
+        case GE:
+          mirrored = Exprs.nLe(right, left, type);
+          break;
+        case GT:
+          mirrored = Exprs.nLt(right, left, type);
+          break;
+        case LE:
+          mirrored = Exprs.nGe(right, left, type);
+          break;
+        case LT:
+          mirrored = Exprs.nGt(right, left, type);
+          break;
+        default:
+          continue; // EQ and NE are symmetric.
+      }
+      mirrored.valueType = condition.valueType;
+      stmt.setOp(mirrored);
+      rewritten++;
+    }
+    return rewritten;
+  }
+
+  private static boolean isIntZero(Value value) {
+    return value.vt == Value.VT.CONSTANT && Integer.valueOf(0).equals(((Constant) value).value);
+  }
+
+  private static void fixInterfaceCalls(
+      Path in, Map<String, byte[]> replacements, Path out, Path platformJar, Summary summary)
       throws IOException {
     try (ZipFile jar = new ZipFile(in.toFile());
         ZipFile platform = new ZipFile(platformJar.toFile())) {
@@ -138,9 +306,11 @@ public final class ApkClassConverter {
         for (Enumeration<? extends ZipEntry> e = jar.entries(); e.hasMoreElements(); ) {
           ZipEntry entry = e.nextElement();
           if (entry.isDirectory()) continue;
-          byte[] bytes;
-          try (InputStream stream = jar.getInputStream(entry)) {
-            bytes = stream.readAllBytes();
+          byte[] bytes = replacements.get(entry.getName());
+          if (bytes == null) {
+            try (InputStream stream = jar.getInputStream(entry)) {
+              bytes = stream.readAllBytes();
+            }
           }
           if (entry.getName().endsWith(".class")) {
             summary.classes++;
@@ -177,6 +347,19 @@ public final class ApkClassConverter {
     }
   }
 
+  /**
+   * Protected becomes public. The JVM's verifier lets a subclass in another package read a
+   * protected member only through a receiver of its own type; ART does not check that, and R8
+   * output relies on it (Play Services' measurement classes failed with "Bad access to protected
+   * data"). Making the member public changes nothing else: the JVM does not check an override's
+   * access against the method it overrides.
+   */
+  private static int widen(int access) {
+    return (access & Opcodes.ACC_PROTECTED) != 0
+        ? (access & ~Opcodes.ACC_PROTECTED) | Opcodes.ACC_PUBLIC
+        : access;
+  }
+
   private static byte[] rewrite(byte[] bytes, ClassHierarchy hierarchy, int compute, int[] fixed) {
     ClassReader reader = new ClassReader(bytes);
     ClassWriter writer =
@@ -202,9 +385,16 @@ public final class ApkClassConverter {
           }
 
           @Override
+          public FieldVisitor visitField(
+              int access, String name, String desc, String signature, Object value) {
+            return super.visitField(widen(access), name, desc, signature, value);
+          }
+
+          @Override
           public MethodVisitor visitMethod(
               int access, String name, String desc, String signature, String[] exceptions) {
-            MethodVisitor delegate = super.visitMethod(access, name, desc, signature, exceptions);
+            MethodVisitor delegate =
+                super.visitMethod(widen(access), name, desc, signature, exceptions);
             return new MethodVisitor(Opcodes.ASM9, delegate) {
               @Override
               public void visitMethodInsn(
