@@ -156,6 +156,12 @@ final class Session {
       id = command.opt("id");
       String name = command.getString("cmd");
       if (!name.equals("ping")) overlay.status(summary(name, command));
+      if (name.equals("quit")) {
+        // The reply goes out first and is flushed (the protocol stream autoflushes per line).
+        protocol.ok(id, new Protocol.Json().put("quitting", true).object());
+        System.exit(0);
+        return;
+      }
       JSONObject result = run(name, command);
       long settle =
           name.equals("wait")
@@ -269,10 +275,6 @@ final class Session {
         return query(c);
       case "qualifiers":
         return qualifiers(c.getString("value"));
-      case "quit":
-        // After this reply is written.
-        new Thread(() -> System.exit(0), "simulator-quit").start();
-        return new Protocol.Json().put("quitting", true).object();
       default:
         throw new IllegalArgumentException("unknown command: " + name);
     }

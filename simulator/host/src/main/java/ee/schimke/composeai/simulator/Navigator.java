@@ -59,6 +59,8 @@ final class Navigator {
     final Intent request;
     final Entry caller;
     final int requestCode;
+    /** Paused and stopped because another activity went on top of it. */
+    boolean stopped;
 
     Entry(
         ActivityController<? extends Activity> controller,
@@ -154,7 +156,8 @@ final class Navigator {
    */
   JSONObject startActivity(Intent intent, int requestCode) {
     ComponentName component = resolveActivity(intent);
-    Class<? extends Activity> type = loadClass(component.getClassName(), Activity.class);
+    ComponentName implementation = targetOfAlias(component);
+    Class<? extends Activity> type = loadClass(implementation.getClassName(), Activity.class);
     Intent launch = new Intent(intent).setComponent(component);
     int flags = intent.getFlags();
 
@@ -162,9 +165,9 @@ final class Navigator {
       while (!stack.isEmpty()) destroy(stack.pop());
     } else if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 && contains(type)) {
       while (stack.peek().activity().getClass() != type) destroy(stack.pop());
-      Entry target = stack.peek();
       if ((flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0) {
-        target.controller.newIntent(launch);
+        Entry target = stack.peek();
+        deliverNewIntent(target, launch);
         protocol.event("activity", describe(target, "newIntent"));
         return describe(target, "newIntent");
       }
@@ -174,17 +177,20 @@ final class Navigator {
     if (below != null
         && (flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0
         && below.activity().getClass() == type) {
-      below.controller.pause();
-      below.controller.newIntent(launch);
-      below.controller.resume();
+      deliverNewIntent(below, launch);
       protocol.event("activity", describe(below, "newIntent"));
       return describe(below, "newIntent");
     }
 
-    if (below != null) below.controller.pause();
+    // A `below` that is already stopped was uncovered by CLEAR_TOP and is not on screen.
+    boolean coverBelow = below != null && !below.stopped;
+    if (coverBelow) below.controller.pause();
     ActivityController<? extends Activity> controller = Robolectric.buildActivity(type, launch);
     controller.setup();
-    if (below != null) below.controller.saveInstanceState(new Bundle()).stop();
+    if (coverBelow) {
+      below.controller.saveInstanceState(new Bundle()).stop();
+      below.stopped = true;
+    }
     Entry entry = new Entry(controller, intent, below, requestCode);
     stack.push(entry);
     protocol.event("activity", describe(entry, "resumed"));
@@ -224,12 +230,52 @@ final class Navigator {
     if (finishing.contains(topBefore)) {
       Entry resumed = stack.peek();
       if (resumed != null) {
-        resumed.controller.restart().resume().visible();
+        if (resumed.stopped) bringBack(resumed);
         protocol.event("activity", describe(resumed, "resumed"));
       } else {
         protocol.event("activity", new Protocol.Json().put("state", "empty").object());
       }
     }
+  }
+
+  /**
+   * {@code onNewIntent} for an activity already on the stack: a resumed one is paused around it,
+   * a stopped one (uncovered by CLEAR_TOP) is restarted first and comes back on screen, as the
+   * system orders it.
+   */
+  private void deliverNewIntent(Entry entry, Intent intent) {
+    if (entry.stopped) {
+      entry.controller.restart();
+      entry.controller.newIntent(intent);
+      entry.controller.resume().visible();
+      entry.stopped = false;
+    } else {
+      entry.controller.pause();
+      entry.controller.newIntent(intent);
+      entry.controller.resume();
+    }
+  }
+
+  /** Restarts and resumes a stopped activity that is now on top again. */
+  private void bringBack(Entry entry) {
+    entry.controller.restart().resume().visible();
+    entry.stopped = false;
+  }
+
+  /**
+   * The activity class behind [component]: itself, or the {@code targetActivity} of an {@code
+   * <activity-alias>}, which has no class of its own. The intent keeps the alias, as on a device.
+   */
+  private ComponentName targetOfAlias(ComponentName component) {
+    try {
+      ActivityInfo info = app.getPackageManager().getActivityInfo(component, 0);
+      if (info.targetActivity != null) {
+        return new ComponentName(component.getPackageName(), info.targetActivity);
+      }
+    } catch (PackageManager.NameNotFoundException e) {
+      // Not in the manifest: load it by its own name, and let that fail if it must.
+    }
+    return component;
   }
 
   private void destroy(Entry entry) {
@@ -285,7 +331,7 @@ final class Navigator {
   JSONArray describeStack() {
     JSONArray array = new JSONArray();
     for (Entry entry : stack) {
-      array.put(describe(entry, entry == stack.peek() ? "resumed" : "stopped"));
+      array.put(describe(entry, entry.stopped ? "stopped" : "resumed"));
     }
     return array;
   }
