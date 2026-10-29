@@ -968,6 +968,8 @@ jobs:
         run: bash .github/actions/apply/lib/test-push-branch.sh
       - name: Run push-history helper tests
         run: bash .github/actions/apply/lib/test-push-history.sh
+      - name: Run publish handoff restore tests
+        run: bash .github/actions/apply/lib/test-restore-handoff.sh
       # Guards the path→system mapping that decides which design-artifacts delivery
       # branches a merge to main regenerates. A false negative there strands a
       # published catalog on stale renders without any signal.

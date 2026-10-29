@@ -60,11 +60,13 @@ dependencies {
       libs.robolectricAnnotations,
       libs.robolectricUtils,
       libs.robolectricSandbox,
+      libs.robolectricResources,
     )
   for (slice in robolectricSlices) {
     compileOnly(slice) { isTransitive = false }
   }
   compileOnly(libs.javax.annotation.api)
+  compileOnly(libs.javax.inject)
   compileOnly(libs.guava.android)
   compileOnly(files(androidJar))
 

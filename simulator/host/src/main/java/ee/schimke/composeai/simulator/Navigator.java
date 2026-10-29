@@ -1,18 +1,16 @@
 package ee.schimke.composeai.simulator;
 
 import android.app.Activity;
+import android.app.AppComponentFactory;
 import android.app.Application;
 import android.app.Notification;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
-import android.content.ContentProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -27,9 +25,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.robolectric.Robolectric;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.shadow.api.Shadow;
@@ -46,7 +45,8 @@ import org.robolectric.shadows.ShadowService;
  * and stopping the one below, delivering {@code setResult} to a {@code startActivityForResult}
  * caller when one finishes), and creates, starts and destroys services. The same entry points serve
  * the control channel's {@code startActivity}, {@code startService}, {@code bindService} and {@code
- * broadcast} commands, so a command and the app's own call behave alike.
+ * broadcast} commands, so a command and the app's own call behave alike. Content providers are
+ * created earlier, before {@code Application.onCreate()}, by {@link Providers}.
  *
  * <p>All of it runs on the main thread, inside the sandbox.
  */
@@ -81,6 +81,8 @@ final class Navigator {
   /** A running service and how it is held. */
   static final class Running {
     final ServiceController<? extends Service> controller;
+    /** What {@code onBind} returned, once something bound it. */
+    IBinder binder;
     boolean started;
     int bindings;
     int lastStartId;
@@ -96,10 +98,20 @@ final class Navigator {
   private final Deque<Entry> stack = new ArrayDeque<>();
   private final Map<ComponentName, Running> services = new LinkedHashMap<>();
 
+  /** The app's binds, which Robolectric also logs as starts; see {@link #prepareBind}. */
+  private static final Set<Intent.FilterComparison> boundByApp = ConcurrentHashMap.newKeySet();
+
+  /** A binder per manifest service, which creates and binds it on first use. */
+  private static final Map<ComponentName, LazyBinder> bindable = new ConcurrentHashMap<>();
+
+  /** The session's navigator, which {@link LazyBinder}s bound during startup resolve to. */
+  private static volatile Navigator current;
+
   Navigator(Application app, Protocol protocol) {
     this.app = app;
     this.shadowApp = Shadow.extract(app);
     this.protocol = protocol;
+    current = this;
   }
 
   Entry top() {
@@ -128,6 +140,8 @@ final class Navigator {
       }
     }
     while ((intent = shadowApp.getNextStartedService()) != null) {
+      // Robolectric logs a bindService as a start too; a bind is not a start.
+      if (boundByApp.remove(new Intent.FilterComparison(intent))) continue;
       try {
         startService(intent);
       } catch (RuntimeException e) {
@@ -185,7 +199,14 @@ final class Navigator {
     // A `below` that is already stopped was uncovered by CLEAR_TOP and is not on screen.
     boolean coverBelow = below != null && !below.stopped;
     if (coverBelow) below.controller.pause();
-    ActivityController<? extends Activity> controller = Robolectric.buildActivity(type, launch);
+    ActivityController<? extends Activity> controller =
+        ActivityController.of(
+            instantiate(
+                () ->
+                    factory()
+                        .instantiateActivity(
+                            app.getClassLoader(), implementation.getClassName(), launch)),
+            launch);
     controller.setup();
     if (coverBelow) {
       below.controller.saveInstanceState(new Bundle()).stop();
@@ -363,6 +384,128 @@ final class Navigator {
     return describe(component, running, "bound");
   }
 
+  /**
+   * Makes the app's own {@code bindService} connect. Robolectric answers a bind with whatever
+   * binder was registered for that exact intent, else null, and Firebase Sessions among others
+   * fails on the null. Every service the manifest declares gets a {@link LazyBinder}, which
+   * creates and binds the real service when the app first uses it; {@link #prepareBind} registers
+   * it for each bind's own intent.
+   *
+   * <p>Runs before the application's {@code onCreate()}, since apps bind there (Firebase Sessions
+   * does), before the session and its navigator exist; a binder resolves the navigator when the
+   * app first calls it.
+   */
+  static void registerBindableServices(Application app) {
+    android.content.pm.PackageInfo info;
+    try {
+      info =
+          app.getPackageManager()
+              .getPackageInfo(app.getPackageName(), PackageManager.GET_SERVICES);
+    } catch (PackageManager.NameNotFoundException e) {
+      return;
+    }
+    if (info.services == null) return;
+    for (ServiceInfo service : info.services) {
+      ComponentName component = new ComponentName(service.packageName, service.name);
+      bindable.put(component, new LazyBinder(component));
+    }
+  }
+
+  /**
+   * Registers the binder of the app service [intent] names (or resolves to) for exactly that
+   * intent, from {@link SimulatorShadowContextImpl} as the app binds; a device resolves an explicit
+   * bind by its component alone. Also remembers the bind, which Robolectric logs as a start.
+   */
+  static void prepareBind(Intent intent) {
+    Application app = RuntimeEnvironment.getApplication();
+    if (app == null) return;
+    ComponentName component = intent.getComponent();
+    if (component == null) {
+      ResolveInfo resolved = app.getPackageManager().resolveService(intent, 0);
+      if (resolved == null || resolved.serviceInfo == null) return;
+      component =
+          new ComponentName(resolved.serviceInfo.packageName, resolved.serviceInfo.name);
+    }
+    LazyBinder binder = bindable.get(component);
+    if (binder == null) return;
+    Intent key = new Intent(intent);
+    ShadowApplication shadowApp = Shadow.extract(app);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(key, component, binder);
+    boundByApp.add(new Intent.FilterComparison(key));
+  }
+
+  /** Binds [component] for the app: creates the service if needed and returns its binder. */
+  private IBinder bindForApp(ComponentName component) {
+    Intent intent = new Intent().setComponent(component);
+    Running running = runningOrCreate(component, intent);
+    if (running.binder == null) running.binder = running.controller.get().onBind(intent);
+    running.bindings++;
+    protocol.event("service", describe(component, running, "bound"));
+    return running.binder;
+  }
+
+  /**
+   * The binder the app's {@code onServiceConnected} receives: the real service's, created on first
+   * use, which a device would have created before connecting.
+   */
+  private static final class LazyBinder implements IBinder {
+    private final ComponentName component;
+    private IBinder real;
+
+    LazyBinder(ComponentName component) {
+      this.component = component;
+    }
+
+    private IBinder real() {
+      Navigator navigator = current;
+      if (real == null && navigator != null) real = navigator.bindForApp(component);
+      return real;
+    }
+
+    @Override
+    public android.os.IInterface queryLocalInterface(String descriptor) {
+      IBinder binder = real();
+      return binder == null ? null : binder.queryLocalInterface(descriptor);
+    }
+
+    @Override
+    public String getInterfaceDescriptor() throws android.os.RemoteException {
+      IBinder binder = real();
+      return binder == null ? null : binder.getInterfaceDescriptor();
+    }
+
+    @Override
+    public boolean transact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
+        throws android.os.RemoteException {
+      IBinder binder = real();
+      return binder != null && binder.transact(code, data, reply, flags);
+    }
+
+    @Override
+    public boolean pingBinder() {
+      return true;
+    }
+
+    @Override
+    public boolean isBinderAlive() {
+      return true;
+    }
+
+    @Override
+    public void linkToDeath(DeathRecipient recipient, int flags) {}
+
+    @Override
+    public boolean unlinkToDeath(DeathRecipient recipient, int flags) {
+      return true;
+    }
+
+    @Override
+    public void dump(java.io.FileDescriptor fd, String[] args) {}
+
+    @Override
+    public void dumpAsync(java.io.FileDescriptor fd, String[] args) {}
+  }
+
   JSONObject bindService(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = runningOrCreate(component, intent);
@@ -424,9 +567,11 @@ final class Navigator {
   private Running runningOrCreate(ComponentName component, Intent intent) {
     Running running = services.get(component);
     if (running != null) return running;
-    Class<? extends Service> type = loadClass(component.getClassName(), Service.class);
-    running =
-        new Running(Robolectric.buildService(type, new Intent(intent).setComponent(component)));
+    Intent start = new Intent(intent).setComponent(component);
+    Service service =
+        instantiate(
+            () -> factory().instantiateService(app.getClassLoader(), component.getClassName(), start));
+    running = new Running(ServiceController.of(service, start));
     running.controller.create();
     services.put(component, running);
     return running;
@@ -501,7 +646,8 @@ final class Navigator {
       ActivityInfo receiver = info.activityInfo;
       if (receiver == null || dynamic.contains(receiver.name)) continue;
       BroadcastReceiver instance =
-          newInstance(loadClass(receiver.name, BroadcastReceiver.class));
+          instantiate(
+              () -> factory().instantiateReceiver(app.getClassLoader(), receiver.name, intent));
       if (intent.getAction() == null) {
         // An explicit broadcast with no action cannot be matched by a filter; call it directly.
         instance.onReceive(app, new Intent(intent));
@@ -528,42 +674,6 @@ final class Navigator {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Content providers
-
-  /**
-   * Creates every provider the manifest declares and registers it for its authorities, as the
-   * system does at process start. Robolectric skips this when the manifest comes from an APK, which
-   * leaves {@code androidx.startup} initializers unrun and every content URI unresolvable. Runs
-   * after {@code Application.onCreate} (the simulator creates the application before plugins
-   * connect), so the order differs from a device.
-   */
-  JSONArray installProviders() {
-    JSONArray installed = new JSONArray();
-    PackageInfo info;
-    try {
-      info =
-          app.getPackageManager()
-              .getPackageInfo(app.getPackageName(), PackageManager.GET_PROVIDERS);
-    } catch (PackageManager.NameNotFoundException e) {
-      return installed;
-    }
-    if (info.providers == null) return installed;
-    for (ProviderInfo provider : info.providers) {
-      Protocol.Json row = new Protocol.Json().put("provider", provider.name);
-      row.put("authority", provider.authority);
-      try {
-        Class<? extends ContentProvider> type = loadClass(provider.name, ContentProvider.class);
-        Robolectric.buildContentProvider(type).create(provider);
-        row.put("installed", true);
-      } catch (Throwable t) {
-        row.put("installed", false).put("error", String.valueOf(t));
-      }
-      installed.put(row.object());
-    }
-    return installed;
-  }
-
-  // ---------------------------------------------------------------------------------------------
 
   private <T> Class<? extends T> loadClass(String name, Class<T> base) {
     try {
@@ -573,11 +683,19 @@ final class Navigator {
     }
   }
 
-  private static <T> T newInstance(Class<? extends T> type) {
+  private AppComponentFactory factory() {
+    return AppComponents.factory(app);
+  }
+
+  private interface Instantiation<T> {
+    T create() throws ReflectiveOperationException;
+  }
+
+  private static <T> T instantiate(Instantiation<T> instantiation) {
     try {
-      return type.getDeclaredConstructor().newInstance();
+      return instantiation.create();
     } catch (ReflectiveOperationException e) {
-      throw new IllegalArgumentException("cannot instantiate " + type.getName(), e);
+      throw new IllegalArgumentException("cannot instantiate: " + e, e);
     }
   }
 }

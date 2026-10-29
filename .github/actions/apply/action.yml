@@ -558,9 +558,17 @@ runs:
         # write-scoped commenter at an unrelated PR with attacker-authored
         # content. Bind it back to the run that produced the artifact: the
         # named PR must be the one whose head is this workflow_run's head.
-        if [ -n "${PR_NUMBER:-}" ] && [ -n "${RUN_HEAD_REPO:-}" ]; then
-          if ! printf '%s' "$PR_NUMBER" | grep -qE '^[0-9]+$'; then
+        # Fail closed: GitHub reports no head repository once the fork is
+        # deleted, and skipping the binding then would let the staged number
+        # aim the commenter anywhere.
+        if [ -n "${PR_NUMBER:-}" ]; then
+          # A bash match, not `grep`, which passes "5\nx" line by line.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]{1,9}$ ]]; then
             echo "::error::pr-number must be numeric (got '$PR_NUMBER')."
+            exit 1
+          fi
+          if [ -z "${RUN_HEAD_REPO:-}" ] || [ -z "${RUN_HEAD_BRANCH:-}" ]; then
+            echo "::error::The triggering run has no head repository or branch to bind pr-number $PR_NUMBER to. Refusing to comment."
             exit 1
           fi
           pr_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name' 2>/dev/null || true)
@@ -630,6 +638,15 @@ runs:
               continue
               ;;
           esac
+          # The push steps `git init` + `git add -A` inside the staged dirs, and
+          # `git init` keeps an existing `.git`: a planted config (`core.fsmonitor`,
+          # a filter driver, `url.*.insteadOf`) would run or redirect with the
+          # artifacts token. Checked here, not on the tar, so a handoff uploaded
+          # without one is covered too. Nested ones and `.git` files count.
+          if [ -n "$(find "$entry" -name .git -print -quit)" ]; then
+            echo "::error::Handoff entry '$base' contains a .git path. Refusing to restore."
+            exit 1
+          fi
           # Replace rather than merge: `cp -a dir existing-dir` would nest the
           # staged tree one level deeper instead of overwriting it.
           rm -rf "${GITHUB_WORKSPACE:?}/$base"
