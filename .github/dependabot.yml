@@ -21,3 +21,9 @@ updates:
       # Bundle routine patch/minor bumps into a single PR to reduce noise.
       actions-minor:
         update-types: [minor, patch]
+    ignore:
+      # This repository's own actions (`yschimke/compose-ai-tools/.github/actions/install@…`)
+      # are pinned to a release on purpose and paired with a `version:` input or a checkout
+      # `ref:` of the same release (see .github/scripts/test_uid_audit_workflow.py). Dependabot
+      # moves only the `uses:` SHA, splitting the pair, so leave them to the hand-made bumps.
+      - dependency-name: "yschimke/compose-ai-tools*"
