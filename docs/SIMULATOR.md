@@ -213,6 +213,7 @@ What does not, or not yet:
   reported as a `permissions` event; there is no dialog and no way yet to deny.
 - **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
   share sheet, settings screens) reaches no activity and is reported as an `error` event.
+- **Bluetooth.** The adapter is on with nothing in range: scans run and find no devices.
 - **Network.** Reported as connected Wi-Fi; requests go out through the host JVM, its proxy and
   its trust store.
 - **Split APKs and App Bundles** need merging into one APK first; protected APKs are out.
