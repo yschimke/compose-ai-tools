@@ -974,9 +974,9 @@ internal object AndroidPreviewSupport {
               include("**/*.java")
             },
       ) {
-        // Lazy `tasks.matching` so modules lacking `compileDebugKotlin` (KMP) don't crash at
-        // task-graph time (#1492).
-        dependsOn(project.tasks.matching { it.name in mainCompileTaskNames })
+        // Name-filtered so modules lacking `compileDebugKotlin` (KMP) don't crash at task-graph
+        // time (#1492), without realizing unrelated tasks (see [optionalTaskDependencies]).
+        dependsOn(optionalTaskDependencies(project, mainCompileTaskNames))
         // Lottie assets from Java-resource source dirs (`src/main/resources`), rendered via desktop
         // Compottie. Source dirs rather than AGP's version-specific `java_res` intermediates; the
         // same dirs go on `composePreviewRenderLottie`'s classpath.
@@ -994,7 +994,7 @@ internal object AndroidPreviewSupport {
           }
         )
         if (screenshotTestEnabled) {
-          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+          dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
           screenshotTestRuntimeConfig?.let { stConfig ->
             dependencyJars.from(
               stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
@@ -1761,8 +1761,10 @@ internal object AndroidPreviewSupport {
 
     // A bare buildDir path with no producer wired, so every task reading it through the render
     // classpath must depend on the generator or Gradle 9's strict validation fails. Matched by name
-    // so it's empty when unit tests are disabled.
-    val unitTestConfigProducer = project.tasks.matching { it.name == naming.unitTestConfigTask }
+    // so it's empty when unit tests are disabled; never realizes other tasks (AGP 9.5's
+    // `generate<Variant>ComposePreviewRunfiles` throws when realized for such variants).
+    val unitTestConfigProducer =
+      optionalTaskDependencies(project, listOfNotNull(naming.unitTestConfigTask))
 
     // Generates the package-level `robolectric.properties` that stubs the consumer's `Application`
     // by default; see [GenerateRobolectricPropertiesTask].
@@ -1951,7 +1953,7 @@ internal object AndroidPreviewSupport {
           // The screenshotTest classes dir is on the render classpath too; same strict-validation
           // requirement.
           if (screenshotTestEnabled) {
-            dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+            dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
           }
           if (useLocalRenderer) {
             dependsOn(":renderer-android:compile${capVariant}Kotlin")
@@ -2010,7 +2012,7 @@ internal object AndroidPreviewSupport {
         // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
         dependsOn(unitTestConfigProducer)
         if (screenshotTestEnabled) {
-          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+          dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
         }
         testClassesDirs =
           if (compileShardsTask != null) {
@@ -2181,10 +2183,10 @@ internal object AndroidPreviewSupport {
         // `process${Cap}Resources` exists only on application variants; the resource APK comes via
         // `generate${Cap}UnitTestConfig` anyway, so skip it when absent (#136).
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
         if (compileShardsTask != null) {
           dependsOn(compileShardsTask)
@@ -2278,10 +2280,10 @@ internal object AndroidPreviewSupport {
           dependsOn(":renderer-android:compile${capVariant}Kotlin")
         }
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
       }
     }
@@ -2387,10 +2389,10 @@ internal object AndroidPreviewSupport {
           dependsOn(":renderer-xr:compile${capVariant}Kotlin")
         }
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
       }
 

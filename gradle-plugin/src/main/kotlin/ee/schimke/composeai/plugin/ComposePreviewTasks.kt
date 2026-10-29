@@ -375,10 +375,10 @@ internal object ComposePreviewTasks {
       ) {
         onlyIf { extension.enabled.get() }
         // Lazy matching so compile tasks registered later are still wired.
-        dependsOn(project.tasks.matching { it.name in DESKTOP_COMPILE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_COMPILE_TASK_CANDIDATES))
         // Lottie assets from processed resources (desktop only).
         resourceDirs.from(sourceResourceDirs)
-        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
@@ -442,7 +442,7 @@ internal object ComposePreviewTasks {
         description = "Render all previews to PNG"
         dependsOn(discoverTask)
         dependsOn(renderClasspathGuard)
-        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
@@ -639,7 +639,7 @@ internal object ComposePreviewTasks {
       // Package processed resources into `classes/app.jar`: without this ordering, a clean build
       // can pack before `processResources`, and a live re-render from the bundle fails on missing
       // fonts.
-      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+      dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
     }
   }
 
@@ -859,7 +859,7 @@ internal object ComposePreviewTasks {
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
       // Stage resources before emitting the descriptor.
-      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+      dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       group = "compose preview"
       description =
         "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
@@ -1522,7 +1522,7 @@ internal object ComposePreviewTasks {
       description =
         "Compile sources without running composePreviewDiscover — used by the VS Code daemon save path."
       onlyIf { extension.enabled.get() }
-      dependsOn(project.tasks.matching { it.name in compileTaskNames })
+      dependsOn(optionalTaskDependencies(project, compileTaskNames))
     }
   }
 
