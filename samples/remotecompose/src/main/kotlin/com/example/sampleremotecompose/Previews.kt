@@ -11,6 +11,8 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
 import ee.schimke.composeai.daemon.RemoteEmbeddedPreviewWrapper
 import ee.schimke.composeai.daemon.RemoteViewPreviewWrapper
 import ee.schimke.composeai.preview.AnimatedPreview
+import ee.schimke.composeai.preview.InteractionPreview
+import ee.schimke.composeai.preview.MotionFormat
 
 // Two ways to preview a Remote Compose component: same pixels, different export behaviour. 200×200
 // frames a single button; enlarge for bigger components.
@@ -162,4 +164,31 @@ fun RemoteCube3dSpinningPreview() {
 @Composable
 fun RemoteWallCardPreview() {
   RemoteWallCard()
+}
+
+/** [RemoteTexturedCube]: a bitmap texture mapped onto each visible face. */
+@Preview(widthDp = 240, heightDp = 240)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteTexturedCubePreview() {
+  RemoteTexturedCube()
+}
+
+/**
+ * Interacting with [RemoteTexturedCube]: two taps turn it half way round on a spring, a tap on the
+ * swatch swaps the texture, and a last tap turns it once more. Every change is document state moved
+ * by a document action; no host code runs.
+ */
+@Preview(widthDp = 240, heightDp = 240)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@InteractionPreview(
+  targets = [0, 0, 1, 0],
+  gapMs = 900,
+  frameIntervalMs = 33,
+  format = MotionFormat.Gif,
+  caption = "Tap the cube to turn it on a spring; tap the swatch to swap its texture.",
+)
+@Composable
+fun RemoteTexturedCubeInteractionPreview() {
+  RemoteTexturedCube()
 }
