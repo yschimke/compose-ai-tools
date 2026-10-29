@@ -60,8 +60,11 @@ jobs:
           COMPOSE_PREVIEW_BAZEL_FIXTURE: ${{ github.workspace }}/contrib-fixture/bazel-desktop
           COMPOSE_PREVIEW_BAZEL_BUNDLE_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/runnable-bundle.png
           COMPOSE_PREVIEW_BAZEL_EVIDENCE: ${{ github.workspace }}/build/bazel-preview/greeting.png
+        # `--rerun`: the evidence PNGs are written by the test as a side effect, from env vars
+        # Gradle does not track, so a build-cache hit on `:cli:test` would skip them and fail
+        # the upload below (`if-no-files-found: error`).
         run: >-
-          ./gradlew :cli:test --tests '*Bazel*' --tests '*ProjectBuildTest*'
+          ./gradlew :cli:test --rerun --tests '*Bazel*' --tests '*ProjectBuildTest*'
           :gradle-plugin:preview-discovery:test --tests '*PreviewDiscoveryCliTest*'
           :cli:checkCliDaemonLibraryBoundary :cli:checkLayerBoundary :cli:checkHttpServerFloor
           --stacktrace
