@@ -679,6 +679,7 @@ robolectricPluginapi = { module = "org.robolectric:pluginapi", version.ref = "ro
 robolectricAnnotations = { module = "org.robolectric:annotations", version.ref = "robolectric" }
 robolectricUtils = { module = "org.robolectric:utils", version.ref = "robolectric" }
 robolectricSandbox = { module = "org.robolectric:sandbox", version.ref = "robolectric" }
+robolectricResources = { module = "org.robolectric:resources", version.ref = "robolectric" }
 # Maintained dex2jar fork: turns an APK's `classes*.dex` into a jar the simulator can load.
 dex2jar-tools = { module = "de.femtopedia.dex2jar:dex-tools", version = "2.4.38" }
 javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }

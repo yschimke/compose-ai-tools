@@ -60,6 +60,7 @@ dependencies {
       libs.robolectricAnnotations,
       libs.robolectricUtils,
       libs.robolectricSandbox,
+      libs.robolectricResources,
     )
   for (slice in robolectricSlices) {
     compileOnly(slice) { isTransitive = false }
