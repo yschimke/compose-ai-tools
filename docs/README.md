@@ -32,6 +32,7 @@ this index as the map of everything else.
 - [RENDER_ASSERTIONS.md](RENDER_ASSERTIONS.md) — declaring properties a render must hold to (a font, a required role) and checking them against the data-product sidecars a render already writes.
 - [DEVICE_FRAMES.md](DEVICE_FRAMES.md) · [LOTTIE_PREVIEWS.md](LOTTIE_PREVIEWS.md) · [notifications.md](notifications.md) — shipped feature guides.
 - [APP_TOURS.md](APP_TOURS.md) — app-level previews: real activities (hero image), intents, scripted multi-step tours.
+- [SIMULATOR.md](SIMULATOR.md) — `compose-preview launch`: an APK in Robolectric's simulator, as a window or a JSON-lines control channel (navigation, services, broadcasts, providers).
 
 ## Integration & distribution
 

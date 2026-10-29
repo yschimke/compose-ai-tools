@@ -213,6 +213,12 @@ internal object CliFlags {
       "--locale",
       "--ui-mode",
       "--font-scale",
+      // `launch`
+      "--control",
+      "--qualifiers",
+      "--sdk",
+      "--jar",
+      "--java",
       // bundle externalize
       "--res-out",
       "--ext",

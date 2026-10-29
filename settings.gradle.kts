@@ -196,6 +196,12 @@ project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 include(":bundle-viewer")
 
+// `compose-preview launch`: the Java plugin and APK converter that run beside Robolectric's
+// simulator in the launched JVM, staged into the CLI distribution as `lib-simulator/`.
+include(":simulator-host")
+
+project(":simulator-host").projectDir = file("simulator/host")
+
 include(":notification-preview-runtime")
 
 project(":notification-preview-runtime").projectDir = file("runtimes/notification")

@@ -35,7 +35,8 @@
       "common/**",
       "gradle-plugin/**",
       "render-session/**",
-      "runtimes/**"
+      "runtimes/**",
+      "simulator/**"
     ],
     "functional_tests": [
       "gradle-plugin/**"
@@ -52,6 +53,7 @@
       "common/**",
       "api/**",
       "render-session/**",
+      "simulator/**",
       "trust/**"
     ],
     "actions_tests": [
