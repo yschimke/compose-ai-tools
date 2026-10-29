@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.robolectric.internal.AndroidSandbox;
-import org.robolectric.simulator.AppLoader;
+
 
 /**
  * The launched JVM's entry point: what Robolectric's {@code SimulatorMain} does, on a {@link
@@ -57,7 +57,7 @@ public final class LaunchMain {
       sandbox.runOnMainThread(
           () -> {
             try {
-              Class<?> loader = sandbox.bootstrappedClass(AppLoader.class);
+              Class<?> loader = sandbox.bootstrappedClass(ApkAppLoader.class);
               Constructor<?> ctor = loader.getConstructor(AndroidSandbox.class, Path.class);
               ((Runnable) ctor.newInstance(sandbox, apk.toPath())).run();
             } catch (ReflectiveOperationException e) {

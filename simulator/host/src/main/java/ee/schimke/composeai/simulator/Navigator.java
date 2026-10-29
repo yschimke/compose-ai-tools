@@ -1,6 +1,7 @@
 package ee.schimke.composeai.simulator;
 
 import android.app.Activity;
+import android.app.AppComponentFactory;
 import android.app.Application;
 import android.app.Notification;
 import android.app.Service;
@@ -26,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.robolectric.Robolectric;
+import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.shadow.api.Shadow;
@@ -197,7 +198,14 @@ final class Navigator {
     // A `below` that is already stopped was uncovered by CLEAR_TOP and is not on screen.
     boolean coverBelow = below != null && !below.stopped;
     if (coverBelow) below.controller.pause();
-    ActivityController<? extends Activity> controller = Robolectric.buildActivity(type, launch);
+    ActivityController<? extends Activity> controller =
+        ActivityController.of(
+            instantiate(
+                () ->
+                    factory()
+                        .instantiateActivity(
+                            app.getClassLoader(), implementation.getClassName(), launch)),
+            launch);
     controller.setup();
     if (coverBelow) {
       below.controller.saveInstanceState(new Bundle()).stop();
@@ -542,9 +550,11 @@ final class Navigator {
   private Running runningOrCreate(ComponentName component, Intent intent) {
     Running running = services.get(component);
     if (running != null) return running;
-    Class<? extends Service> type = loadClass(component.getClassName(), Service.class);
-    running =
-        new Running(Robolectric.buildService(type, new Intent(intent).setComponent(component)));
+    Intent start = new Intent(intent).setComponent(component);
+    Service service =
+        instantiate(
+            () -> factory().instantiateService(app.getClassLoader(), component.getClassName(), start));
+    running = new Running(ServiceController.of(service, start));
     running.controller.create();
     services.put(component, running);
     return running;
@@ -619,7 +629,8 @@ final class Navigator {
       ActivityInfo receiver = info.activityInfo;
       if (receiver == null || dynamic.contains(receiver.name)) continue;
       BroadcastReceiver instance =
-          newInstance(loadClass(receiver.name, BroadcastReceiver.class));
+          instantiate(
+              () -> factory().instantiateReceiver(app.getClassLoader(), receiver.name, intent));
       if (intent.getAction() == null) {
         // An explicit broadcast with no action cannot be matched by a filter; call it directly.
         instance.onReceive(app, new Intent(intent));
@@ -655,11 +666,27 @@ final class Navigator {
     }
   }
 
-  private static <T> T newInstance(Class<? extends T> type) {
+  /**
+   * The app's {@code AppComponentFactory}, the one Robolectric created the application with. A
+   * manifest's factory is how dependency-injected apps construct their components (Cadence's Metro
+   * factory gives activities constructor arguments); without one this is the platform default.
+   */
+  private AppComponentFactory factory() {
+    Object loadedApk = ReflectionHelpers.getField(app, "mLoadedApk");
+    AppComponentFactory factory =
+        loadedApk == null ? null : ReflectionHelpers.callInstanceMethod(loadedApk, "getAppFactory");
+    return factory != null ? factory : new AppComponentFactory();
+  }
+
+  private interface Instantiation<T> {
+    T create() throws ReflectiveOperationException;
+  }
+
+  private static <T> T instantiate(Instantiation<T> instantiation) {
     try {
-      return type.getDeclaredConstructor().newInstance();
+      return instantiation.create();
     } catch (ReflectiveOperationException e) {
-      throw new IllegalArgumentException("cannot instantiate " + type.getName(), e);
+      throw new IllegalArgumentException("cannot instantiate: " + e, e);
     }
   }
 }
