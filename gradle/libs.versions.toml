@@ -499,7 +499,7 @@ composeai-contracts = "3.39.0"
 # applies or warns on unconsumed `overrides.remoteCompose.namedValues` (#406, #401); renders a Wear
 # widget preview in its carousel slot (#405, #402); exposes `preview/rows` on the clients (#404);
 # and honours scripted rotary distance and swipe timing (#409).
-composeai-preview-daemon = "3.26.0"
+composeai-preview-daemon = "3.27.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
