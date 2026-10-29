@@ -2,6 +2,9 @@ package ee.schimke.composeai.plugin
 
 import java.util.Properties
 import org.gradle.api.Project
+import org.gradle.api.artifacts.component.ComponentIdentifier
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 
 /**
  * The compose-preview-daemon release (the `compose-preview-daemon-bom` version
@@ -60,6 +63,21 @@ internal object PreviewDaemonModules {
     addPlatform(project, configurationName, version)
     return coordinate(artifactId)
   }
+
+  /**
+   * Whether [id] is the daemon module [artifactId]: the published `ee.schimke.composeai` module, or
+   * a project of that name from an included build substituting it — the
+   * `-Pcomposeai.previewDaemonDir` checkout `settings.gradle.kts` maps `renderer-android` to
+   * `:renderer-android`. Matching only the published module left a render task with no renderer
+   * classes under that substitution, so a module without unit tests of its own rendered nothing
+   * (`NO-SOURCE`).
+   */
+  fun isArtifact(id: ComponentIdentifier, artifactId: String): Boolean =
+    when (id) {
+      is ModuleComponentIdentifier -> id.group == GROUP && id.module == artifactId
+      is ProjectComponentIdentifier -> id.projectPath == ":$artifactId"
+      else -> false
+    }
 
   /** Imports `compose-preview-daemon-bom` at [version] onto [configurationName], idempotently. */
   fun addPlatform(

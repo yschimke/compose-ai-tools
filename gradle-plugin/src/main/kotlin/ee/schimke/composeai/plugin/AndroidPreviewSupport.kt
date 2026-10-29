@@ -1689,6 +1689,10 @@ internal object AndroidPreviewSupport {
     // [rendererClasspathEntries] is the runtime counterpart and uses the jar itself: a `zipTree` on
     // a classpath contributes each `.class` as an invalid element, which some vendor JDKs choke on
     // (#5562).
+    // `zipTree` through ArchiveOperations, not `project`: under an included-build substitution the
+    // renderer jar is a task output, so the `map` below is stored in the configuration cache rather
+    // than evaluated before it, and a captured Project cannot be serialized.
+    val archives = project.objects.newInstance(RendererArchives::class.java).archives
     val rendererClassDirs: FileCollection
     val rendererClasspathEntries: FileCollection
     if (useLocalRenderer) {
@@ -1705,18 +1709,14 @@ internal object AndroidPreviewSupport {
         rendererConfig.incoming
           .artifactView {
             attributes.attribute(artifactType, "android-classes")
-            componentFilter { id ->
-              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                id.group == "ee.schimke.composeai" &&
-                id.module == "renderer-android"
-            }
+            componentFilter { id -> PreviewDaemonModules.isArtifact(id, "renderer-android") }
           }
           .files
       // `elements.map { … }` so task-graph construction sees a Provider; a Callable would resolve
       // `rendererConfig` at configuration time (#1038).
       rendererClassDirs =
         project.files(
-          rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
+          rendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
         )
       rendererClasspathEntries = rendererJars
     }
@@ -1739,16 +1739,12 @@ internal object AndroidPreviewSupport {
         rendererConfig.incoming
           .artifactView {
             attributes.attribute(artifactType, "android-classes")
-            componentFilter { id ->
-              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                id.group == "ee.schimke.composeai" &&
-                id.module == "renderer-xr"
-            }
+            componentFilter { id -> PreviewDaemonModules.isArtifact(id, "renderer-xr") }
           }
           .files
       xrRendererClassDirs =
         project.files(
-          xrRendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
+          xrRendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
         )
       xrRendererClasspathEntries = xrRendererJars
     }
@@ -3294,3 +3290,8 @@ internal object CheapSignalFiles {
     return out.filter { it.isFile }
   }
 }
+
+/** Injects [ArchiveOperations] for unpacking renderer jars without capturing the Project. */
+internal abstract class RendererArchives
+@javax.inject.Inject
+constructor(val archives: org.gradle.api.file.ArchiveOperations)

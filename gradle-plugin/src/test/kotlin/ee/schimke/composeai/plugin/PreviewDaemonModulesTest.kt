@@ -4,8 +4,12 @@ import com.google.common.truth.Truth.assertThat
 import java.io.File
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ModuleDependency
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.attributes.Category
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Rule
 import org.junit.Test
@@ -114,5 +118,51 @@ class PreviewDaemonModulesTest {
         }
         .toList()
     assertThat(offenders).isEmpty()
+  }
+
+  @Test
+  fun `isArtifact accepts the published module and a substituted project of the same name`() {
+    fun module(group: String, name: String): ModuleComponentIdentifier =
+      DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(group, name), "1.0")
+    fun project(path: String): ProjectComponentIdentifier =
+      object : ProjectComponentIdentifier {
+        @Deprecated("Gradle API") override fun getBuild() = error("unused")
+
+        override fun getBuildTreePath() = ":compose-preview-daemon$path"
+
+        override fun getProjectPath() = path
+
+        override fun getProjectName() = path.substringAfterLast(':')
+
+        override fun getDisplayName() = "project $path"
+      }
+
+    assertThat(
+        PreviewDaemonModules.isArtifact(
+          module("ee.schimke.composeai", "renderer-android"),
+          "renderer-android",
+        )
+      )
+      .isTrue()
+    // The `-Pcomposeai.previewDaemonDir` substitution resolves it to the checkout's project.
+    assertThat(PreviewDaemonModules.isArtifact(project(":renderer-android"), "renderer-android"))
+      .isTrue()
+
+    assertThat(
+        PreviewDaemonModules.isArtifact(
+          module("com.example", "renderer-android"),
+          "renderer-android",
+        )
+      )
+      .isFalse()
+    assertThat(
+        PreviewDaemonModules.isArtifact(
+          module("ee.schimke.composeai", "renderer-desktop"),
+          "renderer-android",
+        )
+      )
+      .isFalse()
+    assertThat(PreviewDaemonModules.isArtifact(project(":daemon:android"), "renderer-android"))
+      .isFalse()
   }
 }
