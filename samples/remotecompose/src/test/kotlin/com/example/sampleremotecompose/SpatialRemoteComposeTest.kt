@@ -43,6 +43,29 @@ class SpatialRemoteComposeTest {
   }
 
   @Test
+  fun `spinning cube animates across its captured frames`() {
+    val gif = renderFile(rendersDir, "RemoteCube3dSpinningPreview", ext = "gif")
+    assertWithMessage("render $gif").that(gif.exists()).isTrue()
+    val reader = ImageIO.getImageReadersByFormatName("gif").next()
+    val frames =
+      ImageIO.createImageInputStream(gif).use { input ->
+        reader.input = input
+        (0 until reader.getNumImages(true)).map { reader.read(it) }
+      }
+    assertThat(frames.size).isGreaterThan(2)
+    // The encoder writes full frames, so a pose that never changed would decode identically.
+    val first = frames.first()
+    val middle = frames[frames.size / 2]
+    val changed =
+      (0 until first.height).sumOf { y ->
+        (0 until first.width).count { x -> first.getRGB(x, y) != middle.getRGB(x, y) }
+      }
+    assertWithMessage("pixels that moved between frame 0 and ${frames.size / 2}")
+      .that(changed)
+      .isGreaterThan(first.width * first.height / 20)
+  }
+
+  @Test
   fun `wall card is transparent outside its rounded card`() {
     val img = render("RemoteWallCardPreview")
     assertThat(alpha(img, 0, 0)).isEqualTo(0)

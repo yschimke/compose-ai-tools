@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewWrapper
 import ee.schimke.composeai.daemon.RemoteEmbeddedPreviewWrapper
+import ee.schimke.composeai.daemon.RemoteViewPreviewWrapper
 import ee.schimke.composeai.preview.AnimatedPreview
 
 // Two ways to preview a Remote Compose component: same pixels, different export behaviour. 200×200
@@ -136,6 +137,20 @@ fun RemoteCube3dPreview() {
 @Composable
 fun RemoteCube3dFromBelowPreview() {
   RemoteCube3d(initialYaw = 200f, initialPitch = -30f)
+}
+
+/**
+ * [RemoteCube3d] spinning at 90°/s, captured as an animation. Pinned to the AndroidX View player:
+ * the embedded player in the pinned rc-players (2.17.5) keeps a `MatrixVectorMath` product at its
+ * first value, which rc-players 2.21.0 fixes, so on the default player this would capture one pose
+ * eleven times until the daemon and rc-players pins move together.
+ */
+@Preview(widthDp = 240, heightDp = 240)
+@PreviewWrapper(RemoteViewPreviewWrapper::class)
+@AnimatedPreview(durationMs = 1000, frameIntervalMs = 100, showCurves = false)
+@Composable
+fun RemoteCube3dSpinningPreview() {
+  RemoteCube3d(spinDegreesPerSecond = 90f)
 }
 
 /**

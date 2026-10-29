@@ -28,7 +28,7 @@ of a per-eye view. Everything is drawn as 2D on a canvas.
 ## Example 1: a rotatable cube defined wholly in the document
 
 [`Spatial3dCube.kt`](../../samples/remotecompose/src/main/kotlin/com/example/sampleremotecompose/Spatial3dCube.kt),
-previews `RemoteCube3dPreview` and `RemoteCube3dFromBelowPreview`.
+previews `RemoteCube3dPreview`, `RemoteCube3dFromBelowPreview` and `RemoteCube3dSpinningPreview`.
 
 - Two `TouchExpression`s turn horizontal drags into yaw (wrapping) and vertical drags into pitch
   (clamped to ±85°), both easing to a stop on release.
@@ -46,6 +46,10 @@ Per frame the player evaluates one matrix, 14 matrix-vector products, about 60 f
 up to 6 path rebuilds, then fills at most 3 quads. That is trivial on any device. The host needs no
 code at all: the document is the whole interactive object.
 
+`RemoteCube3dSpinningPreview` adds a 90°/s spin on the document clock:
+
+![RemoteCube3dSpinningPreview at 0, 200, 400, 600 and 800 ms](images/remote-compose-cube-spin.png)
+
 Findings from building it:
 
 - **`MatrixVectorMath` wants 3-component inputs.** `Matrix.evalPerspective` only copies inputs
@@ -55,11 +59,19 @@ Findings from building it:
   comment, while `Matrix.multiply` and `get` index row-major. That looks transposed (`-1` lands
   where the `w` row should take `-z`). It is unverified, so the sample divides by depth itself.
   Worth a check against a player before a document relies on `PROJECTION`.
-- **Animated captures of Remote Compose documents don't advance the document clock here.** A
-  `FLOAT_ANIMATION_TIME`-driven spin captured as an `@AnimatedPreview` gave 21 identical frames.
-  The existing `RemoteIndeterminateCircularProgressIndicator*` GIFs are also frame-identical in a
-  local render. So the sample ships two static orientations instead of a spin. This is a renderer
-  issue, not a document one.
+- **A spin needs the right clock and the right player.** Animated captures do advance the
+  document clock (the indeterminate-progress GIFs move on both AndroidX players). The first spinning
+  cube froze for two player reasons, not a capture one:
+  - The AndroidX View player schedules its next frame only for documents that listen to
+    `CONTINUOUS_SEC` or the second/minute fields (`RemoteComposeState.getOpsToUpdate`, unchanged
+    through remote-core alpha22). A document animated by `ANIMATION_TIME` alone draws once and
+    stops, on a device as well as in a capture. The cube's spin reads `CONTINUOUS_SEC`.
+  - The embedded player up to rc-players 2.19.0 keeps a `MatrixVectorMath` product at its first
+    value, so a projected shape neither spins nor follows touch. rc-players 2.21.0 fixes it
+    (pinned by `RcMatrixVectorMathTest`, yschimke/rc-players#769). This repository pins 2.17.5
+    through the daemon, so `RemoteCube3dSpinningPreview` is pinned to the View player until the
+    daemon and rc-players pins move together; `SpatialRemoteComposeTest` fails if the captured
+    frames stop moving.
 
 ## Example 2: a 2D document projected onto a wall
 
@@ -168,8 +180,8 @@ to the one before:
 
 - Check `PROJECTION` and the 4-component `MatrixVectorMath` behaviour against the CMP and JS
   players via the `rc-compare` lanes, and report upstream if they are bugs.
-- Fix document-clock advancement in animated Remote Compose captures, so a spinning cube can be a
-  GIF.
+- Move `RemoteCube3dSpinningPreview` to the default embedded player once the daemon pin carries
+  rc-players 2.21.0 or later.
 - Bump the `xr-composite` pin once compose-preview-xr releases content-shaped shadows (#102).
 - Prototype `RcSurfaceRenderer` in rc-players. Its dirty tracking and pixel-budget logic are
   unit-testable without a headset.
