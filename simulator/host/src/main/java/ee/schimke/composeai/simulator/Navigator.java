@@ -344,8 +344,8 @@ final class Navigator {
             .put("granted", new JSONArray(java.util.Arrays.asList(names)))
             .put("requestCode", requestCode)
             .object());
-    Entry top = stack.peek();
-    if (top == null || requestCode < 0) return;
+    Activity requester = requesterOf(names, requestCode);
+    if (requester == null || requestCode < 0) return;
     Intent data =
         new Intent(ACTION_REQUEST_PERMISSIONS)
             .putExtra(EXTRA_REQUEST_PERMISSIONS_NAMES, names)
@@ -356,13 +356,31 @@ final class Navigator {
       Object[] args = {REQUEST_PERMISSIONS_WHO_PREFIX, requestCode, Activity.RESULT_OK, data, null};
       try {
         method.setAccessible(true);
-        method.invoke(
-            top.activity(), java.util.Arrays.copyOf(args, method.getParameterCount()));
+        method.invoke(requester, java.util.Arrays.copyOf(args, method.getParameterCount()));
       } catch (ReflectiveOperationException e) {
         throw new IllegalStateException("cannot deliver the permission result", e);
       }
       return;
     }
+  }
+
+  /**
+   * The activity that asked for [names] with [requestCode]: Robolectric keeps each activity's last
+   * request. Not simply the top one, which may be an activity the requester started in the same
+   * cycle; the top one only when no activity's last request matches.
+   */
+  private Activity requesterOf(String[] names, int requestCode) {
+    for (Entry entry : stack) {
+      ShadowActivity shadow = Shadow.extract(entry.activity());
+      ShadowActivity.PermissionsRequest last = shadow.getLastRequestedPermission();
+      if (last != null
+          && last.requestCode == requestCode
+          && java.util.Arrays.equals(last.requestedPermissions, names)) {
+        return entry.activity();
+      }
+    }
+    Entry top = stack.peek();
+    return top == null ? null : top.activity();
   }
 
   /** {@code PackageManager.ACTION_REQUEST_PERMISSIONS}, hidden, as are the extras below. */

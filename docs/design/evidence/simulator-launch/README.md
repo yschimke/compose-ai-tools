@@ -50,3 +50,10 @@ connect screen, then its offline demo after `tap "Offline demo · sample data on
 Cadence's library, its activity built by Metro's `AppComponentFactory`; MeshCore's device list.
 
 ![Home Assistant, Home Assistant demo, Cadence, MeshCore](more-apps.png)
+
+**Sunflower, Muzei, MeshCore's Bluetooth flow** (debug APKs): Sunflower's plant list from the
+Room data its seed worker loads (the photos come from upload.wikimedia.org, which this sandbox's
+network refuses); Muzei's intro, its nine content providers installed; MeshCore's BLE tab asking
+for the permission, then scanning after `tap "Grant permission"` is granted.
+
+![Sunflower, Muzei, MeshCore before and after the Bluetooth grant](sunflower-muzei-meshcore-ble.png)
