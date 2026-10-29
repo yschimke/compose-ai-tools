@@ -118,3 +118,33 @@ fun RemoteButtonWithNamedLabelPreview() {
 fun RemoteShaderGradientPreview() {
   Container { RemoteShaderGradient() }
 }
+
+/**
+ * [RemoteCube3d]: a drag-rotatable, lit cube defined wholly in the document (matrix, projection,
+ * culling, shading and touch). No background, so the capture is transparent around the cube.
+ */
+@Preview(widthDp = 240, heightDp = 240)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteCube3dPreview() {
+  RemoteCube3d()
+}
+
+/** [RemoteCube3d] turned to the back-right and seen from below: the same document, other faces. */
+@Preview(widthDp = 240, heightDp = 240)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteCube3dFromBelowPreview() {
+  RemoteCube3d(initialYaw = 200f, initialPitch = -30f)
+}
+
+/**
+ * [RemoteWallCard]: the 2D document `spatial/wall/scene.json` projects onto a wall. Transparent
+ * outside its rounded card, like the surface it lands on.
+ */
+@Preview(widthDp = 320, heightDp = 200)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteWallCardPreview() {
+  RemoteWallCard()
+}
