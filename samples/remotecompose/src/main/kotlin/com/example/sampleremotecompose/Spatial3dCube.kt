@@ -69,7 +69,12 @@ private const val CameraDistance = 5f
 /**
  * A cube the user rotates by dragging: horizontal drags turn it (wrapping), vertical drags tilt it
  * (clamped), and both ease to a stop on release. [initialYaw] and [initialPitch] are the starting
- * orientation in degrees.
+ * orientation in degrees; [spinDegreesPerSecond] adds an idle turn.
+ *
+ * The spin reads `CONTINUOUS_SEC`, not `ANIMATION_TIME`: the AndroidX View player schedules its
+ * next frame only for documents that listen to `CONTINUOUS_SEC` (or the second / minute fields), so
+ * an `ANIMATION_TIME`-only document draws once and stops there
+ * (`RemoteComposeState.getOpsToUpdate`, unchanged through remote-core alpha22).
  */
 @Composable
 @RemoteComposable
@@ -77,11 +82,16 @@ fun RemoteCube3d(
   modifier: RemoteModifier = RemoteModifier.fillMaxSize(),
   initialYaw: Float = 35f,
   initialPitch: Float = 25f,
+  spinDegreesPerSecond: Float = 0f,
 ) {
-  RemoteCanvas(modifier) { drawCube(initialYaw, initialPitch) }
+  RemoteCanvas(modifier) { drawCube(initialYaw, initialPitch, spinDegreesPerSecond) }
 }
 
-private fun RemoteDrawScope.drawCube(initialYaw: Float, initialPitch: Float) {
+private fun RemoteDrawScope.drawCube(
+  initialYaw: Float,
+  initialPitch: Float,
+  spinDegreesPerSecond: Float,
+) {
   val doc = document
   val easing = doc.easing(/* maxTime */ 2f, /* maxAcceleration */ 400f, /* maxVelocity */ 720f)
 
@@ -114,12 +124,16 @@ private fun RemoteDrawScope.drawCube(initialYaw: Float, initialPitch: Float) {
       0.5f,
       AnimatedFloatExpression.MUL,
     )
+  val yaw =
+    if (spinDegreesPerSecond == 0f) RemoteFloat(yawTouch)
+    else RemoteFloat(yawTouch) + remote.time.ContinuousSec() * spinDegreesPerSecond
+
   // Model rotation: yaw about the cube's Y axis, then pitch about the view's X axis.
   val rotation =
     doc.matrixExpression(
       RemoteFloat(pitchTouch).floatId,
       MatrixOperations.ROT_X,
-      RemoteFloat(yawTouch).floatId,
+      yaw.floatId,
       MatrixOperations.ROT_Y,
     )
 
