@@ -37,7 +37,9 @@ internal object CliRouter {
           // compile` stays with them since it is one codec.
           "rc",
         ),
-      "capture" to listOf("render-matrix", "record", "bundle"),
+      // `launch` runs a whole APK rather than one preview, but captures the same way: render,
+      // screenshot, drive.
+      "capture" to listOf("render-matrix", "record", "bundle", "launch"),
       // `build-host`, `ui-builder`, `design` and `a2ui` sit with `serve` because they are faces of
       // the same server binary: `build-host` is the Gradle half `serve` spawns, `ui-builder`
       // launches its `ui` command, and `design` / `a2ui` are clients of a running server.
