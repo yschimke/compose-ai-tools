@@ -75,6 +75,14 @@ a panel `texture`, posed in dp. So the offline compositor and the VS Code 3D vie
 today, which makes this the cheap way to preview "this document on that surface" before any device
 work.
 
+![The wall card on a wall and the transparent cube in front, composited by xr-composite](images/remote-compose-xr-wall.png)
+
+Rendered by `xr-composite` built from compose-preview-xr `main` at `758680b` (command below). The card
+keeps its rounded-corner alpha and the cube composites over the room with no background. The
+square shadow behind the cube is the compositor's: `panel_shadow` is drawn from each panel's
+whole rectangle and ignores the texture's alpha. That is fine for opaque panels, wrong for
+transparent documents like these.
+
 ```sh
 # from a compose-preview-xr checkout, after ./build.sh
 xvfb-run -a -s "-screen 0 2000x1400x24" env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
@@ -162,5 +170,7 @@ to the one before:
   players via the `rc-compare` lanes, and report upstream if they are bugs.
 - Fix document-clock advancement in animated Remote Compose captures, so a spinning cube can be a
   GIF.
+- Make `xr-composite`'s panel shadow follow texture alpha (compose-preview-xr), so transparent
+  documents cast the shadow of their content rather than of their quad.
 - Prototype `RcSurfaceRenderer` in rc-players. Its dirty tracking and pixel-budget logic are
   unit-testable without a headset.
