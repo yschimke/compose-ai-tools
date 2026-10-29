@@ -70,6 +70,7 @@ final class Hierarchy {
   }
 
   private static Method getChildId;
+  private static Method getAccessibilityViewId;
 
   private int count;
 
@@ -95,7 +96,7 @@ final class Hierarchy {
     if (provider != null) {
       AccessibilityNodeInfo host =
           provider.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-      if (host != null) virtualChildren(provider, host, node, depth + 1);
+      if (host != null) virtualChildren(view, provider, host, node, depth + 1, new HashSet<>());
     } else if (view instanceof ViewGroup) {
       ViewGroup group = (ViewGroup) view;
       for (int i = 0; i < group.getChildCount(); i++) {
@@ -106,36 +107,75 @@ final class Hierarchy {
     return node;
   }
 
+  /**
+   * The provider's virtual children of [parent]. A child can also be a real view inside the host
+   * (a Compose {@code AndroidView}): its id names that view, with no virtual part, and asking the
+   * provider for it would answer the host again. Such a child is walked as a view; [visited] stops
+   * any other cycle a provider reports.
+   */
   private void virtualChildren(
-      AccessibilityNodeProvider provider, AccessibilityNodeInfo parent, Node into, int depth) {
+      View host,
+      AccessibilityNodeProvider provider,
+      AccessibilityNodeInfo parent,
+      Node into,
+      int depth,
+      Set<Integer> visited) {
     if (depth > MAX_DEPTH) return;
     for (int i = 0; i < parent.getChildCount() && count < MAX_NODES; i++) {
-      int virtualId = virtualChildId(parent, i);
+      long childId = childId(parent, i);
+      int virtualId = (int) (childId >> 32);
+      if (virtualId == AccessibilityNodeProvider.HOST_VIEW_ID) {
+        View real = findByAccessibilityViewId(host, (int) childId);
+        Node child = real == null || real == host ? null : view(real, depth);
+        if (child != null) into.children.add(child);
+        continue;
+      }
+      if (!visited.add(virtualId)) continue;
       AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(virtualId);
       if (info == null) continue;
       count++;
       Node child = describe(info, null);
-      virtualChildren(provider, info, child, depth + 1);
+      virtualChildren(host, provider, info, child, depth + 1, visited);
       into.children.add(child);
     }
   }
 
   /**
-   * The {@code i}th child's virtual id. {@code AccessibilityNodeInfo.getChildId(int)} is hidden,
-   * but the framework jar the sandbox runs is the real one: the id packs the virtual descendant id
-   * in its upper 32 bits.
+   * The {@code i}th child's node id. {@code AccessibilityNodeInfo.getChildId(int)} is hidden, but
+   * the framework jar the sandbox runs is the real one: the id packs the virtual descendant id in
+   * its upper 32 bits and the view's accessibility id in its lower.
    */
-  private static int virtualChildId(AccessibilityNodeInfo parent, int index) {
+  private static long childId(AccessibilityNodeInfo parent, int index) {
     try {
       if (getChildId == null) {
         getChildId = AccessibilityNodeInfo.class.getDeclaredMethod("getChildId", int.class);
         getChildId.setAccessible(true);
       }
-      long nodeId = (long) getChildId.invoke(parent, index);
-      return (int) (nodeId >> 32);
+      return (long) getChildId.invoke(parent, index);
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException("cannot read accessibility child ids", e);
     }
+  }
+
+  /** The view under [root] whose (hidden) accessibility view id is [id], else null. */
+  private static View findByAccessibilityViewId(View root, int id) {
+    try {
+      if (getAccessibilityViewId == null) {
+        getAccessibilityViewId = View.class.getDeclaredMethod("getAccessibilityViewId");
+        getAccessibilityViewId.setAccessible(true);
+      }
+      if ((int) getAccessibilityViewId.invoke(root) == id) return root;
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("cannot read accessibility view ids", e);
+    }
+    if (root instanceof ViewGroup) {
+      ViewGroup group = (ViewGroup) root;
+      for (int i = 0; i < group.getChildCount(); i++) {
+        View found = findByAccessibilityViewId(group.getChildAt(i), id);
+        if (found != null) return found;
+      }
+    }
+    return null;
   }
 
   private static Node describe(AccessibilityNodeInfo info, String fallbackClass) {

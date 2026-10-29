@@ -127,6 +127,10 @@ final class Navigator {
     Intent intent;
     while ((intent = shadowApp.getNextStartedActivity()) != null) {
       ShadowActivity.IntentForResult forResult = takeForResult(intent);
+      if (ACTION_REQUEST_PERMISSIONS.equals(intent.getAction())) {
+        grantPermissions(intent, forResult == null ? -1 : forResult.requestCode);
+        continue;
+      }
       try {
         startActivity(intent, forResult == null ? -1 : forResult.requestCode);
       } catch (RuntimeException e) {
@@ -321,6 +325,59 @@ final class Navigator {
     for (Entry entry : stack) if (entry.activity().getClass() == type) return true;
     return false;
   }
+
+  /**
+   * Answers a runtime permission request as a user tapping "Allow" would: the permissions are
+   * granted, and the result reaches the requesting activity the way the system's dialog delivers
+   * it, so {@code onRequestPermissionsResult} and androidx's {@code ActivityResultRegistry} both
+   * see it. Robolectric has no permission dialog; the request would otherwise never complete.
+   */
+  private void grantPermissions(Intent request, int requestCode) {
+    String[] names = request.getStringArrayExtra(EXTRA_REQUEST_PERMISSIONS_NAMES);
+    if (names == null) names = new String[0];
+    shadowApp.grantPermissions(names);
+    int[] results = new int[names.length];
+    java.util.Arrays.fill(results, PackageManager.PERMISSION_GRANTED);
+    protocol.event(
+        "permissions",
+        new Protocol.Json()
+            .put("granted", new JSONArray(java.util.Arrays.asList(names)))
+            .put("requestCode", requestCode)
+            .object());
+    Entry top = stack.peek();
+    if (top == null || requestCode < 0) return;
+    Intent data =
+        new Intent(ACTION_REQUEST_PERMISSIONS)
+            .putExtra(EXTRA_REQUEST_PERMISSIONS_NAMES, names)
+            .putExtra(EXTRA_REQUEST_PERMISSIONS_RESULTS, results);
+    // Hidden: (who, requestCode, resultCode, data), plus a trailing `reason` since API 28.
+    for (java.lang.reflect.Method method : Activity.class.getDeclaredMethods()) {
+      if (!method.getName().equals("dispatchActivityResult")) continue;
+      Object[] args = {REQUEST_PERMISSIONS_WHO_PREFIX, requestCode, Activity.RESULT_OK, data, null};
+      try {
+        method.setAccessible(true);
+        method.invoke(
+            top.activity(), java.util.Arrays.copyOf(args, method.getParameterCount()));
+      } catch (ReflectiveOperationException e) {
+        throw new IllegalStateException("cannot deliver the permission result", e);
+      }
+      return;
+    }
+  }
+
+  /** {@code PackageManager.ACTION_REQUEST_PERMISSIONS}, hidden, as are the extras below. */
+  private static final String ACTION_REQUEST_PERMISSIONS =
+      "android.content.pm.action.REQUEST_PERMISSIONS";
+
+  private static final String EXTRA_REQUEST_PERMISSIONS_NAMES =
+      "android.content.pm.extra.REQUEST_PERMISSIONS_NAMES";
+
+  /** {@code PackageManager.EXTRA_REQUEST_PERMISSIONS_RESULTS}, hidden. */
+  private static final String EXTRA_REQUEST_PERMISSIONS_RESULTS =
+      "android.content.pm.extra.REQUEST_PERMISSIONS_RESULTS";
+
+  /** {@code Activity.REQUEST_PERMISSIONS_WHO_PREFIX}, hidden. */
+  private static final String REQUEST_PERMISSIONS_WHO_PREFIX = "@android:requestPermissions:";
 
   private ShadowActivity.IntentForResult takeForResult(Intent intent) {
     ShadowActivity.IntentForResult next = shadowApp.peekNextStartedActivityForResult();
