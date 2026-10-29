@@ -100,16 +100,20 @@ manifest's content providers are created after `attachBaseContext()` and before
 `Application.onCreate()`, so `androidx.startup` (WorkManager, OkHttp's platform) is ready when
 `onCreate()` uses it. Before that, three things a device has and Robolectric does not are filled in:
 
-- the manifest's `appComponentFactory` and process name, which Robolectric reads from a source
-  manifest and finds unset in an APK, come from the framework's parse of the APK. The application,
-  and every activity, service and manifest receiver `Navigator` creates, is built through that
-  factory, as dependency-injected apps need (Cadence's Metro factory constructs its activities);
-  WorkManager compares the process name with its own to decide it may run work at all;
+- the manifest's `appComponentFactory`, which Robolectric reads from a source manifest and finds
+  unset in an APK, comes from the framework's parse of the APK. The application, its content
+  providers, and every activity, service and manifest receiver `Navigator` creates are built
+  through that factory, as dependency-injected apps need (Cadence's Metro factory constructs its
+  activities);
+- the process name, unset for an APK too, defaults to the package as on a device: WorkManager
+  compares it with its own to decide it may run work at all;
 - a launcher declared as an `<activity-alias>` starts its `targetActivity`;
 - a validated Wi-Fi network: the active network gets internet capabilities and each registered
   `NetworkCallback` is told it is available, so offline banners clear and `CONNECTED` work runs;
 - a binder for every manifest service, so the app's own `bindService` connects; the service is
-  created and bound when the app first calls the binder.
+  created and bound when the app first calls the binder. Robolectric matches a bind by its whole
+  intent, so each bind's own intent is registered as the app makes it, resolved by component as
+  on a device (Firebase Sessions binds with an action of `"0"`).
 
 **Classes** come from the APK first, except Guava, which Robolectric's own code links against: an
 app's older copy is not served to it (Now in Android's lacks `toImmutableList`). A platform class

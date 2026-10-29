@@ -31,16 +31,11 @@ import org.robolectric.util.inject.Injector;
  * <activity-alias>} runs its {@code targetActivity}. Robolectric loads the alias name as a class;
  * apps that switch launcher icons have only aliases as launchers (Home Assistant RemoteCompose).
  *
- * <p>The manifest also answers two application attributes Robolectric reads from a source manifest
- * and finds unset in an APK, from the framework's parse of the APK instead:
- *
- * <ul>
- *   <li>{@code appComponentFactory}, so the application is created through the app's factory, as
- *       on a device. A dependency-injection factory wires itself up there (Cadence's Metro factory
- *       collects its activity providers), and {@link Navigator} creates components through it.
- *   <li>{@code process}, defaulting to the package as on a device. WorkManager compares it with
- *       the running process to decide it is in the main one, and otherwise runs no work.
- * </ul>
+ * <p>The manifest also answers {@code appComponentFactory}, which Robolectric reads from a source
+ * manifest and finds unset in an APK, from the framework's parse of the APK instead, so the
+ * application is created through the app's factory as on a device. A dependency-injection factory
+ * wires itself up there (Cadence's Metro factory collects its activity providers), and {@link
+ * Navigator} creates components through it.
  *
  * Runs inside the sandbox.
  */
@@ -64,12 +59,6 @@ public final class ApkAppLoader implements Runnable {
           @Override
           public String getAppComponentFactory() {
             return parsed().appComponentFactory;
-          }
-
-          @Override
-          public String getProcessName() {
-            ApplicationInfo info = parsed();
-            return info.processName != null ? info.processName : info.packageName;
           }
 
           /** Parsed on first use, inside application setup, once Robolectric is configured. */

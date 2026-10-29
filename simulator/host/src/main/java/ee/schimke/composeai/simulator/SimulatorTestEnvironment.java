@@ -38,6 +38,12 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
   public static class ProvidersFirstInstrumentation extends RoboMonitoringInstrumentation {
     @Override
     public void callApplicationOnCreate(Application app) {
+      // A manifest parsed from an APK leaves the process name unset, where a device defaults it
+      // to the package. WorkManager compares the two to decide it runs in the app's main process,
+      // and otherwise schedules nothing in-process (Robolectric's JobScheduler never runs a job).
+      if (app.getApplicationInfo().processName == null) {
+        app.getApplicationInfo().processName = app.getPackageName();
+      }
       Connectivity.connect(app);
       Navigator.registerBindableServices(app);
       Providers.installBeforeOnCreate(app);
