@@ -778,11 +778,23 @@ class CommentTest(unittest.TestCase):
         bad = self._entry(findings=[_finding(level="ERROR")])
         ok = self._entry(function="Good", preview_id="x.Good")
         body = self._run_comment([bad, ok], changed_previews=True)
-        self.assertIn("across 2 preview(s) this PR changed.", body)
+        self.assertIn("across 2 preview(s) checked (changed renders, plus previews in files this PR edits).", body)
         self.assertIn("ERROR", body)
         self.assertIn("<summary>No findings (1 preview(s))</summary>", body)
         self.assertNotIn("Unchanged", body)
         self.assertNotIn(ar.CLEAN_MARKER, body)
+
+    def test_a_large_clean_roster_is_a_count_not_a_list(self):
+        # A catalog-wide run used to list every clean preview by name, most of
+        # a ~25 KB comment on every PR.
+        bad = self._entry(findings=[_finding(level="ERROR")])
+        clean = [
+            self._entry(function=f"Clean{i}", preview_id=f"x.Clean{i}")
+            for i in range(ar.ROSTER_LIST_MAX + 1)
+        ]
+        body = self._run_comment([bad] + clean, changed_previews=True)
+        self.assertIn(f"_No findings: {ar.ROSTER_LIST_MAX + 1} preview(s)._", body)
+        self.assertNotIn("`Clean0`", body)
 
     def test_scope_recorded_in_findings_words_the_comment(self):
         # The publish job re-renders the body from findings.json alone, so the
@@ -798,7 +810,7 @@ class CommentTest(unittest.TestCase):
             ar.cmd_comment(argparse.Namespace(
                 findings=str(findings_path), repo="org/repo", head_ref="abc", baseline=None,
             ))
-        self.assertIn("across 1 preview(s) this PR changed.", buf.getvalue())
+        self.assertIn("across 1 preview(s) checked (changed renders, plus previews in files this PR edits).", buf.getvalue())
 
     def test_changed_previews_none_left_is_a_clean_report(self):
         # A later push that no longer changes any preview still writes a body,
@@ -816,7 +828,7 @@ class CommentTest(unittest.TestCase):
             [self._entry(findings=[], function="Good", preview_id="x.Good")],
             changed_previews=True,
         )
-        self.assertIn("No accessibility findings on the previews this PR changed.", body)
+        self.assertIn("No accessibility findings on the checked previews.", body)
         self.assertIn(ar.CLEAN_MARKER, body)
 
     def test_changed_previews_with_a_baseline_still_goes_silent_when_unchanged(self):

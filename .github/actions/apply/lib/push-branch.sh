@@ -10,7 +10,14 @@
 #   GITHUB_TOKEN_INLINE  — token used in the URL.
 #   MSG                  — commit message.
 #   SKIP_IF_UNCHANGED    — "1" to skip push silently when the tree
-#                          matches the parent (used on baseline pushes).
+#                          matches the parent. "record" instead pushes a
+#                          commit with the parent's tree and MSG suffixed
+#                          " (renders unchanged)": the compose baseline
+#                          lane, whose commit subjects are the only record
+#                          of which main commit a baseline covers
+#                          (select-baseline.py). Skipping there left every
+#                          later PR's diff flagged as N commits behind
+#                          even though nothing in between changed a render.
 #   SHA_OUTPUT_FILE      — path (absolute) to write the pushed commit
 #                          SHA to. Empty = don't write.
 #   MAX_ATTEMPTS         — push race retry budget. Default 5.
@@ -182,6 +189,27 @@ while :; do
         : > "$SHA_OUTPUT_FILE"
       fi
       exit 0
+    fi
+    if [ "$SKIP_IF_UNCHANGED" = "record" ] && [ "$CANDIDATE_TREE" = "$PARENT_TREE" ]; then
+      echo "Tree unchanged vs ${TARGET_BRANCH}; recording the covered commit without new renders."
+      COMMIT=$(git commit-tree "$PARENT_TREE" -p "$PARENT" -m "$MSG (renders unchanged)")
+      if git push --quiet origin "${COMMIT}:refs/heads/${TARGET_BRANCH}" 2>&1; then
+        # Empty output, as for a skip: nothing new was rendered, so callers that
+        # refresh history.json after a real publish have nothing to do.
+        if [ -n "$SHA_OUTPUT_FILE" ]; then
+          : > "$SHA_OUTPUT_FILE"
+        fi
+        exit 0
+      fi
+      if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+        echo "Push to ${TARGET_BRANCH} failed after ${attempt} attempts." >&2
+        exit 1
+      fi
+      delay=$((attempt * 2 + RANDOM % 3))
+      echo "Push to ${TARGET_BRANCH} lost the race; retry ${attempt}/${MAX_ATTEMPTS} in ${delay}s…" >&2
+      attempt=$((attempt + 1))
+      sleep "$delay"
+      continue
     fi
   fi
 
