@@ -231,8 +231,11 @@ to the one before:
   players via the `rc-compare` lanes, and report upstream if they are bugs.
 - Move `RemoteCube3dSpinningPreview` to the default embedded player once the daemon pin carries
   rc-players 2.21.0 or later.
-- Before that pin bump, check `RemoteTexturedCubeInteractionPreview` springs and draws all faces
-  (see Example 3's findings).
+- That pin bump is gated by `SpatialRemoteComposeTest`. Its guards fail if the textured cube's
+  still or any resting frame of its recorded taps loses faces (verified: daemon `main` + rc-players
+  2.21.0 fails at 0.60 of the still's pixels). Its tripwire fails once the embedded player animates
+  the tapped turn, which is the cue to move `RemoteCube3dSpinningPreview` to the embedded player and
+  turn the tripwire into a guard.
 - Bump the `xr-composite` pin once compose-preview-xr releases content-shaped shadows (#102).
 - Prototype `RcSurfaceRenderer` in rc-players. Its dirty tracking and pixel-budget logic are
   unit-testable without a headset.
