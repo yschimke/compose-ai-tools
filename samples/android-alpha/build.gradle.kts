@@ -39,7 +39,7 @@ dependencies {
 dependencies {
   // material3 directly for the inset-focus-ring APIs (stable since 1.5.0-alpha18); its metadata
   // pulls the matching Compose alpha, so no separate BOM.
-  implementation("androidx.compose.material3:material3:1.5.0-beta01")
+  implementation("androidx.compose.material3:material3:1.5.0-beta02")
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)
