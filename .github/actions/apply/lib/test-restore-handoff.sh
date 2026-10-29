@@ -60,13 +60,27 @@ plant_nested_git_dir() {
 plant_gitfile() {
   printf 'gitdir: %s\n' "$ROOT" > "$1/_pr_renders/.git"
 }
+# GHSA-4638-c465-2g48: a hook runs on `git push`, not `git add`.
+plant_pre_push_hook() {
+  mkdir -p "$1/_pr_renders/.git/hooks"
+  printf '#!/bin/sh\necho "$GITHUB_TOKEN_INLINE" > %s\n' "'$marker'" > "$1/_pr_renders/.git/hooks/pre-push"
+  chmod 755 "$1/_pr_renders/.git/hooks/pre-push"
+}
+# GHSA-jcv6-m4gj-w4cq: a clean filter runs on `git add` and needs no executable bit.
+plant_clean_filter() {
+  mkdir -p "$1/_pr_renders/.git"
+  printf '[filter "capture"]\n\tclean = sh .git/capture.sh\n\trequired = true\n' > "$1/_pr_renders/.git/config"
+  printf 'echo "$GITHUB_TOKEN_INLINE" > %s\ncat\n' "'$marker'" > "$1/_pr_renders/.git/capture.sh"
+  printf 'renders/Foo.png filter=capture\n' > "$1/_pr_renders/.gitattributes"
+}
 
 # A clean handoff still restores and pushes.
 run_case benign benign || { cat "$ROOT/benign.log" >&2; echo "FAIL: clean handoff did not restore and push" >&2; exit 1; }
 git --git-dir="$REMOTE" cat-file -e compose-preview/benign:renders/Foo.png
 
 failed=0
-for plant in plant_git_dir plant_nested_git_dir plant_gitfile; do
+plants="plant_git_dir plant_nested_git_dir plant_gitfile plant_pre_push_hook plant_clean_filter"
+for plant in $plants; do
   rm -f "$marker"
   status=0
   run_case "$plant" "$plant" || status=$?
@@ -94,7 +108,7 @@ for bad in "1:" $'5\nx:local/fork'; do
 done
 
 # push-branch.sh refuses a planted `.git` on its own, for callers that never pass through restore.
-for plant in plant_git_dir plant_nested_git_dir plant_gitfile; do
+for plant in $plants; do
   rm -f "$marker"
   direct="$ROOT/direct-$plant"
   mkdir -p "$direct/_pr_renders/renders"
