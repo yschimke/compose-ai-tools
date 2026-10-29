@@ -87,6 +87,22 @@ val composePreviewUsagePsi =
     isCanBeConsumed = false
   }
 
+// `compose-preview launch`: Robolectric's `simulator` jar and `:simulator-host` (the control plugin
+// and APK converter), staged to `lib-simulator/`. Non-transitive on the simulator side: Robolectric
+// itself and its native runtime come from the Android daemon sidecar at launch, at the same pin.
+val composePreviewSimulator =
+  configurations.create("composePreviewSimulator") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
+// dex2jar and its ASM, staged to `lib-dex2jar/` and run only in the converter's own JVM.
+val composePreviewDex2jar =
+  configurations.create("composePreviewDex2jar") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 // Robolectric's own jars, for `RobolectricDepsProvisionTest`: `provision` asks the
 // `DefaultSdkProvider` on the Android daemon sidecar which `android-all` a level needs, and the
 // test
@@ -114,6 +130,14 @@ dependencies {
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
   add("composePreviewUsagePsi", project(":usage-source-psi"))
+  add("composePreviewSimulator", project(":simulator-host"))
+  addProvider<MinimalExternalModuleDependency, ExternalModuleDependency>(
+    "composePreviewSimulator",
+    libs.robolectricSimulator,
+  ) {
+    isTransitive = false
+  }
+  add("composePreviewDex2jar", libs.dex2jar.tools)
   // BTA interfaces only, for `BtaCompileSession`'s parameter types (not transitive from
   // `:daemon:core`); the implementation jars ride in `lib-bta/`.
   implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
@@ -349,6 +373,8 @@ distributions {
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
       into("lib-usage-psi") { from(composePreviewUsagePsi) }
+      into("lib-simulator") { from(composePreviewSimulator) }
+      into("lib-dex2jar") { from(composePreviewDex2jar) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
       into("rc-player-wasm") { from(rcPlayerWasmDist) }
       // The experimental Compose/Wasm preview browser, a release-matched static sidecar.
