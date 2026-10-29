@@ -269,6 +269,7 @@ internal object CliFlagValidation {
         setOf(
           "--control",
           "--headless",
+          "--hide-agent",
           "--qualifiers",
           "--font-scale",
           "--sdk",

@@ -5,10 +5,18 @@ window showing the app, driven by mouse and keyboard, or — with `--control std
 control channel an agent drives instead. No emulator, no device, no `adb`.
 
 ```
-compose-preview launch app-debug.apk                    # a window
-compose-preview launch app-debug.apk --control stdio    # agents / MCP: JSON lines on stdin/stdout
-compose-preview launch app-debug.apk --prepare          # convert and cache only
+compose-preview launch app-debug.apk                               # a window
+compose-preview launch app-debug.apk --control stdio               # a window an agent drives
+compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
+compose-preview launch app-debug.apk --prepare                     # convert and cache only
 ```
+
+With `--control stdio` the window stays up, so a person can watch the agent work: every tap
+the agent sends is drawn as a ring (filled for a long press), every swipe as a trail, and the
+command along the bottom of the window and in its title. The overlay lives on the Swing window's
+glass pane, not in the Android display, so the agent's own screenshots never contain it, and the
+person's clicks still reach the app. `--hide-agent` turns it off; `--headless` drops the window
+(the default when there is no display, as in CI or a cloud sandbox).
 
 It needs Java 21+ for the simulator JVM (`--java <jdk>`, or `COMPOSE_PREVIEW_SIMULATOR_JAVA`; the
 CLI itself still runs on 17) and an Android SDK platform's `android.jar` (`ANDROID_HOME`, or

@@ -199,6 +199,7 @@ class LaunchCommandTest {
             headless = true,
             control = true,
             installProviders = false,
+            showAgent = false,
           ),
         robolectricProperties = mapOf("robolectric.offline" to "true"),
         robolectricJvmArgs = listOf("--add-opens=java.base/java.lang=ALL-UNNAMED"),
@@ -214,6 +215,7 @@ class LaunchCommandTest {
         "-Dcomposeai.simulator.fontScale=1.3",
         "-Dcomposeai.simulator.control=stdio",
         "-Dcomposeai.simulator.skipProviders=true",
+        "-Dcomposeai.simulator.showAgent=false",
         "-Drobolectric.offline=true",
       )) {
       assertTrue(property in command, "$property in $command")
@@ -248,6 +250,7 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.control") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.skipProviders") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.fontScale") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.showAgent") })
   }
 
   @Test

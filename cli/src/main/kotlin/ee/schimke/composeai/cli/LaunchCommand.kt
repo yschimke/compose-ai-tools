@@ -122,6 +122,7 @@ internal class LaunchCommand(private val args: List<String>) {
             headless = headless,
             control = control != null,
             installProviders = "--no-providers" !in args,
+            showAgent = "--hide-agent" !in args,
           ),
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
@@ -139,6 +140,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val headless: Boolean,
     val control: Boolean,
     val installProviders: Boolean,
+    /** Draw the control channel's taps, swipes and commands over the window. */
+    val showAgent: Boolean = true,
   )
 
   private fun convert(
@@ -229,6 +232,7 @@ internal class LaunchCommand(private val args: List<String>) {
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
+      if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -264,10 +268,12 @@ internal class LaunchCommand(private val args: List<String>) {
       keyboard (right-click is Back). The APK's dex is converted to JVM classes once and cached
       by content; Robolectric comes from the Android daemon sidecar.
 
-      --control stdio speaks a JSON-lines control channel on stdin/stdout instead: tap, swipe,
-      type, read the UI hierarchy, take screenshots, start activities and services, send
-      broadcasts, query providers. See docs/SIMULATOR.md. This is what agents and the MCP
-      server use; it works without a display.
+      --control stdio adds a JSON-lines control channel on stdin/stdout: tap, swipe, type,
+      read the UI hierarchy, take screenshots, start activities and services, send broadcasts,
+      query providers. See docs/SIMULATOR.md. This is what agents and the MCP server use. The
+      window stays up, so you watch the agent drive the app: each tap and swipe it sends is
+      drawn over the window (never into its screenshots) and the command shown along the
+      bottom. --headless drops the window; with no display there is none anyway.
 
       Needs Java 21+ (--java, or COMPOSE_PREVIEW_SIMULATOR_JAVA) and an Android SDK platform
       (ANDROID_HOME or local.properties sdk.dir).
@@ -275,6 +281,7 @@ internal class LaunchCommand(private val args: List<String>) {
       Options:
         --control stdio       JSON-lines control channel on stdin/stdout.
         --headless            No window (the default when there is no display).
+        --hide-agent          Do not draw the control channel's actions over the window.
         --qualifiers <q>      Resource qualifiers for the display, Robolectric syntax
                               (default $DEFAULT_QUALIFIERS; e.g. w411dp-h891dp-xxhdpi-night).
         --font-scale <f>      Font scale (default 1.0).

@@ -57,6 +57,7 @@ final class Session {
   private final UiAutomation ui;
   private final Protocol protocol;
   private final Navigator navigator;
+  private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
   private final PriorityQueue<Deferred> deferred = new PriorityQueue<>();
@@ -154,6 +155,7 @@ final class Session {
       JSONObject command = new JSONObject(line);
       id = command.opt("id");
       String name = command.getString("cmd");
+      if (!name.equals("ping")) overlay.status(summary(name, command));
       JSONObject result = run(name, command);
       long settle =
           name.equals("wait")
@@ -423,6 +425,7 @@ final class Session {
       y = node.bounds.exactCenterY();
       target = node.toJson(false);
     }
+    overlay.touch(x, y, holdMs > 0);
     long down = SystemClock.uptimeMillis();
     inject(touch(down, down, MotionEvent.ACTION_DOWN, x, y));
     float upX = x;
@@ -440,6 +443,7 @@ final class Session {
     float y2 = (float) c.getDouble("y2");
     long duration = Math.max(1, c.optLong("durationMs", 300));
     int steps = Math.max(2, c.optInt("steps", 12));
+    overlay.swipe(x1, y1, x2, y2);
     long down = SystemClock.uptimeMillis();
     inject(touch(down, down, MotionEvent.ACTION_DOWN, x1, y1));
     for (int i = 1; i < steps; i++) {
@@ -514,6 +518,26 @@ final class Session {
   private Intent intent(JSONObject c) throws JSONException {
     JSONObject spec = c.optJSONObject("intent");
     return Intents.fromJson(spec != null ? spec : c, app);
+  }
+
+  /** What a command does, in a few words, for the person watching the window. */
+  private static String summary(String name, JSONObject c) {
+    String target = null;
+    if (c.has("text")) target = "\"" + c.optString("text") + "\"";
+    else if (c.has("textContains")) target = "\"" + c.optString("textContains") + "\"…";
+    else if (c.has("desc")) target = "\"" + c.optString("desc") + "\"";
+    else if (c.has("resourceId")) target = "#" + c.optString("resourceId");
+    else if (c.has("x") && c.has("y")) target = c.optInt("x") + "," + c.optInt("y");
+    else if (c.has("key")) target = c.optString("key");
+    else if (c.has("value")) target = c.optString("value");
+    else if (c.has("uri")) target = c.optString("uri");
+    else {
+      JSONObject intent = c.optJSONObject("intent");
+      if (intent != null) {
+        target = intent.optString("data", intent.optString("component", intent.optString("action")));
+      }
+    }
+    return target == null || target.isEmpty() ? name : name + " " + target;
   }
 
   private static JSONObject selector(JSONObject c) throws JSONException {
