@@ -25,9 +25,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.shadow.api.Shadow;
@@ -97,8 +98,11 @@ final class Navigator {
   private final Deque<Entry> stack = new ArrayDeque<>();
   private final Map<ComponentName, Running> services = new LinkedHashMap<>();
 
-  /** Intents the app bound through a {@link LazyBinder}, which Robolectric also logs as starts. */
-  private final Set<Intent.FilterComparison> boundByApp = new HashSet<>();
+  /** The app's binds, which Robolectric also logs as starts; see {@link #prepareBind}. */
+  private static final Set<Intent.FilterComparison> boundByApp = ConcurrentHashMap.newKeySet();
+
+  /** A binder per manifest service, which creates and binds it on first use. */
+  private static final Map<ComponentName, LazyBinder> bindable = new ConcurrentHashMap<>();
 
   /** The session's navigator, which {@link LazyBinder}s bound during startup resolve to. */
   private static volatile Navigator current;
@@ -137,10 +141,7 @@ final class Navigator {
     }
     while ((intent = shadowApp.getNextStartedService()) != null) {
       // Robolectric logs a bindService as a start too; a bind is not a start.
-      // Package-qualified or not, as both are registered for binding.
-      if (boundByApp.remove(new Intent.FilterComparison(new Intent(intent).setPackage(null)))) {
-        continue;
-      }
+      if (boundByApp.remove(new Intent.FilterComparison(intent))) continue;
       try {
         startService(intent);
       } catch (RuntimeException e) {
@@ -386,16 +387,15 @@ final class Navigator {
   /**
    * Makes the app's own {@code bindService} connect. Robolectric answers a bind with whatever
    * binder was registered for that exact intent, else null, and Firebase Sessions among others
-   * fails on the null. Every service the manifest declares is registered under its explicit
-   * component intent — how apps bind their own services — with a {@link LazyBinder} that creates
-   * and binds the real service when the app first uses it.
+   * fails on the null. Every service the manifest declares gets a {@link LazyBinder}, which
+   * creates and binds the real service when the app first uses it; {@link #prepareBind} registers
+   * it for each bind's own intent.
    *
    * <p>Runs before the application's {@code onCreate()}, since apps bind there (Firebase Sessions
    * does), before the session and its navigator exist; a binder resolves the navigator when the
    * app first calls it.
    */
   static void registerBindableServices(Application app) {
-    ShadowApplication shadowApp = Shadow.extract(app);
     android.content.pm.PackageInfo info;
     try {
       info =
@@ -407,19 +407,36 @@ final class Navigator {
     if (info.services == null) return;
     for (ServiceInfo service : info.services) {
       ComponentName component = new ComponentName(service.packageName, service.name);
-      LazyBinder binder = new LazyBinder(component);
-      // Robolectric matches the whole intent, so the package-qualified form is registered too.
-      shadowApp.setComponentNameAndServiceForBindServiceForIntent(
-          new Intent().setComponent(component), component, binder);
-      shadowApp.setComponentNameAndServiceForBindServiceForIntent(
-          new Intent().setComponent(component).setPackage(service.packageName), component, binder);
+      bindable.put(component, new LazyBinder(component));
     }
+  }
+
+  /**
+   * Registers the binder of the app service [intent] names (or resolves to) for exactly that
+   * intent, from {@link SimulatorShadowContextImpl} as the app binds; a device resolves an explicit
+   * bind by its component alone. Also remembers the bind, which Robolectric logs as a start.
+   */
+  static void prepareBind(Intent intent) {
+    Application app = RuntimeEnvironment.getApplication();
+    if (app == null) return;
+    ComponentName component = intent.getComponent();
+    if (component == null) {
+      ResolveInfo resolved = app.getPackageManager().resolveService(intent, 0);
+      if (resolved == null || resolved.serviceInfo == null) return;
+      component =
+          new ComponentName(resolved.serviceInfo.packageName, resolved.serviceInfo.name);
+    }
+    LazyBinder binder = bindable.get(component);
+    if (binder == null) return;
+    Intent key = new Intent(intent);
+    ShadowApplication shadowApp = Shadow.extract(app);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(key, component, binder);
+    boundByApp.add(new Intent.FilterComparison(key));
   }
 
   /** Binds [component] for the app: creates the service if needed and returns its binder. */
   private IBinder bindForApp(ComponentName component) {
     Intent intent = new Intent().setComponent(component);
-    boundByApp.add(new Intent.FilterComparison(intent));
     Running running = runningOrCreate(component, intent);
     if (running.binder == null) running.binder = running.controller.get().onBind(intent);
     running.bindings++;
@@ -666,16 +683,8 @@ final class Navigator {
     }
   }
 
-  /**
-   * The app's {@code AppComponentFactory}, the one Robolectric created the application with. A
-   * manifest's factory is how dependency-injected apps construct their components (Cadence's Metro
-   * factory gives activities constructor arguments); without one this is the platform default.
-   */
   private AppComponentFactory factory() {
-    Object loadedApk = ReflectionHelpers.getField(app, "mLoadedApk");
-    AppComponentFactory factory =
-        loadedApk == null ? null : ReflectionHelpers.callInstanceMethod(loadedApk, "getAppFactory");
-    return factory != null ? factory : new AppComponentFactory();
+    return AppComponents.factory(app);
   }
 
   private interface Instantiation<T> {

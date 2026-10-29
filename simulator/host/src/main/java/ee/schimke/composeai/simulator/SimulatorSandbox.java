@@ -67,7 +67,12 @@ final class SimulatorSandbox {
 
     ShadowProviders shadowProviders = injector.getInstance(ShadowProviders.class);
     ClassHandlerBuilder classHandlerBuilder = injector.getInstance(ClassHandlerBuilder.class);
-    ShadowMap shadowMap = shadowProviders.getBaseShadowMap().newBuilder().build();
+    ShadowMap shadowMap =
+        shadowProviders
+            .getBaseShadowMap()
+            .newBuilder()
+            .addShadowClasses(SimulatorShadowContextImpl.class)
+            .build();
     androidSandbox.replaceShadowMap(shadowMap);
     ClassHandler classHandler =
         classHandlerBuilder.build(
