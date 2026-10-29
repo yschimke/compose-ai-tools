@@ -69,4 +69,6 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  // `SpatialRemoteComposeTest` reads `spatial/wall/scene.json` as a plain `JsonElement`.
+  testImplementation(libs.kotlinx.serialization.json)
 }
