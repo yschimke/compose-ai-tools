@@ -46,17 +46,13 @@ val vendoredRcPlayerWasm =
   configurations.create("vendoredRcPlayerWasm") {
     isCanBeResolved = true
     isCanBeConsumed = false
+    isTransitive = false
   }
 
 dependencies {
-  add("vendoredRcPlayerWasm", platform(libs.rcplayers.bom))
-  // The versionless catalog alias needs map notation for the classified zip. `map` keeps it lazy.
-  add(
-    "vendoredRcPlayerWasm",
-    libs.rcplayer.wasm.dist.map {
-      mapOf("group" to it.module.group, "name" to it.module.name, "classifier" to "dist", "ext" to "zip")
-    },
-  )
+  // The `rc-player-wasm.zip` Release asset (the `rcPlayerWasmRelease` ivy repository in
+  // settings.gradle.kts): a bare file with no module metadata, so requested artifact-only.
+  add("vendoredRcPlayerWasm", "${libs.rcplayer.wasm.get()}@zip")
 }
 
 tasks.register<Sync>("stageVendoredRcPlayerWasm") {

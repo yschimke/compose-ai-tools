@@ -32,7 +32,7 @@ import androidx.glance.wear.tooling.preview.RoundLargeWidgetPreviewParams
 import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
-import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
+import ee.schimke.composeai.rcembedded.player.resources.RemoteImageSupport
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test

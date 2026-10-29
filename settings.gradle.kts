@@ -54,6 +54,15 @@ dependencyResolutionManagement {
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
+    // The CMP/Wasm Remote Compose player's browser bundle, `rc-player-wasm.zip` on every
+    // yschimke/rc-players release (the asset name carries no version). It used to come from Central
+    // as `rc-player-wasm-dist`, which stopped at 2.17.5. Fenced to this one module.
+    ivy("https://github.com/yschimke/rc-players/releases/download") {
+      name = "rcPlayerWasmRelease"
+      patternLayout { artifact("v[revision]/[module].[ext]") }
+      content { includeModule("ee.schimke.composeai", "rc-player-wasm") }
+      metadataSources { artifact() }
+    }
     // All three Remote Compose groups come from ONE build id, group-scoped and snapshots-only, so
     // the trio can't skew and nothing else can drift onto an unreviewed snapshot.
     // docs/build-scripts/SETTINGS.md#remote-compose-lane

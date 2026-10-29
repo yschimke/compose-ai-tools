@@ -18,7 +18,7 @@ import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.tooling.preview.WearWidgetPreview
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
-import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
+import ee.schimke.composeai.rcembedded.player.resources.RemoteImageSupport
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -120,7 +120,9 @@ internal fun CapturingWearWidgetPreviewOnLane(
     WearWidgetPreview(
       params = params,
       background = background,
-      useSafeFallbackRendererVersion = useSafeFallbackRendererVersion,
+      // Upstream renamed this parameter in glance-wear alpha21; same meaning (pin the renderer to
+      // `RendererVersion.SAFE_FALLBACK_VERSION`), so this module keeps its own name for it.
+      useBaselineHostVersion = useSafeFallbackRendererVersion,
       content = content,
     )
   }
