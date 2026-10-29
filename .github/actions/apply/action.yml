@@ -630,6 +630,15 @@ runs:
               continue
               ;;
           esac
+          # The push steps `git init` + `git add -A` inside the staged dirs, and
+          # `git init` keeps an existing `.git`: a planted config (`core.fsmonitor`,
+          # a filter driver, `url.*.insteadOf`) would run or redirect with the
+          # artifacts token. Checked here, not on the tar, so a handoff uploaded
+          # without one is covered too. Nested ones and `.git` files count.
+          if [ -n "$(find "$entry" -name .git -print -quit)" ]; then
+            echo "::error::Handoff entry '$base' contains a .git path. Refusing to restore."
+            exit 1
+          fi
           # Replace rather than merge: `cp -a dir existing-dir` would nest the
           # staged tree one level deeper instead of overwriting it.
           rm -rf "${GITHUB_WORKSPACE:?}/$base"

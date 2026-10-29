@@ -47,7 +47,8 @@ prepare() {
   name="$1"
   dir="$ROOT/$name"
   git clone -q --branch design-artifacts/m3 "$REMOTE" "$dir"
-  git -C "$dir" remote remove origin
+  # Callers stage a plain directory, and push-branch.sh refuses one carrying a `.git`.
+  rm -rf "$dir/.git"
   printf '%s\n' "$dir"
 }
 

@@ -61,6 +61,16 @@ validate_owned_paths() {
 validate_owned_paths "$CARRY_FORWARD_PATHS"
 validate_owned_paths "$DELTA_ON_TIP_PATHS"
 
+# Every caller pushes a freshly staged directory, so any `.git` here was planted. `git init` keeps
+# an existing one, and `git add -A` would then run its config (`core.fsmonitor`, filter drivers)
+# with the token in the environment (GHSA-7q5h-8w5x-cw9x). The publish restore step refuses these
+# too; this covers every other caller.
+if [ -n "$(find . -name .git -print -quit)" ]; then
+  echo "Refusing to push: the staged directory contains a .git path." >&2
+  find . -name .git | head -5 >&2
+  exit 1
+fi
+
 git init -q
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
