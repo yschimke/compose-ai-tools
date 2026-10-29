@@ -133,7 +133,7 @@ the offline shape of point 1: the host re-sends a texture only when the document
 [`SpatialTexturedCube.kt`](../../samples/remotecompose/src/main/kotlin/com/example/sampleremotecompose/SpatialTexturedCube.kt),
 previews `RemoteTexturedCubePreview` and `RemoteTexturedCubeInteractionPreview`.
 
-A cube with a bitmap texture on every face. Tapping the cube turns it a quarter turn on a spring.
+A cube with a bitmap texture on every face. Tapping the cube eases it through a quarter turn.
 Tapping the swatch swaps bricks for tiles. `@InteractionPreview(targets = [0, 0, 1, 0])` records
 four real taps: the cube twice, the swatch, then the cube again.
 
@@ -171,11 +171,13 @@ Findings:
   semantics, and the AndroidX View player exposes none ("the preview has 0 clickable node(s)").
 - On the pinned embedded player (rc-players 2.17.5) each tap **snaps** the cube to its new pose:
   the animated yaw only feeds other expressions, and that player does not animate it. With
-  rc-players 2.21.0 the same capture springs over about 20 frames. With the daemon built from
-  `main` and rc-players 2.21.0 (an unreleased combination), the interaction capture also drew only
-  one face per frame. The same document plays correctly frame after frame in rc-players' own
-  harness on both 2.21.0 and `main`, so check the daemon's interaction capture with the new player
-  before moving the pins.
+  rc-players 2.21.0 the same capture eases through the turn over about 15 frames.
+- **Bitmaps draw with the current paint.** Each face ends with a translucent black lighting
+  overlay, which left a translucent paint current for the next face's texture. Players that apply
+  paint alpha to bitmaps (the AndroidX View player, rc-players 2.21.0) drew every face after the
+  first see-through, and the GIF encoder, which keeps only fully opaque pixels, dropped them: the
+  "one face per frame" seen on daemon `main` + rc-players 2.21.0. rc-players 2.17.5 ignores paint
+  alpha on bitmaps, which hid it. The texture now draws with an explicit opaque paint.
 
 ## Integration API this argues for
 
@@ -231,8 +233,11 @@ to the one before:
   players via the `rc-compare` lanes, and report upstream if they are bugs.
 - Move `RemoteCube3dSpinningPreview` to the default embedded player once the daemon pin carries
   rc-players 2.21.0 or later.
-- Before that pin bump, check `RemoteTexturedCubeInteractionPreview` springs and draws all faces
-  (see Example 3's findings).
+- That pin bump is gated by `SpatialRemoteComposeTest`. Its guards fail if the textured cube's
+  still or any resting frame of its recorded taps loses faces (they caught the see-through texture
+  paint on daemon `main` + rc-players 2.21.0, since fixed in the document). Its tripwire fails once the embedded player animates
+  the tapped turn, which is the cue to move `RemoteCube3dSpinningPreview` to the embedded player and
+  turn the tripwire into a guard.
 - Bump the `xr-composite` pin once compose-preview-xr releases content-shaped shadows (#102).
 - Prototype `RcSurfaceRenderer` in rc-players. Its dirty tracking and pixel-budget logic are
   unit-testable without a headset.

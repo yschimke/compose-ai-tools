@@ -74,6 +74,54 @@ class SpatialRemoteComposeTest {
     assertThat(warmth(frames.last())).isLessThan(0)
   }
 
+  // Guards for the player update. The textured cube's static preview and its recorded taps must
+  // keep drawing the whole cube. They caught daemon `main` + rc-players 2.21.0 recording one face
+  // per frame (resting frames at 21-60% of the still's pixels): the texture inherited the previous
+  // face's translucent paint (REMOTE_COMPOSE_XR.md, Example 3), fixed by drawing it opaque.
+
+  @Test
+  fun `textured cube still draws three faces`() {
+    val img = render("RemoteTexturedCubePreview")
+    // Three lit faces cover about 35% of the frame; one face about 21%.
+    assertWithMessage("textured cube pixels / frame (swatch excluded)")
+      .that(cubeCoverage(img) / (img.width * img.height * 0.75))
+      .isAtLeast(0.30)
+  }
+
+  @Test
+  fun `textured cube interaction keeps the whole cube at every rest`() {
+    val still = cubeCoverage(render("RemoteTexturedCubePreview"))
+    val frames = gifFrames("RemoteTexturedCubeInteractionPreview")
+    // A quarter turn leaves the cube's silhouette unchanged, so every frame at rest (before the
+    // first tap, just before each later tap, and the last) covers what the still does.
+    val tapFrames = (1 until frames.size).filter { changed(frames[it - 1], frames[it]) }
+    val restFrames =
+      (listOf(0, frames.lastIndex) + motionRuns(tapFrames).map { it.first - 1 }).distinct()
+    for (index in restFrames) {
+      assertWithMessage("frame $index cube pixels / still cube pixels")
+        .that(cubeCoverage(frames[index]).toDouble() / still)
+        .isAtLeast(0.9)
+    }
+  }
+
+  // Tripwire for the same update: it fails when the embedded player starts animating the tapped
+  // turn, which rc-players 2.21.0 does and the pinned 2.17.5 does not (each tap snaps). When it
+  // fails, the pins carry the embedded-player fixes: move RemoteCube3dSpinningPreview from the View
+  // player to the default embedded one, update REMOTE_COMPOSE_XR.md's findings, and invert this
+  // test into a guard that the turn animates.
+  @Test
+  fun `tripwire - pinned embedded player snaps the tapped turn`() {
+    val frames = gifFrames("RemoteTexturedCubeInteractionPreview")
+    val changes = (1 until frames.size).filter { changed(frames[it - 1], frames[it]) }
+    val longestMotion = motionRuns(changes).maxOfOrNull { it.count() } ?: 0
+    assertWithMessage(
+        "consecutive moving frames; > 3 means the embedded player now animates the turn, so the " +
+          "pins moved: see the comment on this test"
+      )
+      .that(longestMotion)
+      .isAtMost(3)
+  }
+
   @Test
   fun `wall card is transparent outside its rounded card`() {
     val img = render("RemoteWallCardPreview")
@@ -117,6 +165,34 @@ class SpatialRemoteComposeTest {
       (0 until reader.getNumImages(true)).map { reader.read(it) }
     }
   }
+
+  /** Pixels that differ from the background corner, outside the swatch's bottom-right quarter. */
+  private fun cubeCoverage(img: BufferedImage): Int {
+    val background = img.getRGB(0, 0)
+    var count = 0
+    for (y in 0 until img.height) {
+      for (x in 0 until img.width) {
+        if (x >= img.width * 3 / 4 && y >= img.height * 3 / 4) continue
+        if (channelDistance(img.getRGB(x, y), background) > 24) count++
+      }
+    }
+    return count
+  }
+
+  private fun channelDistance(a: Int, b: Int): Int =
+    (0 until 4).sumOf { i -> abs(((a ushr (i * 8)) and 0xff) - ((b ushr (i * 8)) and 0xff)) }
+
+  private fun changed(a: BufferedImage, b: BufferedImage): Boolean =
+    (0 until a.height).any { y -> (0 until a.width).any { x -> a.getRGB(x, y) != b.getRGB(x, y) } }
+
+  /** Groups ascending frame indices into runs of consecutive indices. */
+  private fun motionRuns(indices: List<Int>): List<IntRange> =
+    indices.fold(mutableListOf<IntRange>()) { runs, i ->
+      val last = runs.lastOrNull()
+      if (last != null && last.last == i - 1) runs[runs.lastIndex] = last.first..i
+      else runs.add(i..i)
+      runs
+    }
 
   /** Mean red minus mean blue over the central square, where the cube is. */
   private fun warmth(img: BufferedImage): Int {
