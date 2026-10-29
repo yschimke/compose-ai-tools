@@ -44,3 +44,9 @@ WorkManager once the network reads as connected:
 conference list stays empty here: this sandbox's network refuses `confetti-app.dev`.
 
 ![Confetti onboarding](confetti-onboarding.png)
+
+**Home Assistant RemoteCompose, Cadence, MeshCore** (debug APKs, `--sdk 36`): Home Assistant's
+connect screen, then its offline demo after `tap "Offline demo · sample data on this phone"`;
+Cadence's library, its activity built by Metro's `AppComponentFactory`; MeshCore's device list.
+
+![Home Assistant, Home Assistant demo, Cadence, MeshCore](more-apps.png)

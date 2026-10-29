@@ -100,8 +100,12 @@ manifest's content providers are created after `attachBaseContext()` and before
 `Application.onCreate()`, so `androidx.startup` (WorkManager, OkHttp's platform) is ready when
 `onCreate()` uses it. Before that, three things a device has and Robolectric does not are filled in:
 
-- the process name, which WorkManager compares with its own to decide it is in the main process
-  and may run work at all;
+- the manifest's `appComponentFactory` and process name, which Robolectric reads from a source
+  manifest and finds unset in an APK, come from the framework's parse of the APK. The application,
+  and every activity, service and manifest receiver `Navigator` creates, is built through that
+  factory, as dependency-injected apps need (Cadence's Metro factory constructs its activities);
+  WorkManager compares the process name with its own to decide it may run work at all;
+- a launcher declared as an `<activity-alias>` starts its `targetActivity`;
 - a validated Wi-Fi network: the active network gets internet capabilities and each registered
   `NetworkCallback` is told it is available, so offline banners clear and `CONNECTED` work runs;
 - a binder for every manifest service, so the app's own `bindService` connects; the service is
@@ -184,7 +188,9 @@ Two real apps, from their debug APKs: [Now in Android](https://github.com/androi
 demo flavor runs its Hilt graph, WorkManager sync and Room database, and every tab and Settings
 work; [Confetti](https://github.com/joreilly/Confetti) starts with Firebase, Koin and Compose
 Multiplatform resources on `--sdk 36` (its OkHttp needs API 36's classes) and runs its onboarding.
-Renders are in [`design/evidence/simulator-launch/`](design/evidence/simulator-launch/).
+Home Assistant RemoteCompose (alias launchers), Cadence (Metro's `AppComponentFactory`) and
+MeshCore run too. Renders are in
+[`design/evidence/simulator-launch/`](design/evidence/simulator-launch/).
 
 What does not, or not yet:
 

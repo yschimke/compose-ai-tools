@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Application;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.ResolveInfo;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +21,8 @@ import org.robolectric.manifest.AndroidManifest;
 import org.robolectric.pluginapi.config.Configurer;
 import org.robolectric.simulator.FixedConfiguration;
 import org.robolectric.simulator.Simulator;
+import org.robolectric.shadows.ShadowPackageParser;
+import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.inject.Injector;
 
 /**
@@ -27,6 +30,18 @@ import org.robolectric.util.inject.Injector;
  * Simulator} on its launcher activity, except that a launcher declared as an {@code
  * <activity-alias>} runs its {@code targetActivity}. Robolectric loads the alias name as a class;
  * apps that switch launcher icons have only aliases as launchers (Home Assistant RemoteCompose).
+ *
+ * <p>The manifest also answers two application attributes Robolectric reads from a source manifest
+ * and finds unset in an APK, from the framework's parse of the APK instead:
+ *
+ * <ul>
+ *   <li>{@code appComponentFactory}, so the application is created through the app's factory, as
+ *       on a device. A dependency-injection factory wires itself up there (Cadence's Metro factory
+ *       collects its activity providers), and {@link Navigator} creates components through it.
+ *   <li>{@code process}, defaulting to the package as on a device. WorkManager compares it with
+ *       the running process to decide it is in the main one, and otherwise runs no work.
+ * </ul>
+ *
  * Runs inside the sandbox.
  */
 public final class ApkAppLoader implements Runnable {
@@ -42,7 +57,35 @@ public final class ApkAppLoader implements Runnable {
   @Override
   public void run() {
     Thread.currentThread().setContextClassLoader(sandbox.getRobolectricClassLoader());
-    AndroidManifest manifest = new AndroidManifest(null, null, null, null, null, apk);
+    AndroidManifest manifest =
+        new AndroidManifest(null, null, null, null, null, apk) {
+          private ApplicationInfo parsed;
+
+          @Override
+          public String getAppComponentFactory() {
+            return parsed().appComponentFactory;
+          }
+
+          @Override
+          public String getProcessName() {
+            ApplicationInfo info = parsed();
+            return info.processName != null ? info.processName : info.packageName;
+          }
+
+          /** Parsed on first use, inside application setup, once Robolectric is configured. */
+          private ApplicationInfo parsed() {
+            if (parsed == null) {
+              parsed =
+                  ReflectionHelpers.getField(
+                      ReflectionHelpers.callStaticMethod(
+                          ShadowPackageParser.class,
+                          "callParsePackage",
+                          ReflectionHelpers.ClassParameter.from(Path.class, apk)),
+                      "applicationInfo");
+            }
+            return parsed;
+          }
+        };
     FixedConfiguration configuration =
         FixedConfiguration.newBuilder()
             .put(ConscryptMode.Mode.class, ConscryptMode.Mode.OFF)
