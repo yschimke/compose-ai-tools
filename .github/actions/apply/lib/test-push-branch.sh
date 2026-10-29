@@ -175,4 +175,34 @@ if git --git-dir="$REMOTE" cat-file -e "refs/heads/${control}:history.json" 2>/d
   echo "FAIL: control expected the uncarried publish to drop history.json" >&2; exit 1
 fi
 
+# `record` mode: an unchanged tree still lands as a commit (same tree, marked subject) so the
+# baseline lane records which main commit it covers; a changed tree publishes as normal.
+record_branch=compose-preview/record
+record_publish() {
+  work="$1"; msg="$2"
+  ( cd "$work" && env TARGET_BRANCH="$record_branch" REPO=local/test GITHUB_TOKEN_INLINE=test \
+      MSG="$msg" REMOTE_URL="$REMOTE" SKIP_IF_UNCHANGED=record "$HELPER" )
+}
+rec1="$ROOT/record-1"; mkdir -p "$rec1"; printf 'render-v1\n' > "$rec1/render.txt"
+record_publish "$rec1" "Update preview baselines from aaaaaaaa"
+rec_first=$(git --git-dir="$REMOTE" rev-parse "refs/heads/$record_branch")
+rec2="$ROOT/record-2"; mkdir -p "$rec2"; printf 'render-v1\n' > "$rec2/render.txt"
+record_publish "$rec2" "Update preview baselines from bbbbbbbb"
+rec_second=$(git --git-dir="$REMOTE" rev-parse "refs/heads/$record_branch")
+test "$rec_second" != "$rec_first" || {
+  echo "FAIL: record mode skipped an unchanged publish" >&2; exit 1; }
+test "$(git --git-dir="$REMOTE" rev-parse "${rec_second}^")" = "$rec_first" || {
+  echo "FAIL: record commit is not parented on the previous tip" >&2; exit 1; }
+test "$(git --git-dir="$REMOTE" rev-parse "${rec_second}^{tree}")" = \
+  "$(git --git-dir="$REMOTE" rev-parse "${rec_first}^{tree}")" || {
+  echo "FAIL: record commit changed the tree" >&2; exit 1; }
+test "$(git --git-dir="$REMOTE" log -1 --format=%s "$rec_second")" = \
+  "Update preview baselines from bbbbbbbb (renders unchanged)" || {
+  echo "FAIL: record commit subject" >&2; exit 1; }
+rec3="$ROOT/record-3"; mkdir -p "$rec3"; printf 'render-v2\n' > "$rec3/render.txt"
+record_publish "$rec3" "Update preview baselines from cccccccc"
+test "$(git --git-dir="$REMOTE" log -1 --format=%s "refs/heads/$record_branch")" = \
+  "Update preview baselines from cccccccc" || {
+  echo "FAIL: a changed tree in record mode should publish with the plain subject" >&2; exit 1; }
+
 echo "push-branch race tests passed"

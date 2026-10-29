@@ -1762,6 +1762,10 @@ def _baseline_module(key: str, bl_info: dict) -> str:
     return key.split("/", 1)[0]
 
 
+# Above this many unchanged functions the comment states a count instead of listing names.
+UNCHANGED_LIST_MAX_FUNCTIONS = 30
+
+
 def _scope_note(scope_modules: set[str]) -> str:
     mods = ", ".join(f"`{m}`" for m in sorted(scope_modules))
     return (
@@ -2194,12 +2198,18 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     if unchanged:
         fn_set = {info["functionName"] for _, info in unchanged}
-        lines.append(f"<details><summary>Unchanged ({len(fn_set)} function(s), {len(unchanged)} variant(s))</summary>")
-        lines.append("")
-        for fn in sorted(fn_set):
-            lines.append(f"- `{fn}`")
-        lines.append("")
-        lines.append("</details>")
+        summary = f"Unchanged ({len(fn_set)} function(s), {len(unchanged)} variant(s))"
+        if len(fn_set) <= UNCHANGED_LIST_MAX_FUNCTIONS:
+            lines.append(f"<details><summary>{summary}</summary>")
+            lines.append("")
+            for fn in sorted(fn_set):
+                lines.append(f"- `{fn}`")
+            lines.append("")
+            lines.append("</details>")
+        else:
+            # A big catalog's full list is most of the comment (~25 KB for ~800 previews on every
+            # PR) and nobody reads it; the count says the same thing.
+            lines.append(f"_{summary}._")
 
     # Only when a cell actually landed: a manifest can cover previews none of
     # which changed in this PR, and a footnote about a column nobody can see is

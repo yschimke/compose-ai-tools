@@ -46,6 +46,16 @@ class ParseBaselineSourceTest(unittest.TestCase):
             sb.parse_baseline_source(f"Update preview baselines from {full}"), full
         )
 
+    def test_unchanged_render_records_are_baselines(self):
+        # push-branch.sh's `record` mode commits the parent's tree under this
+        # subject when a main push renders nothing new; it covers that commit.
+        self.assertEqual(
+            sb.parse_baseline_source(
+                "Update preview baselines from 59ad0d1f (renders unchanged)"
+            ),
+            "59ad0d1f",
+        )
+
     def test_history_refresh_commits_are_not_baselines(self):
         # `Update preview history from …` shares the baseline's tree but is a
         # follow-up commit, not a publication. Selecting one would pin Before

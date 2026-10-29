@@ -200,7 +200,11 @@ if [ "$MODE" = "baseline" ]; then
   # Stage the push commit MSG into the staging dir for the post-wait step.
   echo "Update preview baselines from ${GITHUB_SHA::8}" > _baselines/_push_msg
   echo "$BASELINE_BRANCH" > _baselines/_push_branch
-  echo "1" > _baselines/_skip_if_unchanged
+  # `record`, not `1`: an unchanged render set still commits the parent's tree under this subject,
+  # because the subject is how select-baseline.py learns which main commit a baseline covers.
+  # Skipping left the newest baseline pinned to the last commit that changed a render, so every PR
+  # after it carried a "baseline N commits behind" note for commits that changed nothing.
+  echo "record" > _baselines/_skip_if_unchanged
 else
   # comment mode
   mkdir -p _baselines
