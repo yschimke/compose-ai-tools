@@ -128,6 +128,55 @@ keeps it cheap:
 `xr-composite --serve`'s `xr/updatePanels` (replace one panel's texture and re-render) is already
 the offline shape of point 1: the host re-sends a texture only when the document's frame changed.
 
+## Example 3: interacting with a document, and changing its texture
+
+[`SpatialTexturedCube.kt`](../../samples/remotecompose/src/main/kotlin/com/example/sampleremotecompose/SpatialTexturedCube.kt),
+previews `RemoteTexturedCubePreview` and `RemoteTexturedCubeInteractionPreview`.
+
+A cube with a bitmap texture on every face. Tapping the cube turns it a quarter turn on a spring.
+Tapping the swatch swaps bricks for tiles. `@InteractionPreview(targets = [0, 0, 1, 0])` records
+four real taps: the cube twice, the swatch, then the cube again.
+
+![RemoteTexturedCubeInteractionPreview: two quarter turns, the texture swap, a third turn](images/remote-compose-cube-interaction.png)
+
+**Interaction is document state moved by document actions.** Each tap target is a `clickable`
+whose action is a `valueChange` on a remote float (`turns`, `textureIndex`). The yaw is
+`animateRemoteFloatAsState(turns * 90 + 30)`, and the texture is chosen with `drawConditionally`.
+No host code runs, and the same document answers taps in any player. A host can also move such
+values from outside: a named value (`rememberNamedRemoteFloat`, `rememberNamedRemoteColor`,
+`rememberNamedRemoteImageBitmap`) can be changed without re-sending the document, which is how the
+wall card's readings update.
+
+**There are three ways to change a texture.**
+
+1. **Inside the document.** Ship several bitmaps and select one with document state, as the
+   swatch does. Or bind the fill to a named bitmap (`rememberNamedRemoteImageBitmap`) so the host
+   supplies a new image without re-sending the document.
+2. **What a face shows.** A 2D canvas can only map a bitmap onto a face affinely. Each face
+   translates to one corner, then applies the 2×2 map from the texture square onto the face's two
+   edges. That map is decomposed as rotate · scale · rotate, because `RemoteCanvas` has no skew.
+   (A raw `document.skew(...)` bypasses the recording canvas and lands outside its
+   save/restore.) The face is clipped to its true projected quad over a 2×2 block of the seamless
+   texture, which covers the far corner where perspective outruns the parallelogram. Perspective-
+   correct texturing would need the `DrawMesh` operation proposed below.
+3. **In an XR scene.** A panel's `texture` is the document's rendered frame. The compositor's
+   `xr/updatePanels` replaces one panel's texture and re-renders, so a host that re-renders the
+   document after a tap or a named-value change pushes exactly that.
+
+Findings:
+
+- The rotation is plain `sin`/`cos` expressions rather than `MatrixExpression` +
+  `MatrixVectorMath`, so it turns on every player, including the pinned embedded player.
+- `@InteractionPreview` needs the **embedded** player. It resolves tap targets from Compose
+  semantics, and the AndroidX View player exposes none ("the preview has 0 clickable node(s)").
+- On the pinned embedded player (rc-players 2.17.5) each tap **snaps** the cube to its new pose:
+  the animated yaw only feeds other expressions, and that player does not animate it. With
+  rc-players 2.21.0 the same capture springs over about 20 frames. With the daemon built from
+  `main` and rc-players 2.21.0 (an unreleased combination), the interaction capture also drew only
+  one face per frame. The same document plays correctly frame after frame in rc-players' own
+  harness on both 2.21.0 and `main`, so check the daemon's interaction capture with the new player
+  before moving the pins.
+
 ## Integration API this argues for
 
 None of this exists yet. The player side belongs in yschimke/rc-players, the host side in an XR
@@ -182,6 +231,8 @@ to the one before:
   players via the `rc-compare` lanes, and report upstream if they are bugs.
 - Move `RemoteCube3dSpinningPreview` to the default embedded player once the daemon pin carries
   rc-players 2.21.0 or later.
+- Before that pin bump, check `RemoteTexturedCubeInteractionPreview` springs and draws all faces
+  (see Example 3's findings).
 - Bump the `xr-composite` pin once compose-preview-xr releases content-shaped shadows (#102).
 - Prototype `RcSurfaceRenderer` in rc-players. Its dirty tracking and pixel-budget logic are
   unit-testable without a headset.

@@ -66,6 +66,15 @@ class SpatialRemoteComposeTest {
   }
 
   @Test
+  fun `tapping the textured cube's swatch swaps its texture`() {
+    val frames = gifFrames("RemoteTexturedCubeInteractionPreview")
+    // The script taps the cube twice, the swatch, then the cube: the opening frames show bricks
+    // and the closing ones tiles. Bricks are warm (red > blue), tiles cool (blue >= red).
+    assertThat(warmth(frames.first())).isGreaterThan(0)
+    assertThat(warmth(frames.last())).isLessThan(0)
+  }
+
+  @Test
   fun `wall card is transparent outside its rounded card`() {
     val img = render("RemoteWallCardPreview")
     assertThat(alpha(img, 0, 0)).isEqualTo(0)
@@ -97,6 +106,30 @@ class SpatialRemoteComposeTest {
       // No background baked into the texture: the compositor's room shows through the corner.
       assertWithMessage("corner alpha of $id").that(alpha(img, 0, 0)).isEqualTo(0)
     }
+  }
+
+  private fun gifFrames(stem: String): List<BufferedImage> {
+    val gif = renderFile(rendersDir, stem, ext = "gif")
+    assertWithMessage("render $gif").that(gif.exists()).isTrue()
+    val reader = ImageIO.getImageReadersByFormatName("gif").next()
+    return ImageIO.createImageInputStream(gif).use { input ->
+      reader.input = input
+      (0 until reader.getNumImages(true)).map { reader.read(it) }
+    }
+  }
+
+  /** Mean red minus mean blue over the central square, where the cube is. */
+  private fun warmth(img: BufferedImage): Int {
+    var sum = 0L
+    var count = 0
+    for (y in img.height / 3 until img.height * 2 / 3) {
+      for (x in img.width / 3 until img.width * 2 / 3) {
+        val rgb = img.getRGB(x, y)
+        sum += ((rgb shr 16) and 0xff) - (rgb and 0xff)
+        count++
+      }
+    }
+    return (sum / count).toInt()
   }
 
   private fun render(stem: String): BufferedImage {
