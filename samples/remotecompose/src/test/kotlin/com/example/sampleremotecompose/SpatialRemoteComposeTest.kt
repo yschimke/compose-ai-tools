@@ -75,10 +75,9 @@ class SpatialRemoteComposeTest {
   }
 
   // Guards for the player update. The textured cube's static preview and its recorded taps must
-  // keep drawing the whole cube. Daemon `main` + rc-players 2.21.0 recorded the interaction with
-  // one
-  // face per frame (REMOTE_COMPOSE_XR.md, Example 3), which these fail on: resting frames fell to
-  // 21-60% of the static cube's pixels.
+  // keep drawing the whole cube. They caught daemon `main` + rc-players 2.21.0 recording one face
+  // per frame (resting frames at 21-60% of the still's pixels): the texture inherited the previous
+  // face's translucent paint (REMOTE_COMPOSE_XR.md, Example 3), fixed by drawing it opaque.
 
   @Test
   fun `textured cube still draws three faces`() {

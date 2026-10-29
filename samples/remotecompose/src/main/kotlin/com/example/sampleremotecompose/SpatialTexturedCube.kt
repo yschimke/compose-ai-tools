@@ -32,7 +32,7 @@ import androidx.compose.remote.creation.compose.state.max
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.remotePath
-import androidx.compose.remote.creation.compose.state.remoteSpring
+import androidx.compose.remote.creation.compose.state.remoteTween
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.sin
 import androidx.compose.remote.creation.compose.state.sqrt
@@ -43,7 +43,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 
 // A textured cube you interact with, defined wholly in one Remote Compose document. Tapping the
-// cube turns it a quarter turn on a spring; tapping the swatch swaps its texture. Both are document
+// cube eases it through a quarter turn; tapping the swatch swaps its texture. Both are document
 // state changed by document actions (`valueChange`), so any player runs them with no host code.
 //
 // Two things differ from [RemoteCube3d] on purpose:
@@ -105,7 +105,7 @@ fun RemoteTexturedCube(
   val yaw =
     animateRemoteFloatAsState(
       turns * 90f + initialYaw,
-      remoteSpring(stiffness = 60f, dampingRatio = 0.55f),
+      remoteTween(durationMillis = 450),
     )
   RemoteBox(modifier = modifier, contentAlignment = RemoteAlignment.BottomEnd) {
     RemoteCanvas(
@@ -157,6 +157,7 @@ private fun RemoteDrawScope.drawTexturedCube(
     RemoteOffset(center.x + x * perspective, center.y - y * perspective)
   }
 
+  val texturePaint = RemotePaint { color = RemoteColor(Color.White) }
   val edge = RemotePaint {
     style = androidx.compose.ui.graphics.PaintingStyle.Stroke
     strokeWidth = 2f.rf
@@ -201,19 +202,24 @@ private fun RemoteDrawScope.drawTexturedCube(
         canvas.scale(q + r, q - r)
         canvas.rotate((a2 - a1) * 0.5f * toDegrees)
         // Perspective puts the far corner c beyond the parallelogram, so lay a 2×2 block of the
-        // (seamless) texture and let the face clip trim it.
-        textured { bitmap ->
-          for (tile in 0 until 4) {
-            drawScaledBitmap(
-              bitmap,
-              dstOffset =
-                RemoteOffset(
-                  (tile % 2 * TextureSize).toFloat().rf,
-                  (tile / 2 * TextureSize).toFloat().rf,
-                ),
-              dstSize = RemoteSize(TextureSize.toFloat().rf, TextureSize.toFloat().rf),
-              scaleType = ContentScale.FillBounds,
-            )
+        // (seamless) texture and let the face clip trim it. Bitmaps draw with the current paint,
+        // and the previous face's lighting overlay left a translucent one behind: draw the texture
+        // with an opaque paint, or every face after the first comes out see-through (players that
+        // apply paint alpha to bitmaps, as the AndroidX View player and rc-players 2.21.0 do).
+        usePaint(texturePaint) {
+          textured { bitmap ->
+            for (tile in 0 until 4) {
+              drawScaledBitmap(
+                bitmap,
+                dstOffset =
+                  RemoteOffset(
+                    (tile % 2 * TextureSize).toFloat().rf,
+                    (tile / 2 * TextureSize).toFloat().rf,
+                  ),
+                dstSize = RemoteSize(TextureSize.toFloat().rf, TextureSize.toFloat().rf),
+                scaleType = ContentScale.FillBounds,
+              )
+            }
           }
         }
         canvas.restore()
