@@ -10,7 +10,6 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import org.json.JSONObject;
 import org.robolectric.shadows.ShadowNetworkInfo;
-import org.robolectric.shadows.ShadowSettings;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -81,7 +80,10 @@ final class Connectivity {
     if (wifiOn != null) wifi = wifiOn;
     if (airplaneOn != null) {
       airplane = airplaneOn;
-      ShadowSettings.setAirplaneMode(airplaneOn);
+      android.provider.Settings.Global.putInt(
+          context.getContentResolver(),
+          android.provider.Settings.Global.AIRPLANE_MODE_ON,
+          airplaneOn ? 1 : 0);
     }
     WifiManager wifiManager = context.getSystemService(WifiManager.class);
     if (wifiManager != null) wifiManager.setWifiEnabled(wifi && !airplane);
