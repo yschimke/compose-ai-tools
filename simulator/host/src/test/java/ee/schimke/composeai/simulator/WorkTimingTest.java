@@ -66,6 +66,25 @@ public class WorkTimingTest {
   }
 
   @Test
+  public void aCellularJobNeedsACellularNetwork() {
+    WorkTiming.JobNeeds job = new WorkTiming.JobNeeds();
+    job.network = true;
+    job.cellular = true;
+    assertEquals("cellular network", WorkTiming.waitingFor(job, online(), 0, 0));
+    WorkTiming.DeviceState cellular = online();
+    cellular.cellular = true;
+    assertNull(WorkTiming.waitingFor(job, cellular, 0, 0));
+  }
+
+  @Test
+  public void aRetryWaitsOutItsBackoff() {
+    // Jobs puts a retry's scheduled time in the future, by its backoff.
+    WorkTiming.JobNeeds job = new WorkTiming.JobNeeds();
+    assertEquals("latency", WorkTiming.waitingFor(job, online(), 30_000, 10_000));
+    assertNull(WorkTiming.waitingFor(job, online(), 30_000, 30_000));
+  }
+
+  @Test
   public void aPeriodicJobRunsOncePerInterval() {
     WorkTiming.JobNeeds job = new WorkTiming.JobNeeds();
     job.periodic = true;

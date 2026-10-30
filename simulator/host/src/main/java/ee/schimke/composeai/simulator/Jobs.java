@@ -48,6 +48,9 @@ final class Jobs {
   /** When each pending job was scheduled, by id, with the {@code JobInfo} seen then. */
   private final Map<Integer, Seen> seen = new HashMap<>();
 
+  /** Jobs started and not yet finished, by id. */
+  private final java.util.Set<Integer> running = new java.util.HashSet<>();
+
   private static final class Seen {
     final JobInfo info;
     long at;
@@ -85,7 +88,7 @@ final class Jobs {
         seen.put(info.getId(), new Seen(info, now));
         continue;
       }
-      if (isWorkManagers(info)) continue;
+      if (isWorkManagers(info) || running.contains(info.getId())) continue;
       if (device == null) device = device();
       if (WorkTiming.waitingFor(needs(info), device, record.at, now) != null) continue;
       start(info, owners.get(info), "due");
@@ -111,6 +114,7 @@ final class Jobs {
     int network = info.getNetworkType();
     needs.network = network != JobInfo.NETWORK_TYPE_NONE;
     needs.unmetered = network == JobInfo.NETWORK_TYPE_UNMETERED;
+    needs.cellular = network == JobInfo.NETWORK_TYPE_CELLULAR;
     needs.charging = info.isRequireCharging();
     needs.idle = info.isRequireDeviceIdle();
     needs.periodic = info.isPeriodic();
@@ -123,6 +127,11 @@ final class Jobs {
     ConnectivityManager connectivity = app.getSystemService(ConnectivityManager.class);
     device.online = connectivity.getActiveNetwork() != null;
     device.metered = connectivity.isActiveNetworkMetered();
+    android.net.NetworkCapabilities capabilities =
+        connectivity.getNetworkCapabilities(connectivity.getActiveNetwork());
+    device.cellular =
+        capabilities != null
+            && capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR);
     device.charging = app.getSystemService(BatteryManager.class).isCharging();
     device.idle = app.getSystemService(PowerManager.class).isDeviceIdleMode();
     return device;
@@ -131,6 +140,15 @@ final class Jobs {
   /** Starts [info]'s job through its service's {@code JobServiceEngine}. */
   private JSONObject start(JobInfo info, JobScheduler owner, String why) {
     ComponentName component = info.getService();
+    if (running.contains(info.getId())) {
+      // A device runs one instance of a job at a time.
+      return new Protocol.Json()
+          .put("state", "running")
+          .put("jobId", info.getId())
+          .put("service", component.getClassName())
+          .object();
+    }
+    running.add(info.getId());
     Protocol.Json event =
         new Protocol.Json()
             .put("state", "started")
@@ -146,7 +164,7 @@ final class Jobs {
       // JobService.onBind creates its engine; startJob through it reaches onStartJob on the main
       // thread, and the engine reports back to the callback below.
       IBinder engine = service.onBind(new Intent().setComponent(component));
-      Object parameters = parameters(info, new Callback(info.getId(), component));
+      Object parameters = parameters(info, new Callback(info, owner));
       Class<?> stub = Class.forName("android.app.job.IJobService$Stub");
       Object jobService = stub.getMethod("asInterface", IBinder.class).invoke(null, engine);
       Method startJob = null;
@@ -157,6 +175,7 @@ final class Jobs {
       startJob.invoke(jobService, parameters);
     } catch (ReflectiveOperationException | RuntimeException e) {
       Throwable cause = e instanceof java.lang.reflect.InvocationTargetException ? e.getCause() : e;
+      running.remove(info.getId());
       event.put("state", "failed").put("error", String.valueOf(cause));
     }
     JSONObject started = event.object();
@@ -203,12 +222,12 @@ final class Jobs {
    * acknowledgeStartMessage} (no work ongoing) or {@code jobFinished}.
    */
   private final class Callback extends Binder {
-    private final int jobId;
-    private final ComponentName component;
+    private final JobInfo info;
+    private final JobScheduler owner;
 
-    Callback(int jobId, ComponentName component) {
-      this.jobId = jobId;
-      this.component = component;
+    Callback(JobInfo info, JobScheduler owner) {
+      this.info = info;
+      this.owner = owner;
     }
 
     @Override
@@ -233,14 +252,26 @@ final class Jobs {
       return true;
     }
 
+    /**
+     * The job ended. A one-off job that asks to be rescheduled is scheduled again, to run once its
+     * initial backoff has passed (the backoff does not grow with retries here).
+     */
     private void finished(boolean reschedule) {
+      if (!running.remove(info.getId())) return;
+      Long retryInMs = null;
+      if (reschedule && !info.isPeriodic()) {
+        owner.schedule(info);
+        retryInMs = info.getInitialBackoffMillis();
+        seen.put(info.getId(), new Seen(info, SystemClock.elapsedRealtime() + retryInMs));
+      }
       protocol.event(
           "job",
           new Protocol.Json()
               .put("state", "finished")
-              .put("jobId", jobId)
-              .put("service", component.getClassName())
+              .put("jobId", info.getId())
+              .put("service", info.getService().getClassName())
               .put("wantsReschedule", reschedule)
+              .put("retryInMs", retryInMs)
               .object());
     }
   }
@@ -271,7 +302,13 @@ final class Jobs {
     if (c.has("run")) {
       int id = c.getInt("run");
       for (Map.Entry<JobInfo, JobScheduler> e : pending().entrySet()) {
-        if (e.getKey().getId() == id) return start(e.getKey(), e.getValue(), "command");
+        if (e.getKey().getId() != id) continue;
+        if (isWorkManagers(e.getKey())) {
+          throw new IllegalArgumentException(
+              "job " + id + " is WorkManager's: WorkManager runs that work in-process already,"
+                  + " and starting its job too would run it twice");
+        }
+        return start(e.getKey(), e.getValue(), "command");
       }
       throw new IllegalArgumentException("no job " + id + " is scheduled");
     }

@@ -131,6 +131,12 @@ final class Alarms {
     Protocol.Json event = new Protocol.Json().put("why", why).put("alarm", described);
     try {
       if (alarm.operation != null) {
+        org.robolectric.shadows.ShadowPendingIntent pending = Shadow.extract(alarm.operation);
+        if (pending.isForegroundService() && pending.getSavedIntent() != null) {
+          // As getForegroundService's delivery does: the service has its deadline to call
+          // startForeground.
+          Navigator.expectForeground(pending.getSavedIntent());
+        }
         event.put("result", PendingIntents.send(alarm.operation, null, navigator));
       } else if (alarm.onAlarmListener != null) {
         AlarmManager.OnAlarmListener listener = alarm.onAlarmListener;

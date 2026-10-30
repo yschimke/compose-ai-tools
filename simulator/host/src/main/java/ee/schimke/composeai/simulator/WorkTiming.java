@@ -31,6 +31,8 @@ final class WorkTiming {
     long deadlineMs;
     boolean network;
     boolean unmetered;
+    /** {@code NETWORK_TYPE_CELLULAR}: a cellular network, not merely any. */
+    boolean cellular;
     boolean charging;
     boolean idle;
     boolean periodic;
@@ -41,6 +43,7 @@ final class WorkTiming {
   static final class DeviceState {
     boolean online;
     boolean metered;
+    boolean cellular;
     boolean charging;
     boolean idle;
   }
@@ -57,6 +60,7 @@ final class WorkTiming {
     if (job.deadlineMs > 0 && since >= job.deadlineMs) return null;
     if (job.network && !device.online) return "network";
     if (job.unmetered && device.metered) return "unmetered network";
+    if (job.cellular && !device.cellular) return "cellular network";
     if (job.charging && !device.charging) return "charging";
     if (job.idle && !device.idle) return "idle";
     return null;
