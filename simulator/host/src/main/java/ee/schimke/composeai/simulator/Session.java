@@ -159,6 +159,8 @@ final class Session {
     displays.cycle();
     radios.cycle();
     overlay.round(FormFactor.isRound());
+    android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+    WindowZoom.installMain(metrics.widthPixels, metrics.heightPixels);
     logcat.poll();
     notifications.cycle();
     if (wear != null) wear.cycle();
@@ -420,6 +422,8 @@ final class Session {
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
           return navigator.startActivity(intent, -1, launchOptions(c), savedState);
         }
+      case "zoom":
+        return WindowZoom.command(c.has("value") ? String.valueOf(c.get("value")) : null);
       case "kill":
         checkPackage(c);
         return navigator.kill();

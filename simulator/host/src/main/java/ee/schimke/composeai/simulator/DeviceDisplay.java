@@ -228,7 +228,10 @@ final class DeviceDisplay {
     followWindow();
   }
 
-  /** Sizes the Swing window to the display, which Robolectric's window never does itself. */
+  /**
+   * Sizes the Swing window to the display, at its zoom, which Robolectric's window never does
+   * itself.
+   */
   private void followWindow() {
     if (GraphicsEnvironment.isHeadless()) return;
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
@@ -237,6 +240,11 @@ final class DeviceDisplay {
         () -> {
           JPanel panel = SimulatorPanelRegistry.getActivePanel();
           if (panel == null) return;
+          WindowZoom zoom = WindowZoom.of(panel);
+          if (zoom != null) {
+            zoom.deviceSize(size.width, size.height);
+            return;
+          }
           panel.setPreferredSize(size);
           Window window = SwingUtilities.getWindowAncestor(panel);
           if (window != null) window.pack();

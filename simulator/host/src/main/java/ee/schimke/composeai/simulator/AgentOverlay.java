@@ -163,8 +163,9 @@ final class AgentOverlay {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         if (round) {
           Point origin = SwingUtilities.convertPoint(panel, 0, 0, this);
-          int w = panel.getWidth();
-          int h = panel.getHeight();
+          java.awt.Dimension shown = WindowZoom.shownSize(panel);
+          int w = shown.width;
+          int h = shown.height;
           int d = Math.min(w, h);
           Area bezel = new Area(new Rectangle(origin.x, origin.y, w, h));
           float left = origin.x + (w - d) / 2f;
@@ -195,9 +196,10 @@ final class AgentOverlay {
           g.setFont(getFont() == null ? new Font(Font.SANS_SERIF, Font.BOLD, 13) : getFont());
           FontMetrics metrics = g.getFontMetrics();
           int height = metrics.getHeight() + 10;
-          Point origin = SwingUtilities.convertPoint(panel, 0, panel.getHeight(), this);
+          java.awt.Dimension shown = WindowZoom.shownSize(panel);
+          Point origin = SwingUtilities.convertPoint(panel, 0, shown.height, this);
           g.setColor(Color.BLACK);
-          g.fillRect(origin.x, origin.y - height, panel.getWidth(), height);
+          g.fillRect(origin.x, origin.y - height, shown.width, height);
           g.setColor(Color.WHITE);
           g.drawString(
               "agent: " + status, origin.x + 8, origin.y - height + 5 + metrics.getAscent());
@@ -207,8 +209,11 @@ final class AgentOverlay {
       }
     }
 
+    /** A device-pixel point in the glass pane, through the window's zoom. */
     private Point toGlass(float x, float y) {
-      return SwingUtilities.convertPoint(panel, Math.round(x), Math.round(y), this);
+      double scale = WindowZoom.scaleOf(panel);
+      return SwingUtilities.convertPoint(
+          panel, (int) Math.round(x * scale), (int) Math.round(y * scale), this);
     }
   }
 }
