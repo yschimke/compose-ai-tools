@@ -225,7 +225,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
-| `back` | | the Back key — the app's own back handling decides |
+| `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
 | `text` | `text` | types into the focused field |
 | `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
@@ -648,6 +648,33 @@ under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widge
 
 `id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
 belongs to the default display: a secondary display gets no launcher.
+
+### Back
+
+Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
+the activity takes it first):
+
+- **A window that opted in to the callback API** (API 33+, `android:enableOnBackInvokedCallback`)
+  never sees a key. Its top `OnBackInvokedCallback` is invoked, as `ViewRootImpl` intercepts
+  `KEYCODE_BACK` before the view tree; an `OnBackAnimationCallback` hears `onBackStarted` first,
+  at the left edge with progress 0. That callback is androidx's `OnBackPressedDispatcher` while it
+  has an enabled callback — Compose's `BackHandler`, Wear's `SwipeDismissableNavHost`, Navigation,
+  Horologist — so one Back pops one screen. While nothing in the app wants Back, the top callback is
+  the activity's own default, which asks the system server to finish the activity or move its task
+  back; with no server under Robolectric, `onBackPressed` stands in, and the activity finishes.
+- **Any other window gets `KEYCODE_BACK`**, which `Activity.onKeyUp` turns into `onBackPressed`;
+  `ComponentActivity` hands that to the same `OnBackPressedDispatcher`, and with nothing registered
+  the activity finishes. Robolectric 4.17 does not turn on the targetSdk 36 default, so an app
+  opts in only through the manifest attribute.
+- **The simulator's own home** (`WearHome`, `PhoneHome`) takes Back itself whatever the app opted
+  in to: back from a launcher, stream or tile surface goes to the watch face.
+
+Finishing the root activity lands on the watch face (or home screen) with `--launcher`, and
+otherwise empties the back stack (`activity` event `empty`).
+
+The predictive back *gesture* is not simulated: a `swipe` from a watch's left edge is a touch, which
+Wear Compose's `SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has
+not opted in. An opted-in window gets no `handleOnBackProgressed` stream from a swipe; use `back`.
 
 ### Wear system UI
 
