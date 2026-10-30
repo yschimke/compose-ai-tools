@@ -250,11 +250,12 @@ public final class DocumentsStore extends DocumentsProvider {
     row.add(Document.COLUMN_MIME_TYPE, dir ? Document.MIME_TYPE_DIR : mimeType(file.getName()));
     row.add(Document.COLUMN_SIZE, dir ? null : file.length());
     row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified());
-    row.add(
-        Document.COLUMN_FLAGS,
-        (dir ? Document.FLAG_DIR_SUPPORTS_CREATE : Document.FLAG_SUPPORTS_WRITE)
-            | Document.FLAG_SUPPORTS_DELETE
-            | Document.FLAG_SUPPORTS_RENAME);
+    int flags = dir ? Document.FLAG_DIR_SUPPORTS_CREATE : Document.FLAG_SUPPORTS_WRITE;
+    // The storage root is the volume itself: it is neither deleted nor renamed.
+    if (!documentId.equals(DocumentIds.ROOT_ID)) {
+      flags |= Document.FLAG_SUPPORTS_DELETE | Document.FLAG_SUPPORTS_RENAME;
+    }
+    row.add(Document.COLUMN_FLAGS, flags);
   }
 
   @Override
@@ -282,6 +283,8 @@ public final class DocumentsStore extends DocumentsProvider {
     boolean directory = Document.MIME_TYPE_DIR.equals(mimeType);
     String name = directory ? displayName : withExtension(displayName, mimeType);
     name = DocumentIds.unique(name, candidate -> new File(dir, candidate).exists());
+    // Checked before anything is created: a name with a path in it ("../x") is refused.
+    String id = childId(parentDocumentId, name);
     File file = new File(dir, name);
     try {
       boolean made = directory ? file.mkdirs() : file.createNewFile();
@@ -289,11 +292,27 @@ public final class DocumentsStore extends DocumentsProvider {
     } catch (IOException e) {
       throw new FileNotFoundException("cannot create " + file + ": " + e.getMessage());
     }
-    return DocumentIds.child(parentDocumentId, name);
+    return id;
+  }
+
+  private static String childId(String parentDocumentId, String name) throws FileNotFoundException {
+    try {
+      return DocumentIds.child(parentDocumentId, name);
+    } catch (IllegalArgumentException e) {
+      throw new FileNotFoundException(e.getMessage());
+    }
+  }
+
+  private static void checkNotRoot(String documentId, String operation)
+      throws FileNotFoundException {
+    if (documentId.equals(DocumentIds.ROOT_ID)) {
+      throw new FileNotFoundException("the storage root cannot be " + operation);
+    }
   }
 
   @Override
   public void deleteDocument(String documentId) throws FileNotFoundException {
+    checkNotRoot(documentId, "deleted");
     File file = fileOf(documentId);
     if (!delete(file)) throw new FileNotFoundException("cannot delete " + documentId);
   }
@@ -307,7 +326,10 @@ public final class DocumentsStore extends DocumentsProvider {
   @Override
   public String renameDocument(String documentId, String displayName)
       throws FileNotFoundException {
+    checkNotRoot(documentId, "renamed");
     File file = fileOf(documentId);
+    String parent = idOf(file.getParentFile());
+    childId(parent, displayName);
     File renamed = new File(file.getParentFile(), displayName);
     if (renamed.exists() || !file.renameTo(renamed)) {
       throw new FileNotFoundException("cannot rename " + documentId + " to " + displayName);
