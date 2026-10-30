@@ -246,11 +246,11 @@ internal object ComposableSignature {
    * author's deliberate `@InternalComposeApi` still counts.
    */
   private fun requiredOptInsOf(method: MethodInfo, mechanisms: Set<String>): List<String> =
-    requiredOptInsOf(method.annotationInfo?.directOnly().orEmpty(), mechanisms)
+    requiredOptInsOf(method.directAnnotationInfo, mechanisms)
 
   /** The same for a class, used by [isNoArgConstructible] to refuse gated types. */
   private fun requiredOptInsOf(classInfo: ClassInfo, mechanisms: Set<String>): List<String> =
-    requiredOptInsOf(classInfo.annotationInfo?.directOnly().orEmpty(), mechanisms)
+    requiredOptInsOf(classInfo.directAnnotationInfo, mechanisms)
 
   private fun requiredOptInsOf(
     annotations: List<AnnotationInfo>,
@@ -258,7 +258,7 @@ internal object ComposableSignature {
   ): List<String> =
     annotations
       .filter { annotation ->
-        annotation.classInfo?.annotationInfo?.directOnly()?.any { it.name in mechanisms } == true
+        annotation.classInfo?.directAnnotationInfo?.any { it.name in mechanisms } == true
       }
       .map { sourceNameOf(it) }
       .distinct()
@@ -282,7 +282,7 @@ internal object ComposableSignature {
    */
   private fun sourceNameOf(annotation: AnnotationInfo): String {
     val info = annotation.classInfo ?: return annotation.name
-    val outers = info.outerClasses?.reversed().orEmpty()
+    val outers = info.enclosingClasses.reversed()
     if (outers.isEmpty()) return annotation.name
     val packageName = annotation.name.substringBeforeLast('.', "")
     val nesting = (outers.map { it.simpleName } + info.simpleName).joinToString(".")
@@ -336,7 +336,7 @@ internal object ComposableSignature {
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
     val name = method.name
-    val descriptor = method.typeDescriptorStr
+    val descriptor = method.typeDescriptorString
     val byName = functions.filter { it.signature?.name == name }
     if (byName.isEmpty()) return null
     if (byName.size == 1) return byName.single()

@@ -75,7 +75,7 @@ internal object PreviewThemeShadowing {
     depth: Int,
     visited: MutableSet<String>,
   ): List<String>? {
-    if (!visited.add("${classInfo.name}#${method.name}${method.typeDescriptorStr}")) return null
+    if (!visited.add("${classInfo.name}#${method.name}${method.typeDescriptorString}")) return null
     // The inference walker already follows lambda bodies, so `AppTheme { … }` is seen from the
     // root.
     val calls = PreviewTargetInference.extractCalls(classInfo, method)
@@ -88,7 +88,7 @@ internal object PreviewThemeShadowing {
       val targetClass = scanResult.getClassInfo(call.ownerFqn) ?: continue
       val targetMethod =
         targetClass.methodInfo.firstOrNull {
-          it.name == call.methodName && it.typeDescriptorStr == call.descriptor
+          it.name == call.methodName && it.typeDescriptorString == call.descriptor
         } ?: continue
       val deeper = walk(targetClass, targetMethod, scanResult, projectClassFqns, depth + 1, visited)
       if (deeper != null) return listOf(call.methodName) + deeper

@@ -24,6 +24,7 @@ class PreviewDiscoveryDefaultedParametersTest {
    */
   private fun allDefaults(simpleName: String, userParameterCount: Int): Boolean {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .acceptPackages("ee.schimke.composeai.discovery")

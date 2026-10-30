@@ -70,11 +70,11 @@ public object PlaygroundPreviews {
       return emptyMap()
     }
     return ClassGraph()
+      .enableClassInfo()
       .enableMethodInfo()
       .enableAnnotationInfo()
       .ignoreMethodVisibility()
-      .overrideClasspath(snippet.classesDir.toString())
-      .ignoreParentClassLoaders()
+      .enableClasspathEntries(snippet.classesDir.toString())
       .scan()
       .use { scan ->
         buildMap {
@@ -83,11 +83,11 @@ public object PlaygroundPreviews {
               val id = "${classInfo.name}.${method.name}"
               if (id !in snippet.previewIds) continue
               val annotation =
-                method.annotationInfo.firstOrNull { it.name in PREVIEW_ANNOTATIONS } ?: continue
+                method.allAnnotationInfo.firstOrNull { it.name in PREVIEW_ANNOTATIONS } ?: continue
               fun dimension(name: String): Int? =
                 (annotation.parameterValues.getValue(name) as? Number)?.toInt()?.takeIf { it > 0 }
               val settled =
-                method.annotationInfo.firstOrNull {
+                method.allAnnotationInfo.firstOrNull {
                   it.name == "ee.schimke.composeai.preview.SettledPreview"
                 }
               val settle = settled?.let {
@@ -105,7 +105,7 @@ public object PlaygroundPreviews {
               // Explicit motion/timeline annotations keep their existing capture path; an explicit
               // @SettledPreview coordinate above always wins over this bounded auto policy.
               val hasTimeline =
-                method.annotationInfo.any {
+                method.allAnnotationInfo.any {
                   it.name in TIMELINE_ANNOTATIONS ||
                     (it.name == "ee.schimke.composeai.preview.FocusedPreview" &&
                       it.parameterValues.getValue("gif") == true)

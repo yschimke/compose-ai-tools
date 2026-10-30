@@ -34,7 +34,7 @@ object TypedAdapterDiscovery {
         .enableMethodInfo()
         .enableAnnotationInfo()
         .acceptClasses(*callables.map { it.owner }.distinct().toTypedArray())
-    if (classpath != null) graph.overrideClasspath(classpath)
+    if (classpath != null) graph.enableClasspathEntries(classpath) else graph.enableClasspath()
     return graph.scan().use { scan ->
       val components =
         callables
@@ -65,7 +65,7 @@ object TypedAdapterDiscovery {
                       ComponentOrigin.PROJECT,
                     )
                     .also {
-                      it.descriptor = method.typeDescriptorStr
+                      it.descriptor = method.typeDescriptorString
                       it.jvmName = selected.name
                       it.receiver = signature.receiver
                     }
@@ -136,7 +136,7 @@ object TypedAdapterDiscovery {
         .enableMethodInfo()
         .enableAnnotationInfo()
         .acceptClasses(*callables.map { it.owner }.distinct().toTypedArray())
-    if (classpath != null) graph.overrideClasspath(classpath)
+    if (classpath != null) graph.enableClasspathEntries(classpath) else graph.enableClasspath()
     return graph.scan().use { scan ->
       val components =
         callables
@@ -190,7 +190,7 @@ object TypedAdapterDiscovery {
                       ComponentOrigin.LIBRARY,
                     )
                     .also {
-                      it.descriptor = method.typeDescriptorStr
+                      it.descriptor = method.typeDescriptorString
                       it.jvmName = method.name
                       it.receiver = signature.receiver
                     }
@@ -208,7 +208,7 @@ object TypedAdapterDiscovery {
                   it.overloads = overloads.map { (m, s) ->
                     ComponentOverload.Builder()
                       .also { o ->
-                        o.descriptor = m.typeDescriptorStr
+                        o.descriptor = m.typeDescriptorString
                         o.parameters = s.parameters
                       }
                       .build()
@@ -241,7 +241,7 @@ object TypedAdapterDiscovery {
         .enableClassInfo()
         .enableMethodInfo()
         .acceptClasses(*factories.map { it.owner }.distinct().toTypedArray())
-    if (classpath != null) graph.overrideClasspath(classpath)
+    if (classpath != null) graph.enableClasspathEntries(classpath) else graph.enableClasspath()
     // Overloads of one factory, and factories of one family, share a return type.
     val ancestry = mutableMapOf<String, Set<String>>()
     return graph.scan().use { scan ->
@@ -278,13 +278,13 @@ object TypedAdapterDiscovery {
           .enableClassInfo()
           .enableExternalClasses()
           .acceptClasses(*pending.toTypedArray())
-      if (classpath != null) graph.overrideClasspath(classpath)
+      if (classpath != null) graph.enableClasspathEntries(classpath) else graph.enableClasspath()
       val next = mutableSetOf<String>()
       graph.scan().use { scan ->
         for (name in pending) {
           val info = scan.getClassInfo(name) ?: continue
           val direct =
-            listOfNotNull(info.superclass?.name) + info.interfaces.directOnly().map { it.name }
+            listOfNotNull(info.superclass?.name) + info.directSuperinterfaces.map { it.name }
           for (parent in direct) {
             if (parent == "java.lang.Object" || !seen.add(parent)) continue
             found += parent.replace('$', '.')

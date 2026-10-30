@@ -484,6 +484,7 @@ object PreviewDiscovery {
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
+        .enableClassInfo()
         .enableMethodInfo()
         // Field info for catalog annotations on backing fields; `ignoreFieldVisibility()` because a
         // top-level `val`'s backing field is private static.
@@ -491,8 +492,7 @@ object PreviewDiscovery {
         .ignoreFieldVisibility()
         .enableAnnotationInfo()
         .ignoreMethodVisibility()
-        .overrideClasspath(classpath.map { it.absolutePath })
-        .ignoreParentClassLoaders()
+        .enableClasspathEntries(classpath.map { it.absolutePath })
         .scan()
         .use { scanResult ->
           reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
@@ -516,7 +516,7 @@ object PreviewDiscovery {
           val catalogGroupsByFile = HashMap<String, CatalogGroupDefault>()
           for (classInfo in scanResult.allClasses) {
             if (classInfo.name !in projectClassFqns) continue
-            val groupAnn = classInfo.getAnnotationInfo(CATALOG_GROUP_FQN) ?: continue
+            val groupAnn = classInfo.getAllAnnotationInfo(CATALOG_GROUP_FQN) ?: continue
             val file = sourceFilePath(classInfo, input) ?: continue
             catalogGroupsByFile.putIfAbsent(
               file,
@@ -532,7 +532,7 @@ object PreviewDiscovery {
             if (classInfo.name !in projectClassFqns) continue
             scanClassCount++
             for (method in classInfo.methodInfo) {
-              val annotations = method.annotationInfo ?: continue
+              val annotations = method.allAnnotationInfo ?: continue
               if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
@@ -559,7 +559,7 @@ object PreviewDiscovery {
             // values are reflected at render time. Kind is dispatched by declared type
             // ([catalogTokenKindFor]).
             for (field in classInfo.fieldInfo) {
-              field.getAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
+              field.getAllAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
                 rawColorCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -568,7 +568,7 @@ object PreviewDiscovery {
                     catalogTokenKindFor(field, single = CatalogTokenKind.COLOR),
                   )
               }
-              field.getAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
+              field.getAllAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
                 rawTypographyCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -577,7 +577,7 @@ object PreviewDiscovery {
                     catalogTokenKindFor(field, single = CatalogTokenKind.TEXT_STYLE),
                   )
               }
-              field.getAnnotationInfo(SHAPE_CATALOG_FQN)?.let { ann ->
+              field.getAllAnnotationInfo(SHAPE_CATALOG_FQN)?.let { ann ->
                 rawShapeCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -592,7 +592,7 @@ object PreviewDiscovery {
             // platform.
             for ((fqn, wear) in
               listOf(THEME_CATALOG_FQN to false, WEAR_THEME_CATALOG_FQN to true)) {
-              classInfo.getAnnotationInfo(fqn)?.let { ann ->
+              classInfo.getAllAnnotationInfo(fqn)?.let { ann ->
                 rawThemeCatalogs +=
                   RawThemeCatalog(
                     className = classInfo.name,
@@ -2283,7 +2283,7 @@ object PreviewDiscovery {
     if (ann.name in HOISTABLE_LEAF_FQNS) return
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
-    for (metaAnn in annClassInfo.annotationInfo.toList()) {
+    for (metaAnn in annClassInfo.allAnnotationInfo.toList()) {
       collect(metaAnn)
       walkMetaAnnotations(metaAnn, scanResult, visited, collect)
     }
@@ -2710,7 +2710,7 @@ object PreviewDiscovery {
   private fun extractPreviewParameter(method: MethodInfo): Pair<String, Int>? {
     val params = method.parameterInfo ?: return null
     for (param in params) {
-      val anns = param.annotationInfo ?: continue
+      val anns = param.allAnnotationInfo ?: continue
       val ann = anns.firstOrNull { it.name in PREVIEW_PARAMETER_FQNS } ?: continue
       val provider =
         when (val value = ann.parameterValues.getValue("provider")) {
@@ -3169,12 +3169,12 @@ object PreviewDiscovery {
 
   /**
    * Resolves the `PreviewWrapperProvider` FQN for [method]. Uses `directOnly()` because
-   * `method.annotationInfo` flattens meta-annotations, which would make direct-vs-hoisted
+   * `method.allAnnotationInfo` flattens meta-annotations, which would make direct-vs-hoisted
    * precedence depend on list order. A direct wrapper wins; otherwise one hoisted on a
    * multi-preview annotation.
    */
   private fun extractWrapperFqn(method: MethodInfo, scanResult: ScanResult): String? {
-    val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
+    val directAnnotations = method.directAnnotationInfo.toList()
     directWrapperFqn(directAnnotations)?.let {
       return it
     }
@@ -3225,7 +3225,7 @@ object PreviewDiscovery {
     if (isDirectPreview(ann) || isPreviewContainer(ann)) return null
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return null
-    val metaAnns = annClassInfo.annotationInfo.toList()
+    val metaAnns = annClassInfo.allAnnotationInfo.toList()
     directWrapperFqn(metaAnns)?.let {
       return it
     }
@@ -4021,11 +4021,11 @@ object PreviewDiscovery {
     visited.add(ann.name)
 
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return emptyList()
-    val directPreviews = collectDirectPreviews(annClassInfo.annotationInfo.toList())
+    val directPreviews = collectDirectPreviews(annClassInfo.allAnnotationInfo.toList())
     if (directPreviews.isNotEmpty()) return directPreviews
 
     val result = mutableListOf<AnnotationInfo>()
-    for (metaAnn in annClassInfo.annotationInfo) {
+    for (metaAnn in annClassInfo.allAnnotationInfo) {
       result.addAll(resolveMultiPreview(metaAnn, scanResult, visited))
     }
     return result
@@ -4146,9 +4146,9 @@ object PreviewDiscovery {
       dataProducts = outputPlan.dataProducts,
       targets = targets,
       // Read off the method, so every expansion (including built-in ones) shares it.
-      fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
+      fixedTheme = method.allAnnotationInfo.any { it.name == FIXED_THEME_FQN },
       includeInA11y =
-        method.annotationInfo
+        method.allAnnotationInfo
           .firstOrNull { it.name == PREVIEW_HELPER_FQN }
           ?.let { annBoolean(it, "includeInA11y", default = true) } ?: true,
       // Knobs from defaulted value parameters, read off the method so every expansion shares them.
