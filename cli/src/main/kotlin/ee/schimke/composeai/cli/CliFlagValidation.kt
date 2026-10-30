@@ -271,6 +271,8 @@ internal object CliFlagValidation {
           "--headless",
           "--hide-agent",
           "--qualifiers",
+          "--device",
+          "--display",
           "--font-scale",
           "--sdk",
           "--jar",

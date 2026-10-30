@@ -76,6 +76,21 @@ final class DisplayGeometry {
   }
 
   /**
+   * {@code Configuration.screenLayout}'s size and long bits for a [widthDp] x [heightDp] display,
+   * by the same rules as {@link #sizeQualifiers}: {@code SCREENLAYOUT_SIZE_SMALL} (1) to {@code
+   * XLARGE} (4), with {@code SCREENLAYOUT_LONG_YES} (0x20) or {@code _NO} (0x10).
+   */
+  static int screenLayout(int widthDp, int heightDp) {
+    String q = sizeQualifiers(widthDp, heightDp);
+    int size;
+    if (q.contains("-xlarge-")) size = 4;
+    else if (q.contains("-large-")) size = 3;
+    else if (q.contains("-normal-")) size = 2;
+    else size = 1;
+    return size | (q.contains("-notlong-") ? 0x10 : 0x20);
+  }
+
+  /**
    * A fold across the middle of the window {@code [left, top, right, bottom]}: a line for a fold,
    * a band [hingePx] wide for a hinge, spanning the window's whole height ([vertical]) or width,
    * which is what {@code androidx.window} accepts. Returns {@code [left, top, right, bottom]}.

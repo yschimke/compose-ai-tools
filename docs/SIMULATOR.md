@@ -9,6 +9,7 @@ compose-preview launch app-debug.apk                               # a window
 compose-preview launch app-debug.apk --control stdio               # a window an agent drives
 compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
 compose-preview launch app-debug.apk --prepare                     # convert and cache only
+compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -149,7 +150,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `info` | | package, version, SDK, qualifiers, display size, `display` (as below), top activity |
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
-| `screenshot` | `path`? | PNG to `path`, else base64 in `png` |
+| `screenshot` | `path`?, `display`? (an id, or `"all"`) | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path` |
 | `hierarchy` | `flat`? | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
@@ -158,10 +159,10 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code) | key down/up |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
-| `launch` | | starts the launcher activity |
-| `finish` | | finishes the top activity without a key press |
-| `activities` | | the back stack |
-| `startActivity` | `intent` | deep links resolve through the manifest's real intent filters |
+| `launch` | `display`? | starts the launcher activity |
+| `finish` | `display`? | finishes the top activity without a key press |
+| `activities` | | the back stack, each activity with its `display` |
+| `startActivity` | `intent`, `display`? | deep links resolve through the manifest's real intent filters; `display` launches there, as `ActivityOptions.setLaunchDisplayId` does |
 | `startService` / `stopService` | `intent` | |
 | `bindService` / `unbindService` | `intent` | `onBind`, reports the binder's interface |
 | `services` | | running services, started/bound state, foreground notification |
@@ -177,6 +178,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `posture` | `value` (`none`, `flat`, `half-opened`, `book`, `tabletop`), `orientation`? (`vertical` / `horizontal`), `hingeDp`? | the fold the app's `WindowInfoTracker` reports |
 | `fontScale` | `value` | the system font size, as a configuration change |
 | `display` | | size, density, orientation, rotation, font scale, night, locale, fold and qualifiers |
+| `displays` | `action`? (`list`, `add`, `remove`, `change`), `display`, `name`?, `type`? (`external` / `virtual` / `rear`), `widthDp`?, `heightDp`?, `density`?, `qualifiers`? | the displays, and secondary ones plugged in, unplugged and resized; see below |
 | `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
 | `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
 | `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
@@ -208,6 +210,55 @@ device) — or none. So Compose's `currentWindowAdaptiveInfo()` sees the posture
 the hinge list, `NavigationSuiteScaffold` moves to a bottom bar in tabletop, and Material 3's pane
 scaffolds avoid a separating hinge. Activity embedding and rear-display window areas are not
 implemented; the library finds them missing and reports them unsupported.
+
+### More than one display
+
+An app can use more than one display, as a phone with a monitor or TV attached does. `launch
+--display <spec>` (repeatable) connects one before the app starts — a size in dp with an optional
+density, then `name=` and `type=`: `--display 1280x720@mdpi,name=TV`, `--display rear,411x891`
+— and `displays` adds, changes and removes them while it runs:
+
+```
+→ {"cmd":"displays","action":"add","name":"TV","widthDp":960,"heightDp":540,"density":"mdpi"}
+← {"event":"display","state":"added","display":{"id":1,"name":"TV","type":"external",...}}
+→ {"cmd":"tap","textContains":"tap the presentation","display":1}
+→ {"cmd":"screenshot","display":"all","path":"/tmp/shot.png"}   # shot.png, shot-display1.png
+→ {"cmd":"startActivity","intent":{"component":".SecondActivity"},"display":1}
+→ {"cmd":"displays","action":"change","display":1,"widthDp":640,"heightDp":360,"density":"xhdpi"}
+→ {"cmd":"displays","action":"remove","display":1}
+```
+
+The app hears of each one as from a device's display manager: `DisplayListener.onDisplayAdded`,
+`onDisplayChanged` and `onDisplayRemoved`. An `external` display (the default type; 960×540dp at
+mdpi unless given) and a `virtual` one are presentation displays — `getDisplays(
+DISPLAY_CATEGORY_PRESENTATION)` finds them, and an `android.app.Presentation`
+shown on one draws there; a `rear` display is a built-in one flagged as the rear screen. Each
+display draws and takes input on its own:
+
+- **Pictures.** `screenshot` takes `display`, or `"all"`. Robolectric composes every window into
+  one picture whatever its display, so a presentation would cover the phone; `:simulator-host`
+  replaces its `UiAutomation` shadow (`SimulatorShadowUiAutomation`) so the default display's
+  picture — the one its window paints — holds only that display's windows, and `Displays` draws
+  the others.
+- **Windows.** With a screen, each secondary display gets a Swing window of its own, titled with
+  its name and display id, beside the phone's. It takes the mouse and keyboard; closing it
+  unplugs the display.
+- **Input.** `tap`, `longPress`, `swipe`, `key`, `back`, `text`, `hierarchy`, `find` and `finish`
+  take `display`, and act on that display's windows alone: a touch goes to the top-most window
+  under it there, a key to that display's focused window. Without `display`, the default display.
+- **Activities.** An activity started with `ActivityOptions.setLaunchDisplayId` — by the app, or
+  by `startActivity` / `launch` with `display` — goes on that display, above that display's own top
+  activity and leaving the others resumed, as a device keeps a task stack per display. It gets that
+  display's configuration (size, density, orientation, window bounds): Now in Android started on a
+  1280×720dp display lays itself out with a navigation rail and list-detail panes while the phone
+  stays on its bottom bar. `activities` and `displays` say which display each is on. When a display
+  changes size, its activities get `onConfigurationChanged` if their manifest `configChanges` covers
+  the change and are otherwise re-created there from their saved state; when it is removed, they
+  finish.
+
+A presentation window sits above the activities on its display, as on a device: an activity the
+app launches onto a display it is presenting on stays under the presentation until the app
+dismisses it. `Presentation` itself dismisses on a display size change, as the framework does.
 
 A **selector** is any of `text` / `desc` (exact), `textContains` / `descContains` (case-insensitive),
 `resourceId` (whole, or the part after `:id/` — a Compose `testTag` once the app sets
@@ -260,8 +311,11 @@ What does not, or not yet:
   window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default, and
   resizes to the display after each display command; a tablet or desktop at hdpi may be larger
   than the screen.
-- **Device controls.** One display: no rear display, no multi-window or freeform, no activity
-  embedding. A configuration change reaches the top activity; activities below it in the back
+- **Device controls.** Secondary displays are separate screens (above); there is no multi-window
+  or freeform on one display, and no activity embedding. A `rear` display is a display only:
+  Jetpack WindowManager's `WindowAreaController` (rear display mode, dual screen) needs the
+  extensions' `WindowAreaComponent`, which `Foldables` does not provide, so it reports them
+  unsupported. Activities on a removed display finish rather than move to the default display. A configuration change reaches the top activity; activities below it in the back
   stack keep the old configuration until they are next shown, and are not recreated then. The
   fold is always at the middle of the window. Location reaches the platform `LocationManager`
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
