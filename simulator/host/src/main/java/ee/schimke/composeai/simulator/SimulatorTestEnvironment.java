@@ -14,6 +14,7 @@ import org.robolectric.internal.ShadowProvider;
 import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.TestEnvironmentLifecyclePlugin;
 import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowApplication;
 import org.robolectric.shadows.ShadowBluetoothAdapter;
 import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowPackageManager;
@@ -94,6 +95,11 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
       watchFeature(app);
+      // As on a device: unbindService does not call onServiceDisconnected. Robolectric's default
+      // does, and a connection that unbinds in onServiceDisconnected (androidx.wear's
+      // BridgingManager) then loops forever.
+      ShadowApplication shadowApp = Shadow.extract(app);
+      shadowApp.setUnbindServiceCallsOnServiceDisconnected(false);
       fingerprint();
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never

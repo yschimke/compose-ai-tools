@@ -27,11 +27,14 @@ public class ShadowGoogleApiAvailability {
 
   @RealObject private Object realObject;
 
+  // Robolectric matches a shadow parameter by @ClassName only when it is declared Object, so the
+  // varargs array is an Object here too.
   @Implementation
   protected Object checkApiAvailability(
-      @ClassName(GOOGLE_API) Object api, @ClassName(GOOGLE_APIS) Object[] more) {
-    if (DataLayerClients.allSimulated(api, more)) return DataLayerClients.available();
-    return real(GOOGLE_API, GOOGLE_APIS, api, more);
+      @ClassName(GOOGLE_API) Object api, @ClassName(GOOGLE_APIS) Object more) {
+    Object[] rest = (Object[]) more;
+    if (DataLayerClients.allSimulated(api, rest)) return DataLayerClients.available();
+    return real(GOOGLE_API, GOOGLE_APIS, api, rest);
   }
 
   /** Play services' own {@code checkApiAvailability}, for an API the simulator does not answer. */

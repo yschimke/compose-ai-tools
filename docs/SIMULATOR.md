@@ -229,7 +229,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
-| `dataLayer` | | with `--pair`: this node, its peers and their capabilities, every data item |
+| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
@@ -703,8 +703,14 @@ quit and launch again.
 simulator instead of Play services, so messages, requests, data items and capabilities cross
 between the apps and reach their listeners and manifest `WearableListenerService`s. With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
-`device`, and each crossing is a `datalayer` event. A prototype; the design, evidence and what is
+`device`, and each crossing is a `datalayer` event. `RemoteActivityHelper` launches, Horologist's
+`DataLayerAppHelper`, and on the watch `RemoteAuthClient`, `BridgingManager` and
+`PhoneTypeHelper` work across the pair too. A prototype; the design, evidence and what is
 missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
+
+`--fingerprint <f>` replaces Robolectric's `Build.FINGERPRINT` (`robolectric`), which some apps
+compare against to skip real work in tests and previews: MeshCore's watch shows canned preview
+data, and never touches the Data Layer, unless it is set.
 
 ## Constraints
 

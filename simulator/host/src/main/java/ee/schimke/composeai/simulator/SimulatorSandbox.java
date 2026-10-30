@@ -79,6 +79,7 @@ final class SimulatorSandbox {
                 SimulatorShadowWifiManager.class,
                 SimulatorShadowTelephonyManager.class,
                 SimulatorShadowBluetoothGatt.class,
+                SimulatorShadowResultReceiver.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
                 SimulatorShadowRemoteViewsAdapter.class);

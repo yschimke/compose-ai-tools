@@ -242,3 +242,31 @@ Re-collect: `./gradlew :samples:android:assembleDebug :cli:installDist`, then dr
 `cli/build/install/compose-preview/bin/compose-preview launch android-debug.apk --launcher
 --control stdio --headless` with `home`, `widget` `add` / `resize`, `tap`, `longPress`, `swipe`,
 `picker`, `drawer`, `rotate` and `screenshot`.
+
+**A paired phone and watch** (`launch phone.apk --pair wear.apk`). Two throwaway probe apps, one
+button per Wear interaction API (the full table is in
+[`../../SIMULATOR_DATALAYER.md`](../../SIMULATOR_DATALAYER.md)): `RemoteActivityHelper` opening a
+`VIEW` intent on the other device, each way, and the probes' results.
+
+| Phone → watch | Watch → phone |
+| --- | --- |
+| ![Opened on the watch](pair-remote-phone-to-watch.png) | ![Opened on the phone](pair-remote-watch-to-phone.png) |
+
+| Phone probe | Watch probe |
+| --- | --- |
+| ![Phone probe](pair-probe-phone.png) | ![Watch probe](pair-probe-watch.png) |
+
+Home Assistant's real phone and Wear apps, paired: the watch before, and after the phone's
+"Offline demo" tap synced 14 data items to it.
+
+| Watch before | Watch after the phone's demo tap |
+| --- | --- |
+| ![Home Assistant watch before](pair-ha-watch-before.png) | ![Home Assistant watch in demo mode](pair-ha-watch-demo.png) |
+
+MeshCore's Wear app paired with its phone (`--fingerprint` set, `horologist_phone` added on the
+phone with `dataLayer addCapability`): before, the watch finds no phone; after, its gRPC
+`GetConnectionStatus` request is answered by the phone, whose radio is not connected.
+
+| No `horologist_phone` | Answered by the phone |
+| --- | --- |
+| ![MeshCore watch, no phone](pair-meshcore-watch-unreachable.png) | ![MeshCore watch, via the phone](pair-meshcore-watch-via-phone.png) |
