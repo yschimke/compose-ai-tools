@@ -166,16 +166,24 @@ final class DataLayerChannels implements ChannelPipes.Events {
     } catch (IOException | RuntimeException e) {
       return node.laterFailure(failed("receiveFile " + uri, e));
     }
-    pipe.inputConsumedByFile = true;
+    pipes.receivingFile(pipe);
     worker(
         "ChannelClient.receiveFile",
         () -> {
+          IOException failure = null;
           try (OutputStream out = target) {
             pipe.input.transferTo(out);
-          } catch (IOException | RuntimeException e) {
-            DataLayer.log("channel " + pipe.token + " receiveFile failed: " + e);
+          } catch (IOException e) {
+            failure = e;
+          } catch (RuntimeException e) {
+            failure = new IOException(e);
           }
-          pipes.inputDone(pipe);
+          if (failure == null) {
+            pipes.inputDone(pipe);
+          } else {
+            DataLayer.log("channel " + pipe.token + " receiveFile failed: " + failure);
+            pipes.receiveFailed(pipe, DataLayer.INTERNAL_ERROR);
+          }
         });
     return node.later(null);
   }
@@ -236,6 +244,16 @@ final class DataLayerChannels implements ChannelPipes.Events {
             s.onChannelOpened(channel);
           }
         });
+  }
+
+  /**
+   * The peer's output ended. Decided on the main looper, after the {@code onChannelOpened} posted
+   * before it: an app that calls {@code receiveFile} there hears {@code onInputClosed} only when the
+   * file is written, even when the bytes and their end arrived together.
+   */
+  @Override
+  public void inputEnded(ChannelPipes.Pipe pipe) {
+    node.onMain(() -> pipes.settleInputEnd(pipe));
   }
 
   @Override

@@ -54,6 +54,13 @@ final class ChannelPipes {
     /** A peer opened [pipe] to this node. */
     void opened(Pipe pipe);
 
+    /**
+     * The peer closed its output: [pipe]'s input ends once its bytes are read. The listener calls
+     * {@link #inputDone} when the input side counts as closed: at once for a stream, or once {@code
+     * receiveFile} has written the file.
+     */
+    void inputEnded(Pipe pipe);
+
     /** [pipe]'s input side closed: the peer's output ended, or the channel closed. */
     void inputClosed(Pipe pipe, int reason, int errorCode);
 
@@ -80,8 +87,8 @@ final class ChannelPipes {
     private boolean closed;
     private boolean inputSideClosed;
     private boolean outputSideClosed;
-    /** {@code receiveFile} reads the input: its end is reported when the file is written. */
-    volatile boolean inputConsumedByFile;
+    /** {@code receiveFile} reads the input: its end is reported once the file is written. */
+    private boolean receivingFile;
 
     private Pipe(ChannelPipes owner, String token, String nodeId, String path, boolean local) {
       this.token = token;
@@ -148,7 +155,35 @@ final class ChannelPipes {
     }
   }
 
-  /** {@code receiveFile} finished writing what the input carried. */
+  /** {@code receiveFile} takes [pipe]'s input: {@link #settleInputEnd} leaves its end to it. */
+  void receivingFile(Pipe pipe) {
+    synchronized (pipe) {
+      pipe.receivingFile = true;
+    }
+  }
+
+  /**
+   * Decides, after the peer's output ended ({@link Events#inputEnded}), whether the input side is
+   * closed now: yes for a stream; for {@code receiveFile}, only when it calls {@link #inputDone}
+   * (the file is written) or {@link #receiveFailed}.
+   */
+  void settleInputEnd(Pipe pipe) {
+    synchronized (pipe) {
+      if (pipe.receivingFile) return;
+    }
+    inputDone(pipe);
+  }
+
+  /**
+   * {@code receiveFile} could not write the file: the channel closes with [errorCode] ({@code
+   * LOCAL_CLOSE} here, {@code REMOTE_CLOSE} on the peer) instead of the input closing normally,
+   * which apps take as "the file is ready".
+   */
+  void receiveFailed(Pipe pipe, int errorCode) {
+    close(pipe, errorCode);
+  }
+
+  /** [pipe]'s input side is closed normally: its stream was read to the end, or its file written. */
   void inputDone(Pipe pipe) {
     if (markInputClosed(pipe)) events.inputClosed(pipe, CLOSE_REASON_NORMAL, 0);
   }
@@ -180,9 +215,7 @@ final class ChannelPipes {
         pipe = get(token);
         if (pipe == null) return true;
         pipe.input.end(null);
-        if (!pipe.inputConsumedByFile && markInputClosed(pipe)) {
-          events.inputClosed(pipe, CLOSE_REASON_NORMAL, 0);
-        }
+        events.inputEnded(pipe);
         return true;
       case "channelClose":
         pipe = get(token);

@@ -24,6 +24,24 @@ public class ChannelPipesTest {
   static final class Recorder implements ChannelPipes.Events {
     final List<String> events = new ArrayList<>();
     final AtomicReference<ChannelPipes.Pipe> lastOpened = new AtomicReference<>();
+    /** The node's main looper: what {@code inputEnded} posts, run by {@link #idle}. */
+    final List<Runnable> looper = new ArrayList<>();
+    /** Whether {@code inputEnded} settles at once (a looper that is always idle). */
+    boolean immediate = true;
+    ChannelPipes pipes;
+
+    @Override
+    public void inputEnded(ChannelPipes.Pipe pipe) {
+      Runnable settle = () -> pipes.settleInputEnd(pipe);
+      if (immediate) settle.run();
+      else looper.add(settle);
+    }
+
+    void idle() {
+      List<Runnable> queued = new ArrayList<>(looper);
+      looper.clear();
+      for (Runnable r : queued) r.run();
+    }
 
     @Override
     public synchronized void opened(ChannelPipes.Pipe pipe) {
@@ -81,6 +99,8 @@ public class ChannelPipesTest {
               phone.receive(frame);
             },
             watchEvents);
+    phoneEvents.pipes = phone;
+    watchEvents.pipes = watch;
   }
 
   private static String readAll(InputStream in) throws IOException {
@@ -208,7 +228,7 @@ public class ChannelPipesTest {
   public void receiveFileReportsTheInputClosedWhenItIsDoneNotAtTheEnd() throws IOException {
     ChannelPipes.Pipe opened = phone.open("watch-sim", "/file");
     ChannelPipes.Pipe remote = watch.get(opened.token);
-    remote.inputConsumedByFile = true;
+    watch.receivingFile(remote);
     watchEvents.take();
     opened.output.write(new byte[] {9});
     opened.output.close();
@@ -216,6 +236,55 @@ public class ChannelPipesTest {
     readAll(remote.input);
     watch.inputDone(remote);
     assertEquals(List.of("inputClosed 0/0"), watchEvents.take());
+  }
+
+  /**
+   * The peer's bytes and their end arrive before the app's {@code onChannelOpened} has run (and
+   * called {@code receiveFile}): the end is only settled on the looper, after it, so {@code
+   * onInputClosed} still waits for the file.
+   */
+  @Test
+  public void anEndThatArrivesBeforeReceiveFileIsCalledStillWaitsForTheFile() throws IOException {
+    watchEvents.immediate = false;
+    ChannelPipes.Pipe opened = phone.open("watch-sim", "/file");
+    opened.output.write(new byte[] {1, 2, 3});
+    opened.output.close();
+    ChannelPipes.Pipe remote = watch.get(opened.token);
+    // onChannelOpened runs on the looper first, and the app calls receiveFile there.
+    watch.receivingFile(remote);
+    watchEvents.idle();
+    assertEquals(List.of("opened /file from phone-sim", "data in 3"), watchEvents.take());
+    readAll(remote.input);
+    watch.inputDone(remote);
+    assertEquals(List.of("inputClosed 0/0"), watchEvents.take());
+  }
+
+  @Test
+  public void aStreamsEndIsSettledOnTheLooper() throws IOException {
+    watchEvents.immediate = false;
+    ChannelPipes.Pipe opened = phone.open("watch-sim", "/p");
+    opened.output.close();
+    watchEvents.take();
+    watchEvents.idle();
+    assertEquals(List.of("inputClosed 0/0"), watchEvents.take());
+  }
+
+  /** A file that could not be written closes the channel with the error, never a normal end. */
+  @Test
+  public void aFailedReceiveFileClosesWithAnErrorInsteadOfANormalEnd() throws IOException {
+    ChannelPipes.Pipe opened = phone.open("watch-sim", "/file");
+    ChannelPipes.Pipe remote = watch.get(opened.token);
+    watch.receivingFile(remote);
+    opened.output.write(new byte[] {1});
+    opened.output.close();
+    watchEvents.take();
+    phoneEvents.take();
+    watch.receiveFailed(remote, 8);
+    assertEquals(List.of("inputClosed 3/8", "outputClosed 3/8", "closed 3/8"), watchEvents.take());
+    assertEquals(List.of("inputClosed 2/8", "closed 2/8"), phoneEvents.take());
+    // Nothing reports a normal end afterwards.
+    watch.inputDone(remote);
+    assertTrue(watchEvents.take().isEmpty());
   }
 
   @Test
