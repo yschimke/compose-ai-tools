@@ -266,8 +266,9 @@ Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `new
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
 `removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
-`alarm`, `job` and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app
-sent that nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`prompt`, `credentials` and `speak` ([below](#prompts-sign-in-and-the-keystore)), `alarm`, `job`
+and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app sent that
+nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -318,6 +319,10 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
+| `biometric` | `policy`? (`ask` / `succeed` / `cancel`), `answer`? (`succeed` / `fail` / `cancel` / `negative` / `lockout` / an error code), `requestId`?, `enrolled`?, `secure`? | the biometric prompt and the device-credential confirmation ([below](#prompts-sign-in-and-the-keystore)); `enrolled` and `secure` set what `BiometricManager` and `KeyguardManager` report |
+| `speech` | `policy`? (`ask` / `cancel`), `text`? (a string or several), `cancel`?, `requestId`? | answers `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` with what was "said" |
+| `credentials` | `policy`? (`auto` / `ask` / `cancel`), `answer`? (`{"id","password"}`, `{"type","data"}`, `save`, `none`, `cancel`), `requestId`?, `save`? (`{"id","password"}`), `forget`? | Credential Manager's sign-in and save requests (API 34+), and the saved passwords |
+| `clipboard` | `text`?, `label`?, `clear`? | the primary clip: sets it, or reads it back |
 | `alarms` | `fire`? (an index, or `"next"`), `exact`? (bool) | the alarms set through every context, soonest first, with `inMs`; `fire` delivers one now; `exact` grants or revokes exact alarms ([below](#alarms-jobs-and-downloads)) |
 | `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
 | `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
@@ -390,6 +395,39 @@ Every request ends with a `permissions` event, `state: "answered"`, listing what
 An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
 from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
+### Prompts, sign-in and the keystore
+
+**Biometric prompts.** A `BiometricPrompt.authenticate` (androidx.biometric's, on API 28+) raises a
+`prompt` event, `kind: biometric`, with its title, subtitle, description, negative button and
+allowed authenticators. Under the `ask` policy (the default with `--control`) it waits for
+`biometric` `answer`: `succeed`, `fail` (not recognised; the prompt stays up), `cancel`,
+`negative` (the negative button, `ERROR_NEGATIVE_BUTTON`), `lockout`, or an error code. The
+`succeed` and `cancel` policies answer at once (`cancel` is the default without `--control`).
+`enrolled: false` makes `canAuthenticate` report no biometrics; `secure: true` gives the device a
+screen lock, so `isDeviceSecure` is true and `createConfirmDeviceCredentialIntent` returns an intent
+whose start is the same kind of prompt (`kind: deviceCredential`, `RESULT_OK` on `succeed`).
+
+**Voice input.** `ACTION_RECOGNIZE_SPEECH` resolves (to Google's voice-input activity, as on most
+devices) and raises a `prompt` event, `kind: speech`; `speech` `text` answers it with
+`EXTRA_RESULTS` (and confidence scores), `cancel` backs out. **Text to speech** initialises as a
+device's engine does (`onInit(SUCCESS)` on the main thread, the device's language available), and
+each `speak` is a `speak` event, with the utterance's `onStart` and `onDone`; nothing is heard.
+**The clipboard** is read and written with `clipboard`.
+
+**Credential Manager** (API 34+, androidx.credentials' platform path): under the `auto` policy (the
+default) a request for passwords gets the saved one, as one-tap sign-in does, and anything else
+`TYPE_NO_CREDENTIAL`; a `CreatePasswordRequest` saves the password for the next request, and
+other creates (passkeys) are cancelled. `credentials` `save` adds a password beforehand. Under `ask`
+each request is a `credentials` event that waits for `answer`: `{"id","password"}`, any credential
+as `{"type","data"}` (the bundle a provider returns, such as a passkey's
+`androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON`), `save`, `none` or `cancel`.
+
+**AndroidKeyStore** is a JCA provider of the simulator's: `KeyStore.getInstance("AndroidKeyStore")`,
+`KeyGenerator` (AES, HMAC) and `KeyPairGenerator` (EC, RSA, each with a self-signed `CN=fake`
+certificate) work from a `KeyGenParameterSpec`, so androidx.security's `MasterKey` and
+`EncryptedSharedPreferences` and Tink's Android keysets start. The keys are software keys in memory:
+the spec's purposes, user-authentication requirement and attestation are not enforced, and a
+`restart` starts with an empty keystore.
 ### Alarms, jobs and downloads
 
 Robolectric records what an app schedules and runs none of it; here the system's side runs, each
@@ -1395,10 +1433,15 @@ What does not, or not yet:
   and the requesting activity is not paused while a request waits. Groups are approximated (a
   dialog per permission, not per group), and Android 16's health permissions that replace
   `BODY_SENSORS` are plain runtime permissions.
+- **Prompts and credentials.** The biometric and device-credential prompts, voice input and
+  Credential Manager are answered, not drawn ([above](#prompts-sign-in-and-the-keystore)); a
+  `CryptoObject` passed to a prompt is not checked against its key, Credential Manager below API 34 (Play
+  services' path) is not simulated, and `prepareGetCredential` is not answered. The keystore's
+  keys are software keys, kept in memory only.
 - **Background work.** Alarms, jobs and downloads run ([above](#alarms-jobs-and-downloads)), but
   there is no Doze, App Standby bucket or battery optimisation deferring them; a job's
   battery-not-low, storage-not-low and content-URI triggers are not checked, and a
-  `jobFinished(params, true)` is not rescheduled; a download has no notification, and is neither
+  `jobFinished(params, true)` retry waits its initial backoff each time, not a growing one; a download has no notification, and is neither
   paused nor retried. A foreground service's type is not checked against its manifest
   declaration or permissions.
 - **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
