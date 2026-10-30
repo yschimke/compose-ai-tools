@@ -136,7 +136,7 @@ final class Navigator {
     this.app = app;
     this.shadowApp = Shadow.extract(app);
     this.protocol = protocol;
-    this.permissions = new Permissions(app);
+    this.permissions = new Permissions(app, protocol, this::deliverPermissions);
     current = this;
   }
 
@@ -670,30 +670,22 @@ final class Navigator {
   final Permissions permissions;
 
   /**
-   * Answers a runtime permission request as the system's dialog would, by {@link Permissions}
-   * (granting unless told otherwise): the answers are applied, and the result reaches the
-   * requesting activity the way the dialog delivers it, so {@code onRequestPermissionsResult} and
-   * androidx's {@code ActivityResultRegistry} both see it. Robolectric has no permission dialog;
-   * the request would otherwise never complete.
+   * A runtime permission request: {@link Permissions} answers it as the system's dialog would, now
+   * or (under its {@code ask} policy) when the agent does. Robolectric has no permission dialog; the
+   * request would otherwise never complete.
    */
   private void answerPermissions(Intent request, int requestCode) {
     String[] names = request.getStringArrayExtra(EXTRA_REQUEST_PERMISSIONS_NAMES);
     if (names == null) names = new String[0];
-    int[] results = permissions.answer(names);
-    JSONArray granted = new JSONArray();
-    JSONArray denied = new JSONArray();
-    for (int i = 0; i < names.length; i++) {
-      (results[i] == PackageManager.PERMISSION_GRANTED ? granted : denied).put(names[i]);
-    }
-    protocol.event(
-        "permissions",
-        new Protocol.Json()
-            .put("granted", granted)
-            .put("denied", denied)
-            .put("requestCode", requestCode)
-            .object());
-    Activity requester = requesterOf(names, requestCode);
-    if (requester == null || requestCode < 0) return;
+    permissions.request(names, requestCode, requesterOf(names, requestCode));
+  }
+
+  /**
+   * Delivers a permission request's result the way the dialog does, so {@code
+   * onRequestPermissionsResult} and androidx's {@code ActivityResultRegistry} both see it.
+   */
+  private void deliverPermissions(
+      Activity requester, int requestCode, String[] names, int[] results) {
     Intent data =
         new Intent(ACTION_REQUEST_PERMISSIONS)
             .putExtra(EXTRA_REQUEST_PERMISSIONS_NAMES, names)
