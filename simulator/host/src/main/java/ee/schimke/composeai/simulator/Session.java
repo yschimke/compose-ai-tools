@@ -129,6 +129,19 @@ final class Session {
     displays.start();
     screen.start();
     if (wear != null) wear.start();
+    if (wear == null && FormFactor.current() == FormFactor.PHONE) {
+      Displays.edgeBack =
+          new EdgeBackGesture(
+              app,
+              navigator,
+              displayId -> {
+                try {
+                  key(KeyEvent.KEYCODE_BACK, false, displayId);
+                } catch (JSONException e) {
+                  throw new IllegalStateException(e);
+                }
+              });
+    }
     if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
