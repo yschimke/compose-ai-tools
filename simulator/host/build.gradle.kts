@@ -52,9 +52,14 @@ val androidJar: Provider<File> =
 // play-services-wearable, so the stubs are never packaged: they only give javac the signatures.
 val gmsStubs: SourceSet = sourceSets.create("gmsStubs")
 
+// Likewise for the androidx AppSearch types the AppSearch shadows (`Shadow*Storage`) name: the
+// APK's own androidx.appsearch supplies them at run time.
+val androidxStubs: SourceSet = sourceSets.create("androidxStubs")
+
 dependencies {
   "gmsStubsCompileOnly"(files(androidJar))
   compileOnly(gmsStubs.output)
+  compileOnly(androidxStubs.output)
 
   // Robolectric's simulator and the slices of Robolectric the plugin touches. Non-transitive: the
   // full graph pulls the 250 MB native runtime, and at run time all of it comes from the Android
