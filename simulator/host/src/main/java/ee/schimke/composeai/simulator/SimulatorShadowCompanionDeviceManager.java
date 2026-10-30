@@ -126,7 +126,9 @@ public class SimulatorShadowCompanionDeviceManager extends ShadowCompanionDevice
   @Override
   protected void associate(
       AssociationRequest request, Executor executor, CompanionDeviceManager.Callback callback) {
-    super.associate(request, executor, callback);
+    // Robolectric's executor overload calls the Handler one, which here answers too: record the
+    // request through the base shadow's Handler overload directly, and answer once.
+    super.associate(request, callback, (Handler) null);
     answer(request, callback, executor);
   }
 

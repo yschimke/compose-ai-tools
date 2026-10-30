@@ -63,6 +63,17 @@ public class CompanionDevicesTest {
   }
 
   @Test
+  public void associatingAKnownDeviceAgainKeepsOneAssociation() {
+    CompanionDevices.peerConnected("watch-sim", "Simulated Watch", false);
+    AtomicReference<CompanionDevices.Candidate> chosen = new AtomicReference<>();
+    CompanionDevices.associate(
+        CompanionDevices.DEVICE_PROFILE_WATCH, false, NO_BLUETOOTH, chosen::set);
+    assertEquals("watch-sim", chosen.get().nodeId);
+    assertEquals(1, CompanionDevices.associations().size());
+    assertEquals(1, CompanionDevices.find(chosen.get().address).id);
+  }
+
+  @Test
   public void aFilteredRequestListsBluetoothDevicesInRange() {
     CompanionDevices.peerConnected("watch-sim", "Simulated Watch", false);
     List<String[]> radios = new ArrayList<>();

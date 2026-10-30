@@ -179,11 +179,17 @@ final class CompanionDevices {
   /** Records [chosen]'s association (or none) and answers the app. */
   private static void resolve(Request request, Candidate chosen) {
     if (chosen != null) {
-      Association created;
       synchronized (CompanionDevices.class) {
-        int id = nextId++;
-        created = new Association(id, chosen.address, chosen.name, request.profile, chosen.nodeId);
-        associations.put(id, created);
+        // The app associating a device it already has gets that association, not a second one.
+        boolean known = false;
+        for (Association a : associations.values()) {
+          if (a.address.equalsIgnoreCase(chosen.address)) known = true;
+        }
+        if (!known) {
+          int id = nextId++;
+          associations.put(
+              id, new Association(id, chosen.address, chosen.name, request.profile, chosen.nodeId));
+        }
       }
       report("associated", request);
     } else {
@@ -194,9 +200,10 @@ final class CompanionDevices {
 
   /** The association [answer] created for [address], for the shadow's callback. */
   static synchronized Association find(String address) {
-    Association found = null;
-    for (Association a : associations.values()) if (a.address.equalsIgnoreCase(address)) found = a;
-    return found;
+    for (Association a : associations.values()) {
+      if (a.address.equalsIgnoreCase(address)) return a;
+    }
+    return null;
   }
 
   /** {@code {"cmd":"companion"}}: the associations; {@code policy}; {@code answer}. */
