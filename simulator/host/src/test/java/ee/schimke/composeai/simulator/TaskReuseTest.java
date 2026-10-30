@@ -38,4 +38,12 @@ public class TaskReuseTest {
           TaskReuse.bringsTaskForward(FLAG_ACTIVITY_NEW_TASK | flag, true, true, true, true));
     }
   }
+
+  @Test
+  public void theLauncherOverADeepLinkedRootStartsAnotherInstance() {
+    // ActivityStarter.complyActivityFlags: the task's root activity "with a different intent"
+    // starts a new instance on top of the task it brings forward (the known launcher-after-
+    // deep-link duplicate that apps guard with isTaskRoot()).
+    assertFalse(TaskReuse.bringsTaskForward(FLAG_ACTIVITY_NEW_TASK, true, false, true, false));
+  }
 }

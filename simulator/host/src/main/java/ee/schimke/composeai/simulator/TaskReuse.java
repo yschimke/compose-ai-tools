@@ -8,6 +8,11 @@ package ee.schimke.composeai.simulator;
  * starts the app: Horologist's {@code startRemoteOwnApp} on the watch had each request stack
  * another {@code MainActivity} over the last.
  *
+ * <p>The same activity with another intent is not reused: {@code
+ * ActivityStarter.complyActivityFlags} brings the task forward and starts a new instance on top
+ * ("launching the root activity of the task, but with a different intent"), unless {@code
+ * SINGLE_TOP} delivers it to the root, which {@link Navigator} handles.
+ *
  * <p>The simulator starts the app with a bare component intent where a launcher sends {@code
  * MAIN} / {@code LAUNCHER}, so a launcher intent also matches a root that was started bare. Pure
  * Java over the flags and the comparisons, so it is tested without the framework.
