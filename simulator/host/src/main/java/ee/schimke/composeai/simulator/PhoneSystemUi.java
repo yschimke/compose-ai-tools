@@ -203,6 +203,10 @@ final class PhoneSystemUi {
     if (bar == null) return;
     long now = SystemClock.uptimeMillis();
     if (headsUp != null && now >= headsUpUntil) hideHeadsUp();
+    if (volumePanel != null && now >= volumeUntil) {
+      windows.removeViewImmediate(volumePanel);
+      volumePanel = null;
+    }
     followApp();
     navigationBar.cycle();
     lockScreen.cycle();
@@ -211,6 +215,74 @@ final class PhoneSystemUi {
     if (now - lastTick < 1000) return;
     lastTick = now;
     refresh();
+  }
+
+  /**
+   * The volume panel a volume key brings up, as SystemUI's: a slider at the right edge with the
+   * media volume, which goes after a moment ({@code volume_panel}, its description the level).
+   */
+  void showVolume(int volume, int max) {
+    if (volumePanel == null) {
+      volumePanel = new VolumeView(context);
+      simId(volumePanel, "volume_panel");
+      android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+      WindowManager.LayoutParams params =
+          new WindowManager.LayoutParams(
+              dp(48),
+              dp(200),
+              WindowManager.LayoutParams.TYPE_STATUS_BAR + 20,
+              WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                  | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                  | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+              PixelFormat.TRANSLUCENT);
+      // Placed by position: Robolectric lays a window out from its x and y, not its gravity.
+      params.gravity = Gravity.TOP | Gravity.START;
+      params.x = metrics.widthPixels - dp(48) - dp(12);
+      params.y = (metrics.heightPixels - dp(200)) / 2;
+      params.setFitInsetsTypes(0);
+      params.setTitle("VolumePanel");
+      windows.addView(volumePanel, params);
+    }
+    volumePanel.level = max <= 0 ? 0 : volume / (float) max;
+    volumePanel.setContentDescription(volume + "/" + max);
+    volumePanel.invalidate();
+    volumeUntil = SystemClock.uptimeMillis() + VOLUME_MS;
+    protocol.event("volume", new Protocol.Json().put("volume", volume).put("max", max).object());
+  }
+
+  private static final long VOLUME_MS = 2000;
+  private VolumeView volumePanel;
+  private long volumeUntil;
+
+  /** The slider: a rounded track filled to the level. */
+  private final class VolumeView extends View {
+    float level;
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    VolumeView(Context context) {
+      super(context);
+      setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+      float w = getWidth();
+      float h = getHeight();
+      paint.setStyle(Paint.Style.FILL);
+      paint.setColor(night() ? 0xFF2D2F31 : 0xFFE9EEF6);
+      canvas.drawRoundRect(new RectF(0, 0, w, h), w / 2, w / 2, paint);
+      float pad = dp(6);
+      RectF track = new RectF(pad, pad, w - pad, h - pad);
+      paint.setColor(night() ? 0xFF444746 : 0xFFC4C7C5);
+      canvas.drawRoundRect(track, track.width() / 2, track.width() / 2, paint);
+      float top = track.bottom - (track.height() - track.width()) * level - track.width();
+      paint.setColor(0xFF0B57D0);
+      canvas.drawRoundRect(
+          new RectF(track.left, top, track.right, track.bottom),
+          track.width() / 2,
+          track.width() / 2,
+          paint);
+    }
   }
 
   /** Whether the shade is open over the app or the home screen. */

@@ -215,6 +215,7 @@ final class Session {
     WindowZoom.installMain(metrics.widthPixels, metrics.heightPixels);
     logcat.poll();
     notifications.cycle();
+    LayoutBounds.cycle();
     if (wear != null) wear.cycle();
     if (phoneUi != null) phoneUi.cycle();
     // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the wall clock.
@@ -343,6 +344,8 @@ final class Session {
       case "pick":
       case "assistant":
       case "appfunctions":
+      case "setprop":
+      case "sysprops":
         return true;
       default:
         return false;
@@ -524,6 +527,14 @@ final class Session {
         return device.display(c);
       case "getprop":
         return device.getprop(c);
+      case "setprop":
+        return device.setprop(c);
+      case "sysprops":
+        // The SYSPROPS_TRANSACTION poke (`service call activity 1599295570`): windows re-read.
+        LayoutBounds.apply();
+        return new Protocol.Json()
+            .put("output", "Result: Parcel(00000000    '....')")
+            .object();
       case "package":
         checkPackage(c);
         return device.packageInfo();
@@ -739,6 +750,9 @@ final class Session {
     }
     Protocol.Json json =
         new Protocol.Json().put("width", bitmap.getWidth()).put("height", bitmap.getHeight());
+    if (displayId == android.view.Display.DEFAULT_DISPLAY) {
+      json.put("rotation", display.rotation() * 90);
+    }
     if (c.has("path")) {
       File file = outputFile(c);
       File parent = file.getParentFile();
@@ -989,7 +1003,60 @@ final class Session {
     inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0), displayId);
     Protocol.Json reply = new Protocol.Json().put("keyCode", code);
     if (code == KeyEvent.KEYCODE_BACK) reply.put("via", "key");
+    if (displayId == android.view.Display.DEFAULT_DISPLAY) {
+      Integer volume = volumeKey(code);
+      if (volume != null) reply.put("volume", volume);
+    }
     return reply.object();
+  }
+
+  /**
+   * The volume keys, which the system acts on after the app has seen them (an app's own {@code
+   * onKeyDown} sees them first, as on a device): the media volume steps up, down or mutes, and the
+   * phone's system UI shows its volume panel. Returns the new volume, or null for another key.
+   */
+  /** The media volume before a mute, which muting again restores; 0 when not muted. */
+  private int unmutedVolume;
+
+  private Integer volumeKey(int code) {
+    int direction;
+    switch (code) {
+      case KeyEvent.KEYCODE_VOLUME_UP:
+        direction = android.media.AudioManager.ADJUST_RAISE;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_DOWN:
+        direction = android.media.AudioManager.ADJUST_LOWER;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_MUTE:
+        direction = android.media.AudioManager.ADJUST_TOGGLE_MUTE;
+        break;
+      default:
+        return null;
+    }
+    android.media.AudioManager audio = app.getSystemService(android.media.AudioManager.class);
+    int stream = android.media.AudioManager.STREAM_MUSIC;
+    if (direction == android.media.AudioManager.ADJUST_TOGGLE_MUTE) {
+      // Muting is the volume at zero, and muting
+      // again gives back the volume it had.
+      int now = audio.getStreamVolume(stream);
+      if (now > 0) {
+        unmutedVolume = now;
+        audio.setStreamVolume(stream, 0, 0);
+      } else if (unmutedVolume > 0) {
+        audio.setStreamVolume(stream, unmutedVolume, 0);
+        unmutedVolume = 0;
+      }
+    } else {
+      unmutedVolume = 0;
+      // One step, within the stream's range, as the system's volume keys move it.
+      int step = direction == android.media.AudioManager.ADJUST_RAISE ? 1 : -1;
+      int max = audio.getStreamMaxVolume(stream);
+      audio.setStreamVolume(
+          stream, Math.max(0, Math.min(max, audio.getStreamVolume(stream) + step)), 0);
+    }
+    int volume = audio.getStreamVolume(stream);
+    if (phoneUi != null) phoneUi.showVolume(volume, audio.getStreamMaxVolume(stream));
+    return volume;
   }
 
   private JSONObject text(String text, int displayId) {

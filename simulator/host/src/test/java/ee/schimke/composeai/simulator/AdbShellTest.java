@@ -267,8 +267,17 @@ public class AdbShellTest {
 
   @Test
   public void displayAndNetwork() {
-    assertEquals("+night", t("cmd uimode night yes").get("value"));
-    assertEquals("+notnight", t("cmd uimode night no").get("value"));
+    assertEquals("uimode", t("cmd uimode night yes").get("cmd"));
+    assertEquals("yes", t("cmd uimode night yes").get("night"));
+    assertEquals("auto", t("cmd uimode night auto").get("night"));
+    // Bare: the query Android Studio's Device Settings sends.
+    assertFalse(t("cmd uimode night").containsKey("night"));
+    assertThrows(AdbShell.UnsupportedException.class, () -> t("cmd uimode night maybe"));
+    // Layout bounds: the property, then the SYSPROPS_TRANSACTION poke.
+    assertEquals("debug.layout", t("setprop debug.layout true").get("name"));
+    assertEquals("true", t("setprop debug.layout true").get("value"));
+    assertEquals("sysprops", t("service call activity 1599295570").get("cmd"));
+    assertThrows(AdbShell.UnsupportedException.class, () -> t("service list"));
     assertEquals("1080x2400", t("wm size 1080x2400").get("size"));
     assertEquals(420, t("wm density 420").get("density"));
     assertEquals("reset", t("wm size reset").get("size"));

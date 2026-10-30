@@ -64,6 +64,12 @@ final class Device {
       case "get":
         {
           String value = get(resolver, namespace, key);
+          if (value == null
+              && namespace.equals("system")
+              && key.equals(Settings.System.FONT_SCALE)) {
+            // Never put: the scale the configuration has, as a device reports it.
+            value = String.valueOf(app.getResources().getConfiguration().fontScale);
+          }
           return json.put("value", value).put("output", String.valueOf(value)).object();
         }
       case "delete":
@@ -196,6 +202,7 @@ final class Device {
   private Map<String, String> properties() {
     Map<String, String> props = new LinkedHashMap<>();
     props.put("ro.build.version.sdk", String.valueOf(Build.VERSION.SDK_INT));
+    if (LayoutBounds.on()) props.put("debug.layout", "true");
     props.put("ro.build.version.release", Build.VERSION.RELEASE);
     props.put("ro.build.version.codename", Build.VERSION.CODENAME);
     props.put("ro.build.fingerprint", Build.FINGERPRINT);
@@ -215,6 +222,21 @@ final class Device {
     props.put("persist.sys.locale", Locale.getDefault().toLanguageTag());
     props.put("ro.composeai.simulator", "1");
     return props;
+  }
+
+  /**
+   * {@code setprop}: {@code debug.layout} is the one property the system acts on here (layout
+   * bounds, applied by the {@code SYSPROPS_TRANSACTION} poke that follows it, {@code sysprops});
+   * others are refused, as a device's shell user may not set them.
+   */
+  JSONObject setprop(JSONObject c) throws JSONException {
+    String name = c.getString("name");
+    String value = c.optString("value", "");
+    if (!name.equals("debug.layout")) {
+      throw new IllegalArgumentException("setprop " + name + ": only debug.layout is supported");
+    }
+    LayoutBounds.set(value.equals("true") || value.equals("1"), false);
+    return new Protocol.Json().put("name", name).put("value", value).put("output", "").object();
   }
 
   JSONObject getprop(JSONObject c) {
