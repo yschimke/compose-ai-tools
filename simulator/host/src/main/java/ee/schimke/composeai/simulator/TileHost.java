@@ -58,6 +58,9 @@ final class TileHost {
     /** The preview drawable's resource id, or 0. */
     final int preview;
 
+    /** A widget's container ({@code preferredType}, else its only {@code <container>}). */
+    int containerType = WidgetClient.LARGE;
+
     Item(ComponentName component, String kind, String label, String description, int preview) {
       this.component = component;
       this.kind = kind;
@@ -191,30 +194,46 @@ final class TileHost {
     String label = null;
     String description = null;
     int preview = 0;
+    String preferred = null;
+    List<String> containers = new ArrayList<>();
     int xml = widgetXml(service);
     if (xml != 0) {
       try (XmlResourceParser parser = app.getResources().getXml(xml)) {
         int event;
         while ((event = parser.next()) != XmlPullParser.END_DOCUMENT) {
           if (event != XmlPullParser.START_TAG) continue;
+          if (parser.getName().equals("container")) {
+            String type = parser.getAttributeValue(null, "type");
+            if (type != null) containers.add(type);
+            for (int i = 0; i < parser.getAttributeCount(); i++) {
+              if (preview == 0 && parser.getAttributeName(i).equals("previewImage")) {
+                preview = parser.getAttributeResourceValue(i, 0);
+              }
+            }
+            continue;
+          }
           for (int i = 0; i < parser.getAttributeCount(); i++) {
             String name = parser.getAttributeName(i);
             if (name.equals("label")) label = attribute(parser, i);
             else if (name.equals("description")) description = attribute(parser, i);
             else if (name.equals("previewImage")) preview = parser.getAttributeResourceValue(i, 0);
+            else if (name.equals("preferredType")) preferred = parser.getAttributeValue(i);
           }
-          break;
         }
       } catch (Exception e) {
         // An unreadable provider XML: the service's own label.
       }
     }
-    return new Item(
-        new ComponentName(service.packageName, service.name),
-        "widget",
-        label != null ? label : label(service),
-        description,
-        preview);
+    Item item =
+        new Item(
+            new ComponentName(service.packageName, service.name),
+            "widget",
+            label != null ? label : label(service),
+            description,
+            preview);
+    String type = preferred != null ? preferred : containers.size() == 1 ? containers.get(0) : null;
+    if ("SMALL".equalsIgnoreCase(type)) item.containerType = WidgetClient.SMALL;
+    return item;
   }
 
   private String attribute(XmlResourceParser parser, int i) {
@@ -388,6 +407,7 @@ final class TileHost {
             .put("label", item.label)
             .put("description", item.description)
             .put("preview", item.preview != 0)
+            .put("container", item.tile() ? null : item.containerType == WidgetClient.SMALL ? "small" : "large")
             .put("added", added.containsKey(item.key()));
     TileClient client = clients.get(item.key());
     if (client != null) {
