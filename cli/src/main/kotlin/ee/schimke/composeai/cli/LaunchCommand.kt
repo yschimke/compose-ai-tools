@@ -5,6 +5,7 @@ import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.awt.GraphicsEnvironment
+import java.io.Closeable
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -81,12 +82,25 @@ internal class LaunchCommand(private val args: List<String>) {
     val converterJars = listOf(hostJar) + dex2jarJars
     val cache = ApkConversionCache(composeAiCacheDir("simulator"))
     val stamp = ApkConversionCache.converterStamp(converterJars, androidJar)
+    // The in-use locks on the cache entries the simulators run from. Kept reachable, and closed
+    // only once every simulator has exited ([finish]): a lock whose channel were collected would be
+    // released, and another launch could prune the jar from under a running simulator.
+    val inUse = mutableListOf<Closeable>()
+    fun finish(exit: Int): Nothing {
+      inUse.forEach { runCatching { it.close() } }
+      exitProcess(exit)
+    }
     fun classesOf(apk: File): File {
       val entry =
-        cache.ensure(apk, stamp) { out ->
-          System.err.println("compose-preview launch: converting ${apk.name} (once per APK)")
-          convert(java, converterJars, apk, out, androidJar)
+        cache.ensure(apk, stamp) { out, previous ->
+          System.err.println(
+            "compose-preview launch: converting ${apk.name} (once per APK" +
+              (if (previous != null) "; reusing the unchanged classes of its previous build)"
+              else ")")
+          )
+          convert(java, converterJars, apk, out, androidJar, previous)
         }
+      inUse += cache.use(entry)
       if (verbose || !entry.cached) {
         System.err.println(
           "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"}: " +
@@ -214,13 +228,12 @@ internal class LaunchCommand(private val args: List<String>) {
           options.copy(dataLayer = DataLayerNode(hubPort = 0, device = device, agent = true)),
         )
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
     if (pair == null || pairClasses == null) {
       val command = commandFor(apk, classes, options)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      val exit = ProcessBuilder(command).inheritIO().runTiedToLauncher()
-      exitProcess(exit)
+      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
 
     val hub =
@@ -258,7 +271,7 @@ internal class LaunchCommand(private val args: List<String>) {
     }
     val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
     hub.close()
-    exitProcess(exit)
+    finish(exit)
   }
 
   /**
@@ -326,10 +339,13 @@ internal class LaunchCommand(private val args: List<String>) {
     apk: File,
     out: File,
     androidJar: File,
+    previous: File?,
   ): String {
     for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
       val process =
-        ProcessBuilder(converterCommand(java.binary, converterJars, apk, out, androidJar, heap))
+        ProcessBuilder(
+            converterCommand(java.binary, converterJars, apk, out, androidJar, heap, previous)
+          )
           .redirectError(ProcessBuilder.Redirect.INHERIT)
           .start()
       val summary = process.inputStream.bufferedReader().readText()
@@ -456,8 +472,9 @@ internal class LaunchCommand(private val args: List<String>) {
       out: File,
       androidJar: File,
       heap: String,
+      previous: File? = null,
     ): List<String> =
-      listOf(
+      listOfNotNull(
         java.path,
         "-Xmx$heap",
         // A single-threaded batch job: the serial collector's footprint is the smallest, and it
@@ -470,6 +487,7 @@ internal class LaunchCommand(private val args: List<String>) {
         apk.path,
         out.path,
         androidJar.path,
+        previous?.path,
       )
 
     /**
