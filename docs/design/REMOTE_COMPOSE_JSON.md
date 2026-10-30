@@ -164,7 +164,14 @@ compose-preview rc compile <doc.json> -o <doc.rc>   authoring JSON -> binary doc
 compose-preview rc dump <doc.rc> [--compact] [-o f] binary document -> document JSON
 compose-preview rc dump <dir> [--compact]           every .rc under <dir> -> <stem>.rc.json
 compose-preview rc header <doc.rc> [--json]         declared header only, without inflating
+compose-preview rc upload <doc.rc> [--serve-url URL] [--serve-token T] [--name LABEL] [--json]
+                                                    expiring permalink on a serve --accept-docs host
 ```
+
+`upload` is the one subcommand that is not offline: it posts the document to a host's
+[document lane](../public-preview-server.md#sharing-a-document---accept-docs) and prints the
+absolute `/d/<id>` link. The host is resolved and confirmed exactly as for `share-preview
+--mechanism serve`, and the file is sniffed locally first so a non-document never leaves the machine.
 
 The directory mode is how a catalog gets its documents into a published branch: `renders/` holds one
 `.rc` per Remote preview, and an artifact branch carrying only PNGs gives a reviewer nothing to diff.

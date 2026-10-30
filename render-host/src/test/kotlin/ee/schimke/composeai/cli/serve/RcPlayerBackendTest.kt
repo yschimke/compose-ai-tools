@@ -113,9 +113,9 @@ class RcPlayerBackendTest {
     // They key assets staged in already-published catalogs.
     assertEquals("js", RcPlayerBackend.CAMAELON_JS.rcCompareLane)
     assertEquals("embedded", RcPlayerBackend.ANDROIDX_EMBEDDED.rcCompareLane)
+    assertEquals("cmp-android", RcPlayerBackend.CMP_ANDROID.rcCompareLane)
     assertEquals("cmp-jvm", RcPlayerBackend.CMP_JVM.rcCompareLane)
     assertEquals("cmp-wasm", RcPlayerBackend.CMP_WASM.rcCompareLane)
     assertNull(RcPlayerBackend.ANDROIDX_VIEW.rcCompareLane)
-    assertNull(RcPlayerBackend.CMP_ANDROID.rcCompareLane)
   }
 }

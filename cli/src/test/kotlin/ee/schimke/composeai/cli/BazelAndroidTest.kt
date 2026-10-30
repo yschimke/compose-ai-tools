@@ -140,6 +140,48 @@ class BazelAndroidTest {
   }
 
   @Test
+  fun `a link script the execution root lacks resolves from the workspace`() = fixture { root ->
+    // The CLI-installed aspect's link.sh is a workspace source file under .compose-preview/;
+    // some execution roots plant only the packages a build used (compose-ai-tools#5945).
+    listOf("aapt2", "jdk/bin/javac", "android.jar").forEach { root.file(it) }
+    val workspace = root.resolve("workspace").apply { mkdirs() }
+    workspace.file(".compose-preview/bazel/android/link.sh", "#!/bin/sh\n")
+    val artifacts = androidArtifacts(root)
+    val link =
+      AndroidLinkInputs.Builder(
+          ".compose-preview/bazel/android/link.sh",
+          "aapt2",
+          "jdk",
+          "android.jar",
+          listOf("com.example.ui"),
+          emptyList(),
+        )
+        .build()
+    val withLink =
+      artifacts
+        .newBuilder()
+        .apply {
+          android = checkNotNull(artifacts.android).newBuilder().apply { this.link = link }.build()
+        }
+        .build()
+    assertEquals(
+      workspace.resolve(".compose-preview/bazel/android/link.sh").absoluteFile,
+      checkNotNull(withLink.resolve(root, workspace).android?.link).script,
+    )
+    // Without a workspace to fall back on, the link block is dropped, as before.
+    assertNull(withLink.resolve(root).android?.link)
+    // A build output never resolves from the workspace: a stale checkout file must not stand in
+    // for a jar the build did not materialize.
+    workspace.file("bin/stale.jar")
+    val stale = artifacts.newBuilder().apply { runtimeJars = runtimeJars + "bin/stale.jar" }.build()
+    assertTrue(
+      assertFailsWith<IllegalArgumentException> { stale.resolve(root, workspace) }
+        .message!!
+        .contains("not materialized")
+    )
+  }
+
+  @Test
   fun `schema 1 artifacts carrying an android block are refused`() = fixture { root ->
     val encoded = bazelJson.encodeToString(androidArtifacts(root))
     assertFailsWith<IllegalArgumentException> {
@@ -328,26 +370,48 @@ class BazelAndroidTest {
       val property = DaemonSidecarProvision.sidecarProperty("lib-daemon-android")
       val previous = System.getProperty(property)
       System.setProperty(property, sidecar.absolutePath)
-      val descriptor =
+      fun descriptor(sandboxCount: Int?, pngOnly: Boolean = false) =
+        DaemonLaunchBuilder.decode(
+          prepareBazelDaemon(
+              artifacts,
+              PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
+              root,
+              bazelClockPackages(BazelBuildConfig(), artifacts.android),
+              sandboxCount,
+              pngOnly,
+            )
+            .readText()
+        )
+      val (prepared, oneShot) =
         try {
-          DaemonLaunchBuilder.decode(
-            prepareBazelDaemon(
-                artifacts,
-                PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
-                root,
-                bazelClockPackages(BazelBuildConfig(), artifacts.android),
-              )
-              .readText()
-          )
+          descriptor(null) to descriptor(oneShotSandboxCount(1), pngOnly = true)
         } finally {
           if (previous == null) System.clearProperty(property)
           else System.setProperty(property, previous)
         }
       assertEquals(
         "com.example.ui.,androidx.wear.compose.",
-        descriptor.systemProperties["composeai.render.clockPackages"],
+        prepared.systemProperties["composeai.render.clockPackages"],
       )
+      // A long-lived daemon keeps the daemon's own pool; a one-shot render of one preview boots
+      // one sandbox rather than five (compose-ai-tools#5945).
+      assertNull(prepared.systemProperties["composeai.daemon.sandboxCount"])
+      // The wire version `initialize` sends, and slot 0 answering it while a pool boots (#6114).
+      assertEquals("2", prepared.systemProperties["composeai.daemon.protocolVersion"])
+      assertEquals("true", prepared.systemProperties["composeai.daemon.backgroundSandboxBoot"])
+      assertEquals("1", oneShot.systemProperties["composeai.daemon.sandboxCount"])
+      // A PNG-only render runs no post-capture extractor (#6104); `prepare` keeps them all.
+      assertNull(prepared.systemProperties["composeai.daemon.postCaptureKinds"])
+      assertEquals("none", oneShot.systemProperties["composeai.daemon.postCaptureKinds"])
     }
+
+  @Test
+  fun `a one-shot render boots a sandbox per preview, up to the warm-spare pool`() {
+    assertEquals(1, oneShotSandboxCount(0))
+    assertEquals(1, oneShotSandboxCount(1))
+    assertEquals(3, oneShotSandboxCount(3))
+    assertEquals(5, oneShotSandboxCount(40))
+  }
 
   @Test
   fun `android bundles carry the linked resources where the bundle replay reads them`() =

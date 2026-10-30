@@ -75,6 +75,48 @@ class DaemonLaunchBuilderTest {
   }
 
   @Test
+  fun `an unset sourceWatch is left out, so released strict readers still parse the file`() {
+    val descriptor =
+      DaemonLaunchBuilder.build(
+        modulePath = ":app",
+        variant = "debug",
+        mainClass = "Main",
+        classpath = emptyList(),
+        jvmArgs = emptyList(),
+        systemProperties = emptyMap(),
+        workingDirectory = "/x",
+        manifestPath = "/x/p.json",
+      )
+    val encoded = DaemonLaunchBuilder.encode(descriptor)
+    assertThat(encoded).doesNotContain("sourceWatch")
+    assertThat(encoded).contains("\"btaCompile\": null")
+
+    val watched =
+      DaemonLaunchBuilder.encode(
+        descriptor.copy(sourceWatch = SourceWatch(sourceDirs = listOf("/x/src/main/kotlin")))
+      )
+    assertThat(DaemonLaunchBuilder.decode(watched).sourceWatch?.sourceDirs)
+      .containsExactly("/x/src/main/kotlin")
+  }
+
+  @Test
+  fun `decode ignores fields a newer builder added`() {
+    val descriptor =
+      DaemonLaunchBuilder.build(
+        modulePath = ":app",
+        variant = "debug",
+        mainClass = "Main",
+        classpath = emptyList(),
+        jvmArgs = emptyList(),
+        systemProperties = emptyMap(),
+        workingDirectory = "/x",
+        manifestPath = "/x/p.json",
+      )
+    val newer = DaemonLaunchBuilder.encode(descriptor).replaceFirst("{", "{\"fromTheFuture\": 1,")
+    assertThat(DaemonLaunchBuilder.decode(newer)).isEqualTo(descriptor)
+  }
+
+  @Test
   fun `published schema metadata matches the descriptor schema version`() {
     val resource =
       checkNotNull(javaClass.getResource("/META-INF/compose-preview/daemon-launch-schema.json"))

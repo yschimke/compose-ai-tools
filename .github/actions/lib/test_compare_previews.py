@@ -1188,6 +1188,30 @@ class CompareMarkdownTest(unittest.TestCase):
         # Marker comment so subsequent runs can edit-in-place.
         self.assertIn("<!-- preview-diff -->", out)
 
+    def test_a_large_unchanged_set_is_a_count_not_a_list(self):
+        # ~800 unchanged names were most of a 25 KB comment on every PR.
+        n = cp.UNCHANGED_LIST_MAX_FUNCTIONS + 1
+        previews = [_entry(id="Changed", function="F", sha="new", png="/c.png")]
+        baselines = {"app/Changed": {"sha256": "old", "functionName": "F"}}
+        for i in range(n):
+            previews.append(_entry(id=f"U{i}", function=f"Fn{i}", sha=f"s{i}", png=f"/u{i}.png"))
+            baselines[f"app/U{i}"] = {"sha256": f"s{i}", "functionName": f"Fn{i}"}
+        out = self._run({"previews": previews}, baselines)
+        self.assertIn(f"_Unchanged ({n} function(s), {n} variant(s))._", out)
+        self.assertNotIn("`Fn0`", out)
+
+    def test_a_small_unchanged_set_is_still_listed(self):
+        out = self._run(
+            {"previews": [
+                _entry(id="Changed", function="F", sha="new", png="/c.png"),
+                _entry(id="U", function="Kept", sha="s", png="/u.png"),
+            ]},
+            {"app/Changed": {"sha256": "old", "functionName": "F"},
+             "app/U": {"sha256": "s", "functionName": "Kept"}},
+        )
+        self.assertIn("<details><summary>Unchanged (1 function(s), 1 variant(s))</summary>", out)
+        self.assertIn("- `Kept`", out)
+
     def test_urls_pin_to_sha_refs_not_branch_names(self):
         # The whole point of using refs over branch names: the comment
         # survives compose-preview/main and compose-preview/pr advancing

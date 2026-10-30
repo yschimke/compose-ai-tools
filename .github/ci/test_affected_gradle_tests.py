@@ -3,6 +3,7 @@
 import importlib.util
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -141,6 +142,28 @@ class AffectedGradleTestsTest(unittest.TestCase):
 
     def test_unknown_path_runs_full(self):
         self.assertEqual(mod.resolve(["new-root/x.kt"], self.config, self.projects, self.root), "full")
+
+    def test_why_names_the_path_that_forced_the_full_suite(self):
+        why = []
+        mod.resolve(["core/src/Core.kt", "gradle/libs.versions.toml"], self.config, self.projects, self.root, why)
+        self.assertEqual(why, ["`gradle/libs.versions.toml` is a global build input: running the full suite."])
+
+    def test_why_names_changed_projects_and_their_dependents(self):
+        why = []
+        mod.resolve(["core/src/Core.kt"], self.config, self.projects, self.root, why)
+        self.assertEqual(why, ["Changed projects: `:core`.", "Their dependents: `:app`."])
+
+    def test_summary_lists_reasons_and_tasks(self):
+        summary = self.root / "summary.md"
+        with unittest.mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(summary)}):
+            mod.write_summary(":core:test :app:test", ["Changed projects: `:core`."])
+        text = summary.read_text()
+        self.assertIn("- Changed projects: `:core`.", text)
+        self.assertIn("- `:app:test`", text)
+
+    def test_an_unwritable_summary_never_fails_the_resolver(self):
+        with unittest.mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(self.root / "missing" / "x.md")}):
+            mod.write_summary("full", ["anything"])
 
 
 class ModuleUnitTestsGateTest(unittest.TestCase):

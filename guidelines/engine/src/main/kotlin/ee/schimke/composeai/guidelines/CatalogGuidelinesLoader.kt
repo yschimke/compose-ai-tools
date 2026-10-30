@@ -130,7 +130,7 @@ public object CatalogGuidelinesLoader {
   }
 
   private val DEFAULT_HTTP: OkHttpClient =
-    OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+    SharedOkHttpClient.client.newBuilder().callTimeout(30, TimeUnit.SECONDS).build()
 }
 
 /** The surfaces a subject can be: a whole screen, a widget, or a component shown on its own. */

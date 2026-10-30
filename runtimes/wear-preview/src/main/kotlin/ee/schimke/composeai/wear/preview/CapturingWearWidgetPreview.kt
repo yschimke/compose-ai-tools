@@ -18,7 +18,7 @@ import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.tooling.preview.WearWidgetPreview
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
-import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
+import ee.schimke.composeai.rcembedded.player.resources.RemoteImageSupport
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -107,12 +107,22 @@ internal fun CapturingWearWidgetPreviewOnLane(
       player == WearWidgetPreviewPlayer.ANDROIDX_EMBEDDED &&
       embeddedWearWidgetPlayerAvailable
   ) {
-    CmpWearWidgetPlayer(bytes = captured, params = params)
+    // A daemon render's `overrides.remoteCompose.namedValues`, when the connector carries any
+    // (#401). Only the embedded lane can seed them; upstream's View player takes no seed, so there
+    // the connector is left to report them unapplied.
+    val namedValues = if (remoteComposeConnectorAvailable) connectorNamedValues() else emptyMap()
+    if (namedValues.isNotEmpty() && seededEmbeddedPlayerAvailable) {
+      SeededCmpWearWidgetPlayer(bytes = captured, params = params, namedValues = namedValues)
+    } else {
+      CmpWearWidgetPlayer(bytes = captured, params = params)
+    }
   } else {
     WearWidgetPreview(
       params = params,
       background = background,
-      useSafeFallbackRendererVersion = useSafeFallbackRendererVersion,
+      // Upstream renamed this parameter in glance-wear alpha21; same meaning (pin the renderer to
+      // `RendererVersion.SAFE_FALLBACK_VERSION`), so this module keeps its own name for it.
+      useBaselineHostVersion = useSafeFallbackRendererVersion,
       content = content,
     )
   }

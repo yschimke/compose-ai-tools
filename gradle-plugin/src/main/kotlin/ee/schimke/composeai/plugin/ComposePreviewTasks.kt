@@ -375,10 +375,10 @@ internal object ComposePreviewTasks {
       ) {
         onlyIf { extension.enabled.get() }
         // Lazy matching so compile tasks registered later are still wired.
-        dependsOn(project.tasks.matching { it.name in DESKTOP_COMPILE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_COMPILE_TASK_CANDIDATES))
         // Lottie assets from processed resources (desktop only).
         resourceDirs.from(sourceResourceDirs)
-        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
@@ -442,7 +442,7 @@ internal object ComposePreviewTasks {
         description = "Render all previews to PNG"
         dependsOn(discoverTask)
         dependsOn(renderClasspathGuard)
-        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+        dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
@@ -526,15 +526,20 @@ internal object ComposePreviewTasks {
     // `build/processedResources/<sourceSet>/main`), so bundles carry classpath resources; missing
     // means none.
     val moduleResourcesDirProvider: Provider<Directory> =
-      project.providers.provider {
-        val candidates =
-          listOf(
-            project.layout.buildDirectory.dir("resources/main").orNull,
-            project.layout.buildDirectory.dir("processedResources/jvm/main").orNull,
-            project.layout.buildDirectory.dir("processedResources/desktop/main").orNull,
-          )
-        candidates.firstOrNull { it != null && it.asFile.isDirectory }
-      }
+      project.layout.dir(
+        FirstExistingPathValueSource.of(
+          project,
+          project.layout.buildDirectory.map { build ->
+            listOf(
+                "resources/main",
+                "processedResources/jvm/main",
+                "processedResources/desktop/main",
+              )
+              .map { build.dir(it).asFile }
+          },
+          directory = true,
+        )
+      )
 
     return project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
       // Skip non-renderable pure KMP-Android modules: they discover 0 previews and the bundle task
@@ -634,7 +639,7 @@ internal object ComposePreviewTasks {
       // Package processed resources into `classes/app.jar`: without this ordering, a clean build
       // can pack before `processResources`, and a live re-render from the bundle fails on missing
       // fonts.
-      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+      dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
     }
   }
 
@@ -755,6 +760,10 @@ internal object ComposePreviewTasks {
         task = this,
         userRuntimeConfig = project.configurations.findByName(dependencyConfigName()),
       )
+      // What the daemon's compilation is built from, for the descriptor's `sourceWatch`.
+      ee.schimke.composeai.plugin.daemon.SourceWatchInputs.desktop(this, project) {
+        dependencyConfigName()
+      }
       // Shares its FQN with `:daemon:android`'s; the desktop jar is first on the classpath.
       mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Daemon classes first so [mainClass] resolves. A lazy artifact view keeps the classpath
@@ -835,15 +844,14 @@ internal object ComposePreviewTasks {
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
-      // See `DaemonBootstrapTask.previewsManifest`; a null provider leaves the `@Optional` input
-      // unset.
+      // See `DaemonBootstrapTask.previewsManifest`; an absent value leaves the `@Optional` input
+      // unset, checked at execution rather than as a configuration-cache input.
       previewsManifest.fileProvider(
-        previewOutputDir.flatMap { dir ->
-          project.providers.provider {
-            val f = dir.file("previews.json").asFile
-            if (f.isFile) f else null
-          }
-        }
+        FirstExistingPathValueSource.of(
+          project,
+          previewOutputDir.map { listOf(it.file("previews.json").asFile) },
+          directory = false,
+        )
       )
       // Ordering only, as on Android: the provider carries no dependency, and `dependsOn` would
       // prevent warming before discovery.
@@ -851,7 +859,7 @@ internal object ComposePreviewTasks {
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
       // Stage resources before emitting the descriptor.
-      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
+      dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       group = "compose preview"
       description =
         "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
@@ -984,8 +992,8 @@ internal object ComposePreviewTasks {
   /**
    * Stage-2 BTA wiring for the desktop daemon-start task; [setupBtaConfigurations] must run first.
    *
-   * The Kotlin version comes from `libs.versions.toml`; other consumers get a fallback. TODO: use
-   * KGP's `KotlinPluginWrapper.kotlinPluginVersion` once we take a compile-time KGP dependency.
+   * The Kotlin version is the consumer's applied Kotlin Gradle plugin's; see
+   * [resolveConsumerKotlinVersion].
    */
   private fun wireDesktopBtaInputs(
     project: Project,
@@ -1019,8 +1027,8 @@ internal object ComposePreviewTasks {
    * and mirrors them into daemon system properties for `DefaultBtaCompileService.fromSysprops()`.
    * [setupBtaConfigurations] must run first.
    *
-   * The property names duplicate `:daemon:core`'s `DefaultBtaCompileService.SYSPROP_*` (separate
-   * builds); keep in sync.
+   * The property names duplicate `DefaultBtaCompileService.SYSPROP_*` in compose-preview-daemon's
+   * `daemon-compile` (separate builds); keep in sync.
    */
   internal fun wireBtaInputs(
     project: Project,
@@ -1113,21 +1121,43 @@ internal object ComposePreviewTasks {
       .any { name -> project.configurations.getByName(name).dependencies.isNotEmpty() }
 
   /**
-   * The consumer's Kotlin version from `libs.versions.toml`. The BTA impl must exactly match the
-   * compiler version. Falls back to [KOTLIN_VERSION_FALLBACK] (our bundled Kotlin), which is wrong
-   * for arbitrary consumers; follow-up: use KGP's `kotlinPluginVersion`.
+   * The consumer's Kotlin compiler version, which the BTA impl must match exactly. The applied
+   * Kotlin Gradle plugin is the authority; the `libs` catalog's `kotlin` version and then
+   * [KOTLIN_VERSION_FALLBACK] cover a build where it can't be read.
    */
-  private fun resolveConsumerKotlinVersion(project: Project): String {
+  private fun resolveConsumerKotlinVersion(project: Project): String =
+    kotlinPluginVersion(project) ?: catalogKotlinVersion(project) ?: KOTLIN_VERSION_FALLBACK
+
+  /**
+   * KGP's `getKotlinPluginVersion`, loaded through an applied Kotlin plugin's own class loader: KGP
+   * applied from a buildscript this plugin's class loader can't see is still found. No compile
+   * dependency on KGP.
+   */
+  private fun kotlinPluginVersion(project: Project): String? =
+    project.plugins
+      .map { it.javaClass.classLoader }
+      .filter { it != null }
+      .distinct()
+      .firstNotNullOfOrNull { loader ->
+        runCatching {
+          Class.forName("org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt", false, loader)
+            .getMethod("getKotlinPluginVersion", Project::class.java)
+            .invoke(null, project) as? String
+        }
+          .getOrNull()
+          ?.takeIf { it.isNotBlank() }
+      }
+
+  private fun catalogKotlinVersion(project: Project): String? {
     val catalogs =
       project.extensions.findByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java)
-        ?: return KOTLIN_VERSION_FALLBACK
-    val catalog =
-      runCatching { catalogs.named("libs") }.getOrNull() ?: return KOTLIN_VERSION_FALLBACK
-    return catalog.findVersion("kotlin").orElse(null)?.requiredVersion ?: KOTLIN_VERSION_FALLBACK
+        ?: return null
+    val catalog = runCatching { catalogs.named("libs") }.getOrNull() ?: return null
+    return catalog.findVersion("kotlin").orElse(null)?.requiredVersion
   }
 
   /** See [resolveConsumerKotlinVersion]. Bumped in lockstep with the plugin's own KGP. */
-  private const val KOTLIN_VERSION_FALLBACK = "2.3.21"
+  private const val KOTLIN_VERSION_FALLBACK = "2.4.21"
 
   /**
    * `composePreview.tier`: `"fast"` (case-insensitive) skips captures above [HEAVY_COST_THRESHOLD];
@@ -1492,7 +1522,7 @@ internal object ComposePreviewTasks {
       description =
         "Compile sources without running composePreviewDiscover — used by the VS Code daemon save path."
       onlyIf { extension.enabled.get() }
-      dependsOn(project.tasks.matching { it.name in compileTaskNames })
+      dependsOn(optionalTaskDependencies(project, compileTaskNames))
     }
   }
 

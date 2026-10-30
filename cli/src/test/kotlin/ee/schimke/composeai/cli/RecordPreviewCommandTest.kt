@@ -9,8 +9,22 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class RecordPreviewCommandTest {
+  @Test
+  fun `encode waits longer for a recording with more pixels to encode`() {
+    // A short recording keeps the minute it always had.
+    val short = encodeTimeout(10, 320, 240)
+    assertTrue(short > 60.seconds && short < 62.seconds, "$short")
+    // 331 frames at 945x787 timed out in a minute; it now gets about nine.
+    val long = encodeTimeout(331, 945, 787)
+    assertTrue(long > 8.minutes && long < 10.minutes, "$long")
+    // Never unbounded.
+    assertEquals(30.minutes, encodeTimeout(100_000, 4000, 4000))
+  }
+
   @Test
   fun `record format inference covers every supported artifact extension`() {
     val command = RecordPreviewCommand(emptyList())

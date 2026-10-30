@@ -113,7 +113,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure.
 - [Configuration-only plugin](docs/CONFIG_ONLY_PLUGIN.md) — commit `composePreview { }` config to your build without pinning the rendering runtime.
 - [PR review workflow](docs/PR_REVIEW_WORKFLOW.md) — reusable, preview-gated AI PR review (Codex / Claude / Gemini).
-- [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; consuming `-SNAPSHOT` builds.
+- [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; testing unreleased builds locally.
 - [Architecture (contributor)](docs/AGENT_GUIDE.md) — class-by-class map of the four-stage pipeline.
 - [Contributor docs index](docs/README.md) — the full map of the `docs/` tree.
 - [Releases](https://github.com/yschimke/compose-ai-tools/releases) ·

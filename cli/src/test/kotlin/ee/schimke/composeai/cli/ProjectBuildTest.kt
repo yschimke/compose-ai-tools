@@ -64,16 +64,54 @@ class ProjectBuildTest {
   }
 
   @Test
-  fun `BUILD-only and Blaze workspaces are detected without executing tools`() = fixture { root ->
+  fun `BUILD-only and WORKSPACE builds are detected without executing tools`() = fixture { root ->
     val app =
       root.resolve("app").apply {
         mkdir()
         resolve("BUILD").writeText("")
       }
     assertEquals(ProjectBuild(ProjectBuildKind.BAZEL, root), detectProjectBuild(app))
-    root.resolve(".blazerc").writeText("")
+    root.resolve("WORKSPACE").writeText("")
     assertEquals(ProjectBuild(ProjectBuildKind.BAZEL, root), detectProjectBuild(app))
-    assertEquals("blaze", selectBazelBuildCommand(root, "", override = null).command)
+    assertEquals(root, detectBazelRoot(app))
+    assertEquals("bazel", selectBazelBuildCommand(root, "", override = null).command)
+    // A custom wrapper is named by the environment, not by a workspace marker.
+    assertEquals(
+      "/opt/bazel-wrapper",
+      selectBazelBuildCommand(root, "", override = "/opt/bazel-wrapper").command,
+    )
+  }
+
+  @Test
+  fun `blazerc is not a workspace marker and does not pick the build command`() = fixture { root ->
+    val nested = root.resolve("nested").apply { mkdir() }
+    nested.resolve(".blazerc").writeText("")
+    assertNull(detectProjectBuild(nested))
+    assertNull(detectBazelRoot(nested))
+    assertFailsWith<IllegalStateException> {
+      previewBuildRoute(listOf("--build-system", "bazel"), nested)
+    }
+    // A BUILD file elsewhere still makes it a Bazel build, rooted at the VCS root, not at .blazerc.
+    nested.resolve("BUILD").writeText("")
+    assertEquals(ProjectBuild(ProjectBuildKind.BAZEL, root), detectProjectBuild(nested))
+    val bin =
+      root.resolve("bin").apply {
+        mkdir()
+        resolve("bazel").writeText("")
+        resolve("bazel").setExecutable(true)
+      }
+    assertEquals("bazel", selectBazelBuildCommand(nested, bin.path, override = null).command)
+    assertEquals("bazel", selectBazelBuildCommand(nested, "", override = null).command)
+  }
+
+  @Test
+  fun `blaze is no longer a build system name`() = fixture { root ->
+    root.resolve("MODULE.bazel").writeText("")
+    val error =
+      assertFailsWith<IllegalStateException> {
+        previewBuildRoute(listOf("--build-system", "blaze"), root)
+      }
+    assertTrue(error.message!!.contains("expected auto, gradle, bazel or buck"))
   }
 
   @Test
@@ -117,7 +155,6 @@ class ProjectBuildTest {
       val pinned = selectBazelBuildCommand(root, bin.path, override = null)
       assertEquals("bazelisk", pinned.command)
       assertTrue(pinned.reason.contains(".bazelversion"))
-      root.resolve(".blazerc").writeText("")
       val overridden = selectBazelBuildCommand(root, bin.path, override = "/opt/wrapper")
       assertEquals("/opt/wrapper", overridden.command)
       assertTrue(overridden.reason.contains(BUILD_COMMAND_ENV))

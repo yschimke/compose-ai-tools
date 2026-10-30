@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.AndroidRClassUnion
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
@@ -343,7 +344,11 @@ class BundleRenderer(
           appCompose,
           leading =
             listOf(androidRendererLauncher(workDir), configRoot) +
-              androidResourceCarriage(zipBytes, workDir, manifest) +
+              // Widened with the renderer's R fields, which its Compose needs when it runs.
+              AndroidRClassUnion.widen(
+                androidResourceCarriage(zipBytes, workDir, manifest),
+                rendererJars,
+              ) +
               listOf(classesDir),
           appDependencies = libJars + resolvedJars,
           rendererJars = rendererJars,

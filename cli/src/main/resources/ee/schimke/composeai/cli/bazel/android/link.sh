@@ -51,8 +51,14 @@ IFS="$old_ifs"
 set +f
 # shellcheck disable=SC2086
 extra="$(printf '%s\n' $packages | LC_ALL=C sort -u | paste -s -d: -)"
+# aapt2's --extra-packages writes a full copy of the R sources per package, identical but for the
+# package line; over a few hundred libraries javac then compiles millions of duplicate lines
+# (compose-ai-tools#6110). So aapt2 writes the APK's own package only, javac compiles it once, and
+# RClone below copies the compiled R classes into every extra package, renaming the classes in their
+# constant pools: byte for byte what javac makes of the copy aapt2 would have written. Only a
+# manifest whose package this script cannot read keeps aapt2's copies.
 extra_flag=""
-if [ -n "$extra" ]; then extra_flag="--extra-packages $extra"; fi
+if [ -n "$extra" ] && [ -z "$own" ]; then extra_flag="--extra-packages $extra"; fi
 assets_flag=""
 if [ -s "$assets" ]; then
   tab="$(printf '\t')"
@@ -90,4 +96,172 @@ if [ -s "$work/sources" ]; then
     "$jdk/bin/javac" -J-Xmx2g --release 11 -nowarn -encoding UTF-8 -d "$work/classes" "@$batch"
   done
 fi
-"$jdk/bin/jar" -J-Xmx1g --create --file "$rjar" --date=1980-01-01T00:00:02Z -C "$work/classes" .
+# r-final.jar is written by RJar below, run from source (JEP 330) with the JDK that compiled the R
+# classes: the only tool this action has. Writing it there, rather than cloning to disk for `jar`,
+# saves writing and rereading hundreds of megabytes, and BEST_SPEED deflates them several times
+# faster than jar's default level.
+clone=""
+if [ -n "$own" ]; then clone="$extra"; fi
+cat > "$work/RJar.java" <<'JAVA'
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Stream;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Usage: RJar OUT_JAR CLASSES OWN_PACKAGE PACKAGE...
+ *
+ * <p>Writes CLASSES to OUT_JAR, plus a copy of OWN_PACKAGE's R classes in each PACKAGE. A copy is
+ * the compiled class with its own name, and its nested classes' names, replaced in the constant
+ * pool: byte for byte what javac compiles from aapt2's copy for that package, which differs from
+ * the own package's R.java only in its package line. Entries are sorted and dated as `jar --date`
+ * dates them, so the jar is reproducible.
+ */
+public final class RJar {
+  private static final LocalDateTime DATE = LocalDateTime.of(1980, 1, 1, 0, 0, 2);
+
+  public static void main(String[] args) throws IOException {
+    Path jar = Paths.get(args[0]);
+    Path classes = Paths.get(args[1]);
+    // An entry's name to its file, or to the own R class it is a copy of and the copy's package.
+    Map<String, Object[]> entries = new TreeMap<>();
+    try (Stream<Path> files = Files.walk(classes)) {
+      for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+        entries.put(classes.relativize(file).toString().replace('\\', '/'), new Object[] {file});
+      }
+    }
+    if (args.length > 3) {
+      String own = args[2].replace('.', '/');
+      Map<String, byte[]> rClasses = new TreeMap<>();
+      Path ownDir = classes.resolve(own);
+      if (Files.isDirectory(ownDir)) {
+        try (DirectoryStream<Path> dir = Files.newDirectoryStream(ownDir, "R{.class,$*.class}")) {
+          for (Path file : dir) rClasses.put(file.getFileName().toString(), Files.readAllBytes(file));
+        }
+      }
+      if (!rClasses.containsKey("R.class")) {
+        throw new IllegalStateException("aapt2 wrote no R class for " + args[2]);
+      }
+      for (int p = 3; p < args.length; p++) {
+        String target = args[p].replace('.', '/');
+        for (Map.Entry<String, byte[]> r : rClasses.entrySet()) {
+          entries.put(target + "/" + r.getKey(), new Object[] {r.getValue(), own + "/R", target + "/R"});
+        }
+      }
+    }
+    // Directory entries, as jar writes them.
+    for (String name : new ArrayList<>(entries.keySet())) {
+      for (int slash = name.indexOf('/'); slash >= 0; slash = name.indexOf('/', slash + 1)) {
+        entries.putIfAbsent(name.substring(0, slash + 1), null);
+      }
+    }
+    try (OutputStream file = Files.newOutputStream(jar);
+        ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(file, 1 << 16))) {
+      zip.setLevel(Deflater.BEST_SPEED);
+      put(zip, "META-INF/", null);
+      put(zip, "META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+      for (Map.Entry<String, Object[]> entry : entries.entrySet()) {
+        Object[] source = entry.getValue();
+        byte[] bytes = null;
+        if (source != null && source.length == 1) {
+          bytes = Files.readAllBytes((Path) source[0]);
+        } else if (source != null) {
+          bytes = relocate((byte[]) source[0], (String) source[1], (String) source[2]);
+        }
+        put(zip, entry.getKey(), bytes);
+      }
+    }
+  }
+
+  private static void put(ZipOutputStream zip, String name, byte[] bytes) throws IOException {
+    ZipEntry entry = new ZipEntry(name);
+    entry.setTimeLocal(DATE);
+    zip.putNextEntry(entry);
+    if (bytes != null) zip.write(bytes);
+    zip.closeEntry();
+  }
+
+  /** The class file with every CONSTANT_Utf8 naming class FROM (or one nested in it) naming TO's. */
+  static byte[] relocate(byte[] classFile, String from, String to) throws IOException {
+    DataInputStream in = new DataInputStream(new ByteArrayInputStream(classFile));
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream(classFile.length + 1024);
+    DataOutputStream out = new DataOutputStream(bytes);
+    int magic = in.readInt();
+    if (magic != 0xCAFEBABE) throw new IOException("not a class file");
+    out.writeInt(magic);
+    out.writeShort(in.readUnsignedShort()); // minor_version
+    out.writeShort(in.readUnsignedShort()); // major_version
+    int count = in.readUnsignedShort();
+    out.writeShort(count);
+    for (int i = 1; i < count; i++) {
+      int tag = in.readUnsignedByte();
+      out.writeByte(tag);
+      switch (tag) {
+        case 1: // Utf8: modified UTF-8 behind a u2 length, as readUTF and writeUTF read and write it
+          out.writeUTF(rename(in.readUTF(), from, to));
+          break;
+        case 7: case 8: case 16: case 19: case 20: // Class, String, MethodType, Module, Package
+          out.writeShort(in.readUnsignedShort());
+          break;
+        case 15: // MethodHandle
+          out.writeByte(in.readUnsignedByte());
+          out.writeShort(in.readUnsignedShort());
+          break;
+        case 3: case 4: case 9: case 10: case 11: case 12: case 17: case 18:
+          out.writeInt(in.readInt());
+          break;
+        case 5: case 6: // Long, Double: two slots
+          out.writeLong(in.readLong());
+          i++;
+          break;
+        default:
+          throw new IOException("unknown constant pool tag " + tag);
+      }
+    }
+    // Everything after the constant pool refers to it by index, so it is unchanged.
+    out.write(in.readAllBytes());
+    out.flush();
+    return bytes.toByteArray();
+  }
+
+  /** NAME with FROM replaced where it is a whole internal name: bare, in a descriptor, or nested. */
+  static String rename(String name, String from, String to) {
+    StringBuilder result = null;
+    int last = 0;
+    int i = name.indexOf(from);
+    while (i >= 0) {
+      int end = i + from.length();
+      boolean starts = i == 0 || name.charAt(i - 1) == 'L';
+      boolean ends = end == name.length() || name.charAt(end) == '$' || name.charAt(end) == ';';
+      if (starts && ends) {
+        if (result == null) result = new StringBuilder();
+        result.append(name, last, i).append(to);
+        last = end;
+        i = name.indexOf(from, end);
+      } else {
+        i = name.indexOf(from, i + 1);
+      }
+    }
+    return result == null ? name : result.append(name, last, name.length()).toString();
+  }
+}
+JAVA
+# shellcheck disable=SC2046
+"$jdk/bin/java" -Xmx1g "$work/RJar.java" "$rjar" "$work/classes" "$own" $(printf '%s' "$clone" | tr ':' ' ')

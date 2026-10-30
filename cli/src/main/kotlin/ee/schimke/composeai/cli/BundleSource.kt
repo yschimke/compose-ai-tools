@@ -2,8 +2,6 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
@@ -78,24 +76,20 @@ object BundleSource {
       // Under the network switch only a loopback URL gets here; following a redirect would take
       // the request off the machine after that check.
       val follow = !NetworkPolicy.disabled
-      HttpClient(OkHttp) {
-          followRedirects = follow
-          engine { config { followRedirects(follow).followSslRedirects(follow) } }
-        }
-        .use { client ->
-          runBlocking {
-            client.prepareGet(uri.toString()).execute { response ->
-              if (!response.status.isSuccess()) {
-                throw IllegalArgumentException(
-                  "could not download bundle from $arg: HTTP ${response.status.value}"
-                )
-              }
-              fileSystem.sink(tempPath).buffer().use { sink ->
-                response.bodyAsChannel().copyTo(sink.outputStream())
-              }
+      ktorOkHttpClient(followRedirects = follow).use { client ->
+        runBlocking {
+          client.prepareGet(uri.toString()).execute { response ->
+            if (!response.status.isSuccess()) {
+              throw IllegalArgumentException(
+                "could not download bundle from $arg: HTTP ${response.status.value}"
+              )
+            }
+            fileSystem.sink(tempPath).buffer().use { sink ->
+              response.bodyAsChannel().copyTo(sink.outputStream())
             }
           }
         }
+      }
     } catch (e: IllegalArgumentException) {
       fileSystem.delete(tempPath, mustExist = false)
       throw e

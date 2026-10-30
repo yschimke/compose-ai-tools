@@ -20,7 +20,7 @@ kotlin = "2.4.21"
 kotlinCoreLibraries = "2.0.21"
 agp = "9.4.1"
 ktfmt = "0.27.0"
-tapmoc = "0.4.2"
+tapmoc = "0.5.0"
 # Released versions only. Robolectric publishes `4.17-SNAPSHOT` to Sonatype, and Renovate ranks it
 # above `4.17-beta-2` — but no snapshot repository is declared here (nor should one be, for a
 # reproducible build), so a snapshot pin fails dependency resolution outright. The
@@ -35,11 +35,11 @@ tapmoc = "0.4.2"
 # behaviour inside the daemon sandbox; those two tests are the acceptance check for any bump here,
 # not just a green build.
 robolectric = "4.17"
-roborazzi = "1.76.0"
+roborazzi = "1.77.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
-androidx-tracing = "2.0.3"
+androidx-tracing = "2.0.5"
 # androidx.tracing 2.x — the Kotlin Multiplatform rewrite, used by the CMP Remote Compose player
 # stack through `:rc-player-trace`. Pinned separately from `androidx-tracing` above rather than
 # bumping it: 2.x drags `kotlinx-coroutines-core` and `androidx.collection` in, which the daemon's
@@ -47,8 +47,8 @@ androidx-tracing = "2.0.3"
 # atrace-shaped `Trace.beginSection` that 1.3.0 already gives it. The two coordinates never meet on
 # one classpath. Note 2.x publishes only `androidJvm` + `jvm` variants — there is no wasmJs or Apple
 # klib, which is the whole reason `:rc-player-trace` is an `expect`/`actual` facade.
-androidx-tracing-kmp = "2.0.3"
-classgraph = "4.8.197"
+androidx-tracing-kmp = "2.0.5"
+classgraph = "4.8.199"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
@@ -105,7 +105,7 @@ compose-multiplatform-forward = "1.12.0-rc01"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:remotecompose`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-beta01"
+compose-material3-catalog = "1.5.0-beta02"
 # JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
 # use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
 # 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
@@ -145,7 +145,7 @@ wear-tooling-preview = "1.0.0"
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha21"
+xr-glimmer = "1.0.0-alpha22"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -154,7 +154,7 @@ xr-glimmer = "1.0.0-alpha21"
 # 2D Home-Space fallback of these composables through the Android Robolectric
 # pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
 # 2026-05-19.
-xr-compose = "1.0.0-beta01"
+xr-compose = "1.0.0-beta02"
 # XR `*-testing` fakes injected onto the offline render/test classpath (the
 # Robolectric `composePreviewRenderXr` path + `:renderer-xr` / sample tests).
 # Single source of truth: the plugin bakes these into a generated resource (see
@@ -162,9 +162,9 @@ xr-compose = "1.0.0-beta01"
 # `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
 # alpha line runs one ahead of the compose/arcore line — bump together with
 # `xr-compose`.
-xr-runtime-testing = "1.0.0-rc02"
-xr-scenecore-testing = "1.0.0-rc02"
-xr-arcore-testing = "1.0.0-rc02"
+xr-runtime-testing = "1.0.0"
+xr-scenecore-testing = "1.0.0"
+xr-arcore-testing = "1.0.0"
 # The XR renderer moved to yschimke/compose-preview-xr and now releases on that repository's
 # cadence. Bump this only after the corresponding compose-preview-xr release is publicly available
 # from Maven Central.
@@ -211,9 +211,10 @@ horologist = "0.7.15"
 #    compile and the daemon-harness render; and #2823 once pinned a
 #    `wear-compose-remote` version that didn't exist yet (every artifact 404'd),
 #    making every Remote Compose module here unresolvable. Check the POMs
-#    before landing a bump: `remote-material3:1.0.0-alpha12` and
-#    `androidx.glance.wear:*:1.0.0-alpha19` both declare `remote-creation*`
-#    `1.0.0-alpha20`, which is what makes the current trio consistent.
+#    before landing a bump: `remote-material3:1.0.0-alpha14` declares `remote-creation*`
+#    `1.0.0-alpha22` and `androidx.glance.wear:*:1.0.0-alpha21` declares `1.0.0-alpha21`,
+#    whose `RemoteDocumentPreview(ByteArray, Modifier, Profile)` alpha22 keeps. rc-players
+#    2.21.0 is built on this same trio, so the embedded player and these pins agree.
 #  * To try an API that has landed on androidx-main but is not released yet, run
 #    with `-Pcomposeai.remoteCompose=snapshot`: `settings.gradle.kts` then adds
 #    the build-id-pinned androidx.dev repository and rewrites all three refs to
@@ -227,7 +228,7 @@ horologist = "0.7.15"
 #    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
-compose-remote = "1.0.0-alpha20"
+compose-remote = "1.0.0-alpha22"
 # `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
 # `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
 # `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
@@ -245,20 +246,20 @@ androidx-core = "1.19.1"
 # and `:samples:wear-widget` (and, out of tree, by the `remote-m3` catalog in
 # yschimke/wear-m3-catalog, which resolves this same coordinate from Google Maven).
 # Its POM declares the `remote-creation*`
-# version it was compiled against (alpha12 → alpha20), so bump it together with
+# version it was compiled against (alpha14 → alpha22), so bump it together with
 # `compose-remote` above and `glance-wear` below. It also pulls
 # `androidx.compose.remote.foundation:foundation`, which used to exist only on the
 # androidx-main snapshot line and now publishes to Google Maven — that is what
 # unblocked the move back to released coordinates.
-wear-compose-remote = "1.0.0-alpha12"
+wear-compose-remote = "1.0.0-alpha14"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:wear-widget` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
 # `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. Declares
-# `remote-creation*` itself (alpha19 → alpha20), so a skewed pin risks exactly
+# `remote-creation*` itself (alpha21 declares alpha21), so a skewed pin risks exactly
 # the creation/player drift the Remote Compose comment describes — bump it with
 # the two pins above.
-glance-wear = "1.0.0-alpha19"
+glance-wear = "1.0.0-alpha21"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -267,7 +268,7 @@ glance-wear = "1.0.0-alpha19"
 compose-ui-prerelease = "1.12.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-datetime = "0.8.0"
-kotlinx-serialization = "1.11.0"
+kotlinx-serialization = "1.12.0"
 mcp-kotlin-sdk = "0.15.0"
 okio = "3.18.2"
 fontbox = "3.0.8"
@@ -316,7 +317,7 @@ metro = "1.4.5"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.6.0"
-okhttp = "5.5.0"
+okhttp = "5.5.1"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
@@ -361,7 +362,11 @@ coil3 = "3.5.0"
 # published `statusSemantics.newDesign`.
 # 3.32.0 adds `build-artifacts-protocol`, the artifacts file the Bazel aspects write (schema 2
 # carries Android resources).
-composeai-contracts = "3.36.0"
+# 3.37.0 adds the early `initialize` — `ClientCapabilities.bootProgress`, `InitializeResult.booting`
+# and the `bootProgress` notification (compose-preview-contracts#195, #6114).
+# 3.38.0 declares the launch descriptor's `sourceWatch` (compose-preview-contracts#200), so its JVM
+# reader is no longer a writer-only exemption in scripts/daemon-launch-schema-allowlist.json.
+composeai-contracts = "3.39.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -444,7 +449,57 @@ composeai-contracts = "3.36.0"
 # ~1,500-jar Bazel target's `userClassDirs` no longer fails the spawn with E2BIG (#5945).
 # 3.18.6 does the same for the sandbox workers it forks, and exits on a failed start instead of
 # hanging (compose-preview-daemon#306, #5945).
-composeai-preview-daemon = "3.18.6"
+# 3.18.8 hides the host action bar synchronously, so a targetSdk >= 35 library's edge-to-edge
+# window no longer captures it over the preview (compose-preview-daemon#315, #5945).
+# 3.18.9 never gives the host window a title bar at all, so a launch-time draw can't leave one in
+# the capture, and keeps Roborazzi's result JSON out of the working directory
+# (compose-preview-daemon#320, #5945).
+# 3.19.0 can serve successive clients over a Unix socket and ships `SocketDaemonClientFactory`,
+# which `bazel render --keep-daemon` uses to keep one warm (compose-preview-daemon#324, #6104).
+# 3.20.0 serves the nearest cached Google font weight when offline and only warns on a fallback
+# there (#6113), fails a sandbox boot at once when its runner throws (#6114), and routes a custom
+# `@PreviewWrapper`'s `RemoteContentPreview` through the Remote Compose connector (#6116).
+# 3.20.1 writes a render to its manifest-declared `renderOutput` when the preview declares one
+# plain still, so `compose-preview bazel render` no longer copies it there (#6114).
+# 3.21.0 answers `initialize` before the sandbox is ready for a client that opts in, and reports
+# the boot as `bootProgress` until it can render (compose-preview-daemon#332, #6114).
+# 3.21.1 reads a jar Bazel rewrote in place afresh on reload, instead of the JDK's cached JarFile
+# (compose-preview-daemon#337, #6140).
+# 3.21.2 runs Remote Compose previews whose libraries arrive only through `userClassDirs` (the
+# Bazel lane): the shadow, `.rc` capture and a view-player fallback (compose-preview-daemon#341,
+# #6150), and renders `@Preview` functions declared inside an `object` or class (#343).
+# 3.21.3 loads prebuilt classes whose LocalVariableTable repeats a row, which HotSpot's verifier
+# otherwise rejects with ClassFormatError (compose-preview-daemon#347, #6161).
+# 3.21.4 also removes the duplicate rows Robolectric's constructor instrumentation writes, which the
+# sandbox defines directly — Wear Compose Material's `Shapes` (compose-preview-daemon#350, #6161).
+# 3.23.0 bundles the warm compiler by Kotlin minor version (compose-preview-daemon#368) and moves to
+# contracts 3.38.0, whose launch descriptor declares `sourceWatch`.
+# 3.24.0 warms the in-process compiler when a client asks (#367), and lets an app tour pass over a
+# system screen the app opens, such as the runtime-permission dialog (#370,
+# homeassistant-remotecompose#635).
+# 3.24.1 gives a large module's warm-up its full JIT budget after the class-path state is built
+# (#375), lets `compileSources` answer without waiting for renders queued on a sandbox worker (#376),
+# and stops reporting previews loaded from previews.json as changed on the first rescan (#377).
+# 3.24.2 collapses repeated plain renderNows for a preview already rendering into one render after
+# it, so a burst of saves no longer queues a render per save (#380).
+# 3.24.3 renders the focused preview first, then visible ones, at a capped concurrency (#384),
+# bundles a Kotlin 2.3 warm compiler (#382), and warms the Build Tools API on compileWarmUp
+# when no warm compiler can run (#383).
+# 3.24.4 holds background sandbox boots while an in-process compile runs (#386). 3.25.0 moves the
+# in-process compile out of compose-preview-contracts' `daemon-bta` into the daemon as
+# `daemon-compile`, package `ee.schimke.composeai.daemon.compile` (#388), carrying memoized
+# class-path hashes; the `composeai.daemon.bta.*` system properties keep their names.
+# 3.25.1 re-renders a skipped on-demand data fetch at the preview's latest render overrides
+# (compose-preview-daemon#391), so render-host's SVG export gets the document it was asked for
+# rather than the preview's defaults; it also resolves `google:` font families on the cmp-android
+# Remote Compose lane (#389).
+# 3.26.0 ships `DedupingParameterizedRobolectricTestRunner`, which the generated render shards now
+# run under so a repeated LocalVariableTable row no longer fails a class load (#407, #6230); keeps
+# FrameInfo vsync monotonic across tests on SDK 37 so later previews in a shard draw (#411, #6229);
+# applies or warns on unconsumed `overrides.remoteCompose.namedValues` (#406, #401); renders a Wear
+# widget preview in its carousel slot (#405, #402); exposes `preview/rows` on the clients (#404);
+# and honours scripted rotary distance and swipe timing (#409).
+composeai-preview-daemon = "3.27.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
@@ -489,7 +544,7 @@ composeai-preview-daemon = "3.18.6"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.15.0"
+rcplayers = "2.21.0"
 
 [libraries]
 
@@ -503,7 +558,6 @@ rcplayers = "2.15.0"
 composeai-contracts-bom = { module = "ee.schimke.composeai:compose-preview-contracts-bom", version.ref = "composeai-contracts" }
 composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol" }
 composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices" }
-composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol" }
 composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
 composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }
@@ -564,11 +618,12 @@ rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace" }
 rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol" }
 rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime" }
 rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose" }
-# The browser bundle `compose-preview serve` stages into `rc-player-wasm/`. A zip, not a jar — the
-# `dist` classifier is the distribution directory packaged for Maven; see that module's build file
-# in yschimke/rc-players for why it is a module of its own rather than a second publication on the
-# wasmJs one.
-rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist" }
+# The browser bundle `compose-preview serve` stages into `rc-player-wasm/`: the `rc-player-wasm.zip`
+# asset on each yschimke/rc-players GitHub Release, resolved through the `rcPlayerWasmRelease` ivy
+# repository in `settings.gradle.kts`. Releases through 2.17.x also published it to Central as
+# `rc-player-wasm-dist`; from 2.18.0 it is a Release asset only, so the BOM no longer constrains it
+# and it carries the stack's version ref itself.
+rcplayer-wasm = { module = "ee.schimke.composeai:rc-player-wasm", version.ref = "rcplayers" }
 # The vendored, locally patched AndroidX embedded player — the Android comparison lane. NOT a
 # supported API; pinned to one AndroidX alpha and versioned with the player stack rather than with
 # upstream.
@@ -606,6 +661,8 @@ ktor-server-compression = { module = "io.ktor:ktor-server-compression", version.
 # can't skew the slf4j pin in :cli.
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response", version.ref = "ktor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+# Test-only: `HeldCertificate` mints the certificates `ForbiddenCertificatesHostnameVerifierTest` checks.
+okhttp-tls = { module = "com.squareup.okhttp3:okhttp-tls", version.ref = "okhttp" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 # Coil 2 / coil 3 — see the version comments above. `coil-compose` (not `coil-base`) because the
 # `:samples:android` fixture renders a real `AsyncImage`; the renderer itself only needs the
@@ -614,6 +671,24 @@ coil2-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil2" }
 coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+# `compose-preview launch`: Robolectric's own simulator (window, input, `RemoteControl` plugin API)
+# and the pieces `:simulator-host` compiles against. Always at the Robolectric pin, since the
+# runtime under them is the Android daemon sidecar's Robolectric.
+robolectricSimulator = { module = "org.robolectric:simulator", version.ref = "robolectric" }
+robolectricShadowsFramework = { module = "org.robolectric:shadows-framework", version.ref = "robolectric" }
+robolectricShadowapi = { module = "org.robolectric:shadowapi", version.ref = "robolectric" }
+robolectricPluginapi = { module = "org.robolectric:pluginapi", version.ref = "robolectric" }
+robolectricAnnotations = { module = "org.robolectric:annotations", version.ref = "robolectric" }
+robolectricUtils = { module = "org.robolectric:utils", version.ref = "robolectric" }
+robolectricSandbox = { module = "org.robolectric:sandbox", version.ref = "robolectric" }
+robolectricResources = { module = "org.robolectric:resources", version.ref = "robolectric" }
+# Maintained dex2jar fork: turns an APK's `classes*.dex` into a jar the simulator can load.
+dex2jar-tools = { module = "de.femtopedia.dex2jar:dex-tools", version = "2.4.38" }
+javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
+javax-inject = { module = "javax.inject:javax.inject", version = "1" }
+# Compile-only for `:simulator-host`, which sees Robolectric's Guava types; the runtime copy is the
+# Android daemon sidecar's.
+guava-android = { module = "com.google.guava:guava", version = "33.7.2-jre" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }
 compose-bom-compat = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-compat" }
@@ -746,8 +821,8 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # bytecode at test time. The B2.0 disposable user-classloader test asserts that the daemon
 # actually re-reads bytecode after a `fileChanged` notification; without two distinct `.class`
 # files the test can't differentiate "stale" from "fresh".
-asm = { module = "org.ow2.asm:asm", version = "9.11" }
-asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.11" }
+asm = { module = "org.ow2.asm:asm", version = "9.11.1" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.11.1" }
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
 metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }

@@ -3010,8 +3010,8 @@ public final class ee/schimke/composeai/cli/serve/RcSummary$Companion {
 public final class ee/schimke/composeai/cli/serve/RcSummaryRow {
 	public static final field Companion Lee/schimke/composeai/cli/serve/RcSummaryRow$Companion;
 	public fun <init> ()V
-	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Ljava/lang/Double;
 	public final fun component11 ()Ljava/lang/Long;
@@ -3029,6 +3029,10 @@ public final class ee/schimke/composeai/cli/serve/RcSummaryRow {
 	public final fun component22 ()Ljava/lang/Double;
 	public final fun component23 ()Ljava/lang/Long;
 	public final fun component24 ()Ljava/lang/String;
+	public final fun component25 ()Ljava/lang/Boolean;
+	public final fun component26 ()Ljava/lang/Double;
+	public final fun component27 ()Ljava/lang/Long;
+	public final fun component28 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/Integer;
 	public final fun component4 ()Z
 	public final fun component5 ()Ljava/lang/Boolean;
@@ -3036,13 +3040,17 @@ public final class ee/schimke/composeai/cli/serve/RcSummaryRow {
 	public final fun component7 ()Ljava/lang/Long;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/lang/Boolean;
-	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcSummaryRow;
-	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/RcSummaryRow;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/RcSummaryRow;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcSummaryRow;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/RcSummaryRow;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ZLjava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Double;Ljava/lang/Long;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/RcSummaryRow;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAndroidxEmbeddedMismatchPct ()Ljava/lang/Double;
 	public final fun getAndroidxEmbeddedMismatchPx ()Ljava/lang/Long;
 	public final fun getAndroidxEmbeddedNote ()Ljava/lang/String;
 	public final fun getAndroidxEmbeddedRendered ()Ljava/lang/Boolean;
+	public final fun getCmpAndroidMismatchPct ()Ljava/lang/Double;
+	public final fun getCmpAndroidMismatchPx ()Ljava/lang/Long;
+	public final fun getCmpAndroidNote ()Ljava/lang/String;
+	public final fun getCmpAndroidRendered ()Ljava/lang/Boolean;
 	public final fun getCmpWasmMismatchPct ()Ljava/lang/Double;
 	public final fun getCmpWasmMismatchPx ()Ljava/lang/Long;
 	public final fun getCmpWasmNote ()Ljava/lang/String;

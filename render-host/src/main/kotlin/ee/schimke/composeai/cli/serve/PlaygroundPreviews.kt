@@ -1,10 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.previewdata.Capture
 import ee.schimke.composeai.previewdata.PreviewInfo
 import ee.schimke.composeai.previewdata.PreviewManifest
 import ee.schimke.composeai.previewdata.PreviewParams
 import io.github.classgraph.ClassGraph
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Shared synthesis of a `previews.json` for a compiled playground snippet — the manifest a
@@ -28,7 +31,7 @@ public object PlaygroundPreviews {
    * ordered as the snippet declared them so entry 0 is the one the still frame drew.
    */
   public fun previewManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
-    val dimensions = previewDimensions(snippet)
+    val metadata = previewMetadata(snippet)
     val manifest =
       PreviewManifest(
         module = snippet.moduleName,
@@ -43,7 +46,8 @@ public object PlaygroundPreviews {
               id = id,
               functionName = id.substringAfterLast('.'),
               className = id.substringBeforeLast('.'),
-              params = dimensions[id] ?: PreviewParams(),
+              params = metadata[id]?.params ?: PreviewParams(),
+              captures = listOf(metadata[id]?.capture ?: Capture()),
             )
           },
       )
@@ -53,10 +57,18 @@ public object PlaygroundPreviews {
   // Read bytecode, without loading or executing the snippet. The token retains preview ids but
   // not their annotations; reconstructing an id-only manifest silently changes fixed-size previews
   // into the daemon's default phone frame. This shared manifest also serves redeemed live sessions.
-  private fun previewDimensions(
+  private data class Metadata(val params: PreviewParams, val capture: Capture)
+
+  private fun previewMetadata(
     snippet: PlaygroundTokenStore.PlaygroundSnippet
-  ): Map<String, PreviewParams> {
-    if (!snippet.classesDir.toFile().isDirectory) return emptyMap()
+  ): Map<String, Metadata> {
+    val classes = snippet.classesDir.toFile()
+    if (!classes.exists() || !classes.canRead()) {
+      System.err.println(
+        "playground: preview metadata unavailable: compiled output is missing or unreadable: $classes; using default preview parameters for ${snippet.previewIds}"
+      )
+      return emptyMap()
+    }
     return ClassGraph()
       .enableMethodInfo()
       .enableAnnotationInfo()
@@ -74,15 +86,65 @@ public object PlaygroundPreviews {
                 method.annotationInfo.firstOrNull { it.name in PREVIEW_ANNOTATIONS } ?: continue
               fun dimension(name: String): Int? =
                 (annotation.parameterValues.getValue(name) as? Number)?.toInt()?.takeIf { it > 0 }
+              val settled =
+                method.annotationInfo.firstOrNull {
+                  it.name == "ee.schimke.composeai.preview.SettledPreview"
+                }
+              val settle = settled?.let {
+                // Same defaults and bounds as preview-discovery. Read bytecode only: annotations
+                // normally live in catalog jars, outside the snippet output being scanned.
+                val after = (it.parameterValues.getValue("afterMs") as? Number)?.toInt() ?: 0
+                val max = (it.parameterValues.getValue("maxMs") as? Number)?.toInt() ?: 1000
+                buildJsonObject {
+                  put("afterMs", after.coerceIn(0, 5000))
+                  put("maxMs", max.coerceIn(16, 5000))
+                }
+              }
+              // A playground image is a design still. Generated entries usually declare only
+              // @Preview dimensions, so two wall-clock frames otherwise capture dialog entrances.
+              // Explicit motion/timeline annotations keep their existing capture path; an explicit
+              // @SettledPreview coordinate above always wins over this bounded auto policy.
+              val hasTimeline =
+                method.annotationInfo.any {
+                  it.name in TIMELINE_ANNOTATIONS ||
+                    (it.name == "ee.schimke.composeai.preview.FocusedPreview" &&
+                      it.parameterValues.getValue("gif") == true)
+                }
+              val defaultSettle =
+                if (snippet.mode == PlaygroundMode.CMP && !hasTimeline)
+                  buildJsonObject {
+                    put("afterMs", 0)
+                    put("maxMs", 1000)
+                  }
+                else null
               put(
                 id,
-                PreviewParams(widthDp = dimension("widthDp"), heightDp = dimension("heightDp")),
+                Metadata(
+                  PreviewParams(widthDp = dimension("widthDp"), heightDp = dimension("heightDp")),
+                  Capture(settle = settle ?: defaultSettle),
+                ),
               )
             }
           }
         }
+          .also { found ->
+            val missing = snippet.previewIds.filterNot { it in found }
+            if (missing.isNotEmpty()) {
+              System.err.println(
+                "playground: preview metadata unavailable: no matching @Preview method in $classes for $missing; using default preview parameters"
+              )
+            }
+          }
       }
   }
+
+  private val TIMELINE_ANNOTATIONS =
+    setOf(
+      "ee.schimke.composeai.preview.AnimatedPreview",
+      "ee.schimke.composeai.preview.InteractionPreview",
+      "ee.schimke.composeai.preview.ScrollingPreview",
+      "com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions",
+    )
 
   private val PREVIEW_ANNOTATIONS =
     setOf(

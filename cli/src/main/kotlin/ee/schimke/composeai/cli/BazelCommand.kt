@@ -2,10 +2,13 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.AndroidBundleResources
+import ee.schimke.composeai.bundle.AndroidRClassUnion
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.bundle.producer.bazelBundleSha
+import ee.schimke.composeai.daemon.client.SocketDaemonClientFactory
 import ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder
+import ee.schimke.composeai.daemonlaunch.SourceWatch
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
 import ee.schimke.composeai.discovery.PreviewManifest as DiscoveryManifest
@@ -23,9 +26,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toOkioPath
 
 /** Explicit Bazel-family entry point; opening a repository never runs its build configuration. */
 internal class BazelCommand(
@@ -54,8 +59,13 @@ internal class BazelCommand(
     val unknown = CliFlagValidation.unknownFlags("bazel", args)
     require(unknown.isEmpty()) { "Unknown options: ${unknown.joinToString()}" }
     val operation = args.getOrNull(CliFlags.findCommandIndex(args.toTypedArray()))
+    if (operation == "daemon") {
+      // No build: the shared daemons are found by their sockets.
+      BazelKeepDaemon.manage(args.getOrNull(args.indexOf("daemon") + 1))
+      return emptyList()
+    }
     require(operation in setOf("init", "prepare", "list", "render", "show", "bundle")) {
-      "Expected init, prepare, list, render, show or bundle"
+      "Expected init, prepare, list, render, show, bundle or daemon"
     }
     require("--reuse-renders" !in args || operation in setOf("render", "show", "bundle")) {
       "--reuse-renders requires imported artifacts and render, show or bundle"
@@ -70,6 +80,19 @@ internal class BazelCommand(
     // Buck2 shares everything after collection: a BXL script prints the same artifacts documents.
     val buck = args.flagValue("--build-system") == "buck"
     val requestedDirectory = File(args.flagValue("--project") ?: ".").canonicalFile
+    // A staged `--out` directory, prepared again by a tool that knows only its path (#6160).
+    if (operation == "prepare") {
+      StagedPrepareOrigin.replayFor(args, requestedDirectory.toOkioPath())
+        // Never back into itself: an `--out` that is the workspace is not a staged copy of it.
+        ?.takeIf { File(it.workspace).canonicalFile != requestedDirectory }
+        ?.let { origin ->
+          System.err.println(
+            "[bazel] ${requestedDirectory.path} was staged by `bazel prepare` in ${origin.workspace}; " +
+              "preparing it again from there"
+          )
+          return BazelCommand(origin.args, normalSurface, invocationDirectory).execute()
+        }
+    }
     val root =
       if (args.flagValue("--artifacts") != null) requestedDirectory
       else if (buck) detectBuckRoot(requestedDirectory) ?: requestedDirectory
@@ -92,12 +115,9 @@ internal class BazelCommand(
       installBazelAspect(root, args.flagValue("--java-info-load"))
       println("Installed //.compose-preview/bazel:runtime.bzl%compose_preview_aspect")
       if ("--android" in args) {
+        // Bundled or $COMPOSE_PREVIEW_BAZEL_CONFIG providers apply before bazel.json exists.
         val providers =
-          root
-            .resolve(".compose-preview/bazel.json")
-            .takeIf { it.isFile }
-            ?.let { bazelJson.decodeFromString<BazelBuildConfig>(it.readText()).providers }
-            .orEmpty()
+          loadBazelConfigLayers(root.resolve(".compose-preview/bazel.json")).config.providers
         installBazelAndroidAspect(root, providers, strict = true)
         println("Installed $DEFAULT_BAZEL_ANDROID_ASPECT")
       }
@@ -109,29 +129,38 @@ internal class BazelCommand(
     require(args.flagValue("--config") == null || configFile.isFile) {
       "Config missing: $configFile"
     }
-    val configText = configFile.takeIf { it.isFile }?.readText()
-    var config =
-      if (configText != null) bazelJson.decodeFromString<BazelBuildConfig>(configText)
-      else BazelBuildConfig()
-    // Precedence: --build-command, a committed buildCommand, --build-system blaze, then detection.
+    // Bazel: classpath bazel-defaults.json, then $COMPOSE_PREVIEW_BAZEL_CONFIG, then configFile,
+    // merged key by key; the flags below apply over the result. Buck2 reads buck.json alone.
+    val layers =
+      if (buck) loadBazelConfigLayers(configFile, envConfig = null, classpathDefaults = null)
+      else loadBazelConfigLayers(configFile)
+    var config = layers.config
+    BazelHostCache.configure(config)?.let { digest ->
+      if ("--verbose" in args || "-v" in args) {
+        System.err.println(
+          "[bazel] host cache stamps by xattr user.${digest.attribute} (${digest.source})"
+        )
+        reportHostCacheStamps(BazelHostCache.sharedFileStamper)
+      }
+    }
+    // Precedence: --build-command, a committed buildCommand, $COMPOSE_PREVIEW_BUILD_COMMAND, a
+    // defaults layer's buildCommand, then detection.
     val commandSource =
       when {
         args.flagValue("--build-command") != null -> {
           config = config.copy(buildCommand = listOf(args.flagValue("--build-command")!!))
           "--build-command"
         }
-        configText != null &&
-          "buildCommand" in (bazelJson.parseToJsonElement(configText) as JsonObject) ->
-          "buildCommand in $configFile"
+        layers.setByWorkspace("buildCommand") ->
+          "buildCommand in ${layers.sourceOf("buildCommand")!!.source}"
         buck -> {
           val override = System.getenv(BUILD_COMMAND_ENV)?.takeIf { it.isNotBlank() }
           config = config.copy(buildCommand = listOf(override ?: "buck2"))
           if (override != null) "\$$BUILD_COMMAND_ENV" else "default buck2"
         }
-        args.flagValue("--build-system") == "blaze" -> {
-          config = config.copy(buildCommand = listOf("blaze"))
-          "--build-system blaze"
-        }
+        System.getenv(BUILD_COMMAND_ENV).isNullOrBlank() &&
+          layers.sourceOf("buildCommand") != null ->
+          "buildCommand in ${layers.sourceOf("buildCommand")!!.source}"
         else -> {
           val choice = selectBazelBuildCommand(root)
           config = config.copy(buildCommand = listOf(choice.command))
@@ -139,14 +168,10 @@ internal class BazelCommand(
         }
       }
     // Unconfigured, in a workspace that can load an Android aspect: the selection takes JVM and
-    // Android rules alike, and each kind gets its aspect. Otherwise (Blaze, say) it stays JVM-only.
+    // Android rules alike, and each kind gets its aspect. Otherwise (a WORKSPACE-only build with no
+    // MODULE.bazel, say) it stays JVM-only.
     val autoAndroidAspect =
-      if (
-        !buck &&
-          args.flagValue("--aspect") == null &&
-          (configText == null ||
-            "aspect" !in (bazelJson.parseToJsonElement(configText) as JsonObject))
-      )
+      if (!buck && args.flagValue("--aspect") == null && layers.sourceOf("aspect") == null)
         detectAndroidAspect(root, config.providers)
       else null
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
@@ -305,9 +330,6 @@ internal class BazelCommand(
       )
     }
     val collected = merged?.let(::listOf) ?: built
-    require(args.flagValue("--out") == null || collected.size == 1) {
-      "--out names one target's output; select one with --target"
-    }
     val selections = collected.mapNotNull { artifacts ->
       if ("--verbose" in args || "-v" in args) {
         System.err.println(
@@ -317,9 +339,13 @@ internal class BazelCommand(
         )
       }
       val targetKey = bazelTargetKey(artifacts.metadata.target, artifacts.metadata.configuration)
+      // With several targets, --out is their parent: each stages under its own label (#6115).
       val outputBase =
-        args.flagValue("--out")?.let { resolve(root, it) }
-          ?: root.resolve(".compose-preview/outputs/$targetKey")
+        args.flagValue("--out")?.let { out ->
+          resolve(root, out).let { dir ->
+            if (collected.size == 1) dir else dir.resolve(outputSafe(artifacts.metadata.target))
+          }
+        } ?: root.resolve(".compose-preview/outputs/$targetKey")
       val output = if (normalSurface) outputBase.resolve("build/compose-previews") else outputBase
       val prepared = prepareBazelPreviews(artifacts, root, output, failOnEmpty = !candidates)
       if (prepared.manifest.previews.isEmpty()) {
@@ -328,8 +354,20 @@ internal class BazelCommand(
       } else BazelSelection(artifacts, prepared, output)
     }
     check(selections.isNotEmpty()) {
+      val searched = collected.map { it.metadata.target }
+      // Previews usually live in leaf UI libraries below the wiring target asked for (#6162).
+      val below =
+        BazelPreviewSources(root.toOkioPath())
+          .let { sources -> searched.flatMap { sources.previewPackagesBelow(it) } }
+          .distinct()
       "No previews in " +
-        collected.joinToString(" ") { it.metadata.target }.ifEmpty { selectionLabel.orEmpty() }
+        searched.joinToString(" ").ifEmpty { selectionLabel.orEmpty() } +
+        (if (below.isEmpty()) ""
+        else
+          ". Sources mentioning Preview are under " +
+            below.joinToString(", ") { "//$it" } +
+            "; try --target " +
+            below.joinToString(" --target ") { "//$it:all" })
     }
     when (operation) {
       "list" -> {
@@ -346,6 +384,13 @@ internal class BazelCommand(
             .forEach { println("${it.id}\t${it.className}.${it.functionName}") }
       }
       "prepare" -> {
+        args.flagValue("--out")?.let { out ->
+          val staged = resolve(root, out).toOkioPath()
+          // A prepare with nothing to replay (`--artifacts`) clears an earlier record, so a refresh
+          // never rebuilds what this staging no longer came from.
+          StagedPrepareOrigin.of(args, root) { resolve(root, it) }
+            ?.let { StagedPrepareOrigin.write(staged, it) } ?: StagedPrepareOrigin.clear(staged)
+        }
         selections.forEach { (artifacts, prepared) ->
           println(
             prepareBazelDaemon(
@@ -353,6 +398,13 @@ internal class BazelCommand(
                 prepared,
                 root,
                 bazelClockPackages(config, artifacts.android),
+                // A long-lived (IDE) daemon's pool; unset keeps the daemon's own default (#6114).
+                sandboxCount =
+                  args.flagValue("--sandbox-count")?.let {
+                    requireNotNull(it.toIntOrNull()?.takeIf { n -> n > 0 }) {
+                      "--sandbox-count must be a positive number"
+                    }
+                  },
               )
               .absolutePath
           )
@@ -372,41 +424,65 @@ internal class BazelCommand(
         }
         val noRender = operation == "bundle" && "--no-render" in args
         require(!noRender || !reuse) { "--no-render and --reuse-renders are mutually exclusive" }
-        // The selection flags apply across targets; --output still names one preview in all.
+        // The selection flags apply across targets; --output places every selected preview,
+        // naming each once across all of them ([bazelOutputPlan]).
         val selected = selections.associateWith { selectedPreviews(it.prepared) }
         require(selected.values.any { it.isNotEmpty() }) { "No previews match the selection" }
-        require(
-          args.flagValue("--output") == null ||
-            operation == "bundle" ||
-            selected.values.sumOf { it.size } == 1
-        ) {
-          "--output requires one preview; select it with --id or --filter"
-        }
+        val outputPlan =
+          bazelOutputPlan(
+            selected.flatMap { (selection, previews) ->
+              previews.map { selection.artifacts.metadata.target to it }
+            },
+            if (operation != "bundle") args.flagValue("--output")?.let { resolve(root, it) }
+            else null,
+            args.flagValue("--output"),
+          )
         selected.forEach { (selection, previews) ->
           val (artifacts, prepared, output) = selection
           if (previews.isEmpty() && !bundling) return@forEach
+          val outputs =
+            outputPlan
+              .filterKeys { it.first == artifacts.metadata.target }
+              .mapKeys { it.key.second }
           if (noRender) {
             // Discovery and packaging require no renderer provisioning.
-          } else if (
-            reuse &&
-              reuseBazelCaptures(prepared, artifacts, root, copyOutput = operation != "bundle")
-          ) {
+          } else if (reuse && reuseBazelCaptures(prepared, artifacts, outputs)) {
             // Every selected capture was rendered from these exact artifacts.
           } else {
+            // A kept daemon serves every later render, so its pool is sized once, not per call.
+            val keep = !bundling && BazelKeepDaemon.requested(args, config)
             val descriptor =
               prepareBazelDaemon(
                 artifacts,
                 prepared,
                 root,
                 bazelClockPackages(config, artifacts.android),
+                sandboxCount = if (keep) 1 else oneShotSandboxCount(previews.size),
+                // `render` and `show` read only the PNG; a bundle may pack sidecars.
+                pngOnly = !bundling,
               )
+            val shared =
+              if (keep)
+                BazelKeepDaemon.prepare(
+                  descriptor,
+                  launchInputs =
+                    artifacts.android
+                      ?.let { listOfNotNull(it.resourceApk, it.manifest, it.rJar) }
+                      .orEmpty(),
+                  previewsManifest = prepared.manifestFile,
+                  idleTimeoutSeconds = config.daemonIdleTimeoutSeconds,
+                  projectJars = artifacts.projectJars,
+                  hostCache = BazelHostCache.shared(),
+                )
+              else null
             claimBazelCaptures(prepared, bazelArtifactsFingerprint(artifacts))
             renderBazelPreviews(
               prepared,
-              descriptor,
+              shared?.descriptor ?: descriptor,
               root,
               timeout,
-              copyOutput = operation != "bundle",
+              outputs,
+              shared = shared,
             )
           }
           if (bundling) {
@@ -465,7 +541,10 @@ internal class BazelCommand(
       .filter { it.isNotBlank() }
       .ifEmpty { listOfNotNull(args.flagValue("--module")) }
 
-  /** The previews of [prepared] that `--preview`, `--id` and `--filter` select. */
+  /**
+   * The previews of [prepared] that `--preview`, `--id`, `--function` (exact function name, so
+   * `FooPreview` does not also select `FooPreview_Disabled`) and `--filter` (substring) select.
+   */
   private fun selectedPreviews(prepared: PreparedBazelPreviews) =
     prepared.manifest.previews.filter {
       (args.flagValue("--preview") == null ||
@@ -476,6 +555,7 @@ internal class BazelCommand(
           it.functionName,
         )) &&
         (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
+        (args.flagValue("--function") == null || it.functionName == args.flagValue("--function")) &&
         (args.flagValue("--filter") == null ||
           it.id.contains(args.flagValue("--filter")!!, ignoreCase = true))
     }
@@ -487,25 +567,11 @@ internal class BazelCommand(
   private fun reuseBazelCaptures(
     prepared: PreparedBazelPreviews,
     artifacts: ResolvedBazelArtifacts,
-    root: File,
-    copyOutput: Boolean,
+    /** Where `--output` puts each selected preview, by id ([bazelOutputPlan]). */
+    outputs: Map<String, File>,
   ): Boolean {
-    val selected =
-      prepared.manifest.previews.filter {
-        (args.flagValue("--id") == null || it.id == args.flagValue("--id")) &&
-          (args.flagValue("--filter") == null ||
-            it.id.contains(args.flagValue("--filter")!!, ignoreCase = true)) &&
-          (args.flagValue("--preview") == null ||
-            previewMatchesReference(
-              args.flagValue("--preview")!!,
-              it.id,
-              it.className,
-              it.functionName,
-            ))
-      }
+    val selected = selectedPreviews(prepared)
     require(selected.isNotEmpty()) { "No previews match the selection" }
-    val output = if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null
-    require(output == null || selected.size == 1) { "--output requires one preview" }
     if (!bazelCapturesMatch(prepared, bazelArtifactsFingerprint(artifacts))) {
       System.err.println("Captures were not rendered from the imported artifacts; rendering")
       return false
@@ -520,7 +586,7 @@ internal class BazelCommand(
       }
     }
     selected.forEach { preview ->
-      if (output != null) {
+      outputs[preview.id]?.let { output ->
         output.parentFile?.mkdirs()
         Files.copy(
           prepared.manifestFile.parentFile.resolve(preview.captures.first().renderOutput).toPath(),
@@ -537,39 +603,28 @@ internal class BazelCommand(
     descriptor: File,
     root: File,
     timeout: Long,
-    copyOutput: Boolean = true,
+    /** Where `--output` puts each selected preview, by id ([bazelOutputPlan]). */
+    outputs: Map<String, File>,
+    /** A kept daemon ([BazelKeepDaemon]) to connect to, starting it if none is running. */
+    shared: BazelKeepDaemon.Prepared? = null,
   ) {
-    val exactId = args.flagValue("--id")
-    val filter = args.flagValue("--filter")
-    val previews =
-      prepared.manifest.previews.filter {
-        (args.flagValue("--preview") == null ||
-          previewMatchesReference(
-            args.flagValue("--preview")!!,
-            it.id,
-            it.className,
-            it.functionName,
-          )) &&
-          (exactId == null || it.id == exactId) &&
-          (filter == null || it.id.contains(filter, ignoreCase = true))
-      }
+    val previews = selectedPreviews(prepared)
     require(previews.isNotEmpty()) { "No previews match the selection" }
-    val output = if (copyOutput) args.flagValue("--output")?.let { resolve(root, it) } else null
-    require(output == null || previews.size == 1) {
-      "--output requires one preview; select it with --id or --filter"
-    }
     val finished = ConcurrentHashMap<String, JsonObject>()
     val latch = CountDownLatch(previews.size)
     val ids = previews.map { it.id }.toSet()
-    SubprocessRenderSessions.open(
-        RenderSessionConfig(
-          descriptorPath = descriptor,
-          workspaceRoot = root,
-          initializeTimeout = timeout.seconds,
-          maxRenderTime = timeout.seconds,
-        )
+    val sessionConfig =
+      RenderSessionConfig(
+        descriptorPath = descriptor,
+        workspaceRoot = root,
+        initializeTimeout = timeout.seconds,
+        maxRenderTime = timeout.seconds,
       )
+    (if (shared == null) SubprocessRenderSessions.open(sessionConfig)
+      else SubprocessRenderSessions.open(sessionConfig, factory = SocketDaemonClientFactory()))
       .use { session ->
+        // Rebuilt user jars: the kept daemon swaps its user class loader and keeps its sandbox.
+        shared?.changedJar?.let { session.fileChanged(it) }
         session
           .onNotification { method, params ->
             val id = params?.get("id")?.jsonPrimitive?.contentOrNull
@@ -604,6 +659,7 @@ internal class BazelCommand(
           Files.copy(png.toPath(), declared.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
       }
+      val output = outputs[preview.id]
       if (output != null) {
         output.parentFile?.mkdirs()
         Files.copy(png.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
@@ -653,8 +709,9 @@ internal class BazelCommand(
         compose-preview bazel prepare --target //app:ui
         compose-preview bazel bundle --target //app:ui --maven-install maven_install.json --output bundle.png
         compose-preview bazel render --target //app:ui [--id <id> | --filter <text>] [--output <png>]
+        compose-preview bazel daemon status|stop
 
-      Normal list/render/show prefer Gradle settings; otherwise they use Bazel/Blaze indicators.
+      Normal list/render/show prefer Gradle settings; otherwise they use Bazel workspace indicators.
       The default aspect package is installed on first use; application BUILD files are untouched.
       --target is repeatable and takes labels or patterns, as bazel build does: //app/...,
       //app:all, //app:*, and -//pattern exclusions. A pattern is expanded with query and filtered
@@ -664,11 +721,13 @@ internal class BazelCommand(
       or outside any package everything below the directory (//dir/...), is selected.
       Default provider: @rules_java//java/common:java_info.bzl (requires visible rules_java).
       Configure .compose-preview/bazel.json for a different build command/provider deployment.
+      It is merged key by key over defaults: a bundled $BAZEL_DEFAULTS_RESOURCE,
+      then the file ${'$'}$BAZEL_CONFIG_ENV names; flags apply last.
       --config <file>             Read explicit JSON config (paths relative to --project).
-      --build-command <path>      Use bazelisk, blaze or an executable wrapper; no shell parsing.
-                                  Otherwise: configured buildCommand, then
-                                  ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, .blazerc, .bazelversion
-                                  (bazelisk), then bazel/bazelisk/blaze on PATH.
+      --build-command <path>      Use bazelisk or an executable wrapper; no shell parsing.
+                                  Otherwise: buildCommand in bazel.json, then
+                                  ${'$'}COMPOSE_PREVIEW_BUILD_COMMAND, a defaults buildCommand,
+                                  .bazelversion (bazelisk), then bazel/bazelisk on PATH.
       --bazel-arg=<argument>      Repeatable build flags, e.g. --bazel-arg=--config=desktop.
       --aspect <label.bzl%name>   Pin one aspect entry point. Unset, JVM targets use the JVM
                                   aspect and android_library targets an Android one:
@@ -678,7 +737,7 @@ internal class BazelCommand(
                                   rules_android and rules_java are visible (MODULE.bazel or
                                   WORKSPACE) or
                                   "providers" in bazel.json points its shims at internal rules.
-                                  Neither (Blaze): unconfigured selections stay JVM-only.
+                                  Neither: unconfigured selections stay JVM-only.
       --build-system buck         Buck2 (compose-preview buck … is the same): a BXL script reads
                                   the JVM and Android providers instead of an aspect, linking an
                                   android_library's resources; .compose-preview/buck.json
@@ -688,12 +747,23 @@ internal class BazelCommand(
       --artifacts <metadata.json> Use already-built artifacts from any build system; no build runs.
       --execution-root <dir>     Required for --artifacts; resolves relative artifact paths.
       --reuse-renders             Reuse captures rendered from the same imported artifacts; else render.
+      --sandbox-count <n>         prepare: the daemon's sandbox pool (default the daemon's own). One
+                                  boots fastest; held interactive sessions need two.
+      --function <name>           Select previews by exact function name (--filter is a substring).
+      --output <png | dir/>       One preview: that file. Several: one file each, <name>_<variant>.png,
+                                  or under a directory (an existing one, or a path ending in /).
+      --keep-daemon               render/show: reuse a warm daemon across runs (also
+                                  ${'$'}COMPOSE_PREVIEW_KEEP_DAEMON=1 or keepDaemon in bazel.json). It
+                                  exits after daemonIdleTimeoutSeconds (default 300) idle, or on
+                                  bazel daemon stop. Rebuilt jars reload without a restart; a
+                                  changed preview set, resources or settings start a fresh one.
       --bundle                   render: additionally pack the portable PNG/ZIP bundle.
       --maven-install <file>     Repeatable rules_jvm_external lockfiles; Recover published coordinates, including transformed runtime jars.
       --no-render                bundle: prepare a runnable bundle with a stub cover, offline.
       --embed-deps               Embed all dependencies for offline bundle use.
                                  (dependencyPolicy in bazel.json chooses per group otherwise.)
       --out <dir>                Prepared manifest/descriptor directory; default per target/config.
+                                 With several targets selected, each stages in <dir>/<target>.
       --timeout <seconds>        Build/render deadline (default 300).
       --project <workspace>      Default current directory.
 
@@ -703,10 +773,33 @@ internal class BazelCommand(
       set $ROBOLECTRIC_DEPS_DIR_ENV to pre-provisioned android-all jars to stay offline.
       iOS/Wasm are separate.
       Build arguments/startup flags and output-group names can be configured for internal systems.
+      Classpath pruning, jar hashes and discovery are reused across runs while their inputs are
+      unchanged (under the composeai cache dir); ${'$'}${BazelHostCache.DISABLE_ENV}=0 turns that off.
+      On a content-addressed (CAS/FUSE) output tree that reassigns mtime, ctime and inode on every
+      build, ${'$'}${BazelHostCache.DIGEST_XATTR_ENV}=<attr> (or digestXattr in bazel.json; the
+      variable wins, empty turns it off) keys that reuse on the per-file content digest the
+      filesystem publishes as that xattr, the one Bazel's --unix_digest_hash_attribute_name reads.
+      Name only an attribute derived from file content; files without it fall back to timestamps.
       """
         .trimIndent()
     )
   }
+}
+
+/** At exit, how many stamps [stamper] keyed by digest, and the shared memos' hits and misses. */
+private fun reportHostCacheStamps(stamper: FileStamper) {
+  Runtime.getRuntime()
+    .addShutdownHook(
+      Thread {
+        val cache = BazelHostCache.shared() ?: return@Thread
+        val memos = listOf(cache.jarContents, cache.sha256, cache.androidJarLevel)
+        System.err.println(
+          "[bazel] host cache: ${stamper.digestStamps.get()} digest stamps, " +
+            "${stamper.unixStamps.get()} unix fallbacks; ${memos.sumOf { it.hits.get() }} hits, " +
+            "${memos.sumOf { it.misses.get() }} misses"
+        )
+      }
+    )
 }
 
 private fun bundledBazelAspectFile(name: String): String =
@@ -728,9 +821,10 @@ internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
         } else text
     }
   // Never overwrite a locally adapted provider or aspect. Repeated identical init is harmless.
-  // An edited BUILD.bazel left by an earlier CLI would shadow the BUILD written here.
+  // An edited BUILD.bazel left by an earlier CLI would shadow the BUILD written here; an unedited
+  // one says the same thing, so it may stay ([migrateBazelAspectBuildFile]).
   val legacy = directory.resolve("BUILD.bazel")
-  require(!legacy.exists()) {
+  require(!legacy.exists() || legacy.readText() == bundledBazelAspectFile("BUILD.bazel")) {
     "Existing aspect differs: $legacy. Keep it and configure --aspect, or move it before reinitializing."
   }
   contents.forEach { (name, text) ->
@@ -740,7 +834,30 @@ internal fun installBazelAspect(root: File, javaInfoLoad: String? = null) {
     }
   }
   directory.mkdirs()
-  contents.forEach { (name, text) -> directory.resolve(name).writeText(text) }
+  contents.forEach { (name, text) -> writeIfChanged(directory.resolve(name), text) }
+}
+
+/**
+ * Writes [text] to [file] only when it differs, and then by an atomic rename, so a concurrent
+ * `bazel build` reading the aspect package never sees the file missing or half written (#6115), and
+ * a workspace snapshot does not record a rewrite of an unchanged file.
+ */
+internal fun writeIfChanged(file: File, text: String) {
+  if (file.isFile && file.readText() == text) return
+  file.parentFile.mkdirs()
+  val temp = Files.createTempFile(file.parentFile.toPath(), ".${file.name}", ".tmp")
+  try {
+    Files.writeString(temp, text)
+    if (file.canExecute()) temp.toFile().setExecutable(true)
+    Files.move(
+      temp,
+      file.toPath(),
+      StandardCopyOption.REPLACE_EXISTING,
+      StandardCopyOption.ATOMIC_MOVE,
+    )
+  } finally {
+    Files.deleteIfExists(temp)
+  }
 }
 
 /**
@@ -759,18 +876,18 @@ internal fun <T> reportBuild(tool: String, targets: List<String>, build: () -> T
 }
 
 /**
- * Renames the JVM aspect package file an earlier CLI wrote as `BUILD.bazel` to `BUILD`, which Blaze
- * deployments that read no `BUILD.bazel` also see, or removes it when a `BUILD` is already there.
- * One edited by hand is left alone.
+ * Gives an earlier CLI's JVM aspect package file, `BUILD.bazel`, the `BUILD` beside it that older
+ * or custom Bazel distributions reading no `BUILD.bazel` need. The unedited `BUILD.bazel` stays: it
+ * says what `BUILD` says, and removing it raced a concurrent `bazel build` reading the package, and
+ * churned workspaces whose snapshots restore it (#6115). One edited by hand is left alone.
  */
 internal fun migrateBazelAspectBuildFile(root: File) {
   val directory = root.resolve(".compose-preview/bazel")
   val legacy = directory.resolve("BUILD.bazel")
+  val bundled = bundledBazelAspectFile("BUILD.bazel")
+  if (!legacy.isFile || legacy.readText() != bundled) return
   val build = directory.resolve("BUILD")
-  if (!legacy.isFile || legacy.readText() != bundledBazelAspectFile("BUILD.bazel")) return
-  // Already beside a BUILD (an older CLI run after a newer one): the CLI's copy simply goes.
-  if (build.exists()) check(legacy.delete()) { "Could not remove $legacy" }
-  else check(legacy.renameTo(build)) { "Could not rename $legacy to $build" }
+  if (!build.exists()) writeIfChanged(build, bundled)
 }
 
 internal data class PreparedBazelPreviews(val manifest: DiscoveryManifest, val manifestFile: File)
@@ -781,37 +898,113 @@ internal fun prepareBazelPreviews(
   output: File,
   /** False for a pattern's candidate targets, which may hold no previews and are then skipped. */
   failOnEmpty: Boolean = true,
+  /** Reuses the last discovery of these exact inputs ([bazelDiscoveryKey]); null always scans. */
+  cache: BazelHostCache? = BazelHostCache.shared(),
 ): PreparedBazelPreviews {
-  val outcome =
-    PreviewDiscovery.discover(
-      PreviewDiscovery.Input(
-        classDirs = emptyList(),
-        projectClassJars = artifacts.projectJars,
-        dependencyJars = artifacts.runtimeJars.filter { it !in artifacts.projectJars },
-        sourceFiles = artifacts.sourceFiles,
-        moduleName = artifacts.metadata.target,
-        variantName = artifacts.metadata.configuration,
-        projectDirectory = root,
-        failOnEmpty = failOnEmpty,
-        catalogRenderSupported = false,
-        animatedPreviewApngSupported = true,
-        // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.
-        mergedManifest = artifacts.android?.manifest,
-      )
+  val input =
+    PreviewDiscovery.Input(
+      classDirs = emptyList(),
+      projectClassJars = artifacts.projectJars,
+      dependencyJars = artifacts.runtimeJars.filter { it !in artifacts.projectJars },
+      sourceFiles = artifacts.sourceFiles,
+      moduleName = artifacts.metadata.target,
+      variantName = artifacts.metadata.configuration,
+      projectDirectory = root,
+      failOnEmpty = failOnEmpty,
+      catalogRenderSupported = false,
+      animatedPreviewApngSupported = true,
+      // Drives activity/app-tour previews and Wear detection, as AGP's merged manifest does.
+      mergedManifest = artifacts.android?.manifest,
     )
-  check(outcome is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $outcome" }
-  outcome.warnings.forEach { System.err.println("WARN: $it") }
-  outcome.infoMessages.forEach { System.err.println(it) }
+  val discovered =
+    if (cache == null) discoverBazelPreviews(input)
+    else {
+      val key = bazelDiscoveryKey(input, cache)
+      val entryFile =
+        cache.discoveryFile(
+          bazelTargetKey(
+            root.absolutePath + "\n" + artifacts.metadata.target,
+            artifacts.metadata.configuration,
+          )
+        )
+      cache
+        .readText(entryFile)
+        ?.let { runCatching { bazelJson.decodeFromString<BazelDiscoveryEntry>(it) }.getOrNull() }
+        ?.takeIf { it.key == key }
+        ?: discoverBazelPreviews(input).also {
+          cache.writeText(entryFile, bazelJson.encodeToString(it.copy(key = key)))
+        }
+    }
+  discovered.warnings.forEach { System.err.println("WARN: $it") }
+  discovered.infoMessages.forEach { System.err.println(it) }
+  val manifest = discovered.manifest
   output.mkdirs()
   val file = output.resolve("previews.json")
-  file.writeText(bazelJson.encodeToString(outcome.manifest))
+  file.writeText(bazelJson.encodeToString(manifest))
   file
     .resolveSibling("components.json")
-    .writeText(bazelJson.encodeToString(ComponentRecords.from(outcome.manifest)))
+    .writeText(bazelJson.encodeToString(ComponentRecords.from(manifest)))
   file
     .resolveSibling("build-artifacts.json")
     .writeText(bazelJson.encodeToString(artifacts.metadata))
-  return PreparedBazelPreviews(outcome.manifest, file)
+  return PreparedBazelPreviews(manifest, file)
+}
+
+/**
+ * A discovery result as [prepareBazelPreviews] keeps it, under the [bazelDiscoveryKey] it is for.
+ */
+@Serializable
+internal data class BazelDiscoveryEntry(
+  val key: String = "",
+  val manifest: DiscoveryManifest,
+  val warnings: List<String> = emptyList(),
+  val infoMessages: List<String> = emptyList(),
+)
+
+private fun discoverBazelPreviews(input: PreviewDiscovery.Input): BazelDiscoveryEntry {
+  val outcome = PreviewDiscovery.discover(input)
+  check(outcome is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $outcome" }
+  return BazelDiscoveryEntry(
+    manifest = outcome.manifest,
+    warnings = outcome.warnings,
+    infoMessages = outcome.infoMessages,
+  )
+}
+
+/**
+ * Everything a Bazel target's discovery result depends on: this CLI's version, every option, and
+ * every file it reads, in order, by content. The project's jars, sources and manifest, which an
+ * edit changes, are hashed each time; dependency jars through [cache]'s per-file memo. Any change
+ * at all re-runs discovery in full: an edit to the project's own code still pays for the scan.
+ */
+internal fun bazelDiscoveryKey(input: PreviewDiscovery.Input, cache: BazelHostCache): String {
+  fun content(file: File): String =
+    if (file.isFile) bazelBundleSha(file) else if (file.exists()) "not a file" else "missing"
+  cache.prefetchSha256(input.dependencyJars)
+  return cacheKey(
+      listOf(
+        "bazel-discovery-v1",
+        runCatching { BUNDLE_VERSION }.getOrDefault("unknown"),
+        input.moduleName,
+        input.variantName,
+        input.projectDirectory.absolutePath,
+        "failOnEmpty=${input.failOnEmpty}",
+        "catalogRenderSupported=${input.catalogRenderSupported}",
+        "animatedPreviewApngSupported=${input.animatedPreviewApngSupported}",
+        "isWear=${input.isWear} retargetWear=${input.retargetWearPreviews}",
+        "componentLibraryPrefixes=${input.componentLibraryPrefixes}",
+        "classDirs=${input.classDirs.map { it.absolutePath }}",
+        "resourceDirs=${input.resourceDirs.map { it.absolutePath }}",
+        "tours=${input.tourSpecFiles.map { it.absolutePath + "=" + content(it) }}",
+        "manifest=${input.mergedManifest?.let { it.absolutePath + "=" + content(it) }}",
+      ) +
+        input.projectClassJars.map { "project\t${it.absolutePath}\t${content(it)}" } +
+        input.dependencyJars.map {
+          "dependency\t${it.absolutePath}\t${if (it.isFile) cache.sha256(it) else content(it)}"
+        } +
+        input.sourceFiles.map { "source\t${it.absolutePath}\t${content(it)}" }
+    )
+    .also { cache.sha256.save() }
 }
 
 /** A module's output directory name: its target and configuration, hashed. */
@@ -825,8 +1018,19 @@ internal fun bazelTargetKey(target: String, configuration: String): String =
  * Identifies the runtime inputs a capture is rendered from by content, so a same-size,
  * timestamp-preserving replacement (cache restore, copy) still invalidates reuse. Classpath order
  * is kept because it decides which class or resource wins; hashing is far cheaper than rendering.
+ *
+ * The project's own jars, which an edit rebuilds, are hashed every time. Every other file's hash
+ * comes from [cache] while its [FileStamp] holds, which a timestamp-preserving replacement still
+ * breaks through the inode-change time: about 280 dependency jars cost two seconds to hash (#6104).
  */
-internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): String {
+internal fun bazelArtifactsFingerprint(
+  artifacts: ResolvedBazelArtifacts,
+  cache: BazelHostCache? = BazelHostCache.shared(),
+): String {
+  val project = artifacts.projectJars.mapTo(HashSet()) { it.absoluteFile }
+  fun sha(file: File): String =
+    if (cache == null || file.absoluteFile in project) bazelBundleSha(file) else cache.sha256(file)
+  cache?.prefetchSha256(artifacts.runtimeJars.filter { it.absoluteFile !in project })
   val digest = MessageDigest.getInstance("SHA-256")
   (artifacts.runtimeJars +
       artifacts.dataFiles +
@@ -838,7 +1042,8 @@ internal fun bazelArtifactsFingerprint(artifacts: ResolvedBazelArtifacts): Strin
     .flatMap {
       if (it.isDirectory) it.walkTopDown().filter(File::isFile).sorted().toList() else listOf(it)
     }
-    .forEach { digest.update("${it.absolutePath}\t${bazelBundleSha(it)}\n".toByteArray()) }
+    .forEach { digest.update("${it.absolutePath}\t${sha(it)}\n".toByteArray()) }
+  cache?.sha256?.save()
   return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
@@ -871,9 +1076,48 @@ internal fun prepareBazelDaemon(
   root: File,
   /** [bazelClockPackages]; Android only, since pinning works through Robolectric. */
   clockPackages: List<String> = emptyList(),
+  /** [oneShotSandboxCount] for a one-shot render; null keeps the daemon's own pool size. */
+  sandboxCount: Int? = null,
+  /** Skip every post-capture data product ([pngOnlySystemProperties]); the caller reads the PNG. */
+  pngOnly: Boolean = false,
 ): File =
-  if (artifacts.android != null) prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages)
-  else prepareBazelDesktopDaemon(artifacts, prepared, root)
+  if (artifacts.android != null)
+    prepareBazelAndroidDaemon(artifacts, prepared, root, clockPackages, sandboxCount, pngOnly)
+  else prepareBazelDesktopDaemon(artifacts, prepared, root, pngOnly)
+
+/**
+ * The daemon's post-capture allowlist (`DaemonProperties.Names.POST_CAPTURE_KINDS`) set to a kind
+ * no processor writes, so a render runs none of them: the layout inspector, semantics, wireframe,
+ * fonts, navigation, strings and resources extractors cost about 500 ms after each capture (#6104),
+ * and a one-shot `render` reads only the PNG. A kind a request asks for still runs.
+ */
+internal fun pngOnlySystemProperties(pngOnly: Boolean): Map<String, String> =
+  if (pngOnly) mapOf(BAZEL_POST_CAPTURE_KINDS_PROPERTY to BAZEL_NO_POST_CAPTURE_KIND)
+  else emptyMap()
+
+/** The daemon's post-capture allowlist (`DaemonProperties.Names.POST_CAPTURE_KINDS`). */
+internal const val BAZEL_POST_CAPTURE_KINDS_PROPERTY = "composeai.daemon.postCaptureKinds"
+
+/** A data-product kind no post-capture processor writes; an empty allowlist would mean "unset". */
+internal const val BAZEL_NO_POST_CAPTURE_KIND = "none"
+
+/**
+ * Robolectric sandboxes for a one-shot render of [previews] previews: one per preview, up to the
+ * daemon's warm-spare pool of five. The daemon boots and warm-renders every sandbox before it
+ * serves the first render, so a pool larger than the work costs about five seconds per idle worker
+ * JVM; a single preview paid ~20 s for four (compose-ai-tools#5945). A long-lived daemon
+ * (`prepare`, for browse and MCP) keeps the pool, which held interactive sessions need.
+ */
+internal fun oneShotSandboxCount(previews: Int): Int = previews.coerceIn(1, 5)
+
+/** The daemon's sandbox pool size (`DaemonProperties.Names.SANDBOX_COUNT`). */
+internal const val BAZEL_SANDBOX_COUNT_PROPERTY = "composeai.daemon.sandboxCount"
+
+/** `DaemonProperties.Names.BACKGROUND_SANDBOX_BOOT`. */
+internal const val BAZEL_BACKGROUND_SANDBOX_BOOT_PROPERTY = "composeai.daemon.backgroundSandboxBoot"
+
+/** The daemon's JSON-RPC protocol version (`JsonRpcServer.PROTOCOL_VERSION`). */
+internal const val BAZEL_DAEMON_PROTOCOL_VERSION = "2"
 
 /** The daemon's consumer-clock property (`ConsumerClock.PROPERTY` in the renderer). */
 internal const val BAZEL_CLOCK_PACKAGES_PROPERTY = "composeai.render.clockPackages"
@@ -923,18 +1167,48 @@ internal fun provisionedSdkLevel(
   robolectricJars: List<File>,
   offlineProperties: Map<String, String>,
   log: (String) -> Unit = { System.err.println(it) },
+  /**
+   * Memoises the answer, which otherwise loads Robolectric from [robolectricJars] on every render,
+   * keyed on the level, those jars' [FileStamp]s and the names in the provisioned directory.
+   */
+  cache: BazelHostCache? = null,
 ): Int {
   val directory = offlineProperties["robolectric.dependency.dir"]?.let(::File) ?: return level
+  fun compute(): Int? = runCatching {
+    RobolectricDepsProvision.highestProvisionedLevel(
+      robolectricJars,
+      directory,
+      requested = level,
+      floor = AndroidBundleLaunch.MIN_SDK,
+    )
+  }
+    .getOrNull()
   val provisioned =
-    runCatching {
-      RobolectricDepsProvision.highestProvisionedLevel(
-        robolectricJars,
-        directory,
-        requested = level,
-        floor = AndroidBundleLaunch.MIN_SDK,
-      )
+    if (cache == null) compute() ?: return level
+    else {
+      val stamps = robolectricJars.map { jar ->
+        cache.stamp(jar)?.let { "${jar.absolutePath}\t${it.text}" }
+      }
+      val key =
+        cacheKey(
+          listOf(
+            "provisionedSdkLevel",
+            "$level",
+            "${AndroidBundleLaunch.MIN_SDK}",
+            directory.absolutePath,
+          ) +
+            directory.listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted() +
+            stamps.map { it ?: "" }
+        )
+      // A jar with no stamp (missing) leaves the answer to a fresh computation each time.
+      val cached = if (stamps.all { it != null }) cache.keyed[key] else null
+      val value = cached ?: (compute()?.toString() ?: BazelHostCache.NONE)
+      if (cached == null && stamps.all { it != null }) {
+        cache.keyed[key] = value
+        cache.keyed.save()
+      }
+      value.toIntOrNull() ?: return level
     }
-      .getOrNull() ?: return level
   if (provisioned != level) {
     log(
       "[android] no android-all for SDK $level in $ROBOLECTRIC_DEPS_DIR_ENV ($directory); " +
@@ -956,6 +1230,8 @@ internal fun prepareBazelAndroidDaemon(
   prepared: PreparedBazelPreviews,
   root: File,
   clockPackages: List<String> = emptyList(),
+  sandboxCount: Int? = null,
+  pngOnly: Boolean = false,
 ): File {
   val android = requireNotNull(artifacts.android) { "Not an Android target" }
   // First: under the network switch a missing android-all directory refuses before any sidecar is
@@ -978,11 +1254,16 @@ internal fun prepareBazelAndroidDaemon(
         "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
       }
   val output = prepared.manifestFile.parentFile
+  // The R jar leads the daemon's classpath, so it is widened with the daemon's own R fields, which
+  // the daemon's Compose links against when it runs (AndroidRClassUnion).
   val resources =
-    AndroidBundleResources.daemonClasspath(
-      AndroidBundleResources.Extracted(android.resourceApk, android.manifest, android.rJar),
-      output.resolve("android-resources"),
-      android.packageName,
+    AndroidRClassUnion.widen(
+      AndroidBundleResources.daemonClasspath(
+        AndroidBundleResources.Extracted(android.resourceApk, android.manifest, android.rJar),
+        output.resolve("android-resources"),
+        android.packageName,
+      ),
+      daemonJars,
     )
   val userClasspath =
     (listOfNotNull(android.rJar) + artifacts.runtimeJars).distinct().joinToString(
@@ -1004,6 +1285,7 @@ internal fun prepareBazelAndroidDaemon(
           ),
           daemonJars,
           offlineProperties,
+          cache = BazelHostCache.shared(),
         )
     )
   val descriptor =
@@ -1017,7 +1299,8 @@ internal fun prepareBazelAndroidDaemon(
         launch.robolectricSystemProperties() +
           offlineProperties +
           mapOf(
-            "composeai.daemon.protocolVersion" to "1",
+            // The JSON-RPC protocol version, which `initialize` must send (#6114).
+            "composeai.daemon.protocolVersion" to BAZEL_DAEMON_PROTOCOL_VERSION,
             "composeai.daemon.modulePath" to artifacts.metadata.target,
             "composeai.daemon.moduleId" to artifacts.metadata.target,
             "composeai.daemon.moduleProjectDir" to root.absolutePath,
@@ -1032,14 +1315,110 @@ internal fun prepareBazelAndroidDaemon(
           // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class
           // loader from this one property. Absent when off, so the descriptor is unchanged.
           (if (clockPackages.isEmpty()) emptyMap()
-          else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))),
+          else mapOf(BAZEL_CLOCK_PACKAGES_PROPERTY to clockPackages.joinToString(","))) +
+          // Explicit, so it wins over the warm-spare default the daemon would otherwise boot.
+          (sandboxCount?.let { mapOf(BAZEL_SANDBOX_COUNT_PROPERTY to it.toString()) }.orEmpty()) +
+          // Answer `initialize` once slot 0 is ready and boot the rest of a pool behind it, as
+          // Gradle's descriptors do: a 2-sandbox pool otherwise held `initialize` ~16 s (#6114).
+          mapOf(BAZEL_BACKGROUND_SANDBOX_BOOT_PROPERTY to "true") +
+          pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
+      sourceWatch = bazelSourceWatch(artifacts, root),
       javaLauncher = currentJavaLauncher(),
     )
   return output.resolve("daemon-launch.json").also {
     it.writeText(DaemonLaunchBuilder.encode(descriptor))
   }
+}
+
+/**
+ * Where a Bazel or Buck2 target is built from, for the descriptor's `sourceWatch` (#6193), so an
+ * MCP server's source tree watches a build that has no `build.gradle` + `src/` to find by
+ * convention:
+ *
+ * - the package of each of the target's workspace sources: the nearest directory above it with a
+ *   build file, so a Kotlin package added beside the existing ones is watched too. A package at the
+ *   workspace root, or a source with no package above it, is watched by its own directory instead,
+ *   since the root holds the output-tree symlinks. A directory under another one is dropped (a
+ *   watch is recursive). Output-tree and external-repository sources are left out: nobody edits
+ *   them, and the build regenerates them;
+ * - an Android target's `res/` (or `src/main/res/`) in each of those packages. The artifacts carry
+ *   only compiled resources, so this is the convention, not the build's own list; and
+ * - each package's build file and the workspace's `.compose-preview/bazel.json` and `buck.json`,
+ *   whichever exist: an edit to one changes what the target builds.
+ *
+ * The packages come from the sources and from each target's own label: a merged selection's label
+ * (`//a:a //b:b`, `//pkg/...`) names no single package, so its members' labels are used, and a
+ * wrapper target with no sources of its own still has a build file and resources.
+ *
+ * Null when none of the three finds anything.
+ */
+internal fun bazelSourceWatch(artifacts: ResolvedBazelArtifacts, root: File): SourceWatch? {
+  val workspace = root.absoluteFile.normalize()
+  fun editable(file: File): Boolean {
+    if (!file.startsWith(workspace)) return false
+    val first = file.relativeTo(workspace).invariantSeparatorsPath.substringBefore('/')
+    return !first.startsWith("bazel-") && first != "buck-out" && !first.startsWith(".")
+  }
+  fun isPackage(dir: File): Boolean = BAZEL_PACKAGE_FILES.any { dir.resolve(it).isFile }
+  val sources = artifacts.sourceFiles.map { it.absoluteFile.normalize() }.filter(::editable)
+  fun packageOf(source: File): File? =
+    generateSequence(source.parentFile) { it.parentFile }
+      .takeWhile { it.startsWith(workspace) }
+      .firstOrNull(::isPackage)
+  val sourcePackages = sources.mapNotNull(::packageOf)
+  // Each target's own package as well: a wrapper that only re-exports another package's library
+  // still has its own build file and res/. A merged selection's label names no one package, so its
+  // members' labels are read instead.
+  val labelPackages =
+    artifacts.memberTargets
+      .ifEmpty { listOf(artifacts.metadata.target) }
+      .filterNot { it.any(Char::isWhitespace) || "..." in it }
+      .mapNotNull(::bazelLabelPackage)
+      .map { if (it.isEmpty()) workspace else workspace.resolve(it) }
+      .filter(::isPackage)
+  val packages = labelPackages + sourcePackages
+  val sourceDirs =
+    sources
+      .map { source -> packageOf(source)?.takeIf { it != workspace } ?: source.parentFile }
+      .distinct()
+      .sortedBy { it.path.length }
+      .fold(mutableListOf<File>()) { kept, dir ->
+        if (kept.none { dir.startsWith(it) }) kept += dir
+        kept
+      }
+  val packageDirs = packages.distinct()
+  val resourceDirs =
+    if (artifacts.android == null) emptyList()
+    else
+      packageDirs.flatMap { dir ->
+        listOf("res", "src/main/res").map(dir::resolve).filter(File::isDirectory)
+      }
+  val buildFiles =
+    (packageDirs.flatMap { dir -> BAZEL_PACKAGE_FILES.map(dir::resolve) } +
+        listOf("bazel.json", "buck.json").map { workspace.resolve(".compose-preview/$it") })
+      .filter(File::isFile)
+  if (sourceDirs.isEmpty() && resourceDirs.isEmpty() && buildFiles.isEmpty()) return null
+  return SourceWatch(
+    sourceDirs.map { it.path },
+    resourceDirs.map { it.path },
+    buildFiles.map { it.path },
+  )
+}
+
+/** Every file a Bazel or Buck2 package's rules are declared in. */
+private val BAZEL_PACKAGE_FILES =
+  listOf("BUILD.bazel", "BUILD", "BUCK", "BUCK.v2", "TARGETS", "TARGETS.v2")
+
+/**
+ * The package of a main-repository label, relative to the workspace: `//a/b:c` and Buck2's
+ * `root//a/b:c` are `a/b`, `//:c` is empty. Null for an external repository's label.
+ */
+internal fun bazelLabelPackage(label: String): String? {
+  if (label.startsWith("@") && !label.startsWith("@//") && !label.startsWith("@@//")) return null
+  if ("//" !in label) return null
+  return label.substringAfter("//").substringBefore(':')
 }
 
 /** The `java` executable this CLI runs on, or null when it cannot be found. */
@@ -1055,6 +1434,7 @@ internal fun prepareBazelDesktopDaemon(
   artifacts: ResolvedBazelArtifacts,
   prepared: PreparedBazelPreviews,
   root: File,
+  pngOnly: Boolean = false,
 ): File {
   DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
   val sidecars =
@@ -1077,7 +1457,7 @@ internal fun prepareBazelDesktopDaemon(
           "java.awt.headless" to "true",
           "skiko.data.path" to composeAiCacheDir("skiko-extracted").absolutePath,
           "composeai.fonts.cacheDir" to composeAiCacheDir("fonts").absolutePath,
-          "composeai.daemon.protocolVersion" to "1",
+          "composeai.daemon.protocolVersion" to BAZEL_DAEMON_PROTOCOL_VERSION,
           "composeai.daemon.modulePath" to artifacts.metadata.target,
           "composeai.daemon.moduleId" to artifacts.metadata.target,
           "composeai.daemon.moduleProjectDir" to root.absolutePath,
@@ -1088,9 +1468,10 @@ internal fun prepareBazelDesktopDaemon(
           // DesktopHost derives its cache/preview root here rather than from Gradle conventions.
           "composeai.daemon.userClassDirs" to userClasspath,
           "composeai.daemon.idleTimeoutMs" to "5000",
-        ) + NetworkPolicy.daemonSystemProperties(),
+        ) + NetworkPolicy.daemonSystemProperties() + pngOnlySystemProperties(pngOnly),
       workingDirectory = root.absolutePath,
       manifestPath = prepared.manifestFile.absolutePath,
+      sourceWatch = bazelSourceWatch(artifacts, root),
     )
   return output.resolve("daemon-launch.json").also {
     it.writeText(DaemonLaunchBuilder.encode(descriptor))

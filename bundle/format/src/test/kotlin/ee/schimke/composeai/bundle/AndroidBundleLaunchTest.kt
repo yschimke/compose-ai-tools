@@ -261,6 +261,20 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `resolveAndroidJar orders minor-versioned platform directories`() {
+    val sdk = tempDir()
+    for (name in listOf("android-36", "android-37.0", "android-36.1", "android-preview")) {
+      File(sdk, "platforms/$name").mkdirs()
+      File(sdk, "platforms/$name/android.jar").writeText("stub")
+    }
+    val localProps =
+      File(tempDir(), "local.properties").apply { writeText("sdk.dir=${sdk.absolutePath}\n") }
+
+    val jar = AndroidBundleLaunch.resolveAndroidJar(localProps, env = { null })
+    assertEquals(File(sdk, "platforms/android-37.0/android.jar"), jar)
+  }
+
+  @Test
   fun `resolveAndroidJar falls back to ANDROID_HOME when local properties is absent`() {
     val sdk = tempDir()
     File(sdk, "platforms/android-33").mkdirs()

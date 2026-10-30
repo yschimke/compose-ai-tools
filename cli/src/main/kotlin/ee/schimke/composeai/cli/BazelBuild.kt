@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toOkioPath
 
 /** Local CLI configuration, not a JVM plugin or a dependency on an IDE's aspect SDK. */
 @Serializable
@@ -34,6 +35,13 @@ internal data class BazelBuildConfig(
   val startupArgs: List<String> = emptyList(),
   /** Empty by default: not every Bazel-family tool, version or wrapper accepts the same flags. */
   val buildArgs: List<String> = emptyList(),
+  /**
+   * Arguments `bazel query` gets, after `query`, when a pattern or a directory is expanded. Null
+   * forwards the Starlark language flags in [buildArgs] ([bazelQueryLanguageArgs]): a `query` run
+   * without them changes Bazel's `BuildLanguageOptions`, and Bazel discards its analysis cache once
+   * for the query and again for the build that follows (#6175).
+   */
+  val queryArgs: List<String>? = null,
   val aspect: String = DEFAULT_BAZEL_ASPECT,
   /**
    * Where the installed Android aspect's shims load their providers from, for a deployment whose
@@ -82,8 +90,30 @@ internal data class BazelBuildConfig(
    * .DependencyPolicy.parse`'s shape. Null keeps the original behaviour exactly.
    */
   val dependencyPolicy: JsonObject? = null,
+  /**
+   * Keep the render daemon warm between `render` / `show` runs ([BazelKeepDaemon], #6104), as
+   * `--keep-daemon` or `COMPOSE_PREVIEW_KEEP_DAEMON=1` do. Off by default: a CI run should leave
+   * nothing behind.
+   */
+  val keepDaemon: Boolean = false,
+  /** How long a kept daemon waits after its last render before it exits. */
+  val daemonIdleTimeoutSeconds: Int = 300,
+  /**
+   * The extended attribute (`user.` optional) a content-addressed output filesystem publishes each
+   * file's content digest under, keying the host cache's per-jar memos on it rather than on mtime,
+   * ctime and inode, which such a filesystem reassigns on every build (#6104; [FileStamper]).
+   * `$COMPOSE_PREVIEW_BAZEL_DIGEST_XATTR` overrides it. Null (the default) never reads one.
+   */
+  val digestXattr: String? = null,
   val metadataOutputGroup: String = "compose_preview_metadata",
   val runtimeOutputGroup: String = "compose_preview_runtime",
+  /**
+   * The aspect's group holding a target's own jars alone (#6162). Built first, so a selected target
+   * whose jars reference no Preview annotation ([BazelPreviewJars]) is dropped before its resources
+   * are linked or its runtime closure built. An aspect without it (rules before the group) leaves
+   * every target in; null or blank skips that first build.
+   */
+  val projectOutputGroup: String? = "compose_preview_project",
 )
 
 /**
@@ -148,6 +178,10 @@ internal fun BazelArtifacts.resolve(
   compileSdkOverride: Int? = null,
   /** The raw `runtimeJarOwners` ([bazelRuntimeJarOwners]); empty when the aspect predates it. */
   runtimeJarOwners: Map<String, String> = emptyMap(),
+  /**
+   * Memoises pruning's per-jar reads and android.jar's level across runs; null reads every time.
+   */
+  hostCache: BazelHostCache? = BazelHostCache.shared(),
 ): ResolvedBazelArtifacts {
   when (schemaVersion) {
     BuildArtifacts.SCHEMA_VERSION_JVM ->
@@ -161,9 +195,20 @@ internal fun BazelArtifacts.resolve(
     "Missing target/configuration identity"
   }
   require(projectJars.isNotEmpty()) { "No project runtime jars for $target" }
+  /**
+   * [path] in the execution root, or, for a file the CLI itself installed under `.compose-preview/`
+   * (the Android aspect's link.sh), in the workspace: an execution root holds a source file only
+   * when the build planted its package there (compose-ai-tools#5945). Nothing else falls back, so a
+   * stale checkout file cannot stand in for a build output that was not materialized.
+   */
   fun resolvePath(path: String): File {
     require(path.isNotBlank()) { "Empty artifact path" }
-    val file = File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+    val inRoot =
+      File(path).let { if (it.isAbsolute) it else File(executionRoot, path) }.absoluteFile
+    val file =
+      inRoot.takeIf { it.exists() || !path.startsWith(".compose-preview/") }
+        ?: workspaceRoot?.resolve(path)?.absoluteFile?.takeIf { it.exists() }
+        ?: inRoot
     require(file.exists()) {
       "Build artifact is not materialized: $file. Request runtime outputs/downloads from the build system."
     }
@@ -220,7 +265,7 @@ internal fun BazelArtifacts.resolve(
         AndroidPlatformLevel.Detected(it, "androidCompileSdk in bazel.json")
       }
         ?: block.compileSdk?.let { AndroidPlatformLevel.Detected(it, "the aspect") }
-        ?: androidJar?.let(AndroidPlatformLevel::detect)
+        ?: androidJar?.let { AndroidPlatformLevel.detect(it, hostCache) }
     ResolvedAndroidArtifacts(
       packageName = block.packageName,
       resourceApk =
@@ -238,7 +283,7 @@ internal fun BazelArtifacts.resolve(
       androidJar = androidJar,
     )
   }
-  val pruned = pruneRuntimeClasspath(runtime, project.toSet(), resolvedAndroid?.rJar)
+  val pruned = pruneRuntimeClasspath(runtime, project.toSet(), resolvedAndroid?.rJar, hostCache)
   if (pruned.empty.isNotEmpty() || pruned.supersededRJars.isNotEmpty()) {
     System.err.println(
       "[bazel] $target: ${pruned.jars.size} of ${runtime.size} runtime jars on the classpath " +
@@ -319,6 +364,11 @@ internal data class ResolvedBazelArtifacts(
   val android: ResolvedAndroidArtifacts? = null,
   /** Runtime jar → producing target label, from the artifacts' optional `runtimeJarOwners`. */
   val runtimeJarOwners: Map<File, String> = emptyMap(),
+  /**
+   * The labels of the targets merged into these artifacts, whose `metadata.target` is then the
+   * selection's label; empty for a single target.
+   */
+  val memberTargets: List<String> = emptyList(),
 )
 
 /**
@@ -343,22 +393,54 @@ internal val bazelJson = Json {
 
 /**
  * Files avoid pipe-buffer deadlocks. A deadline or parent shutdown also tears down child processes.
+ *
+ * Stderr still streams to this process's stderr, and its tail is kept for the failure message:
+ * Bazel prints its `ERROR:` / `FAILED:` diagnostics there and often nothing on stdout, which left a
+ * bare "Build command exited 1:" (#6231).
  */
 internal object BazelProcess {
-  fun run(argv: List<String>, directory: File, timeoutSeconds: Long): String {
+  /** Stderr lines kept for a failure message. */
+  private const val STDERR_TAIL_LINES = 40
+
+  fun run(
+    argv: List<String>,
+    directory: File,
+    timeoutSeconds: Long,
+    stderr: java.io.PrintStream = System.err,
+  ): String {
     require(argv.isNotEmpty() && argv.first().isNotBlank()) {
       "buildCommand must be a nonempty argv array"
     }
     require(timeoutSeconds > 0) { "--timeout must be positive" }
     val output = Files.createTempFile("compose-preview-build-", ".log").toFile()
     try {
-      val process =
-        ProcessBuilder(argv)
-          .directory(directory)
-          .redirectOutput(output)
-          .redirectError(ProcessBuilder.Redirect.INHERIT)
-          .start()
+      val process = ProcessBuilder(argv).directory(directory).redirectOutput(output).start()
       process.outputStream.close()
+      val tail = ArrayDeque<String>()
+      val diagnostics = ArrayDeque<String>()
+      // Drained on its own thread so a chatty stderr never blocks the build on a full pipe.
+      val pump = Thread {
+        runCatching {
+          process.errorStream.bufferedReader().useLines { lines ->
+            lines.forEach { line ->
+              stderr.println(line)
+              synchronized(tail) {
+                tail.addLast(line)
+                if (tail.size > STDERR_TAIL_LINES) tail.removeFirst()
+                if (isBuildDiagnostic(line)) {
+                  diagnostics.addLast(line)
+                  if (diagnostics.size > STDERR_TAIL_LINES) diagnostics.removeFirst()
+                }
+              }
+            }
+          }
+        }
+      }
+        .apply {
+          isDaemon = true
+          name = "compose-preview-build-stderr"
+          start()
+        }
       fun stop() {
         val descendants = process.descendants().use { it.toList() }
         descendants.reversed().forEach { it.destroy() }
@@ -372,8 +454,18 @@ internal object BazelProcess {
         check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
           "Build command timed out after ${timeoutSeconds}s"
         }
-        check(process.exitValue() == 0) {
-          "Build command exited ${process.exitValue()}: ${output.readText().takeLast(8000)}"
+        // A descendant that outlived the build can hold the pipe open; never wait on it long.
+        pump.join(2_000)
+        if (process.exitValue() != 0) {
+          val stderrTail = synchronized(tail) { failureLines(tail.toList(), diagnostics.toList()) }
+          val stdout = output.readText().takeLast(8000).trim()
+          throw BazelCommandFailed(
+            process.exitValue(),
+            "Build command exited ${process.exitValue()}:" +
+              listOf(stdout, stderrTail)
+                .filter { it.isNotBlank() }
+                .joinToString("\n", prefix = " "),
+          )
         }
         return output.readText()
       } catch (e: InterruptedException) {
@@ -389,6 +481,83 @@ internal object BazelProcess {
     }
   }
 }
+
+/** A Bazel or Buck2 line that names what failed. */
+private fun isBuildDiagnostic(line: String): Boolean =
+  line.trimStart().let {
+    it.startsWith("ERROR:") || it.startsWith("FAILED:") || it.startsWith("Error:")
+  }
+
+/**
+ * The stderr to quote for a failed command: its last [tail] lines, after any earlier `ERROR:` /
+ * `FAILED:` [diagnostics] the tail no longer holds, so the cause survives a long trailer.
+ */
+internal fun failureLines(tail: List<String>, diagnostics: List<String>): String =
+  (diagnostics.filter { it !in tail } + tail).joinToString("\n").trim()
+
+/** A build-tool command that ran and exited [exitCode], not zero. */
+internal class BazelCommandFailed(val exitCode: Int, message: String) :
+  IllegalStateException(message)
+
+/** Bazel's exit code for a command line it rejects: an unknown option, for one. */
+internal const val BAZEL_COMMAND_LINE_ERROR: Int = 2
+
+/**
+ * The flags in [buildArgs] that set Bazel's `BuildLanguageOptions` — Starlark semantics, which
+ * `query` and `build` must agree on or Bazel discards its analysis cache between them (#6175):
+ * `--[no]check_bzl_visibility`, `--[no]incompatible_*`, `--[no]experimental_*` and
+ * `--[no]enable_bzlmod` / `--[no]enable_workspace`, in the `=value` form or followed by a value
+ * (which may start with `-`; the next token starting `--` is another option). Some `incompatible_`
+ * and `experimental_` flags are build-only; [BazelBuild] runs the query again without these when
+ * `query` rejects its command line.
+ */
+internal fun bazelQueryLanguageArgs(buildArgs: List<String>): List<String> {
+  fun languageFlag(arg: String): Boolean {
+    if (!arg.startsWith("--")) return false
+    val name = arg.removePrefix("--").substringBefore('=').removePrefix("no")
+    return name == "check_bzl_visibility" ||
+      name == "enable_bzlmod" ||
+      name == "enable_workspace" ||
+      name.startsWith("incompatible_") ||
+      name.startsWith("experimental_")
+  }
+  val out = mutableListOf<String>()
+  var i = 0
+  while (i < buildArgs.size) {
+    val arg = buildArgs[i]
+    if (languageFlag(arg)) {
+      out += arg
+      val value = buildArgs.getOrNull(i + 1)
+      // A value may itself start with `-` (`--experimental_builtins_injection_override -foo`);
+      // the next option starts with `--`, as every flag in buildArgs does.
+      if ('=' !in arg && value != null && !value.startsWith("--")) {
+        out += value
+        i++
+      }
+    }
+    i++
+  }
+  return out
+}
+
+/**
+ * The execution root a build's event stream reports (`workspaceInfo.localExecRoot`, Bazel's
+ * `WorkspaceConfig` event), or null when it reports none or names a missing directory: an older or
+ * custom Bazel distribution, for which the caller asks `info execution_root` instead.
+ */
+internal fun bazelEventExecutionRoot(events: Sequence<String>): String? =
+  events
+    .filter { "\"workspaceInfo\"" in it }
+    .firstNotNullOfOrNull { line ->
+      runCatching {
+        ((bazelJson.parseToJsonElement(line) as JsonObject)["workspaceInfo"] as? JsonObject)
+          ?.get("localExecRoot")
+          ?.jsonPrimitive
+          ?.contentOrNull
+      }
+        .getOrNull()
+    }
+    ?.takeIf { it.isNotBlank() && File(it).isDirectory }
 
 /**
  * Resolve only the selected target's metadata output group, including forward-referenced sets.
@@ -492,6 +661,35 @@ internal class BazelBuild(
   private val execute: (List<String>, File, Long) -> String = BazelProcess::run
 ) {
   /**
+   * `bazel query [expression] --output=label`, with [BazelBuildConfig.queryArgs], or else the
+   * language flags of [BazelBuildConfig.buildArgs] ([bazelQueryLanguageArgs]). Forwarded flags that
+   * `query` rejects as a command line are dropped and the query run once more without them.
+   */
+  private fun query(
+    root: File,
+    expression: String,
+    config: BazelBuildConfig,
+    timeoutSeconds: Long,
+  ): String {
+    val invocation = config.buildCommand + config.startupArgs + listOf("query")
+    val explicit = config.queryArgs
+    val args = explicit ?: bazelQueryLanguageArgs(config.buildArgs)
+    fun run(args: List<String>) =
+      execute(invocation + args + listOf(expression, "--output=label"), root, timeoutSeconds)
+    return try {
+      run(args)
+    } catch (e: BazelCommandFailed) {
+      if (explicit != null || args.isEmpty() || e.exitCode != BAZEL_COMMAND_LINE_ERROR) throw e
+      System.err.println(
+        "[bazel] query rejected the language flags from buildArgs (${args.joinToString(" ")}); " +
+          "querying without them, which costs Bazel its analysis cache. Set queryArgs in " +
+          ".compose-preview/bazel.json to the ones query accepts."
+      )
+      run(emptyList())
+    }
+  }
+
+  /**
    * The targets of the nearest package at or above [directory], like `//pkg:all`: every rule there
    * of the aspect's kinds ([BazelBuildConfig.targetKinds]); outside any package, everything below
    * [directory] (`//dir/...`). A configured `target`, then `targets`, wins.
@@ -518,13 +716,7 @@ internal class BazelBuild(
         val path = pkg.relativeTo(root).invariantSeparatorsPath
         val kinds = config.targetKinds ?: defaultTargetKinds(config.aspect)
         val targets =
-          execute(
-              config.buildCommand +
-                config.startupArgs +
-                listOf("query", "kind('$kinds', //$path:*)", "--output=label"),
-              root,
-              timeoutSeconds,
-            )
+          query(root, "kind('$kinds', //$path:*)", config, timeoutSeconds)
             .lineSequence()
             .map { it.trim() }
             .filter { it.startsWith("//") || it.startsWith("@") }
@@ -589,11 +781,7 @@ internal class BazelBuild(
     val expression =
       "(${selected.joinToString(" + ")})" + excluded.joinToString("") { " - \"$it\"" }
     val targets =
-      execute(
-          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
-          root,
-          timeoutSeconds,
-        )
+      query(root, expression, config, timeoutSeconds)
         .lineSequence()
         .map { it.trim() }
         .filter { it.startsWith("//") || it.startsWith("@") }
@@ -604,7 +792,11 @@ internal class BazelBuild(
       "No targets of kind $kinds match ${patterns.joinToString(" ")}; set targetKinds in " +
         ".compose-preview/bazel.json for other rules"
     }
-    return targets
+    // A pattern's matches whose package sources never mention Preview are not built (#6162);
+    // labels named explicitly are kept whatever they hold.
+    return BazelPreviewSources(root.toOkioPath()).filter(targets, labels.toSet()) {
+      System.err.println(it)
+    }
   }
 
   /**
@@ -620,11 +812,7 @@ internal class BazelBuild(
     timeoutSeconds: Long,
   ): Pair<List<String>, List<String>> {
     fun query(expression: String): Set<String> =
-      execute(
-          config.buildCommand + config.startupArgs + listOf("query", expression, "--output=label"),
-          root,
-          timeoutSeconds,
-        )
+      query(root, expression, config, timeoutSeconds)
         .lineSequence()
         .map { it.trim() }
         .filter { it.startsWith("//") || it.startsWith("@") }
@@ -710,27 +898,24 @@ internal class BazelBuild(
         target to canonical.single()
       } else target to normalizeBazelLabel(target)
     }
+    val candidates =
+      config.projectOutputGroup
+        ?.takeIf { it.isNotBlank() }
+        ?.let { group -> previewCandidates(root, selectedTargets, config, group, timeoutSeconds) }
+        ?: selectedTargets
+    if (candidates.isEmpty()) return emptyList()
     val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
     try {
-      execute(
-        invocation +
-          listOf("build") +
-          config.buildArgs +
-          listOf(
-            "--aspects=${config.aspect}",
-            "--output_groups=${config.metadataOutputGroup},${config.runtimeOutputGroup}",
-            "--build_event_json_file=${bep.absolutePath}",
-          ) +
-          selectedTargets.map { it.second },
-        root,
-        timeoutSeconds,
-      )
       val executionRoot =
-        execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
-      check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
-        "Build tool returned an invalid execution_root: $executionRoot"
-      }
-      return selectedTargets.mapNotNull { (target, selectedTarget) ->
+        build(
+          root,
+          config,
+          listOf(config.metadataOutputGroup, config.runtimeOutputGroup),
+          candidates.map { it.second },
+          bep,
+          timeoutSeconds,
+        )
+      return candidates.mapNotNull { (target, selectedTarget) ->
         val metadata =
           if (skipWithoutMetadata) {
             val files =
@@ -739,7 +924,7 @@ internal class BazelBuild(
                   it.lineSequence(),
                   selectedTarget,
                   config.metadataOutputGroup,
-                  File(executionRoot),
+                  executionRoot,
                 )
               }
             if (files.isEmpty()) {
@@ -757,7 +942,7 @@ internal class BazelBuild(
                 it.lineSequence(),
                 selectedTarget,
                 config.metadataOutputGroup,
-                File(executionRoot),
+                executionRoot,
               )
             }
         val artifactsText = metadata.readText()
@@ -767,12 +952,92 @@ internal class BazelBuild(
           "Metadata target ${artifacts.target} does not match $target"
         }
         artifacts.resolve(
-          File(executionRoot),
+          executionRoot,
           root,
           config.androidCompileSdk,
           bazelRuntimeJarOwners(artifactsText),
         )
       }
+    } finally {
+      bep.delete()
+    }
+  }
+
+  /**
+   * Builds [groups] of the configured aspect over [labels], writing the event stream to [bep], and
+   * returns the execution root.
+   */
+  private fun build(
+    root: File,
+    config: BazelBuildConfig,
+    groups: List<String>,
+    labels: List<String>,
+    bep: File,
+    timeoutSeconds: Long,
+  ): File {
+    val invocation = config.buildCommand + config.startupArgs
+    execute(
+      invocation +
+        listOf("build") +
+        config.buildArgs +
+        listOf(
+          "--aspects=${config.aspect}",
+          "--output_groups=${groups.joinToString(",")}",
+          "--build_event_json_file=${bep.absolutePath}",
+        ) +
+        labels,
+      root,
+      timeoutSeconds,
+    )
+    // The build's own event stream names its execution root; only a tool that does not report
+    // it pays for a second client call (#6104).
+    val executionRoot =
+      bep.bufferedReader().use { bazelEventExecutionRoot(it.lineSequence()) }
+        ?: execute(invocation + listOf("info", "execution_root"), root, timeoutSeconds).trim()
+    check(executionRoot.isNotBlank() && File(executionRoot).isDirectory) {
+      "Build tool returned an invalid execution_root: $executionRoot"
+    }
+    return File(executionRoot)
+  }
+
+  /**
+   * [selected] less the targets whose own jars reference no Preview annotation, read from a build
+   * of [projectGroup] alone (#6162): such a target costs its own compilation, not a resource link
+   * and its whole runtime closure. A target is kept on any doubt: the aspect reported no jars for
+   * it (rules that predate the group, or a target the aspect does not read), they are not on disk
+   * (a remote build that did not download them), or one cannot be read.
+   */
+  private fun previewCandidates(
+    root: File,
+    selected: List<Pair<String, String>>,
+    config: BazelBuildConfig,
+    projectGroup: String,
+    timeoutSeconds: Long,
+  ): List<Pair<String, String>> {
+    val bep = Files.createTempFile("compose-preview-bep-", ".json").toFile()
+    try {
+      val executionRoot =
+        build(root, config, listOf(projectGroup), selected.map { it.second }, bep, timeoutSeconds)
+      val skipped = mutableListOf<String>()
+      val kept = selected.filter { (_, label) ->
+        val jars = runCatching {
+          bep.bufferedReader().use {
+            bazelMetadataFiles(it.lineSequence(), label, projectGroup, executionRoot)
+          }
+        }
+          .getOrNull()
+          .orEmpty()
+        val keep = jars.isEmpty() || BazelPreviewJars.mayHoldPreviews(jars)
+        if (!keep) skipped += label
+        keep
+      }
+      if (skipped.isNotEmpty()) {
+        System.err.println(
+          "[bazel] no Preview annotation in the jars of ${skipped.joinToString(" ")}; " +
+            "skipped before linking resources or building the runtime"
+        )
+      }
+      return kept
     } finally {
       bep.delete()
     }
@@ -858,6 +1123,8 @@ internal fun mergeBazelArtifacts(
     dataFiles = data.first,
     android = android,
     runtimeJarOwners = artifacts.fold(emptyMap()) { owners, it -> it.runtimeJarOwners + owners },
+    memberTargets =
+      artifacts.flatMap { it.memberTargets.ifEmpty { listOf(it.metadata.target) } }.distinct(),
   )
 }
 
@@ -916,7 +1183,8 @@ internal const val RULES_ANDROID_ASPECT =
 
 /**
  * The Android aspect for an unconfigured workspace, or null when it has none it can load, so an
- * unconfigured selection stays JVM-only as before (a Blaze workspace, which has no `MODULE.bazel`):
+ * unconfigured selection stays JVM-only as before (a `WORKSPACE`-only project without
+ * `MODULE.bazel`):
  *
  * - [RULES_ANDROID_ASPECT] when `MODULE.bazel` declares `rules_compose_preview` (under its
  *   `repo_name`, when it sets one);

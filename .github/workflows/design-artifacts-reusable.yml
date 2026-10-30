@@ -380,6 +380,11 @@ on:
         required: false
         type: boolean
         default: false
+      rc-cmp-android-lane:
+        description: "Add the cmp-android lane to rc-compare.html — one extra compact column rendering the bundle's ir/*.rc through the CMP player, rc-player-compose, on Android under Robolectric. Its harness (RcCmpAndroidRenderHarness) is a test in yschimke/rc-players, checked out and pinned exactly as rc-embedded-lane describes. Worth opting into even where cmp-jvm is already on: this is the SAME player on a different text and canvas stack, and `cmp-android` is the player a served catalog hands back when the request names none — so until it had a column the default lane was the only one the wall could not see. Opt-in and fail-soft like the other enrichment lanes. Entirely skipped for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       rc-cmp-wasm-lane:
         description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw fails the step and the catalog does not publish. The first-frame budgets below are report-only. Opt in per catalog once you know what its documents do in that player."
         required: false
@@ -1084,6 +1089,7 @@ env:
   INPUT_RC_CMP_WASM_WARM_MS: ${{ inputs.rc-cmp-wasm-max-warm-first-frame-ms }}
   INPUT_RC_EMBEDDED_LANE: ${{ inputs.rc-embedded-lane }}
   INPUT_RC_EMBEDDED_JVM_LANE: ${{ inputs.rc-embedded-jvm-lane }}
+  INPUT_RC_CMP_ANDROID_LANE: ${{ inputs.rc-cmp-android-lane }}
   INPUT_SYSTEM: ${{ inputs.system }}
   INPUT_COMMIT_USER_NAME: ${{ inputs.commit-user-name }}
   INPUT_COMMIT_USER_EMAIL: ${{ inputs.commit-user-email }}
@@ -1141,7 +1147,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=maven depName=ee.schimke.composeai:rc-players-bom
-  RC_PLAYERS_PIN: v2.15.0
+  RC_PLAYERS_PIN: v2.21.0
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -3700,7 +3706,7 @@ jobs:
       # visible on the page rather than silent.
       - name: Check the rc-players pin against the consumed player version
         id: rc-players-pin
-        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane || inputs.rc-cmp-android-lane }}
         env:
           # Named in the drift report, so a reader can see WHICH driver commit supplied the
           # `rcplayers` on the other side of the comparison rather than having to work it out.
@@ -3743,7 +3749,7 @@ jobs:
             else
               detail="The pin is BEHIND the driver, which is an editing mistake: rcplayers moved without RC_PLAYERS_PIN beside it. Bump RC_PLAYERS_PIN in this workflow to v${version}."
             fi
-            echo "::warning title=rc-players pin drift::RC_PLAYERS_PIN is $RC_PLAYERS_PIN but the driver checkout consumes the players at v${version}, so the vendored-Android and cmp-jvm columns are skipped for this run. $detail"
+            echo "::warning title=rc-players pin drift::RC_PLAYERS_PIN is $RC_PLAYERS_PIN but the driver checkout consumes the players at v${version}, so the vendored-Android, cmp-jvm and cmp-android columns are skipped for this run. $detail"
             {
               echo ""
               echo "### Remote Compose embedded lanes skipped"
@@ -5684,12 +5690,13 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           }
 
-          if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ] || [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ]; then
+          if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ] || [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ] \
+             || [ "$INPUT_RC_CMP_ANDROID_LANE" = "true" ]; then
             if [ ! -x "$RC_PLAYERS/gradlew" ]; then
-              # The checkout is guarded on the same two inputs as this block, so this is only
+              # The checkout is guarded on the same three inputs as this block, so this is only
               # reachable if that step failed or was skipped. Loud, and still fail-soft: the lanes
               # below drop their columns rather than losing the publish this job exists for.
-              echo "::warning::no rc-players checkout at $RC_PLAYERS; both embedded player lanes will be skipped"
+              echo "::warning::no rc-players checkout at $RC_PLAYERS; every harness-rendered player lane will be skipped"
             fi
             RC_IN="$RUNNER_TEMP/rc-embedded-in"
             rm -rf "$RC_IN"
@@ -5785,6 +5792,40 @@ jobs:
               EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
             else
               report_dropped_lane "cmp-jvm player" "$RC_JVM_OUT" "$RC_JVM_LOG"
+            fi
+          fi
+
+          # cmp-android (the CMP player on Android, under Robolectric) lane. The SAME player as the
+          # cmp-jvm lane above and the Wasm one, on its third host — so a divergence between those
+          # columns is Android's text and canvas stack rather than the interpreter.
+          #
+          # The lane worth having even when cmp-jvm is already on, and the reason this block exists
+          # at all: `cmp-android` is what a served catalog hands back when the request names no
+          # player, so until it had a column the DEFAULT lane was the only one the parity wall could
+          # not see. A Google-Fonts regression rode it for a release
+          # (yschimke/compose-preview-daemon#389) with every published column green.
+          #
+          # No xvfb and no apt here, unlike cmp-jvm: this rasterizes through Robolectric's software
+          # canvas, so it needs the Android SDK the embedded lanes above already rely on and nothing
+          # else. Fonts come from the harness's own default (rc-players' vendored `fonts.json`, the
+          # same faces `RcCmpRenderHarness` loads), which is what keeps a text difference between
+          # these columns attributable to the host rather than to the manifest.
+          if [ "$INPUT_RC_CMP_ANDROID_LANE" = "true" ]; then
+            RC_ANDROID_OUT="$RUNNER_TEMP/rc-cmp-android-out"
+            rm -rf "$RC_ANDROID_OUT"
+            RC_ANDROID_LOG="$RUNNER_TEMP/rc-cmp-android.log"
+            # `--rerun` for the reason the embedded lane documents: the real output is PNGs
+            # addressed by a system property, which Gradle cannot see, so a second identical
+            # invocation would report UP-TO-DATE having written nothing.
+            if (cd "$RC_PLAYERS" && \
+                ./gradlew :rc-player-compose:testAndroidHostTest --no-daemon --rerun --quiet \
+                  --tests '*RcCmpAndroidRenderHarness*' \
+                  -Prc.cmpandroid.input="$RC_IN" -Prc.cmpandroid.output="$RC_ANDROID_OUT") \
+                  >"$RC_ANDROID_LOG" 2>&1 \
+               && [ -n "$(find "$RC_ANDROID_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
+              EMBEDDED_ARGS+=(--cmp-android "$RC_ANDROID_OUT")
+            else
+              report_dropped_lane "cmp-android player" "$RC_ANDROID_OUT" "$RC_ANDROID_LOG"
             fi
           fi
 

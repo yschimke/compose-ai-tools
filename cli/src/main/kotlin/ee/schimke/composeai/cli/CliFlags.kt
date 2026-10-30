@@ -30,6 +30,8 @@ internal object CliFlags {
       "--java-info-load",
       "--module",
       "--filter",
+      "--sandbox-count",
+      "--function",
       // `provision`, `bundle render`
       "--android-sdk",
       // `bundle render` (Android bundles)
@@ -83,6 +85,8 @@ internal object CliFlags {
       "--raw-base",
       "--serve-url",
       "--serve-token",
+      // `rc upload`'s display label for the shared document.
+      "--name",
       "--github-token-file",
       "--github-token",
       "--with-extension",
@@ -209,6 +213,12 @@ internal object CliFlags {
       "--locale",
       "--ui-mode",
       "--font-scale",
+      // `launch`
+      "--control",
+      "--qualifiers",
+      "--sdk",
+      "--jar",
+      "--java",
       // bundle externalize
       "--res-out",
       "--ext",

@@ -14,6 +14,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render" to { a -> runProjectPreviewCommand("render", a) },
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
+    "launch" to { a -> LaunchCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
     "guidelines" to
       { a ->
@@ -150,13 +151,13 @@ private fun printUsage(full: Boolean = false) {
 
     Command groups (each command is also callable directly by its name):
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
-      capture   render-matrix · record · bundle
+      capture   render-matrix · record · bundle · launch
       share     serve · ui-builder · design · share-preview
       setup     update · provision · init-script · pin · auth · bazel · buck
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
-    Project builds: Gradle settings/wrapper first, then a Buck2 project or Bazel/Blaze workspace.
-      list/render/show accept --target <label> and --build-system auto|gradle|bazel|blaze|buck.
+    Project builds: Gradle settings/wrapper first, then a Buck2 project or Bazel workspace.
+      list/render/show accept --target <label> and --build-system auto|gradle|bazel|buck.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
       --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
@@ -204,6 +205,11 @@ private fun printFullUsage() {
                        (pure-JVM); mp4/webm need ffmpeg on PATH. Scripts may include Maestro-style
                        assert.visible / assert.notVisible events (with a target); a failed assertion
                        still writes the recording but exits non-zero (code 2).
+      launch           Run an APK in Robolectric's simulator: a window driven by mouse and keyboard,
+                       or with --control stdio a JSON-lines channel to tap, type, screenshot,
+                       read the UI hierarchy, start activities/services and send broadcasts.
+                       The APK's dex is converted once and cached. Needs Java 21+ and an
+                       Android SDK. See docs/SIMULATOR.md.
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       review           Review rendered previews against their catalog's design guidelines.
@@ -259,11 +265,15 @@ private fun printFullUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
-      rc               Remote Compose JSON codec, offline (no daemon, no Gradle, no project):
+      rc               Remote Compose JSON codec, offline (no daemon, no Gradle, no project),
+                       plus `upload` to share a document:
                          rc compile <doc.json> -o <doc.rc>   authoring JSON -> binary document
                          rc dump <doc.rc> [--compact] [-o f] binary document -> document JSON
                          rc dump <dir> [--compact]           every .rc under <dir>, in place
                          rc header <doc.rc> [--json]         declared header only, no inflate
+                         rc upload <doc.rc> [--serve-url URL] [--name LABEL] [--json]
+                                                             expiring permalink on a serve
+                                                             --accept-docs host
                        The two JSON dialects are NOT inverses: `compile` reads AndroidX's
                        AUTHORING dialect (remote_compose_schema.json — named resources, infix
                        expressions, modifier shorthands); `dump` writes the DOCUMENT dialect,

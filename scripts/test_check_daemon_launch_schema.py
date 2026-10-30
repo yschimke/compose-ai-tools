@@ -239,6 +239,32 @@ class WireFingerprint(unittest.TestCase):
         self.assertIn("BtaCompileConfig{", before)
         self.assertIn("moduleName", before)
 
+    def test_every_nested_dto_of_the_writer_is_hashed(self):
+        # `sourceWatch: SourceWatch?` went in without `SourceWatch` joining NESTED_DTOS, so renaming
+        # one of its lists would have left the digest alone.
+        shape = mod.wire_shape(mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor"))
+        self.assertIn("SourceWatch{sourceDirs:List<String>?", shape)
+
+    def test_an_encode_default_mode_is_part_of_the_digest(self):
+        # `@EncodeDefault` decides whether a defaulted field is on the wire at all, so it is
+        # recorded rather than refused — and flipping its mode has to move the digest.
+        def annotations(mode: str) -> dict[str, str]:
+            with tempfile.TemporaryDirectory() as tree:
+                path = Path(tree) / "Dto.kt"
+                path.write_text(
+                    "data class Dto(\n"
+                    "  @OptIn(ExperimentalSerializationApi::class)\n"
+                    f"  @EncodeDefault(EncodeDefault.Mode.{mode})\n"
+                    "  val watch: Watch? = null,\n"
+                    "  val plain: String,\n"
+                    ")\n"
+                )
+                return mod.wire_annotations(str(path), "Dto")
+
+        never, always = annotations("NEVER"), annotations("ALWAYS")
+        self.assertEqual({"watch": "@EncodeDefault(EncodeDefault.Mode.NEVER)"}, never)
+        self.assertNotEqual(never, always)
+
     def test_the_digest_is_stable_for_the_same_shape(self):
         a = {"x": ("Int", False), "y": ("String", True)}
         self.assertEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(dict(a)))

@@ -21,8 +21,12 @@ dependencies {
   // coordinates, it does not speak ktor.
   implementation(libs.ktor.client.core)
   implementation(libs.ktor.client.okhttp)
+  // `ForbiddenCertificatesHostnameVerifier` calls OkHttp directly; pins 5.x over the engine's
+  // transitive 4.12.0, as `:bundle-viewer` does.
+  implementation(libs.okhttp)
 
   testImplementation(libs.junit)
+  testImplementation(libs.okhttp.tls)
   testImplementation(kotlin("test"))
 }
 

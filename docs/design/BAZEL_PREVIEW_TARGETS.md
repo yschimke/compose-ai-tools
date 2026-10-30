@@ -17,19 +17,19 @@ compose-preview show --filter Greeting --json
 compose-preview render --filter Greeting --output greeting.png
 ```
 
-Gradle wins within the selected workspace when settings are present. Bazel/Blaze
+Gradle wins within the selected workspace when settings are present. Bazel
 workspaces are bounded before looking at an unrelated outer Gradle build. Shared
 configuration pins the target/build command; otherwise selection is limited to
 the current package, requiring an explicit choice when multiple JVM targets exist.
 The same versioned list/show response and PNG/hash/state logic is used on both paths.
 
 For repeatable CI and developers who use the native build command, add a real
-preview target. Bazel/Blaze requires a verb:
+preview target. Bazel requires a verb:
 
 ```sh
-blaze build //app:ui-preview
-blaze run //app:ui-preview -- --filter Greeting
-blaze test //app:ui-preview-test
+bazel build //app:ui-preview
+bazel run //app:ui-preview -- --filter Greeting
+bazel test //app:ui-preview-test
 ```
 
 The corresponding public commands use `bazel build|run|test`.
@@ -121,13 +121,13 @@ rewrite version-controlled expected results.
 | Tool | Existing pattern | What to reuse here |
 | --- | --- | --- |
 | Gradle | [Lazy plugin task registration](https://docs.gradle.org/current/userguide/writing_tasks.html), variant-specific record/verify tasks in [Paparazzi](https://github.com/cashapp/paparazzi) and [Roborazzi](https://github.com/takahirom/roborazzi) | Register tasks through a plugin, retain the native lifecycle, and keep recording separate from verification. Gradle's init-script injection can apply that plugin without permanent build-script edits. |
-| Bazel/Blaze | Rules/macros declare target names; aspects augment configured targets. [Robolectric's Bazel integration](https://github.com/robolectric/robolectric-bazel) uses Android local-test targets. | Use an aspect for ad hoc discovery/preparation and a real macro/rule for native build/run/test labels. Android still requires its runtime/resource toolchain. |
-| Buck2 | [BXL](https://buck2.build/docs/bxl/explanation/basics/) can query/analyze existing targets, construct actions and ensure artifacts are built/materialized without new permanent BUCK target calls. | A build-native external integration surface can provide the same prepared artifact contract without rewriting application definitions. BXL is a Buck2 capability, not an assumed Blaze API. |
+| Bazel | Rules/macros declare target names; aspects augment configured targets. [Robolectric's Bazel integration](https://github.com/robolectric/robolectric-bazel) uses Android local-test targets. | Use an aspect for ad hoc discovery/preparation and a real macro/rule for native build/run/test labels. Android still requires its runtime/resource toolchain. |
+| Buck2 | [BXL](https://buck2.build/docs/bxl/explanation/basics/) can query/analyze existing targets, construct actions and ensure artifacts are built/materialized without new permanent BUCK target calls. | A build-native external integration surface can provide the same prepared artifact contract without rewriting application definitions. BXL is a Buck2 capability, not an assumed Bazel API. |
 | Maven | [Plugin goals](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html) can be invoked directly or bound to lifecycle phases. | Provide an explicit goal/profile for export and a separate verification goal instead of changing compilation semantics. |
 
 These sources establish mechanisms and naming conventions, not compatibility with
 our renderer. The provider import, action deployment, artifact materialization and
-allowed execution environment must still be validated with internal Blaze access.
+allowed execution environment must still be validated against each custom Bazel distribution.
 
 ## Next implementation gate
 

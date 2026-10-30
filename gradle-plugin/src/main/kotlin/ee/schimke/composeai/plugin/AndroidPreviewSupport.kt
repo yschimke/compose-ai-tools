@@ -974,9 +974,9 @@ internal object AndroidPreviewSupport {
               include("**/*.java")
             },
       ) {
-        // Lazy `tasks.matching` so modules lacking `compileDebugKotlin` (KMP) don't crash at
-        // task-graph time (#1492).
-        dependsOn(project.tasks.matching { it.name in mainCompileTaskNames })
+        // Name-filtered so modules lacking `compileDebugKotlin` (KMP) don't crash at task-graph
+        // time (#1492), without realizing unrelated tasks (see [optionalTaskDependencies]).
+        dependsOn(optionalTaskDependencies(project, mainCompileTaskNames))
         // Lottie assets from Java-resource source dirs (`src/main/resources`), rendered via desktop
         // Compottie. Source dirs rather than AGP's version-specific `java_res` intermediates; the
         // same dirs go on `composePreviewRenderLottie`'s classpath.
@@ -994,7 +994,7 @@ internal object AndroidPreviewSupport {
           }
         )
         if (screenshotTestEnabled) {
-          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+          dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
           screenshotTestRuntimeConfig?.let { stConfig ->
             dependencyJars.from(
               stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
@@ -1689,6 +1689,10 @@ internal object AndroidPreviewSupport {
     // [rendererClasspathEntries] is the runtime counterpart and uses the jar itself: a `zipTree` on
     // a classpath contributes each `.class` as an invalid element, which some vendor JDKs choke on
     // (#5562).
+    // `zipTree` through ArchiveOperations, not `project`: under an included-build substitution the
+    // renderer jar is a task output, so the `map` below is stored in the configuration cache rather
+    // than evaluated before it, and a captured Project cannot be serialized.
+    val archives = project.objects.newInstance(RendererArchives::class.java).archives
     val rendererClassDirs: FileCollection
     val rendererClasspathEntries: FileCollection
     if (useLocalRenderer) {
@@ -1705,18 +1709,14 @@ internal object AndroidPreviewSupport {
         rendererConfig.incoming
           .artifactView {
             attributes.attribute(artifactType, "android-classes")
-            componentFilter { id ->
-              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                id.group == "ee.schimke.composeai" &&
-                id.module == "renderer-android"
-            }
+            componentFilter { id -> PreviewDaemonModules.isArtifact(id, "renderer-android") }
           }
           .files
       // `elements.map { … }` so task-graph construction sees a Provider; a Callable would resolve
       // `rendererConfig` at configuration time (#1038).
       rendererClassDirs =
         project.files(
-          rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
+          rendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
         )
       rendererClasspathEntries = rendererJars
     }
@@ -1739,16 +1739,12 @@ internal object AndroidPreviewSupport {
         rendererConfig.incoming
           .artifactView {
             attributes.attribute(artifactType, "android-classes")
-            componentFilter { id ->
-              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                id.group == "ee.schimke.composeai" &&
-                id.module == "renderer-xr"
-            }
+            componentFilter { id -> PreviewDaemonModules.isArtifact(id, "renderer-xr") }
           }
           .files
       xrRendererClassDirs =
         project.files(
-          xrRendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
+          xrRendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
         )
       xrRendererClasspathEntries = xrRendererJars
     }
@@ -1761,8 +1757,10 @@ internal object AndroidPreviewSupport {
 
     // A bare buildDir path with no producer wired, so every task reading it through the render
     // classpath must depend on the generator or Gradle 9's strict validation fails. Matched by name
-    // so it's empty when unit tests are disabled.
-    val unitTestConfigProducer = project.tasks.matching { it.name == naming.unitTestConfigTask }
+    // so it's empty when unit tests are disabled; never realizes other tasks (AGP 9.5's
+    // `generate<Variant>ComposePreviewRunfiles` throws when realized for such variants).
+    val unitTestConfigProducer =
+      optionalTaskDependencies(project, listOfNotNull(naming.unitTestConfigTask))
 
     // Generates the package-level `robolectric.properties` that stubs the consumer's `Application`
     // by default; see [GenerateRobolectricPropertiesTask].
@@ -1905,7 +1903,11 @@ internal object AndroidPreviewSupport {
     // ATF / hierarchy data products come only from the daemon, so no a11y outputs are declared.
 
     val shardCount =
-      resolveShardCount(project, extension, previewOutputDir.get().file("previews.json").asFile)
+      resolveShardCount(
+        project,
+        extension,
+        previewOutputDir.map { it.file("previews.json").asFile },
+      )
     val shardsEnabled = shardCount > 1
 
     // When sharded, generate N subclasses of RobolectricRenderTestBase, each loading one manifest
@@ -1947,7 +1949,7 @@ internal object AndroidPreviewSupport {
           // The screenshotTest classes dir is on the render classpath too; same strict-validation
           // requirement.
           if (screenshotTestEnabled) {
-            dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+            dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
           }
           if (useLocalRenderer) {
             dependsOn(":renderer-android:compile${capVariant}Kotlin")
@@ -2006,7 +2008,7 @@ internal object AndroidPreviewSupport {
         // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
         dependsOn(unitTestConfigProducer)
         if (screenshotTestEnabled) {
-          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+          dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
         }
         testClassesDirs =
           if (compileShardsTask != null) {
@@ -2102,9 +2104,11 @@ internal object AndroidPreviewSupport {
             linkBufferComposer = linkBufferComposer.get(),
             rcPlayer = rcPlayer.get(),
             rcDensity = rcDensity.get(),
-            clockPackages = clockPackagesProperty(clockPackages.get()),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
+        // Lazy: the default derives from the variant's namespace, which AGP refuses to read while
+        // the project is still configuring, and a plugin can realize this task that early (#6039).
+        jvmArgumentProviders.add(ClockPackagesSystemPropProvider(clockPackages))
 
         // No a11y providers: the daemon is the only a11y producer. Display filters use a lazy input
         // so toggling them doesn't invalidate the configuration cache.
@@ -2175,10 +2179,10 @@ internal object AndroidPreviewSupport {
         // `process${Cap}Resources` exists only on application variants; the resource APK comes via
         // `generate${Cap}UnitTestConfig` anyway, so skip it when absent (#136).
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
         if (compileShardsTask != null) {
           dependsOn(compileShardsTask)
@@ -2272,10 +2276,10 @@ internal object AndroidPreviewSupport {
           dependsOn(":renderer-android:compile${capVariant}Kotlin")
         }
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
       }
     }
@@ -2381,10 +2385,10 @@ internal object AndroidPreviewSupport {
           dependsOn(":renderer-xr:compile${capVariant}Kotlin")
         }
         dependsOn(
-          project.tasks.matching {
-            it.name in
-              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
-          }
+          optionalTaskDependencies(
+            project,
+            listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
+          )
         )
       }
 
@@ -2692,6 +2696,30 @@ internal object AndroidPreviewSupport {
           },
         ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
       )
+      // What the variant is built from, for the descriptor's `sourceWatch`.
+      variant.sources.java?.all?.let { dirs ->
+        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      variant.sources.kotlin?.all?.let { dirs ->
+        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      variant.sources.res?.all?.let { layers ->
+        this.watchResourceDirs.addAll(
+          layers.map { all -> all.flatten().map { it.asFile.absolutePath } }
+        )
+      }
+      variant.sources.resources?.all?.let { dirs ->
+        this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+      }
+      // Lottie assets render from these too; listed even when absent, so creating one is noticed.
+      this.watchResourceDirs.addAll(
+        androidLottieResourceDirs(project).elements.map { all ->
+          all.map { it.asFile.absolutePath }
+        }
+      )
+      this.watchBuildFiles.set(
+        ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project)
+      )
       // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
       // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks. Load-bearing:
@@ -2843,15 +2871,15 @@ internal object AndroidPreviewSupport {
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       // Invalidates the descriptor (triggering VS Code's respawn) when the manifest appears or
-      // changes. A null-returning provider leaves the property unset when the file is absent, which
-      // is what `@Optional` needs.
+      // changes. An absent value leaves the property unset when the file is missing, which is what
+      // `@Optional` needs; the value source checks at execution, so the check is no
+      // configuration-cache input (see [FirstExistingPathValueSource]).
       this.previewsManifest.fileProvider(
-        previewOutputDir.flatMap { dir ->
-          project.providers.provider {
-            val f = dir.file("previews.json").asFile
-            if (f.isFile) f else null
-          }
-        }
+        FirstExistingPathValueSource.of(
+          project,
+          previewOutputDir.map { listOf(it.file("previews.json").asFile) },
+          directory = false,
+        )
       )
       // The provider carries no build dependency, which strict validation rejects. `mustRunAfter`
       // rather than `dependsOn`: the daemon must be warmable before any discovery.
@@ -2975,6 +3003,20 @@ internal object AndroidPreviewSupport {
       .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
       .orElse("full")
 
+  /**
+   * Forwards `pinAppClock`'s prefixes as [CLOCK_PACKAGES_PROPERTY], resolved at execution time; an
+   * empty list emits nothing.
+   */
+  internal class ClockPackagesSystemPropProvider(
+    @get:org.gradle.api.tasks.Input val packages: org.gradle.api.provider.Provider<List<String>>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+      val p = packages.get()
+      return if (p.isEmpty()) emptyList()
+      else listOf("-D$CLOCK_PACKAGES_PROPERTY=${clockPackagesProperty(p)}")
+    }
+  }
+
   /** Lazy render-tier system property for `composePreviewRender`. */
   internal class TierSystemPropProvider(
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
@@ -3094,45 +3136,20 @@ internal object AndroidPreviewSupport {
 
   /**
    * Effective shard count: `≥1` as-is; `0` (auto) feeds a previous `previews.json` to
-   * [ShardTuning.autoShards], or falls back to 1 when absent.
+   * [ShardTuning.autoShards], or falls back to 1 when absent. Auto is read through
+   * [AutoShardCountValueSource] so the configuration cache keys on the count rather than on the
+   * manifest discovery rewrites.
    */
   private fun resolveShardCount(
     project: Project,
     extension: PreviewExtension,
-    previewsJson: java.io.File,
+    previewsJson: Provider<java.io.File>,
   ): Int {
     val requested = extension.shards.get()
     if (requested > 0) return requested
-    if (!previewsJson.exists()) {
-      project.logger.info(
-        "compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run"
-      )
-      return 1
-    }
-    // Size by preview row: the renderer keeps a row's captures on one fork, so counting captures
-    // would pick idle extra forks. [ShardTuning.perPreviewRowCosts] mirrors the renderer's per-row
-    // cost.
-    val text = previewsJson.readText()
-    val rowCosts = ShardTuning.perPreviewRowCosts(text)
-    val rowCount = rowCosts.size
-    val totalCost = rowCosts.sum()
-    val maxIndividualCost = rowCosts.maxOrNull() ?: 0.0
-    val hostMemoryMb = ShardTuning.hostMemoryMb()
-    val resolved =
-      ShardTuning.autoShards(
-        totalCost = totalCost,
-        maxIndividualCost = maxIndividualCost,
-        shardableRows = rowCount,
-        availableMemoryMb = hostMemoryMb,
-      )
-    val memTag = if (hostMemoryMb == Long.MAX_VALUE) "unknown" else "${hostMemoryMb}MB"
-    project.logger.lifecycle(
-      "compose-ai-tools: shards=auto → $resolved " +
-        "(rows=$rowCount, totalCost=${"%.1f".format(totalCost)}, " +
-        "maxRowCost=${"%.1f".format(maxIndividualCost)}, " +
-        "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)"
-    )
-    return resolved
+    return project.providers
+      .of(AutoShardCountValueSource::class.java) { parameters.previewsJson.set(previewsJson) }
+      .get()
   }
 
   private fun String.cap(): String = replaceFirstChar {
@@ -3273,3 +3290,8 @@ internal object CheapSignalFiles {
     return out.filter { it.isFile }
   }
 }
+
+/** Injects [ArchiveOperations] for unpacking renderer jars without capturing the Project. */
+internal abstract class RendererArchives
+@javax.inject.Inject
+constructor(val archives: org.gradle.api.file.ArchiveOperations)

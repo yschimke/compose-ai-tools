@@ -27,11 +27,7 @@ internal fun detectProjectBuild(start: File): ProjectBuild? {
       return if (wrapperRoot == root) ProjectBuild(ProjectBuildKind.GRADLE, root)
       else ProjectBuild(ProjectBuildKind.BUCK, root)
     }
-    if (
-      listOf("MODULE.bazel", "WORKSPACE.bazel", "WORKSPACE", ".blazerc").any {
-        dir.resolve(it).isFile
-      }
-    ) {
+    if (listOf("MODULE.bazel", "WORKSPACE.bazel", "WORKSPACE").any { dir.resolve(it).isFile }) {
       return if (wrapperRoot == dir) ProjectBuild(ProjectBuildKind.GRADLE, dir)
       else ProjectBuild(ProjectBuildKind.BAZEL, dir)
     }
@@ -56,15 +52,13 @@ internal fun previewBuildRoute(args: List<String>, start: File = File(".")): Pro
       findGradleProjectRoot(directory.canonicalFile)?.let {
         ProjectBuild(ProjectBuildKind.GRADLE, it)
       } ?: error("No Gradle build found at $directory")
-    "bazel",
-    "blaze" ->
+    "bazel" ->
       detectBazelRoot(directory)?.let { ProjectBuild(ProjectBuildKind.BAZEL, it) }
-        ?: error("No Bazel/Blaze workspace or BUILD file found at $directory")
+        ?: error("No Bazel workspace or BUILD file found at $directory")
     "buck" ->
       detectBuckRoot(directory)?.let { ProjectBuild(ProjectBuildKind.BUCK, it) }
         ?: error("No Buck2 project (.buckconfig or .buckroot) found at $directory")
-    else ->
-      error("Unknown --build-system '$requested'; expected auto, gradle, bazel, blaze or buck")
+    else -> error("Unknown --build-system '$requested'; expected auto, gradle, bazel or buck")
   }
 }
 
@@ -73,11 +67,7 @@ internal fun detectBazelRoot(start: File): File? {
   var buildFileRoot: File? = null
   while (directory != null) {
     val dir = directory
-    if (
-      listOf("MODULE.bazel", "WORKSPACE.bazel", "WORKSPACE", ".blazerc").any {
-        dir.resolve(it).isFile
-      }
-    )
+    if (listOf("MODULE.bazel", "WORKSPACE.bazel", "WORKSPACE").any { dir.resolve(it).isFile })
       return dir
     if (buildFileRoot == null && listOf("BUILD.bazel", "BUILD").any { dir.resolve(it).isFile })
       buildFileRoot = dir
@@ -90,6 +80,11 @@ internal fun detectBazelRoot(start: File): File? {
 }
 
 internal fun runProjectPreviewCommand(command: String, args: List<String>) {
+  // Before routing: on a configured Bazel workspace, routing would build the default target.
+  if ("--help" in args || "-h" in args) {
+    println(projectPreviewCommandHelp(command))
+    return
+  }
   val route =
     try {
       previewBuildRoute(args)
@@ -144,7 +139,10 @@ internal fun removeFlag(args: List<String>, flag: String): List<String> = buildL
 
 internal data class BazelBuildCommandChoice(val command: String, val reason: String)
 
-/** Name of the environment override; a committed `buildCommand` in bazel.json still wins. */
+/**
+ * Name of the environment override; a committed `buildCommand` in bazel.json still wins, and it
+ * wins over a `buildCommand` from a defaults layer ([BAZEL_CONFIG_ENV], [BAZEL_DEFAULTS_RESOURCE]).
+ */
 internal const val BUILD_COMMAND_ENV = "COMPOSE_PREVIEW_BUILD_COMMAND"
 
 /**
@@ -157,7 +155,6 @@ internal fun selectBazelBuildCommand(
   override: String? = System.getenv(BUILD_COMMAND_ENV),
 ): BazelBuildCommandChoice {
   if (!override.isNullOrBlank()) return BazelBuildCommandChoice(override, "\$$BUILD_COMMAND_ENV")
-  if (root.resolve(".blazerc").isFile) return BazelBuildCommandChoice("blaze", ".blazerc")
   fun present(name: String): Boolean =
     path
       .orEmpty()
@@ -171,7 +168,31 @@ internal fun selectBazelBuildCommand(
   // .bazelversion pins a version that only Bazelisk honours.
   if (root.resolve(".bazelversion").isFile && present("bazelisk"))
     return BazelBuildCommandChoice("bazelisk", ".bazelversion and bazelisk on PATH")
-  return listOf("bazel", "bazelisk", "blaze").firstOrNull(::present)?.let {
-    BazelBuildCommandChoice(it, "first of bazel, bazelisk, blaze on PATH")
+  return listOf("bazel", "bazelisk").firstOrNull(::present)?.let {
+    BazelBuildCommandChoice(it, "first of bazel, bazelisk on PATH")
   } ?: BazelBuildCommandChoice("bazel", "no candidate on PATH")
 }
+
+/** `compose-preview list|render|show --help` (#6115). */
+internal fun projectPreviewCommandHelp(command: String): String =
+  """
+  compose-preview $command — ${
+    when (command) {
+      "list" -> "list the previews a Gradle module or Bazel/Buck target declares"
+      "render" -> "render previews to PNG"
+      else -> "render previews and show where their PNGs are"
+    }
+  }
+
+  Usage: compose-preview $command [--module <:gradle:path> | --target <//bazel:label>] [options]
+
+  Selection:  --id <exact id> | --function <exact function name> | --filter <substring>
+              | --preview <reference>
+  Output:     --json${if (command == "render") ", --output <file.png | dir/>" else ""}
+  Build:      --project <dir>, --build-system gradle|bazel|buck, --config <bazel.json>
+
+  Gradle projects run the Gradle plugin; Bazel and Buck workspaces run the same driver as
+  `compose-preview bazel $command` (see `compose-preview bazel --help`).
+  Run `compose-preview help --all` for every option.
+  """
+    .trimIndent()

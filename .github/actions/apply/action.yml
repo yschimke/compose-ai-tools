@@ -558,9 +558,17 @@ runs:
         # write-scoped commenter at an unrelated PR with attacker-authored
         # content. Bind it back to the run that produced the artifact: the
         # named PR must be the one whose head is this workflow_run's head.
-        if [ -n "${PR_NUMBER:-}" ] && [ -n "${RUN_HEAD_REPO:-}" ]; then
-          if ! printf '%s' "$PR_NUMBER" | grep -qE '^[0-9]+$'; then
+        # Fail closed: GitHub reports no head repository once the fork is
+        # deleted, and skipping the binding then would let the staged number
+        # aim the commenter anywhere.
+        if [ -n "${PR_NUMBER:-}" ]; then
+          # A bash match, not `grep`, which passes "5\nx" line by line.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]{1,9}$ ]]; then
             echo "::error::pr-number must be numeric (got '$PR_NUMBER')."
+            exit 1
+          fi
+          if [ -z "${RUN_HEAD_REPO:-}" ] || [ -z "${RUN_HEAD_BRANCH:-}" ]; then
+            echo "::error::The triggering run has no head repository or branch to bind pr-number $PR_NUMBER to. Refusing to comment."
             exit 1
           fi
           pr_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name' 2>/dev/null || true)
@@ -630,6 +638,15 @@ runs:
               continue
               ;;
           esac
+          # The push steps `git init` + `git add -A` inside the staged dirs, and
+          # `git init` keeps an existing `.git`: a planted config (`core.fsmonitor`,
+          # a filter driver, `url.*.insteadOf`) would run or redirect with the
+          # artifacts token. Checked here, not on the tar, so a handoff uploaded
+          # without one is covered too. Nested ones and `.git` files count.
+          if [ -n "$(find "$entry" -name .git -print -quit)" ]; then
+            echo "::error::Handoff entry '$base' contains a .git path. Refusing to restore."
+            exit 1
+          fi
           # Replace rather than merge: `cp -a dir existing-dir` would nest the
           # staged tree one level deeper instead of overwriting it.
           rm -rf "${GITHUB_WORKSPACE:?}/$base"
@@ -881,7 +898,7 @@ runs:
     - name: Install CLI from source
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v2.68.4 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v2.74.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
 
     # `cli-version: 'none'` is the third install state — install is skipped
     # entirely. Compose / resources pipelines must then run with
@@ -891,7 +908,7 @@ runs:
       id: install-release
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v2.68.4 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v2.74.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}
@@ -1917,9 +1934,9 @@ runs:
     - name: Install CLI for the design-guidelines check
       if: steps.resolve.outputs.phase == 'publish' && (inputs.guidelines == 'true' && inputs.openrouter-key != '' && steps.guidelines-gate.outputs.run == 'true' && hashFiles('_guidelines/**/previews.json') != '')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v2.68.4 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v2.74.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
-        version: ${{ contains(fromJSON('["auto","source","none","catalog","pin","latest",""]'), inputs.cli-version) && '2.68.4' || inputs.cli-version }} # x-release-please-version
+        version: ${{ contains(fromJSON('["auto","source","none","catalog","pin","latest",""]'), inputs.cli-version) && '2.74.1' || inputs.cli-version }} # x-release-please-version
         require-digest: 'true'
 
     # The catalog publish's guideline results (`design-artifacts-reusable.yml`, `guidelines: true`),

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemonlaunch
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -54,6 +56,32 @@ public data class DaemonClasspathDescriptor(
    * unknown fields.
    */
   public val btaCompile: BtaCompileConfig? = null,
+  /**
+   * Where the module's sources, resources and build files are, so a tool that notices edits on its
+   * own (the MCP server's source scan) looks where the build actually reads; see [SourceWatch].
+   * Added to schema 2 without a bump. Released readers ignore unknown keys, except older copies of
+   * [DaemonLaunchBuilder.decode]; those never see the key from a build that sets no source dirs,
+   * because a null value is left out rather than written as `null`.
+   */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
+  public val sourceWatch: SourceWatch? = null,
+)
+
+/**
+ * The module's source and resource directories and build files, as its build declares them. The
+ * full list and a starting point: a client that knows which files an agent will edit may check
+ * those first, but should keep the rest on a slower check rather than drop it. Paths are absolute;
+ * directories are watched recursively. Mirrors compose-preview-contracts' `SourceWatch`.
+ */
+@Serializable
+public data class SourceWatch(
+  /** Kotlin and Java source directories, generated ones included. */
+  public val sourceDirs: List<String> = emptyList(),
+  /** Resource directories compiled into the previews: Android `res/`, Compose resources. */
+  public val resourceDirs: List<String> = emptyList(),
+  /** Build scripts, version catalogs and other files whose edits change the classpath. */
+  public val buildFiles: List<String> = emptyList(),
 )
 
 /**

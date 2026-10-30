@@ -78,12 +78,12 @@ class BuckBuildTest {
       routed,
     )
     assertEquals("buck", routed.flagValue("--build-system"))
-    // A Bazel route keeps --build-system blaze.
+    // A Bazel route keeps --build-system bazel.
     assertEquals(
-      listOf("--build-system", "blaze", "--project", root.absolutePath),
+      listOf("--build-system", "bazel", "--project", root.absolutePath),
       routedBuildArgs(
         ProjectBuild(ProjectBuildKind.BAZEL, root),
-        listOf("--build-system", "blaze"),
+        listOf("--build-system", "bazel"),
       ),
     )
   }

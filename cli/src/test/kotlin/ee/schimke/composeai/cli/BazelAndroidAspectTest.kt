@@ -63,7 +63,7 @@ class BazelAndroidAspectTest {
         val installed = dir.resolve(installedBazelFileName(it))
         assertEquals(resource(it).decodeToString(), installed.readText(), it)
       }
-    // BUILD, not BUILD.bazel, so Blaze deployments that read only BUILD see the package.
+    // BUILD, not BUILD.bazel, so Bazel distributions that read only BUILD see the package.
     assertTrue(dir.resolve("BUILD").isFile)
     assertTrue(!dir.resolve("BUILD.bazel").exists())
     // A Bazel tool must be executable.
