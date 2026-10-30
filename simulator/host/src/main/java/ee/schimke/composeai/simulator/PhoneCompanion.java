@@ -27,7 +27,8 @@ import org.robolectric.shadows.ShadowPackageManager;
  * findWatchToInstallTile} offers the install-tile prompt only for a watch it manages.
  *
  * <p>The activity is the simulator's own, plain views: the watch it is paired with and that it is
- * connected. Nothing of the real app (setup, watch faces, settings) is simulated.
+ * connected, and the destination of a {@code https://madeby.google.com/wear-companion/navigation}
+ * deep link (Horologist's install-tile prompt opens {@code dest=tile_management_add}). Nothing of the real app (setup, watch faces, settings) is simulated.
  */
 public final class PhoneCompanion extends Activity {
 
@@ -35,6 +36,13 @@ public final class PhoneCompanion extends Activity {
   static final String PACKAGE = "com.google.android.apps.wear.companion";
 
   static final String LABEL = "Pixel Watch";
+
+  static final String VERSION = "2.1.0.576785526";
+
+  /** The app's deep links ({@code dest=tile_management_add}: the watch's tile editor). */
+  static final String LINK_HOST = "madeby.google.com";
+
+  static final String LINK_PATH = "/wear-companion/navigation";
 
   public PhoneCompanion() {}
 
@@ -64,14 +72,30 @@ public final class PhoneCompanion extends Activity {
 
     PackageInfo info = new PackageInfo();
     info.packageName = PACKAGE;
-    info.versionName = "simulated";
+    // Horologist's install-tile prompt needs at least this one, which deep links to tile editing.
+    info.versionName = VERSION;
     info.applicationInfo = application;
-    info.activities = new ActivityInfo[] {activity};
-    shadow.installPackage(info);
-    shadow.addOrUpdateActivity(activity);
-    IntentFilter launcher = new IntentFilter(Intent.ACTION_MAIN);
-    launcher.addCategory(Intent.CATEGORY_LAUNCHER);
-    shadow.addIntentFilterForActivity(new ComponentName(PACKAGE, activity.name), launcher);
+    try {
+      // The package first, then its activity: Robolectric indexes a component's intent filters
+      // only for one added on its own.
+      shadow.installPackage(info);
+      ComponentName component = new ComponentName(PACKAGE, activity.name);
+      shadow.addActivityIfNotPresent(component);
+      shadow.addOrUpdateActivity(activity);
+      IntentFilter launcher = new IntentFilter(Intent.ACTION_MAIN);
+      launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+      shadow.addIntentFilterForActivity(component, launcher);
+      IntentFilter links = new IntentFilter(Intent.ACTION_VIEW);
+      links.addCategory(Intent.CATEGORY_DEFAULT);
+      links.addCategory(Intent.CATEGORY_BROWSABLE);
+      links.addDataScheme("https");
+      links.addDataAuthority(LINK_HOST, null);
+      links.addDataPath(LINK_PATH, android.os.PatternMatcher.PATTERN_PREFIX);
+      shadow.addIntentFilterForActivity(component, links);
+    } catch (RuntimeException e) {
+      // Never fatal: without it, startCompanion answers NO_COMPANION_FOUND as before.
+      System.err.println("datalayer: no companion app on the phone: " + e);
+    }
   }
 
   @Override
@@ -92,6 +116,18 @@ public final class PhoneCompanion extends Activity {
     DataLayer node = DataLayer.enabled() ? DataLayer.get() : null;
     java.util.List<Node> watches =
         node != null ? node.connectedNodes() : java.util.Collections.<Node>emptyList();
+    android.net.Uri link = getIntent() == null ? null : getIntent().getData();
+    String dest = link == null ? null : link.getQueryParameter("dest");
+    if (dest != null) {
+      column.addView(
+          spaced(
+              PhoneHome.text(
+                  this,
+                  "tile_management_add".equals(dest) ? "Add a tile to your watch" : dest,
+                  18,
+                  0xFF0B57D0),
+              pad));
+    }
     if (watches.isEmpty()) {
       column.addView(spaced(PhoneHome.text(this, "No watch connected", 18, 0xFF1F1F1F), pad));
     }

@@ -194,6 +194,52 @@ The probes found five simulator bugs, all fixed:
 - **A bind reported as a failed start.** Robolectric logs a bind as a start too; the binds to the
   simulator's own Wear OS app services are now recognized as binds.
 
+## Evidence: Horologist's Data Layer sample
+
+Horologist's `datalayer/sample/phone` and `datalayer/sample/wear` debug APKs, unmodified, `--sdk
+35`: every screen on both sides and every `DataLayerAppHelper` call.
+
+| Feature | Phone | Watch |
+| --- | --- | --- |
+| `connectedNodes` (Nodes) / `connectedAndInstalledNodes` (Nodes Listener, Data Layer Nodes) | works | works |
+| `startCompanion` | works: opens the Pixel Watch app | works: the phone opens it |
+| `installOnNode` | works (`market://` answered as the Play Store would) | works (it threw `NoClassDefFoundError`) |
+| `startRemoteOwnApp` / `startRemoteActivity` | works; a running app comes forward rather than stacking | works (it threw `NoClassDefFoundError`) |
+| Install app / Re-Engage / Sign-in prompts, stock and custom | works (install app shown with the watch's capability dropped) | — |
+| Install Tile prompt, stock and custom | works: the sheet, then the companion's tile editor (it found no watch) | — |
+| `markActivityLaunchedOnce` / `markSetupComplete` (Tracking) | read from `surface_info` | works |
+| Counter (`ProtoDataStore` over gRPC `sendRequest`) | works | works |
+| Tile tracking (`/tile_tracking_enabled`, no payload) | 0 bytes (it arrived as 3) | — |
+
+Six simulator gaps, all fixed:
+
+- **An item with no payload arrived with three bytes.** A frame's absent `data` travelled as JSON
+  `null`, and `optString(key, null)` reads that as the text `"null"`, whose Base64 decoding is
+  three bytes. Frames are now read through `DataLayerFrames`, where only a string is a value.
+- **The watch's clock stood still.** Robolectric sends no `TIME_TICK`, and Wear Compose's
+  `TimeText` redraws on it; the simulator now sends one each wall-clock minute (`TimeTick`).
+- **No companion app on the phone.** `startCompanion` launches the package
+  `getCompanionPackageForNode` names, and the install-tile prompt needs the Pixel Watch app
+  (`com.google.android.apps.wear.companion`, version 2.1.0.576785526 or later). The paired phone
+  now has it (`PhoneCompanion`), with its launcher activity and its tile-editor deep link.
+- **`RemoteActivityHelper` on an API 34+ watch.** wear-remote-interactions 1.2 asks the Wear SDK
+  for `RemoteInteractionsManager`; the class did not exist, so every Horologist call that builds
+  a `RemoteActivityHelper` on the watch threw. The simulator's Wear SDK now has it.
+- **A relaunch stacked another activity.** A `NEW_TASK` start of the task's root with its
+  launcher intent brings the task forward on a device (`TaskReuse`); each remote "start own app"
+  had added a `MainActivity`.
+- **A put of the same contents synced again.** Play services syncs and delivers a data item only
+  when it changes; the simulator now reports such a put as `unchanged` and sends nothing.
+
+In a paired launch `Build.DEVICE` and `Build.MODEL` are the node's (`watch-sim`, "Simulated
+Watch") rather than `robolectric`, which the sample writes into its proto data.
+
+| | Before | After |
+| --- | --- | --- |
+| Phone, `startCompanion` | ![NO_COMPANION_FOUND](evidence/simulator-datalayer/horologist-phone-companion-before.png) | ![the Pixel Watch app](evidence/simulator-datalayer/horologist-phone-companion-after.png) |
+| Phone, Install Tile prompt | ![no watch found](evidence/simulator-datalayer/horologist-install-tile-before.png) | ![the prompt](evidence/simulator-datalayer/horologist-install-tile-after.png) |
+| Watch, launch and 8 minutes later | ![11:02](evidence/simulator-datalayer/horologist-clock-before-1.png) ![still 11:02](evidence/simulator-datalayer/horologist-clock-before-2.png) | ![12:08](evidence/simulator-datalayer/horologist-clock-after-1.png) ![12:17](evidence/simulator-datalayer/horologist-clock-after-2.png) |
+
 ## Evidence: MeshCore
 
 `meshcore-debug.apk` with `meshcore-wear-debug.apk`, `--sdk 36`. Three causes, in order, kept the

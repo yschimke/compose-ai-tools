@@ -126,7 +126,17 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.
-      if (DataLayerLink.enabled()) DataLayer.start(app);
+      if (DataLayerLink.enabled()) {
+        DataLayer.start(app);
+      } else if ((app.getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK)
+          == Configuration.UI_MODE_TYPE_WATCH) {
+        // A watch alone still has the Wear OS app's services; paired, DataLayer registers them.
+        try {
+          WearCompanion.install(app, null);
+        } catch (LinkageError e) {
+          // The app has no wear-phone-interactions.
+        }
+      }
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
     }
