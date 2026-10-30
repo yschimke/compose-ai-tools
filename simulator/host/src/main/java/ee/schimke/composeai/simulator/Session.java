@@ -2,14 +2,13 @@ package ee.schimke.composeai.simulator;
 
 import android.app.Activity;
 import android.app.Application;
+import android.app.NotificationManager;
 import android.app.UiAutomation;
 import android.content.Intent;
 import android.content.pm.ComponentInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.net.Uri;
 import android.os.Build;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
@@ -17,6 +16,7 @@ import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -57,8 +57,11 @@ final class Session {
   private final UiAutomation ui;
   private final Protocol protocol;
   private final Navigator navigator;
+  private final Device device;
+  private final Logcat logcat;
+  private final AppFiles files;
   private final DeviceDisplay display;
-  private final DeviceState device;
+  private final DeviceState state;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -90,7 +93,10 @@ final class Session {
     this.protocol = protocol;
     this.navigator = new Navigator(app, protocol);
     this.display = new DeviceDisplay(app, navigator);
-    this.device = new DeviceState(app, navigator);
+    this.device = new Device(app, navigator, display);
+    this.logcat = new Logcat(protocol);
+    this.files = new AppFiles(app);
+    this.state = new DeviceState(app, navigator);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
@@ -126,6 +132,8 @@ final class Session {
   void cycle() {
     navigator.pump();
     Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
+    overlay.round(FormFactor.isRound());
+    logcat.poll();
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
@@ -162,13 +170,26 @@ final class Session {
       id = command.opt("id");
       String name = command.getString("cmd");
       if (!name.equals("ping")) overlay.status(summary(name, command));
+      JSONObject shell = null;
+      if (name.equals("shell")) {
+        // An adb shell line: run the command it translates to, and say what that was.
+        shell = shellCommand(command);
+        if (command.has("settleMs")) shell.put("settleMs", command.get("settleMs"));
+        command = shell;
+        name = command.getString("cmd");
+        if (name.equals("shell")) throw new IllegalArgumentException("shell inside shell");
+      }
       if (name.equals("quit")) {
         // The reply goes out first and is flushed (the protocol stream autoflushes per line).
         protocol.ok(id, new Protocol.Json().put("quitting", true).object());
         System.exit(0);
         return;
       }
-      JSONObject result = run(name, command);
+      JSONObject ran = run(name, command);
+      JSONObject result =
+          shell == null
+              ? ran
+              : new Protocol.Json().put("command", shell).put("result", ran).object();
       long settle =
           name.equals("wait")
               ? command.optLong("settleMs", command.optLong("ms", 0))
@@ -191,6 +212,7 @@ final class Session {
       case "tap":
       case "longPress":
       case "swipe":
+      case "rotary":
       case "key":
       case "text":
       case "back":
@@ -203,6 +225,12 @@ final class Session {
       case "unbindService":
       case "broadcast":
       case "qualifiers":
+      case "forceStop":
+      case "clearData":
+      case "display":
+      case "settings":
+      case "network":
+      case "content":
         return true;
       default:
         return false;
@@ -211,7 +239,7 @@ final class Session {
 
   private JSONObject run(String name, JSONObject c) throws Exception {
     JSONObject emulated = display.command(name, c);
-    if (emulated == null) emulated = device.command(name, c);
+    if (emulated == null) emulated = state.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -251,7 +279,14 @@ final class Session {
         {
           List<Hierarchy.Node> windows = snapshot();
           if (c.optBoolean("flat", false)) {
-            return new Protocol.Json().put("nodes", Hierarchy.flatten(windows)).object();
+            JSONObject flat = new Protocol.Json().put("nodes", Hierarchy.flatten(windows)).object();
+            if (c.has("path")) {
+              File file = outputFile(c);
+              file.getAbsoluteFile().getParentFile().mkdirs();
+              java.nio.file.Files.writeString(file.toPath(), flat.toString(2));
+              flat.put("path", file.getPath());
+            }
+            return flat;
           }
           JSONArray array = new JSONArray();
           for (Hierarchy.Node window : windows) array.put(window.toJson(true));
@@ -271,10 +306,21 @@ final class Session {
         return tap(c, c.optLong("durationMs", 800));
       case "swipe":
         return swipe(c);
+      case "rotary":
+        return rotary(c);
       case "key":
-        return key(keyCode(c.get("key")));
+        {
+          Object keys = c.get("key");
+          boolean longPress = c.optBoolean("longPress", false);
+          if (!(keys instanceof JSONArray)) return key(keyCode(keys), longPress);
+          JSONArray codes = new JSONArray();
+          for (int i = 0; i < ((JSONArray) keys).length(); i++) {
+            codes.put(key(keyCode(((JSONArray) keys).get(i)), longPress).get("keyCode"));
+          }
+          return new Protocol.Json().put("keyCodes", codes).object();
+        }
       case "back":
-        return key(KeyEvent.KEYCODE_BACK);
+        return key(KeyEvent.KEYCODE_BACK, false);
       case "text":
         return text(c.getString("text"));
       case "finish":
@@ -283,12 +329,17 @@ final class Session {
         return screenshot(c);
       case "launch":
         {
+          checkPackage(c);
           Intent launcher = app.getPackageManager().getLaunchIntentForPackage(app.getPackageName());
           if (launcher == null) throw new IllegalStateException("the app has no launcher activity");
           return navigator.startActivity(launcher, -1);
         }
       case "startActivity":
-        return navigator.startActivity(intent(c), -1);
+        {
+          Intent intent = intent(c);
+          if (c.optBoolean("forceStop", false)) navigator.forceStop();
+          return navigator.startActivity(intent, -1);
+        }
       case "startService":
         return navigator.startService(intent(c));
       case "stopService":
@@ -300,9 +351,62 @@ final class Session {
       case "broadcast":
         return navigator.broadcast(intent(c));
       case "query":
-        return query(c);
+        return device.content(c);
+      case "content":
+        return device.content(c);
       case "permissions":
+        checkPackage(c);
         return navigator.permissions.command(c);
+      case "settings":
+        return device.settings(c);
+      case "display":
+        return device.display(c);
+      case "getprop":
+        return device.getprop(c);
+      case "package":
+        checkPackage(c);
+        return device.packageInfo();
+      case "packages":
+        return device.packages(c);
+      case "network":
+        {
+          Boolean wifi = c.has("wifi") ? c.getBoolean("wifi") : null;
+          Boolean airplane = c.has("airplane") ? c.getBoolean("airplane") : null;
+          JSONObject state = Connectivity.set(app, wifi, airplane);
+          if (airplane != null) {
+            navigator.broadcast(
+                new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", airplane));
+          }
+          return state;
+        }
+      case "logcat":
+        return logcat.command(c);
+      case "files":
+        checkPackage(c);
+        return files.command(c);
+      case "forceStop":
+        {
+          checkPackage(c);
+          JSONObject stopped = navigator.forceStop();
+          app.getSystemService(NotificationManager.class).cancelAll();
+          return stopped;
+        }
+      case "clearData":
+        {
+          checkPackage(c);
+          JSONObject stopped = navigator.forceStop();
+          app.getSystemService(NotificationManager.class).cancelAll();
+          navigator.permissions.reset();
+          int deleted = files.clear();
+          return new Protocol.Json()
+              .put("stopped", stopped)
+              .put("deletedFiles", deleted)
+              .put(
+                  "note",
+                  "the process lives on: in-memory state (open databases, cached preferences,"
+                      + " singletons) survives until the simulator is relaunched")
+              .object();
+        }
       case "qualifiers":
         return qualifiers(c.getString("value"));
       default:
@@ -325,7 +429,9 @@ final class Session {
     }
     json.put("application", app.getClass().getName());
     json.put("sdk", Build.VERSION.SDK_INT);
+    json.put("formFactor", FormFactor.current().id());
     json.put("qualifiers", RuntimeEnvironment.getQualifiers());
+    json.put("round", FormFactor.isRound());
     json.put("width", metrics.widthPixels);
     json.put("height", metrics.heightPixels);
     json.put("density", metrics.density);
@@ -391,10 +497,13 @@ final class Session {
   private JSONObject screenshot(JSONObject c) throws IOException, JSONException {
     Bitmap bitmap = ui.takeScreenshot();
     if (bitmap == null) throw new IllegalStateException("nothing on screen to capture");
+    if (FormFactor.isRound() && !c.optBoolean("square", false)) {
+      bitmap = FormFactor.cropRound(bitmap);
+    }
     Protocol.Json json =
         new Protocol.Json().put("width", bitmap.getWidth()).put("height", bitmap.getHeight());
     if (c.has("path")) {
-      File file = new File(c.getString("path")).getAbsoluteFile();
+      File file = outputFile(c);
       File parent = file.getParentFile();
       if (parent != null) parent.mkdirs();
       try (OutputStream out = new FileOutputStream(file)) {
@@ -407,33 +516,6 @@ final class Session {
       json.put("png", Base64.getEncoder().encodeToString(out.toByteArray()));
     }
     return json.object();
-  }
-
-  private JSONObject query(JSONObject c) throws JSONException {
-    Uri uri = Uri.parse(c.getString("uri"));
-    String[] projection = strings(c.optJSONArray("projection"));
-    String[] args = strings(c.optJSONArray("args"));
-    int limit = c.optInt("limit", 50);
-    JSONArray rows = new JSONArray();
-    JSONArray columns = new JSONArray();
-    try (Cursor cursor =
-        app.getContentResolver()
-            .query(uri, projection, c.optString("selection", null), args, c.optString("sort", null))) {
-      if (cursor == null) throw new IllegalArgumentException("no provider answered " + uri);
-      for (String column : cursor.getColumnNames()) columns.put(column);
-      while (rows.length() < limit && cursor.moveToNext()) {
-        JSONArray row = new JSONArray();
-        for (int i = 0; i < cursor.getColumnCount(); i++) {
-          row.put(cursor.getType(i) == Cursor.FIELD_TYPE_BLOB ? "<blob>" : cursor.getString(i));
-        }
-        rows.put(row);
-      }
-      return new Protocol.Json()
-          .put("columns", columns)
-          .put("rows", rows)
-          .put("count", cursor.getCount())
-          .object();
-    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -476,6 +558,8 @@ final class Session {
     float y2 = (float) c.getDouble("y2");
     long duration = Math.max(1, c.optLong("durationMs", 300));
     int steps = Math.max(2, c.optInt("steps", 12));
+    // A drag holds still first, long enough to be a long press.
+    long hold = Math.max(0, c.optLong("holdMs", 0));
     overlay.swipe(x1, y1, x2, y2);
     long down = SystemClock.uptimeMillis();
     inject(touch(down, down, MotionEvent.ACTION_DOWN, x1, y1));
@@ -484,18 +568,94 @@ final class Session {
       float x = x1 + (x2 - x1) * f;
       float y = y1 + (y2 - y1) * f;
       later(
-          duration * i / steps,
+          hold + duration * i / steps,
           () -> inject(touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y)));
     }
     later(
-        duration,
+        hold + duration,
         () -> inject(touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x2, y2)));
     return new Protocol.Json().put("durationMs", duration).put("steps", steps).object();
   }
 
-  private JSONObject key(int code) {
+  /**
+   * Turns a Wear watch's crown (or a rotating bezel): {@code count} {@code ACTION_SCROLL} events
+   * from the rotary encoder, {@code intervalMs} apart, each carrying {@code delta} on {@code
+   * AXIS_SCROLL}. As on a device they go to the top window's focused view, where Compose's {@code
+   * rotaryScrollable} (Wear's {@code ScalingLazyColumn}, {@code TransformingLazyColumn}) scrolls by
+   * {@code -delta} times the scaled vertical scroll factor: a positive delta scrolls up.
+   */
+  private JSONObject rotary(JSONObject c) throws JSONException {
+    float delta = (float) c.optDouble("delta", -1);
+    int count = Math.max(1, c.optInt("count", 1));
+    long interval = Math.max(1, c.optLong("intervalMs", 20));
+    DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+    float x = metrics.widthPixels / 2f;
+    float y = metrics.heightPixels / 2f;
+    for (int i = 0; i < count; i++) {
+      Runnable turn =
+          () -> {
+            long now = SystemClock.uptimeMillis();
+            MotionEvent.PointerProperties[] properties = {new MotionEvent.PointerProperties()};
+            properties[0].id = 0;
+            properties[0].toolType = MotionEvent.TOOL_TYPE_UNKNOWN;
+            MotionEvent.PointerCoords[] coords = {new MotionEvent.PointerCoords()};
+            coords[0].x = x;
+            coords[0].y = y;
+            coords[0].setAxisValue(MotionEvent.AXIS_SCROLL, delta);
+            MotionEvent event =
+                MotionEvent.obtain(
+                    now, now, MotionEvent.ACTION_SCROLL, 1, properties, coords, 0, 0, 1f, 1f, 0, 0,
+                    InputDevice.SOURCE_ROTARY_ENCODER, 0);
+            dispatchToFocus(event);
+            event.recycle();
+          };
+      if (i == 0) turn.run();
+      else later(interval * i, turn);
+    }
+    float factor = android.view.ViewConfiguration.get(app).getScaledVerticalScrollFactor();
+    return new Protocol.Json()
+        .put("delta", delta)
+        .put("count", count)
+        .put("scrollPx", -delta * factor * count)
+        .object();
+  }
+
+  /**
+   * Delivers a rotary event as the system does: to the top window's view hierarchy, which routes it
+   * to the focused view. Robolectric's {@code UiAutomation} would send it as a touch.
+   */
+  private boolean dispatchToFocus(MotionEvent event) {
+    Navigator.Entry top = navigator.top();
+    if (top == null || top.activity().getWindow() == null) return false;
+    return top.activity().getWindow().getDecorView().dispatchGenericMotionEvent(event);
+  }
+
+  private JSONObject key(int code, boolean longPress) {
     long now = SystemClock.uptimeMillis();
     inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0));
+    if (longPress) {
+      // As a held key repeats: a second down flagged as a long press, then the up.
+      long held = ViewConfiguration.getLongPressTimeout();
+      later(
+          held,
+          () ->
+              inject(
+                  new KeyEvent(
+                      now,
+                      SystemClock.uptimeMillis(),
+                      KeyEvent.ACTION_DOWN,
+                      code,
+                      1,
+                      0,
+                      KeyCharacterMap.VIRTUAL_KEYBOARD,
+                      0,
+                      KeyEvent.FLAG_LONG_PRESS)));
+      later(
+          held,
+          () ->
+              inject(new KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0)));
+      return new Protocol.Json().put("keyCode", code).put("longPress", true).object();
+    }
     inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0));
     return new Protocol.Json().put("keyCode", code).object();
   }
@@ -541,10 +701,63 @@ final class Session {
     return Intents.fromJson(spec != null ? spec : c, app);
   }
 
+  /** A command translated from {@code command} (an adb shell line) or {@code args} (its argv). */
+  private static JSONObject shellCommand(JSONObject c) throws JSONException {
+    java.util.Map<String, Object> translated;
+    JSONArray args = c.optJSONArray("args");
+    if (args != null) {
+      java.util.List<String> argv = new java.util.ArrayList<>();
+      for (int i = 0; i < args.length(); i++) argv.add(args.getString(i));
+      translated = AdbShell.translate(argv, null);
+    } else {
+      translated = AdbShell.translate(c.getString("command"));
+    }
+    return (JSONObject) toJson(translated);
+  }
+
+  private static Object toJson(Object value) {
+    if (value instanceof java.util.Map) {
+      JSONObject object = new JSONObject();
+      for (java.util.Map.Entry<?, ?> e : ((java.util.Map<?, ?>) value).entrySet()) {
+        try {
+          object.put((String) e.getKey(), toJson(e.getValue()));
+        } catch (JSONException ex) {
+          throw new IllegalArgumentException(ex);
+        }
+      }
+      return object;
+    }
+    if (value instanceof java.util.List) {
+      JSONArray array = new JSONArray();
+      for (Object item : (java.util.List<?>) value) array.put(toJson(item));
+      return array;
+    }
+    return value == null ? JSONObject.NULL : value;
+  }
+
+  /** A file a command writes: a host path, or a device path when the shell translation says so. */
+  private File outputFile(JSONObject c) throws JSONException {
+    String path = c.getString("path");
+    // `screencap -p s.png` or `/sdcard/s.png` writes on the "device", where a later pull by the
+    // same name finds it; another absolute path, and a `> file` redirect, are host paths.
+    if (c.optBoolean("devicePath", false) && files.isDevicePath(path)) return files.resolve(path);
+    return new File(path).getAbsoluteFile();
+  }
+
+  /** Refuses a {@code package} other than the app's: it is the only one installed. */
+  private void checkPackage(JSONObject c) {
+    String pkg = c.optString("package", null);
+    if (pkg != null && !pkg.equals(app.getPackageName())) {
+      throw new IllegalArgumentException(
+          pkg + " is not installed; the simulator runs only " + app.getPackageName());
+    }
+  }
+
   /** What a command does, in a few words, for the person watching the window. */
   private static String summary(String name, JSONObject c) {
     String target = null;
-    if (c.has("text")) target = "\"" + c.optString("text") + "\"";
+    if (name.equals("shell")) target = c.optString("command", null);
+    else if (c.has("text")) target = "\"" + c.optString("text") + "\"";
     else if (c.has("textContains")) target = "\"" + c.optString("textContains") + "\"…";
     else if (c.has("desc")) target = "\"" + c.optString("desc") + "\"";
     else if (c.has("resourceId")) target = "#" + c.optString("resourceId");
@@ -572,13 +785,6 @@ final class Session {
       if (c.has(key)) selector.put(key, c.get(key));
     }
     return selector;
-  }
-
-  private static String[] strings(JSONArray array) throws JSONException {
-    if (array == null) return null;
-    String[] out = new String[array.length()];
-    for (int i = 0; i < out.length; i++) out[i] = array.getString(i);
-    return out;
   }
 
   private static String describe(Throwable t) {

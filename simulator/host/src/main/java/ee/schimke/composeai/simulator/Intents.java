@@ -21,8 +21,8 @@ import org.json.JSONObject;
  * package), {@code categories}, {@code flags} (an int, or names such as {@code "NEW_TASK"} and
  * {@code "CLEAR_TOP"}), and {@code extras}. An extra's JSON type picks its Java type (string,
  * boolean, int when it fits else long, double, string array); {@code {"type":"long","value":1}}
- * names one explicitly, with types {@code string int long float double boolean uri string[]
- * int[]}.
+ * names one explicitly, with types {@code string int long float double boolean uri component
+ * null string[] int[]}. {@code flags} may mix names and ints.
  */
 final class Intents {
 
@@ -63,6 +63,10 @@ final class Intents {
     JSONArray names = value instanceof JSONArray ? (JSONArray) value : new JSONArray().put(value);
     int flags = 0;
     for (int i = 0; i < names.length(); i++) {
+      if (names.get(i) instanceof Number) {
+        flags |= ((Number) names.get(i)).intValue();
+        continue;
+      }
       String name = names.getString(i);
       String field = name.startsWith("FLAG_") ? name : "FLAG_ACTIVITY_" + name;
       try {
@@ -115,6 +119,10 @@ final class Intents {
       case "double" -> intent.putExtra(key, typed.getDouble("value"));
       case "boolean" -> intent.putExtra(key, typed.getBoolean("value"));
       case "uri" -> intent.putExtra(key, Uri.parse(typed.getString("value")));
+      case "null" -> intent.putExtra(key, (String) null);
+      case "component" ->
+          intent.putExtra(
+              key, ComponentName.unflattenFromString(typed.getString("value")));
       case "string[]" -> {
         JSONArray array = typed.getJSONArray("value");
         ArrayList<String> list = new ArrayList<>();

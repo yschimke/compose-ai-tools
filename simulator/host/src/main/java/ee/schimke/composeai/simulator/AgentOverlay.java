@@ -7,9 +7,13 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Window;
+import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JComponent;
@@ -35,11 +39,35 @@ final class AgentOverlay {
 
   private static final long MARK_MS = 900;
   private static final long STATUS_MS = 3000;
+  private static final boolean HEADLESS = GraphicsEnvironment.isHeadless();
   private static final Color AGENT = new Color(0xE9, 0x1E, 0x63);
 
   private final boolean enabled = !"false".equals(System.getProperty(PROPERTY));
   private Glass glass;
   private String baseTitle;
+  /** The round state the window shows; null until it has been applied once. */
+  private volatile Boolean round;
+  private volatile boolean roundPending;
+
+  /**
+   * Draws the window's display round, or square again: everything outside the inscribed circle is
+   * painted black, as a round watch's bezel would hide it. Called every loop turn and cheap when
+   * nothing changed; a round display masks the window even with the agent overlay off. Until the
+   * window exists the change is retried on later turns.
+   */
+  void round(boolean value) {
+    if (HEADLESS || roundPending || (round != null && round == value)) return;
+    roundPending = true;
+    SwingUtilities.invokeLater(
+        () -> {
+          roundPending = false;
+          Glass pane = glass();
+          if (pane == null) return;
+          pane.round = value;
+          pane.repaint();
+          round = value;
+        });
+  }
 
   /** A ring at a device-pixel point; filled for a long press. */
   void touch(float x, float y, boolean held) {
@@ -107,6 +135,7 @@ final class AgentOverlay {
     final List<Mark> marks = new ArrayList<>();
     String status;
     long statusAt;
+    boolean round;
     private final Timer timer = new Timer(30, e -> tick());
 
     Glass(JPanel panel) {
@@ -132,6 +161,18 @@ final class AgentOverlay {
       Graphics2D g = (Graphics2D) graphics.create();
       try {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (round) {
+          Point origin = SwingUtilities.convertPoint(panel, 0, 0, this);
+          int w = panel.getWidth();
+          int h = panel.getHeight();
+          int d = Math.min(w, h);
+          Area bezel = new Area(new Rectangle(origin.x, origin.y, w, h));
+          float left = origin.x + (w - d) / 2f;
+          float top = origin.y + (h - d) / 2f;
+          bezel.subtract(new Area(new Ellipse2D.Float(left, top, d, d)));
+          g.setColor(Color.BLACK);
+          g.fill(bezel);
+        }
         long now = System.currentTimeMillis();
         for (Mark mark : marks) {
           float life = 1f - Math.min(1f, (now - mark.at) / (float) MARK_MS);

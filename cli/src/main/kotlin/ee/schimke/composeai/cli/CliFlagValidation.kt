@@ -271,6 +271,7 @@ internal object CliFlagValidation {
           "--headless",
           "--hide-agent",
           "--qualifiers",
+          "--form-factor",
           "--font-scale",
           "--sdk",
           "--jar",

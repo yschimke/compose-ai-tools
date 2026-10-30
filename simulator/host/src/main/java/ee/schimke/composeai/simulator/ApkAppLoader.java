@@ -2,9 +2,11 @@ package ee.schimke.composeai.simulator;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import java.nio.file.Path;
 import java.util.List;
@@ -37,9 +39,13 @@ import org.robolectric.util.inject.Injector;
  * wires itself up there (Cadence's Metro factory collects its activity providers), and {@link
  * Navigator} creates components through it.
  *
+ * <p>For a Glimmer launch the CLI may name another activity to start: the app's projected one.
+ *
  * Runs inside the sandbox.
  */
 public final class ApkAppLoader implements Runnable {
+
+  static final String LAUNCH_ACTIVITY_PROPERTY = "composeai.simulator.launchActivity";
 
   private final AndroidSandbox sandbox;
   private final Path apk;
@@ -87,18 +93,39 @@ public final class ApkAppLoader implements Runnable {
     sandbox.getTestEnvironment().setUpApplicationState("simulator", configuration, manifest);
 
     Application application = RuntimeEnvironment.getApplication();
-    Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-    List<ResolveInfo> found = application.getPackageManager().queryIntentActivities(launcher, 0);
-    if (found.isEmpty()) {
-      throw new IllegalArgumentException("Could not find a launcher Activity in provided manifest");
-    }
-    ActivityInfo info = found.get(0).activityInfo;
+    ActivityInfo info = firstActivity(application);
     String name = info.targetActivity != null ? info.targetActivity : info.name;
     try {
       new Simulator(Class.forName(name).asSubclass(Activity.class)).start();
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  /**
+   * The activity the launch starts: the one the CLI names in {@value #LAUNCH_ACTIVITY_PROPERTY} (a
+   * Glimmer app's projected activity, which on a device the phone app sends to the glasses), else
+   * the first launcher.
+   */
+  private static ActivityInfo firstActivity(Application application) {
+    String requested = System.getProperty(LAUNCH_ACTIVITY_PROPERTY);
+    if (requested != null && !requested.isBlank()) {
+      try {
+        return application
+            .getPackageManager()
+            .getActivityInfo(
+                new ComponentName(application.getPackageName(), requested.trim()),
+                PackageManager.MATCH_DISABLED_COMPONENTS);
+      } catch (PackageManager.NameNotFoundException e) {
+        System.err.println("No activity " + requested + " in the manifest; starting the launcher");
+      }
+    }
+    Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+    List<ResolveInfo> found = application.getPackageManager().queryIntentActivities(launcher, 0);
+    if (found.isEmpty()) {
+      throw new IllegalArgumentException("Could not find a launcher Activity in provided manifest");
+    }
+    return found.get(0).activityInfo;
   }
 
   private static Config defaultConfig() {

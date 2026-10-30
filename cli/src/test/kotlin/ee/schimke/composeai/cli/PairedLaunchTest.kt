@@ -33,7 +33,7 @@ class PairedLaunchTest {
     val options =
       LaunchCommand.Options(
         sdk = 35,
-        qualifiers = LaunchCommand.DEFAULT_WATCH_QUALIFIERS,
+        qualifiers = ApkFormFactor.WEAR.qualifiers,
         fontScale = null,
         headless = true,
         control = true,
