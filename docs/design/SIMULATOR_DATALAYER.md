@@ -80,7 +80,8 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `PhoneTypeHelper.getPhoneDeviceType` (watch) | `DEVICE_TYPE_ANDROID`, from `Settings.Global` `paired_device_os_type` |
 | `PackageManager.hasSystemFeature("android.hardware.type.watch")` | true on a watch display, paired or not |
 | `com.google.wear.Sdk` (watch, API 34+) | the simulator's stand-in for the Wear OS system library, `WEAR_SDK_INT` 0, so androidx.wear takes its pre-Wear-SDK paths |
-| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while paired; its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while a peer is connected (paired, or an agent's `connect`) and `STATUS_UNAVAILABLE` otherwise, each registered listener told again on every connect and disconnect ([`PeerPresence`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/PeerPresence.java)); its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `CompanionDeviceManager` | each peer is an association of the app (a stable locally administered MAC from its node id, its display name, `DEVICE_PROFILE_WATCH` on the phone); `associate()` is answered by the `companion` command's policy, from the peers and the Bluetooth devices in range ([`CompanionDevices`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/CompanionDevices.java)) |
 | `ACTION_TIME_TICK` | sent each time the wall clock enters a new minute, so Wear Compose's `TimeText` moves (either form factor) |
 
 **Delivery** runs on the receiving app's main looper: the live listeners the app added (with

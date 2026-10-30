@@ -233,6 +233,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
@@ -758,7 +759,10 @@ quit and launch again.
 `--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
 `Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
 simulator instead of Play services, so messages, requests, data items and capabilities cross
-between the apps and reach their listeners and manifest `WearableListenerService`s. With
+between the apps and reach their listeners and manifest `WearableListenerService`s. Each peer
+is also a `CompanionDeviceManager` association (the [`companion`](#the-control-channel) command),
+and on the watch `RemoteActivityHelper.availabilityStatus` follows the peer's connects and
+disconnects. With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
 `device`, and each crossing is a `datalayer` event. Every other line either simulator prints — the
 app's logcat, Robolectric's logging and stack traces on stderr, and without the control channel its
@@ -837,8 +841,8 @@ What does not, or not yet:
 - **Bluetooth.** On, with nothing in range until the agent puts peripherals there
   ([above](#network-wi-fi-and-bluetooth)). Robolectric's adapter reports LE off in airplane mode
   even when Bluetooth is turned back on. No classic sockets (RFCOMM), audio profiles, LE
-  advertising by the app, or GATT server in the app. `CompanionDeviceManager.associate` is not
-  answered.
+  advertising by the app, or GATT server in the app. `CompanionDeviceManager.associate` is
+  answered by the [`companion`](#the-control-channel) command's policy, from API 33.
 - **Network.** Online, requests go out through the host JVM, its proxy and its trust store; the
   simulated network decides only whether they may, and how fast. A mode is one default network (a
   VPN adds the Wi-Fi beneath it): no Wi-Fi-to-cellular fallback when Wi-Fi drops, no roaming,
