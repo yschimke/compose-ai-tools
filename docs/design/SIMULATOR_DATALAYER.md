@@ -73,7 +73,7 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `getDataItems` / `getDataItem` / `deleteDataItems` | over every node's items, with `*` / node hosts and literal / prefix filters |
 | assets | `Asset.createFromBytes` bytes travel with the item; `getFdForAsset` streams them |
 | `NodeClient.getCompanionPackageForNode` | on the phone `com.google.android.apps.wear.companion`, the Pixel Watch app, which the phone has installed with a launcher activity (`PhoneCompanion`); on the watch `com.google.android.wearable.app`, the Wear OS app; never the peer app's package |
-| `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`); Horologist's `isAvailable()` asks it |
+| `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`; every overload); Horologist's `isAvailable()` asks it. Play services itself is reported installed in every launch ([`SIMULATOR.md`](../SIMULATOR.md#google-play-services)) |
 | `RemoteActivityHelper.startRemoteActivity` | its `REMOTE_INTENT` broadcast to the Wear OS app is taken here and sent as an `activity` frame; the other node starts the intent (or, for `http(s)` / `market:` with no app activity, answers OK as its browser or Play Store would) and its `activityResult` answers the app's `ResultReceiver` |
 | `RemoteAuthClient.sendAuthorizationRequest` (watch) | the bind to the Wear OS app's OAuth service connects (`WearCompanion`); the request reaches the phone as an `oauth` event, and `{"cmd":"dataLayer","oauthResponse":"<redirect URL>"}` on the phone stands in for the browser's redirect, which reaches the app's callback |
 | `BridgingManager.setConfig` (watch) | the bind connects; the config is reported as a `bridging` event |
@@ -328,6 +328,20 @@ connected, since the simulator has no BLE device in range.
 | MeshCore watch: `reply` with an error | `reply` with the phone's answer |
 | --- | --- |
 | ![MeshCore watch, error reply](evidence/simulator-launch/agent-mc-watch-error.png) | ![MeshCore watch, the phone's answer](evidence/simulator-launch/agent-mc-watch-answered.png) |
+
+## Evidence: Play services availability
+
+A probe app (phone and watch) calling every availability API, paired, before and after
+`ShadowGooglePlayServicesUtilLight` and the reworked `ShadowGoogleApiAvailability`: Play services
+reported `SERVICE_INVALID` everywhere, so an app gating its Wear code on
+`isGooglePlayServicesAvailable == SUCCESS` never reached the Data Layer, and the `HasApiKey`
+overload of `checkApiAvailability` (a Kotlin caller holding a `HasApiKey<*>`) fell through to Play
+services' own. Now Play services is installed (25.42.34) and every overload agrees. With
+`--play-services none`, `makeGooglePlayServicesAvailable` shows Play services' own dialog.
+
+| Before (paired phone) | After (paired phone) | `--play-services none` (watch) |
+| --- | --- | --- |
+| ![probe before](evidence/simulator-launch/play-services-probe-before.png) | ![probe after](evidence/simulator-launch/play-services-probe-after.png) | ![install dialog](evidence/simulator-launch/play-services-none-watch.png) |
 
 ## What is missing
 
