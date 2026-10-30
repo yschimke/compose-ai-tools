@@ -57,3 +57,36 @@ network refuses); Muzei's intro, its nine content providers installed; MeshCore'
 for the permission, then scanning after `tap "Grant permission"` is granted.
 
 ![Sunflower, Muzei, MeshCore before and after the Bluetooth grant](sunflower-muzei-meshcore-ble.png)
+
+## Wear OS, Glimmer and Android XR
+
+`launch` detects the form factor from the APK (`docs/SIMULATOR.md` → Form factors). All headless
+(`--control stdio --headless`) on JDK 21; screenshots are the control channel's `screenshot`.
+
+**Home Assistant's Wear app** (`:wear:assembleDebug` of homeassistant-remotecompose), before and
+after: the same APK on the phone default (`--form-factor phone`, what `launch` used for every APK
+before), then detected as Wear on the round 454×454 watch display, cropped round as a round
+`@Preview` is; then after `{"cmd":"rotary","delta":-1,"count":6}` and a 2 s `wait`, the crown has
+scrolled its `ScalingLazyColumn` to Settings.
+
+| Before: phone default | After: round watch | After `rotary` |
+| --- | --- | --- |
+| ![Home Assistant Wear on the phone default](wear-ha-before-phone.png) | ![Home Assistant Wear, round](wear-ha-round.png) | ![Home Assistant Wear after rotary](wear-ha-rotary.png) |
+
+**`samples/wear`** (`:samples:wear:assembleDebug`), then `{"cmd":"rotary","delta":-1,"count":6}`:
+the crown scrolls its `TransformingLazyColumn` to the `EdgeButton`. **MeshCore's Wear app** starts
+with no radio, as it would with no phone paired.
+
+| `samples/wear` | after `rotary` | MeshCore Wear |
+| --- | --- | --- |
+| ![samples/wear](wear-sample.png) | ![samples/wear after rotary](wear-sample-rotary.png) | ![MeshCore Wear](wear-meshcore.png) |
+
+**Glimmer and XR.** No Glimmer or XR app lives in this repository (`samples/xr-glimmer` is a
+library), so these come from two throwaway probe apps, not committed: a Glimmer activity
+(`TitleChip`, `Card`, two `ListItem`s) declared `requiredDisplayCategory="xr_projected"`, on the
+960×720 glasses display; and an `androidx.xr.compose` 1.0.0-beta02 app in Home Space, its `Orbiter`
+rendered inline, after one `tap "Click"`. The Glimmer probe sets no theme, hence the action bar.
+
+![Glimmer probe](glimmer-probe.png)
+
+![XR probe in Home Space](xr-probe-home-space.png)
