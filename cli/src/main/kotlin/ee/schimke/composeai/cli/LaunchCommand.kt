@@ -117,6 +117,13 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       }
     }
+    val network = args.flagValue("--network")
+    if (network != null) {
+      val bad = network.split(',').map { it.trim() }.filter { it !in NETWORK_MODES }
+      if (bad.isNotEmpty()) {
+        fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
+      }
+    }
     val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
@@ -154,6 +161,7 @@ internal class LaunchCommand(private val args: List<String>) {
         formFactor = formFactor.id,
         launchActivity = launchActivity,
         device = device,
+        network = network,
         fontScale = args.flagValue("--font-scale"),
         fingerprint = args.flagValue("--fingerprint"),
         maxHeap =
@@ -257,6 +265,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val dataLayer: DataLayerNode? = null,
     /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
     val device: String? = null,
+    /** [NETWORK_MODES], comma-separated (`cellular,airplane`); Wi-Fi when null. */
+    val network: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
     /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
@@ -352,6 +362,13 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val DEVICES = listOf("phone", "foldable", "foldable-folded", "tablet", "desktop")
 
+    /**
+     * What `--network` takes (`NetworkModel.Mode` in `:simulator-host`, plus `airplane`), which the
+     * control channel's `network` command switches between at run time.
+     */
+    val NETWORK_MODES =
+      listOf("wifi", "cellular", "ethernet", "vpn", "captive", "offline", "airplane")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -366,6 +383,9 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       add("--enable-native-access=ALL-UNNAMED")
+      // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
+      // the app's real traffic reaches.
+      add("--add-opens=java.base/java.net=ALL-UNNAMED")
       if (options.headless) add("-Djava.awt.headless=true")
       val properties =
         linkedMapOf(
@@ -379,6 +399,7 @@ internal class LaunchCommand(private val args: List<String>) {
       properties["composeai.simulator.formFactor"] = options.formFactor
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
+      options.network?.let { properties["composeai.simulator.network"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -457,6 +478,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
+        --network <mode>      Start on wifi (default), cellular (metered), ethernet, vpn,
+                              captive (Wi-Fi without internet) or offline; add ,airplane
+                              (or just airplane) for airplane mode. Offline, the app's
+                              real connections fail as on a device.
         --display <spec>      Connect a secondary display at launch (repeatable): a size in
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its

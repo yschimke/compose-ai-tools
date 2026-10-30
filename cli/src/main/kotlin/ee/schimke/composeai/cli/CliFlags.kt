@@ -226,6 +226,7 @@ internal object CliFlags {
       "--pair-qualifiers",
       "--tile",
       "--fingerprint",
+      "--network",
       "--max-heap",
       // bundle externalize
       "--res-out",

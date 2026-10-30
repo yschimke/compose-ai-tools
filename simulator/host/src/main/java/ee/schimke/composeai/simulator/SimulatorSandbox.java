@@ -75,6 +75,10 @@ final class SimulatorSandbox {
             .newBuilder()
             .addShadowClasses(
                 SimulatorShadowContextImpl.class,
+                SimulatorShadowConnectivityManager.class,
+                SimulatorShadowWifiManager.class,
+                SimulatorShadowTelephonyManager.class,
+                SimulatorShadowBluetoothGatt.class,
                 SimulatorShadowResultReceiver.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
@@ -123,6 +127,8 @@ final class SimulatorSandbox {
         .doNotAcquireClass("org.robolectric.shadow.api.ShadowPicker")
         .doNotAcquireClass("org.robolectric.simulator.SimulatorPanelRegistry");
     builder
+        // One NetworkGate for the launcher, which installs it, and the sandbox, which drives it.
+        .doNotAcquirePackage("ee.schimke.composeai.simulator.net.")
         .doNotAcquirePackage("org.bouncycastle.")
         .doNotAcquirePackage("org.conscrypt.")
         .doNotAcquirePackage("org.objectweb.asm")

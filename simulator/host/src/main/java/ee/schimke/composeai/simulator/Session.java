@@ -66,6 +66,7 @@ final class Session {
   private final WidgetHost widgets;
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
+  private final Radios radios;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -112,6 +113,7 @@ final class Session {
             : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
+    this.radios = new Radios(app, protocol, navigator);
   }
 
   void start() {
@@ -149,7 +151,7 @@ final class Session {
     navigator.pump();
     if (home != null) home.cycle();
     displays.cycle();
-    Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
+    radios.cycle();
     overlay.round(FormFactor.isRound());
     logcat.poll();
     notifications.cycle();
@@ -232,7 +234,8 @@ final class Session {
         || Displays.changesUi(name)
         || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
-        || NotificationStream.changesUi(name)) {
+        || NotificationStream.changesUi(name)
+        || Radios.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -256,7 +259,6 @@ final class Session {
       case "clearData":
       case "display":
       case "settings":
-      case "network":
       case "content":
         return true;
       default:
@@ -271,6 +273,7 @@ final class Session {
     if (emulated == null && wear != null) emulated = wear.command(name, c);
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
+    if (emulated == null) emulated = radios.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -405,17 +408,6 @@ final class Session {
         return device.packageInfo();
       case "packages":
         return device.packages(c);
-      case "network":
-        {
-          Boolean wifi = c.has("wifi") ? c.getBoolean("wifi") : null;
-          Boolean airplane = c.has("airplane") ? c.getBoolean("airplane") : null;
-          JSONObject state = Connectivity.set(app, wifi, airplane);
-          if (airplane != null) {
-            navigator.broadcast(
-                new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", airplane));
-          }
-          return state;
-        }
       case "logcat":
         return logcat.command(c);
       case "files":

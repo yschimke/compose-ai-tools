@@ -58,6 +58,43 @@ for the permission, then scanning after `tap "Grant permission"` is granted.
 
 ![Sunflower, Muzei, MeshCore before and after the Bluetooth grant](sunflower-muzei-meshcore-ble.png)
 
+## Network, Wi-Fi and Bluetooth
+
+`network`, `wifi` and `bluetooth` ([`docs/SIMULATOR.md`](../../../SIMULATOR.md#network-wi-fi-and-bluetooth)),
+headless on JDK 21, screenshots from the control channel.
+
+**Now in Android** (`app-demo-debug.apk`): `network` `mode` `offline` brings up its "You aren't
+connected to the internet" snackbar (its `NetworkMonitor` listens with an `INTERNET` request and
+hears `onLost`); `cellular` clears it; `cmd connectivity airplane-mode enable` brings it back;
+`settings put global airplane_mode_on 0` and `wifi` clear it. The Firebase connections open at
+the time were cut (`traffic.cut` 1, then 2).
+
+![Now in Android: wifi, offline, cellular, airplane mode, wifi again](network-nowinandroid.png)
+
+**A probe app** (kept out of the repo: one activity that logs every callback and broadcast it
+gets). Cellular 5G reads `MOBILE/NR`, metered, 150/30 Mbps, `TelephonyManager` type 20 and data
+connected; offline its `HttpURLConnection` fetch fails with `UnknownHostException: Unable to resolve
+host "www.google.com": No address associated with hostname` (online, this sandbox's proxy refuses
+the host: the 403); its `WifiNetworkSpecifier` request for `Printer-Setup` is held (`wifi request`
+`policy` `ask`), reported as a `wifiRequest` event, then `answer` `accept` gives it `peer
+onAvailable`; `addNetworkSuggestions` then `wifi connect Cafe` sends
+`WIFI_NETWORK_SUGGESTION_POST_CONNECTION`; the internet panel comes back `RESULT_CANCELED` (7 → 0).
+With Bluetooth off, `ACTION_REQUEST_ENABLE` waits for `bluetooth request answer accept`, then
+`STATE_CHANGED` 11 → 12 and `RESULT_OK` (8 → -1); `bluetooth advertise` puts `MeshRadio` (Nordic
+UART service, with a GATT spec) on air, the filtered scan finds it, `connectGatt` connects,
+discovery finds the service, the write reaches the agent as a `gatt` event (`68656c6c6f`,
+"hello"), and `bluetooth notify` delivers "hi from the radio".
+
+![Probe: cellular, offline, Wi-Fi requests, Bluetooth](network-radios-probe.png)
+
+**Sunflower** offline: its plant photos fail with `UnknownHostException: Unable to resolve host
+"upload.wikimedia.org"` (13 connections refused). **MeshCore** (`--sdk 36`): after the Bluetooth
+permission grant its Kable scanner runs, and the radio `bluetooth advertise` puts in range appears
+with its name, address and RSSI. Its Connect stops in Kable's own precheck ("Connection failed:
+Bluetooth not supported") before `connectGatt`, so its GATT session is not reached yet.
+
+![Sunflower online and offline, MeshCore's scan list](network-sunflower-meshcore.png)
+
 ## Display, fold and device controls
 
 Now in Android's demo debug APK, headless and under Xvfb, driven over `--control stdio` with the

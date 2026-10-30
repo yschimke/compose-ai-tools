@@ -91,7 +91,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
         app.getApplicationInfo().processName = app.getPackageName();
       }
       Logcat.install();
-      Connectivity.connect(app);
+      NetworkSim.connect(app);
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
       watchFeature(app);

@@ -300,15 +300,9 @@ final class WearSystemUi {
       case "quickSettings":
         {
           if (c.has("airplane") || c.has("wifi")) {
-            Connectivity.set(
-                app,
+            radios(
                 c.has("wifi") ? c.getBoolean("wifi") : null,
                 c.has("airplane") ? c.getBoolean("airplane") : null);
-            if (c.has("airplane")) {
-              navigator.broadcast(
-                  new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED)
-                      .putExtra("state", c.getBoolean("airplane")));
-            }
           }
           show(Surface.QUICK_SETTINGS);
           return quickSettingsState();
@@ -1067,7 +1061,7 @@ final class WearSystemUi {
           app.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
       level = sticky == null ? 100 : sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, 100);
     }
-    JSONObject network = Connectivity.state(app);
+    JSONObject network = NetworkSim.get().state();
     return new Protocol.Json()
         .put("surface", surface())
         .put("battery", level)
@@ -1075,6 +1069,18 @@ final class WearSystemUi {
         .put("airplane", network.optBoolean("airplane"))
         .put("wifi", network.optBoolean("wifi"))
         .object();
+  }
+
+  /** A quick-settings switch: the radios as {@link NetworkSim}'s {@code network} command sets them. */
+  private static void radios(Boolean wifi, Boolean airplane) {
+    try {
+      JSONObject c = new JSONObject();
+      if (wifi != null) c.put("wifi", wifi);
+      if (airplane != null) c.put("airplane", airplane);
+      NetworkSim.get().command(c);
+    } catch (JSONException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   private void buildQuickSettings() {
@@ -1093,9 +1099,7 @@ final class WearSystemUi {
         chip(
             "Airplane mode: " + (airplane ? "on" : "off"),
             v -> run(() -> {
-              Connectivity.set(app, null, !airplane);
-              navigator.broadcast(
-                  new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", !airplane));
+              radios(null, !airplane);
               buildQuickSettings();
               return null;
             }));
@@ -1106,7 +1110,7 @@ final class WearSystemUi {
         chip(
             "Wi-Fi: " + (wifi ? "on" : "off"),
             v -> run(() -> {
-              Connectivity.set(app, !wifi, null);
+              radios(!wifi, null);
               buildQuickSettings();
               return null;
             }));
