@@ -910,9 +910,20 @@ shows its children, not the summary.
   closes the shade, as on a device;
 - its action buttons press the action; a reply action opens an inline reply field under it, with
   the input's label and the app's suggested replies, and send fills the `RemoteInput`;
-- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one a
-  person could;
+- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one
+  it shows that a person could;
 - Back, HOME, a swipe up, or a tap below the list closes the shade.
+
+A **media player** stands in for a player's `MediaStyle` notification (platform or AndroidX),
+under the tiles as Android 13+ shows it: its art (the large icon) behind the title and artist, and
+its actions as the player's buttons, the compact ones first. A button sends that action, as a
+press in the template would; a tap opens its content intent. It is drawn from the notification,
+not a `MediaSession`: Robolectric's sessions are stubs, so a controller has no metadata or playback
+state to read, and the player follows the notification as the app posts it again. Ids:
+`media_player` (the key), `media_title`, `media_action` (`<key>/<index>`). The sample's
+`NotificationDemoReceiver` posts one with the action `com.example.sampleandroid.POST_MEDIA`.
+
+![A player in the shade; Pause and Next pressed, as the app re-posts it](design/evidence/simulator-launch/phone-media.png)
 
 A **heads-up** card shows the heads-up view of a newly posted notification on a high-importance
 channel for five seconds, while the shade is closed: a tap opens it, a sideways swipe dismisses it,
@@ -925,7 +936,7 @@ actions are offered, not its `WearableExtender` ones. Commands:
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification; without `op`, the list ([Wear system UI](#wear-system-ui)) |
+| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification the shade shows (not those it hides); without `op`, the list ([Wear system UI](#wear-system-ui)) |
 | `notification` | `key`, `op`: `expand` / `collapse`, or the Wear ops | expands or collapses one in the shade |
 | `quickSettings` | `wifi`?, `data`?, `airplane`? | switches those radios, opens the shade, and returns the battery, radios and default network |
 | `statusBar` | | `surface`, and the bar: `visible`, `heightPx`, `time`, `notifications` (keys, in the bar's order), `wifi`, `cellular`, `airplane`, `battery`, `charging`, `darkIcons`, `background`; `shade`, `headsUp` |
@@ -1015,6 +1026,32 @@ key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
 ← {"event":"lockScreen","state":"unlocked","via":"bouncer"}
 ← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
 ```
+
+### Picture-in-picture
+
+On a phone with `--launcher`, an activity goes into picture-in-picture as on a device
+(`PictureInPicture`): when it calls `enterPictureInPictureMode` (from a button, or in
+`onUserLeaveHint`, which HOME now delivers), or on HOME when its `PictureInPictureParams` set
+`setAutoEnterEnabled(true)`. The device declares `FEATURE_PICTURE_IN_PICTURE`, and the params the
+app sets are kept, which Robolectric drops. The activity is paused, not stopped; the home screen
+comes forward under it, and its window shrinks to the bottom-right corner at its params' aspect
+ratio (16:9 without one), unfocusable, as SystemUI's is. It hears
+`onPictureInPictureModeChanged(true, …)` with the window's size as the configuration's, so it can
+show only its video.
+
+A tap on the window shows its controls for three seconds: expand (back to full screen, resumed,
+`onPictureInPictureModeChanged(false, …)`) and close (stopped and destroyed). Tapping the app's
+icon expands it too. `PictureInPictureParams` actions are not shown.
+
+![The player; HOME with auto-enter; its controls; expanded; its own button; closed](design/evidence/simulator-launch/phone-pip.png)
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `pip` | `op`? (`status` / `expand` / `close`) | returns `active`, the `activity`, its window's `bounds` and whether its `controls` show; `expand` and `close` do what the controls do |
+
+`pip` events report `entered`, `expanded` and `closed`. View ids: `pip` (the window's touch
+layer; description: the activity), `pip_expand`, `pip_close`. `samples/android`'s
+`PlayerActivity` (started with `startActivity`) auto-enters on HOME and has a button for it.
 
 ### On-screen keyboard
 
@@ -1740,7 +1777,7 @@ What does not, or not yet:
   where this sandbox refuses the host.
 - **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
   recents screen, notification history, snooze or per-channel settings in the shade, conversation
-  or bubble sections, media controls, or Do Not Disturb; one keyboard layout (US QWERTY, no
+  or bubble sections, media output switching or a seek bar, or Do Not Disturb; one keyboard layout (US QWERTY, no
   suggestions, emoji, voice or IME switcher); no pattern or password lock, fingerprint
   unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
   when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not

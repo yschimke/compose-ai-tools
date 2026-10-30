@@ -136,6 +136,7 @@ final class PhoneSystemUi {
   final NavigationBar navigationBar;
   final LockScreen lockScreen;
   final SoftKeyboard keyboard;
+  final PictureInPicture pictureInPicture;
 
   private PhoneSystemUi(
       Application app,
@@ -155,6 +156,7 @@ final class PhoneSystemUi {
     this.navigationBar = new NavigationBar(this, app, navigator, protocol);
     this.lockScreen = new LockScreen(this, app, navigator, protocol, stream);
     this.keyboard = new SoftKeyboard(this, app, navigator, protocol, typer);
+    this.pictureInPicture = new PictureInPicture(this, app, navigator, protocol);
   }
 
   /**
@@ -205,6 +207,7 @@ final class PhoneSystemUi {
     navigationBar.cycle();
     lockScreen.cycle();
     keyboard.cycle();
+    pictureInPicture.cycle();
     if (now - lastTick < 1000) return;
     lastTick = now;
     refresh();
@@ -223,6 +226,7 @@ final class PhoneSystemUi {
     JSONObject owned = navigationBar.command(name, c);
     if (owned == null) owned = lockScreen.command(name, c);
     if (owned == null) owned = keyboard.command(name, c);
+    if (owned == null) owned = pictureInPicture.command(name, c);
     if (owned != null) return owned;
     switch (name) {
       case "notifications":
@@ -236,7 +240,7 @@ final class PhoneSystemUi {
               closeShade();
               return describe();
             case "clear":
-              return stream.clearAll();
+              return clearShown();
             default:
               // The list: the stream's.
               return null;
@@ -291,6 +295,7 @@ final class PhoneSystemUi {
       case "navigationBar":
       case "lockScreen":
       case "keyboard":
+      case "pip":
         return true;
       default:
         return false;
@@ -354,6 +359,7 @@ final class PhoneSystemUi {
         .put("navigationBar", navigationBar.describe())
         .put("lockScreen", lockScreen.describe())
         .put("keyboard", keyboard.describe())
+        .put("pip", pictureInPicture.describe())
         .object();
   }
 
@@ -771,7 +777,19 @@ final class PhoneSystemUi {
     shadeList.removeAllViews();
     shadeList.addView(header());
     shadeList.addView(tiles());
-    List<NotificationStream.Item> items = barItems();
+    List<NotificationStream.Item> items = new ArrayList<>();
+    boolean players = false;
+    for (NotificationStream.Item item : barItems()) {
+      // A player's notification is the media player under the tiles, as Android 13+ shows it.
+      if (isMedia(item)) {
+        LinearLayout.LayoutParams lp = wide();
+        lp.topMargin = dp(8);
+        shadeList.addView(mediaPlayer(item), lp);
+        players = true;
+      } else {
+        items.add(item);
+      }
+    }
     for (int i = 0; i < items.size(); i++) {
       NotificationStream.Item item = items.get(i);
       Boolean open = expanded.get(item.key);
@@ -782,7 +800,7 @@ final class PhoneSystemUi {
       lp.topMargin = dp(i == 0 ? 16 : 4);
       shadeList.addView(card, lp);
     }
-    if (items.isEmpty()) {
+    if (items.isEmpty() && !players) {
       TextView empty = text("No notifications", 15, secondaryText());
       empty.setGravity(Gravity.CENTER);
       empty.setPadding(0, dp(24), 0, dp(24));
@@ -795,7 +813,7 @@ final class PhoneSystemUi {
     if (!clearable) return;
     TextView clear = pill("Clear all", false);
     simId(clear, "notifications_clear_all");
-    clear.setOnClickListener(v -> run(stream::clearAll));
+    clear.setOnClickListener(v -> run(this::clearShown));
     LinearLayout.LayoutParams lp =
         new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -967,6 +985,106 @@ final class PhoneSystemUi {
 
   // ---------------------------------------------------------------------------------------------
   // Notifications
+
+  /**
+   * The shade's "Clear all": dismisses each notification it lists that a person could, leaving
+   * those it does not show (a blocked channel's, say), as SystemUI does.
+   */
+  private JSONObject clearShown() {
+    JSONArray cleared = new JSONArray();
+    for (NotificationStream.Item item : barItems()) {
+      if (stream.dismiss(item).optBoolean("dismissed")) cleared.put(item.key);
+    }
+    return new Protocol.Json().put("cleared", cleared).object();
+  }
+
+  /** Whether [item] is a player's: {@code MediaStyle}, platform or AndroidX's. */
+  static boolean isMedia(NotificationStream.Item item) {
+    String template =
+        item.notification.extras == null
+            ? null
+            : item.notification.extras.getString(Notification.EXTRA_TEMPLATE);
+    return template != null && template.contains("MediaStyle");
+  }
+
+  /**
+   * The media player a {@code MediaStyle} notification shows as: its art (the large icon) behind
+   * the title and artist, and its actions as the player's buttons, the compact ones first. A tap
+   * opens the player's content intent; a button sends its action.
+   */
+  private View mediaPlayer(NotificationStream.Item item) {
+    Notification n = item.notification;
+    FrameLayout card = new FrameLayout(context);
+    card.setBackground(rounded(0xFF3C4043, 24));
+    card.setClipToOutline(true);
+    simId(card, "media_player");
+    card.setContentDescription(item.key);
+    card.setOnClickListener(v -> tap(item));
+    Drawable art = load(n.getLargeIcon());
+    if (art != null) {
+      android.widget.ImageView image = new android.widget.ImageView(context);
+      image.setImageDrawable(art);
+      image.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+      card.addView(image, new FrameLayout.LayoutParams(-1, -1));
+      View scrim = new View(context);
+      scrim.setBackgroundColor(0x80000000);
+      card.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
+    }
+    LinearLayout column = new LinearLayout(context);
+    column.setOrientation(LinearLayout.VERTICAL);
+    column.setPadding(dp(16), dp(16), dp(16), dp(12));
+    TextView app = text(appLabel(), 12, 0xCCFFFFFF);
+    column.addView(app);
+    String title = NotificationStream.text(n.extras, Notification.EXTRA_TITLE);
+    String artist = NotificationStream.text(n.extras, Notification.EXTRA_TEXT);
+    TextView titleView = text(title == null ? "" : title, 20, Color.WHITE);
+    titleView.setTypeface(Typeface.DEFAULT_BOLD);
+    titleView.setPadding(0, dp(28), 0, 0);
+    simId(titleView, "media_title");
+    column.addView(titleView);
+    if (artist != null) column.addView(text(artist, 14, 0xE6FFFFFF));
+    LinearLayout buttons = new LinearLayout(context);
+    buttons.setOrientation(LinearLayout.HORIZONTAL);
+    buttons.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+    buttons.setPadding(0, dp(12), 0, 0);
+    List<Notification.Action> actions = NotificationStream.actions(n);
+    for (int i : mediaOrder(n, actions.size())) {
+      Notification.Action action = actions.get(i);
+      android.widget.ImageView button = new android.widget.ImageView(context);
+      Drawable icon = load(action.getIcon());
+      if (icon != null) {
+        icon = icon.mutate();
+        icon.setTint(Color.WHITE);
+        button.setImageDrawable(icon);
+      }
+      button.setPadding(dp(8), dp(8), dp(8), dp(8));
+      button.setContentDescription(item.key + "/" + i);
+      simId(button, "media_action");
+      button.setClickable(true);
+      int index = i;
+      button.setOnClickListener(v -> run(() -> collapseFor(stream.action(item, index, null))));
+      buttons.addView(button, new LinearLayout.LayoutParams(dp(44), dp(44)));
+    }
+    column.addView(buttons, wide());
+    card.addView(column, new FrameLayout.LayoutParams(-1, -2));
+    return card;
+  }
+
+  /** The actions' order in the player: the compact view's first, then the rest. */
+  private static List<Integer> mediaOrder(Notification n, int count) {
+    List<Integer> order = new ArrayList<>();
+    int[] compact =
+        n.extras == null ? null : n.extras.getIntArray(Notification.EXTRA_COMPACT_ACTIONS);
+    if (compact != null) {
+      for (int i : compact) if (i >= 0 && i < count && !order.contains(i)) order.add(i);
+    }
+    for (int i = 0; i < count; i++) if (!order.contains(i)) order.add(i);
+    return order;
+  }
+
+  private String appLabel() {
+    return app.getApplicationInfo().loadLabel(app.getPackageManager()).toString();
+  }
 
   /** A group summary whose children are listed is not, as the shade shows a group. */
   private boolean hiddenInShade(NotificationStream.Item item) {

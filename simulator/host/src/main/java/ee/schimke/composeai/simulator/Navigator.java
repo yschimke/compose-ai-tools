@@ -594,6 +594,14 @@ final class Navigator {
     if (home == null) throw new IllegalStateException("no home screen: launch with --launcher");
     Entry top = top(Display.DEFAULT_DISPLAY);
     if (top == home) return describe(home, "resumed");
+    if (top != null && !top.stopped && !top.system) {
+      // The user is leaving: onUserLeaveHint, where an app may go into picture-in-picture.
+      top.controller.userLeaving();
+      if (pip == null && pipListener != null && pipListener.wantsPip(top)) {
+        enterPip(top);
+        return describe(home, "resumed");
+      }
+    }
     if (top != null && !top.stopped) {
       top.controller.pause();
       stopCovered(top);
@@ -604,6 +612,67 @@ final class Navigator {
     bringBack(home);
     protocol.event("activity", describe(home, "resumed"));
     return describe(home, "resumed");
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Picture-in-picture
+
+  /** Decides and draws picture-in-picture ({@link PictureInPicture}). */
+  interface PipListener {
+    /** Whether [entry], leaving for the home screen, goes into picture-in-picture. */
+    boolean wantsPip(Entry entry);
+
+    void entered(Entry entry);
+
+    void left(Entry entry, boolean expanded);
+  }
+
+  /** The activity in picture-in-picture: paused, not stopped, its window over home; or null. */
+  Entry pip;
+
+  PipListener pipListener;
+
+  /**
+   * [entry], on top, goes into picture-in-picture: it is paused but stays visible, and the home
+   * screen comes forward under its small window.
+   */
+  void enterPip(Entry entry) {
+    Entry home = home();
+    if (home == null || pip != null) return;
+    entry.controller.pause();
+    pip = entry;
+    protocol.event("activity", describe(entry, "paused"));
+    stack.remove(home);
+    stack.push(home);
+    bringBack(home);
+    protocol.event("activity", describe(home, "resumed"));
+    if (pipListener != null) pipListener.entered(entry);
+  }
+
+  /** The activity in picture-in-picture goes back to full screen and resumes; null if none. */
+  JSONObject expandPip() {
+    Entry entry = pip;
+    if (entry == null) return null;
+    pip = null;
+    if (pipListener != null) pipListener.left(entry, true);
+    leaveHome(Display.DEFAULT_DISPLAY);
+    stack.remove(entry);
+    stack.push(entry);
+    entry.controller.resume();
+    protocol.event("activity", describe(entry, "resumed"));
+    return describe(entry, "resumed");
+  }
+
+  /** The activity in picture-in-picture is closed: stopped and destroyed, as its task goes. */
+  JSONObject dismissPip() {
+    Entry entry = pip;
+    if (entry == null) return null;
+    pip = null;
+    if (pipListener != null) pipListener.left(entry, false);
+    stack.remove(entry);
+    destroy(entry);
+    protocol.event("activity", describe(entry, "destroyed"));
+    return describe(entry, "destroyed");
   }
 
   /**
@@ -620,6 +689,8 @@ final class Navigator {
    * resets first, as its {@code RESET_TASK_IF_NEEDED} start does.
    */
   JSONObject bringAppForward(boolean fromLauncher) {
+    // The app's task in picture-in-picture comes back to full screen.
+    if (pip != null) return expandPip();
     restoreKilled();
     if (!hasAppActivity(Display.DEFAULT_DISPLAY)) return null;
     if (fromLauncher) resetTask(root(Display.DEFAULT_DISPLAY));
@@ -1025,6 +1096,11 @@ final class Navigator {
   }
 
   private void destroy(Entry entry) {
+    if (entry == pip) {
+      // Torn down in picture-in-picture (kill, force-stop): it is no longer there.
+      pip = null;
+      if (pipListener != null) pipListener.left(entry, false);
+    }
     Activity activity = entry.activity();
     if (activity.isDestroyed()) return;
     // Walk forward through whatever lifecycle the activity is in; each step is a no-op guard in
