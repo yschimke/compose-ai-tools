@@ -82,6 +82,12 @@ final class Hierarchy {
       if (!root.isShown()) continue;
       if (Displays.displayOf(root) != displayId) continue;
       if (hiddenWindowTokens.contains(root.getApplicationWindowToken())) continue;
+      // A stopped activity's dialog: a window of its own, carrying the activity's token.
+      if (root.getLayoutParams() instanceof android.view.WindowManager.LayoutParams
+          && hiddenWindowTokens.contains(
+              ((android.view.WindowManager.LayoutParams) root.getLayoutParams()).token)) {
+        continue;
+      }
       Node node = view(root, 0);
       if (node != null) windows.add(node);
     }

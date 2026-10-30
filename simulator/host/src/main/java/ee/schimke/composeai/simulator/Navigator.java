@@ -171,6 +171,10 @@ final class Navigator {
       if (activity.getWindow() != null) {
         Object token = activity.getWindow().getDecorView().getApplicationWindowToken();
         if (token != null) hidden.add(token);
+        // The activity's own token, which its dialogs carry in their layout params: a dialog is a
+        // window of its own, with a window token of its own.
+        Object appToken = activity.getWindow().getAttributes().token;
+        if (appToken != null) hidden.add(appToken);
       }
     }
     return hidden;
@@ -1172,11 +1176,52 @@ final class Navigator {
       delivered.put(
           new Protocol.Json().put("receiver", receiver.name).put("declared", "manifest").object());
     }
-    app.sendBroadcast(intent);
+    delivering = true;
+    try {
+      app.sendBroadcast(intent);
+    } finally {
+      delivering = false;
+    }
     // Robolectric collects the matching receivers when the broadcast is sent and delivers on the
     // main looper, so the one-shot registrations can go now.
     for (BroadcastReceiver instance : oneShot) app.unregisterReceiver(instance);
     return new Protocol.Json().put("delivered", delivered).object();
+  }
+
+  /** Set while {@link #broadcast} hands the intent to Robolectric's own delivery. */
+  private static boolean delivering;
+
+  /**
+   * The app's own {@code sendBroadcast}, from {@link SimulatorShadowContextImpl}: an explicit one
+   * (a component or a package named) that a manifest receiver handles is delivered as {@link
+   * #broadcast} delivers it, on the main thread as the system would, and true is returned. Others
+   * return false and keep Robolectric's delivery, to runtime receivers alone, which is also what
+   * a device does with an implicit broadcast and a manifest receiver since API 26.
+   */
+  static boolean appSentBroadcast(Intent intent) {
+    Navigator navigator = current;
+    if (navigator == null || delivering) return false;
+    if (intent.getComponent() == null && intent.getPackage() == null) return false;
+    if (navigator.app.getPackageManager().queryBroadcastReceivers(intent, 0).isEmpty()) {
+      return false;
+    }
+    Intent copy = new Intent(intent);
+    new android.os.Handler(android.os.Looper.getMainLooper())
+        .post(
+            () -> {
+              try {
+                navigator.broadcast(copy);
+              } catch (RuntimeException e) {
+                navigator.protocol.event(
+                    "error",
+                    new Protocol.Json()
+                        .put("kind", "broadcast")
+                        .put("intent", Intents.toJson(copy))
+                        .put("message", String.valueOf(e))
+                        .object());
+              }
+            });
+    return true;
   }
 
   private void register(BroadcastReceiver receiver, Intent intent) {
