@@ -30,7 +30,7 @@ public class SimulatorShadowCredentialManager {
       CancellationSignal cancellationSignal,
       Executor executor,
       OutcomeReceiver<GetCredentialResponse, GetCredentialException> callback) {
-    Credentials.get(request, executor, callback);
+    Credentials.get(request, cancellationSignal, executor, callback);
   }
 
   @Implementation
@@ -40,6 +40,6 @@ public class SimulatorShadowCredentialManager {
       CancellationSignal cancellationSignal,
       Executor executor,
       OutcomeReceiver<CreateCredentialResponse, CreateCredentialException> callback) {
-    Credentials.create(request, executor, callback);
+    Credentials.create(request, cancellationSignal, executor, callback);
   }
 }

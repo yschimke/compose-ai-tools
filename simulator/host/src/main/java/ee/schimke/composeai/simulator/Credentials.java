@@ -69,9 +69,11 @@ final class Credentials {
 
   static synchronized void get(
       GetCredentialRequest request,
+      android.os.CancellationSignal signal,
       Executor executor,
       OutcomeReceiver<GetCredentialResponse, GetCredentialException> callback) {
     Request pending = new Request(request, null, executor, callback);
+    withdrawOnCancel(pending, signal);
     switch (policy) {
       case "cancel":
         failGet(pending, GetCredentialException.TYPE_USER_CANCELED, "cancelled");
@@ -92,9 +94,11 @@ final class Credentials {
 
   static synchronized void create(
       CreateCredentialRequest request,
+      android.os.CancellationSignal signal,
       Executor executor,
       OutcomeReceiver<CreateCredentialResponse, CreateCredentialException> callback) {
     Request pending = new Request(null, request, executor, callback);
+    withdrawOnCancel(pending, signal);
     switch (policy) {
       case "ask":
         waiting.add(pending);
@@ -109,6 +113,20 @@ final class Credentials {
       default:
         failCreate(pending, CreateCredentialException.TYPE_USER_CANCELED, "cancelled");
     }
+  }
+
+  /**
+   * The app cancelled [pending] (its {@code CancellationSignal}): a waiting request is withdrawn,
+   * so no later answer reaches its callback, as the system's sheet goes away.
+   */
+  private static void withdrawOnCancel(Request pending, android.os.CancellationSignal signal) {
+    if (signal == null) return;
+    signal.setOnCancelListener(
+        () -> {
+          synchronized (Credentials.class) {
+            if (waiting.remove(pending)) event(pending, "cancelled", null);
+          }
+        });
   }
 
   private static boolean asksFor(GetCredentialRequest request, String type) {

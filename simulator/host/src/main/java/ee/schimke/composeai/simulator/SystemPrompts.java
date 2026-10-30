@@ -77,7 +77,8 @@ final class SystemPrompts {
   private int nextId = 1;
   private String biometricPolicy;
   private String speechPolicy;
-  private BiometricPrompt reported;
+  /** The authentication session last reported: one prompt object can be shown again. */
+  private Object reported;
 
   SystemPrompts(Application app, Protocol protocol, Navigator navigator) {
     this.app = app;
@@ -115,8 +116,12 @@ final class SystemPrompts {
   void cycle() {
     if (Build.VERSION.SDK_INT < 28) return;
     BiometricPrompt prompt = ShadowBiometricPrompt.getCurrentPrompt();
-    if (prompt == null || prompt == reported) return;
-    reported = prompt;
+    // Each authenticate() is a session of its own, even on a BiometricPrompt shown before.
+    Object session =
+        org.robolectric.util.ReflectionHelpers.getStaticField(
+            ShadowBiometricPrompt.class, "currentAuthenticateSession");
+    if (prompt == null || session == null || session == reported) return;
+    reported = session;
     Protocol.Json json =
         new Protocol.Json()
             .put("title", text(prompt.getTitle()))
