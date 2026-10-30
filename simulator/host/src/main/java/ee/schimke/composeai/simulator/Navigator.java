@@ -71,6 +71,9 @@ final class Navigator {
     /** Paused and stopped because another activity went on top of it. */
     boolean stopped;
 
+    /** Finishes once covered or sent home ({@code noHistory}), rather than stopping. */
+    boolean noHistory;
+
     /**
      * The simulator's own home screen ({@code --launcher}), not the app's: it stays at the bottom
      * of the default display, and force-stops and {@code CLEAR_TASK} leave it alone.
@@ -268,6 +271,7 @@ final class Navigator {
     controller.setup(state);
     Entry fresh =
         new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
+    fresh.noHistory = entry.noHistory;
     List<Entry> entries = new ArrayList<>(stack);
     entries.set(entries.indexOf(entry), fresh);
     stack.clear();
@@ -350,8 +354,9 @@ final class Navigator {
   // Activities
 
   /**
-   * Launches [intent] on top of the back stack. Honors {@code CLEAR_TASK}, {@code CLEAR_TOP} and
-   * {@code SINGLE_TOP}; everything else starts a new instance.
+   * Launches [intent] on top of the back stack, as the target's manifest {@code launchMode} and the
+   * intent's flags decide ({@link LaunchModes}): a new instance, or {@code onNewIntent} to one that
+   * runs, with the activities above it finished or, {@code REORDER_TO_FRONT}, left in place.
    */
   JSONObject startActivity(Intent intent, int requestCode) {
     return startActivity(intent, requestCode, null);
@@ -363,6 +368,16 @@ final class Navigator {
    * leaving the others' alone, as a device's per-display task stacks do.
    */
   JSONObject startActivity(Intent intent, int requestCode, Bundle options) {
+    return startActivity(intent, requestCode, options, null);
+  }
+
+  /**
+   * As {@link #startActivity(Intent, int, Bundle)}; a new instance is created from [savedState], as
+   * an activity the system re-creates is, when the start creates one. A killed app's task is
+   * re-created first ({@link #kill}).
+   */
+  JSONObject startActivity(Intent intent, int requestCode, Bundle options, Bundle savedState) {
+    restoreKilled();
     int displayId = launchDisplay(options);
     ComponentName component = resolveActivity(intent);
     // An app activity started while the home screen shows goes into the app's task, which comes
@@ -385,7 +400,9 @@ final class Navigator {
               isLauncherIntent(launch),
               isBare(rootIntent) || isLauncherIntent(rootIntent));
       if (reuse) {
-        // The task comes forward as it is; nothing new starts and nothing gets the intent.
+        // The task comes forward as it is; nothing new starts and nothing gets the intent. A
+        // launcher's start (RESET_TASK_IF_NEEDED) first applies the manifest's task resets.
+        if ((flags & Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0) resetTask(root);
         Entry top = top(displayId);
         if (top.stopped) {
           bringBack(top);
@@ -395,37 +412,49 @@ final class Navigator {
       }
     }
 
-    if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0) {
-      for (Entry entry : new ArrayList<>(stack)) {
-        if (entry.displayId != displayId || entry.system) continue;
+    ActivityInfo info = activityInfo(component, implementation);
+    List<Entry> on = entriesOn(displayId);
+    List<String> names = new ArrayList<>();
+    for (Entry entry : on) names.add(entry.activity().getClass().getName());
+    LaunchModes.Plan plan =
+        LaunchModes.plan(info == null ? 0 : info.launchMode, flags, names, type.getName());
+    if (plan.clearTask) {
+      for (Entry entry : on) {
+        if (entry.system) continue;
         stack.remove(entry);
         destroy(entry);
+        protocol.event("activity", describe(entry, "destroyed"));
       }
-    } else if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 && contains(type, displayId)) {
-      while (top(displayId).activity().getClass() != type) {
-        Entry entry = top(displayId);
-        stack.remove(entry);
-        destroy(entry);
-      }
-      if ((flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0) {
-        Entry target = top(displayId);
-        deliverNewIntent(target, launch);
-        protocol.event("activity", describe(target, "newIntent"));
-        return describe(target, "newIntent");
-      }
-      Entry cleared = top(displayId);
-      stack.remove(cleared);
-      destroy(cleared);
+    }
+    switch (plan.action) {
+      case DELIVER:
+        {
+          finishAll(on.subList(0, plan.target));
+          Entry target = on.get(plan.target);
+          deliverNewIntent(target, launch);
+          protocol.event("activity", describe(target, "newIntent"));
+          return describe(target, "newIntent");
+        }
+      case REORDER:
+        {
+          Entry target = on.get(plan.target);
+          Entry covered = on.get(0);
+          boolean cover = !covered.stopped;
+          if (cover) covered.controller.pause();
+          stack.remove(target);
+          stack.push(target);
+          deliverNewIntent(target, launch);
+          if (cover) stopCovered(covered);
+          protocol.event("activity", describe(target, "newIntent"));
+          return describe(target, "newIntent");
+        }
+      case REPLACE:
+        finishAll(on.subList(0, plan.target + 1));
+        break;
+      case START:
+        break;
     }
     Entry below = top(displayId);
-    if (below != null
-        && (flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0
-        && below.activity().getClass() == type) {
-      deliverNewIntent(below, launch);
-      protocol.event("activity", describe(below, "newIntent"));
-      return describe(below, "newIntent");
-    }
-
     // A `below` that is already stopped was uncovered by CLEAR_TOP and is not on screen.
     boolean coverBelow = below != null && !below.stopped;
     if (coverBelow) below.controller.pause();
@@ -439,17 +468,91 @@ final class Navigator {
             launch,
             options);
     Displays.placeOn(controller.get(), displayId);
-    controller.setup();
-    if (coverBelow) {
-      below.controller.saveInstanceState(new Bundle()).stop();
-      below.stopped = true;
+    if (savedState == null) {
+      controller.setup();
+    } else {
+      controller.setup(savedState);
     }
+    if (coverBelow) stopCovered(below);
     // The caller is the activity that started this one, which on another display is not [below].
     Entry caller = below != null || stack.isEmpty() ? below : stack.peek();
     Entry entry = new Entry(controller, intent, caller, requestCode, displayId);
+    entry.noHistory =
+        LaunchModes.noHistory(
+            info != null && (info.flags & ActivityInfo.FLAG_NO_HISTORY) != 0, flags);
     stack.push(entry);
     protocol.event("activity", describe(entry, "resumed"));
-    return describe(entry, "resumed");
+    JSONObject started = describe(entry, "resumed");
+    if (savedState != null) markRestored(started);
+    return started;
+  }
+
+  /**
+   * What {@code RESET_TASK_IF_NEEDED} does when a launcher brings the task back: everything above
+   * a {@code clearTaskOnLaunch} root finishes, and so does each {@code finishOnTaskLaunch}
+   * activity.
+   */
+  private void resetTask(Entry root) {
+    ActivityInfo rootInfo = activityInfo(root.activity().getComponentName(), null);
+    boolean clear =
+        rootInfo != null && (rootInfo.flags & ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH) != 0;
+    List<Entry> finishing = new ArrayList<>();
+    for (Entry entry : entriesOn(root.displayId)) {
+      if (entry == root || entry.system) continue;
+      ActivityInfo info = activityInfo(entry.activity().getComponentName(), null);
+      if (clear || (info != null && (info.flags & ActivityInfo.FLAG_FINISH_ON_TASK_LAUNCH) != 0)) {
+        finishing.add(entry);
+      }
+    }
+    finishAll(finishing);
+  }
+
+  /** The activities on display [displayId], top first. */
+  private List<Entry> entriesOn(int displayId) {
+    List<Entry> on = new ArrayList<>();
+    for (Entry entry : stack) if (entry.displayId == displayId) on.add(entry);
+    return on;
+  }
+
+  /** The manifest's entry for [component], or for [fallback] when that is not declared. */
+  private ActivityInfo activityInfo(ComponentName component, ComponentName fallback) {
+    PackageManager pm = app.getPackageManager();
+    try {
+      return pm.getActivityInfo(component, 0);
+    } catch (PackageManager.NameNotFoundException e) {
+      if (fallback == null || fallback.equals(component)) return null;
+      try {
+        return pm.getActivityInfo(fallback, 0);
+      } catch (PackageManager.NameNotFoundException again) {
+        return null;
+      }
+    }
+  }
+
+  /** Finishes [entries], the app's own, as a clear does: no result reaches their callers. */
+  private void finishAll(List<Entry> entries) {
+    for (Entry entry : new ArrayList<>(entries)) {
+      if (entry.system) continue;
+      stack.remove(entry);
+      destroy(entry);
+      protocol.event("activity", describe(entry, "destroyed"));
+    }
+  }
+
+  /**
+   * [entry], paused, is now covered by another activity or by the home screen: it saves its state
+   * and stops, or, {@code noHistory}, finishes.
+   */
+  private void stopCovered(Entry entry) {
+    if (entry.noHistory) {
+      entry.activity().finish();
+      stack.remove(entry);
+      destroy(entry);
+      protocol.event("activity", describe(entry, "destroyed"));
+      return;
+    }
+    entry.controller.saveInstanceState(new Bundle()).stop();
+    entry.stopped = true;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -483,7 +586,8 @@ final class Navigator {
 
   /**
    * {@code HOME}: the app's top activity on the default display is paused and stopped, as the app
-   * goes to the background, and the home screen comes forward. Nothing is destroyed.
+   * goes to the background, and the home screen comes forward. Nothing is destroyed but a {@code
+   * noHistory} activity.
    */
   JSONObject goHome() {
     Entry home = home();
@@ -492,9 +596,8 @@ final class Navigator {
     if (top == home) return describe(home, "resumed");
     if (top != null && !top.stopped) {
       top.controller.pause();
-      top.controller.saveInstanceState(new Bundle()).stop();
-      top.stopped = true;
-      protocol.event("activity", describe(top, "stopped"));
+      stopCovered(top);
+      if (top.stopped) protocol.event("activity", describe(top, "stopped"));
     }
     stack.remove(home);
     stack.push(home);
@@ -509,7 +612,17 @@ final class Navigator {
    * onStart}, {@code onResume}). Returns null when the app has no activity there to bring back.
    */
   JSONObject bringAppForward() {
+    return bringAppForward(false);
+  }
+
+  /**
+   * As {@link #bringAppForward()}; [fromLauncher], a launcher's icon, applies the manifest's task
+   * resets first, as its {@code RESET_TASK_IF_NEEDED} start does.
+   */
+  JSONObject bringAppForward(boolean fromLauncher) {
+    restoreKilled();
     if (!hasAppActivity(Display.DEFAULT_DISPLAY)) return null;
+    if (fromLauncher) resetTask(root(Display.DEFAULT_DISPLAY));
     leaveHome(Display.DEFAULT_DISPLAY);
     Entry top = top(Display.DEFAULT_DISPLAY);
     if (top.stopped) bringBack(top);
@@ -559,6 +672,8 @@ final class Navigator {
    * process to start in their place.
    */
   JSONObject forceStop() {
+    // Force-stopping clears the tasks too: nothing comes back from a kill.
+    dead.clear();
     JSONArray activities = new JSONArray();
     for (Entry entry : new ArrayList<>(stack)) {
       if (entry.system) continue;
@@ -582,6 +697,237 @@ final class Navigator {
       protocol.event("activity", new Protocol.Json().put("state", "empty").object());
     }
     return new Protocol.Json().put("activities", activities).put("services", stopped).object();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Saved state and process death
+
+  /** An activity of a killed process, as the system keeps its record to re-create it. */
+  private static final class Killed {
+    final String className;
+    final Intent intent;
+    final Intent request;
+    final int requestCode;
+    final int displayId;
+    final boolean noHistory;
+    /** The index, bottom first, of the activity that started this one for a result; -1 if none. */
+    final int caller;
+
+    final byte[] state;
+
+    Killed(Entry entry, int caller, byte[] state) {
+      this.className = entry.activity().getClass().getName();
+      this.intent = entry.activity().getIntent();
+      this.request = entry.request;
+      this.requestCode = entry.requestCode;
+      this.displayId = entry.displayId;
+      this.noHistory = entry.noHistory;
+      this.caller = caller;
+      this.state = state;
+    }
+  }
+
+  /** The killed app's activities, bottom first, which the next start of the app re-creates. */
+  private final List<Killed> dead = new ArrayList<>();
+
+  /**
+   * What the system does to a process it kills in the background ({@code am kill}, or low memory):
+   * each of the app's activities is stopped and its instance state saved, through a {@code Parcel}
+   * as it leaves for the system server, and then they and the services go. The next start of the
+   * app (a {@code launch}, the home screen's icon, any {@code startActivity}) re-creates the task
+   * from that state: the top activity resumes with it, those below are created with it and stopped.
+   *
+   * <p>One JVM cannot lose a process: the application object, its singletons and static fields
+   * survive, and {@code onDestroy} runs (a device's dead process runs nothing), so the windows go.
+   * What a kill tests is the saved-state path: {@code rememberSaveable}, {@code SavedStateHandle},
+   * {@code onSaveInstanceState}, and a {@code ViewModel} that does not come back. A state that does
+   * not parcel crashes the app on a device; here the kill reports it and nothing is restored.
+   */
+  JSONObject kill() {
+    List<Entry> app = new ArrayList<>();
+    for (Entry entry : stack) if (!entry.system) app.add(0, entry);
+    if (app.isEmpty()) throw new IllegalStateException("the app has no activity to kill");
+    List<Killed> records = new ArrayList<>();
+    JSONArray activities = new JSONArray();
+    String error = null;
+    for (Entry entry : app) {
+      boolean wasResumed = !entry.stopped;
+      if (wasResumed) entry.controller.pause();
+      Bundle state = new Bundle();
+      entry.controller.saveInstanceState(state);
+      if (wasResumed) {
+        entry.controller.stop();
+        entry.stopped = true;
+        protocol.event("activity", describe(entry, "stopped"));
+      }
+      byte[] bytes = null;
+      try {
+        bytes = SavedStates.marshall(state);
+      } catch (RuntimeException e) {
+        if (error == null) error = entry.activity().getClass().getName() + ": " + e;
+      }
+      records.add(new Killed(entry, entry.caller == null ? -1 : app.indexOf(entry.caller), bytes));
+      activities.put(
+          new Protocol.Json()
+              .put("activity", entry.activity().getClass().getName())
+              .put("display", entry.displayId)
+              .put("stateBytes", bytes == null ? null : bytes.length)
+              .object());
+    }
+    for (int i = app.size() - 1; i >= 0; i--) {
+      Entry entry = app.get(i);
+      stack.remove(entry);
+      destroy(entry);
+      protocol.event("activity", describe(entry, "destroyed"));
+    }
+    JSONArray services = new JSONArray();
+    for (Map.Entry<ComponentName, Running> e : new ArrayList<>(this.services.entrySet())) {
+      destroyService(e.getKey(), e.getValue());
+      services.put(e.getKey().getClassName());
+      protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
+    }
+    dead.clear();
+    if (error == null) dead.addAll(records);
+    Entry home = home();
+    if (home != null && home.stopped) {
+      bringBack(home);
+      protocol.event("activity", describe(home, "resumed"));
+    }
+    protocol.event("activity", new Protocol.Json().put("state", "empty").object());
+    return new Protocol.Json()
+        .put("killed", activities)
+        .put("services", services)
+        .put("restoresOn", error == null ? "the next start of the app" : null)
+        .put("error", error == null ? null : "the saved state does not parcel: " + error)
+        .object();
+  }
+
+  /** Whether a killed app's task waits to be re-created. */
+  boolean killed() {
+    return !dead.isEmpty();
+  }
+
+  /** Re-creates the task of a killed app from its saved state, bottom first; see {@link #kill}. */
+  private void restoreKilled() {
+    if (dead.isEmpty()) return;
+    List<Killed> records = new ArrayList<>(dead);
+    dead.clear();
+    Set<Integer> displays = new HashSet<>();
+    for (Killed record : records) displays.add(record.displayId);
+    for (int displayId : displays) leaveHome(displayId);
+    List<Entry> restored = new ArrayList<>();
+    for (int i = 0; i < records.size(); i++) {
+      Killed record = records.get(i);
+      boolean top = true;
+      for (int j = i + 1; j < records.size(); j++) {
+        if (records.get(j).displayId == record.displayId) top = false;
+      }
+      Bundle state = SavedStates.unmarshall(record.state, app.getClassLoader());
+      Bundle options =
+          android.app.ActivityOptions.makeBasic().setLaunchDisplayId(record.displayId).toBundle();
+      ActivityController<? extends Activity> controller =
+          ActivityController.of(
+              instantiate(
+                  () ->
+                      factory()
+                          .instantiateActivity(
+                              app.getClassLoader(), record.className, record.intent)),
+              record.intent,
+              options);
+      Displays.placeOn(controller.get(), record.displayId);
+      Entry caller = record.caller >= 0 ? restored.get(record.caller) : null;
+      Entry entry =
+          new Entry(controller, record.request, caller, record.requestCode, record.displayId);
+      entry.noHistory = record.noHistory;
+      if (top) {
+        controller.setup(state);
+      } else {
+        controller.create(state).start().restoreInstanceState(state).postCreate(state).stop();
+        entry.stopped = true;
+      }
+      stack.push(entry);
+      restored.add(entry);
+      JSONObject event = describe(entry, top ? "resumed" : "stopped");
+      markRestored(event);
+      protocol.event("activity", event);
+    }
+  }
+
+  /**
+   * {@code recreate()} on the top activity of display [displayId], as a configuration change the
+   * activity does not handle: saved, destroyed and created again from its state, its {@code
+   * ViewModel}s kept on the default display, where Robolectric's own re-creation runs.
+   */
+  JSONObject recreate(int displayId) {
+    Entry top = appTop(displayId);
+    if (displayId == Display.DEFAULT_DISPLAY) {
+      // Robolectric's recreate() asks for window focus before the new window is attached, and its
+      // configuration change does not: a change no manifest can declare handled
+      // (ActivityInfo.CONFIG_ASSETS_PATHS) re-creates the activity, as recreate() does on a device.
+      top.controller.configurationChange(
+          app.getResources().getConfiguration(), app.getResources().getDisplayMetrics(), 0x80000000);
+      Activity activity = top.activity();
+      if (!top.stopped
+          && activity.getWindow() != null
+          && !activity.getWindow().getDecorView().isAttachedToWindow()) {
+        top.controller.visible();
+      }
+      protocol.event("activity", describe(top, "recreated"));
+      return describe(top, "recreated");
+    }
+    relaunch(top);
+    return describe(top(displayId), "recreated");
+  }
+
+  /**
+   * The top activity's instance state on display [displayId], as the system would keep it: a
+   * resumed activity goes through {@code onPause}, {@code onSaveInstanceState} and {@code onStop}
+   * and back to {@code onResume}, as when the user leaves it and returns. The {@code savedState}
+   * base64 is the parcelled bundle, which {@code startActivity}'s {@code savedState} takes back.
+   */
+  JSONObject savedState(int displayId) {
+    Entry top = appTop(displayId);
+    Bundle state = new Bundle();
+    if (top.stopped) {
+      top.controller.saveInstanceState(state);
+    } else {
+      top.controller.pause();
+      top.controller.saveInstanceState(state).stop();
+      protocol.event("activity", describe(top, "stopped"));
+      top.controller.restart().resume();
+      protocol.event("activity", describe(top, "resumed"));
+    }
+    byte[] bytes = SavedStates.marshall(state);
+    try {
+      return new Protocol.Json()
+          .put("activity", top.activity().getClass().getName())
+          .put("bytes", bytes.length)
+          .put("savedState", SavedStates.encode(bytes))
+          .put("bundle", SavedStates.toJson(SavedStates.unmarshall(bytes, app.getClassLoader())))
+          .object();
+    } catch (org.json.JSONException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static void markRestored(JSONObject described) {
+    try {
+      described.put("restored", true);
+    } catch (org.json.JSONException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /** The app's top activity on display [displayId]; throws when there is none, or home shows. */
+  private Entry appTop(int displayId) {
+    Entry top = top(displayId);
+    if (top == null) {
+      throw new IllegalStateException("no activity is running on display " + displayId);
+    }
+    if (top.system) {
+      throw new IllegalStateException("the home screen is showing; launch the app first");
+    }
+    return top;
   }
 
   /**

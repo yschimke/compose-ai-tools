@@ -308,10 +308,18 @@ final class AdbShell {
       case "broadcast":
         return debugSurface(intentCommand("broadcast", a, false));
       case "force-stop":
-      case "kill":
         {
           skipUser(a);
           Map<String, Object> command = cmd("forceStop");
+          command.put("package", a.required("package"));
+          return command;
+        }
+      case "kill":
+        {
+          // A background kill, which the system recovers from: the task comes back from its saved
+          // state. force-stop is the one that clears it.
+          skipUser(a);
+          Map<String, Object> command = cmd("kill");
           command.put("package", a.required("package"));
           return command;
         }

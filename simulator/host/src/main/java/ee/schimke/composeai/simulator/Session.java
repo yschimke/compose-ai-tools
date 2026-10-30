@@ -276,6 +276,9 @@ final class Session {
       case "qualifiers":
       case "forceStop":
       case "clearData":
+      case "kill":
+      case "recreate":
+      case "savedState":
       case "display":
       case "settings":
       case "content":
@@ -407,15 +410,23 @@ final class Session {
           if (home != null && !c.has("display")) return home.launch();
           Intent launcher = app.getPackageManager().getLaunchIntentForPackage(app.getPackageName());
           if (launcher == null) throw new IllegalStateException("the app has no launcher activity");
-          return navigator.startActivity(launcher, -1, launchOptions(c));
+          return navigator.startActivity(launcher, -1, launchOptions(c), savedState(c));
         }
       case "startActivity":
         {
           Intent intent = intent(c);
           if (home != null && intent.hasCategory(Intent.CATEGORY_HOME)) return home.goHome();
+          android.os.Bundle savedState = savedState(c);
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
-          return navigator.startActivity(intent, -1, launchOptions(c));
+          return navigator.startActivity(intent, -1, launchOptions(c), savedState);
         }
+      case "kill":
+        checkPackage(c);
+        return navigator.kill();
+      case "recreate":
+        return navigator.recreate(displays.target(c));
+      case "savedState":
+        return navigator.savedState(displays.target(c));
       case "startService":
         return navigator.startService(intent(c));
       case "stopService":
@@ -914,6 +925,12 @@ final class Session {
   }
 
   /** {@code ActivityOptions} launching on the command's {@code display}, or none. */
+  /** The state a start creates its activity from: base64, as the {@code savedState} command gave. */
+  private android.os.Bundle savedState(JSONObject c) {
+    String state = c.optString("savedState", "");
+    return state.isEmpty() ? null : SavedStates.decode(state, app.getClassLoader());
+  }
+
   private android.os.Bundle launchOptions(JSONObject c) {
     if (!c.has("display")) return null;
     return android.app.ActivityOptions.makeBasic()

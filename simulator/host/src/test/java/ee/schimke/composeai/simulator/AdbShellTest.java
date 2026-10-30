@@ -157,6 +157,13 @@ public class AdbShellTest {
   }
 
   @Test
+  public void amKillIsABackgroundKillTheTaskComesBackFrom() {
+    Map<String, Object> c = t("am kill --user 0 com.x");
+    assertEquals("kill", c.get("cmd"));
+    assertEquals("com.x", c.get("package"));
+  }
+
+  @Test
   public void amRejectsWhatItCannotDo() {
     assertThrows(AdbShell.UnsupportedException.class, () -> t("am start --start-profiler f x/.A"));
     assertThrows(AdbShell.UnsupportedException.class, () -> t("am start"));
