@@ -285,7 +285,7 @@ junit = "4.13.2"
 #
 # A Renovate bump here is WELCOME and is the point: it re-points the probe at the newest skiko, and
 # the test then says whether the late binding still holds against it.
-skiko-encode-probe = "0.153.0"
+skiko-encode-probe = "0.156.0"
 truth = "1.4.5"
 maven-publish = "0.37.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
