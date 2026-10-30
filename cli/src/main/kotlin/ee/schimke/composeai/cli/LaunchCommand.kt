@@ -155,6 +155,8 @@ internal class LaunchCommand(private val args: List<String>) {
             installProviders = "--no-providers" !in args,
             showAgent = "--hide-agent" !in args,
             displays = args.flagValuesAll("--display"),
+            launcher = "--launcher" in args || args.flagValuesAll("--tile").isNotEmpty(),
+            tiles = args.flagValuesAll("--tile"),
           ),
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
@@ -187,6 +189,10 @@ internal class LaunchCommand(private val args: List<String>) {
      * options: `1280x720@xhdpi,name=TV,type=external`.
      */
     val displays: List<String> = emptyList(),
+    /** Put the Wear system UI (watch face, launcher, notification stream, tiles) under the app. */
+    val launcher: Boolean = false,
+    /** Tiles and Wear Widgets (service class names) in the carousel at launch (`--tile`). */
+    val tiles: List<String> = emptyList(),
   )
 
   private fun convert(
@@ -287,6 +293,10 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
+      if (options.launcher) properties["composeai.simulator.launcher"] = "true"
+      if (options.tiles.isNotEmpty()) {
+        properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
+      }
       if (options.displays.isNotEmpty()) {
         properties["composeai.simulator.displays"] = options.displays.joinToString(";")
       }
@@ -351,6 +361,11 @@ internal class LaunchCommand(private val args: List<String>) {
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
                               own window; Presentation and launch-display activities use it.
+        --launcher            Wear: put a system UI under the app — watch face, launcher,
+                              notification stream, tiles carousel, quick settings — reached
+                              by back, the side button and swipes, or control commands.
+        --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
+                              (repeatable; implies --launcher).
         --font-scale <f>      Font scale (default 1.0).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).

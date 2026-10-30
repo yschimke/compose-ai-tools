@@ -60,6 +60,9 @@ final class Session {
   private final DeviceDisplay display;
   private final DeviceState state;
   private final Displays displays;
+  private final NotificationStream notifications;
+  /** The Wear system UI ({@code --launcher}), or null. */
+  private final WearSystemUi wear;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -96,10 +99,13 @@ final class Session {
     this.files = new AppFiles(app);
     this.state = new DeviceState(app, navigator);
     this.displays = new Displays(app, navigator, protocol);
+    this.notifications = new NotificationStream(app, navigator, protocol);
+    this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
   }
 
   void start() {
     displays.start();
+    if (wear != null) wear.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
     if (providers.length() > 0) {
@@ -133,6 +139,8 @@ final class Session {
     Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
     overlay.round(FormFactor.isRound());
     logcat.poll();
+    notifications.cycle();
+    if (wear != null) wear.cycle();
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
@@ -206,7 +214,11 @@ final class Session {
   }
 
   private static boolean changesUi(String name) {
-    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name) || Displays.changesUi(name)) {
+    if (DeviceDisplay.changesUi(name)
+        || DeviceState.changesUi(name)
+        || Displays.changesUi(name)
+        || WearSystemUi.changesUi(name)
+        || NotificationStream.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -242,6 +254,8 @@ final class Session {
     JSONObject emulated = display.command(name, c);
     if (emulated == null) emulated = state.command(name, c);
     if (emulated == null) emulated = displays.command(name, c);
+    if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null) emulated = notifications.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -255,8 +269,6 @@ final class Session {
         return new Protocol.Json().put("activities", navigator.describeStack()).object();
       case "services":
         return new Protocol.Json().put("services", navigator.describeServices()).object();
-      case "notifications":
-        return new Protocol.Json().put("notifications", Notifications.all(app)).object();
       case "components":
         return components();
       case "hierarchy":
@@ -424,6 +436,7 @@ final class Session {
     json.put("displays", displays.list());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
+    if (wear != null) json.put("surface", wear.surface());
     json.put("backStack", navigator.backStack().size());
     json.put("services", navigator.describeServices().length());
     return json.object();

@@ -565,6 +565,7 @@ final class Displays {
       new Handler(Looper.getMainLooper()).post(() -> inject(event, id));
       return true;
     }
+    if (event instanceof KeyEvent && WearSystemUi.intercepts((KeyEvent) event, id)) return true;
     List<Root> roots = roots(id, hidden());
     if (event instanceof KeyEvent) {
       for (Root root : roots) {

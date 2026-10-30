@@ -67,6 +67,8 @@ final class Navigator {
     final int displayId;
     /** Paused and stopped because another activity went on top of it. */
     boolean stopped;
+    /** The simulator's own system UI ({@link WearHome}), not the app's. */
+    boolean system;
 
     Entry(
         ActivityController<? extends Activity> controller,
@@ -370,11 +372,18 @@ final class Navigator {
    */
   JSONObject forceStop() {
     JSONArray activities = new JSONArray();
-    while (!stack.isEmpty()) {
-      Entry entry = stack.pop();
+    for (Entry entry : new ArrayList<>(stack)) {
+      // The system UI is not the app's, and stays.
+      if (entry.system) continue;
+      stack.remove(entry);
       destroy(entry);
       activities.put(entry.activity().getClass().getName());
       protocol.event("activity", describe(entry, "destroyed"));
+    }
+    Entry home = top();
+    if (home != null && home.stopped) {
+      bringBack(home);
+      protocol.event("activity", describe(home, "resumed"));
     }
     JSONArray stopped = new JSONArray();
     for (Map.Entry<ComponentName, Running> e : new ArrayList<>(services.entrySet())) {
@@ -382,7 +391,7 @@ final class Navigator {
       stopped.put(e.getKey().getClassName());
       protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
     }
-    if (activities.length() > 0) {
+    if (activities.length() > 0 && stack.isEmpty()) {
       protocol.event("activity", new Protocol.Json().put("state", "empty").object());
     }
     return new Protocol.Json().put("activities", activities).put("services", stopped).object();
@@ -397,6 +406,7 @@ final class Navigator {
     if (top == null) {
       throw new IllegalStateException("no activity is running on display " + displayId);
     }
+    if (top.system) throw new IllegalStateException("the system UI is on top, not an app activity");
     top.activity().finish();
     reapFinishedActivities();
     Entry now = top(displayId);
@@ -452,6 +462,78 @@ final class Navigator {
       entry.controller.newIntent(intent);
       entry.controller.resume();
     }
+  }
+
+  /**
+   * Puts the simulator's own system activity [activity] on top of display 0's stack, launched with
+   * [intent]: {@link WearHome}, pushed before the app's launcher activity so it sits beneath it.
+   * It is never finished, and {@code forceStop} leaves it.
+   */
+  Entry startSystemActivity(Activity activity, Intent intent) {
+    Entry below = top();
+    if (below != null && !below.stopped) below.controller.pause();
+    ActivityController<? extends Activity> controller = ActivityController.of(activity, intent);
+    controller.setup();
+    if (below != null && !below.stopped) {
+      below.controller.saveInstanceState(new Bundle()).stop();
+      below.stopped = true;
+    }
+    Entry entry = new Entry(controller, intent, null, -1, Display.DEFAULT_DISPLAY);
+    entry.system = true;
+    stack.push(entry);
+    protocol.event("activity", describe(entry, "resumed"));
+    return entry;
+  }
+
+  /**
+   * Brings [entry] to the top of its display, as the system does when the home button is pressed
+   * or an app's task is brought back: the activity on top is paused and stopped, [entry] restarted
+   * and resumed. The rest of the stack keeps its order.
+   */
+  void moveToFront(Entry entry) {
+    Entry top = top(entry.displayId);
+    if (top == entry || !stack.contains(entry)) return;
+    if (top != null && !top.stopped) {
+      top.controller.pause();
+      top.controller.saveInstanceState(new Bundle()).stop();
+      top.stopped = true;
+      protocol.event("activity", describe(top, "stopped"));
+    }
+    stack.remove(entry);
+    stack.push(entry);
+    if (entry.stopped) bringBack(entry);
+    protocol.event("activity", describe(entry, "resumed"));
+  }
+
+  /**
+   * Sends [entry] to the bottom of the stack, uncovering what was under it: the system UI giving
+   * way to the app task it hid, which resumes from where it was stopped.
+   */
+  void moveToBack(Entry entry) {
+    if (!stack.contains(entry) || stack.size() < 2) return;
+    boolean wasTop = top(entry.displayId) == entry;
+    if (wasTop && !entry.stopped) {
+      entry.controller.pause();
+      entry.controller.saveInstanceState(new Bundle()).stop();
+      entry.stopped = true;
+      protocol.event("activity", describe(entry, "stopped"));
+    }
+    stack.remove(entry);
+    stack.addLast(entry);
+    Entry now = top(entry.displayId);
+    if (wasTop && now != null && now != entry) {
+      if (now.stopped) bringBack(now);
+      protocol.event("activity", describe(now, "resumed"));
+    }
+  }
+
+  /** The app's own activities on display 0, top first: its task, without the system UI. */
+  List<Entry> appTask() {
+    List<Entry> task = new ArrayList<>();
+    for (Entry entry : stack) {
+      if (!entry.system && entry.displayId == Display.DEFAULT_DISPLAY) task.add(entry);
+    }
+    return task;
   }
 
   /** Restarts and resumes a stopped activity that is now on top again. */
@@ -617,6 +699,7 @@ final class Navigator {
         .put("intent", Intents.toJson(activity.getIntent()))
         .put("title", activity.getTitle() == null ? null : activity.getTitle().toString())
         .put("display", entry.displayId)
+        .put("system", entry.system ? true : null)
         .object();
   }
 
