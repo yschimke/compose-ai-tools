@@ -194,8 +194,8 @@ final class TileHost {
     String label = null;
     String description = null;
     int preview = 0;
-    String preferred = null;
-    List<String> containers = new ArrayList<>();
+    Integer preferred = null;
+    List<Integer> containers = new ArrayList<>();
     int xml = widgetXml(service);
     if (xml != 0) {
       try (XmlResourceParser parser = app.getResources().getXml(xml)) {
@@ -203,10 +203,12 @@ final class TileHost {
         while ((event = parser.next()) != XmlPullParser.END_DOCUMENT) {
           if (event != XmlPullParser.START_TAG) continue;
           if (parser.getName().equals("container")) {
-            String type = parser.getAttributeValue(null, "type");
-            if (type != null) containers.add(type);
             for (int i = 0; i < parser.getAttributeCount(); i++) {
-              if (preview == 0 && parser.getAttributeName(i).equals("previewImage")) {
+              String name = parser.getAttributeName(i);
+              if (name.equals("type")) {
+                Integer type = containerType(parser, i);
+                if (type != null) containers.add(type);
+              } else if (preview == 0 && name.equals("previewImage")) {
                 preview = parser.getAttributeResourceValue(i, 0);
               }
             }
@@ -217,7 +219,7 @@ final class TileHost {
             if (name.equals("label")) label = attribute(parser, i);
             else if (name.equals("description")) description = attribute(parser, i);
             else if (name.equals("previewImage")) preview = parser.getAttributeResourceValue(i, 0);
-            else if (name.equals("preferredType")) preferred = parser.getAttributeValue(i);
+            else if (name.equals("preferredType")) preferred = containerType(parser, i);
           }
         }
       } catch (Exception e) {
@@ -231,9 +233,44 @@ final class TileHost {
             label != null ? label : label(service),
             description,
             preview);
-    String type = preferred != null ? preferred : containers.size() == 1 ? containers.get(0) : null;
-    if ("SMALL".equalsIgnoreCase(type)) item.containerType = WidgetClient.SMALL;
+    // As Glance Wear's parser: preferredType, else small; a provider with one container has that.
+    item.containerType =
+        preferred != null
+            ? preferred
+            : containers.size() == 1 ? containers.get(0) : WidgetClient.SMALL;
     return item;
+  }
+
+  /**
+   * A container type attribute as Glance Wear reads it: an {@code @integer/} reference
+   * ({@code glance_wear_container_type_small}), a name ({@code SMALL} / {@code LARGE}) or a number.
+   * Null when it is none of those, or the tile-compat type, which a widget cannot use.
+   */
+  private Integer containerType(XmlResourceParser parser, int i) {
+    int value;
+    int res = parser.getAttributeResourceValue(i, 0);
+    if (res != 0) {
+      try {
+        value = app.getResources().getInteger(res);
+      } catch (RuntimeException e) {
+        return null;
+      }
+    } else {
+      String text = parser.getAttributeValue(i);
+      if (text == null) return null;
+      if (text.equalsIgnoreCase("SMALL")) {
+        value = WidgetClient.SMALL;
+      } else if (text.equalsIgnoreCase("LARGE")) {
+        value = WidgetClient.LARGE;
+      } else {
+        try {
+          value = Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    }
+    return value == WidgetClient.SMALL || value == WidgetClient.LARGE ? value : null;
   }
 
   private String attribute(XmlResourceParser parser, int i) {
