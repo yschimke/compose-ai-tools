@@ -73,7 +73,7 @@ final class SimulatorSandbox {
         shadowProviders
             .getBaseShadowMap()
             .newBuilder()
-            .addShadowClasses(SimulatorShadowContextImpl.class);
+            .addShadowClasses(SimulatorShadowContextImpl.class, SimulatorShadowResultReceiver.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class, ShadowGoogleApiAvailability.class);

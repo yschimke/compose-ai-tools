@@ -109,6 +109,14 @@ final class Navigator {
   /** The app's binds, which Robolectric also logs as starts; see {@link #prepareBind}. */
   private static final Set<Intent.FilterComparison> boundByApp = ConcurrentHashMap.newKeySet();
 
+  /** Intents for another package's services the simulator answers itself (WearCompanion). */
+  private static final Set<Intent.FilterComparison> foreignBinds = ConcurrentHashMap.newKeySet();
+
+  /** Registers [intent] as bound by the simulator, so the app's bind is not taken for a start. */
+  static void registerForeignBind(Intent intent) {
+    foreignBinds.add(new Intent.FilterComparison(new Intent(intent)));
+  }
+
   /** A binder per manifest service, which creates and binds it on first use. */
   private static final Map<ComponentName, LazyBinder> bindable = new ConcurrentHashMap<>();
 
@@ -689,6 +697,12 @@ final class Navigator {
   static void prepareBind(Intent intent) {
     Application app = RuntimeEnvironment.getApplication();
     if (app == null) return;
+    // Another package's service the simulator stands in for (WearCompanion): Robolectric answers
+    // the bind, and logs it as a start, which it is not.
+    if (foreignBinds.contains(new Intent.FilterComparison(intent))) {
+      boundByApp.add(new Intent.FilterComparison(new Intent(intent)));
+      return;
+    }
     ComponentName component = intent.getComponent();
     if (component == null) {
       ResolveInfo resolved = app.getPackageManager().resolveService(intent, 0);
