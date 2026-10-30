@@ -223,6 +223,32 @@ final class Navigator {
     return describe(entry, "resumed");
   }
 
+  /**
+   * What {@code am force-stop} can do in one process: destroys every activity, top first, and
+   * every service. The application object, its singletons and threads stay; there is no second
+   * process to start in their place.
+   */
+  JSONObject forceStop() {
+    JSONArray activities = new JSONArray();
+    while (!stack.isEmpty()) {
+      Entry entry = stack.pop();
+      destroy(entry);
+      activities.put(entry.activity().getClass().getName());
+      protocol.event("activity", describe(entry, "destroyed"));
+    }
+    JSONArray stopped = new JSONArray();
+    for (Map.Entry<ComponentName, Running> e : new ArrayList<>(services.entrySet())) {
+      services.remove(e.getKey());
+      e.getValue().controller.destroy();
+      stopped.put(e.getKey().getClassName());
+      protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
+    }
+    if (activities.length() > 0) {
+      protocol.event("activity", new Protocol.Json().put("state", "empty").object());
+    }
+    return new Protocol.Json().put("activities", activities).put("services", stopped).object();
+  }
+
   /** Finishes the top activity the way {@code Activity.finish()} would, without a back press. */
   JSONObject finishTop() {
     Entry top = stack.peek();

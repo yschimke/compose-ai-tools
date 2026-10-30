@@ -138,8 +138,8 @@ simulator.
 Replies are `{"id":…,"ok":true,"result":{…}}` or `{"id":…,"ok":false,"error":"…"}`; an exception
 the app throws while handling a command becomes an error reply, and the simulator keeps running.
 Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `newIntent` /
-`destroyed`, or `empty` when the last one finishes), `service`, `providers`, and `error` for an
-intent the app sent that nothing handles.
+`destroyed`, or `empty` when the last one finishes), `service`, `providers`, `permissions`, `log`
+(while `logcat` follows), and `error` for an intent the app sent that nothing handles.
 
 Commands run in order. Those that change the UI answer after `settleMs` of simulated time (default
 250), so a `tap` followed by a `screenshot` sees the result; any command takes `settleMs`.
@@ -150,26 +150,37 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`? | PNG to `path`, else base64 in `png` |
-| `hierarchy` | `flat`? | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
+| `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
 | `longPress` | as `tap`, `durationMs`? | |
-| `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`? | |
-| `key` | `key` (`"BACK"`, `"ENTER"`, a code) | key down/up |
+| `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
+| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
 | `launch` | | starts the launcher activity |
+| `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
+| `clearData` | | `forceStop`, deletes the app's data and external files, resets permissions |
 | `finish` | | finishes the top activity without a key press |
 | `activities` | | the back stack |
-| `startActivity` | `intent` | deep links resolve through the manifest's real intent filters |
+| `startActivity` | `intent`, `forceStop`? | deep links resolve through the manifest's real intent filters |
 | `startService` / `stopService` | `intent` | |
 | `bindService` / `unbindService` | `intent` | `onBind`, reports the binder's interface |
 | `services` | | running services, started/bound state, foreground notification |
 | `broadcast` | `intent` | runtime-registered and manifest receivers; reports who received it |
 | `notifications` | | what the app posted |
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
+| `content` | `op` (`query` / `insert` / `update` / `delete`), `uri`, `values`?, as `query` | provider reads and writes; `values` is `{"col":value}` or `{"col":{"type":"long","value":1}}` |
+| `settings` | `op` (`get` / `put` / `delete`), `namespace` (`system` / `secure` / `global`), `key`, `value`? | `Settings.*`; a put the system acts on is applied (below) |
+| `network` | `wifi`?, `airplane`? | switches the simulated Wi-Fi network off and on; returns the state |
+| `display` | `size`? (`"WxH"` px or `reset`), `density`? (dpi or `reset`) | as `wm size` / `wm density` |
+| `logcat` | `op` (`dump` / `clear` / `follow` / `stop`), `filters`? (`{tag: level}`), `default`? (level), `regex`?, `tail`? | the app's `android.util.Log`, as `threadtime` lines; `follow` streams `log` events |
+| `files` | `op` (`list` / `read` / `write` / `mkdir` / `delete` / `pull` / `push`), `path`, `to`? / `from`?, `text`? / `base64`?, `recursive`? | the app's storage; every answer carries `hostPath` |
+| `getprop` | `name`? | `ro.build.*`, `ro.product.*` and a few more, from `Build` |
+| `package` / `packages` | `filter`? | version, APK path, data dir, permission state / the one package |
+| `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
-| `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names) | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
+| `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+land`, `+night`) | a configuration change on the top activity |
 | `quit` | | exits |
 
@@ -181,7 +192,76 @@ A **selector** is any of `text` / `desc` (exact), `textContains` / `descContains
 An **intent** is `{"action","data","type","package","component","categories","flags","extras"}`.
 `component` takes `pkg/cls`, `pkg/.Cls`, `.Cls` or a class name; `flags` an int or names
 (`"NEW_TASK"`, `"CLEAR_TOP"`); an extra's JSON type picks its Java type, or
-`{"type":"long","value":1}` names it (`string int long float double boolean uri string[] int[]`).
+`{"type":"long","value":1}` names it (`string int long float double boolean uri component null
+string[] int[]`).
+
+### adb equivalents
+
+`{"cmd":"shell","command":"am start -a android.intent.action.VIEW -d https://…"}` takes an `adb
+shell` line and runs the control command it means, so an agent can use the adb it already knows. A
+leading `adb [-s serial] shell` is dropped, and `adb exec-out`, `adb logcat`, `adb pull` and `adb
+push` are understood too. The line is split as `sh` would (quotes, backslashes); pipes, `;`, `&&`
+and redirection are refused — one command per line — except a trailing `> file` on `screencap`,
+`uiautomator dump` and `run-as … cat`. The reply is `{"command":{…},"result":{…}}`: the translated
+command, then its usual JSON result, not adb's text (commands whose adb output is a value, such as
+`settings get`, `getprop`, `wm size` and `pm path`, add it as `output`).
+
+Paths: `screencap`, `uiautomator dump`, `run-as`, `pull` and `push` take device paths. A relative
+path, `/data/data/<pkg>/…` and `/data/user/0/<pkg>/…` are the app's data directory; `/sdcard/…` and
+`/storage/emulated/0/…` its simulated external storage; `/data/local/tmp/…` a scratch directory.
+All are directories on the host (Robolectric's temporary ones), returned as `hostPath`. Any other
+absolute path given to `screencap` is a host path. Other packages' paths are refused.
+
+| adb | Simulator | Notes |
+| --- | --- | --- |
+| `am start` / `start-activity` | `startActivity` | `-a -d -t -c -n -p -f`, `--es --esn --ez --ei --el --ef --ed --eu --ecn --esa --eia`, `--activity-*` / `--grant-*` flags, a trailing URI (with `VIEW`), component or package; `-W` is implicit; `-S` force-stops first |
+| `am start-service` / `start-foreground-service` / `stopservice` | `startService` / `stopService` | |
+| `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
+| `am force-stop` / `kill` | `forceStop` | partly: see below |
+| `am stack list` | `activities` | |
+| `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests |
+| `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked, policy back to grant |
+| `pm clear` | `clearData` | partly: see below |
+| `pm list packages` / `pm path` / `pm dump` | `packages` / `package` | the one installed package |
+| `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
+| `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress` |
+| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on` (network), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
+| `content query` / `insert` / `update` / `delete` | `content` | `--uri --projection a:b --where --sort --bind name:type:value` (`s b i l f d n`) |
+| `cmd uimode night yes` / `no` / `auto` | `qualifiers` `+night` / `+notnight` | |
+| `wm size [WxH\|reset]` / `wm density [N\|reset]` | `display` | pixels, as on a device: a density change keeps the pixel size; `reset` restores the launch qualifiers (both) |
+| `svc wifi enable` / `disable`, `cmd wifi set-wifi-enabled`, `cmd connectivity airplane-mode` | `network` | `onLost` / `onAvailable` to `NetworkCallback`s, `CONNECTIVITY_ACTION`; airplane mode also sets the setting and broadcasts `AIRPLANE_MODE` |
+| `dumpsys activity [activities\|top\|services]`, `dumpsys notification`, `dumpsys window`, `dumpsys package`, `dumpsys connectivity` | `activities`, `services`, `notifications`, `info`, `package`, `network` | JSON, not dumpsys text |
+| `logcat` `-d -c -s -t -e`, `TAG:LEVEL` / `*:LEVEL` | `logcat` | without `-d` / `-c` / `-t` it follows: `log` events until `{"cmd":"logcat","op":"stop"}`; `-v -b --pid` ignored; times are wall-clock, pid/tid are Robolectric's |
+| `screencap -p [file]` | `screenshot` | PNG only |
+| `uiautomator dump [file]` | `hierarchy` `flat` | JSON nodes, not UI Automator XML |
+| `run-as <pkg> ls [-R]` / `cat` / `rm [-r]` / `mkdir`; the same on `/data/data/<pkg>` paths | `files` | `cat … > file` pulls |
+| `adb pull` / `adb push` | `files` `pull` / `push` | files or directories |
+| `getprop [name]` | `getprop` | |
+| `monkey -p <pkg> 1` | `launch` | only as a launcher; random events are refused |
+
+**Partly:** a single-process simulator cannot kill the process. `am force-stop` destroys every
+activity (top first) and service, and cancels the app's notifications; the `Application`, its
+singletons, open databases and threads live on, so the next `launch` or `am start` starts
+activities into a warm process rather than a cold one. `pm clear` does that, then deletes the data
+and external-files directories and resets runtime permissions — but state already in memory
+(a Room database's open connection, cached `SharedPreferences`, a DataStore) still holds the old
+data. Robolectric's data directory is a fresh temporary one per launch, so for a truly clean start,
+quit and launch again.
+
+**Not supported**, with the reason:
+
+| adb | Why |
+| --- | --- |
+| `install`, `uninstall`, `pm install` | the simulator runs the one APK it was launched with |
+| `am instrument`, `am profile`, `am start -P/--start-profiler`, `am dumpheap` | no instrumentation runner, profiler or ART heap |
+| `intent:` URIs, `--selector`, `--ela`/`--efa` array extras | not mapped; use `-a -d -n` and the scalar or `--esa`/`--eia` extras |
+| `svc data`, `svc power`, `svc bluetooth` | the only simulated network is Wi-Fi; no power or radio model (Bluetooth is on, nothing in range) |
+| `settings list` | Robolectric's settings store cannot be enumerated |
+| `dumpsys meminfo` / `gfxinfo` / `battery` / others | no such services: one JVM, Robolectric's graphics |
+| `input roll` / `motionevent`, `monkey` with events | not mapped; use `tap`, `swipe` and `key` |
+| `reboot`, `root`, `sh` scripts, pipes, `&&` | no device to reboot; one command per line |
+| `pm disable` / `enable` components | not mapped |
+| `logcat -b crash/events/radio`, `bugreport` | there is one buffer: the app's `android.util.Log` |
 
 ## Constraints
 
@@ -206,7 +286,8 @@ What does not, or not yet:
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
-- **Process and task model.** One process, one task; `launch` while running pushes a new launcher
+- **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
+  see [adb equivalents](#adb-equivalents)); `launch` while running pushes a new launcher
   instance rather than bringing the task forward; `HOME` does nothing.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.

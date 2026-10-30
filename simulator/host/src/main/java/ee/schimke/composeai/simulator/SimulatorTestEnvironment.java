@@ -60,6 +60,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       if (app.getApplicationInfo().processName == null) {
         app.getApplicationInfo().processName = app.getPackageName();
       }
+      Logcat.install();
       Connectivity.connect(app);
       Permissions.grantInstallTime(app);
       bluetoothOn(app);

@@ -6,6 +6,11 @@ import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
+import org.json.JSONObject;
+import org.robolectric.shadows.ShadowNetworkInfo;
+import org.robolectric.shadows.ShadowSettings;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -58,6 +63,66 @@ final class Connectivity {
       callback.onAvailable(network);
       callback.onCapabilitiesChanged(network, new NetworkCapabilities(capabilities));
     }
+  }
+
+  private static boolean wifi = true;
+  private static boolean airplane;
+  /** The network info taken away while offline, to restore. */
+  private static NetworkInfo offlineInfo;
+
+  /**
+   * {@code svc wifi} and airplane mode: either takes the one (Wi-Fi) network away, telling every
+   * registered callback it is lost and sending {@code CONNECTIVITY_ACTION}; turning both back on
+   * restores it, and callbacks hear {@code onAvailable} on the next cycle. A null leaves that
+   * switch as it is. Returns the state.
+   */
+  static JSONObject set(Context context, Boolean wifiOn, Boolean airplaneOn) {
+    boolean wasOnline = wifi && !airplane;
+    if (wifiOn != null) wifi = wifiOn;
+    if (airplaneOn != null) {
+      airplane = airplaneOn;
+      ShadowSettings.setAirplaneMode(airplaneOn);
+    }
+    WifiManager wifiManager = context.getSystemService(WifiManager.class);
+    if (wifiManager != null) wifiManager.setWifiEnabled(wifi && !airplane);
+    boolean online = wifi && !airplane;
+    ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+    if (wasOnline && !online) {
+      Network network = manager.getActiveNetwork();
+      offlineInfo = manager.getActiveNetworkInfo();
+      for (ConnectivityManager.NetworkCallback callback :
+          new ArrayList<>(shadowOf(manager).getNetworkCallbacks())) {
+        if (network != null) callback.onLost(network);
+      }
+      shadowOf(manager).setActiveNetworkInfo(null);
+      capabilities = null;
+      notified.clear();
+      context.sendBroadcast(new android.content.Intent(ConnectivityManager.CONNECTIVITY_ACTION));
+    } else if (!wasOnline && online) {
+      NetworkInfo info =
+          offlineInfo != null
+              ? offlineInfo
+              : ShadowNetworkInfo.newInstance(
+                  NetworkInfo.DetailedState.CONNECTED,
+                  ConnectivityManager.TYPE_WIFI,
+                  0,
+                  true,
+                  NetworkInfo.State.CONNECTED);
+      shadowOf(manager).setActiveNetworkInfo(info);
+      connect(context);
+      notified.clear();
+      context.sendBroadcast(new android.content.Intent(ConnectivityManager.CONNECTIVITY_ACTION));
+    }
+    return state(context);
+  }
+
+  static JSONObject state(Context context) {
+    ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+    return new Protocol.Json()
+        .put("wifi", wifi)
+        .put("airplane", airplane)
+        .put("connected", manager.getActiveNetwork() != null)
+        .object();
   }
 
   private Connectivity() {}
