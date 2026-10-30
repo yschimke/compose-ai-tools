@@ -16,14 +16,22 @@ public class LauncherGridTest {
   }
 
   @Test
-  public void providerSizesRoundToCells() {
-    // weather_widget_info: minWidth 180dp is two cells, minResizeWidth 90dp one, maxResize 360dp
-    // five, at any density.
-    assertEquals(2, LauncherGrid.cells(270, 1.5f));
-    assertEquals(1, LauncherGrid.cells(135, 1.5f));
-    assertEquals(5, LauncherGrid.cells(540, 1.5f));
-    assertEquals(2, LauncherGrid.cells(180, 1f));
-    assertEquals(1, LauncherGrid.cells(0, 2f));
+  public void aMinimumSizeTakesEnoughCellsToHoldIt() {
+    // Cadence's podcast widget: minWidth 250dp, minHeight 80dp. Three cells are 232dp and one is
+    // 72dp, so it takes four by two, never less than its minimum.
+    assertEquals(4, LauncherGrid.cellsAtLeast(375, 1.5f));
+    assertEquals(2, LauncherGrid.cellsAtLeast(120, 1.5f));
+    // An exact span stays exact: 152dp is two cells.
+    assertEquals(2, LauncherGrid.cellsAtLeast(228, 1.5f));
+    assertEquals(1, LauncherGrid.cellsAtLeast(0, 2f));
+  }
+
+  @Test
+  public void aMaximumSizeTakesTheCellsThatFitInIt() {
+    // weather_widget_info: maxResizeWidth 360dp holds four cells (312dp), not five (392dp).
+    assertEquals(4, LauncherGrid.cellsAtMost(540, 1.5f));
+    assertEquals(2, LauncherGrid.cellsAtMost(228, 1.5f));
+    assertEquals(1, LauncherGrid.cellsAtMost(30, 1.5f));
   }
 
   @Test

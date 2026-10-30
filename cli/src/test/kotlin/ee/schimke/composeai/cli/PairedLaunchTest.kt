@@ -18,7 +18,13 @@ class PairedLaunchTest {
       PairedLaunch.tag("""{"event":"ready"}""", "watch"),
     )
     assertEquals("""{"device":"phone"}""", PairedLaunch.tag("{}", "phone"))
-    assertEquals("not json", PairedLaunch.tag("not json", "phone"))
+    assertEquals("[phone] not json", PairedLaunch.tag("not json", "phone"))
+  }
+
+  @Test
+  fun `each log line carries its device`() {
+    assertEquals("[watch] D/Tile: hello", PairedLaunch.prefix("D/Tile: hello", "watch"))
+    assertEquals("[phone] ", PairedLaunch.prefix("", "phone"))
   }
 
   @Test

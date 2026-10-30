@@ -44,7 +44,17 @@ final class WearCompanion {
   private static final String BRIDGING_SERVICE =
       "android.support.wearable.notifications.IBridgingManagerService";
 
-  /** Registers the services whose AIDL the app has; a no-op for an app without the library. */
+  /** {@code RemoteAuthClient.ERROR_PHONE_UNAVAILABLE}: no phone to open the URL on. */
+  static final int ERROR_PHONE_UNAVAILABLE = 1;
+
+  /**
+   * Registers the services whose AIDL the app has; a no-op for an app without the library. [node]
+   * is the paired data layer, or null on a watch launched alone: the binds still connect, as the
+   * Wear OS app is always there on a watch, and an OAuth request answers that no phone is
+   * reachable. Without a registered service, Robolectric connects any bind with a null {@code
+   * ComponentName} and binder, and {@code BridgingManager}'s Kotlin connection threw on it, which
+   * ended Confetti's watch at startup.
+   */
   static void install(Application app, DataLayer node) {
     if (has(app, AUTH_SERVICE)) {
       register(app, ACTION_AUTH, "SimulatedAuthenticationService", new Auth(node));
@@ -97,6 +107,10 @@ final class WearCompanion {
     public void openUrl(Bundle request, IAuthenticationRequestCallback callback) {
       Object url = request == null ? null : request.getParcelable(KEY_REQUEST_URL);
       String packageName = request == null ? null : request.getString(KEY_PACKAGE_NAME);
+      if (node == null) {
+        answer(callback, null, ERROR_PHONE_UNAVAILABLE);
+        return;
+      }
       node.sendAuthRequest(url == null ? null : url.toString(), packageName, callback);
     }
 
@@ -120,6 +134,10 @@ final class WearCompanion {
 
     @Override
     public void setBridgingConfig(Bundle config) {
+      if (node == null) {
+        System.err.println("bridging: " + config);
+        return;
+      }
       node.reportBridging(config);
     }
 

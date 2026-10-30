@@ -86,6 +86,21 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
     if (value != null && !value.isEmpty()) ShadowBuild.setFingerprint(value);
   }
 
+  /**
+   * In a paired launch, {@code Build.DEVICE} and {@code Build.MODEL} name this node ({@code
+   * phone-sim}, "Simulated Phone") rather than Robolectric's {@code robolectric}, so an app that
+   * labels what it sends with the device it runs on tells the two apart, as Horologist's Data
+   * Layer sample does with {@code Build.DEVICE}. {@code Build.FINGERPRINT} stays {@code
+   * --fingerprint}'s.
+   */
+  static void pairedDevice() {
+    if (!DataLayerLink.enabled()) return;
+    String node = System.getProperty(DataLayerLink.NODE_PROPERTY);
+    String name = System.getProperty(DataLayerLink.NAME_PROPERTY);
+    if (node != null && !node.isEmpty()) ShadowBuild.setDevice(node);
+    if (name != null && !name.isEmpty()) ShadowBuild.setModel(name);
+  }
+
   /** Installs the providers immediately before the application's {@code onCreate()}. */
   public static class ProvidersFirstInstrumentation extends RoboMonitoringInstrumentation {
     @Override
@@ -107,11 +122,22 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       ShadowApplication shadowApp = Shadow.extract(app);
       shadowApp.setUnbindServiceCallsOnServiceDisconnected(false);
       fingerprint();
+      pairedDevice();
       PlayServicesPackages.sync(app);
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.
-      if (DataLayerLink.enabled()) DataLayer.start(app);
+      if (DataLayerLink.enabled()) {
+        DataLayer.start(app);
+      } else if ((app.getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK)
+          == Configuration.UI_MODE_TYPE_WATCH) {
+        // A watch alone still has the Wear OS app's services; paired, DataLayer registers them.
+        try {
+          WearCompanion.install(app, null);
+        } catch (LinkageError e) {
+          // The app has no wear-phone-interactions.
+        }
+      }
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
     }

@@ -329,6 +329,8 @@ final class DataLayer {
       } catch (LinkageError e) {
         // The app has no wear-phone-interactions.
       }
+    } else {
+      PhoneCompanion.install(app);
     }
     log("node " + localId + " (" + app.getPackageName() + ") capabilities " + localCapabilities);
   }
@@ -385,13 +387,15 @@ final class DataLayer {
   }
 
   /**
-   * The package of the app that manages [nodeId] on this side: the Wear OS app, as on a device;
-   * null for a node that is not connected. It is not the peer's own package: {@code
+   * The package of the app that manages [nodeId] on this side, as on a device: on the phone the
+   * Pixel Watch app ({@link PhoneCompanion}), on the watch the Wear OS app; null for a node that is
+   * not connected. It is not the peer's own package: {@code
    * RemoteActivityHelper} addresses its broadcast to it, and Horologist's {@code startCompanion}
    * launches it.
    */
   synchronized String companionPackage(String nodeId) {
-    return peers.containsKey(nodeId) ? RemoteIntents.COMPANION_PACKAGE : null;
+    if (!peers.containsKey(nodeId)) return null;
+    return isWatch(app) ? RemoteIntents.COMPANION_PACKAGE : PhoneCompanion.PACKAGE;
   }
 
   private synchronized List<String> peerIds() {
@@ -502,8 +506,20 @@ final class DataLayer {
       }
     }
     Item item = new Item(uri, request.getData(), keys);
+    Item same = null;
     synchronized (this) {
-      items.put(uri, item);
+      Item before = items.get(uri);
+      if (before != null
+          && DataLayerFrames.unchanged(before.data, before.assets, item.data, item.assets)) {
+        same = before;
+      } else {
+        items.put(uri, item);
+      }
+    }
+    if (same != null) {
+      // As Play services: the same contents are not a change, so nothing syncs or is delivered.
+      event("data", "out", null, requested.getPath(), item.data, null, "unchanged");
+      return same;
     }
     send(
         frame("data")
@@ -613,7 +629,7 @@ final class DataLayer {
       return;
     }
     String from = frame.optString("from");
-    String to = frame.optString("to", null);
+    String to = DataLayerFrames.text(frame.opt("to"));
     if (from.equals(localId) || (to != null && !to.equals(localId))) return;
     try {
       switch (frame.optString("type")) {
@@ -663,7 +679,7 @@ final class DataLayer {
         new Peer(
             id,
             frame.optString("name", id),
-            frame.optString("package", null),
+            DataLayerFrames.text(frame.opt("package")),
             frame.optBoolean("nearby", true));
     JSONArray capabilities = frame.optJSONArray("capabilities");
     if (capabilities != null) {
@@ -794,7 +810,7 @@ final class DataLayer {
   private void onMessage(JSONObject frame) throws JSONException {
     String from = frame.getString("from");
     String path = frame.getString("path");
-    byte[] data = decode(frame.optString("data", null));
+    byte[] data = DataLayerFrames.bytes(frame.opt("data"));
     int requestId = frame.optInt("requestId", 0);
     Uri uri = Uri.parse(wearUri(from, path));
     if (requestId != 0) {
@@ -887,13 +903,13 @@ final class DataLayer {
   private void onResponse(JSONObject frame) {
     TaskCompletionSource<byte[]> response = pending.remove(frame.optInt("requestId"));
     if (response == null) return;
-    String error = frame.optString("error", null);
+    String error = DataLayerFrames.text(frame.opt("error"));
     if (error != null) {
       response.trySetException(new ApiException(new Status(INTERNAL_ERROR, error)));
       event("response", "in", frame.optString("from"), null, null, null);
       return;
     }
-    byte[] data = decode(frame.optString("data", null));
+    byte[] data = DataLayerFrames.bytes(frame.opt("data"));
     event("response", "in", frame.optString("from"), null, data, null);
     response.trySetResult(data);
   }
@@ -919,10 +935,10 @@ final class DataLayer {
         if (assetBytes != null) {
           for (Iterator<String> it = assetBytes.keys(); it.hasNext(); ) {
             String digest = it.next();
-            assets.put(digest, decode(assetBytes.getString(digest)));
+            assets.put(digest, DataLayerFrames.bytes(assetBytes.opt(digest)));
           }
         }
-        item = new Item(uri, decode(frame.optString("data", null)), keys);
+        item = new Item(uri, DataLayerFrames.bytes(frame.opt("data")), keys);
         items.put(uri, item);
       }
     }
@@ -1147,7 +1163,7 @@ final class DataLayer {
             .put("direction", "in")
             .put("node", frame.optString("from"))
             .put("result", code)
-            .put("state", frame.optString("state", null))
+            .put("state", DataLayerFrames.text(frame.opt("state")))
             .object());
   }
 
@@ -1220,7 +1236,7 @@ final class DataLayer {
     authEvent(
         "in",
         frame.optString("from"),
-        frame.optString("url", null),
+        DataLayerFrames.text(frame.opt("url")),
         "a device would open this in the phone's browser; answer with"
             + " {\"cmd\":\"dataLayer\",\"oauthResponse\":\"<redirect URL>\"}");
   }
@@ -1238,7 +1254,7 @@ final class DataLayer {
             .put("errorCode", errorCode));
     authEvent("out", to, responseUrl, "redirect sent to the watch");
     return new Protocol.Json()
-        .put("answered", request.optString("url", null))
+        .put("answered", DataLayerFrames.text(request.opt("url")))
         .put("responseUrl", responseUrl)
         .put("errorCode", errorCode)
         .object();
@@ -1246,7 +1262,7 @@ final class DataLayer {
 
   private void onAuthResult(JSONObject frame) {
     Object callback = authCallbacks.remove(frame.optInt("requestId"));
-    String url = frame.optString("responseUrl", null);
+    String url = DataLayerFrames.text(frame.opt("responseUrl"));
     int errorCode = frame.optInt("errorCode", WearCompanion.NO_ERROR);
     authEvent("in", frame.optString("from"), url, "errorCode " + errorCode);
     if (callback != null) WearCompanion.answer(callback, url, errorCode);
@@ -1465,7 +1481,7 @@ final class DataLayer {
       json.put("assetDigests", assetKeys);
       if (!omitted.isEmpty()) json.put("assetsOmitted", new JSONObject(omitted));
     }
-    String data = frame.optString("data", null);
+    String data = DataLayerFrames.text(frame.opt("data"));
     if (data != null) {
       byte[] bytes = decode(data);
       json.put("bytes", bytes.length);

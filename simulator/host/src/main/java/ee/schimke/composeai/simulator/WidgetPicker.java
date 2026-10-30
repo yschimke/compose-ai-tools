@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
 import android.content.Context;
 import android.graphics.Color;
@@ -127,6 +128,17 @@ final class WidgetPicker {
    * rounded card as the picker shows it.
    */
   View preview(Context context, AppWidgetProviderInfo info, int spanX, int spanY, int maxWidthPx) {
+    return preview(context, info, null, spanX, spanY, maxWidthPx);
+  }
+
+  /** As above, showing [supplied] (a pin request's own preview) when there is one. */
+  private View preview(
+      Context context,
+      AppWidgetProviderInfo info,
+      RemoteViews supplied,
+      int spanX,
+      int spanY,
+      int maxWidthPx) {
     float density = context.getResources().getDisplayMetrics().density;
     int w = Math.round(LauncherGrid.sizeDp(spanX) * density);
     int h = Math.round(LauncherGrid.sizeDp(spanY) * density);
@@ -137,7 +149,7 @@ final class WidgetPicker {
     background.setCornerRadius(16 * density);
     card.setBackground(background);
     card.setClipToOutline(true);
-    View content = content(context, info, card);
+    View content = content(context, info, supplied, card);
     FrameLayout inner = new FrameLayout(context);
     inner.addView(content, new FrameLayout.LayoutParams(w, h));
     inner.setPivotX(0);
@@ -150,9 +162,11 @@ final class WidgetPicker {
     return card;
   }
 
-  private View content(Context context, AppWidgetProviderInfo info, ViewGroup parent) {
+  private View content(
+      Context context, AppWidgetProviderInfo info, RemoteViews supplied, ViewGroup parent) {
     String pkg = context.getPackageName();
-    RemoteViews generated = home.widgets.generatedPreview(info.provider);
+    RemoteViews generated =
+        supplied != null ? supplied : home.widgets.generatedPreview(info.provider);
     try {
       if (generated != null) return generated.apply(context, parent);
       if (info.previewLayout != 0)
@@ -175,8 +189,17 @@ final class WidgetPicker {
     return image;
   }
 
-  /** The pin request's confirm sheet: the widget's preview, Add and Cancel. */
-  View buildPinSheet(Context context, AppWidgetProviderInfo info, int widthPx) {
+  /**
+   * The pin request's confirm sheet: the widget's preview — the {@code EXTRA_APPWIDGET_PREVIEW} the
+   * app passed with the request when it did, as Launcher3 shows it — then Add and Cancel.
+   */
+  View buildPinSheet(Context context, WidgetHost.PinRequest request, int widthPx) {
+    AppWidgetProviderInfo info = request.info;
+    RemoteViews supplied = null;
+    if (request.extras != null) {
+      Object preview = request.extras.getParcelable(AppWidgetManager.EXTRA_APPWIDGET_PREVIEW);
+      if (preview instanceof RemoteViews) supplied = (RemoteViews) preview;
+    }
     FrameLayout scrim = new FrameLayout(context);
     scrim.setBackgroundColor(0x99000000);
     scrim.setClickable(true);
@@ -195,7 +218,7 @@ final class WidgetPicker {
     sheet.addView(title);
     sheet.addView(PhoneHome.text(context, home.widgets.label(info), 14, 0xCCFFFFFF));
     int[] span = home.widgets.defaultSpan(info);
-    View preview = preview(context, info, span[0], span[1], widthPx - 2 * pad);
+    View preview = preview(context, info, supplied, span[0], span[1], widthPx - 2 * pad);
     LinearLayout.LayoutParams plp =
         new LinearLayout.LayoutParams(
             preview.getLayoutParams().width, preview.getLayoutParams().height);
