@@ -1,5 +1,50 @@
 # Changelog
 
+## [2.76.0](https://github.com/yschimke/compose-ai-tools/compare/v2.75.0...v2.76.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** a home screen with app widgets for the simulator ([#6280](https://github.com/yschimke/compose-ai-tools/issues/6280)) ([a10455c](https://github.com/yschimke/compose-ai-tools/commit/a10455c1705d8753cc2fbe94bd78712444b90f1c))
+* **cli:** a Wear OS system UI for the simulator, with tiles, widgets and health data ([#6281](https://github.com/yschimke/compose-ai-tools/issues/6281)) ([e5c217a](https://github.com/yschimke/compose-ai-tools/commit/e5c217a010bb2c9c5dfee0a7818047125c589b88))
+* **cli:** an agent-played Wearable Data Layer peer for a single app (--data-layer agent) ([#6288](https://github.com/yschimke/compose-ai-tools/issues/6288)) ([5e988d0](https://github.com/yschimke/compose-ai-tools/commit/5e988d0440b837d641f7d0826f9d84365025e662))
+* **cli:** answer runtime permission requests as a device's permission controller does ([#6299](https://github.com/yschimke/compose-ai-tools/issues/6299)) ([116fcc2](https://github.com/yschimke/compose-ai-tools/commit/116fcc22cee7d4250d95cbc406ee3e27e9cefaf6))
+* **cli:** ChannelClient and main-looper task completion in the simulated Data Layer ([#6298](https://github.com/yschimke/compose-ai-tools/issues/6298)) ([0b2f59c](https://github.com/yschimke/compose-ai-tools/commit/0b2f59c502ca2291416788ea5dc5894a5de38a7c))
+* **cli:** CompanionDeviceManager associations and live remote-interaction status in the simulator ([#6302](https://github.com/yschimke/compose-ai-tools/issues/6302)) ([8145c86](https://github.com/yschimke/compose-ai-tools/commit/8145c8667d1694f52ba04668e0905c3d0b85a2fb))
+* **cli:** Google Play services availability in the simulator ([#6295](https://github.com/yschimke/compose-ai-tools/issues/6295)) ([c630d1a](https://github.com/yschimke/compose-ai-tools/commit/c630d1aa99a9868b2aa7f5b7a4666cb01cc8c301))
+* **cli:** live reload a launched app from its Gradle project ([#6308](https://github.com/yschimke/compose-ai-tools/issues/6308)) ([63d384b](https://github.com/yschimke/compose-ai-tools/commit/63d384b388c147ce694a52e25f0ea25afe8829e0))
+* **cli:** network, Wi-Fi and Bluetooth modes in the simulator ([#6286](https://github.com/yschimke/compose-ai-tools/issues/6286)) ([da5a687](https://github.com/yschimke/compose-ai-tools/commit/da5a68708273ee7e91e5aed019c7575213505ff3))
+* **cli:** prefix each paired simulator's log lines with its device ([#6293](https://github.com/yschimke/compose-ai-tools/issues/6293)) ([c6d41b1](https://github.com/yschimke/compose-ai-tools/commit/c6d41b19c8fd76fe31d182e6f54d326be95b9d70))
+* **cli:** render previews in Android Lightbuild projects ([#6285](https://github.com/yschimke/compose-ai-tools/issues/6285)) ([df601f0](https://github.com/yschimke/compose-ai-tools/commit/df601f0760f027daa710c6f94557c75a4c6fc2a7))
+* **cli:** restart and update a launched simulator, with a warm standby JVM ([#6307](https://github.com/yschimke/compose-ai-tools/issues/6307)) ([57f4b1d](https://github.com/yschimke/compose-ai-tools/commit/57f4b1dd00179029360884c5840666c7e3723359))
+* **cli:** run the simulator as a device adb and Android Studio see (launch --adb) ([#6300](https://github.com/yschimke/compose-ai-tools/issues/6300)) ([83d00ff](https://github.com/yschimke/compose-ai-tools/commit/83d00ff9d4ae3dcaab412121a45f1e0b9056c007))
+* **cli:** Wear ambient mode, screen power and tilt-to-wake in the simulator ([#6290](https://github.com/yschimke/compose-ai-tools/issues/6290)) ([136ee2a](https://github.com/yschimke/compose-ai-tools/commit/136ee2a6890522400489487d028b5dbcbb8dffd8))
+
+
+### Bug Fixes
+
+* **cli:** apply associate()'s device filters to the simulator's Bluetooth candidates ([#6304](https://github.com/yschimke/compose-ai-tools/issues/6304)) ([5531737](https://github.com/yschimke/compose-ai-tools/commit/5531737277c7542504042b5d1351e3b4d9ff6b5c))
+* **cli:** ask about XR tracking and local-network permissions instead of granting them at install ([#6309](https://github.com/yschimke/compose-ai-tools/issues/6309)) ([98ff363](https://github.com/yschimke/compose-ai-tools/commit/98ff3635d35f37db5ec658b05394b7dc61a0c2ba))
+* **cli:** Bluetooth off when launched in airplane mode; GATT notify only to subscribers ([#6289](https://github.com/yschimke/compose-ai-tools/issues/6289)) ([3722f28](https://github.com/yschimke/compose-ai-tools/commit/3722f288624340077f3c18515d0801ced83ce3c5))
+* **cli:** deliver wrist tilt before waking ([#6291](https://github.com/yschimke/compose-ai-tools/issues/6291)) ([073f09c](https://github.com/yschimke/compose-ai-tools/commit/073f09cced2b510a7da61885ce2621549dbb87aa))
+* **cli:** draw Wear Widgets as their host containers, without a card ([#6284](https://github.com/yschimke/compose-ai-tools/issues/6284)) ([b5e61ca](https://github.com/yschimke/compose-ai-tools/commit/b5e61ca9d13476505d05216cced2ac8b313fe97b))
+* **cli:** Horologist's app helper flows in the paired simulator ([#6292](https://github.com/yschimke/compose-ai-tools/issues/6292)) ([3074a98](https://github.com/yschimke/compose-ai-tools/commit/3074a9852bc207ebce7f9ca6cb42a1a9a15f802d))
+* **cli:** provision android-all per artifact before launch ([#6294](https://github.com/yschimke/compose-ai-tools/issues/6294)) ([469b424](https://github.com/yschimke/compose-ai-tools/commit/469b424e1105e714eb441b901c9ef86987db8bdf))
+* **cli:** simulator home screen faults found on Home Assistant and Cadence ([#6287](https://github.com/yschimke/compose-ai-tools/issues/6287)) ([b7e9791](https://github.com/yschimke/compose-ai-tools/commit/b7e9791f009ada7148cdcc8a8dbaad896a03706a))
+* **cli:** Wear remote interactions and Horologist work across the paired simulator ([#6283](https://github.com/yschimke/compose-ai-tools/issues/6283)) ([b57c055](https://github.com/yschimke/compose-ai-tools/commit/b57c05578792bab503d0a193643486ecd7b63c07))
+* **deps:** update dependency com.google.android.gms:play-services-basement to v18.12.0 ([#6306](https://github.com/yschimke/compose-ai-tools/issues/6306)) ([4ca0e03](https://github.com/yschimke/compose-ai-tools/commit/4ca0e03e6ce509b01b0a2c490cee28251c3d7956))
+* **deps:** update dependency com.google.android.gms:play-services-tasks to v18.4.1 ([#6305](https://github.com/yschimke/compose-ai-tools/issues/6305)) ([fab1100](https://github.com/yschimke/compose-ai-tools/commit/fab11008900ee28cfd73a88d5430d081f047de70))
+* **deps:** update dependency com.google.protobuf:protobuf-java to v4 ([#6311](https://github.com/yschimke/compose-ai-tools/issues/6311)) ([a49cef1](https://github.com/yschimke/compose-ai-tools/commit/a49cef19832dacbd2ae87b3c02cdd8055257c0a1))
+* **deps:** update dependency org.jetbrains.skiko:skiko-awt to v0.156.0 ([#6278](https://github.com/yschimke/compose-ai-tools/issues/6278)) ([5e3f98d](https://github.com/yschimke/compose-ai-tools/commit/5e3f98d63f3ea8068a25e41f45009a696f51f538))
+* **deps:** update grpc ([#6310](https://github.com/yschimke/compose-ai-tools/issues/6310)) ([83e050b](https://github.com/yschimke/compose-ai-tools/commit/83e050bafb619f54b4bbd601ceb626f5b3dcfd64))
+* **simulator:** route Back through OnBackInvokedCallback for opted-in windows ([#6303](https://github.com/yschimke/compose-ai-tools/issues/6303)) ([6d75598](https://github.com/yschimke/compose-ai-tools/commit/6d75598705f1a7161e3b6eb298da1fe226911f81))
+
+
+### Performance Improvements
+
+* **cli:** cut the simulator's memory: stream APK conversion, cap heaps, collect idle graphics ([#6296](https://github.com/yschimke/compose-ai-tools/issues/6296)) ([9c11d25](https://github.com/yschimke/compose-ai-tools/commit/9c11d25e601bcf68b87d30acc80aa5dd117eebf6))
+* **cli:** reconvert only the classes a rebuilt APK changed, and prune the conversion cache ([#6297](https://github.com/yschimke/compose-ai-tools/issues/6297)) ([d824fcc](https://github.com/yschimke/compose-ai-tools/commit/d824fccde5535716bb3e8ad28cbe1455c3344b9c))
+
 ## [2.75.0](https://github.com/yschimke/compose-ai-tools/compare/v2.74.1...v2.75.0) (2026-10-30)
 
 
