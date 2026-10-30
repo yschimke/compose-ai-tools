@@ -64,13 +64,63 @@ public class ShadowGoogleApiAvailability {
       if (statuses[i] != PlayServices.SUCCESS) available = false;
     }
     ClassLoader loader = first.getClass().getClassLoader();
+    if (available) return completed(loader, "forResult", Object.class, null);
+    return failedTask(loader, apis, statuses, AVAILABILITY_EXCEPTION);
+  }
+
+  static final String AVAILABILITY_EXCEPTION =
+      "com.google.android.gms.common.api.AvailabilityException";
+
+  /**
+   * A failed {@code Task}: the {@code AvailabilityException} the app expects or, if this Play
+   * services build has no constructor the simulator can use, an {@code ApiException} with the first
+   * failing status. It never throws, as the caller is promised a failed {@code Task}.
+   */
+  static Object failedTask(
+      ClassLoader loader, List<Object> apis, int[] statuses, String exceptionClass) {
+    Exception failure;
     try {
-      Class<?> tasks = Class.forName("com.google.android.gms.tasks.Tasks", false, loader);
-      if (available) return tasks.getMethod("forResult", Object.class).invoke(null, (Object) null);
-      Exception failure = availabilityException(loader, apis, statuses);
-      return tasks.getMethod("forException", Exception.class).invoke(null, failure);
+      failure = availabilityException(loader, apis, statuses, exceptionClass);
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+      failure = apiException(loader, firstFailure(statuses), e);
+    }
+    return completed(loader, "forException", Exception.class, failure);
+  }
+
+  private static Object completed(
+      ClassLoader loader, String method, Class<?> parameter, Object value) {
+    try {
+      return Class.forName("com.google.android.gms.tasks.Tasks", false, loader)
+          .getMethod(method, parameter)
+          .invoke(null, value);
     } catch (ReflectiveOperationException e) {
-      throw new IllegalStateException("Play services' Tasks or AvailabilityException", e);
+      // Without Play services' Tasks there is no Task to return at all.
+      throw new IllegalStateException("Play services' Tasks." + method, e);
+    }
+  }
+
+  private static int firstFailure(int[] statuses) {
+    for (int status : statuses) if (status != PlayServices.SUCCESS) return status;
+    return PlayServices.API_UNAVAILABLE;
+  }
+
+  /** {@code new ApiException(new Status(status))}, or a plain exception if even that fails. */
+  private static Exception apiException(ClassLoader loader, int status, Throwable cause) {
+    try {
+      Class<?> statusClass =
+          Class.forName("com.google.android.gms.common.api.Status", false, loader);
+      Constructor<?> newStatus = statusClass.getDeclaredConstructor(int.class);
+      newStatus.setAccessible(true);
+      Constructor<?> newException =
+          Class.forName("com.google.android.gms.common.api.ApiException", false, loader)
+              .getDeclaredConstructor(statusClass);
+      newException.setAccessible(true);
+      return (Exception) newException.newInstance(newStatus.newInstance(status));
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+      IllegalStateException fallback =
+          new IllegalStateException("Play services API unavailable: status " + status, cause);
+      fallback.addSuppressed(e);
+      return fallback;
     }
   }
 
@@ -82,32 +132,54 @@ public class ShadowGoogleApiAvailability {
 
   /**
    * {@code new AvailabilityException(map)}, each API's key to its {@code ConnectionResult}. The map
-   * is whatever its one-argument constructor takes ({@code androidx.collection.ArrayMap} today).
+   * is whatever its one-argument constructor takes: {@code androidx.collection.ArrayMap} in every
+   * Play services release checked (a public constructor, though the reference omits it), matched
+   * here as any {@link Map} or any map with a no-argument constructor and {@code put}, such as
+   * {@code SimpleArrayMap}, and reached whatever its visibility.
    */
-  @SuppressWarnings("unchecked")
   private static Exception availabilityException(
-      ClassLoader loader, List<Object> apis, int[] statuses) throws ReflectiveOperationException {
-    Class<?> exception =
-        Class.forName("com.google.android.gms.common.api.AvailabilityException", false, loader);
+      ClassLoader loader, List<Object> apis, int[] statuses, String exceptionClass)
+      throws ReflectiveOperationException {
+    Class<?> exception = Class.forName(exceptionClass, false, loader);
     Constructor<?> constructor = null;
-    for (Constructor<?> candidate : exception.getConstructors()) {
-      if (candidate.getParameterCount() == 1
-          && Map.class.isAssignableFrom(candidate.getParameterTypes()[0])) {
-        constructor = candidate;
-      }
+    Method put = null;
+    for (Constructor<?> candidate : exception.getDeclaredConstructors()) {
+      if (candidate.getParameterCount() != 1) continue;
+      Class<?> map = candidate.getParameterTypes()[0];
+      Method candidatePut = mapPut(map);
+      if (candidatePut == null) continue;
+      constructor = candidate;
+      put = candidatePut;
+      if (Map.class.isAssignableFrom(map)) break;
     }
-    if (constructor == null) throw new NoSuchMethodException("AvailabilityException(Map)");
-    Map<Object, Object> results =
-        (Map<Object, Object>) constructor.getParameterTypes()[0].getConstructor().newInstance();
+    if (constructor == null) throw new NoSuchMethodException(exceptionClass + "(Map)");
+    Constructor<?> newMap = constructor.getParameterTypes()[0].getDeclaredConstructor();
+    newMap.setAccessible(true);
+    Object results = newMap.newInstance();
     Constructor<?> connectionResult =
         Class.forName("com.google.android.gms.common.ConnectionResult", false, loader)
-            .getConstructor(int.class);
+            .getDeclaredConstructor(int.class);
+    connectionResult.setAccessible(true);
     for (int i = 0; i < statuses.length; i++) {
       Object api = apis.get(i);
       Method key = api.getClass().getMethod("getApiKey");
       key.setAccessible(true);
-      results.put(key.invoke(api), connectionResult.newInstance(statuses[i]));
+      put.invoke(results, key.invoke(api), connectionResult.newInstance(statuses[i]));
     }
+    constructor.setAccessible(true);
     return (Exception) constructor.newInstance(results);
+  }
+
+  /** {@code put(key, value)} of a concrete map type, or null if it is not one. */
+  private static Method mapPut(Class<?> map) {
+    if (map.isInterface() || java.lang.reflect.Modifier.isAbstract(map.getModifiers())) return null;
+    try {
+      map.getDeclaredConstructor();
+      Method put = map.getMethod("put", Object.class, Object.class);
+      put.setAccessible(true);
+      return put;
+    } catch (NoSuchMethodException | RuntimeException e) {
+      return null;
+    }
   }
 }
