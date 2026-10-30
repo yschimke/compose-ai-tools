@@ -28,7 +28,8 @@ display to the window, letterboxed. ⌘ `=` / `-` / `0` (Ctrl on Linux and Windo
 window's View menu, zoom in, out and back to one device pixel per point; View → Fit to Screen
 fits it to the screen. A display bigger than the screen starts fitted to 85% of it, and every
 window is kept on its screen, its title bar and View menu first, so it can always be moved,
-closed and zoomed out; a secondary display opens fitted into the room beside the phone. Only the
+closed and zoomed out; a secondary display opens fitted into the room beside the phone. The
+window goes behind others like any window; View → Keep on Top floats it above them. Only the
 picture scales: clicks are mapped back to device pixels, and `screenshot`, `hierarchy` bounds and
 the control channel's coordinates stay in device pixels. The `zoom` command does the same from the
 control channel.
@@ -276,7 +277,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | --- | --- | --- |
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
-| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, and where the display is on screen (`screenX`, `screenY`). Errors with `--headless` |
+| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
