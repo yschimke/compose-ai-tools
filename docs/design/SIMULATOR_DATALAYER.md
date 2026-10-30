@@ -242,6 +242,35 @@ Watch") rather than `robolectric`, which the sample writes into its proto data.
 | Phone, Install Tile prompt | ![no watch found](evidence/simulator-datalayer/horologist-install-tile-before.png) | ![the prompt](evidence/simulator-datalayer/horologist-install-tile-after.png) |
 | Watch, launch and 8 minutes later | ![11:02](evidence/simulator-datalayer/horologist-clock-before-1.png) ![still 11:02](evidence/simulator-datalayer/horologist-clock-before-2.png) | ![12:08](evidence/simulator-datalayer/horologist-clock-after-1.png) ![12:17](evidence/simulator-datalayer/horologist-clock-after-2.png) |
 
+## Evidence: channels and tasks
+
+A throwaway probe pair (not committed): a phone and a Wear app, play-services-wearable 19.0.0, a
+global `ChannelCallback`, and a `WearableListenerService` with a `CHANNEL_EVENT` filter, run paired
+on `--sdk 35`. The peer echoes what it reads on `/probe/echo` and `receiveFile`s `/probe/file`.
+
+| Probe | Before | After |
+| --- | --- | --- |
+| `tasks`: 24 calls on the main thread across `DataClient`, `MessageClient`, `NodeClient`, `CapabilityClient`, `ChannelClient` and `checkApiAvailability`; is each task complete when it returns? | the `ChannelClient` call failed the run (`API_UNAVAILABLE`, 17) | 23 incomplete on return, all 24 completed later; the one complete on return is `checkApiAvailability` (`ShadowGoogleApiAvailability`'s `Tasks.forResult`, not a client) |
+| `chopen`: `openChannel`, write, close the output, read the reply | `API_UNAVAILABLE` | `reply=echo:ping from phone` (and from the watch) |
+| `chfile`: `sendFile` 200,000 bytes, `receiveFile` on the peer | `API_UNAVAILABLE` | received 200,000 bytes, same SHA-256 prefix (`8f9d1bf4`) |
+| `openChannel` to an unknown node | `API_UNAVAILABLE` | `TARGET_NODE_NOT_CONNECTED` (4000) |
+| callbacks | none | `onChannelOpened` on the main thread and in the service; `onInputClosed` / `onOutputClosed` `NORMAL` as each stream ends; `onChannelClosed` `LOCAL_CLOSE` on the closer, `REMOTE_CLOSE` on the peer |
+
+With `--data-layer agent` (the watch alone): `channelOpen` / `channelWrite` "hi from the agent" /
+`channelEof` reached the probe's callback and service, which read 17 bytes and echoed them back as
+`channelData` / `channelEof` send events; the app's own `openChannel` to the agent showed as a
+`channelOpen` send event, and the agent's `disconnect` closed it with `CLOSE_REASON_DISCONNECTED`,
+failing the app's blocked read.
+
+| Before (phone) | After (phone) | After (watch) |
+| --- | --- | --- |
+| ![channels before](evidence/simulator-launch/pair-channels-before-phone.png) | ![channels after, phone](evidence/simulator-launch/pair-channels-after-phone.png) | ![channels after, watch](evidence/simulator-launch/pair-channels-after-watch.png) |
+
+No app in the test set uses channels: `dexdump` of Home Assistant, MeshCore, Confetti and the
+Horologist datalayer, media and sample APKs finds `getChannelClient` only in Play services' own
+`Wearable`, and Horologist 0.8.3's `datalayer`, `datalayer-grpc`, `-phone` and `-watch` libraries
+do not call it.
+
 ## Evidence: MeshCore
 
 `meshcore-debug.apk` with `meshcore-wear-debug.apk`, `--sdk 36`. Three causes, in order, kept the
