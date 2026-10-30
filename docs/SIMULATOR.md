@@ -1122,12 +1122,11 @@ format, the frame stream, mouse input, the token check), the stream following a 
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
 display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
 the device appears in Device Manager and Running Devices, which streams the display and takes
-clicks and drags. Studio's process tracker, a native binary, cannot run (`can't execute`, logged
+clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's process tracker, a native binary, cannot run (`can't execute`, logged
 and harmless). The host process stays out of the macOS Dock and app switcher
 (`apple.awt.UIElement`); only the simulator's window is an app there.
 
-**Not yet:** a second display or `--pair` with `--adb`; system gestures from Running Devices (a
-drag from the left edge is a touch for the app, not Back: see [Back](#back)); debugging (`jdwp:`, `track-jdwp` lists
+**Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
 watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
