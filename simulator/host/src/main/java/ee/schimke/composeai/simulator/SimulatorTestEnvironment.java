@@ -15,6 +15,7 @@ import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.TestEnvironmentLifecyclePlugin;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowBluetoothAdapter;
+import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowPackageManager;
 
 /**
@@ -66,6 +67,18 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
     shadow.setSystemFeature(PackageManager.FEATURE_WATCH, true);
   }
 
+  static final String FINGERPRINT_PROPERTY = "composeai.simulator.fingerprint";
+
+  /**
+   * {@code Build.FINGERPRINT} from {@code launch --fingerprint}. Robolectric's is {@code
+   * robolectric}, and apps compare against it to skip real work in tests and previews: MeshCore's
+   * watch then uses canned preview data instead of its phone.
+   */
+  static void fingerprint() {
+    String value = System.getProperty(FINGERPRINT_PROPERTY);
+    if (value != null && !value.isEmpty()) ShadowBuild.setFingerprint(value);
+  }
+
   /** Installs the providers immediately before the application's {@code onCreate()}. */
   public static class ProvidersFirstInstrumentation extends RoboMonitoringInstrumentation {
     @Override
@@ -81,6 +94,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
       watchFeature(app);
+      fingerprint();
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.

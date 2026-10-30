@@ -126,11 +126,16 @@ final class DataLayer {
    * PhoneTypeHelper.getPhoneDeviceType} reads it ({@code DEVICE_TYPE_ANDROID}).
    */
   private static void pairedDeviceType(Application app) {
-    int type =
-        app.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_TYPE_MASK;
-    if (type != android.content.res.Configuration.UI_MODE_TYPE_WATCH) return;
+    if (!isWatch(app)) return;
     android.provider.Settings.Global.putInt(
         app.getContentResolver(), "paired_device_os_type", PAIRED_DEVICE_ANDROID);
+  }
+
+  static boolean isWatch(Application app) {
+    int type =
+        app.getResources().getConfiguration().uiMode
+            & android.content.res.Configuration.UI_MODE_TYPE_MASK;
+    return type == android.content.res.Configuration.UI_MODE_TYPE_WATCH;
   }
 
   /** The node, connecting it on first use. */
@@ -222,6 +227,10 @@ final class DataLayer {
   private final Map<Integer, TaskCompletionSource<byte[]>> pending = new ConcurrentHashMap<>();
   /** The app's {@code ResultReceiver} for each remote launch awaiting the peer's answer. */
   private final Map<Integer, ResultReceiver> remoteLaunches = new ConcurrentHashMap<>();
+  /** A watch's {@code RemoteAuthClient} callbacks awaiting the phone's answer. */
+  private final Map<Integer, Object> authCallbacks = new ConcurrentHashMap<>();
+  /** On the phone: the watch's OAuth requests not answered yet, oldest first. */
+  private final List<JSONObject> authRequests = new CopyOnWriteArrayList<>();
   private final AtomicInteger requestIds = new AtomicInteger();
 
   final List<Registration<DataClient.OnDataChangedListener>> dataListeners =
@@ -267,6 +276,13 @@ final class DataLayer {
     }
     send(hello(false));
     listenForRemoteIntents();
+    if (isWatch(app)) {
+      try {
+        WearCompanion.install(app, this);
+      } catch (LinkageError e) {
+        // The app has no wear-phone-interactions.
+      }
+    }
     log("node " + localId + " (" + app.getPackageName() + ") capabilities " + localCapabilities);
   }
 
@@ -545,6 +561,12 @@ final class DataLayer {
           break;
         case "activityResult":
           onRemoteActivityResult(frame);
+          break;
+        case "oauth":
+          onAuthRequest(frame);
+          break;
+        case "oauthResult":
+          onAuthResult(frame);
           break;
         default:
           System.err.println("datalayer: unknown frame " + frame.optString("type"));
@@ -1041,6 +1063,101 @@ final class DataLayer {
             .put("state", state);
     if (result != null) json.put("result", result);
     channel.event("datalayer", json.object());
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The Wear OS app's OAuth and notification bridging (WearCompanion)
+
+  /**
+   * A watch app's {@code RemoteAuthClient.sendAuthorizationRequest}: the Wear OS app opens [url] on
+   * the phone, and its redirect comes back to [callback]. With no phone, {@code
+   * ERROR_PHONE_UNAVAILABLE}.
+   */
+  void sendAuthRequest(String url, String packageName, Object callback) {
+    List<String> nodes = peerIds();
+    if (nodes.isEmpty()) {
+      WearCompanion.answer(callback, null, 1 /* RemoteAuthClient.ERROR_PHONE_UNAVAILABLE */);
+      return;
+    }
+    int id = requestIds.incrementAndGet();
+    authCallbacks.put(id, callback);
+    String node = nodes.get(0);
+    send(
+        frame("oauth")
+            .put("to", node)
+            .put("requestId", id)
+            .put("url", url)
+            .put("package", packageName));
+    authEvent("out", node, url, "sent to the phone");
+  }
+
+  /**
+   * On the phone: a watch's OAuth request. A device opens [url] in the phone's browser, the user
+   * signs in, and the provider redirects to {@code https://wear.googleapis.com/3p_auth/<package>},
+   * which the Wear OS app sends back. The simulator has no browser: the control channel's {@code
+   * dataLayer} command with {@code oauthResponse} stands in for the redirect.
+   */
+  private void onAuthRequest(JSONObject frame) {
+    authRequests.add(frame);
+    authEvent(
+        "in",
+        frame.optString("from"),
+        frame.optString("url", null),
+        "a device would open this in the phone's browser; answer with"
+            + " {\"cmd\":\"dataLayer\",\"oauthResponse\":\"<redirect URL>\"}");
+  }
+
+  /** The {@code oauthResponse} command: answers the oldest open OAuth request. */
+  JSONObject answerAuth(String responseUrl, int errorCode) {
+    if (authRequests.isEmpty()) throw new IllegalStateException("no OAuth request is waiting");
+    JSONObject request = authRequests.remove(0);
+    String to = request.optString("from");
+    send(
+        frame("oauthResult")
+            .put("to", to)
+            .put("requestId", request.optInt("requestId"))
+            .put("responseUrl", responseUrl)
+            .put("errorCode", errorCode));
+    authEvent("out", to, responseUrl, "redirect sent to the watch");
+    return new Protocol.Json()
+        .put("answered", request.optString("url", null))
+        .put("responseUrl", responseUrl)
+        .put("errorCode", errorCode)
+        .object();
+  }
+
+  private void onAuthResult(JSONObject frame) {
+    Object callback = authCallbacks.remove(frame.optInt("requestId"));
+    String url = frame.optString("responseUrl", null);
+    int errorCode = frame.optInt("errorCode", WearCompanion.NO_ERROR);
+    authEvent("in", frame.optString("from"), url, "errorCode " + errorCode);
+    if (callback != null) WearCompanion.answer(callback, url, errorCode);
+  }
+
+  private void authEvent(String direction, String node, String url, String state) {
+    log("oauth " + direction + " " + node + " " + url + " " + state);
+    Protocol channel = protocol;
+    if (channel == null) return;
+    channel.event(
+        "datalayer",
+        new Protocol.Json()
+            .put("kind", "oauth")
+            .put("direction", direction)
+            .put("node", node)
+            .put("url", url)
+            .put("state", state)
+            .object());
+  }
+
+  /** {@code BridgingManager.setConfig}: what the app asked the Wear OS app to bridge. */
+  void reportBridging(android.os.Bundle config) {
+    Protocol.Json json = new Protocol.Json().put("kind", "bridging");
+    if (config != null) {
+      for (String key : config.keySet()) json.put(key, String.valueOf(config.get(key)));
+    }
+    log("bridging " + config);
+    Protocol channel = protocol;
+    if (channel != null) channel.event("datalayer", json.object());
   }
 
   // ---------------------------------------------------------------------------------------------

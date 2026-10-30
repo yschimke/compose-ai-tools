@@ -155,6 +155,7 @@ internal class LaunchCommand(private val args: List<String>) {
         launchActivity = launchActivity,
         device = device,
         fontScale = args.flagValue("--font-scale"),
+        fingerprint = args.flagValue("--fingerprint"),
         headless = headless,
         control = control != null,
         installProviders = "--no-providers" !in args,
@@ -236,6 +237,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val dataLayer: DataLayerNode? = null,
     /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
     val device: String? = null,
+    /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
+    val fingerprint: String? = null,
   )
 
   private fun convert(
@@ -337,6 +340,7 @@ internal class LaunchCommand(private val args: List<String>) {
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
+      options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
@@ -403,6 +407,8 @@ internal class LaunchCommand(private val args: List<String>) {
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
         --font-scale <f>      Font scale (default 1.0).
+        --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
+                              apps check to skip real work under tests; MeshCore's watch does).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).
         --no-providers        Do not create the manifest's content providers at startup.

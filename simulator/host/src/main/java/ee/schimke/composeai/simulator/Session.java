@@ -268,6 +268,10 @@ final class Session {
             if (c.has("removeCapability")) {
               DataLayer.get().setLocalCapability(c.getString("removeCapability"), false);
             }
+            if (c.has("oauthResponse")) {
+              return DataLayer.get()
+                  .answerAuth(c.getString("oauthResponse"), c.optInt("errorCode", -1));
+            }
           }
           JSONObject state = DataLayerLink.enabled() ? DataLayer.describeCurrent() : null;
           if (state == null) {

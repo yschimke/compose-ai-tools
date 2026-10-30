@@ -280,6 +280,34 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `a build fingerprint becomes a system property, and is absent by default`() {
+    fun command(fingerprint: String?) =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            fingerprint = fingerprint,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue(
+      "-Dcomposeai.simulator.fingerprint=google/sim/sim:16/X/1:user/release-keys" in
+        command("google/sim/sim:16/X/1:user/release-keys")
+    )
+    assertTrue(command(null).none { it.startsWith("-Dcomposeai.simulator.fingerprint") })
+  }
+
+  @Test
   fun `a wear launch passes the round watch display and its form factor`() {
     val command =
       LaunchCommand.simulatorCommand(
