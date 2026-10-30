@@ -2,9 +2,11 @@ package ee.schimke.composeai.simulator;
 
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.UserHandle;
 import java.util.concurrent.Executor;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowContextImpl;
@@ -49,7 +51,15 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation
   @Override
   protected void sendBroadcast(Intent intent, String receiverPermission) {
-    if (!Navigator.appSentBroadcast(intent)) super.sendBroadcast(intent, receiverPermission);
+    // The receivers are the app's own, so they hold the permission when the app does; when it does
+    // not, Robolectric's delivery applies the check and no manifest receiver could pass it.
+    boolean held =
+        receiverPermission == null
+            || RuntimeEnvironment.getApplication().checkSelfPermission(receiverPermission)
+                == PackageManager.PERMISSION_GRANTED;
+    if (!held || !Navigator.appSentBroadcast(intent)) {
+      super.sendBroadcast(intent, receiverPermission);
+    }
   }
 
   @Implementation
