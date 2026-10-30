@@ -126,4 +126,33 @@ public class ScreenPolicyTest {
     assertEquals(State.OFF, State.of("off"));
     assertEquals("ambient", State.AMBIENT.id());
   }
+
+  @Test
+  public void aTiltInAmbientReportsTheGestureBeforeExitingAmbient() {
+    ScreenPolicy p = new ScreenPolicy(true, 0);
+    p.to(State.AMBIENT, true, true, 0);
+    Transition t = p.tilt(true, true, 5);
+    // ScreenPower delivers the sensor event first, while the app is still in ambient.
+    assertTrue(t.wristTilt);
+    assertTrue(t.exitAmbient);
+    assertTrue(t.screenOn);
+    assertEquals(State.ON, p.state());
+  }
+
+  @Test
+  public void aTiltOnAnAwakeWatchStillReportsTheGesture() {
+    ScreenPolicy p = new ScreenPolicy(true, 0);
+    Transition t = p.tilt(true, true, 0);
+    assertTrue(t.wristTilt);
+    assertFalse(t.changed());
+  }
+
+  @Test
+  public void aPhoneHasNoWristTiltSensor() {
+    ScreenPolicy p = new ScreenPolicy(false, 0);
+    p.to(State.OFF, true, false, 0);
+    Transition t = p.tilt(true, false, 1);
+    assertFalse(t.wristTilt);
+    assertTrue(t.restartApp);
+  }
 }
